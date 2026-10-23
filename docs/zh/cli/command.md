@@ -12,7 +12,7 @@
 
 ## 文件的命令
 
-`clice command <file>` 列出编译数据库为该文件记录的每个条目，按构建给出的优先级排序；排在第一的就是编辑器编译该文件时使用的条目，除非用户另选一条。每个条目会显示它所在的数据库、条目的原文（`command` 字符串按 clice 的方式拆分），以及 clice 依据该条目编译文件时所用的命令：先用 `clice.toml` 的[规则](../guide/configuration.md#rules)修改条目，再交给条目指定的编译器解析，由编译器给出目标平台和系统头文件目录，作为一条 `-cc1` 命令的参数。编译器无法查询时（没有安装，或拒绝了查询），错误信息会说明原因，此时显示的是 clang 自己的驱动代替该编译器读取的那条驱动级命令，与规则写上 `query_toolchain = false` 时相同：基于兼容版本 Clang 的工具读它，结果与 clice 一致。`--json` 则把同样的内容输出为一个 JSON 对象。
+`clice command <file>` 列出编译数据库为该文件记录的每个条目，按构建给出的优先级排序；排在第一的就是编辑器编译该文件时使用的条目，除非用户另选一条。每个条目会显示它所在的数据库、条目的原文（`command` 字符串按 clice 的方式拆分），以及 clice 依据该条目编译文件时所用的命令：先用 `clice.toml` 的[规则](../guide/configuration.md#rules)修改条目，再交给条目指定的编译器解析，由编译器给出目标平台和系统头文件目录，作为一条 `-cc1` 命令的参数。这些目录中，存放另一个编译器内置头文件的目录（GCC 的私有目录，或另一个 clang 的内置头文件目录）里有 clice 编译时看不到的文件，这样的目录各有一行 `hidden` 给出这些文件的数目（见[工具链查询](../design/command-resolve.md#toolchain-query)）。编译器无法查询时（没有安装，或拒绝了查询），错误信息会说明原因，此时显示的是 clang 自己的驱动代替该编译器读取的那条驱动级命令，与规则写上 `query_toolchain = false` 时相同：基于兼容版本 Clang 的工具读它，结果与 clice 一致。`--json` 则把同样的内容输出为一个 JSON 对象。
 
 查找的数据库与编辑器为该文件加载的相同：即规则指定的数据库；若规则未指定，则是工作区根目录、其直接子目录，以及该文件与根目录之间各级目录中的 `compile_commands.json`。没有自身条目的文件，例如头文件（编辑器借用包含它的源文件的命令来编译它），会报告为没有条目。
 
@@ -22,13 +22,14 @@ $ clice command src/main.cpp
   directory: /home/me/project/build
   command:   /usr/bin/g++ -std=c++20 -O2 -Werror -o main.o -c ../src/main.cpp
   resolved:  /usr/bin/g++ -cc1 -main-file-name main.cpp -triple x86_64-unknown-linux-gnu -O2 … -internal-isystem /usr/include/c++/13 … -std=c++20 … -x c++ /home/me/project/src/main.cpp
+  hidden:    112 of the files in /usr/lib/gcc/x86_64-linux-gnu/13/include
 ```
 
 列出了文件的条目时退出码为 0；文件不存在或没有数据库列出它时为 1；参数无法解析时为 2。
 
 ## 转换命令
 
-`clice command convert <compile_commands.json>`（也可以给出含有它的目录）输出这份数据库，并把其中每个条目的命令（`arguments` 或 `command`）替换为 clice 编译该条目文件时所用的 `arguments`（已按工作区 `clice.toml` 的规则修改）。条目保留 `file` 和 `output`；`directory` 写成绝对路径，相对路径以数据库所在目录为基准；其余字段不保留。clice 不编译的条目（例如汇编源文件）保留原来的命令。`clice command convert -- <compiler> <arguments>...` 转换单条命令：这条命令在当前目录下运行，且只编译一个 C 系源文件；结果输出为一行命令，加上 `--json` 时则输出为一个数据库条目。
+`clice command convert <compile_commands.json>`（也可以给出含有它的目录）输出这份数据库，并把其中每个条目的命令（`arguments` 或 `command`）替换为 clice 编译该条目文件时所用的 `arguments`（已按工作区 `clice.toml` 的规则修改）。条目保留 `file` 和 `output`；`directory` 写成绝对路径，相对路径以数据库所在目录为基准；其余字段不保留。clice 不编译的条目（例如汇编源文件）保留原来的命令。写出的命令无法体现 clice 编译它时看不到哪些文件（见[已知限制](../design/command-resolve.md#known-limitations)）。`clice command convert -- <compiler> <arguments>...` 转换单条命令：这条命令在当前目录下运行，且只编译一个 C 系源文件；结果输出为一行命令，加上 `--json` 时则输出为一个数据库条目。
 
 转换后的命令是 clice 所基于的 Clang 的 `-cc1` 命令，适用于基于兼容版本 Clang 的工具。编译器无法查询的命令则仍是驱动级命令，即 clang 自己的驱动代替该编译器读取的那条命令。
 

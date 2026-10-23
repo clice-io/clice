@@ -145,7 +145,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 **GCC 风格的驱动程序**（gcc、clang、Apple clang、zig、emcc、交叉编译与裸机 GCC）：只询问驱动程序一次，让它带着命令自身的标志，以输入文件的语言预处理一个空文件，同时输出详细信息并打印宏（`-E -dM -v`）。这一次的回答就包含了 clice 需要的一切：
 
-- 驱动程序运行的任务（job）。clang 的任务原样就是 clice 要用的 cc1 命令。GCC 的任务则带有 GCC 的目标、它的头文件搜索列表，以及 GCC 驱动根据自身配置和 specs 添加的选项（目标默认值如 `-march=armv7-a+fp -mthumb`，宏如 `-D_REENTRANT`，加固选项如 `-fstack-protector-strong`）。随后由 Clang 自己的驱动构建 cc1 命令：固定为该目标，不带 Clang 自己的任何系统头文件（`-nostdinc`），并加上这些选项和命令自身的标志；GCC 的搜索列表按 GCC 的顺序排在后面，只是 GCC 自己的私有头文件（`lib/gcc/<target>/<version>/include`）换成了 clang 的内置头文件：那些是同一批头文件的 GCC 版本，clang 无法解析，不替换的话 clang 自己的 `stdatomic.h` 还会经由 `#include_next` 进入它们。
+- 驱动程序运行的任务（job）。clang 的任务原样就是 clice 要用的 cc1 命令。GCC 的任务则带有 GCC 的目标、它的头文件搜索列表，以及 GCC 驱动根据自身配置和 specs 添加的选项（目标默认值如 `-march=armv7-a+fp -mthumb`，宏如 `-D_REENTRANT`，加固选项如 `-fstack-protector-strong`）。随后由 Clang 自己的驱动构建 cc1 命令：固定为该目标，不带 Clang 自己的任何系统头文件（`-nostdinc`），并加上这些选项和命令自身的标志；GCC 的搜索列表按 GCC 的顺序排在后面，clang 的内置头文件紧挨在 GCC 的私有目录（`lib/gcc/<target>/<version>/include`）之前，遮蔽该目录。这个目录里既有 GCC 版本的 clang 内置头文件（clang 无法解析），也有只有 GCC 才有的头文件（`omp.h`、`quadmath.h`、厂商的 intrinsics 头文件）。clice 编译时看不到该目录中 clang 也有的头文件，所以其余头文件仍能在那里找到，clang 自己的 `stdatomic.h` 也无法经由 `#include_next` 进入 GCC 的版本。列表更靠后的位置若还有这类头文件的另一份副本，而 GCC 自己的那份并不 `#include_next` 到它，GCC 就永远读不到它，clice 编译时同样看不到：例如排在 GCC 版本之后的 newlib 的 `stdatomic.h`。编译看不到的文件也不进入 clice 自己的 include 搜索：依赖关系、`#include` 补全和文档链接都不会用到它们。
 - 语言标准，从 `__cplusplus` 或 `__STDC_VERSION__` 读出，命令没有指定时用它补上 `-std`：GCC 15 默认按 C23 编译 C，Apple clang 默认按 C++14 编译 C++。
 
 询问时带着命令自身的标志，并按命令原本的写法给出，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。询问失败时，日志会写出它的报错和 clice 运行的命令。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。RISC-V 的 `-march` 会去掉 LLVM 不认识的扩展（WCH 的 `_xw`）和它不认识的版本（较老 GCC 的 `i2p0`）：否则 clang 会丢掉整个字符串，连同所有特性宏。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
@@ -160,7 +160,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 > 外部驱动的版本可能比 clice 内嵌的 LLVM 版本更新，其 cc1 输出中可能包含 clice 无法识别的选项。解析时会静默丢弃未知选项，以保证兼容性。
 
-查询完成后，会从结果中移除临时查询文件的路径和与模块输出相关的标志（它们引用了已删除的临时文件）。如果 clice 的资源目录与查询返回的不一致，会替换所有相关路径，确保前端使用匹配版本的内置头文件；搜索路径指向的其他 clang 内置头文件目录（另一个 clang 的 `-isystem <clang>/lib/clang/<version>/include`、zig 的 `lib/include`）也同样替换。
+查询完成后，会从结果中移除临时查询文件的路径和与模块输出相关的标志（它们引用了已删除的临时文件）。如果 clice 的资源目录与查询返回的不一致，会替换所有相关路径，确保前端使用匹配版本的内置头文件。任务自身的内置头文件目录则保留下来，紧跟在 clice 的目录之后，像 GCC 的私有目录那样被遮蔽：只有那个 clang 才有的头文件（libomp 安装在那里的 `omp.h`、compiler-rt 的 `xray/`、Apple clang 的 `ptrcheck.h`）仍能在那里找到。命令的搜索路径指向的其他 clang 内置头文件目录（另一个 clang 的 `-isystem <clang>/lib/clang/<version>/include`）则会被替换。
 
 **启动预热。** 在服务器启动的依赖扫描阶段，会收集所有唯一的工具链缓存键并并行查询。查询子进程的管道排空和进程等待也会并发执行，以避免管道填满导致死锁。预热完成后，后续所有工具链查询都会命中缓存。
 
@@ -216,7 +216,9 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 - **部分编译器家族支持不完整。** 对查询既不给出 clang 任务、也不给出 GCC 任务的驱动程序——Intel 的经典编译器 `icc`、其他厂商的编译器——会使用 clang 针对当前机器的默认设置，工具链错误会说明这一点。NVCC 已有专门的查询逻辑（解析 `nvcc --dryrun` 输出并将其转换为 clang CUDA 调用），但仅支持以 GCC 或 Clang 作为宿主编译器——不支持由 nvcc 驱动 MSVC `cl`，多架构命令也只解析最新的架构。
 
-- **只有 GCC 接受的语言特性按 clang 的理解解析。** 只有 GCC 能编译的代码——GCC 专有的内建函数和扩展、在 clang 不支持它的目标上使用 `__float128`、嵌套函数——会显示 clang 的报错；只有 GCC 认识的 CPU 名称会丢失其特性对应的宏。只存在于 GCC 私有 include 目录中的头文件（`omp.h`、`quadmath.h`）找不到：那个目录里同时还有 GCC 版本的 clang 内置头文件。
+- **只有 GCC 接受的语言特性按 clang 的理解解析。** 只有 GCC 能编译的代码——GCC 专有的内建函数和扩展、在 clang 不支持它的目标上使用 `__float128`、嵌套函数——会显示 clang 的报错；只有 GCC 认识的 CPU 名称会丢失其特性对应的宏。
+
+- **写给其他工具的命令仍包含 clice 从中隐藏了文件的目录。** `clice command convert` 写出的是 clice 编译时所用的命令，它紧接在 clice 自己的内置头文件之后搜索 GCC 的私有 include 目录或另一个 clang 的内置头文件。读取这条命令的工具能看到这些目录中的所有文件：clang 自己的内置头文件经由 `#include_next` 到达 GCC 的同名版本时（C 的 `<stdatomic.h>`），工具就会去解析这些 GCC 版本。`clice command --json` 列出每个目录中被隐藏的文件（`hidden`）：需要同样效果的工具可以用自己的文件系统覆盖层（overlay）隐藏它们，例如 clang 的 `-ivfsoverlay`。
 
 - **SearchConfig 不支持所有搜索路径选项。** `-cxx-isystem`（仅 C++ 模式生效的系统目录）、`-iwithsysroot`（在路径前拼接 sysroot）和 HeaderMap 支持尚未实现。这些选项在实际项目中不常见，但可能出现在某些 Apple 工具链或交叉编译工具链中。
 
