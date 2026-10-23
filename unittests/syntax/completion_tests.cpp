@@ -249,8 +249,8 @@ ZEST_CASE(DirectiveInConditional) {
     using enum CompletionName::Conditional;
     ZEXPECT(completion_name("#ifndef G\n#el", 13).conditional == Open);
     ZEXPECT(completion_name("#if A\n#endif\n#el", 16).conditional == None);
-    ZEXPECT(completion_name("#if A\n#else\n#e", 15).conditional == Else);
-    ZEXPECT(completion_name("#if A\n#else\n#if B\n#e", 21).conditional == Open);
+    ZEXPECT(completion_name("#if A\n#else\n#e", 14).conditional == Else);
+    ZEXPECT(completion_name("#if A\n#else\n#if B\n#e", 20).conditional == Open);
 }
 
 ZEST_CASE(DirectiveArgument) {

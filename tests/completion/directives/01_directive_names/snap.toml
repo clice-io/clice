@@ -27,6 +27,12 @@ items = [
     { label = "else", kind = "Keyword", insert = "else" },
 ]
 
+[default.after_else.completion]
+items = [
+    { label = "endif", kind = "Keyword", insert = "endif" },
+    { label = "error", kind = "Keyword", insert = "error" },
+]
+
 [configured.empty.completion]
 items = [
     { label = "define macro", kind = "Snippet", insert = "define ${1:macro}", snippet = true },
@@ -56,4 +62,10 @@ items = [
     { label = "elifdef macro", kind = "Snippet", insert = "elifdef ${1:macro}", snippet = true },
     { label = "elifndef macro", kind = "Snippet", insert = "elifndef ${1:macro}", snippet = true },
     { label = "else", kind = "Snippet", insert = "else" },
+]
+
+[configured.after_else.completion]
+items = [
+    { label = "endif", kind = "Snippet", insert = "endif" },
+    { label = "error message", kind = "Snippet", insert = "error ${1:message}", snippet = true },
 ]

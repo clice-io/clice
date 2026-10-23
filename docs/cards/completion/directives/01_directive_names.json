@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#\n#in\n#ifndef DIRECTIVE_NAMES\n#el\n#endif\n",
+      "text": "#\n#in\n#ifndef DIRECTIVE_NAMES\n#el\n#endif\n#ifdef DIRECTIVE_NAMES\n#else\n#e\n#endif\n",
       "markers": [
         {
           "name": "empty",
@@ -28,6 +28,12 @@
           "name": "conditional",
           "begin": 33,
           "end": 33,
+          "range": false
+        },
+        {
+          "name": "after_else",
+          "begin": 72,
+          "end": 72,
           "range": false
         }
       ]
@@ -143,6 +149,26 @@
                   "label": "else",
                   "kind": "Keyword",
                   "insert": "else"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "after_else",
+          "marker": "after_else",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "endif",
+                  "kind": "Keyword",
+                  "insert": "endif"
+                },
+                {
+                  "label": "error",
+                  "kind": "Keyword",
+                  "insert": "error"
                 }
               ]
             }
@@ -291,6 +317,27 @@
                   "label": "else",
                   "kind": "Snippet",
                   "insert": "else"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "after_else",
+          "marker": "after_else",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "endif",
+                  "kind": "Snippet",
+                  "insert": "endif"
+                },
+                {
+                  "label": "error message",
+                  "kind": "Snippet",
+                  "insert": "error ${1:message}",
+                  "snippet": true
                 }
               ]
             }
