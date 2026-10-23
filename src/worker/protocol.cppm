@@ -168,6 +168,9 @@ struct CompileParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
@@ -240,6 +243,9 @@ struct BuildPCHParams {
     /// Every built module's PCM (module name -> artifact path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
+
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
 
     /// Tmp path allocated by the master's store; the master commits
     /// (fsync + atomic rename) after the worker reports success.

@@ -315,8 +315,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         base_blob = it->second.blob;
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
+    auto skip_bodies = project.config.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule,
+                              pch_build_rule(skip_bodies),
                               project.build.active_configuration(),
                               directory,
                               path::parent_path(path),
@@ -337,6 +338,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .preamble_bound = bound,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       .base = base.str(),
+                      .skip_bodies = skip_bodies,
                       },
     };
     if(imported) {
@@ -886,6 +888,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.known_instantiations = known_instantiations;
         params.standard_library_instantiations =
             project.config.project.standard_library_instantiations;
+        params.skip_bodies = project.config.project.skip_header_bodies;
         params.path = file_path;
         params.version = session->version;
         params.text = session->text().str();
@@ -967,7 +970,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
             if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-                auto request = pch.precompiled_header(*unit);
+                auto request =
+                    pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
                 auto key = request.pch_key;
                 switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
                     case DependResult::Ready:
@@ -1421,7 +1425,7 @@ kota::task<std::optional<std::string>>
     // compile round takes it (see run()).
     std::optional<std::string> base;
     if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-        auto request = pch.precompiled_header(*unit);
+        auto request = pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
         auto key = request.pch_key;
         if(co_await pch.acquire(std::move(request)) == PCHFamily::Outcome::Ready &&
            !pch.reads(key, path_id)) {

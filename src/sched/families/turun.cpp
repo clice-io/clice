@@ -169,7 +169,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                              resolved,
                              {.extra_prepend = extras.prepend, .extra_append = extras.append});
        unit && project.build.indexed(project.file_table.resolve(unit->file))) {
-        auto request = pch.precompiled_header(*unit);
+        auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
             case DependResult::Ready:

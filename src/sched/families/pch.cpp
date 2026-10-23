@@ -32,16 +32,17 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
+PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool skip_bodies) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     Request request{.file = std::string(project.file_table.resolve(unit.file)),
                     .directory = project.commands.get(unit.command).directory,
-                    .whole_file = true};
+                    .whole_file = true,
+                    .skip_bodies = skip_bodies};
     auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file));
     request.arguments.assign(argv.begin(), argv.end());
     request.pch_key = cache_key({clang::getClangFullVersion(),
-                                 pch_build_rule,
+                                 pch_build_rule(skip_bodies),
                                  project.build.active_configuration(),
                                  request.directory,
                                  request.file,
@@ -199,6 +200,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
     bp.whole_file = request.whole_file;
+    bp.skip_bodies = request.skip_bodies;
     bp.synthesized = std::move(request.synthesized);
     bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;

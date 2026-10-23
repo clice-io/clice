@@ -164,6 +164,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
                   .directory = params.directory,
                   .workspace = params.workspace},
         .output_file = *output,
+        .skip_bodies = params.skip_bodies,
         .stop = stop,
     };
     if(!params.whole_file) {
@@ -499,6 +500,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
         .kind = CompilationKind::Completion,
         .input = {.arguments = params.arguments, .directory = params.directory},
         .completion = {.offset = params.offset},
+        .skip_bodies = params.config.project.skip_header_bodies,
         .stop = stop,
     };
     // Clang does not read again the part of the file the PCH stands in for:
@@ -529,6 +531,7 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
         .kind = CompilationKind::Completion,
         .input = {.arguments = params.arguments, .directory = params.directory},
         .completion = {.offset = params.offset},
+        .skip_bodies = params.config.project.skip_header_bodies,
         .stop = stop,
     };
     use_artifacts(cp.input, params.pch, params.pcms);

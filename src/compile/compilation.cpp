@@ -152,6 +152,7 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
+    front_opts.SkipFunctionBodies = params.skip_bodies;
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -300,6 +301,29 @@ static bool instantiated(const clang::Decl* decl) {
     return false;
 }
 
+/// Whether a function template likely forwards its arguments to another
+/// function, the way `make_unique` and `emplace_back` do: its last
+/// parameter is a pack of one of its own template parameters. What
+/// features read through such a call, the parameter names an inlay hint
+/// shows, is in its body. clangd's isLikelyForwardingFunction.
+static bool likely_forwarding(const clang::Decl* decl) {
+    const auto* function = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl);
+    if(!function) {
+        return false;
+    }
+    auto params = function->getTemplatedDecl()->parameters();
+    if(params.empty()) {
+        return false;
+    }
+    const auto* pack = params.back()->getType()->getAs<clang::PackExpansionType>();
+    if(!pack) {
+        return false;
+    }
+    const auto* param =
+        pack->getPattern().getNonReferenceType()->getAs<clang::TemplateTypeParmType>();
+    return param && param->getDepth() == function->getTemplateParameters()->getDepth();
+}
+
 /// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
@@ -363,6 +387,11 @@ public:
         }
 
         return clang::MultiplexConsumer::HandleTopLevelDecl(group);
+    }
+
+    /// Asked only under CompilationParams::skip_bodies.
+    bool shouldSkipFunctionBody(clang::Decl* decl) final {
+        return unit.in_preamble(unit.file_id(decl->getLocation())) && !likely_forwarding(decl);
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
@@ -499,6 +528,16 @@ CompilationStatus CompilationUnit::run() {
     instance->getDiagnostics().setSeverity(clang::diag::err_pp_file_not_found,
                                            clang::diag::Severity::Error,
                                            {});
+    if(params.skip_bodies) {
+        for(auto id: {clang::diag::warn_unused_function,
+                      clang::diag::warn_unused_member_function,
+                      clang::diag::warn_unused_template,
+                      clang::diag::warn_unneeded_internal_decl,
+                      clang::diag::warn_unneeded_static_internal_decl,
+                      clang::diag::warn_unneeded_member_function}) {
+            instance->getDiagnostics().setSeverity(id, clang::diag::Severity::Ignored, {});
+        }
+    }
     instance->createFileManager();
 
     if(!instance->createTarget()) {
@@ -628,6 +667,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .output_file = built.output_file,
             .completion = std::move(built.completion),
             .tidy = built.tidy,
+            .skip_bodies = built.skip_bodies,
             .stop = built.stop,
         };
         again.input.pch = {};
@@ -649,6 +689,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .input = built.input,
             .output_file = built.output_file,
             .tidy = built.tidy,
+            .skip_bodies = built.skip_bodies,
             .stop = built.stop,
         };
         unit.reset();

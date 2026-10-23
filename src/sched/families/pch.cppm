@@ -59,6 +59,8 @@ public:
         std::string base;
         /// See worker::BuildPCHParams::whole_file.
         bool whole_file = false;
+        /// See worker::BuildPCHParams::skip_bodies.
+        bool skip_bodies = false;
     };
 
     enum class Outcome : std::uint8_t {
@@ -80,8 +82,9 @@ public:
 
     /// The request for clice's own build of the precompiled header the
     /// command of `unit` writes (Build::pch_unit): the unit's whole file,
-    /// under that command.
-    Request precompiled_header(const CommandRef& unit);
+    /// under that command. The editor's build skips function bodies, the
+    /// index's keeps them: they are two PCHs.
+    Request precompiled_header(const CommandRef& unit, bool skip_bodies);
 
     /// Whether the PCH registered under `key` read `file`: a parse of that
     /// very file cannot load it — clang refuses a PCH whose input the parse
