@@ -4,10 +4,12 @@ module;
 
 module clice;
 
+import :command.table;
 import :command.toolchains.cl;
 import :unittests.utils;
 import :unittests.utils.toolchain_fixture;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -98,7 +100,11 @@ echo 'msc_full_ver 194435207'
 )",
                                             tmp.path("llvm")));
     auto argv = f.resolve(add("a.cpp", {clang_cl.c_str()}));
-    ZEXPECT(adjacent(argv, "-internal-isystem", tmp.path("llvm/lib/clang/20/include")));
+    auto builtin_headers = path::join(resource_dir(), "include");
+    auto ours = ranges::find_if(argv, [&](llvm::StringRef arg) { return arg == builtin_headers; });
+    ZASSERT(argv.end() - ours > 2);
+    ZEXPECT(ours[1] == "-internal-isystem"sv);
+    ZEXPECT(ours[2] == tmp.path("llvm/lib/clang/20/include"));
 }
 
 ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
