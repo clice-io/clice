@@ -15,6 +15,7 @@ stdout = '''
     "file": "${WS}/main.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-I",

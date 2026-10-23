@@ -1,5 +1,5 @@
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 joined.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -D B=0 ${WS}/joined.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D B=0 ${WS}/joined.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -7,7 +7,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 separate.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -D B=0 ${WS}/separate.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D B=0 ${WS}/separate.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -15,7 +15,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 both.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/both.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/both.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -23,7 +23,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 wildcard_joined.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/wildcard_joined.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/wildcard_joined.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -31,7 +31,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 wildcard_separate.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/wildcard_separate.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/wildcard_separate.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -39,7 +39,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 ["every value"."$ clice command convert -- missing-clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -Wp,-DKEPT -DKEEP every.c"]
-stdout = "missing-clang -resource-dir ${RESOURCE} -Wp,-DKEPT -D KEEP ${WS}/every.c"
+stdout = "missing-clang -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-DKEPT -D KEEP ${WS}/every.c"
 stderr = '''
 warning: A rule removes -sectcreate, which takes several values: write them
 error: Toolchain query failed: Cannot find driver: missing-clang
@@ -48,7 +48,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang
 exit = 1
 
 ["every value"."$ clice command convert -- missing-clang++ -Iinc -I/opt/include includes_joined.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/includes_joined.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/includes_joined.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
@@ -56,7 +56,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 ["every value"."$ clice command convert -- missing-clang++ -Iinc -I/opt/include includes_separate.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/includes_separate.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/includes_separate.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++

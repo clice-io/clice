@@ -3,7 +3,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   cl-missing.exe /Tcalpha.c /Tpbeta.c /c
-  resolved:  cl-missing.exe -resource-dir ${RESOURCE} /TC ${WS}/alpha.c
+  resolved:  cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /TC ${WS}/alpha.c
   error:     the compiler could not be queried: Cannot find driver: cl-missing.exe
 '''
 stderr = "error: Toolchain query failed: Cannot find driver: cl-missing.exe"
@@ -14,14 +14,14 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   cl-missing.exe /Tcalpha.c /Tpbeta.c /c
-  resolved:  cl-missing.exe -resource-dir ${RESOURCE} /TP ${WS}/beta.c
+  resolved:  cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /TP ${WS}/beta.c
   error:     the compiler could not be queried: Cannot find driver: cl-missing.exe
 '''
 stderr = "error: Toolchain query failed: Cannot find driver: cl-missing.exe"
 exit = 0
 
 ["cl spellings"."$ clice command convert -- cl-missing.exe /W3 -Wno-unused-variable /J /Zp4 /Iinc /FIpre.h /std:c++17 /c a.cpp"]
-stdout = "cl-missing.exe -resource-dir ${RESOURCE} /W1 -Wno-unused-variable /J /Zp4 -I ${WS}/inc /FIpre.h /std:c++17 ${WS}/a.cpp"
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /W1 -Wno-unused-variable /J /Zp4 -I ${WS}/inc /FIpre.h /std:c++17 ${WS}/a.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: cl-missing.exe
 error: The command stays a driver command: Cannot find driver: cl-missing.exe
@@ -29,7 +29,7 @@ error: The command stays a driver command: Cannot find driver: cl-missing.exe
 exit = 1
 
 ["cl spellings"."$ clice command convert -- cl-missing.exe -std=c++20 /c b.cpp"]
-stdout = "cl-missing.exe -resource-dir ${RESOURCE} /clang:-std=c++20 ${WS}/b.cpp"
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /clang:-std=c++20 ${WS}/b.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: cl-missing.exe
 error: The command stays a driver command: Cannot find driver: cl-missing.exe

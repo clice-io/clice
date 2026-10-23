@@ -6,6 +6,7 @@ stdout = '''
     "file": "kernels.cuh",
     "arguments": [
       "nvcc-missing",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "--cuda-path=${WS}/missing-cuda",
@@ -24,6 +25,7 @@ stdout = '''
     "file": "a.ixx",
     "arguments": [
       "missing-clang++",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-std=c++20",

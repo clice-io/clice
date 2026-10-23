@@ -3,7 +3,7 @@ stdout = '''
 ${WS}/deep/src/compile_commands.json:
   directory: ${WS}/deep/src
   command:   ${WS}/missing-cc -c lib.cpp
-  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} ${WS}/deep/src/lib.cpp
+  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/deep/src/lib.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
 stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
