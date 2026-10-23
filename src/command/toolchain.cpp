@@ -454,11 +454,11 @@ void Toolchain::commit_query(llvm::StringRef key,
     queries.try_emplace(key, frontend(*job));
 }
 
-std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID id,
-                                                                     InputKind input) {
+std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(CommandID id,
+                                                                          InputKind input) {
     auto synth_key = std::pair{static_cast<std::uint32_t>(id), input.value};
     if(auto it = synth_cache.find(synth_key); it != synth_cache.end()) {
-        return it->second;
+        return ResolvedCommand{.id = it->second};
     }
 
     auto admission = admit_query(id, input);
@@ -490,12 +490,11 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
 
     auto resolved_id = synthesize(id, queries.find(admission.key)->second);
     synth_cache.try_emplace(synth_key, resolved_id);
-    return resolved_id;
+    return ResolvedCommand{.id = resolved_id};
 }
 
-std::expected<Toolchain::ResolvedID, std::string> Toolchain::read_unqueried(CommandID id,
-                                                                            InputKind input,
-                                                                            std::string failure) {
+std::expected<Toolchain::ResolvedCommand, std::string>
+    Toolchain::read_unqueried(CommandID id, InputKind input, std::string failure) {
     // Not cached under the command itself: a failure is retried once its
     // cooldown passes.
     if(!commands.get(id).query_toolchain) {
@@ -508,17 +507,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::read_unqueried(Comm
                         failure,
                         resolved.error()));
     }
-    return resolved;
-}
-
-std::optional<std::string> Toolchain::query_failure(CommandID id, InputKind input) {
-    if(!commands.get(id).query_toolchain) {
-        return std::nullopt;
-    }
-    if(auto it = failed.find(query_key(id, input).key); it != failed.end()) {
-        return it->second.first;
-    }
-    return std::nullopt;
+    return ResolvedCommand{.id = resolved->id, .query_failure = std::move(failure)};
 }
 
 void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
@@ -588,18 +577,18 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
-std::vector<const char*> Toolchain::render(const CommandRef& ref,
-                                           llvm::StringRef path,
-                                           const RenderOptions& opts) {
-    auto resolved_id = resolve(ref.command, ref.input);
-    if(!resolved_id) {
+Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
+                                             llvm::StringRef path,
+                                             const RenderOptions& opts) {
+    auto resolution = resolve(ref.command, ref.input);
+    if(!resolution) {
         LOG_WARN("Toolchain resolve failed for {}: {}",
                  files.resolve(ref.file),
-                 resolved_id.error());
-        return commands.render_driver(ref, path, opts);
+                 resolution.error());
+        return {.argv = commands.render_driver(ref, path, opts)};
     }
 
-    auto& rc = resolved(*resolved_id);
+    auto& rc = resolved(resolution->id);
     auto source = commands.intern(path);
 
     std::vector<const char*> argv;
@@ -635,19 +624,19 @@ std::vector<const char*> Toolchain::render(const CommandRef& ref,
     }
 
     argv.push_back(source.data());
-    return argv;
+    return {.argv = std::move(argv), .query_failure = std::move(resolution->query_failure)};
 }
 
 SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto& command = commands.get(ref.command);
     llvm::StringRef directory = command.directory;
-    auto resolved_id = resolve(ref.command, ref.input);
-    if(!resolved_id) {
+    auto resolution = resolve(ref.command, ref.input);
+    if(!resolution) {
         return extract_search_config(command.args, directory);
     }
-    auto [it, inserted] = search_configs.try_emplace(*resolved_id);
+    auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
-        it->second = extract_search_config(resolved(*resolved_id).args, directory);
+        it->second = extract_search_config(resolved(resolution->id).args, directory);
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;

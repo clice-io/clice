@@ -603,7 +603,7 @@ std::string build_pch(Project& project,
         LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
         return {};
     }
-    auto argv = project.toolchain.render(writer, project.cdb.spelling(writer.file));
+    auto argv = project.toolchain.render(writer, project.cdb.spelling(writer.file)).argv;
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
         .input = {.arguments = {argv.begin(), argv.end()},

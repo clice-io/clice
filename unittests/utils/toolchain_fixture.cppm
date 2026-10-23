@@ -43,16 +43,16 @@ struct ToolchainEntries {
     /// The command clice compiles `ref` with, resolved through the query.
     std::vector<const char*> resolve(const CommandRef& ref) {
         ZASSERT(toolchain.resolve(ref.command, ref.input));
-        return toolchain.render(ref, db.spelling(ref.file));
+        return toolchain.render(ref, db.spelling(ref.file)).argv;
     }
 
     /// Why the compiler of `ref` could not be queried, which leaves clang's
     /// own driver reading its command.
     std::string failure(const CommandRef& ref) {
-        ZASSERT(toolchain.resolve(ref.command, ref.input));
-        auto failure = toolchain.query_failure(ref.command, ref.input);
-        ZASSERT(failure);
-        return *failure;
+        auto resolution = toolchain.resolve(ref.command, ref.input);
+        ZASSERT(resolution);
+        ZASSERT(!resolution->query_failure.empty());
+        return resolution->query_failure;
     }
 };
 

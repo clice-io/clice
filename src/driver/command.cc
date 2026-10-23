@@ -192,21 +192,22 @@ struct Rendered {
 
 Rendered render_command(Project& project, const CommandRef& ref) {
     auto path = project.cdb.spelling(ref.file);
-    auto resolved = project.toolchain.resolve(ref.command, ref.input);
-    auto failure = project.toolchain.query_failure(ref.command, ref.input);
+    auto resolution = project.toolchain.resolve(ref.command, ref.input);
+    if(resolution && resolution->query_failure.empty()) {
+        // The resolution is cached: rendering resolves it the same.
+        auto argv = project.toolchain.render(ref, path).argv;
+        return {
+            .arguments = {argv.begin(), argv.end()}
+        };
+    }
     // Shown as clang's own driver reads it, a command whose compiler could
     // not be queried reads the same on every machine; its cc1 names the
     // machine's own headers.
-    auto argv = resolved && !failure ? project.toolchain.render(ref, path)
-                                     : project.commands.render_driver(ref, path);
-    Rendered rendered{
+    auto argv = project.commands.render_driver(ref, path);
+    return {
         .arguments = {argv.begin(), argv.end()},
-        .error = std::move(failure),
+        .error = resolution ? std::move(resolution->query_failure) : std::move(resolution.error()),
     };
-    if(!resolved) {
-        rendered.error = std::move(resolved.error());
-    }
-    return rendered;
 }
 
 /// A loaded entry as its database writes it; nullopt when the database

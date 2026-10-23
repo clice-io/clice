@@ -113,7 +113,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
         cp.input.directory = cdb.commands().get(entry.command).directory;
-        auto arguments = toolchain.render(ref, cdb.spelling(ref.file));
+        auto arguments = toolchain.render(ref, cdb.spelling(ref.file)).argv;
         cp.input.arguments.assign(arguments.begin(), arguments.end());
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
@@ -154,7 +154,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
                        cdb.commands().input_kind(entry.command, file_path),
                        CommandSource::CDBExact};
 
-        auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)),
+        auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
 
         llvm::SmallVector<std::uint32_t> deps;
@@ -1141,7 +1141,7 @@ ZEST_CASE(module_implementation_unit) {
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
         cp.input.directory = env.cdb.commands().get(impl_entry.command).directory;
-        auto arguments = env.toolchain.render(impl_ref, env.cdb.spelling(impl_ref.file));
+        auto arguments = env.toolchain.render(impl_ref, env.cdb.spelling(impl_ref.file)).argv;
         cp.input.arguments.assign(arguments.begin(), arguments.end());
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {

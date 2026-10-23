@@ -187,9 +187,10 @@ ZEST_CASE(FailedQueryUnqueried) {
     // with -mabi=lp64).
     auto ref = add("a.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=lp64", "-c"});
     ZEXPECT(llvm::StringRef(f.failure(ref)).contains("not found"));
-    auto argv = f.resolve(ref);
-    ZEXPECT(adjacent(argv, "-triple", "aarch64-unknown-linux-gnu"));
-    ZEXPECT(!contains(argv, "lp64"));
+    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    ZEXPECT(llvm::StringRef(rendered.query_failure).contains("not found"));
+    ZEXPECT(adjacent(rendered.argv, "-triple", "aarch64-unknown-linux-gnu"));
+    ZEXPECT(!contains(rendered.argv, "lp64"));
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {

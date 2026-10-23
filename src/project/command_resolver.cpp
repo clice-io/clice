@@ -320,12 +320,12 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         }
         options.kept_includes = includes_before(project, ref, resolution.forced);
         directory = project.commands.get(ref.command).directory;
-        auto argv = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
-        arguments.assign(argv.begin(), argv.end());
+        auto rendered = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
+        arguments.assign(rendered.argv.begin(), rendered.argv.end());
         // The builtin command names a compiler no build chose: clang's own
         // reading of it, when that compiler is missing, loses nothing.
         if(ref.source != CommandSource::Fallback) {
-            resolution.query_failure = project.toolchain.query_failure(ref.command, ref.input);
+            resolution.query_failure = std::move(rendered.query_failure);
         }
         resolution.ref = ref;
         resolution.source = ref.source;

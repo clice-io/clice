@@ -38,7 +38,7 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
     Request request{.file = std::string(project.file_table.resolve(unit.file)),
                     .directory = project.commands.get(unit.command).directory,
                     .whole_file = true};
-    auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file));
+    auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file)).argv;
     request.arguments.assign(argv.begin(), argv.end());
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule,
