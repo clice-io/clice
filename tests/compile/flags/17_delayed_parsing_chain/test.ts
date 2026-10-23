@@ -2,7 +2,8 @@ import { test } from "@clice/tools/testing";
 
 // The build parses templates late (-fdelayed-template-parsing), the
 // target's PCH keeps base_template unparsed, and main.cpp's preamble PCH,
-// built over it, instantiates it. clang would copy the target's record of
+// built over it, instantiates it in use_base(), whose body it parses for
+// the type it deduces. clang would copy the target's record of
 // the unparsed template into the preamble's PCH and crash reading the copy
 // back; the preamble's PCH stores only its own records.
 

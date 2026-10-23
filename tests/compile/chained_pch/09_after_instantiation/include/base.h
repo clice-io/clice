@@ -15,6 +15,6 @@ constexpr int weight = 1;
 
 struct Unit {};
 
-inline int base_use() {
+inline auto base_use() {
     return Traits<int*>::value + Traits<Unit>::value + pick(Unit{}) + weight<Unit>;
 }

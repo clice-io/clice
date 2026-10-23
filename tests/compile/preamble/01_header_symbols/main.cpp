@@ -3,5 +3,6 @@
 
 int main() {
     §(call)foo();
-    return §(macro)ANSWER;
+    Box box{1};
+    return box.§(get)get() + §(macro)ANSWER;
 }

@@ -708,13 +708,10 @@ inline int local_bonus()
 range = "total += geo::⟦local_bonus⟧() + geo::local_seed();"
 
 [locations.seed]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ inline int ⟦local_seed⟧() {"]
 declaration = ["include/base.h │ inline int ⟦local_seed⟧() {"]
-references = [
-    "include/base.h │ inline int ⟦local_seed⟧() {",
-    "include/extra.h │ return ⟦local_seed⟧() + 1;",
-    "total += geo::local_bonus() + geo::⟦local_seed⟧();",
-]
+references = ["include/base.h │ inline int ⟦local_seed⟧() {", "total += geo::local_bonus() + geo::⟦local_seed⟧();"]
 
 [locations.seed.hover]
 markdown = '''

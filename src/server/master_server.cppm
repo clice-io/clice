@@ -217,6 +217,10 @@ public:
     /// A project published a document's compile output.
     Signal<ProjectServer&, std::shared_ptr<Session>> on_output;
 
+    /// What a project's document shows of its diagnostics changed with no
+    /// compile (ASTFamily::on_diagnostics).
+    Signal<ProjectServer&, std::shared_ptr<Session>> on_diagnostics;
+
     /// The projects' indexing rounds as one: it begins with the first
     /// project's round and ends with the last one's, and a project whose
     /// round ended keeps its counts in it until then.

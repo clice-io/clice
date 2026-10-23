@@ -29,6 +29,17 @@ struct CompileOutput {
     /// before parsing, why it failed.
     std::vector<feature::FileDiagnostic> diagnostics;
 
+    /// The warnings of unused declarations the compile raised while it
+    /// skipped the function bodies of the headers, which a use in a skipped
+    /// body cannot silence: held back for the background index's compile to
+    /// confirm.
+    std::vector<feature::FileDiagnostic> unconfirmed;
+
+    /// What the background index's compile of the same text reported that
+    /// this one cannot report or has held back (ASTFamily::shown_skipped),
+    /// shown after the compile's own.
+    std::vector<feature::FileDiagnostic> skipped;
+
     /// The host whose includer context the compile needed but could not
     /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
     std::string unmatched_host;

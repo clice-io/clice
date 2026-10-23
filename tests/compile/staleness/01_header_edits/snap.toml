@@ -14,9 +14,9 @@ errors = [
     {
         at = '#include ⟦"pre.h"⟧',
         severity = "error",
-        message = "In included file: non-void function 'base' should return a value",
+        message = "In included file: non-void constexpr function 'base' should return a value",
         source = "clang",
-        code = "-Wreturn-mismatch",
+        code = "err_constexpr_return_missing_expr",
     },
 ]
 

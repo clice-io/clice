@@ -1851,7 +1851,7 @@ tests/switch_source_header/counterparts/01_header_and_source
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Template definitions apart**
 

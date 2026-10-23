@@ -111,6 +111,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(resolved.synthesized) {
         params.synthesized = resolved.synthesized->files;
     }
+    // A header compiles here in another context than the editor's, which
+    // gives it its includer's.
+    params.skipped_diagnostics =
+        plan.skipped_diagnostics && resolved.source == CommandSource::CDBExact;
 
     // A unit waits on the PCMs of its imports: the fill_pcm_deps snapshot
     // below would otherwise race a cold build and parse without the module
@@ -169,7 +173,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                              resolved,
                              {.extra_prepend = extras.prepend, .extra_append = extras.append});
        unit && project.build.indexed(project.file_table.resolve(unit->file))) {
-        auto request = pch.precompiled_header(*unit);
+        auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
             case DependResult::Ready:
@@ -249,6 +253,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         outcome.result = Result::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
         outcome.errors = std::move(value.errors);
+        outcome.skipped_diagnostics = std::move(value.skipped_diagnostics);
+        outcome.text_hash = value.text_hash;
         outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
             // Merge guard: a newer content-level invalidation during this

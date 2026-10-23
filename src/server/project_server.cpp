@@ -10,6 +10,7 @@ module clice;
 
 import :command.file_kind;
 import :command.table;
+import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
 import :project.build;
@@ -54,14 +55,24 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     output_conn = ast.on_output.connect([this](const std::shared_ptr<Session>& session) {
         this->server.on_output.emit(*this, session);
     });
+    diagnostics_conn = ast.on_diagnostics.connect([this](const std::shared_ptr<Session>& session) {
+        this->server.on_diagnostics.emit(*this, session);
+    });
     progress_conn = sched.pump.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
     sched.pump.compiled_by_session = [this](Fid path_id) {
-        auto session = sessions.find(path_id);
-        return session && session->serving == ServingMode::Escalated;
+        return invalidator.compiled_by_session(path_id);
+    };
+    sched.pump.on_skipped_diagnostics = [this](Fid path_id,
+                                               std::uint64_t text_hash,
+                                               std::vector<feature::FileDiagnostic> diagnostics) {
+        ast.report_skipped(path_id, text_hash, std::move(diagnostics));
+    };
+    sched.pump.lacks_skipped_diagnostics = [this](Fid path_id) {
+        return ast.lacks_skipped(path_id);
     };
     sched.pump.on_attempt_finished = [this](Fid path_id) {
         index_attempt_finished(path_id);
@@ -247,6 +258,15 @@ void ProjectServer::discover_around(Fid path_id) {
 }
 
 void ProjectServer::saved(Fid path_id) {
+    // The open files the save made stale show what their background run
+    // finds as soon as it can (ASTFamily::report_skipped).
+    if(project.config.project.skip_header_bodies) {
+        for(auto& [open, session]: sessions.sessions) {
+            if(sched.pump.pending_reason(open) && !sched.pump.in_flight(open)) {
+                sched.pump.boost(open);
+            }
+        }
+    }
     // A header compiles through a host or a lender, never as a member; a
     // build tree or the cache holds no sources of the workspace's own.
     auto path = project.file_table.resolve(path_id);
@@ -279,10 +299,17 @@ std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
 }
 
 void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
-    // An escalated session needs no decision: builds stay pull-driven,
-    // and boosting its file would enqueue work the indexer skips for
-    // open non-IndexOnly documents.
+    // An escalated session needs no decision: builds stay pull-driven. When
+    // they skip the bodies of the headers, the file's background run shows
+    // what those hold (ASTFamily::report_skipped), and goes first when none
+    // has reported on its text.
     if(session->serving == ServingMode::Escalated) {
+        auto path_id = session->path_id;
+        if(project.config.project.skip_header_bodies &&
+           project.config.project.enable_indexing.value && ast.lacks_skipped(path_id) &&
+           !sched.pump.in_flight(path_id) && !sched.pump.failed().contains(path_id)) {
+            sched.pump.boost(path_id);
+        }
         return;
     }
     if(auto* shard = project.index.shard(session->path_id)) {
@@ -332,10 +359,10 @@ void ProjectServer::close_session(Fid path_id) {
     server.pool.remove_owner(path_id.raw);
     sessions.close(path_id);
     ast.drop(path_id);
-    // The session's compile stood in for the file's background index
-    // (IndexPump::compiled_by_session); the disk's turn again, unless it
-    // was deleted meanwhile or its index run failed for good, which waits
-    // for a change.
+    // The session's compile may have stood in for the file's background
+    // index (IndexPump::compiled_by_session); the disk's turn again, unless
+    // it was deleted meanwhile or its index run failed for good, which
+    // waits for a change.
     if(!project.file_table.disk.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
        sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
@@ -465,9 +492,11 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
+        ast.forget_skipped(path_id);
         sched.pump.enqueue(path_id, ReindexReason::ContentChanged);
     }
     for(auto path_id: dirty.reindex_deps_only) {
+        ast.forget_skipped(path_id);
         sched.pump.enqueue(path_id, ReindexReason::DepsOnly);
     }
     // The engine keeps the reindex lists disjoint per file in event order

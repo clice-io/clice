@@ -858,18 +858,25 @@ struct CollectedItem {
 class WholeBuffer {
 public:
     explicit WholeBuffer(const CompilationParams& completion) :
-        input(completion.input), stop(completion.stop) {}
+        input(completion.input), skip_bodies(completion.skip_bodies), stop(completion.stop) {}
 
     CompilationUnit& unit() {
         if(!compiled) {
-            compiled = compile({.kind = CompilationKind::Content, .input = input, .stop = stop});
+            compiled = compile({.kind = CompilationKind::Content,
+                                .input = input,
+                                .skip_bodies = skip_bodies,
+                                .stop = stop});
         }
         return *compiled;
     }
 
 private:
     CompilationInput input;
+
+    bool skip_bodies;
+
     std::shared_ptr<std::atomic_bool> stop;
+
     std::unique_ptr<CompilationUnit> compiled;
 };
 

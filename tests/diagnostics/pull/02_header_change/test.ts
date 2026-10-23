@@ -15,7 +15,7 @@ test(async (t) => {
     await t.show("before", s.diagnostics("main.cpp"));
     const refreshes = await s.serverRequests(REFRESH);
     const written = t.disk.mtime("header.h");
-    t.disk.write("header.h", "inline int value() { return missing; }\n");
+    t.disk.write("header.h", "constexpr int value() { return missing; }\n");
     t.disk.touch("header.h", new Date(written.getTime() + 10_000));
     await s.hover(t.at("main.cpp", "return |value()"));
     expect(await s.serverRequests(REFRESH)).toBe(refreshes + 1);

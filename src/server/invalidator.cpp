@@ -35,18 +35,20 @@ static void dedup(llvm::SmallVector<Fid>& ids) {
     ids.erase(ranges::unique(ids).begin(), ids.end());
 }
 
-/// An invalidated dependent recompiles when its session invests in an
-/// AST, reindexes when closed — and does both for an index-only session
-/// (freshness clause 4): the buffer is the compile truth, but the serving
-/// index is the shard's, and only a reindex refreshes it.
+bool Invalidator::compiled_by_session(Fid path_id) const {
+    auto session = store.find(path_id);
+    return !project.config.project.skip_header_bodies && session &&
+           session->serving == ServingMode::Escalated;
+}
+
+/// An invalidated dependent recompiles when it is open, and reindexes
+/// unless its session's compile serves it.
 void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
     project.index.mark_behind(path_id);
-    if(auto session = store.find(path_id)) {
+    if(store.find(path_id)) {
         dirty.mark_ast_dirty.push_back(path_id);
-        if(session->serving == ServingMode::IndexOnly) {
-            dirty.add_reindex_deps_only(path_id);
-        }
-    } else {
+    }
+    if(!compiled_by_session(path_id)) {
         dirty.add_reindex_deps_only(path_id);
     }
 }
@@ -113,9 +115,9 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
         if(id.family == Family::TURun) {
             dirty.add_reindex_content_changed(path_id);
         } else if(id.family == Family::AST) {
-            if(auto session = store.find(path_id)) {
+            if(store.find(path_id)) {
                 dirty.mark_ast_dirty.push_back(path_id);
-                if(session->serving == ServingMode::IndexOnly) {
+                if(!compiled_by_session(path_id)) {
                     dirty.add_reindex_content_changed(path_id);
                 }
             }
@@ -211,16 +213,15 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
         // dependency now provides the missing declarations); drop the
         // persisted result so the trial can downgrade it.
         dirty.reset_header_mode.push_back(header_id);
-        auto session = store.find(header_id);
-        if(session) {
+        if(store.find(header_id)) {
             dirty.mark_ast_dirty.push_back(header_id);
         }
         // Contexts outlive their sessions: a closed header's shard
         // was indexed under the old chain and only a background reindex
         // can refresh it. The header's own content did not change, so
-        // its shard keeps serving meanwhile. An open index-only session is
-        // in the same boat — its shard is what the LSP serves.
-        if(!session || session->serving == ServingMode::IndexOnly) {
+        // its shard keeps serving meanwhile. An open session its compile
+        // does not serve is in the same boat.
+        if(!compiled_by_session(header_id)) {
             dirty.add_reindex_deps_only(header_id);
         }
     }
@@ -376,10 +377,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         dirty.drop_index.push_back(header_id);
                         // An index-only session just lost its serving shard
                         // with the drop; only a reindex under the new
-                        // command brings it back. An open session that
-                        // compiles is reindexed when it closes.
-                        auto session = store.find(header_id);
-                        if(!session || session->serving == ServingMode::IndexOnly) {
+                        // command brings it back. An open session its
+                        // compile serves is reindexed when it closes.
+                        if(!compiled_by_session(header_id)) {
                             dirty.add_reindex_content_changed(header_id);
                         }
                     }

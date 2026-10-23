@@ -1,0 +1,527 @@
+{
+  "id": "diagnostics/headers/09_skipped_bodies",
+  "topic": "diagnostics",
+  "subtopic": "headers",
+  "title": "Errors in headers' function bodies",
+  "summary": "An error inside a function body of a header shows once the background index has compiled the file as saved",
+  "prose": "The editor's compile of a file skips the bodies of the functions in the headers it includes at its top, as clangd does: the file opens and rebuilds after an edit several times faster. The background index compiles those bodies, and what it finds in them, an inline function's errors, a template's for the arguments the file instantiates it with, or those of the file's own generic lambda such a template calls, shows on the file while the file holds the text it compiled: an edit takes them down until the file is saved and compiled again. `skip_header_bodies = false` in `[project]` parses the bodies in the editor too.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"shapes.h\"\n\nstruct Square {\n    int side;\n};\n\nint use() {\n    return area(Square{2}) + unit();\n}\n\nint count() {\n    return apply([](auto value) { return value.size(); });\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shapes.h",
+      "text": "#pragma once\n\ntemplate <typename T>\nint area(const T& shape) {\n    return shape.width * shape.height;\n}\n\ninline int unit() {\n    return 1;\n}\n\ntemplate <typename F>\nint apply(F f) {\n    return f(1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "as saved",
+      "blocks": [
+        {
+          "label": "indexed",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{2}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member",
+                "related": [
+                  {
+                    "at": {
+                      "$place": "shapes.h │ return shape.⟦width⟧ * shape.height;",
+                      "path": "shapes.h",
+                      "range": {
+                        "start": {
+                          "line": 4,
+                          "character": 17
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "message": "error occurred here"
+                  },
+                  {
+                    "at": {
+                      "$place": "return ⟦area⟧(Square{2}) + unit();",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 7,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "message": "in instantiation of function template specialization 'area<Square>' requested here"
+                  }
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union",
+                "related": [
+                  {
+                    "at": {
+                      "$place": "shapes.h │ return ⟦f⟧(1);",
+                      "path": "shapes.h",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "message": "in instantiation of function template specialization 'count()::(lambda)::operator()<int>' requested here"
+                  },
+                  {
+                    "at": {
+                      "$place": "return ⟦apply⟧([](auto value) { return value.size(); });",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 11,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 11,
+                          "character": 16
+                        }
+                      }
+                    },
+                    "message": "in instantiation of function template specialization 'apply<(lambda at ${WS}/main.cpp:12:18)>' requested here"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "edited",
+          "value": {
+            "wrong": "the editor skips the function bodies of shapes.h: what goes wrong in them shows once the background index has compiled the file as saved",
+            "diagnostics": []
+          }
+        },
+        {
+          "label": "saved",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{3}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member"
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "pulled",
+      "blocks": []
+    },
+    {
+      "name": "pushed",
+      "blocks": [
+        {
+          "label": "pushes",
+          "value": {
+            "wrong": "the editor skips the function bodies of shapes.h: what goes wrong in them shows once the background index has compiled the file as saved",
+            "pushes": [
+              [
+                {
+                  "at": {
+                    "$place": "return ⟦area⟧(Square{3}) + unit();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 7,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 7,
+                        "character": 15
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "In template: no member named 'width' in 'Square'",
+                  "source": "clang",
+                  "code": "err_no_member"
+                },
+                {
+                  "at": {
+                    "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 46
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 47
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "member reference base type 'int' is not a structure or union",
+                  "source": "clang",
+                  "code": "err_typecheck_member_reference_struct_union"
+                }
+              ],
+              [],
+              [
+                {
+                  "at": {
+                    "$place": "return ⟦area⟧(Square{3}) + unit();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 7,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 7,
+                        "character": 15
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "In template: no member named 'width' in 'Square'",
+                  "source": "clang",
+                  "code": "err_no_member"
+                },
+                {
+                  "at": {
+                    "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 46
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 47
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "member reference base type 'int' is not a structure or union",
+                  "source": "clang",
+                  "code": "err_typecheck_member_reference_struct_union"
+                }
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a saved header",
+      "blocks": [
+        {
+          "label": "saved header",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"shapes.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In included file: use of undeclared identifier 'missing'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{2}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member"
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union"
+              }
+            ]
+          }
+        },
+        {
+          "label": "fixed header",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{2}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member"
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "after a restart",
+      "blocks": [
+        {
+          "label": "restarted",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{2}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member"
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bodies parsed",
+      "blocks": [
+        {
+          "label": "parsed",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(Square{2}) + unit();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: no member named 'width' in 'Square'",
+                "source": "clang",
+                "code": "err_no_member"
+              },
+              {
+                "at": {
+                  "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 47
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

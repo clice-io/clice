@@ -36,7 +36,10 @@ index::Shard shard_of(llvm::StringRef content) {
 }
 
 /// The inert family stack an Invalidator reads through: no worker ever
-/// starts, so no round dispatches.
+/// starts, so no round dispatches. The open files' compiles parse the
+/// bodies of their headers and serve their index, so that a dependency
+/// change splits open files from closed ones (SkippedBodiesReindexOpen
+/// covers the default).
 struct Harness {
     kota::event_loop loop;
     TaskGraph graph;
@@ -47,7 +50,9 @@ struct Harness {
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
         pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store) {}
+        ast(project, resolver, graph, pcm, pch, pool, store) {
+        project.config.project.skip_header_bodies = false;
+    }
 };
 
 ZEST_SUITE(Invalidator) {
@@ -325,6 +330,35 @@ ZEST_CASE(SaveMarksDependents) {
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
     ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+}
+
+ZEST_CASE(SkippedBodiesReindexOpen) {
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    store.open(open_tu);
+
+    CommandResolver commands(project);
+    ContextChoices blob;
+    EditorContext resolver(project, commands, blob);
+    Harness ph(project, resolver, store);
+    project.config.project.skip_header_bodies = true;
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    // An open file's compile skipping the bodies of its headers serves no
+    // index of what they hold: the open dependent reindexes too.
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
+    ranges::sort(reindexed);
+    ZASSERT(dirty.reindex_deps_only == reindexed);
+    ZASSERT(!invalidator.compiled_by_session(open_tu));
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {

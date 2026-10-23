@@ -1,3 +1,17 @@
 [test."main.cpp"]
-wrong = "clang reports the warning on main.cpp's call; the precompiled preamble instantiates less<int> for the header, and a warning inside a header is not shown"
-diagnostics = []
+diagnostics = [
+    {
+        at = "bool b = ⟦less⟧(-1, 1u);",
+        severity = "warning",
+        message = "In template: comparison of integers of different signs: 'int' and 'unsigned int'",
+        source = "clang",
+        code = "-Wsign-compare",
+        related = [
+            { at = "cmp.h │ return a ⟦<⟧ b;", message = "warning occurred here" },
+            {
+                at = "bool b = ⟦less⟧(-1, 1u);",
+                message = "in instantiation of function template specialization 'less<int>' requested here",
+            },
+        ],
+    },
+]

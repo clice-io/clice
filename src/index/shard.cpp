@@ -60,15 +60,13 @@ MaskEncoding encoding_of(const Root& root) {
 }
 
 /// The mask of `entry` in an encoding of up to 64 variants.
-std::uint64_t mask_bits(MaskEncoding encoding,
-                        const RangeColumnsView& columns,
-                        std::uint32_t entry) {
+std::uint64_t mask_bits(MaskEncoding encoding, const MaskColumnsView& masks, std::uint32_t entry) {
     switch(encoding) {
         case MaskEncoding::Single: return 1;
-        case MaskEncoding::U8: return columns.masks8[entry];
-        case MaskEncoding::U16: return columns.masks16[entry];
-        case MaskEncoding::U32: return columns.masks32[entry];
-        case MaskEncoding::U64: return columns.masks64[entry];
+        case MaskEncoding::U8: return masks.masks8[entry];
+        case MaskEncoding::U16: return masks.masks16[entry];
+        case MaskEncoding::U32: return masks.masks32[entry];
+        case MaskEncoding::U64: return masks.masks64[entry];
         case MaskEncoding::Roaring: break;
     }
     std::unreachable();
@@ -83,16 +81,16 @@ struct LiveFilter {
     MaskEncoding encoding;
     std::uint64_t bits;
     const Bitmap* big;
-    const RangeColumnsView* columns;
+    const MaskColumnsView* masks;
 
     bool operator()(std::uint32_t entry) const {
         if(all) {
             return true;
         }
         if(encoding == MaskEncoding::Roaring) {
-            return bitmap_of(*columns, entry).intersect(*big);
+            return bitmap_of(*masks, entry).intersect(*big);
         }
-        return (mask_bits(encoding, *columns, entry) & bits) != 0;
+        return (mask_bits(encoding, *masks, entry) & bits) != 0;
     }
 };
 
@@ -102,12 +100,14 @@ namespace {
 struct OccurrenceTable {
     const Root& root;
     const RangeColumnsView& columns;
+    const MaskColumnsView& masks;
     IdColumnView symbols;
 
     static OccurrenceTable of(const Root& root) {
         return {
             .root = root,
             .columns = root.occurrences,
+            .masks = root.occurrence_masks,
             .symbols = ids_of(root.occurrence_symbols, root.symbol_hashes.size()),
         };
     }
@@ -131,32 +131,45 @@ bool fits_extent_columns(LocalSourceRange range, LocalSourceRange extent) {
 /// The relation table: relations grouped per symbol, each with its kind,
 /// range and payload. The kinds carrying an extent hold one in the extent
 /// columns, the others a target symbol's id in the target column, each
-/// column listing the payloads in relation order — walked by a cursor in
-/// stored order, placed by the payload counts before each block.
+/// column listing the payloads in relation order; a range is a code naming
+/// the occurrence that spans it or an explicit range. All of them are walked
+/// by a cursor in stored order, placed by the counts before each block.
 struct RelationTable {
     const Root& root;
-    const RangeColumnsView& columns;
+    const RangeColumnsView& occurrences;
+    llvm::ArrayRef<std::uint8_t> codes;
+    const RangeColumnsView& explicit_ranges;
+    const MaskColumnsView& masks;
     IdColumnView target_ranks;
     IdColumnView extent_ranks;
+    IdColumnView range_ranks;
+    IdColumnView explicit_ranks;
     IdColumnView targets;
     /// Entry i's relations occupy [offsets[i], offsets[i + 1]).
     IdColumnView offsets;
 
     static RelationTable of(const Root& root) {
         auto targets = ids_of(root.relation_targets, root.symbol_hashes.size());
+        auto& explicit_ranges = root.relation_explicit_ranges;
         return {
             .root = root,
-            .columns = root.relations,
+            .occurrences = root.occurrences,
+            .codes = {root.relation_range_codes.data(), root.relation_range_codes.size()},
+            .explicit_ranges = explicit_ranges,
+            .masks = root.relation_masks,
             .target_ranks = ids_of(root.relation_target_ranks, targets.size() + 1),
             .extent_ranks =
                 ids_of(root.relation_extent_ranks, root.relation_extent_heads.size() + 1),
+            .range_ranks = ids_of(root.relation_code_ranks, root.relation_range_codes.size() + 1),
+            .explicit_ranks =
+                ids_of(root.relation_explicit_ranks, entry_count(explicit_ranges) + 1),
             .targets = targets,
-            .offsets = ids_of(root.relation_offsets, entry_count(root.relations) + 1),
+            .offsets = ids_of(root.relation_offsets, root.relation_kinds.size() + 1),
         };
     }
 
     std::uint32_t size() const {
-        return entry_count(columns);
+        return root.relation_kinds.size();
     }
 
     RelationKind kind_of(std::uint32_t entry) const {
@@ -167,26 +180,90 @@ struct RelationTable {
         return (root.relation_kinds[entry] & payload_bit) != 0;
     }
 
-    /// Positions in the two payload columns; decode() advances them, so
-    /// relations must be decoded one after another from where the cursor
-    /// was placed.
+    /// Positions in the payload columns, the range codes and the explicit
+    /// ranges, and the occurrence the block's last occurrence code named;
+    /// advance() moves them, so relations must be decoded one after another
+    /// from where the cursor was placed.
     struct Cursor {
         std::uint32_t target = 0;
         std::uint32_t extent = 0;
+        std::uint32_t code = 0;
+        std::uint32_t explicit_range = 0;
+        std::uint32_t occurrence = 0;
     };
 
-    void advance(Cursor& cursor, std::uint32_t entry) const {
+    /// Where a relation's range is: `code` range_none, range_explicit with
+    /// the explicit range at `index`, or 0 with the occurrence at `index`.
+    struct RangeAt {
+        std::uint64_t code = 0;
+        std::uint32_t index = 0;
+    };
+
+    /// Move the cursor past `entry`, returning where its range is; nullopt
+    /// for bytes that hold no range code.
+    std::optional<RangeAt> advance(Cursor& cursor, std::uint32_t entry) const {
         if(has_payload(entry)) {
             (kind_of(entry).carries_extent() ? cursor.extent : cursor.target) += 1;
+        }
+        if(entry % rank_block == 0) {
+            cursor.occurrence = 0;
+        }
+        // Most codes are one byte, which needs no varint decode.
+        std::optional<std::uint64_t> code;
+        if(cursor.code < codes.size() && codes[cursor.code] < 0x80) {
+            code = codes[cursor.code];
+            cursor.code += 1;
+        } else {
+            code = read_varint(codes, cursor.code);
+        }
+        if(!code) {
+            return std::nullopt;
+        }
+        if(*code == range_none) {
+            return RangeAt{.code = range_none};
+        }
+        if(*code == range_explicit) {
+            cursor.explicit_range += 1;
+            return RangeAt{.code = range_explicit, .index = cursor.explicit_range - 1};
+        }
+        if(*code % 2 != 0) {
+            return std::nullopt;
+        }
+        auto zigzag = *code >> 1;
+        auto distance =
+            static_cast<std::int64_t>(zigzag >> 1) ^ -static_cast<std::int64_t>(zigzag & 1);
+        auto occurrence = cursor.occurrence + distance;
+        if(occurrence < 0 || occurrence > std::numeric_limits<std::uint32_t>::max()) {
+            return std::nullopt;
+        }
+        cursor.occurrence = static_cast<std::uint32_t>(occurrence);
+        return RangeAt{.index = cursor.occurrence};
+    }
+
+    LocalSourceRange range_at(RangeAt at) const {
+        switch(at.code) {
+            case range_none: return {};
+            case range_explicit: return range_of(explicit_ranges, at.index);
+            default: return range_of(occurrences, at.index);
         }
     }
 
     Cursor cursor_at(std::uint32_t entry) const {
         if(entry == size()) {
-            return {targets.size(), static_cast<std::uint32_t>(root.relation_extent_heads.size())};
+            return {
+                .target = targets.size(),
+                .extent = static_cast<std::uint32_t>(root.relation_extent_heads.size()),
+                .code = static_cast<std::uint32_t>(codes.size()),
+                .explicit_range = entry_count(explicit_ranges),
+            };
         }
         auto block = entry / rank_block;
-        Cursor cursor{target_ranks[block], extent_ranks[block]};
+        Cursor cursor{
+            .target = target_ranks[block],
+            .extent = extent_ranks[block],
+            .code = range_ranks[block],
+            .explicit_range = explicit_ranks[block],
+        };
         for(auto i = block * rank_block; i < entry; i += 1) {
             advance(cursor, i);
         }
@@ -205,19 +282,22 @@ struct RelationTable {
     }
 
     Relation decode(std::uint32_t entry, Cursor& cursor) const {
-        Relation relation{
-            .kind = kind_of(entry),
-            .range = range_of(columns, entry),
-            .target = 0,
-        };
+        auto payload = cursor;
+        return with_payload(entry, payload, range_at(*advance(cursor, entry)));
+    }
+
+    /// The relation at `entry` of range `range`, its payload at `payload`.
+    Relation with_payload(std::uint32_t entry,
+                          const Cursor& payload,
+                          LocalSourceRange range) const {
+        Relation relation{.kind = kind_of(entry), .range = range, .target = 0};
         if(has_payload(entry)) {
             if(RelationKind(relation.kind).carries_extent()) {
-                relation.set_extent(extent_at(cursor.extent, relation.range.begin));
+                relation.set_extent(extent_at(payload.extent, relation.range.begin));
             } else {
-                relation.target = root.symbol_hashes[targets[cursor.target]];
+                relation.target = root.symbol_hashes[targets[payload.target]];
             }
         }
-        advance(cursor, entry);
         return relation;
     }
 };
@@ -394,7 +474,9 @@ CheckResult range_encodings_ok(const Root& root) {
     if(auto ok = range_encoding_ok(root.occurrences, content_size, RangeEncoding::Delta); !ok) {
         return ok;
     }
-    return range_encoding_ok(root.relations, content_size, unsorted_encoding(content_size));
+    return range_encoding_ok(root.relation_explicit_ranges,
+                             content_size,
+                             unsorted_encoding(content_size));
 }
 
 // occurrences_at binary-searches the decoded end column and stops its
@@ -430,18 +512,17 @@ CheckResult occurrences_ok(const Root& root) {
 
 CheckResult relations_ok(const Root& root) {
     auto table = RelationTable::of(root);
+    auto occurrences = OccurrenceTable::of(root);
     auto& content_size = root.content_size;
     auto& symbol_hashes = root.symbol_hashes;
     auto& extent_heads = root.relation_extent_heads;
     auto& extent_lengths = root.relation_extent_lengths;
     auto& far_begins = root.relation_far_begins;
-    if(root.relation_kinds.size() != table.size()) {
-        return std::unexpected("relation kinds do not match the relation count");
-    }
 
-    // Readers place a payload by its block's counts and the payload bits
-    // before it, trusting both: one wrong count would hand every later
-    // relation of the block another relation's payload.
+    // Readers place a payload, a range code and an explicit range by its
+    // block's counts and the entries before it, trusting both: one wrong
+    // count would hand every later relation of the block another relation's
+    // payload or range.
     auto blocks = (table.size() + rank_block - 1) / rank_block;
     if(auto ok = ids_ok(table.target_ranks, blocks, table.targets.size() + 1); !ok) {
         return ok;
@@ -449,61 +530,123 @@ CheckResult relations_ok(const Root& root) {
     if(auto ok = ids_ok(table.extent_ranks, blocks, extent_heads.size() + 1); !ok) {
         return ok;
     }
-    RelationTable::Cursor counted;
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        if(entry % rank_block == 0 && (table.target_ranks[entry / rank_block] != counted.target ||
-                                       table.extent_ranks[entry / rank_block] != counted.extent)) {
-            return std::unexpected("relation payload counts are wrong");
-        }
-        table.advance(counted, entry);
-    }
-    if(auto ok = ids_ok(table.targets, counted.target, symbol_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.range_ranks, blocks, table.codes.size() + 1); !ok) {
         return ok;
     }
-    if(extent_heads.size() != counted.extent || extent_lengths.size() != counted.extent ||
+    auto explicit_count = entry_count(table.explicit_ranges);
+    if(auto ok = ids_ok(table.explicit_ranks, blocks, explicit_count + 1); !ok) {
+        return ok;
+    }
+    if(extent_lengths.size() != extent_heads.size() ||
        root.relation_far_ends.size() != far_begins.size() ||
        !escapes_ok(extent_heads, extent_escape, root.relation_far_extents, far_begins.size())) {
         return std::unexpected("relation extent columns do not line up");
     }
+    // An occurrence code names the first occurrence of its range, and an
+    // explicit range is one no occurrence has: one range, one encoding.
+    std::vector<LocalSourceRange> spans;
+    spans.reserve(occurrences.size());
+    for_each_range(occurrences.columns, [&](std::uint32_t, LocalSourceRange range) {
+        spans.push_back(range);
+        return true;
+    });
+    auto bounds = [](LocalSourceRange range) {
+        return std::pair(range.begin, range.end);
+    };
+    auto spanned = [&](LocalSourceRange range) {
+        return ranges::binary_search(spans, bounds(range), {}, bounds);
+    };
 
     // Entries of one relation group two-way merge under the full (kind,
     // begin, end, payload) key with equal-key entries combined at write time,
     // so the key must ascend strictly within each group — out-of-order or
     // repeated entries would mis-merge silently instead of being rejected.
+    std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> previous{};
+    std::uint32_t group = 0;
     RelationTable::Cursor cursor;
-    for(std::uint32_t id = 0; id < symbol_hashes.size(); id += 1) {
-        std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
-        for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
-            auto k = cursor.extent;
-            auto relation = table.decode(entry, cursor);
-            // The default LocalSourceRange is the writer's sentinel for pair
-            // relations, which carry no range of their own; every other kind
-            // is written with a real range, so a sentinel there is corruption
-            // that would serve an invalid source range forever.
-            if(is_no_range(relation.range.begin, relation.range.end) &&
-               !table.kind_of(entry).isBetweenSymbol()) {
-                return std::unexpected("no-range sentinel on a relation that carries a range");
+    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
+        if(entry % rank_block == 0) {
+            auto block = entry / rank_block;
+            if(table.target_ranks[block] != cursor.target ||
+               table.extent_ranks[block] != cursor.extent ||
+               table.range_ranks[block] != cursor.code ||
+               table.explicit_ranks[block] != cursor.explicit_range) {
+                return std::unexpected("relation block counts are wrong");
             }
-            if(k != cursor.extent) {
-                auto extent = relation.extent();
-                bool escaped = extent_heads[k] == extent_escape;
-                if(escaped ? extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
-                           : extent_heads[k] > relation.range.begin) {
-                    return std::unexpected("relation extent is not the canonical one");
-                }
-                if(extent.end < extent.begin || extent.end > content_size) {
-                    return std::unexpected("definition range past the content");
-                }
-            }
-            std::tuple key{static_cast<std::uint8_t>(relation.kind),
-                           relation.range.begin,
-                           relation.range.end,
-                           relation.target};
-            if(entry != table.offsets[id] && key <= prev) {
-                return std::unexpected("relations of one symbol are not strictly ascending");
-            }
-            prev = key;
         }
+        auto payload = cursor;
+        auto at = table.advance(cursor, entry);
+        if(!at) {
+            return std::unexpected("relation range code is not one");
+        }
+        LocalSourceRange range;
+        switch(at->code) {
+            case range_none: {
+                // Pair relations carry no range of their own; every other
+                // kind is written with a real range.
+                if(!table.kind_of(entry).isBetweenSymbol()) {
+                    return std::unexpected("no range on a relation that carries one");
+                }
+                break;
+            }
+            case range_explicit: {
+                if(at->index >= explicit_count) {
+                    return std::unexpected("explicit relation range past its column");
+                }
+                range = range_of(table.explicit_ranges, at->index);
+                if(spanned(range)) {
+                    return std::unexpected("explicit relation range is not the canonical one");
+                }
+                break;
+            }
+            default: {
+                if(at->index >= spans.size() ||
+                   (at->index != 0 && spans[at->index - 1] == spans[at->index])) {
+                    return std::unexpected("relation occurrence is not the canonical one");
+                }
+                range = spans[at->index];
+                break;
+            }
+        }
+        if(payload.target != cursor.target &&
+           (payload.target >= table.targets.size() ||
+            table.targets[payload.target] >= symbol_hashes.size())) {
+            return std::unexpected("relation target past its table");
+        }
+        if(payload.extent != cursor.extent && payload.extent >= extent_heads.size()) {
+            return std::unexpected("relation extent past its column");
+        }
+        auto relation = table.with_payload(entry, payload, range);
+        if(payload.extent != cursor.extent) {
+            auto k = payload.extent;
+            auto extent = relation.extent();
+            bool escaped = extent_heads[k] == extent_escape;
+            if(escaped ? extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
+                       : extent_heads[k] > relation.range.begin) {
+                return std::unexpected("relation extent is not the canonical one");
+            }
+            if(extent.end < extent.begin || extent.end > content_size) {
+                return std::unexpected("definition range past the content");
+            }
+        }
+        while(entry >= table.offsets[group + 1]) {
+            group += 1;
+        }
+        std::tuple key{static_cast<std::uint8_t>(relation.kind),
+                       relation.range.begin,
+                       relation.range.end,
+                       relation.target};
+        if(entry != table.offsets[group] && key <= previous) {
+            return std::unexpected("relations of one symbol are not strictly ascending");
+        }
+        previous = key;
+    }
+    if(cursor.code != table.codes.size() || cursor.explicit_range != explicit_count) {
+        return std::unexpected("relation ranges do not match the relation count");
+    }
+    if(table.targets.bytes.size() != std::size_t(cursor.target) * table.targets.width ||
+       cursor.extent != extent_heads.size()) {
+        return std::unexpected("relation payloads do not match their columns");
     }
     return {};
 }
@@ -571,8 +714,11 @@ CheckResult locals_ok(const Root& root) {
 CheckResult masks_ok(const Root& root) {
     auto variant_count = root.variants.size();
     auto encoding = encoding_of(variant_count);
-    for(auto* side: {&root.occurrences, &root.relations}) {
-        auto count = entry_count(*side);
+    std::pair<const MaskColumnsView*, std::uint32_t> sides[] = {
+        {&root.occurrence_masks, entry_count(root.occurrences)},
+        {&root.relation_masks,   root.relation_kinds.size()   },
+    };
+    for(auto [side, count]: sides) {
         auto expected = [&](MaskEncoding column) -> std::uint32_t {
             if(column != encoding) {
                 return 0;
@@ -755,13 +901,13 @@ bool Shard::has_dead_variants() const {
     return loaded() && !live.all;
 }
 
-LiveFilter Shard::live_filter(const RangeColumnsView& columns) const {
+LiveFilter Shard::live_filter(const MaskColumnsView& masks) const {
     return {
         .all = live.all,
         .encoding = encoding_of(view_of(buffer->getBuffer())),
         .bits = live.bits,
         .big = &live.big,
-        .columns = &columns,
+        .masks = &masks,
     };
 }
 
@@ -771,7 +917,7 @@ void Shard::occurrences_at(std::uint32_t offset,
         return;
     }
     auto table = OccurrenceTable::of(view_of(buffer->getBuffer()));
-    auto is_live = live_filter(table.columns);
+    auto is_live = live_filter(table.masks);
 
     // Binary search the first occurrence whose end reaches the offset, then walk
     // while occurrences contain it. Occurrence ranges are name-token spans,
@@ -850,7 +996,7 @@ void Shard::relations_of(SymbolHash symbol,
                            table.offsets[id],
                            table.offsets[id + 1],
                            cursor,
-                           live_filter(table.columns),
+                           live_filter(table.masks),
                            [&](const Relation& relation) {
                                if(RelationKind(relation.kind) != kind) {
                                    return true;
@@ -873,7 +1019,7 @@ void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> call
         return;
     }
     auto table = OccurrenceTable::of(view_of(buffer->getBuffer()));
-    auto is_live = live_filter(table.columns);
+    auto is_live = live_filter(table.masks);
     for_each_range(table.columns, [&](std::uint32_t entry, LocalSourceRange range) {
         return !is_live(entry) || callback(table.at(entry, range));
     });
@@ -886,7 +1032,7 @@ void
     }
     auto& root = view_of(buffer->getBuffer());
     auto table = RelationTable::of(root);
-    auto is_live = live_filter(table.columns);
+    auto is_live = live_filter(table.masks);
     auto& symbol_hashes = root.symbol_hashes;
     RelationTable::Cursor cursor;
     for(std::uint32_t id = 0; id < symbol_hashes.size(); id += 1) {
@@ -1040,7 +1186,7 @@ bool mask_empty(const MaskT& mask) {
 /// is skipped by the caller).
 template <typename MaskT>
 MaskT remap_mask(MaskEncoding encoding,
-                 const RangeColumnsView& columns,
+                 const MaskColumnsView& masks,
                  std::uint32_t entry,
                  llvm::ArrayRef<std::int64_t> id_map) {
     MaskT result{};
@@ -1056,11 +1202,11 @@ MaskT remap_mask(MaskEncoding encoding,
         }
     };
     if(encoding == MaskEncoding::Roaring) {
-        for(auto id: bitmap_of(columns, entry)) {
+        for(auto id: bitmap_of(masks, entry)) {
             apply(id);
         }
     } else {
-        apply_bits(mask_bits(encoding, columns, entry));
+        apply_bits(mask_bits(encoding, masks, entry));
     }
     return result;
 }
@@ -1278,72 +1424,59 @@ void collect_locals(const Root& root, llvm::DenseMap<SymbolHash, SymbolInfo>& lo
     }
 }
 
-/// Appends one side's entries in the encodings chosen for the whole blob:
-/// the range encoding by the side's order and the content size, the mask
-/// encoding by variant count.
-struct SideWriter {
-    RangeWriter ranges;
+/// Appends one side's entry masks in the mask encoding the variant count
+/// chose for the whole blob.
+struct MaskWriter {
+    MaskColumns& masks;
     MaskEncoding encoding;
 
     template <typename MaskT>
-    void add(LocalSourceRange range, const MaskT& mask) {
-        ranges.add(range);
-        add_mask(mask);
-    }
-
-    std::uint32_t count() const {
-        return ranges.count;
-    }
-
-    /// The roaring encoding's offset column ends with the size of the slices.
-    void finish() {
-        if(encoding == MaskEncoding::Roaring) {
-            auto& side = ranges.side;
-            side.roaring_offsets.push_back(static_cast<std::uint32_t>(side.roaring.size()));
-        }
-    }
-
-    template <typename MaskT>
-    void add_mask(const MaskT& mask) {
-        auto& side = ranges.side;
+    void add(const MaskT& mask) {
         switch(encoding) {
             case MaskEncoding::Single: {
                 break;
             }
             case MaskEncoding::U8: {
                 if constexpr(std::same_as<MaskT, std::uint64_t>) {
-                    side.masks8.push_back(static_cast<std::uint8_t>(mask));
+                    masks.masks8.push_back(static_cast<std::uint8_t>(mask));
                 }
                 break;
             }
             case MaskEncoding::U16: {
                 if constexpr(std::same_as<MaskT, std::uint64_t>) {
-                    side.masks16.push_back(static_cast<std::uint16_t>(mask));
+                    masks.masks16.push_back(static_cast<std::uint16_t>(mask));
                 }
                 break;
             }
             case MaskEncoding::U32: {
                 if constexpr(std::same_as<MaskT, std::uint64_t>) {
-                    side.masks32.push_back(static_cast<std::uint32_t>(mask));
+                    masks.masks32.push_back(static_cast<std::uint32_t>(mask));
                 }
                 break;
             }
             case MaskEncoding::U64: {
                 if constexpr(std::same_as<MaskT, std::uint64_t>) {
-                    side.masks64.push_back(mask);
+                    masks.masks64.push_back(mask);
                 }
                 break;
             }
             case MaskEncoding::Roaring: {
                 if constexpr(std::same_as<MaskT, Bitmap>) {
                     auto size = mask.getSizeInBytes(true);
-                    auto offset = side.roaring.size();
-                    side.roaring.resize(offset + size);
-                    mask.write(reinterpret_cast<char*>(side.roaring.data() + offset), true);
-                    side.roaring_offsets.push_back(static_cast<std::uint32_t>(offset));
+                    auto offset = masks.roaring.size();
+                    masks.roaring.resize(offset + size);
+                    mask.write(reinterpret_cast<char*>(masks.roaring.data() + offset), true);
+                    masks.roaring_offsets.push_back(static_cast<std::uint32_t>(offset));
                 }
                 break;
             }
+        }
+    }
+
+    /// The roaring encoding's offset column ends with the size of the slices.
+    void finish() {
+        if(encoding == MaskEncoding::Roaring) {
+            masks.roaring_offsets.push_back(static_cast<std::uint32_t>(masks.roaring.size()));
         }
     }
 };
@@ -1431,40 +1564,50 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
 
     auto encoding = encoding_of(blob.variants.size());
 
-    SideWriter occurrences{
-        .ranges = {.side = blob.occurrences, .encoding = RangeEncoding::Delta},
-        .encoding = encoding,
-    };
+    RangeWriter occurrences{.side = blob.occurrences, .encoding = RangeEncoding::Delta};
+    MaskWriter occurrence_masks{.masks = blob.occurrence_masks, .encoding = encoding};
     auto occurrence_symbols = id_writer(blob.occurrence_symbols, blob.symbol_hashes.size());
+    // The first occurrence of each range, which the relations spanning it name.
+    llvm::DenseMap<std::uint64_t, std::uint32_t> occurrence_of;
     for(auto& entry: merged.occurrences) {
-        occurrences.add(entry.occurrence.range, entry.mask);
+        auto range = entry.occurrence.range;
+        occurrence_of.try_emplace((std::uint64_t(range.begin) << 32) | range.end,
+                                  occurrences.count);
+        occurrences.add(range);
+        occurrence_masks.add(entry.mask);
         occurrence_symbols.add(symbol_index(entry.occurrence.target));
     }
-    occurrences.finish();
+    occurrence_masks.finish();
 
     // Relation groups follow symbol-table order; a symbol with occurrences
     // only gets an empty slice.
-    SideWriter relations{
-        .ranges = {.side = blob.relations, .encoding = unsorted_encoding(content.size)},
-        .encoding = encoding,
-    };
+    RangeWriter explicit_ranges{.side = blob.relation_explicit_ranges,
+                                .encoding = unsorted_encoding(content.size)};
+    MaskWriter relation_masks{.masks = blob.relation_masks, .encoding = encoding};
+    std::uint32_t relations = 0;
+    std::uint32_t previous_occurrence = 0;
     std::vector<std::uint32_t> relation_offsets;
     relation_offsets.reserve(blob.symbol_hashes.size() + 1);
     std::vector<std::uint32_t> targets;
     std::vector<std::uint32_t> target_ranks;
     std::vector<std::uint32_t> extent_ranks;
+    std::vector<std::uint32_t> range_ranks;
+    std::vector<std::uint32_t> explicit_ranks;
     auto group = merged.relations.begin();
     for(auto hash: blob.symbol_hashes) {
-        relation_offsets.push_back(relations.count());
+        relation_offsets.push_back(relations);
         if(group == merged.relations.end() || group->symbol != hash) {
             continue;
         }
         for(auto& entry: group->entries) {
             auto& relation = entry.relation;
-            if(relations.count() % rank_block == 0) {
+            if(relations % rank_block == 0) {
                 target_ranks.push_back(static_cast<std::uint32_t>(targets.size()));
                 extent_ranks.push_back(
                     static_cast<std::uint32_t>(blob.relation_extent_heads.size()));
+                range_ranks.push_back(static_cast<std::uint32_t>(blob.relation_range_codes.size()));
+                explicit_ranks.push_back(explicit_ranges.count);
+                previous_occurrence = 0;
             }
             auto kind = static_cast<std::uint8_t>(relation.kind);
             if(relation.target != 0) {
@@ -1489,16 +1632,34 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
                 }
             }
             blob.relation_kinds.push_back(kind);
-            relations.add(relation.range, entry.mask);
+            auto range = relation.range;
+            if(range == LocalSourceRange{}) {
+                write_varint(blob.relation_range_codes, range_none);
+            } else if(auto found =
+                          occurrence_of.find((std::uint64_t(range.begin) << 32) | range.end);
+                      found != occurrence_of.end()) {
+                auto distance = static_cast<std::int64_t>(found->second) - previous_occurrence;
+                auto zigzag = (static_cast<std::uint64_t>(distance) << 1) ^
+                              static_cast<std::uint64_t>(distance >> 63);
+                write_varint(blob.relation_range_codes, zigzag << 1);
+                previous_occurrence = found->second;
+            } else {
+                write_varint(blob.relation_range_codes, range_explicit);
+                explicit_ranges.add(range);
+            }
+            relation_masks.add(entry.mask);
+            relations += 1;
         }
         group += 1;
     }
-    relation_offsets.push_back(relations.count());
-    relations.finish();
-    write_ids(blob.relation_offsets, relation_offsets, relations.count() + 1);
+    relation_offsets.push_back(relations);
+    relation_masks.finish();
+    write_ids(blob.relation_offsets, relation_offsets, relations + 1);
     write_ids(blob.relation_targets, targets, blob.symbol_hashes.size());
     write_ids(blob.relation_target_ranks, target_ranks, targets.size() + 1);
     write_ids(blob.relation_extent_ranks, extent_ranks, blob.relation_extent_heads.size() + 1);
+    write_ids(blob.relation_code_ranks, range_ranks, blob.relation_range_codes.size() + 1);
+    write_ids(blob.relation_explicit_ranks, explicit_ranks, explicit_ranges.count + 1);
 
     return encode(blob);
 }
@@ -1532,7 +1693,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
         auto table = OccurrenceTable::of(*old_root);
         auto encoding = encoding_of(*old_root);
         old_occurrences = decode_occurrences<MaskT>(table, [&](std::uint32_t entry) {
-            return remap_mask<MaskT>(encoding, table.columns, entry, id_map);
+            return remap_mask<MaskT>(encoding, table.masks, entry, id_map);
         });
     }
     merge_sorted(std::move(old_occurrences),
@@ -1584,7 +1745,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
             group.end_entry,
             old_cursor,
             [&](std::uint32_t entry) {
-                return remap_mask<MaskT>(old_encoding, old_table->columns, entry, id_map);
+                return remap_mask<MaskT>(old_encoding, old_table->masks, entry, id_map);
             });
     };
 

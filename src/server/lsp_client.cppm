@@ -59,8 +59,10 @@ private:
     /// answer it holds went stale — plus the refresh requests its arrival
     /// warrants. Invoked by the compiler's on_output signal, and by the
     /// initialized handler to replay outputs that materialized before the
-    /// client was ready. No-op until client_ready.
-    void push_output(ProjectServer& project, const Session& session);
+    /// client was ready. No-op until client_ready. An output that changed
+    /// with no compile (`compiled` false: the on_diagnostics signal) pushes
+    /// its diagnostics alone.
+    void push_output(ProjectServer& project, const Session& session, bool compiled);
 
     /// React to a background-indexing progress change: drive the LSP
     /// work-done progress token through its begin/report/end lifecycle,
@@ -242,6 +244,10 @@ private:
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<ProjectServer&, std::shared_ptr<Session>>::Connection output_conn;
+
+    /// Subscription to diagnostics changing with no compile; disconnects on
+    /// destruction.
+    Signal<ProjectServer&, std::shared_ptr<Session>>::Connection diagnostics_conn;
 
     /// Subscription to the served projects changing; disconnects on
     /// destruction.

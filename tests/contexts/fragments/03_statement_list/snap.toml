@@ -1,2 +1,14 @@
 [test."handlers.def"]
 diagnostics = []
+
+[test.alpha.hover]
+markdown = '''
+**enumerator** `alpha` · enum `Ids`
+
+```cpp
+alpha
+```
+Value: `0`
+Passed by value, converted to `int`
+'''
+range = "X(⟦alpha⟧)"

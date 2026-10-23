@@ -360,6 +360,28 @@ auto diagnostics(CompilationUnit& unit, PositionEncoding encoding) -> std::vecto
     return result;
 }
 
+auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
+    std::vector<FileDiagnostic> result;
+    auto focus = unit.focus_file();
+    Presenter presenter(unit, PositionEncoding::UTF16);
+    for(const auto& main: unit.diagnostics()) {
+        bool skippable = !focus.contains(main.fid) ||
+                         ranges::any_of(main.notes,
+                                        [](const Diagnostic& note) {
+                                            return instantiation_note(note.id.value);
+                                        }) ||
+                         (main.id.source == DiagnosticSource::Clang &&
+                          ranges::contains(unused_declaration_warnings, main.id.value));
+        if(!skippable) {
+            continue;
+        }
+        if(auto diagnostic = presenter.present(main)) {
+            result.push_back(std::move(*diagnostic));
+        }
+    }
+    return result;
+}
+
 FileDiagnostic file_warning(std::string message) {
     return {.range = file_top, .message = std::move(message)};
 }

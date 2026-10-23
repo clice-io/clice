@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.argument;
+import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
@@ -322,8 +323,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         base_blob = it->second.blob;
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
+    bool skip_bodies = project.config.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule,
+                              pch_build_rule(skip_bodies),
                               project.build.active_configuration(),
                               directory,
                               path::parent_path(path),
@@ -344,6 +346,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .preamble_bound = bound,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       .base = base.str(),
+                      .skip_bodies = skip_bodies,
                       },
         .partial = partial,
     };
@@ -494,6 +497,71 @@ void ASTFamily::saved(Session& session) {
 void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileOutput output) {
     compiles.set_output(session->path_id, std::move(output));
     on_output.emit(session);
+}
+
+/// Whether two diagnostics show the same: one message at one place.
+static bool same_diagnostic(const feature::FileDiagnostic& left,
+                            const feature::FileDiagnostic& right) {
+    return left.range.start.line == right.range.start.line &&
+           left.range.start.character == right.range.start.character &&
+           left.message == right.message;
+}
+
+std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& session,
+                                                              const CompileOutput& output) const {
+    auto it = skipped.find(session.path_id);
+    if(it == skipped.end() || it->second.text_hash != session.hash ||
+       output.source != CommandSource::CDBExact || contexts.selection(session.path_id)) {
+        return {};
+    }
+    std::vector<feature::FileDiagnostic> result;
+    for(const auto& diagnostic: it->second.diagnostics) {
+        auto same = [&](const feature::FileDiagnostic& own) {
+            return same_diagnostic(own, diagnostic);
+        };
+        if(ranges::contains(unused_declaration_warnings, diagnostic.id)) {
+            if(auto own = ranges::find_if(output.unconfirmed, same);
+               own != output.unconfirmed.end()) {
+                result.push_back(*own);
+            }
+        } else if(ranges::none_of(output.diagnostics, same)) {
+            result.push_back(diagnostic);
+        }
+    }
+    return result;
+}
+
+bool ASTFamily::lacks_skipped(Fid path_id) const {
+    auto session = sessions.find(path_id);
+    if(!session || session->serving != ServingMode::Escalated ||
+       project.build.entries(path_id).empty()) {
+        return false;
+    }
+    auto it = skipped.find(path_id);
+    return it == skipped.end() || it->second.text_hash != session->hash;
+}
+
+void ASTFamily::report_skipped(Fid path_id,
+                               std::uint64_t text_hash,
+                               std::vector<feature::FileDiagnostic> diagnostics) {
+    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+    // A compile owed shows them as it commits (run).
+    auto session = sessions.find(path_id);
+    if(!session || !compiles.current(path_id)) {
+        return;
+    }
+    auto compiled = compiles.latest_at(path_id, session->version);
+    if(!compiled) {
+        return;
+    }
+    auto shown = shown_skipped(*session, *compiled->output);
+    if(ranges::equal(compiled->output->skipped, shown, same_diagnostic)) {
+        return;
+    }
+    auto output = *compiled->output;
+    output.skipped = std::move(shown);
+    compiles.set_output(path_id, std::move(output));
+    on_diagnostics.emit(session);
 }
 
 void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const {
@@ -894,6 +962,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.known_instantiations = known_instantiations;
         params.standard_library_instantiations =
             project.config.project.standard_library_instantiations;
+        params.skip_bodies = project.config.project.skip_header_bodies;
         params.path = file_path;
         params.version = session->version;
         params.text = session->text().str();
@@ -975,7 +1044,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
             if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-                auto request = pch.precompiled_header(*unit);
+                auto request =
+                    pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
                 auto key = request.pch_key;
                 switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
                     case DependResult::Ready:
@@ -1365,15 +1435,25 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+        std::vector<feature::FileDiagnostic> unconfirmed;
+        if(params.skip_bodies) {
+            auto unused = [](const feature::FileDiagnostic& diagnostic) {
+                return ranges::contains(unused_declaration_warnings, diagnostic.id);
+            };
+            ranges::copy_if(diagnostics, std::back_inserter(unconfirmed), unused);
+            std::erase_if(diagnostics, unused);
+        }
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
             .diagnostics = std::move(diagnostics),
+            .unconfirmed = std::move(unconfirmed),
             .unmatched_host = resolution.unmatched_host.valid()
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
             .query_failure = resolution.query_failure,
         };
+        next->output->skipped = shown_skipped(*session, *next->output);
 
         auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
@@ -1433,7 +1513,7 @@ kota::task<std::optional<std::string>>
     // compile round takes it (see run()).
     std::optional<std::string> base;
     if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-        auto request = pch.precompiled_header(*unit);
+        auto request = pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
         auto key = request.pch_key;
         if(co_await pch.acquire(std::move(request)) == PCHFamily::Outcome::Ready &&
            !pch.reads(key, path_id)) {

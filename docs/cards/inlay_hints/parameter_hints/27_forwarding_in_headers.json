@@ -1,0 +1,84 @@
+{
+  "id": "inlay_hints/parameter_hints/27_forwarding_in_headers",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Forwarding wrappers in headers",
+  "summary": "Wrappers a header defines resolve to their target's parameter names like those of the file itself",
+  "prose": "The editor skips the bodies of the functions in the headers a file includes at its top, but not those of the function templates whose last parameter is a pack of their own template parameters, as `std::make_unique`'s and `emplace_back`'s is: the call they forward to, whose parameters the hints name, is in that body.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"wrappers.h\"\n\nvoid use() {\n    wrap(1, 2);\n    create<Point>(3, 4);\n    Stack<Point>{}.emplace(5, 6);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "wrappers.h",
+      "text": "#pragma once\n\nnamespace std {\n\ntemplate <typename T>\nstruct remove_reference {\n    using type = T;\n};\n\ntemplate <typename T>\nconstexpr T&& forward(typename remove_reference<T>::type& value) noexcept;\n\n}  // namespace std\n\nvoid target(int first, int second);\n\ntemplate <typename... Args>\nvoid wrap(Args&&... args) {\n    target(std::forward<Args>(args)...);\n}\n\nstruct Point {\n    Point(int x, int y);\n};\n\ntemplate <typename T, typename... Args>\nT* create(Args&&... args) {\n    return new T(std::forward<Args>(args)...);\n}\n\ntemplate <typename T>\nstruct Stack {\n    template <typename... Args>\n    void emplace(Args&&... args) {\n        delete new T(std::forward<Args>(args)...);\n    }\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "wrap(⟨first:⟩1, ⟨second:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "create<Point>(⟨x:⟩3, ⟨y:⟩4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 24
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Stack<Point>{}.emplace(⟨x:⟩5, ⟨y:⟩6);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 33
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

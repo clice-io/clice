@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :compile.tokens;
 import :syntax.lexical_scan;
+import :syntax.preamble;
 import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
@@ -334,6 +335,41 @@ bool CompilationUnit::from_context(clang::FileID fid) {
     }
     // The recursion may have grown the map: store through a fresh lookup.
     context_files[fid] = result;
+    return result;
+}
+
+bool CompilationUnit::in_preamble(clang::FileID fid) {
+    auto [it, inserted] = preamble_files.try_emplace(fid);
+    if(!inserted) {
+        return it->second;
+    }
+    // The focus file and the built-in buffers are entered by no include.
+    bool result = false;
+    if(auto include = include_location(fid); include.isValid()) {
+        auto includer = file_id(include);
+        if(focus_file().contains(includer)) {
+            if(!preamble_end) {
+                auto content = focus_file().content();
+                if(params.kind == CompilationKind::Preamble ||
+                   params.kind == CompilationKind::PrecompiledHeader) {
+                    preamble_end = content.size();
+                } else if(!params.input.forced_includes.empty()) {
+                    preamble_end = 0;
+                } else {
+                    preamble_end = finished_preamble_bound(content, preamble_bound(content));
+                }
+            }
+            result = decompose(include).offset < *preamble_end;
+        } else if(is_builtin_file(includer)) {
+            result = ranges::none_of(params.input.forced_includes, [&](const std::string& forced) {
+                return CanonicalPath(Spelling::absolute(forced)).str() == file_path(fid);
+            });
+        } else {
+            result = in_preamble(includer);
+        }
+    }
+    // The recursion may have grown the map: store through a fresh lookup.
+    preamble_files[fid] = result;
     return result;
 }
 

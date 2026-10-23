@@ -13,6 +13,6 @@ struct Point {};
 
 }  // namespace app
 
-inline void demo() {
+inline auto demo() {
     lib::show(app::Point{});
 }

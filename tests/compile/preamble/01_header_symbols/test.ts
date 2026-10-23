@@ -6,10 +6,13 @@ answers("include", async (a) => {
     await a.show("include", a.hover(a.marker("include")));
     // Link ranges are half-open: just past the closing quote is no link.
     await a.show("past", a.hover(a.marker("past")));
+    await a.show("get", a.hover(a.marker("get")));
 });
 
 // Background indexing is off: only what the precompiled preamble recorded
-// knows the header and the macro.
+// knows the header and the macro. The preamble skips the header's function
+// bodies, a macro's included: the calls in bar() and baz() wait for the
+// index.
 answers("unindexed", { paths: SERVER }, async (a) => {
     await a.show("call", {
         definition: a.definition(a.marker("call")),
@@ -32,7 +35,7 @@ test("header edit refreshes", async (t) => {
     // The include line is unchanged, so is the PCH's key: the header's
     // change alone must refresh what the preamble serves. foo moves a line
     // down; an answer from before would point at the new first line.
-    t.disk.write("foo.h", "// moved\ninline void foo() {}\ninline void bar() { foo(); }\n");
+    t.disk.edit("foo.h", { replace: "inline void foo", with: "// moved\ninline void foo" });
     await s.errors("main.cpp");
     await t.show("after", s.definition(call));
 });

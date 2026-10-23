@@ -134,6 +134,16 @@ tests/config/loading/04_edited_file
 
 <div class="config-option">
 
+| 选项                 | 类型   | 默认值 |
+| -------------------- | ------ | ------ |
+| `skip_header_bodies` | `bool` | `true` |
+
+与 clangd 一样，跳过打开的文件在其顶部所包含的头文件中的函数体，但转发实参的模板（`make_unique`）以及 clang 始终会解析的 `constexpr` 和 `auto` 函数除外。文件打开以及编辑后的重建会快上数倍，占用的内存也更少；代价是这些函数体中的错误和警告（其中包括从该文件实例化的头文件模板中的错误和警告），以及声明是否未使用，都只有在后台索引按保存后的内容编译过该文件后才会显示。后台索引以及除 `clice inspect` 之外的所有命令仍会编译这些函数体。
+
+</div>
+
+<div class="config-option">
+
 | 选项       | 类型     | 默认值  |
 | ---------- | -------- | ------- |
 | `readonly` | `string` | `"off"` |

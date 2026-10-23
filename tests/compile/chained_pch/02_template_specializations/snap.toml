@@ -346,12 +346,11 @@ document_links = [
 diagnostics = []
 
 [locations.get]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
-    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -367,12 +366,11 @@ int get() const
 range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
 
 [locations.get_base]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
-    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -388,12 +386,11 @@ int get() const
 range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
 
 [locations.twice]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ int ⟦twice⟧(T) {"]
 declaration = ["include/base.h │ int ⟦twice⟧(T) {"]
 references = [
     "include/base.h │ int ⟦twice⟧(T) {",
-    "include/base.h │ return ⟦twice⟧(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return ⟦twice⟧(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
     "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
     "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
 ]
@@ -448,11 +445,11 @@ Value: `7`
 range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
 
 [locations.size]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
 declaration = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
 references = [
     "include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.⟦size⟧();",
     "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();",
 ]
 

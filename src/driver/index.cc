@@ -12,6 +12,7 @@ import :index.database;
 import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
+import :index.project_records;
 import :index.query;
 import :index.search_index;
 import :index.shard;
@@ -452,7 +453,7 @@ Stats collect_stats(Project& project) {
     });
     db.for_each(index::BlobKind::Symbol, [&](llvm::StringRef, index::ReadBlob blob) {
         stats.symbol_bytes += blob.buffer->getBufferSize();
-        index::measure_blob<index::SymbolBlob>(blob.buffer->getBuffer(), stats.symbol_fields);
+        index::measure_symbol(blob.buffer->getBuffer(), stats.symbol_fields);
         return true;
     });
     if(auto blob = db.read(index::BlobKind::SearchIndex, "search")) {

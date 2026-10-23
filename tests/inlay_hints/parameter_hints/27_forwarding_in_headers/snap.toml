@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "wrap(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "create<Point>(⟨x:⟩3, ⟨y:⟩4);" },
+    { line = "Stack<Point>{}.emplace(⟨x:⟩5, ⟨y:⟩6);" },
+]

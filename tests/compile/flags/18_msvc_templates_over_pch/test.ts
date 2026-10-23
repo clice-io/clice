@@ -2,8 +2,9 @@ import { test } from "@clice/tools/testing";
 
 // The commands target MSVC before C++20, where clang defers template
 // bodies by default; clice parses them unless a command asks. main.cpp's
-// preamble is built over the target's PCH and instantiates twice() from it,
-// then main.cpp instantiates thrice(). A preamble storing again the
+// preamble is built over the target's PCH and instantiates twice() from it
+// in four(), whose body it parses for the type it deduces, then main.cpp
+// instantiates thrice(). A preamble storing again the
 // deferred bodies it read from the PCH crashes the parse reading it.
 
 test("templates instantiate across the pch", async (t) => {
@@ -15,8 +16,10 @@ test("templates instantiate across the pch", async (t) => {
 test("the pchs index template bodies", async (t) => {
     // Nothing is indexed: the uses of one() in the headers come from the
     // indexes of the target's PCH and of main.cpp's preamble, inside
-    // templates nothing instantiates.
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    // templates nothing instantiates, which keep the bodies they read.
+    const s = await t.start({
+        config: { project: { enable_indexing: false, skip_header_bodies: false } },
+    });
     await s.diagnostics("src/main.cpp");
     await t.show("one", s.references(t.marker("use")));
 });

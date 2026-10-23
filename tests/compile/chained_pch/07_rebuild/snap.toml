@@ -1,12 +1,6 @@
 ["a header of the base changes".edited]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing reports the errors inside them"
 errors = [
-    {
-        at = '#include ⟦"extra.h"⟧',
-        severity = "error",
-        message = "In included file: no matching function for call to 'area'",
-        source = "clang",
-        code = "err_ovl_no_viable_function_in_call",
-    },
     {
         at = "return ⟦area⟧(3) + twice_area(2);",
         severity = "error",
@@ -24,9 +18,9 @@ diagnostics = [
     {
         at = '⟦⟧#include "extra.h"',
         severity = "error",
-        message = "In included file: use of undeclared identifier 'missing'",
+        message = "In included file: unknown type name 'missing'",
         source = "clang",
-        code = "err_undeclared_var_use",
+        code = "err_unknown_typename",
     },
 ]
 

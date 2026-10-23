@@ -1,4 +1,9 @@
-#include "gauge.h"
+template <typename T>
+struct Gauge {
+    T level;
+    T getLevel() { return level; }
+    void setLevel(T value) { level = value; }
+};
 
 template <typename T>
 T read(Gauge<T>& gauge) {

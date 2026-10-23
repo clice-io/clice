@@ -95,9 +95,13 @@ test("deleted header reaches open includer", async (t) => {
     // A branch switch takes the header away and brings it back.
     const s = await t.start();
     expect(await s.errors("closed.cpp")).toEqual([]);
+    // Settled before each change: the open includer's index run looking at
+    // the header after it would report it before the poll does.
+    await s.sync();
     t.disk.rm("header.h");
     expect(await s.poll("workspace")).toBe(1);
     await t.show("deleted", s.errors("closed.cpp"));
+    await s.sync();
     t.disk.write("header.h", HEADER_V1);
     expect(await s.poll("workspace")).toBe(1);
     expect(await s.errors("closed.cpp")).toEqual([]);

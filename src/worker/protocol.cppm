@@ -168,6 +168,9 @@ struct CompileParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
@@ -241,6 +244,9 @@ struct BuildPCHParams {
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
 
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
+
     /// Tmp path allocated by the master's store; the master commits
     /// (fsync + atomic rename) after the worker reports success.
     std::string output_path;
@@ -285,10 +291,12 @@ struct TURunParams {
     /// clice; empty for none.
     std::string pch;
 
-    /// Products of the run: the index, the errors the compile reports, and
-    /// a clang-tidy pass under this frozen configuration.
+    /// Products of the run: the index, the errors the compile reports, the
+    /// diagnostics an editor skipping header bodies misses, and a clang-tidy
+    /// pass under this frozen configuration.
     bool index = false;
     bool errors = false;
+    bool skipped_diagnostics = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
@@ -450,6 +458,14 @@ struct TURunResult {
 
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
+
+    /// The diagnostics a compile skipping the function bodies of the
+    /// headers can get wrong (feature::skipped_diagnostics) (plan product
+    /// `skipped_diagnostics`).
+    std::vector<feature::FileDiagnostic> skipped_diagnostics;
+
+    /// The hash of the text skipped_diagnostics describe.
+    std::uint64_t text_hash = 0;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

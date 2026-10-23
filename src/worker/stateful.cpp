@@ -301,6 +301,7 @@ RequestResult<worker::CompileParams>
                           .directory = doc->directory,
                           .workspace = params.workspace},
                 .tidy = params.tidy,
+                .skip_bodies = params.skip_bodies,
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,
             };

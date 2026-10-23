@@ -371,6 +371,7 @@ CompilationParams completion_at(const FeatureParams& params) {
         .kind = CompilationKind::Completion,
         .input = params.input,
         .completion = {.offset = params.range.begin},
+        .skip_bodies = params.config.project.skip_header_bodies,
     };
 }
 
@@ -588,7 +589,7 @@ auto load_inspected(Project& project, const Options& opts, const Spelling& direc
 }
 
 /// clice's build of the precompiled header the command reads, as the server
-/// builds it: under its writer's command the header set holds what the
+/// builds it for the editor: under its writer's command the header set holds what the
 /// compiler compiled, which the unit's own flags may not (a target reusing
 /// another target's PCH). Empty when it does not build, or when it reads
 /// `file` itself, whose text its guard would then skip.
@@ -608,6 +609,7 @@ std::string build_pch(Project& project,
                   .directory = project.commands.get(writer.command).directory,
                   .workspace = workspace.str()},
         .output_file = *output,
+        .skip_bodies = project.config.project.skip_header_bodies,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
@@ -651,15 +653,20 @@ auto project_input(const SourceFile& file, Project& project, CommandResolver& co
 /// pass, deliberately without the preamble PCH the server uses: a shared
 /// snapshot pins that the PCH split does not change feature results, so any
 /// divergence between the two paths shows as a snapshot mismatch instead of
-/// hiding in the preamble. The precompiled header the build declares it
-/// loads (build_pch). With `diagnostics.clang_tidy` the compile runs the
-/// file's clang-tidy configuration as the server's does.
+/// hiding in the preamble. It skips the function bodies the server's
+/// preamble leaves out, and loads the precompiled header the build declares
+/// (build_pch). With `diagnostics.clang_tidy` the compile runs the file's
+/// clang-tidy configuration as the server's does.
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  const CompilationInput& input,
                  const Config& config) {
-    CompilationParams params{.kind = CompilationKind::Content, .input = input};
+    CompilationParams params{
+        .kind = CompilationKind::Content,
+        .input = input,
+        .skip_bodies = config.project.skip_header_bodies,
+    };
     if(config.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
         if(!resolution.error.empty()) {

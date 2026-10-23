@@ -221,6 +221,13 @@ struct CompilationParams {
     /// the shape the kind picks (see CompilationKind).
     std::optional<tidy::TidyParams> tidy;
 
+    /// Skip the bodies of the functions in the files the focus file's
+    /// preamble enters (CompilationUnit::in_preamble), but those of
+    /// templates likely to forward their arguments: the editor's compiles.
+    /// Nothing in a skipped body is reported or instantiated, and so
+    /// neither is a declaration being unused, which such a body may use.
+    bool skip_bodies = false;
+
     /// Inactive regions of the consumed PCH's preamble share (flat
     /// begin/end offset pairs): the `#include`s there were never entered.
     std::vector<std::uint32_t> preamble_inactive_regions;
@@ -276,6 +283,10 @@ public:
 
     auto kind() -> CompilationKind {
         return params.kind;
+    }
+
+    bool skips_bodies() {
+        return params.skip_bodies;
     }
 
     bool completed() {
@@ -410,6 +421,14 @@ public:
     /// its start: the class, enumeration, namespace or function a fragment
     /// compiled in its includer's context sits inside.
     bool encloses_focus_file(const clang::Decl* decl);
+
+    /// Whether the file is one the focus file's preamble enters, directly
+    /// or not: one of the command's -includes, a header context's prefix
+    /// among them, or a file the focus file includes before its preamble
+    /// ends. A PCH build's focus file is a preamble whole. The part of a
+    /// header context inside the braces the header sits in comes after the
+    /// preamble.
+    bool in_preamble(clang::FileID fid);
 
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
@@ -604,6 +623,13 @@ private:
     /// Memo of CompilationUnit::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
 
+    /// Memo of CompilationUnit::in_preamble.
+    llvm::DenseMap<clang::FileID, bool> preamble_files;
+
+    /// Where the focus file's preamble ends (in_preamble), found on first
+    /// use.
+    std::optional<std::uint32_t> preamble_end;
+
     /// The buffers clang reads params.input.buffers through; clang leaves
     /// them to their owner (RetainRemappedFileBuffers).
     std::vector<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
@@ -690,13 +716,29 @@ private:
 
 /// How compile() builds a PCH: its inputs are checked by size alone when
 /// it is loaded, the templates its preamble uses are instantiated in it
-/// unless that raises an error, and template bodies are deferred only when
-/// the command asks. Keys of cached PCHs include it, so a blob built under
-/// another rule is never reused.
-constexpr inline llvm::StringRef pch_build_rule = "size,instantiated,undeferred";
+/// unless that raises an error, template bodies are deferred only when the
+/// command asks, and function bodies are skipped under skip_bodies. Keys
+/// of cached PCHs include it, so a blob built under another rule is never
+/// reused.
+constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
+    return skip_bodies ? "size,instantiated,undeferred,skipped" : "size,instantiated,undeferred";
+}
+
+/// The warnings that a declaration is unused: a use in a body skip_bodies
+/// skipped goes unseen, so a compile under it raises them for the
+/// declarations only such a body uses too.
+constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
+    clang::diag::warn_unused_function,
+    clang::diag::warn_unused_member_function,
+    clang::diag::warn_unused_template,
+    clang::diag::warn_unneeded_internal_decl,
+    clang::diag::warn_unneeded_static_internal_decl,
+    clang::diag::warn_unneeded_member_function,
+};
 
 /// The messages of a finished compilation's error-level diagnostics, in
-/// the order clang raised them.
+/// the order clang raised them, but for the unused declarations a compile
+/// skipping bodies raises, which -Werror may have made errors.
 std::vector<std::string> collect_errors(CompilationUnit& unit);
 
 }  // namespace clice

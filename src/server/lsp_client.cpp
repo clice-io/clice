@@ -121,7 +121,11 @@ static std::expected<std::string, ipc::Error> park_target(MasterServer& srv, con
 LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
-            push_output(project, *session);
+            push_output(project, *session, /*compiled=*/true);
+        });
+    diagnostics_conn = server.on_diagnostics.connect(
+        [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
+            push_output(project, *session, /*compiled=*/false);
         });
     projects_conn = server.on_projects_changed.connect([this]() {
         if(client_ready) {
@@ -544,7 +548,7 @@ void LSPClient::register_lifecycle() {
             project->sessions.for_each([&](Fid path_id, const Session& session) {
                 auto& compiles = project->ast.compiles;
                 if(compiles.current(path_id) && compiles.latest_at(path_id, session.version)) {
-                    this->push_output(*project, session);
+                    this->push_output(*project, session, /*compiled=*/true);
                 }
                 return true;
             });
@@ -1559,18 +1563,18 @@ void LSPClient::publish_config_diagnostics() {
     }
 }
 
-void LSPClient::push_output(ProjectServer& project, const Session& session) {
+void LSPClient::push_output(ProjectServer& project, const Session& session, bool compiled) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
     // materialized in the latest compile and the initialized handler replays it.
     if(!client_ready) {
         return;
     }
-    auto compiled = project.ast.compiles.latest(session.path_id);
-    if(!compiled || !compiled->output.has_value()) {
+    auto latest = project.ast.compiles.latest(session.path_id);
+    if(!latest || !latest->output.has_value()) {
         return;
     }
-    auto& output = *compiled->output;
+    auto& output = *latest->output;
 
     if(pull_diagnostics) {
         if(auto it = pulled.find(session.path_id);
@@ -1599,7 +1603,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // didChange to trigger the client's own re-pull. Edit-driven compiles
     // need neither: the client re-pulls on didChange and that pull awaits
     // the fresh AST. A compile that failed before parsing reshaped nothing.
-    if(output.version.has_value() && !output.failed) {
+    if(compiled && output.version.has_value() && !output.failed) {
         auto [it, inserted] = output_versions.try_emplace(session.path_id, *output.version);
         bool same_text = !inserted && it->second == *output.version;
         it->second = *output.version;

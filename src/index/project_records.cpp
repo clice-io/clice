@@ -17,15 +17,24 @@ namespace clice::index {
 
 namespace {
 
-/// Most file sets hold one or two files: up to raw_file_set_limit path ids
-/// are stored raw as u32s, more as a portable roaring image — which is
-/// longer than any raw list, so a slice's length says which it is.
-constexpr std::uint32_t raw_file_set_limit = 2;
-
 template <typename Blob>
 const codec::blob::view_t<Blob>* view_record(llvm::StringRef data) {
     auto root = codec::blob::view<Blob>(as_bytes(data));
     return root ? *root : nullptr;
+}
+
+/// The size of `ids` as a list of varint distances (append_file_set).
+std::uint64_t list_size(const Bitmap& ids) {
+    std::uint64_t size = 0;
+    std::int64_t previous = -1;
+    for(std::uint32_t id: ids) {
+        for(auto distance = std::uint64_t(id - previous); distance >= 0x80; distance >>= 7) {
+            size += 1;
+        }
+        size += 1;
+        previous = id;
+    }
+    return size;
 }
 
 std::vector<std::uint8_t> file_set(const Bitmap& ids) {
@@ -61,40 +70,48 @@ std::optional<KeyedUnits> decode_units(const Seq& sets) {
 }  // namespace
 
 void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids) {
-    if(ids.cardinality() <= raw_file_set_limit) {
+    auto image_size = ids.getSizeInBytes(true);
+    if(list_size(ids) <= 1 + image_size) {
+        std::int64_t previous = -1;
         for(std::uint32_t id: ids) {
-            auto* bytes = reinterpret_cast<const std::uint8_t*>(&id);
-            arena.insert(arena.end(), bytes, bytes + sizeof(id));
+            write_varint(arena, std::uint64_t(id - previous));
+            previous = id;
         }
         return;
     }
+    arena.push_back(0);
     auto image = write_bitmap(ids);
     auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
     arena.insert(arena.end(), bytes, bytes + image.size());
 }
 
 std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
-    if(bytes.size() > raw_file_set_limit * sizeof(std::uint32_t)) {
-        auto image = read_bitmap(bytes.data(), bytes.size());
-        if(!image || image->cardinality() <= raw_file_set_limit) {
+    Bitmap ids;
+    if(!bytes.empty() && bytes.front() == 0) {
+        auto image = read_bitmap(bytes.data() + 1, bytes.size() - 1);
+        if(!image) {
             return std::nullopt;
         }
         // read_bitmap's view borrows `bytes`, which outlive no decode.
-        return Bitmap(*image);
-    }
-    if(bytes.size() % sizeof(std::uint32_t) != 0) {
-        return std::nullopt;
-    }
-    Bitmap ids;
-    std::optional<std::uint32_t> previous;
-    for(std::uint32_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
-        std::uint32_t id;
-        std::memcpy(&id, bytes.data() + i, sizeof(id));
-        if(previous && id <= *previous) {
+        ids = Bitmap(*image);
+        if(ids.getSizeInBytes(true) != bytes.size() - 1 || list_size(ids) <= bytes.size()) {
             return std::nullopt;
         }
-        ids.add(id);
-        previous = id;
+        return ids;
+    }
+    std::int64_t previous = -1;
+    std::uint32_t at = 0;
+    while(at < bytes.size()) {
+        auto distance = read_varint(bytes, at);
+        if(!distance || *distance == 0 ||
+           *distance > std::numeric_limits<std::uint32_t>::max() - previous) {
+            return std::nullopt;
+        }
+        previous += static_cast<std::int64_t>(*distance);
+        ids.add(static_cast<std::uint32_t>(previous));
+    }
+    if(bytes.size() > 1 + ids.getSizeInBytes(true)) {
+        return std::nullopt;
     }
     return ids;
 }
@@ -279,49 +296,120 @@ std::optional<Internals> decode_internals(llvm::StringRef data) {
 }
 
 std::vector<std::byte> encode_record(const Symbol& symbol) {
-    SymbolBlob blob;
-    blob.text = symbol.name + symbol.args + symbol.signature;
-    blob.name_size = static_cast<std::uint32_t>(symbol.name.size());
-    blob.args_size = static_cast<std::uint32_t>(symbol.args.size());
-    blob.parent = symbol.parent;
-    blob.file = symbol.file == no_file ? 0 : symbol.file + 1;
-    blob.token_modifiers = symbol.token_class.modifiers;
-    blob.flags = static_cast<std::uint16_t>(symbol.flags);
-    blob.kind = symbol.kind.value();
-    blob.token_kind = static_cast<std::uint8_t>(symbol.token_class.kind);
-    append_file_set(blob.files, symbol.reference_files);
-    blob.references_size = static_cast<std::uint32_t>(blob.files.size());
-    append_file_set(blob.files, symbol.instantiation_files);
-    return encode(blob);
+    std::vector<std::uint8_t> bytes;
+    for(llvm::StringRef text: {llvm::StringRef(symbol.name),
+                               llvm::StringRef(symbol.args),
+                               llvm::StringRef(symbol.signature)}) {
+        write_varint(bytes, text.size());
+        bytes.insert(bytes.end(), text.bytes_begin(), text.bytes_end());
+    }
+    for(std::uint32_t shift = 0; shift < 64; shift += 8) {
+        bytes.push_back(static_cast<std::uint8_t>(symbol.parent >> shift));
+    }
+    write_varint(bytes, symbol.file == no_file ? 0 : std::uint64_t(symbol.file) + 1);
+    write_varint(bytes, symbol.token_class.modifiers);
+    write_varint(bytes, static_cast<std::uint16_t>(symbol.flags));
+    bytes.push_back(symbol.kind.value());
+    bytes.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
+    auto references = file_set(symbol.reference_files);
+    write_varint(bytes, references.size());
+    bytes.insert(bytes.end(), references.begin(), references.end());
+    append_file_set(bytes, symbol.instantiation_files);
+    auto* data = reinterpret_cast<const std::byte*>(bytes.data());
+    return {data, data + bytes.size()};
 }
 
 std::optional<Symbol> decode_symbol(llvm::StringRef data) {
-    auto* root = view_record<SymbolBlob>(data);
-    if(!root || std::uint64_t(root->name_size) + root->args_size > root->text.size() ||
-       reserved_key(root->parent) || root->references_size > root->files.size() ||
-       !all_token_kinds(llvm::ArrayRef<std::uint8_t>(&root->token_kind, 1))) {
+    llvm::ArrayRef<std::uint8_t> bytes(data.bytes_begin(), data.bytes_end());
+    std::uint32_t at = 0;
+    auto number = [&](std::uint64_t limit) -> std::optional<std::uint64_t> {
+        auto value = read_varint(bytes, at);
+        if(!value || *value > limit) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    auto slice = [&]() -> std::optional<llvm::ArrayRef<std::uint8_t>> {
+        auto size = read_varint(bytes, at);
+        if(!size || *size > bytes.size() - at) {
+            return std::nullopt;
+        }
+        auto part = bytes.slice(at, *size);
+        at += static_cast<std::uint32_t>(*size);
+        return part;
+    };
+    auto text = [](llvm::ArrayRef<std::uint8_t> part) {
+        return std::string(part.begin(), part.end());
+    };
+    auto name = slice();
+    auto args = name ? slice() : std::nullopt;
+    auto signature = args ? slice() : std::nullopt;
+    if(!signature || bytes.size() - at < 8) {
         return std::nullopt;
     }
-    llvm::StringRef text = std::string_view(root->text);
-    llvm::ArrayRef<std::uint8_t> files(root->files.data(), root->files.size());
-    auto references = read_file_set(files.take_front(root->references_size));
-    auto instantiations = read_file_set(files.drop_front(root->references_size));
+    SymbolHash parent = 0;
+    for(std::uint32_t shift = 0; shift < 64; shift += 8) {
+        parent |= SymbolHash(bytes[at]) << shift;
+        at += 1;
+    }
+    auto file = number(std::uint64_t(no_file));
+    auto modifiers = file ? number(std::numeric_limits<std::uint32_t>::max()) : std::nullopt;
+    auto flags = modifiers ? number(std::numeric_limits<std::uint16_t>::max()) : std::nullopt;
+    if(!flags || reserved_key(parent) || bytes.size() - at < 2 ||
+       !all_token_kinds(bytes.slice(at + 1, 1))) {
+        return std::nullopt;
+    }
+    auto kind = bytes[at];
+    auto token_kind = bytes[at + 1];
+    at += 2;
+    auto reference_bytes = slice();
+    if(!reference_bytes) {
+        return std::nullopt;
+    }
+    auto references = read_file_set(*reference_bytes);
+    auto instantiations = read_file_set(bytes.drop_front(at));
     if(!references || !instantiations) {
         return std::nullopt;
     }
     return Symbol{
-        .name = text.take_front(root->name_size).str(),
-        .args = text.substr(root->name_size, root->args_size).str(),
-        .signature = text.drop_front(root->name_size + root->args_size).str(),
-        .parent = root->parent,
-        .kind = SymbolKind(root->kind),
-        .flags = static_cast<SymbolFlags>(root->flags),
-        .token_class = {.kind = static_cast<SemanticTokenKind>(root->token_kind),
-                        .modifiers = root->token_modifiers},
-        .file = root->file == 0 ? no_file : root->file - 1,
+        .name = text(*name),
+        .args = text(*args),
+        .signature = text(*signature),
+        .parent = parent,
+        .kind = SymbolKind(kind),
+        .flags = static_cast<SymbolFlags>(*flags),
+        .token_class = {.kind = static_cast<SemanticTokenKind>(token_kind),
+                        .modifiers = static_cast<std::uint32_t>(*modifiers)},
+        .file = *file == 0 ? no_file : static_cast<std::uint32_t>(*file - 1),
         .reference_files = std::move(*references),
         .instantiation_files = std::move(*instantiations),
     };
+}
+
+void measure_symbol(llvm::StringRef data, FieldBytes& bytes) {
+    auto symbol = decode_symbol(data);
+    if(!symbol) {
+        return;
+    }
+    auto varints = [](std::initializer_list<std::uint64_t> values) {
+        std::vector<std::uint8_t> encoded;
+        for(auto value: values) {
+            write_varint(encoded, value);
+        }
+        return encoded.size();
+    };
+    auto references = file_set(symbol->reference_files).size();
+    bytes.add("text",
+              varints({symbol->name.size(), symbol->args.size(), symbol->signature.size()}) +
+                  symbol->name.size() + symbol->args.size() + symbol->signature.size());
+    bytes.add("parent", sizeof(SymbolHash));
+    bytes.add("file, modifiers, flags, kinds",
+              varints({symbol->file == no_file ? 0 : std::uint64_t(symbol->file) + 1,
+                       symbol->token_class.modifiers,
+                       static_cast<std::uint16_t>(symbol->flags)}) +
+                  2);
+    bytes.add("reference files", varints({references}) + references);
+    bytes.add("instantiation files", file_set(symbol->instantiation_files).size());
 }
 
 std::vector<std::byte> encode_record(const SharedLocalSets& local) {

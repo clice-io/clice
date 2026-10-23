@@ -4,6 +4,7 @@ module;
 
 module clice:sched.index.pump;
 
+import :feature.diagnostics;
 import :index.project_index;
 import :project.command_resolver;
 import :project.project;
@@ -54,6 +55,20 @@ public:
     /// compile, which would compile the file a second time. The serving
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
+
+    /// Under `skip_header_bodies`, every index run also brings back the
+    /// diagnostics an editor can get wrong on its file (TURunFamily::Plan::
+    /// skipped_diagnostics), handed here with the hash of the text they
+    /// describe — unless debt booked during the run says they describe
+    /// inputs that changed.
+    std::function<void(Fid path_id,
+                       std::uint64_t text_hash,
+                       std::vector<feature::FileDiagnostic> diagnostics)>
+        on_skipped_diagnostics;
+
+    /// Whether the serving side lacks those diagnostics for the file: its
+    /// run goes ahead even when its index is current.
+    std::function<bool(Fid path_id)> lacks_skipped_diagnostics;
 
     /// Emitted when shards that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
@@ -125,6 +140,13 @@ public:
     /// the query path calls this per candidate file.
     std::optional<ReindexReason> pending_reason(Fid server_path_id) const {
         return pending_table.pending_reason(server_path_id);
+    }
+
+    /// See PendingTable::in_flight. A boost then records debt anew, which
+    /// outlives the running attempt and drops what it reports to
+    /// on_skipped_diagnostics.
+    bool in_flight(Fid server_path_id) const {
+        return pending_table.in_flight(server_path_id);
     }
 
     /// Forget a file's pending-reindex debt: used when the file is removed
