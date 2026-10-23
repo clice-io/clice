@@ -440,9 +440,11 @@ public:
             symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
-            // An include guard is no name to complete.
-            symbol.flags =
-                def && def->isUsedForHeaderGuard() ? SymbolFlags::None : SymbolFlags::Completable;
+            // An include guard is no name to complete, nor is a macro its
+            // header undefines.
+            symbol.flags = def && (def->isUsedForHeaderGuard() || undefined.contains(def))
+                               ? SymbolFlags::None
+                               : SymbolFlags::Completable;
             symbol.token_class = def ? token_class(*def, unit.context().getSourceManager())
                                      : TokenClass{.kind = SemanticTokenKind::Macro};
         }
@@ -1683,6 +1685,15 @@ public:
             }
         }
 
+        auto& sm = unit.context().getSourceManager();
+        for(auto& [fid, directive]: unit.directives()) {
+            for(auto& macro: directive.macros) {
+                if(macro.kind == MacroRef::Kind::Undef &&
+                   sm.getFileID(macro.macro->getDefinitionLoc()) == fid) {
+                    undefined.insert(macro.macro);
+                }
+            }
+        }
         for(auto& [fid, directive]: unit.directives()) {
             for(auto& macro: directive.macros) {
                 switch(macro.kind) {
@@ -2092,6 +2103,10 @@ private:
     IncludeTree tree;
 
     SymbolTable symbols;
+
+    /// The macro definitions an `#undef` in their own file ends: including
+    /// that file leaves none of them defined.
+    llvm::DenseSet<const clang::MacroInfo*> undefined;
 
     /// Build-time working state keyed by FileID — clang::FileID means
     /// nothing outside the compilation, so it never leaves the builder;
