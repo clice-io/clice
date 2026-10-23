@@ -540,11 +540,23 @@ private:
     /// The file table's id for a path id.
     Fid fid_of(std::uint32_t path) const;
 
+    /// The file table's version for a version id; none when the database
+    /// holds no such version.
+    VersionID version_of(std::uint32_t id) const;
+
+    /// A manifest about to be installed names `version`: count it, handing
+    /// out a version id when no manifest named it yet.
+    void name_version(VersionID version);
+
+    /// A manifest about to be replaced names `version` no more: when no
+    /// other one does, its version id goes.
+    void unname_version(VersionID version);
+
     /// The manifest the bytes hold, its versions interned into the file
     /// table; nullopt when they are not one.
     std::optional<TUManifest> decode_manifest(llvm::StringRef data) const;
 
-    std::vector<std::byte> encode_manifest(const TUManifest& manifest);
+    std::vector<std::byte> encode_manifest(const TUManifest& manifest) const;
 
     /// Recompute a file's live variants and live uses into its resident
     /// shards' masks, and mark it for the next save's compaction.
@@ -600,6 +612,9 @@ private:
     /// Path id -> portable name.
     mutable Records<std::string> path_records{.kind = BlobKind::Path};
 
+    /// Version id -> the file version.
+    mutable Records<PersistedVersion> version_records{.kind = BlobKind::Version};
+
     /// Manifests no save has committed (an empty optional for a dropped
     /// one), and the ones a running save writes; the others are read from
     /// the database each time, never kept.
@@ -611,6 +626,12 @@ private:
     mutable llvm::DenseMap<std::uint32_t, Fid> path_fids;
 
     mutable llvm::DenseMap<Fid, std::uint32_t> fid_paths;
+
+    /// Version id <-> the file table's version, as met, for the versions
+    /// some manifest names.
+    mutable llvm::DenseMap<std::uint32_t, VersionID> id_versions;
+
+    mutable llvm::DenseMap<VersionID, std::uint32_t> version_ids;
 
     /// Shards read or merged so far, keyed by the file table's ids; a miss
     /// is remembered as an empty shard. A node-based map: a query keeps

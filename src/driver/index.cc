@@ -324,6 +324,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Dependents,         "dependents"          },
     {index::BlobKind::Internals,          "internal names"      },
     {index::BlobKind::Path,               "paths"               },
+    {index::BlobKind::Version,            "versions"            },
     {index::BlobKind::Header,             "header"              },
     {index::BlobKind::SearchIndex,        "search"              },
     {index::BlobKind::CommandSnapshot,    "cdb"                 },

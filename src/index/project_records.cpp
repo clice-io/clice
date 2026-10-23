@@ -139,6 +139,7 @@ std::vector<std::byte> encode_record(const Header& header) {
     HeaderBlob blob;
     blob.format_version = index_format_version;
     blob.next_path = header.next_path;
+    blob.next_version = header.next_version;
     blob.search_generation = header.search_generation;
     blob.search_pending = header.search_pending;
     blob.search_pending_files = header.search_pending_files;
@@ -159,6 +160,7 @@ std::optional<Header> decode_header(llvm::StringRef data) {
     }
     return Header{
         .next_path = root->next_path,
+        .next_version = root->next_version,
         .search_generation = root->search_generation,
         .search_pending = {root->search_pending.begin(),       root->search_pending.end()},
         .search_pending_files = {root->search_pending_files.begin(),
@@ -175,16 +177,25 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
     blob.generation = file.generation;
     blob.stored = file.stored;
     blob.run = file.run;
+    for(auto& version: file.versions) {
+        blob.version_hashes.push_back(version.content_hash);
+        blob.version_ids.push_back(version.id);
+        blob.version_manifests.push_back(version.manifests);
+    }
     return encode(blob);
 }
 
 std::optional<FileRecord> decode_file(llvm::StringRef data) {
     auto* root = view_record<FileBlob>(data);
     if(!root || !strictly_ascending(root->consumed) ||
-       (root->generation == 0) != root->stored.empty()) {
+       (root->generation == 0) != root->stored.empty() ||
+       !strictly_ascending(root->version_hashes) ||
+       root->version_ids.size() != root->version_hashes.size() ||
+       root->version_manifests.size() != root->version_hashes.size() ||
+       ranges::contains(root->version_manifests, 0u)) {
         return std::nullopt;
     }
-    return FileRecord{
+    FileRecord file{
         .path = root->path,
         .absent = root->absent,
         .consumed = {root->consumed.begin(), root->consumed.end()},
@@ -192,6 +203,14 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
         .stored = {root->stored.begin(),   root->stored.end()  },
         .run = root->run,
     };
+    for(std::uint32_t i = 0; i < root->version_hashes.size(); i += 1) {
+        file.versions.push_back({
+            .content_hash = root->version_hashes[i],
+            .id = root->version_ids[i],
+            .manifests = root->version_manifests[i],
+        });
+    }
+    return file;
 }
 
 std::vector<std::byte> encode_record(const Dependents& dependents) {
@@ -442,6 +461,27 @@ std::optional<SharedLocalSets> decode_shared_local(llvm::StringRef data) {
         local.emplace_back(std::move(listed), set.units);
     }
     return local;
+}
+
+std::vector<std::byte> encode_record(const PersistedVersion& version) {
+    std::vector<std::byte> bytes(sizeof(version.path) + sizeof(version.content_hash));
+    std::memcpy(bytes.data(), &version.path, sizeof(version.path));
+    std::memcpy(bytes.data() + sizeof(version.path),
+                &version.content_hash,
+                sizeof(version.content_hash));
+    return bytes;
+}
+
+std::optional<PersistedVersion> decode_version(llvm::StringRef data) {
+    PersistedVersion version;
+    if(data.size() != sizeof(version.path) + sizeof(version.content_hash)) {
+        return std::nullopt;
+    }
+    std::memcpy(&version.path, data.data(), sizeof(version.path));
+    std::memcpy(&version.content_hash,
+                data.data() + sizeof(version.path),
+                sizeof(version.content_hash));
+    return version;
 }
 
 }  // namespace clice::index

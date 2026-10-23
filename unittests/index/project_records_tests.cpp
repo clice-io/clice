@@ -67,6 +67,7 @@ ZEST_CASE(FileSetForms) {
 ZEST_CASE(HeaderRoundTrip) {
     index::Header header{
         .next_path = 12,
+        .next_version = 30,
         .search_generation = 3,
         .search_pending = {5, 8},
         .search_pending_files = {2, 11},
@@ -76,6 +77,7 @@ ZEST_CASE(HeaderRoundTrip) {
     auto read = index::decode_header(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(read->next_path == 12);
+    ZEXPECT(read->next_version == 30);
     ZEXPECT(read->search_generation == 3);
     ZEXPECT(read->search_pending == header.search_pending);
     ZEXPECT(read->search_pending_files == header.search_pending_files);
@@ -96,15 +98,28 @@ ZEST_CASE(FileRoundTrip) {
     index::FileRecord file{
         .path = 4,
         .absent = true,
-        .consumed = {10,  20 },
+        .consumed = {10,                                            20 },
         .generation = 20,
-        .stored = {111, 222},
+        .stored = {111,                                           222},
         .run = 1700000000000,
+        .versions = {{.content_hash = 10, .id = 3, .manifests = 2},
+                     {.content_hash = 20, .id = 7, .manifests = 1}     },
     };
     auto buffer = aligned(index::encode_record(file));
     auto read = index::decode_file(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(*read == file);
+
+    // Versions out of order, or one no manifest names, are no file record.
+    auto versions = file.versions;
+    ranges::reverse(file.versions);
+    auto reversed = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(reversed->getBuffer()));
+    file.versions = versions;
+    file.versions[1].manifests = 0;
+    auto unnamed = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(unnamed->getBuffer()));
+    file.versions = versions;
 
     // A shard generation without the variants it stores, or the other way
     // round, is no file record; nor are consumed hashes out of order.
@@ -119,6 +134,17 @@ ZEST_CASE(FileRoundTrip) {
     file.consumed = {20, 10};
     auto unordered = aligned(index::encode_record(file));
     ZEXPECT(!index::decode_file(unordered->getBuffer()));
+}
+
+ZEST_CASE(VersionRoundTrip) {
+    index::PersistedVersion version{.path = 70000, .content_hash = 0xfeedfacecafebeefull};
+    auto bytes = index::encode_record(version);
+    auto read = index::decode_version(as_chars(bytes));
+    ZASSERT(read);
+    ZEXPECT(*read == version);
+
+    bytes.pop_back();
+    ZEXPECT(!index::decode_version(as_chars(bytes)));
 }
 
 ZEST_CASE(DependentsRoundTrip) {

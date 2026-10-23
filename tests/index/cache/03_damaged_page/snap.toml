@@ -58,5 +58,5 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = "error: The index database's record CE1DEBBFC96EE946 of kind 8 fails its checks"
+stderr = "error: The index database's record CE1DEBBFC96EE946 of kind 9 fails its checks"
 exit = 1
