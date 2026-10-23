@@ -10,9 +10,11 @@ test("an include line", async (t) => {
     await park.release();
 });
 
-// A condition may call a function-like macro, whose parameters it shows.
+// A condition or a computed include may call a function-like macro, whose
+// parameters it shows.
 test("a condition", async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
     await t.show("condition", s.signatureHelp(t.marker("condition")));
+    await t.show("computed", s.signatureHelp(t.marker("computed")));
 });

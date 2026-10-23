@@ -768,14 +768,18 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              std::string selected,
                                              kota::cancellation_token token) {
-    // A directive takes no call's arguments, but for a macro's in a
-    // condition (`#if CHECK(1, 2)`): `#include <` asks for none.
+    // A directive's name, a header name and the arguments the preprocessor
+    // does not expand hold no call: `#include <` and `#define MAX(a, ` ask
+    // for none, `#if CHECK(1, ` and `#include PICK(1, ` do.
     if(auto offset = session->positions().offset(position, PositionEncoding::UTF16)) {
+        using enum CompletionName::Kind;
         auto completing =
             completion_name(session->text(), *offset, contexts.dialect(session->path_id));
-        if(completing.kind == CompletionName::Kind::Directive ||
-           (!completing.directive.empty() && completing.directive != "if" &&
-            completing.directive != "elif")) {
+        constexpr std::array<llvm::StringRef, 8> unexpanded =
+            {"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef", "error", "warning"};
+        if(completing.kind == Directive || completing.kind == IncludeQuoted ||
+           completing.kind == IncludeAngled ||
+           ranges::contains(unexpanded, llvm::StringRef(completing.directive))) {
             return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
         }
     }
