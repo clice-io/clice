@@ -97,8 +97,11 @@ namespace clice::index {
 /// whose header differs; v44: the project table is one record per symbol,
 /// per file and per path behind a header, manifests name their files by
 /// path id and content hash, and producers name their unit by its path
-/// hash; v45: a manifest keeps the memory its unit's worker reached.
-constexpr inline std::uint32_t index_format_version = 45;
+/// hash; v45: a manifest keeps the memory its unit's worker reached; v46: a
+/// relation names the occurrence whose range it spans, masks are columns of
+/// their own, symbol records are varint-packed bytes, and file sets are
+/// varint lists unless a roaring image is smaller.
+constexpr inline std::uint32_t index_format_version = 46;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
@@ -185,12 +188,6 @@ constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t leng
     return (begin << 8) | length;
 }
 
-/// The packed spelling of the no-range sentinel pair relations carry (the
-/// default LocalSourceRange, ~0u/~0u). Unambiguous: a real packed entry with
-/// begin 0xffffff and an escaped length would need an end at least 255
-/// past a begin that already sits at the content limit.
-constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
-
 /// A column of ids into a table, back to back in the width the table's
 /// size picks: u8 up to 256 entries, u16 up to 65536, u32 beyond. Readers
 /// know the table, so the width is stored nowhere. End offsets into a text
@@ -207,7 +204,8 @@ constexpr inline std::uint32_t delta_block = 16;
 /// holds the begin.
 constexpr inline std::uint8_t delta_escape = 0xff;
 
-/// One side of a blob's entries (occurrences, relations, records).
+/// The ranges of one side of a blob's entries (occurrences, the relations
+/// no occurrence spans, records).
 ///
 /// Ranges use exactly one of three self-describing encodings:
 ///   - delta, for a side sorted by begin (occurrences, records): the begin
@@ -219,9 +217,6 @@ constexpr inline std::uint8_t delta_escape = 0xff;
 ///   - wide: begin u32 + length u8 columns.
 /// Lengths >= 255 escape to the sparse (entry, end) table in every
 /// encoding.
-///
-/// Variant masks are absent for a single variant, then u8 / u16 / u32 /
-/// u64 / concatenated roaring bitmaps by variant count.
 template <template <typename> typename Seq>
 struct RangeColumnsOf {
     Seq<std::uint32_t> block_begins;
@@ -236,7 +231,15 @@ struct RangeColumnsOf {
 
     Seq<std::uint32_t> long_entries;
     Seq<std::uint32_t> long_ends;
+};
 
+using RangeColumns = RangeColumnsOf<kota::codec::blob::Owned>;
+
+/// The variant masks of one side of a shard's entries: absent for a single
+/// variant, then u8 / u16 / u32 / u64 / concatenated roaring bitmaps by
+/// variant count.
+template <template <typename> typename Seq>
+struct MaskColumnsOf {
     Seq<std::uint8_t> masks8;
     Seq<std::uint16_t> masks16;
     Seq<std::uint32_t> masks32;
@@ -245,10 +248,15 @@ struct RangeColumnsOf {
     Seq<std::uint8_t> roaring;
 };
 
-using RangeColumns = RangeColumnsOf<kota::codec::blob::Owned>;
+using MaskColumns = MaskColumnsOf<kota::codec::blob::Owned>;
 
 /// Relations per block of the payload counts (ShardBlob::relation_target_ranks).
 constexpr inline std::uint32_t rank_block = 64;
+
+/// The odd codes of a relation's range (ShardBlob::relation_ranges): the
+/// relation has no range, or its range is the next of the explicit ranges.
+constexpr inline std::uint64_t range_none = 1;
+constexpr inline std::uint64_t range_explicit = 3;
 
 /// The bit of a stored relation kind saying the relation carries a payload.
 constexpr inline std::uint8_t payload_bit = 0x80;
@@ -339,11 +347,23 @@ struct ShardBlobOf {
 
     /// Occurrences sorted by (begin, end, symbol hash), delta-encoded.
     RangeColumnsOf<Seq> occurrences;
+    MaskColumnsOf<Seq> occurrence_masks;
     IdColumnOf<Seq> occurrence_symbols;
 
     /// Relations in symbol-table order, sorted by (kind, begin, end,
-    /// payload) within each group.
-    RangeColumnsOf<Seq> relations;
+    /// payload) within each group. Most relations span the range of an
+    /// occurrence: per relation a varint code, an even one naming the
+    /// first occurrence of that range — its zigzag distance from the
+    /// occurrence the previous even code of the rank block named (0 at the
+    /// block's start), shifted left by one — or range_none, or
+    /// range_explicit for a range no occurrence has, the next of the
+    /// explicit ranges. Per rank block, the code bytes and the explicit
+    /// ranges before it.
+    Seq<std::uint8_t> relation_ranges;
+    IdColumnOf<Seq> relation_range_ranks;
+    RangeColumnsOf<Seq> relation_explicit_ranges;
+    IdColumnOf<Seq> relation_explicit_ranks;
+    MaskColumnsOf<Seq> relation_masks;
     /// The RelationKind, payload_bit set for a relation carrying a payload:
     /// for the kinds carrying an extent the extent of what it declares,
     /// for the others a target symbol.
@@ -655,32 +675,6 @@ struct InternalsBlobOf {
 };
 
 using InternalsBlob = InternalsBlobOf<kota::codec::blob::Owned>;
-
-/// One external symbol's record.
-template <template <typename> typename Seq>
-struct SymbolBlobOf {
-    /// The name, the arguments and the signature back to back.
-    Seq<char> text;
-    std::uint32_t name_size = 0;
-    std::uint32_t args_size = 0;
-
-    std::uint64_t parent = 0;
-
-    /// The canonical declaration's path id plus one, 0 for none.
-    std::uint32_t file = 0;
-
-    std::uint32_t token_modifiers = 0;
-    std::uint16_t flags = 0;
-    std::uint8_t kind = 0;
-    std::uint8_t token_kind = 0;
-
-    /// The file sets of the files referencing the symbol and of those whose
-    /// instantiation shards name it, back to back.
-    Seq<std::uint8_t> files;
-    std::uint32_t references_size = 0;
-};
-
-using SymbolBlob = SymbolBlobOf<kota::codec::blob::Owned>;
 
 /// A file set (append_file_set) and how many units list it.
 template <template <typename> typename Seq>

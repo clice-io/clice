@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :index.columns;
 import :index.format;
 import :index.project_records;
 import :support.bytes;
@@ -28,9 +29,12 @@ std::unique_ptr<llvm::MemoryBuffer> aligned(const std::vector<std::byte>& blob) 
 ZEST_SUITE(ProjectRecords) {
 
 ZEST_CASE(FileSetForms) {
-    // Up to two ids are raw u32s, more a roaring image; each reads back.
-    // The set read owns its ids: the bytes are gone before it is compared.
-    for(auto set: {ids({}), ids({7}), ids({3, 9}), ids({1, 2, 3, 100000})}) {
+    // A set is its ids' distances as varints, unless its roaring image is
+    // shorter; each reads back, and owns its ids: the bytes are gone before
+    // it is compared.
+    Bitmap dense;
+    dense.addRange(0, 10000);
+    for(auto set: {ids({}), ids({7}), ids({3, 9}), ids({1, 2, 3, 100000}), dense}) {
         std::optional<Bitmap> read;
         {
             std::vector<std::uint8_t> bytes;
@@ -41,11 +45,24 @@ ZEST_CASE(FileSetForms) {
         ZASSERT(read);
         ZEXPECT(*read == set);
     }
-    // Raw ids out of order are no file set.
-    std::vector<std::uint8_t> unordered(8);
-    std::uint32_t pair[] = {9, 3};
-    std::memcpy(unordered.data(), pair, sizeof(pair));
-    ZEXPECT(!index::read_file_set(unordered));
+    std::vector<std::uint8_t> image;
+    index::append_file_set(image, dense);
+    ZEXPECT(image.front() == 0);
+
+    // One set, one spelling: no zero distance, no list where the image is
+    // shorter, no image where the list is.
+    ZEXPECT(!index::read_file_set(std::vector<std::uint8_t>{4, 0}));
+    std::vector<std::uint8_t> list;
+    for(std::uint32_t id = 0; id < 10000; id += 1) {
+        list.push_back(1);
+    }
+    ZEXPECT(!index::read_file_set(list));
+    auto small = index::write_bitmap(ids({3, 9}));
+    std::vector<std::uint8_t> small_image = {0};
+    for(auto byte: small) {
+        small_image.push_back(static_cast<std::uint8_t>(byte));
+    }
+    ZEXPECT(!index::read_file_set(small_image));
 }
 
 ZEST_CASE(HeaderRoundTrip) {
@@ -171,20 +188,29 @@ ZEST_CASE(SymbolRoundTrip) {
     ZEXPECT(*read == symbol);
 }
 
-ZEST_CASE(SymbolTextChecked) {
-    index::SymbolBlob blob;
-    blob.text = "name";
-    blob.name_size = 4;
-    blob.args_size = 0;
-    auto fits = aligned(index::encode(blob));
-    ZASSERT(index::decode_symbol(fits->getBuffer()));
-    blob.args_size = 1;
-    auto past = aligned(index::encode(blob));
-    ZEXPECT(!index::decode_symbol(past->getBuffer()));
-    blob.args_size = 0;
-    blob.token_kind = 0xff;
-    auto unknown = aligned(index::encode(blob));
-    ZEXPECT(!index::decode_symbol(unknown->getBuffer()));
+ZEST_CASE(SymbolBytesChecked) {
+    index::Symbol symbol{.name = "name", .file = index::no_file};
+    auto bytes = index::encode_record(symbol);
+    auto at = [&](std::uint32_t i) -> std::byte& {
+        return bytes[i];
+    };
+    auto decode = [&] {
+        return index::decode_symbol(as_chars(bytes));
+    };
+    ZASSERT(decode());
+
+    // The record: the three texts (5 + 1 + 1 bytes), the parent (8), the
+    // file, the modifiers and the flags (a byte each), the kind, the token
+    // kind and the reference files' size.
+    ZASSERT(bytes.size() == std::size_t(21));
+    at(19) = std::byte(0xff);
+    ZEXPECT(!decode());
+    at(19) = std::byte(0);
+    at(0) = std::byte(30);
+    ZEXPECT(!decode());
+    at(0) = std::byte(4);
+    bytes.pop_back();
+    ZEXPECT(!decode());
 }
 
 ZEST_CASE(InternalsRoundTrip) {

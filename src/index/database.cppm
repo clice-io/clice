@@ -59,7 +59,7 @@ enum class BlobKind : std::uint8_t {
     /// Per-file records (InternalsBlob): the names of internal linkage the
     /// file declares, for the search index.
     Internals,
-    /// Per-symbol records (SymbolBlob) of the external symbols.
+    /// Per-symbol records (encode_record) of the external symbols.
     Symbol,
     /// Per-symbol records (SharedLocalBlob) of the symbols below external
     /// scope several files hold.

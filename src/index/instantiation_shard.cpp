@@ -167,11 +167,6 @@ CheckResult records_ok(const Root& root) {
     if(auto ok = range_encoding_ok(table.columns, root.content_size, RangeEncoding::Delta); !ok) {
         return ok;
     }
-    auto& side = table.columns;
-    if(!side.masks8.empty() || !side.masks16.empty() || !side.masks32.empty() ||
-       !side.masks64.empty() || !side.roaring_offsets.empty() || !side.roaring.empty()) {
-        return std::unexpected("mask columns on instantiation records");
-    }
     auto count = table.size();
     if(root.record_kinds.size() != count) {
         return std::unexpected("record kinds do not match the record count");

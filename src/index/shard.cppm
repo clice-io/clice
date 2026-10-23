@@ -11,7 +11,7 @@ import :syntax.position;
 namespace clice::index {
 
 template <template <typename> typename Seq>
-struct RangeColumnsOf;
+struct MaskColumnsOf;
 
 struct LiveFilter;
 
@@ -141,7 +141,7 @@ private:
 
     /// The live mask resolved against one side's mask columns, built once
     /// per query.
-    LiveFilter live_filter(const RangeColumnsOf<kota::codec::blob::Vec>& columns) const;
+    LiveFilter live_filter(const MaskColumnsOf<kota::codec::blob::Vec>& masks) const;
 
 private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;

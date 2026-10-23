@@ -17,8 +17,10 @@ import :support.bitmap;
 
 namespace clice::index {
 
-/// Append `ids` to `arena` as one file set: a slice of raw path ids, or a
-/// portable roaring image when there are more than a few.
+/// Append `ids` to `arena` as one file set: nothing for no id; else each
+/// id's distance past the previous one as a varint, the first's past -1 —
+/// or, when that is longer than it, a zero byte and the set's portable
+/// roaring image.
 void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids);
 
 /// The set a slice holds; nullopt when it is not one append_file_set writes.
@@ -122,7 +124,13 @@ std::vector<std::byte> encode_record(const Dependents& dependents);
 
 std::vector<std::byte> encode_record(const Internals& internals);
 
-/// A symbol's record; its file and file sets are path ids.
+/// A symbol's record, packed by hand: it is the most numerous record, and a
+/// blob's header and placement pairs would double it. The name, the
+/// arguments and the signature, each its size as a varint and its bytes;
+/// the parent, 8 bytes little-endian; the canonical file's path id plus one
+/// (0 for none), the token modifiers and the flags as varints; the kind and
+/// the token kind, a byte each; the reference files' set, its size as a
+/// varint and its bytes; the instantiation files' set to the end.
 std::vector<std::byte> encode_record(const Symbol& symbol);
 
 std::vector<std::byte> encode_record(const SharedLocalSets& local);
