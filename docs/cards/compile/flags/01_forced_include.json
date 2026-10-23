@@ -15,7 +15,7 @@
     },
     {
       "path": "header.h",
-      "text": "inline int header() {\n    return FORCED;\n}\n",
+      "text": "constexpr int header() {\n    return FORCED;\n}\n",
       "markers": []
     },
     {

@@ -5,7 +5,7 @@
   "title": "Template definitions apart",
   "summary": "A header and the `.tpp` file it includes for its template definitions switch to each other",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -70,13 +70,13 @@
         {
           "label": "matrix.h",
           "value": {
-            "wrong": "matrix.tpp should count as defining both declarations, as it does when main.cpp was closed while the index ran",
             "counterparts": {
               "preferred": "matrix.tpp",
               "candidates": [
                 {
                   "path": "matrix.tpp",
                   "reasons": [
+                    "defines 2 of 2 declarations",
                     "same name"
                   ]
                 }

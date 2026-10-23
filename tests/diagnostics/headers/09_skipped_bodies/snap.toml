@@ -1,0 +1,60 @@
+["as saved".indexed]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+        related = [
+            { at = "shapes.h │ return shape.⟦width⟧ * shape.height;", message = "error occurred here" },
+            {
+                at = "return ⟦area⟧(Square{2}) + unit();",
+                message = "in instantiation of function template specialization 'area<Square>' requested here",
+            },
+        ],
+    },
+]
+
+["as saved".edited]
+diagnostics = []
+
+["as saved".saved]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{3}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+]
+
+["a saved header"."saved header"]
+diagnostics = [
+    {
+        at = '#include ⟦"shapes.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+]
+
+["bodies parsed".parsed]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+]

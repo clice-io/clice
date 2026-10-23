@@ -1,2 +1,19 @@
 [test."main.cpp"]
-diagnostics = []
+diagnostics = [
+    {
+        at = '#include ⟦"show.h"⟧',
+        severity = "error",
+        message = "In included file: call to deleted function 'describe'",
+        source = "clang",
+        code = "err_ovl_deleted_call",
+        related = [
+            { at = "show.h │ ⟦describe⟧(value);", message = "error occurred here" },
+            {
+                at = "show.h │ ⟦show⟧(app::Point{});",
+                message = "in instantiation of function template specialization 'show<app::Point>' requested here",
+            },
+            { at = "show.h │ void ⟦describe⟧(const Point&);", message = "candidate function" },
+            { at = "void ⟦describe⟧(Point&) = delete;", message = "candidate function has been explicitly deleted" },
+        ],
+    },
+]

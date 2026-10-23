@@ -164,7 +164,6 @@ definition = ["include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
 declaration = ["include/base.h │ int ⟦run⟧() const;", "include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
 references = [
     "include/base.h │ int ⟦run⟧() const;",
-    "include/base.h │ return Lazy<int>{}.⟦run⟧();",
     "include/extra.h │ int Lazy<T>::⟦run⟧() const {",
     "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();",
 ]

@@ -1,4 +1,12 @@
-[test.measure]
-
-[test.measure.rename]
-error = "cannot rename `measure`: these files changed since they were indexed, or were never indexed: ${WS}/shapes.h"
+[test.measure.rename.edits]
+"main.cpp" = '''
+ // The header is included by the open source alone.
+ #include "shapes.h"
+-int use() { return measure(2); }
++int use() { return twice(2); }
+'''
+"shapes.h" = '''
+ #pragma once
+-inline int measure(int v) { return v * 2; }
++inline int twice(int v) { return v * 2; }
+'''

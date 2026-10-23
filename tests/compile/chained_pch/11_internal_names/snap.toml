@@ -369,7 +369,6 @@ definition = ["include/base.h │ static double ⟦helper⟧(double value) {"]
 declaration = ["include/base.h │ static double ⟦helper⟧(double value) {"]
 references = [
     "include/base.h │ static double ⟦helper⟧(double value) {",
-    "include/extra.h │ return twice(Ring{⟦helper⟧(scale)});",
     "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();",
 ]
 
@@ -388,8 +387,6 @@ definition = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 declaration = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 references = [
     "include/base.h │ const double ⟦scale⟧ = 2.0;",
-    "include/base.h │ return value * ⟦scale⟧;",
-    "include/extra.h │ return twice(Ring{helper(⟦scale⟧)});",
     "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
 ]
 

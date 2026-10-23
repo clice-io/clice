@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "base.h",
-      "text": "#pragma once\n\ninline int base() {\n    return 1;\n}\n",
+      "text": "#pragma once\n\nconstexpr int base() {\n    return 1;\n}\n",
       "markers": []
     },
     {
@@ -90,9 +90,9 @@
                   }
                 },
                 "severity": "error",
-                "message": "In included file: non-void function 'base' should return a value",
+                "message": "In included file: non-void constexpr function 'base' should return a value",
                 "source": "clang",
-                "code": "-Wreturn-mismatch"
+                "code": "err_constexpr_return_missing_expr"
               }
             ]
           }

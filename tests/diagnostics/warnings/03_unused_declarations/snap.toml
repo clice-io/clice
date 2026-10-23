@@ -1,0 +1,13 @@
+[editor."main.cpp"]
+diagnostics = []
+
+[indexed."main.cpp"]
+diagnostics = [
+    {
+        at = "void ⟦forgotten⟧() {}",
+        severity = "warning",
+        message = "unused function 'forgotten'",
+        source = "clang",
+        code = "-Wunused-function",
+    },
+]

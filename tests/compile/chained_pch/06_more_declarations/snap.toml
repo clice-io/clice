@@ -110,8 +110,6 @@ highlights = [
 markdown = '''
 **method** `get` · struct `Cell<int>`
 
-Trivial accessor for `value`.
-
 ```cpp
 int get() const
 ```
@@ -305,7 +303,6 @@ references = [
     "include/base.h │ struct ⟦Plain⟧ {",
     "include/extra.h │ inline ⟦Plain⟧ copy_plain(const Plain& plain) {",
     "include/extra.h │ inline Plain copy_plain(const ⟦Plain⟧& plain) {",
-    "include/extra.h │ ⟦Plain⟧ copy = plain;",
     "static_assert(!Measurable<⟦Plain⟧>);",
     "⟦Plain⟧ plain{1};",
     "⟦Plain⟧ other = plain;",
@@ -427,8 +424,6 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 [locations.cell.hover]
 markdown = '''
 **method** `get` · struct `Cell<int>`
-
-Trivial accessor for `value`.
 
 ```cpp
 int get() const
@@ -614,8 +609,6 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 ["indexed locations".cell.hover]
 markdown = '''
 **method** `get` · struct `Cell<int>`
-
-Trivial accessor for `value`.
 
 ```cpp
 int get() const

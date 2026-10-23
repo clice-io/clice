@@ -350,8 +350,6 @@ definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
-    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -371,8 +369,6 @@ definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
-    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -392,8 +388,6 @@ definition = ["include/base.h │ int ⟦twice⟧(T) {"]
 declaration = ["include/base.h │ int ⟦twice⟧(T) {"]
 references = [
     "include/base.h │ int ⟦twice⟧(T) {",
-    "include/base.h │ return ⟦twice⟧(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
-    "include/extra.h │ return ⟦twice⟧(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
     "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
     "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
 ]
@@ -452,7 +446,6 @@ definition = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const
 declaration = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
 references = [
     "include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {",
-    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.⟦size⟧();",
     "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();",
 ]
 

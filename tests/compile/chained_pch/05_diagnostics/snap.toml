@@ -57,7 +57,7 @@ markdown = '''
 **function** `needs_size`
 
 ```cpp
-template <class T> int needs_size(T value) { return value.size(); }
+template <> int needs_size<int>(int value)
 ```
 '''
 range = "int c = ⟦needs_size⟧(1);"
@@ -125,13 +125,6 @@ document_links = [
 [locations."main.cpp"]
 diagnostics = [
     {
-        at = '#include ⟦"extra.h"⟧',
-        severity = "error",
-        message = "In included file: use of undeclared identifier 'undefined_in_preamble'",
-        source = "clang",
-        code = "err_undeclared_var_use",
-    },
-    {
         at = "int a = ⟦stale⟧();",
         severity = "warning",
         message = "'stale' is deprecated: use fresh",
@@ -151,13 +144,6 @@ diagnostics = [
         message = "'secret' is a private member of 'Closed'",
         source = "clang",
         code = "err_access",
-    },
-    {
-        at = "int c = ⟦needs_size⟧(1);",
-        severity = "error",
-        message = "In template: member reference base type 'int' is not a structure or union",
-        source = "clang",
-        code = "err_typecheck_member_reference_struct_union",
     },
     {
         at = "return a + b + c + ⟦old_extra⟧();",
@@ -227,7 +213,7 @@ markdown = '''
 **function** `needs_size`
 
 ```cpp
-template <class T> int needs_size(T value) { return value.size(); }
+template <> int needs_size<int>(int value)
 ```
 '''
 range = "int c = ⟦needs_size⟧(1);"
@@ -337,7 +323,7 @@ markdown = '''
 **function** `needs_size`
 
 ```cpp
-template <class T> int needs_size(T value) { return value.size(); }
+template <> int needs_size<int>(int value)
 ```
 '''
 range = "int c = ⟦needs_size⟧(1);"

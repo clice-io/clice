@@ -49,9 +49,9 @@ diagnostics = [
 ]
 
 [locations.use]
-definition = ["include/base.h │ inline int ⟦base_use⟧() {"]
-declaration = ["include/base.h │ inline int ⟦base_use⟧() {"]
-references = ["include/base.h │ inline int ⟦base_use⟧() {", "return ⟦base_use⟧();"]
+definition = ["include/base.h │ inline auto ⟦base_use⟧() {"]
+declaration = ["include/base.h │ inline auto ⟦base_use⟧() {"]
+references = ["include/base.h │ inline auto ⟦base_use⟧() {", "return ⟦base_use⟧();"]
 
 [locations.use.hover]
 markdown = '''
@@ -75,9 +75,9 @@ diagnostics = [
 ]
 
 ["indexed locations".use]
-definition = ["include/base.h │ inline int ⟦base_use⟧() {"]
-declaration = ["include/base.h │ inline int ⟦base_use⟧() {"]
-references = ["include/base.h │ inline int ⟦base_use⟧() {", "return ⟦base_use⟧();"]
+definition = ["include/base.h │ inline auto ⟦base_use⟧() {"]
+declaration = ["include/base.h │ inline auto ⟦base_use⟧() {"]
+references = ["include/base.h │ inline auto ⟦base_use⟧() {", "return ⟦base_use⟧();"]
 
 ["indexed locations".use.hover]
 markdown = '''
@@ -106,12 +106,12 @@ stdout = '''
   "result": {
     "name": "base_use",
     "kind": "Function",
-    "symbol": "#ac732b62174b36be",
+    "symbol": "#9b0a005da09cab85",
     "references": [
       {
         "file": "${WS}/include/base.h",
         "line": 18,
-        "context": "inline int base_use() {",
+        "context": "inline auto base_use() {",
         "function": null
       },
       {
@@ -145,12 +145,12 @@ stdout = '''
   "result": {
     "name": "base_use",
     "kind": "Function",
-    "symbol": "#ac732b62174b36be",
+    "symbol": "#9b0a005da09cab85",
     "references": [
       {
         "file": "${WS}/include/base.h",
         "line": 18,
-        "context": "inline int base_use() {",
+        "context": "inline auto base_use() {",
         "function": null
       },
       {

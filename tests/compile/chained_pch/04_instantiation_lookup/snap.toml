@@ -313,7 +313,6 @@ definition = ["include/base.h │ auto ⟦make⟧(T value) {"]
 declaration = ["include/base.h │ auto ⟦make⟧(T value) {"]
 references = [
     "include/base.h │ auto ⟦make⟧(T value) {",
-    "include/extra.h │ return apply(Gadget{}) + ⟦make⟧(1);",
     "decltype(⟦make⟧(2)) made = make(3);",
     "decltype(make(2)) made = ⟦make⟧(3);",
 ]
@@ -348,8 +347,6 @@ definition = ["include/base.h │ int ⟦apply⟧(T value) {"]
 declaration = ["include/base.h │ int ⟦apply⟧(T value) {"]
 references = [
     "include/base.h │ int ⟦apply⟧(T value) {",
-    "include/base.h │ return ⟦apply⟧(Early{});",
-    "include/extra.h │ return ⟦apply⟧(Gadget{}) + make(1);",
     "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
     "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
     "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
