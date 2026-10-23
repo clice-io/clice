@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
+import :feature.document_links;
 import :feature.documentation;
 import :feature.hover;
 import :feature.protocol;
@@ -1112,74 +1113,32 @@ auto deduced_hover(clang::QualType type,
     return info;
 }
 
+/// The card of the directive argument at `range` of `content`, whose
+/// target is `file`.
+HoverInfo header_card(llvm::StringRef content, LocalSourceRange range, std::string file) {
+    auto name = content.substr(range.begin, range.length()).trim();
+    if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
+                            (name.front() == '<' && name.back() == '>'))) {
+        name = name.drop_front().drop_back();
+    }
+
+    HoverInfo info;
+    info.name = unspliced(name);
+    info.kind = SymbolKind::Header;
+    info.file = std::move(file);
+    info.symbol_range = range;
+    return info;
+}
+
 auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::optional<HoverInfo> {
     auto focus = unit.focus_file();
-    auto directives_it = unit.directives().find(focus.file());
-    if(directives_it == unit.directives().end()) {
-        return std::nullopt;
-    }
-
     auto content = focus.content();
-    const auto& lexical = focus.lexical();
-
-    auto file_name = [&](LocalSourceRange range) -> std::string {
-        auto arg = content.substr(range.begin, range.end - range.begin).trim();
-        if(arg.size() >= 2 && ((arg.front() == '"' && arg.back() == '"') ||
-                               (arg.front() == '<' && arg.back() == '>'))) {
-            arg = arg.drop_front().drop_back();
-        }
-        return unspliced(arg);
-    };
-
-    const auto* hovered = lexical.directive_at(content, offset);
-    if(!hovered) {
+    if(!focus.lexical().directive_at(content, offset)) {
         return std::nullopt;
     }
-    auto try_directive = [&](clang::SourceLocation loc,
-                             llvm::StringRef target) -> std::optional<HoverInfo> {
-        if(target.empty())
-            return std::nullopt;
-        auto directive_offset = unit.seen_at(loc).offset;
-        if(lexical.directive_at(content, directive_offset) != hovered)
-            return std::nullopt;
-        auto range = find_directive_argument(lexical, content, directive_offset);
-        if(!range || offset >= range->end || offset < range->begin)
-            return std::nullopt;
-
-        HoverInfo info;
-        info.name = file_name(*range);
-        info.kind = SymbolKind::Header;
-        info.file = target;
-        info.symbol_range = *range;
-        return info;
-    };
-
-    for(const auto& include: directives_it->second.includes) {
-        if(include.fid.isValid()) {
-            if(auto info = try_directive(include.location, unit.file_path(include.fid))) {
-                return info;
-            }
-        }
-    }
-    for(const auto& has_include: directives_it->second.has_includes) {
-        if(has_include.file) {
-            if(auto info = try_directive(has_include.location, unit.file_path(*has_include.file))) {
-                return info;
-            }
-        }
-    }
-    for(const auto& embed: directives_it->second.embeds) {
-        if(embed.file) {
-            if(auto info = try_directive(embed.loc, unit.file_path(*embed.file))) {
-                return info;
-            }
-        }
-    }
-    for(const auto& has_embed: directives_it->second.has_embeds) {
-        if(has_embed.file) {
-            if(auto info = try_directive(has_embed.loc, unit.file_path(*has_embed.file))) {
-                return info;
-            }
+    for(auto& link: document_links(unit)) {
+        if(link.range.contains(offset)) {
+            return header_card(content, link.range, std::move(link.target));
         }
     }
     return std::nullopt;
@@ -2180,17 +2139,7 @@ auto directive_hover(llvm::StringRef text,
     if(link.range.end > text.size()) {
         return std::nullopt;
     }
-    auto name = text.substr(link.range.begin, link.range.length()).trim();
-    if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
-                            (name.front() == '<' && name.back() == '>'))) {
-        name = name.drop_front().drop_back();
-    }
-
-    HoverInfo info;
-    info.name = name.str();
-    info.kind = SymbolKind::Header;
-    info.file = files.display_identity(link.target);
-    info.symbol_range = link.range;
+    auto info = header_card(text, link.range, files.display_identity(link.target));
 
     auto hover = to_protocol_hover(info, kind, map, PositionEncoding::UTF16);
     if(!hover.range) {
