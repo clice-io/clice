@@ -49,6 +49,11 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
     // version set in clang's spelling (a rule's `-std=c++23`) is clang's
     // to read, not cl's.
     std::vector<std::string> query = {args[0], "/nologo", "/EP"};
+    // clang-cl shows the job it runs, which names its resource directory:
+    // clang's own driver would take one of its own version beside it.
+    if(family == CompilerFamily::ClangCL) {
+        query.push_back("-v");
+    }
     bool names_standard = false;
     bool names_version = false;
     for(llvm::StringRef arg: args.drop_front()) {
@@ -73,7 +78,13 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
     }
     auto parsed = parse_cl_output(output->out);
 
-    auto job = ask_clang(args, {"--driver-mode=cl"}, cwd);
+    std::vector<std::string> mode = {"--driver-mode=cl"};
+    auto clang_job = parse_clang_job(output->err);
+    if(auto it = ranges::find(clang_job, "-resource-dir");
+       it != clang_job.end() && std::next(it) != clang_job.end()) {
+        mode.insert(mode.end(), {"-resource-dir", *std::next(it)});
+    }
+    auto job = ask_clang(args, mode, cwd);
     if(!job) {
         co_return job;
     }

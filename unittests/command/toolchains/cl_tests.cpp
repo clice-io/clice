@@ -85,6 +85,22 @@ ZEST_CASE(ClangCLOwnVersion, skip = Windows) {
     ZEXPECT(!contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
+ZEST_CASE(ClangCLBuiltinHeaders, skip = Windows) {
+    // clang-cl's own builtin headers, in the resource directory its job
+    // names, stay right after clice's.
+    tmp.touch("llvm/lib/clang/20/include/xray/xray_interface.h");
+    auto clang_cl = fake_driver("clang-cl",
+                                std::format(R"(case " $* " in *" -v "*)
+  echo ' "{0}/bin/clang-cl" "-cc1" "-resource-dir" "{0}/lib/clang/20"' >&2 ;;
+esac
+echo 'msvc_lang 202002L'
+echo 'msc_full_ver 194435207'
+)",
+                                            tmp.path("llvm")));
+    auto argv = f.resolve(add("a.cpp", {clang_cl.c_str()}));
+    ZEXPECT(adjacent(argv, "-internal-isystem", tmp.path("llvm/lib/clang/20/include")));
+}
+
 ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
     // Nor is cl asked its standard: clang's own cl mode reads the command.
     auto ran = tmp.path("ran");
