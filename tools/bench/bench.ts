@@ -75,6 +75,10 @@ const INDEX_BOUND = 6 * 3600_000;
 /// How long the background index must stay idle to count as done: both
 /// servers may end one round and begin another for files found meanwhile.
 const INDEX_QUIET_MS = 15_000;
+/// Hang detection: the longest a server takes to announce its first round
+/// on a wiped cache. clice drops a round's progress when the round ends
+/// before the client acknowledged its token (a project of a few files).
+const ANNOUNCE_BOUND = 300_000;
 
 interface Options {
     servers: ServerName[];
@@ -288,7 +292,8 @@ function derivePosition(file: string): proto.Position {
 
 function identifierAt(file: string, at: proto.Position): string {
     const line = fs.readFileSync(file, "utf8").split("\n")[at.line] ?? "";
-    const name = /^[A-Za-z_]\w*/.exec(line.slice(at.character))?.[0];
+    const start = /\w*$/.exec(line.slice(0, at.character))?.index ?? at.character;
+    const name = /^[A-Za-z_]\w*/.exec(line.slice(start))?.[0];
     if (name === undefined) {
         fail(`no identifier at ${at.line}:${at.character} of ${file}; pass --query`);
     }
@@ -572,7 +577,7 @@ class Run {
         if (client.child.pid !== undefined) {
             this.memory = watchMemory(client.child.pid);
         }
-        await client.initialize(new Workspace(opts.workspace), {
+        const initialized = client.initialize(new Workspace(opts.workspace), {
             initializationOptions: {
                 // Pin clice to the CDB selected for the comparison: a
                 // workspace clice.toml may declare databases elsewhere, while
@@ -591,6 +596,7 @@ class Run {
             testDefaults: false,
             capabilities: CAPABILITIES,
         });
+        await bounded(initialized, "initialize");
         this.record("initialize", nowMs() - this.started);
         return client;
     }
@@ -637,6 +643,7 @@ class Run {
         let changed = nowMs();
         let active = false;
         let ended: number | null = null;
+        let announced = false;
         let files = 0;
         while (nowMs() - this.started < INDEX_BOUND) {
             if (client.child.exitCode !== null || client.child.signalCode !== null) {
@@ -649,6 +656,7 @@ class Run {
                     continue;
                 }
                 const value = event.value as { kind?: string; message?: string };
+                announced = true;
                 changed = nowMs();
                 active = value.kind !== "end";
                 if (value.kind === "end") {
@@ -661,6 +669,9 @@ class Run {
             }
             if (!active && (!round || ended !== null) && nowMs() - changed >= INDEX_QUIET_MS) {
                 return { ended: ended ?? changed, files };
+            }
+            if (round && !announced && nowMs() - this.started > ANNOUNCE_BOUND) {
+                throw new Error(`${this.server} announced no background index round`);
             }
             await pause(250);
         }
@@ -715,9 +726,11 @@ class Run {
 /// (AddressSanitizer.cpp).
 async function shutdownServer(client: CliceClient, server: ServerName): Promise<void> {
     try {
-        await bounded(client.sendRequest(proto.ShutdownRequest.type), "shutdown");
-        await client.sendNotification(proto.ExitNotification.type);
+        await withTimeout(client.sendRequest(proto.ShutdownRequest.type), 60_000, "shutdown");
     } finally {
+        // A server that failed its shutdown is told to exit all the same; a
+        // dead one has no connection left to take the notification.
+        await client.sendNotification(proto.ExitNotification.type).catch(() => undefined);
         client.disposed = true;
         // Hang detection: a server still running a minute after `exit` is
         // killed.
@@ -901,8 +914,8 @@ async function runWarmRequests(run: Run): Promise<void> {
     // One unmeasured warmup per request absorbs lazy first-request work.
     // All warmups run before the measurement window opens, so the
     // server-side series carry exactly --repeats events per kind.
-    for (const request of Object.values(requests)) {
-        await request();
+    for (const [name, request] of Object.entries(requests)) {
+        await bounded(request(), name);
     }
     // Log timestamps truncate to milliseconds, so a boundary read in the
     // same millisecond as the last warmup's perf line cannot separate the

@@ -1,7 +1,8 @@
 /// Tables from bench.ts results: for every scenario and measure, the median
 /// and p90 of each server over all runs of all files given, and the ratio
-/// of clice's median to clangd's. Files of different workspaces or focus
-/// files get a table each.
+/// of clice's median to clangd's. Results pool only within one workload on
+/// one machine: another focus file, probe, query, binary or machine gets a
+/// table of its own.
 ///
 /// Usage:
 ///   node tools/bench/compare.ts <results.json>...
@@ -33,7 +34,9 @@ type Samples = Partial<Record<ServerName, number[]>>;
 const groups = new Map<string, { result: BenchResult; runs: RunResult[] }>();
 for (const file of files) {
     const result = JSON.parse(fs.readFileSync(file, "utf8")) as BenchResult;
-    const key = `${result.workspace} ${result.file}`;
+    const { workspace, file: focus, probes, query, binaries, clangdArgs } = result;
+    const machine = [result.env.platform, result.env.cpuModel, result.env.cpus];
+    const key = JSON.stringify([workspace, focus, probes, query, binaries, clangdArgs, machine]);
     const group = groups.get(key) ?? { result, runs: [] };
     group.runs.push(...result.runs);
     groups.set(key, group);
