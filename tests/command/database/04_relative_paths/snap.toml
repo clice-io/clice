@@ -3,7 +3,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}/project/build
   command:   missing-clang++ -std=c++20 src/main.cpp
-  resolved:  missing-clang++ -resource-dir ${RESOURCE} -std=c++20 ${WS}/project/build/src/main.cpp
+  resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/project/build/src/main.cpp
   error:     the compiler could not be queried: Cannot find driver: missing-clang++
 '''
 stderr = "error: Toolchain query failed: Cannot find driver: missing-clang++"
@@ -14,7 +14,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}/other/build
   command:   missing-clang++ -std=c++17 src/main.cpp
-  resolved:  missing-clang++ -resource-dir ${RESOURCE} -std=c++17 ${WS}/other/build/src/main.cpp
+  resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++17 ${WS}/other/build/src/main.cpp
   error:     the compiler could not be queried: Cannot find driver: missing-clang++
 '''
 stderr = "error: Toolchain query failed: Cannot find driver: missing-clang++"
@@ -29,7 +29,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}/project/gen
   command:   missing-clang++ -std=c++23 ../src/./main.cpp
-  resolved:  missing-clang++ -resource-dir ${RESOURCE} -std=c++23 ${WS}/project/gen/../src/main.cpp
+  resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++23 ${WS}/project/gen/../src/main.cpp
   error:     the compiler could not be queried: Cannot find driver: missing-clang++
 '''
 stderr = "error: Toolchain query failed: Cannot find driver: missing-clang++"

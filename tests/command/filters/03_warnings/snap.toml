@@ -1,31 +1,31 @@
 ["clang warnings"."$ clice command convert -- missing-clang++ -Wall -Wextra -Wconversion main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -Wall -Wextra -Wconversion ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wall -Wextra -Wconversion ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 ["clang warnings"."$ clice command convert -- missing-clang-cl /W4 -Wextra /c main.cpp"]
-stdout = "missing-clang-cl -resource-dir ${RESOURCE} /W4 -Wextra ${WS}/main.cpp"
+stdout = "missing-clang-cl --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /W4 -Wextra ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang-cl
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang-cl
 '''
 exit = 1
 
 ["clang warnings"."$ clice command convert -- missing-clang++ -Wlogical-op main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -Wlogical-op ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wlogical-op ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 ["gcc warnings"."$ clice command convert -- missing-g++ -Wall -Wlogical-op -Wno-useless-cast -Werror=duplicated-cond -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -Wall -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wall -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1

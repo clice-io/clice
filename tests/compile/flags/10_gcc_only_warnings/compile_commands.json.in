@@ -2,6 +2,6 @@
   {
     "directory": "${WS}",
     "file": "${WS}/main.cpp",
-    "arguments": ["g++", "-std=c++20", "-Wall", "-Wlogical-op", "-Wduplicated-cond", "-Wduplicated-branches", "-Wuseless-cast", "-c", "main.cpp"]
+    "arguments": ["missing-g++", "-std=c++20", "-Wall", "-Wlogical-op", "-Wduplicated-cond", "-Wduplicated-branches", "-Wuseless-cast", "-c", "main.cpp"]
   }
 ]

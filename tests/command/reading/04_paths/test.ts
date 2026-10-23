@@ -1,12 +1,12 @@
 import { test } from "@clice/tools/testing";
 
 const MISSING = "Toolchain query failed: Cannot find driver";
-const UNQUERIED = "The compiler could not be queried";
+const UNCONVERTED = "The command stays a driver command";
 
 // Relative include directories are written out from where the compile
 // runs: the current directory, or the one -working-directory names; an
 // absolute one stays as it is.
-test("include directories", { errors: [MISSING, UNQUERIED] }, async (t) => {
+test("include directories", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli(
         "command convert -- missing-clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp",
     );
@@ -23,7 +23,7 @@ test("include directories", { errors: [MISSING, UNQUERIED] }, async (t) => {
 
 // A leading = names the sysroot, which clang substitutes; the files an
 // option reads are anchored, a bare --config name is clang's to find.
-test("sysroot", { errors: [MISSING, UNQUERIED] }, async (t) => {
+test("sysroot", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli([
         "command",
         "convert",

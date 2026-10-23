@@ -6,8 +6,10 @@ stdout = '''
     "file": "kernels.cuh",
     "arguments": [
       "nvcc-missing",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
+      "--cuda-path=${WS}/missing-cuda",
       "-x",
       "cuda",
       "${WS}/kernels.cuh"
@@ -23,6 +25,7 @@ stdout = '''
     "file": "a.ixx",
     "arguments": [
       "missing-clang++",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-std=c++20",
@@ -41,6 +44,9 @@ stdout = '''
 stderr = '''
 error: Toolchain query failed: Cannot find driver: nvcc-missing
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+warning: clang's driver, reading the command of nvcc-missing: cannot find libdevice for sm_52; provide path to different CUDA installation via '--cuda-path', or pass '-nocudalib' to build without linking with libdevice
+warning: clang's driver, reading the command of nvcc-missing: cannot find CUDA installation; provide its path via '--cuda-path', or pass '-nocudainc' to build without CUDA includes
+warning: clang's driver, reading the command of nvcc-missing: cannot find CUDA installation; provide its path via '--cuda-path', or pass '-nocudainc' to build without CUDA includes
+error: 2 of the entries stay driver commands: the errors above say why
 '''
 exit = 1

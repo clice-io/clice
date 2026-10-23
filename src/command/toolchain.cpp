@@ -7,10 +7,12 @@ module;
 module clice;
 
 import :command.argument;
+import :command.edit;
 import :command.search_config;
 import :command.table;
 import :command.toolchain;
 import :command.toolchain_query;
+import :command.toolchains.clang;
 import :command.toolchains.nvcc;
 import :support.logging;
 import :vfs.file_system;
@@ -301,29 +303,8 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         kept.push_back(std::move(*parsed));
     }
 
-    // CPU and ABI names clang's target does not know fail the whole
-    // compile: GCC accepts names of its own (`-mtune=intel`, `-mabi=lp64`
-    // on Darwin), and a newer external clang knows newer CPUs. The target's
-    // defaults stand in.
-    clang::DiagnosticOptions diagnostic_options;
-    clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
-                                    diagnostic_options,
-                                    new clang::IgnoringDiagConsumer());
-    // The target keeps a pointer to its options.
-    clang::TargetOptions target_options;
-    llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
-    if(!triple.empty()) {
-        target_options.Triple = triple.str();
-        target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
-    }
-    auto known_name = [&](const kota::option::ParsedArg& arg) {
-        switch(arg.id) {
-            case option::OPT_target_cpu: return target->isValidCPUName(arg.values[0]);
-            case option::OPT_tune_cpu: return target->isValidTuneCPUName(arg.values[0]);
-            case option::OPT_target_abi: return target->setABI(std::string(arg.values[0]));
-            default: return true;
-        }
-    };
+    // The target's defaults stand in for the names it does not know.
+    TargetNames names(triple);
 
     Frontend result{.driver = commands.intern(job[0]).data(),
                     .job_resource_dir = commands.intern(job_resource_dir)};
@@ -331,7 +312,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
     std::vector<LocalArg> staged;
     for(auto& arg: kept) {
-        if(target && !known_name(arg)) {
+        if(!arg.values.empty() && !names.knows(arg.id, arg.values[0])) {
             LOG_INFO("clang's target {} knows no CPU or ABI named {} ({}): its default stands in",
                      triple,
                      arg.values[0],
@@ -451,31 +432,60 @@ void Toolchain::commit_query(llvm::StringRef key,
     queries.try_emplace(key, frontend(*job));
 }
 
-std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID id,
-                                                                     InputKind input) {
+std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(CommandID id,
+                                                                          InputKind input) {
     auto synth_key = std::pair{static_cast<std::uint32_t>(id), input.value};
     if(auto it = synth_cache.find(synth_key); it != synth_cache.end()) {
-        return it->second;
+        return ResolvedCommand{.id = it->second};
     }
 
     auto admission = admit_query(id, input);
     if(admission.kind == QueryAdmission::Kind::CoolingDown) {
-        return std::unexpected(std::move(admission.error));
+        return read_unqueried(id, input, std::move(admission.error));
     }
     if(admission.kind == QueryAdmission::Kind::Ready) {
-        LOG_WARN("Toolchain query miss: driver={} kind={}", commands.get(id).driver, input.value);
+        bool runs_compiler = commands.get(id).query_toolchain;
+        if(runs_compiler) {
+            LOG_WARN("Toolchain query miss: driver={} kind={}",
+                     commands.get(id).driver,
+                     input.value);
+        }
 
         auto [ended] = kota::run(query_one(admission.spec));
         auto& result = *ended;
         commit_query(admission.key, result);
         if(!result) {
-            return std::unexpected(std::move(result.error()));
+            if(runs_compiler) {
+                LOG_WARN(
+                    "The compiler {} could not be queried: {}; clang's own driver reads its "
+                    "command",
+                    commands.get(id).driver,
+                    result.error());
+            }
+            return read_unqueried(id, input, std::move(result.error()));
         }
     }
 
     auto resolved_id = synthesize(id, queries.find(admission.key)->second);
     synth_cache.try_emplace(synth_key, resolved_id);
-    return resolved_id;
+    return ResolvedCommand{.id = resolved_id};
+}
+
+std::expected<Toolchain::ResolvedCommand, std::string>
+    Toolchain::read_unqueried(CommandID id, InputKind input, std::string failure) {
+    // Not cached under the command itself: a failure is retried once its
+    // cooldown passes.
+    if(!commands.get(id).query_toolchain) {
+        return std::unexpected(std::move(failure));
+    }
+    auto resolved = resolve(apply_edits(commands, files, id, {.query_toolchain = false}), input);
+    if(!resolved) {
+        return std::unexpected(
+            std::format("{}; clang's own driver cannot read the command either: {}",
+                        failure,
+                        resolved.error()));
+    }
+    return ResolvedCommand{.id = resolved->id, .query_failure = std::move(failure)};
 }
 
 void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
@@ -545,18 +555,18 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
-std::vector<const char*> Toolchain::render(const CommandRef& ref,
-                                           llvm::StringRef path,
-                                           const RenderOptions& opts) {
-    auto resolved_id = resolve(ref.command, ref.input);
-    if(!resolved_id) {
+Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
+                                             llvm::StringRef path,
+                                             const RenderOptions& opts) {
+    auto resolution = resolve(ref.command, ref.input);
+    if(!resolution) {
         LOG_WARN("Toolchain resolve failed for {}: {}",
                  files.resolve(ref.file),
-                 resolved_id.error());
-        return commands.render_driver(ref, path, opts);
+                 resolution.error());
+        return {.argv = render_for_clang(ref, path, opts)};
     }
 
-    auto& rc = resolved(*resolved_id);
+    auto& rc = resolved(resolution->id);
     auto source = commands.intern(path);
 
     std::vector<const char*> argv;
@@ -592,19 +602,37 @@ std::vector<const char*> Toolchain::render(const CommandRef& ref,
     }
 
     argv.push_back(source.data());
+    return {.argv = std::move(argv), .query_failure = std::move(resolution->query_failure)};
+}
+
+std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
+                                                     llvm::StringRef path,
+                                                     const RenderOptions& opts) {
+    auto& command = commands.get(ref.command);
+    auto driver = commands.render_driver(ref, path, opts);
+    // Resolving the command read it already, and logged what the driver said.
+    auto reading = read_as_clang({driver.begin(), driver.end()},
+                                 command.family,
+                                 command.directory,
+                                 /*quiet=*/true);
+    std::vector<const char*> argv;
+    argv.reserve(reading.argv.size());
+    for(auto& arg: reading.argv) {
+        argv.push_back(commands.intern(arg).data());
+    }
     return argv;
 }
 
 SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto& command = commands.get(ref.command);
     llvm::StringRef directory = command.directory;
-    auto resolved_id = resolve(ref.command, ref.input);
-    if(!resolved_id) {
+    auto resolution = resolve(ref.command, ref.input);
+    if(!resolution) {
         return extract_search_config(command.args, directory);
     }
-    auto [it, inserted] = search_configs.try_emplace(*resolved_id);
+    auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
-        it->second = extract_search_config(resolved(*resolved_id).args, directory);
+        it->second = extract_search_config(resolved(resolution->id).args, directory);
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;

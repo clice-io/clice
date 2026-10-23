@@ -98,6 +98,11 @@ struct Resolution {
     /// chain the synthesis could not follow: the command fell back past it.
     Fid unmatched_host;
 
+    /// Why the compiler of the command could not be queried, which leaves
+    /// the arguments clang's own reading of the command; empty when it
+    /// answered.
+    std::string query_failure;
+
     /// The host whose include tree could change this resolution: the
     /// synthesis followed the lexical chain from it, for want of a tree
     /// telling where its compile enters the header (see enterings), or

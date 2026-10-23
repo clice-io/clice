@@ -39,7 +39,7 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool sk
                     .directory = project.commands.get(unit.command).directory,
                     .whole_file = true,
                     .skip_bodies = skip_bodies};
-    auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file));
+    auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file)).argv;
     request.arguments.assign(argv.begin(), argv.end());
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule(skip_bodies),

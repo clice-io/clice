@@ -2,7 +2,7 @@
   {
     "directory": "${WS}",
     "file": "kernels.cuh",
-    "command": "nvcc-missing -c kernels.cuh -o kernels.o"
+    "command": "nvcc-missing --cuda-path=${WS}/missing-cuda -c kernels.cuh -o kernels.o"
   },
   {
     "directory": "${WS}",

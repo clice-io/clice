@@ -639,8 +639,10 @@ struct FileScanner {
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
-                    toolchain.render({path_id, group.command, group.input, CommandSource::CDBExact},
-                                     cdb.spelling(path_id));
+                    toolchain
+                        .render({path_id, group.command, group.input, CommandSource::CDBExact},
+                                cdb.spelling(path_id))
+                        .argv;
                 auto declared = scan_module_decl(rendered,
                                                  cdb.commands().get(group.command).directory,
                                                  observed->content->getBuffer());

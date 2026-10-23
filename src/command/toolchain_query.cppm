@@ -35,4 +35,27 @@ struct QuerySpec {
 /// the query's language.
 kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec);
 
+/// A command as clang's own driver reads it in place of a compiler clice
+/// does not run.
+struct ClangReading {
+    /// The driver command clang's driver is handed.
+    std::vector<std::string> argv;
+
+    /// The job it builds, an error when it builds none.
+    std::expected<Job, std::string> job;
+};
+
+/// `args`, a driver command of `family` (its driver, two tokens for `zig
+/// cc`, then its flags), read as a clang installed under the driver's name
+/// would read it — the name's mode (`g++` compiles C++) and target prefix
+/// (`arm-none-eabi-gcc`, when its architecture is one clang knows), clang's
+/// defaults for the rest — with GCC's own spellings as clang takes them and
+/// without the CPU, tuning and ABI names clang's target does not know. Run
+/// in `cwd`; what it reads otherwise than written, and what the driver
+/// reports, is logged unless `quiet`.
+ClangReading read_as_clang(std::vector<std::string> args,
+                           CompilerFamily family,
+                           llvm::StringRef cwd,
+                           bool quiet = false);
+
 }  // namespace clice

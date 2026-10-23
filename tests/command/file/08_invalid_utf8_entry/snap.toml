@@ -10,7 +10,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   missing-cc -std=c++20 -c b.cpp
-  resolved:  missing-cc -resource-dir ${RESOURCE} -std=c++20 ${WS}/b.cpp
+  resolved:  missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/b.cpp
   error:     the compiler could not be queried: Cannot find driver: missing-cc
 '''
 stderr = '''
@@ -38,6 +38,7 @@ stdout = '''
     "file": "b.cpp",
     "arguments": [
       "missing-cc",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-std=c++20",
@@ -49,6 +50,6 @@ stdout = '''
 stderr = '''
 error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 0 (a.cpp): it holds bytes that are not UTF-8.
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: 1 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 1 of the entries stay driver commands: the errors above say why
 '''
 exit = 1

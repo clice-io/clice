@@ -46,9 +46,21 @@ public:
               std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
     ~Toolchain();
 
+    /// A command resolved for one input language.
+    struct ResolvedCommand {
+        ResolvedID id;
+
+        /// Why the compiler could not be queried, which leaves `id` clang's
+        /// own driver's reading of the command; empty when it answered.
+        std::string query_failure;
+    };
+
     /// Resolve a command for one input language. Blocks on a driver spawn on
-    /// query miss; hits are lookups.
-    std::expected<ResolvedID, std::string> resolve(CommandID id, InputKind input);
+    /// query miss; hits are lookups. A compiler that cannot be queried is
+    /// read as a rule's `query_toolchain = false` reads it, by clang's own
+    /// driver; an error only when that driver cannot read the command
+    /// either.
+    std::expected<ResolvedCommand, std::string> resolve(CommandID id, InputKind input);
 
     const Resolved& resolved(ResolvedID id) const {
         return resolved_configs[id];
@@ -59,17 +71,33 @@ public:
     /// queries complete.
     void warm(llvm::ArrayRef<CommandRef> refs);
 
+    /// A compile argv and how the command came to it.
+    struct RenderedCommand {
+        std::vector<const char*> argv;
+
+        /// ResolvedCommand::query_failure of the resolution `argv` renders.
+        std::string query_failure;
+    };
+
     /// Render the full compile argv for a ref, naming the input `path`:
     /// resolve the command through the toolchain (query cached; may spawn
     /// the driver once per unique toolchain key) and render at cc1 level;
-    /// on query failure degrade to the driver-level render.
-    std::vector<const char*> render(const CommandRef& ref,
-                                    llvm::StringRef path,
-                                    const RenderOptions& opts = {});
+    /// when even clang's own driver cannot read the command, degrade to
+    /// the driver-level render.
+    RenderedCommand render(const CommandRef& ref,
+                           llvm::StringRef path,
+                           const RenderOptions& opts = {});
+
+    /// The driver command clang's own driver reads in place of the compiler
+    /// of `ref` (read_as_clang), naming the input `path`: what `clice
+    /// command` shows of a command whose compiler could not be queried, and
+    /// the compile's last resort when that driver builds no job.
+    std::vector<const char*> render_for_clang(const CommandRef& ref,
+                                              llvm::StringRef path,
+                                              const RenderOptions& opts = {});
 
     /// Header search configuration of a ref, extracted from the resolved
-    /// (cc1) command when the toolchain query succeeds — memoized — else
-    /// from the driver-level command.
+    /// (cc1) command — memoized — else from the driver-level command.
     SearchConfig search_config(const CommandRef& ref);
 
     bool has_cache() const {
@@ -135,6 +163,13 @@ private:
 
     /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& query);
+
+    /// The command read by clang's own driver in place of a compiler that
+    /// could not be queried (`failure` says why), as a rule's
+    /// `query_toolchain = false` reads it.
+    std::expected<ResolvedCommand, std::string> read_unqueried(CommandID id,
+                                                               InputKind input,
+                                                               std::string failure);
 
     /// What the query caches say about a (command, input) key: a live
     /// query, a failure still cooling down, or the query to run. A

@@ -3,13 +3,13 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -DLEVEL=1 -c main.cpp
-  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D LEVEL=1 ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D LEVEL=1 ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -DLEVEL=2 -O2 -c main.cpp
-  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D LEVEL=2 -O2 ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D LEVEL=2 -O2 ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
 stderr = '''
@@ -39,6 +39,7 @@ stdout = '''
         "directory": "${WS}",
         "arguments": [
           "${WS}/missing-cc",
+          "-fno-delayed-template-parsing",
           "-resource-dir",
           "${RESOURCE}",
           "-D",
@@ -66,6 +67,7 @@ stdout = '''
         "directory": "${WS}",
         "arguments": [
           "${WS}/missing-cc",
+          "-fno-delayed-template-parsing",
           "-resource-dir",
           "${RESOURCE}",
           "-D",

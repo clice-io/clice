@@ -1,0 +1,16 @@
+["cross gcc"."$ clice command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -msmall-data-limit=8 -c main.c"]
+stdout = "riscv32-wch-elf-gcc --target=riscv32-wch-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -march=rv32imc_zba -mabi=ilp32 -msmall-data-limit=8 ${WS}/main.c"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: riscv32-wch-elf-gcc
+warning: clang takes no RISC-V extension xw (LLVM has none, or an experimental one): it reads -march=rv32imc_zba_xw without it
+error: The command stays a driver command: Cannot find driver: riscv32-wch-elf-gcc
+'''
+exit = 1
+
+["cross gcc"."$ clice command convert -- aarch64-none-elf-gcc -mcpu=cortex-a72.cortex-a53 -mabi=lp64 -c main.c"]
+stdout = "aarch64-none-elf-gcc --target=aarch64-none-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -mcpu=cortex-a72 ${WS}/main.c"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: aarch64-none-elf-gcc
+error: The command stays a driver command: Cannot find driver: aarch64-none-elf-gcc
+'''
+exit = 1

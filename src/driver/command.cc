@@ -116,7 +116,8 @@ struct EntryCommands {
     CommandLine resolved;
 
     /// Why the compiler could not be queried, which leaves `resolved` the
-    /// driver command clice compiles with instead; absent on success.
+    /// driver command clang's own driver reads in its place; absent on
+    /// success.
     protocol::optional<std::string> toolchain_error;
 };
 
@@ -185,22 +186,28 @@ struct Rendered {
     std::vector<std::string> arguments;
 
     /// Why the compiler could not be queried, which leaves `arguments` the
-    /// driver command clice falls back to.
+    /// driver command clang's own driver reads in its place.
     std::optional<std::string> error;
 };
 
 Rendered render_command(Project& project, const CommandRef& ref) {
-    auto resolved = project.toolchain.resolve(ref.command, ref.input);
     auto path = project.cdb.spelling(ref.file);
-    auto argv =
-        resolved ? project.toolchain.render(ref, path) : project.commands.render_driver(ref, path);
-    Rendered rendered{
-        .arguments = {argv.begin(), argv.end()}
-    };
-    if(!resolved) {
-        rendered.error = std::move(resolved.error());
+    auto resolution = project.toolchain.resolve(ref.command, ref.input);
+    if(resolution && resolution->query_failure.empty()) {
+        // The resolution is cached: rendering resolves it the same.
+        auto argv = project.toolchain.render(ref, path).argv;
+        return {
+            .arguments = {argv.begin(), argv.end()}
+        };
     }
-    return rendered;
+    // Shown as clang's own driver reads it, a command whose compiler could
+    // not be queried reads the same on every machine; its cc1 names the
+    // machine's own headers.
+    auto argv = project.toolchain.render_for_clang(ref, path);
+    return {
+        .arguments = {argv.begin(), argv.end()},
+        .error = resolution ? std::move(resolution->query_failure) : std::move(resolution.error()),
+    };
 }
 
 /// A loaded entry as its database writes it; nullopt when the database
@@ -393,7 +400,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
         driver::println("{}", join_command(rendered.arguments));
     }
     if(rendered.error) {
-        LOG_ERROR("The compiler could not be queried, so the command is clice's own reading of it");
+        LOG_ERROR("The command stays a driver command: {}", *rendered.error);
         return 1;
     }
     return 0;
@@ -448,7 +455,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     // A relative directory is relative to the database's own; written out,
     // the database is read from anywhere.
     auto base = database.parent();
-    std::size_t unresolved = 0;
+    std::size_t unconverted = 0;
     std::vector<codec::RawValue> converted;
     converted.reserve(written->entries.size());
     for(std::uint32_t index = 0; index < written->entries.size(); index += 1) {
@@ -473,7 +480,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         if(ref != refs.end()) {
             auto rendered = render_command(project, ref->second);
             if(rendered.error) {
-                unresolved += 1;
+                unconverted += 1;
             }
             entry.arguments = to_raw(rendered.arguments);
             entry.command = std::nullopt;
@@ -481,11 +488,8 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         converted.push_back(to_raw(entry));
     }
     print_json(converted);
-    if(unresolved != 0) {
-        LOG_ERROR(
-            "{} of the converted entries could not be resolved: the compiler could not be "
-            "queried, so they are clice's own reading of their command",
-            unresolved);
+    if(unconverted != 0) {
+        LOG_ERROR("{} of the entries stay driver commands: the errors above say why", unconverted);
         return 1;
     }
     return 0;

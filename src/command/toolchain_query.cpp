@@ -87,6 +87,59 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
     return found.str().str();
 }
 
+/// The names a cc1 job gives that clang's target does not know, each with
+/// its option (-target-cpu, -tune-cpu, -target-abi), and the job's triple.
+struct UnknownNames {
+    std::string triple;
+
+    std::set<std::pair<unsigned, std::string>> names;
+};
+
+UnknownNames unknown_names(const Job& job) {
+    std::vector<std::string> cc1(job.begin() + 2, job.end());
+    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
+    UnknownNames result;
+    std::vector<kota::option::ParsedArg> given;
+    for(auto& parsed: option::table().parse(cc1, parse_options)) {
+        if(!parsed) {
+            continue;
+        }
+        if(parsed->id == option::OPT_triple) {
+            result.triple = parsed->values[0];
+        } else if(!parsed->values.empty()) {
+            given.push_back(std::move(*parsed));
+        }
+    }
+    TargetNames names(result.triple);
+    for(auto& arg: given) {
+        if(!names.knows(arg.id, arg.values[0])) {
+            result.names.emplace(arg.id, arg.values[0]);
+        }
+    }
+    return result;
+}
+
+/// Whether a driver option names one of `unknown`: the CPU of -mcpu,
+/// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
+/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
+bool names_unknown(const kota::option::ParsedArg& arg,
+                   const std::set<std::pair<unsigned, std::string>>& unknown) {
+    unsigned given = 0;
+    switch(arg.id) {
+        case option::OPT_mcpu_EQ:
+        case option::OPT_march_EQ:
+        case option::OPT_mmcu_EQ: given = option::OPT_target_cpu; break;
+        case option::OPT_mtune_EQ: given = option::OPT_tune_cpu; break;
+        case option::OPT_mabi_EQ: given = option::OPT_target_abi; break;
+        default: return false;
+    }
+    auto name = llvm::StringRef(arg.values[0]).split('+').first;
+    if(name == "native") {
+        name = llvm::sys::getHostCPUName();
+    }
+    return unknown.contains({given, name.str()});
+}
+
 }  // namespace
 
 kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
@@ -122,8 +175,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     std::expected<Job, std::string> job;
     bool cl = cl_mode(spec.family);
     if(!spec.query_toolchain) {
-        job = cl ? ask_clang(args, {"--driver-mode=cl"}, spec.cwd)
-                 : ask_clang_for(std::move(args), driver_tokens, spec.cwd);
+        job = std::move(read_as_clang(std::move(args), spec.family, spec.cwd).job);
     } else if(cl) {
         job = co_await ask_cl(args, spec.family, *input, spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {
@@ -132,6 +184,84 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         job = co_await ask_gcc_style(std::move(args), driver_tokens, spec.cwd);
     }
     co_return job;
+}
+
+ClangReading read_as_clang(std::vector<std::string> args,
+                           CompilerFamily family,
+                           llvm::StringRef cwd,
+                           bool quiet) {
+    if(family == CompilerFamily::Zig) {
+        args.erase(args.begin() + 1);
+    }
+    auto parse_options = kota::option::ParseOptions{.visibility = family_visibility(family)};
+    std::string named;
+    std::vector<std::string> flags(args.begin() + 1, args.end());
+    for(auto& parsed: option::table().parse(flags, parse_options)) {
+        if(parsed && parsed->id == option::OPT_target) {
+            named = parsed->values[0];
+        }
+    }
+
+    std::vector<std::string> mode;
+    if(cl_mode(family)) {
+        mode.push_back("--driver-mode=cl");
+    }
+    // clang reads a target off its program's name in its main alone, never
+    // when its library builds a compilation.
+    auto target = named.empty() ? name_target(args[0]) : named;
+    if(named.empty() && !target.empty()) {
+        if(!quiet) {
+            LOG_INFO("clang reads the command of {} for {}, the target its name sets",
+                     args[0],
+                     target);
+        }
+        mode.push_back("--target=" + target);
+    }
+    if(family == CompilerFamily::GCC) {
+        llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
+        for(auto& arg: llvm::MutableArrayRef<std::string>(args).drop_front()) {
+            arg = for_clang(arg, triple, quiet);
+        }
+    }
+
+    ClangReading reading{.argv = clang_argv(args, mode)};
+    std::vector<std::string> errors;
+    reading.job = query_driver(reading.argv, cwd, &errors);
+    // The options naming what clang's target does not know go, and the
+    // driver reads the command again without them; one a later option
+    // overrode names it only once that one goes (`-mabi=eabi -mabi=o64`).
+    while(reading.job) {
+        auto unknown = unknown_names(*reading.job);
+        flags.assign(reading.argv.begin() + 1, reading.argv.end());
+        std::vector<std::string> argv = {reading.argv[0]};
+        std::size_t next = 0;
+        bool dropped = false;
+        for(auto& parsed: option::table().parse(flags, parse_options)) {
+            if(parsed && names_unknown(*parsed, unknown.names)) {
+                if(!quiet) {
+                    LOG_INFO(
+                        "clang's target {} knows no CPU or ABI {} names: its default stands in",
+                        unknown.triple,
+                        flags[parsed->index]);
+                }
+                argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
+                next = parsed->index + 1;
+                dropped = true;
+            }
+        }
+        if(!dropped) {
+            break;
+        }
+        argv.insert(argv.end(), flags.begin() + next, flags.end());
+        reading.argv = std::move(argv);
+        reading.job = query_driver(reading.argv, cwd, &errors);
+    }
+    if(reading.job && !quiet) {
+        for(auto& error: errors) {
+            LOG_WARN("clang's driver, reading the command of {}: {}", reading.argv[0], error);
+        }
+    }
+    return reading;
 }
 
 }  // namespace clice

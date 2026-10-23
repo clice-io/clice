@@ -1,135 +1,135 @@
 [objects."$ clice command convert -- missing-g++ main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -c main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -o main.o main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -c -o main.o main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 [objects."$ clice command convert -- cl-missing.exe /c /Fomain.cpp.o main.cpp"]
-stdout = "cl-missing.exe -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: cl-missing.exe
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: cl-missing.exe
 '''
 exit = 1
 
 [objects."$ clice command convert -- CL-missing.exe /FIfoo.h /c main.cpp"]
-stdout = "CL-missing.exe -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
+stdout = "CL-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: CL-missing.exe
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: CL-missing.exe
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- missing-g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- missing-clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- cl-missing.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp"]
-stdout = "cl-missing.exe -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: cl-missing.exe
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: cl-missing.exe
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- cl-missing.exe /Ycfoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp"]
-stdout = "cl-missing.exe -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: cl-missing.exe
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: cl-missing.exe
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-gcc -Wp,-MMD,arch/x86/.main.o.d -std=gnu11 main.cpp"]
-stdout = "missing-gcc -resource-dir ${RESOURCE} -std=gnu11 ${WS}/main.cpp"
+stdout = "missing-gcc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu11 ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-gcc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-gcc
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-clang++ -Wp,-MD,main.d -Wp,-MT,main.o,-MP -Wp,-MQmain.o main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-D_FORTIFY_SOURCE=2 main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -Wp,-D_FORTIFY_SOURCE=2 ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-D_FORTIFY_SOURCE=2 ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-MMD,main.d,-DNDEBUG main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -Wp,-MMD,main.d,-DNDEBUG ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-MMD,main.d,-DNDEBUG ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-fclice-unknown main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -Wp,-fclice-unknown ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-fclice-unknown ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-include -Wp,config.h main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -Wp,-include -Wp,config.h ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-include -Wp,config.h ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1

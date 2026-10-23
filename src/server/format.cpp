@@ -44,6 +44,19 @@ static feature::FileDiagnostic make_unmatched_context_diagnostic(llvm::StringRef
     return diagnostic;
 }
 
+/// File-top warning saying the compiler could not be queried, so clang's
+/// own driver read the command: what the compiler sets up itself (system
+/// headers, macros, the default standard) is clang's idea of it.
+static feature::FileDiagnostic make_query_failure_diagnostic(llvm::StringRef failure) {
+    auto diagnostic = feature::file_warning(std::format(
+        "The compiler of this file's compile command could not be queried ({}), so clang read "
+        "the command on its own: system headers, predefined macros and the default standard "
+        "may differ from the compiler's.",
+        failure));
+    diagnostic.code = "toolchain-query-failed";
+    return diagnostic;
+}
+
 std::vector<feature::FileDiagnostic>
     format_diagnostics(const CompileOutput& output, const feature::DiagnosticsOptions& options) {
     // Of the diagnostics moved from other files to one spot, the first
@@ -62,17 +75,25 @@ std::vector<feature::FileDiagnostic>
                      .second);
     });
 
+    auto warn = [&](feature::FileDiagnostic diagnostic) {
+        if(!ranges::contains(options.suppress, diagnostic.code)) {
+            diagnostics.insert(diagnostics.begin(), std::move(diagnostic));
+        }
+    };
+
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
        ranges::any_of(diagnostics, is_file_not_found)) {
-        diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
+        warn(make_inferred_command_diagnostic(output.source));
     }
     if(!output.unmatched_host.empty()) {
-        diagnostics.insert(diagnostics.begin(),
-                           make_unmatched_context_diagnostic(output.unmatched_host));
+        warn(make_unmatched_context_diagnostic(output.unmatched_host));
+    }
+    if(!output.query_failure.empty()) {
+        warn(make_query_failure_diagnostic(output.query_failure));
     }
 
     return diagnostics;

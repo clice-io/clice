@@ -11,6 +11,7 @@ stdout = '''
     "file": "main.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-std=c++20",
@@ -25,6 +26,7 @@ stdout = '''
     "file": "util.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-std=c++20",
@@ -39,7 +41,7 @@ stdout = '''
 stderr = '''
 error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
 error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
-error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 2 of the entries stay driver commands: the errors above say why
 '''
 exit = 1
 
@@ -51,6 +53,7 @@ stdout = '''
     "file": "../main.cpp",
     "arguments": [
       "missing-cc",
+      "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
       "-I",
@@ -64,7 +67,7 @@ stdout = '''
 '''
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: 1 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 1 of the entries stay driver commands: the errors above say why
 '''
 exit = 1
 

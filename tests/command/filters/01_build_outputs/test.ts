@@ -1,12 +1,12 @@
 import { test } from "@clice/tools/testing";
 
 const MISSING = "Toolchain query failed: Cannot find driver";
-const UNQUERIED = "The compiler could not be queried";
+const UNCONVERTED = "The command stays a driver command";
 
 // What the build writes leaves the command: the object file and the
 // compile-only switch. The compilers do not exist, so each command prints
 // as clice reads it.
-test("objects", { errors: [MISSING, UNQUERIED] }, async (t) => {
+test("objects", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-g++ main.cpp");
     await t.cli("command convert -- missing-clang++ -c main.cpp");
     await t.cli("command convert -- missing-clang++ -o main.o main.cpp");
@@ -17,7 +17,7 @@ test("objects", { errors: [MISSING, UNQUERIED] }, async (t) => {
 
 // The precompiled header a CMake target builds or uses leaves; the
 // header it forces in stays.
-test("precompiled headers", { errors: [MISSING, UNQUERIED] }, async (t) => {
+test("precompiled headers", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli(
         "command convert -- missing-g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
     );
@@ -34,7 +34,7 @@ test("precompiled headers", { errors: [MISSING, UNQUERIED] }, async (t) => {
 
 // The dependency file a build asks for leaves, also when Kbuild hands it
 // to the preprocessor through -Wp; what else a -Wp hands over stays.
-test("dependency files", { errors: [MISSING, UNQUERIED] }, async (t) => {
+test("dependency files", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp");
     await t.cli("command convert -- missing-gcc -Wp,-MMD,arch/x86/.main.o.d -std=gnu11 main.cpp");
     await t.cli(

@@ -63,7 +63,7 @@ ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(!vfs::exists(ran));
 
-    ZEXPECT(!f.toolchain.resolve(ref.command, ref.input));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
     ZEXPECT(vfs::exists(ran));
 }
 
@@ -74,6 +74,21 @@ ZEST_CASE(NoJobSaysWhy) {
     auto resolved = f.toolchain.resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
+}
+
+ZEST_CASE(NoJobAfterFailedQuery) {
+    // A compiler that is not here, on a command clang's driver builds no
+    // job for either, names both reasons; with no reading to stand in for
+    // the compiler's, the compile reports clang's error itself.
+    auto argv0 = tmp.path("g++");
+    auto ref = add("a.cpp", {argv0.c_str(), "-x", "bogus"});
+    auto resolved = f.toolchain.resolve(ref.command, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("not found"));
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
+    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    ZEXPECT(rendered.query_failure.empty());
+    ZEXPECT(!contains(rendered.argv, "-cc1"));
 }
 
 ZEST_CASE(UnqueriedTargetFromName) {

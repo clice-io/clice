@@ -66,14 +66,9 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     std::vector<const char*> arguments;
-    arguments.reserve(input.arguments.size() + 1);
+    arguments.reserve(input.arguments.size());
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
-    }
-    // A driver command (what a failed toolchain query falls back to) gets
-    // the flag the query gives every cc1 command, see ask_clang in toolchains/clang.cpp.
-    if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
-        arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }
     LOG_DEBUG("Compile command: {}", print_argv(arguments));
     auto invocation =

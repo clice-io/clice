@@ -113,7 +113,7 @@ test("a broken runtime ahead", { except: EXCEPT }, async (t) => {
 // does not exist, so the run fails after printing the database.
 test(
     "converted",
-    { except: EXCEPT, errors: ["Driver .*missing-cc not found", "could not be resolved"] },
+    { except: EXCEPT, errors: ["Driver .*missing-cc not found", "stay driver commands"] },
     async (t) => {
         t.disk.write("compile_commands.json", database(t.root, path.join(t.root, "missing-cc")));
         await t.cli("command convert compile_commands.json", {

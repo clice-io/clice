@@ -174,7 +174,8 @@ public:
     std::string command_hash_hex(CommandID id);
 
     /// Driver-level render (no toolchain query), naming the input `path`:
-    /// the query-failure degradation path, and the base of display forms.
+    /// the base of the command clang's own driver reads in place of a
+    /// compiler clice does not run (Toolchain::render_for_clang).
     std::vector<const char*> render_driver(const CommandRef& ref,
                                            llvm::StringRef path,
                                            const RenderOptions& opts = {});

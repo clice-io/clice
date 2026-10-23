@@ -3,7 +3,7 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -std=c++20 -Werror -c main.cpp -o main.o
-  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
 stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
@@ -33,6 +33,7 @@ stdout = '''
         "directory": "${WS}",
         "arguments": [
           "${WS}/missing-cc",
+          "-fno-delayed-template-parsing",
           "-resource-dir",
           "${RESOURCE}",
           "-std=c++20",

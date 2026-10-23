@@ -254,7 +254,7 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 | ---------- | ----------------- | ------ |
 | `suppress` | `array of string` | `[]`   |
 
-按诊断代码列出已打开的文件中不显示的诊断：编译器警告的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称（`err_undeclared_var_use`），或 clang-tidy 检查名。适用于 clang 误报的代码：文件的其他功能照常工作，`clice lint` 也仍会报告这些诊断。
+按诊断代码列出已打开的文件中不显示的诊断：编译器警告的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称（`err_undeclared_var_use`）、clang-tidy 检查名，或 clice 自己的警告的代码（`toolchain-query-failed`）。适用于 clang 误报的代码：文件的其他功能照常工作，`clice lint` 也仍会报告这些诊断。
 
 </div>
 

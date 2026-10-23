@@ -32,7 +32,7 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
                    cdb.commands().input_kind(entry.command, path),
                    CommandSource::CDBExact};
     ZEXPECT(toolchain.resolve(ref.command, ref.input));
-    auto argv = toolchain.render(ref, cdb.spelling(ref.file));
+    auto argv = toolchain.render(ref, cdb.spelling(ref.file)).argv;
     return std::vector<std::string>(argv.begin(), argv.end());
 }
 
