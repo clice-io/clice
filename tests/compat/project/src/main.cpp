@@ -8,6 +8,25 @@
 
 #include "util.h"
 
+#if __has_include(<omp.h>)
+#include <omp.h>
+#endif
+#if __has_include(<quadmath.h>)
+#include <quadmath.h>
+#endif
+#if __has_include(<openacc.h>)
+#include <openacc.h>
+#endif
+#if __has_include(<ptrcheck.h>)
+#include <ptrcheck.h>
+#endif
+#if __has_include(<sanitizer/memprof_interface.h>)
+#include <sanitizer/memprof_interface.h>
+#endif
+#if __has_include(<xray/xray_interface.h>)
+#include <xray/xray_interface.h>
+#endif
+
 #ifndef COMPAT_DEFINE
 #error "the build's own define is missing"
 #endif

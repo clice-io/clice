@@ -45,8 +45,8 @@ struct GCCStyleOutput {
     std::vector<GCCSearchDir> search_dirs;
 
     /// The entry of `search_dirs` that is GCC's own private include
-    /// directory (lib/gcc/<target>/<version>/include), whose place clang's
-    /// builtin headers take; none under -nostdinc.
+    /// directory (lib/gcc/<target>/<version>/include), where GCC's builtin
+    /// headers are; none under -nostdinc.
     std::optional<std::size_t> private_dir;
 
     /// The language standard the driver compiles in, as a -std value clang
@@ -79,9 +79,9 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
 /// the input) set up as GCC set itself up: GCC's target, the options GCC's
 /// driver gave its cc1 job that clang's driver knows, and GCC's header
 /// search list in place of clang's own idea of the system headers. clang's
-/// builtin headers take the place of GCC's own: those are GCC's versions of
-/// the same headers, which clang cannot parse, and clang's would reach them
-/// through #include_next (clang's stdatomic.h defers to a later one).
+/// builtin headers go right before GCC's own, which the job shadows: those
+/// are GCC's versions of the same headers, which clang cannot parse, among
+/// headers only GCC has (omp.h, a vendor's intrinsics).
 std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                              llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd);

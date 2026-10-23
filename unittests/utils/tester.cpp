@@ -309,11 +309,11 @@ void Tester::prepare_driver(llvm::StringRef standard) {
                    entry->command,
                    commands.input_kind(entry->command, src_path),
                    CommandSource::CDBExact};
-    auto rendered = toolchain.render(ref, database.spelling(ref.file)).argv;
-    params.input.arguments.assign(rendered.begin(), rendered.end());
+    auto rendered = toolchain.render(ref, database.spelling(ref.file));
+    params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-        llvm::makeIntrusiveRefCnt<vfs::View>());
+        llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 

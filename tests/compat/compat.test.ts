@@ -1,8 +1,8 @@
 /// Real build systems and real toolchains: each scenario builds the
 /// shared project, then clice must parse every unit of the database the
 /// build wrote as cleanly as the compiler did, agree with the compiler on
-/// the macros its flags imply, and resolve each file's command as the
-/// scenario expects.
+/// the macros its flags imply and the headers it finds, and resolve each
+/// file's command as the scenario expects.
 
 import { checkScenario } from "@clice/tools/compat/check";
 import { missingTools } from "@clice/tools/compat/scenario";

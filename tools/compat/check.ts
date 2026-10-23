@@ -1,7 +1,7 @@
 /// One scenario end to end: build the project copy with real tools, then
 /// hold clice to what the build proved — every unit parses clean, the
-/// macros agree with the compiler's, each file's entry reads as written and
-/// its command resolves as the scenario expects.
+/// macros and the headers found agree with the compiler's, each file's
+/// entry reads as written and its command resolves as the scenario expects.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,7 +16,7 @@ import {
     samePath,
     type DatabaseEntry,
 } from "./database.ts";
-import { compilerMacros, writeExpectations } from "./macros.ts";
+import { compilerAnswers, writeExpectations } from "./macros.ts";
 import {
     buildEnv,
     cliceEnv,
@@ -102,7 +102,7 @@ async function commandProblems(
 /// Run `body` on a fresh copy of the project, built in the scenario's
 /// environment and held to what the checks need from the build: an entry
 /// per checked file carrying what `recorded` names, and the compiler's
-/// macro values written beside each source.
+/// answers written beside each source.
 async function withProject(
     scenario: Scenario,
     body: (ws: Workspace, entries: DatabaseEntry[]) => Promise<void>,
@@ -136,7 +136,7 @@ async function withProject(
                     );
                 }
             }
-            writeExpectations(source, await compilerMacros(entry, scratch, env, scenario.posix));
+            writeExpectations(source, await compilerAnswers(entry, scratch, env, scenario.posix));
         }
         if (scenario.config !== undefined) {
             ws.write("clice.toml", scenario.config);

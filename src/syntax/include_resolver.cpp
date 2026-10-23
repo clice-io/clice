@@ -13,6 +13,7 @@ namespace clice {
 ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scope& scope) {
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
+    resolved.hidden = config.hidden;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
         resolved.dirs.push_back({dir.path, &scope.list(dir.path)});
@@ -30,9 +31,13 @@ bool check_in_dir(llvm::StringRef dir_path,
                   const vfs::Listing* listing,
                   llvm::StringRef filename,
                   bool is_simple,
+                  const vfs::HiddenFiles* hidden,
                   vfs::Scope& scope) {
+    auto shown = [&] {
+        return !hidden || !hidden->hides(path::join(dir_path, filename));
+    };
     if(is_simple) {
-        return listing->contains_file(filename);
+        return listing->contains_file(filename) && shown();
     }
 
     // Quick rejection: check if first path component exists in pre-resolved
@@ -54,7 +59,7 @@ bool check_in_dir(llvm::StringRef dir_path,
     llvm::sys::path::append(full, filename);
     auto parent = llvm::sys::path::parent_path(full);
     auto name = llvm::sys::path::filename(full);
-    return scope.list(parent).contains_file(name);
+    return scope.list(parent).contains_file(name) && shown();
 }
 
 }  // namespace
@@ -94,6 +99,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                             config.dirs[i].listing,
                             filename,
                             is_simple,
+                            config.hidden.get(),
                             scope)) {
                 make_candidate(config.dirs[i].path, filename);
                 return ResolveResult{candidate, i};
@@ -104,7 +110,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
 
     // 3. Quoted include: try includer's directory first.
     if(!is_angled && includer_listing) {
-        if(check_in_dir(includer_dir, includer_listing, filename, is_simple, scope)) {
+        if(check_in_dir(includer_dir,
+                        includer_listing,
+                        filename,
+                        is_simple,
+                        config.hidden.get(),
+                        scope)) {
             make_candidate(includer_dir, filename);
             return ResolveResult{.path = candidate};
         }
@@ -115,7 +126,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     // waits on SearchConfig carrying the framework directories.
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
-        if(check_in_dir(config.dirs[i].path, config.dirs[i].listing, filename, is_simple, scope)) {
+        if(check_in_dir(config.dirs[i].path,
+                        config.dirs[i].listing,
+                        filename,
+                        is_simple,
+                        config.hidden.get(),
+                        scope)) {
             make_candidate(config.dirs[i].path, filename);
             return ResolveResult{candidate, i};
         }

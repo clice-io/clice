@@ -6,6 +6,7 @@ module clice:project.command_resolver;
 
 import :command.table;
 import :project.project;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -102,6 +103,9 @@ struct Resolution {
     /// the arguments clang's own reading of the command; empty when it
     /// answered.
     std::string query_failure;
+
+    /// The files on disk every compile under the arguments must not see.
+    vfs::HiddenFiles hidden;
 
     /// The host whose include tree could change this resolution: the
     /// synthesis followed the lexical chain from it, for want of a tree

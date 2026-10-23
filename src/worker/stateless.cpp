@@ -162,7 +162,8 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
         .kind = params.whole_file ? CompilationKind::PrecompiledHeader : CompilationKind::Preamble,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace},
+                  .workspace = params.workspace,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
         .skip_bodies = params.skip_bodies,
         .stop = stop,
@@ -246,7 +247,9 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 
     CompilationParams cp{
         .kind = CompilationKind::ModuleInterface,
-        .input = {.arguments = params.arguments, .directory = params.directory},
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
         .stop = stop,
     };
@@ -378,7 +381,8 @@ static worker::IncludeTreeResult
         .kind = CompilationKind::Preprocess,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace},
+                  .workspace = params.workspace,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .stop = stop,
     });
     if(!unit->completed()) {
@@ -411,7 +415,8 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         .kind = CompilationKind::Whole,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace},
+                  .workspace = params.workspace,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
         .stop = stop,
     };
@@ -502,7 +507,9 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
 
     CompilationParams cp{
         .kind = CompilationKind::Completion,
-        .input = {.arguments = params.arguments, .directory = params.directory},
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
         .skip_bodies = params.config.project.skip_header_bodies,
         .stop = stop,
@@ -533,7 +540,9 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
 
     CompilationParams cp{
         .kind = CompilationKind::Completion,
-        .input = {.arguments = params.arguments, .directory = params.directory},
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
         .skip_bodies = params.config.project.skip_header_bodies,
         .stop = stop,

@@ -377,11 +377,12 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
     for(std::size_t i = 0; i < output.search_dirs.size(); i += 1) {
         auto& dir = output.search_dirs[i];
         if(output.private_dir == i) {
-            job->insert(job->end(), {"-internal-isystem", path::join(resource_dir(), "include")});
-            continue;
+            job->args.insert(job->args.end(),
+                             {"-internal-isystem", path::join(resource_dir(), "include")});
+            job->shadowed.push_back(dir.path);
         }
-        job->insert(job->end(),
-                    {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+        job->args.insert(job->args.end(),
+                         {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
     }
     return job;
 }
@@ -410,15 +411,15 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
     auto standard =
         names_standard(args) || output->standard.empty() ? "" : "-std=" + output->standard;
     if(!output->clang_job.empty()) {
-        auto job = std::move(output->clang_job);
+        Job job{.args = std::move(output->clang_job)};
         // As for cl: an MSVC target's default template deferral leaves
         // deferred bodies without an AST, so it stays only when the command
         // asks for it.
         if(!ranges::contains(args, "-fdelayed-template-parsing")) {
-            std::erase(job, "-fdelayed-template-parsing");
+            std::erase(job.args, "-fdelayed-template-parsing");
         }
         if(!standard.empty()) {
-            job.push_back(std::move(standard));
+            job.args.push_back(std::move(standard));
         }
         co_return job;
     }

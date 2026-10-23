@@ -4,6 +4,8 @@ module;
 
 module clice:command.search_config;
 
+import :vfs.file_system;
+
 namespace clice {
 
 struct Arg;
@@ -36,6 +38,9 @@ struct SearchConfig {
     /// in order and as written: clang looks a relative one up in the
     /// compile's working directory first, then as a quoted include.
     std::vector<std::string> forced_includes;
+
+    /// The files in `dirs` its compiles do not see; null for none.
+    std::shared_ptr<const vfs::HiddenFiles> hidden;
 };
 
 /// Extract header search configuration from a structured command (driver

@@ -7,6 +7,7 @@ module clice:sched.families.pch;
 import :project.project;
 import :sched.blame_budget;
 import :sched.graph;
+import :vfs.file_system;
 import :vfs.file_table;
 import :worker.pool;
 
@@ -42,6 +43,8 @@ public:
         std::string file;
         std::string directory;
         std::vector<std::string> arguments;
+        /// See worker::BuildPCHParams::hidden.
+        vfs::HiddenFiles hidden;
         /// The requesting document's buffer text; the preamble is its
         /// prefix and the build sends the whole buffer.
         std::string content;

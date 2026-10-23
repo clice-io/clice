@@ -39,8 +39,9 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool sk
                     .directory = project.commands.get(unit.command).directory,
                     .whole_file = true,
                     .skip_bodies = skip_bodies};
-    auto argv = project.toolchain.render(unit, project.cdb.spelling(unit.file)).argv;
-    request.arguments.assign(argv.begin(), argv.end());
+    auto rendered = project.toolchain.render(unit, project.cdb.spelling(unit.file));
+    request.arguments.assign(rendered.argv.begin(), rendered.argv.end());
+    request.hidden = std::move(rendered.hidden);
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule(skip_bodies),
                                  project.build.active_configuration(),
@@ -197,6 +198,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.directory = std::move(request.directory);
     bp.workspace = project.config.workspace_root.str();
     bp.arguments = std::move(request.arguments);
+    bp.hidden = std::move(request.hidden);
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
     bp.whole_file = request.whole_file;

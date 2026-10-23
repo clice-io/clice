@@ -24,6 +24,7 @@ import :index.tu_index;
 import :support.json;
 import :support.logging;
 import :support.process;
+import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
 import :worker.gate;
@@ -299,7 +300,8 @@ RequestResult<worker::CompileParams>
                 .kind = CompilationKind::Content,
                 .input = {.arguments = doc->arguments,
                           .directory = doc->directory,
-                          .workspace = params.workspace},
+                          .workspace = params.workspace,
+                          .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
                 .skip_bodies = params.skip_bodies,
                 .preamble_inactive_regions = params.preamble_inactive_regions,

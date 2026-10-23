@@ -220,13 +220,31 @@ std::expected<std::string, std::error_code> temp_file(llvm::StringRef prefix,
 /// held mapping stops anyone from replacing the file.
 void keep_mapped(llvm::StringRef path);
 
+/// The files on disk that the compiles of one command do not see, by the
+/// search directory holding them.
+struct HiddenFiles {
+    struct Dir {
+        /// A Spelling.
+        std::string path;
+
+        /// Relative to `path`, `/`-separated, sorted.
+        std::vector<std::string> names;
+    };
+
+    std::vector<Dir> dirs;
+
+    /// Whether the absolute `path`, however spelled, names one of them.
+    bool hides(llvm::StringRef path) const;
+};
+
 /// The file system one compile sees: the disk, each file served the way
 /// read() serves it — sources as text, `#embed` data, PCH and PCM files
-/// as bytes. Clang sets its working directory, so every compile gets its
-/// own; an overlay wraps a fresh one.
+/// as bytes — less the files its command hides. Clang sets its working
+/// directory, so every compile gets its own; an overlay wraps a fresh one.
 class View : public llvm::vfs::ProxyFileSystem {
 public:
-    View() : ProxyFileSystem(llvm::vfs::createPhysicalFileSystem()) {}
+    explicit View(HiddenFiles hidden = {}) :
+        ProxyFileSystem(llvm::vfs::createPhysicalFileSystem()), hidden(std::move(hidden)) {}
 
     /// The size of the text: clang checks what it reads against it, and a
     /// PCH records it for every input. Status carries no use, so a binary
@@ -245,7 +263,10 @@ public:
 private:
     llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool text);
 
+private:
     StatusBatch statuses;
+
+    HiddenFiles hidden;
 };
 
 }  // namespace vfs

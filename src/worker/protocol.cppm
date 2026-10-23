@@ -16,6 +16,7 @@ import :feature.semantic_tokens;
 import :index.symbol;
 import :syntax.header_context;
 import :syntax.token;
+import :vfs.file_system;
 
 namespace clice::worker {
 
@@ -142,6 +143,8 @@ struct CompileParams {
     /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
@@ -222,6 +225,8 @@ struct BuildPCHParams {
     /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
@@ -262,6 +267,8 @@ struct BuildPCMParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
 
     std::string module_name;
 
@@ -280,6 +287,8 @@ struct TURunParams {
     /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
@@ -321,6 +330,8 @@ struct CompletionParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
@@ -357,6 +368,8 @@ struct SignatureHelpParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
@@ -476,6 +489,8 @@ struct IncludeTreeParams {
     /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
+    /// Files on disk the command hides (Resolution::hidden).
+    vfs::HiddenFiles hidden;
 };
 
 struct IncludeTreeResult {

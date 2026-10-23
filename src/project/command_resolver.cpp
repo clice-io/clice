@@ -327,6 +327,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         if(ref.source != CommandSource::Fallback) {
             resolution.query_failure = std::move(rendered.query_failure);
         }
+        resolution.hidden = std::move(rendered.hidden);
         resolution.ref = ref;
         resolution.source = ref.source;
         log_command_decision(path, tried, ref.source, arguments);

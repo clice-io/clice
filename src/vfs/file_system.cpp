@@ -729,11 +729,31 @@ std::expected<Status, std::error_code> StatusBatch::status(llvm::StringRef path)
     return vfs::status(path);
 }
 
+bool HiddenFiles::hides(llvm::StringRef path) const {
+    if(dirs.empty()) {
+        return false;
+    }
+    auto spelled = Spelling::absolute(path);
+    for(auto& dir: dirs) {
+        llvm::StringRef name = spelled;
+        if(name.consume_front(dir.path) && name.consume_front("/") &&
+           ranges::binary_search(dir.names, name, {}, [](llvm::StringRef hidden) {
+               return hidden;
+           })) {
+            return true;
+        }
+    }
+    return false;
+}
+
 llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     llvm::SmallString<256> absolute;
     path.toVector(absolute);
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
         return error;
+    }
+    if(hidden.hides(absolute)) {
+        return std::make_error_code(std::errc::no_such_file_or_directory);
     }
     auto status = statuses.status(absolute);
     if(!status) {
@@ -760,6 +780,9 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     path.toVector(absolute);
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
         return error;
+    }
+    if(hidden.hides(absolute)) {
+        return std::make_error_code(std::errc::no_such_file_or_directory);
     }
     if(text) {
         auto status = statuses.status(absolute);

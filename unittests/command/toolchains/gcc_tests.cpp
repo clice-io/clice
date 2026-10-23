@@ -7,8 +7,11 @@ module clice;
 import :command.edit;
 import :command.table;
 import :command.toolchains.gcc;
+import :compile.compilation;
+import :syntax.include_resolver;
 import :unittests.utils;
 import :unittests.utils.toolchain_fixture;
+import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -270,7 +273,7 @@ LIBRARY_PATH={4}/)",
         return arg.starts_with("-debug-info-kind");
     }));
 
-    /// GCC's list in GCC's order, clang's builtin headers in place of
+    /// GCC's list in GCC's order, clang's builtin headers right before
     /// GCC's own, and nothing of clang's own idea of the system headers.
     std::vector<std::string> dirs;
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
@@ -280,9 +283,76 @@ LIBRARY_PATH={4}/)",
     }
     std::vector<std::string> expected = {tmp.path("gcc/include/c++"),
                                          path::join(resource_dir(), "include"),
+                                         tmp.path("gcc/13/include"),
                                          tmp.path("sysroot/usr/include")};
     ZEXPECT(dirs == expected);
     ZEXPECT(adjacent(argv, "-internal-iframework", frameworks));
+}
+
+ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
+    /// GCC's private include directory holds headers only GCC has, among
+    /// GCC's versions of clang's builtin headers. A header only GCC has is
+    /// found there; GCC's stdatomic.h is not, and neither is the C
+    /// library's copy behind it, which GCC never reaches; GCC's limits.h
+    /// goes on to the C library's, and so does clang's.
+    tmp.touch("gcc/13/include/vendor_intrinsics.h", "int vendor_intrinsic(void);\n");
+    tmp.touch("gcc/13/include/stdatomic.h", "#error GCC's stdatomic.h\n");
+    tmp.touch("gcc/13/include/limits.h", "#include_next <limits.h>\n");
+    tmp.touch("libc/include/stdatomic.h", "#error the C library's stdatomic.h\n");
+    tmp.touch("libc/include/limits.h", "#define LIBC_LIMITS 1\n");
+    tmp.touch("a.c", R"(#include <vendor_intrinsics.h>
+#include <stdatomic.h>
+#include <limits.h>
+atomic_int counter;
+int load(void) {
+    atomic_store(&counter, 1);
+    return atomic_load(&counter) + vendor_intrinsic() + LIBC_LIMITS;
+}
+)");
+    auto driver = fake_driver("riscv32-elf-gcc",
+                              std::format(R"(cat >&2 <<'OUTPUT'
+Target: riscv32-elf
+ /opt/libexec/gcc/riscv32-elf/13/cc1 -E -quiet -v query.c -march=rv32imac -mabi=ilp32 -dM
+#include <...> search starts here:
+ {0}
+ {1}
+End of search list.
+LIBRARY_PATH={2}/
+OUTPUT
+echo '#define __STDC_VERSION__ 201710L'
+)",
+                                          tmp.path("gcc/13/include"),
+                                          tmp.path("libc/include"),
+                                          tmp.path("gcc/13")));
+    auto ref = add("a.c", {driver.c_str(), "-c"});
+    ZASSERT(f.toolchain.resolve(ref.command, ref.input));
+    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    auto unit = clice::compile({
+        .kind = CompilationKind::Content,
+        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
+                  .directory = tmp.root.str().str(),
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
+    });
+    ZASSERT(unit->completed());
+    ZEXPECT(unit->diagnostics().empty());
+
+    /// clice's own include search agrees with the compile.
+    auto search = f.toolchain.search_config(ref);
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto vendor = resolve_include("vendor_intrinsics.h", true, "", false, {}, search, scope);
+    ZASSERT(vendor);
+    ZEXPECT(vendor->path.str() == tmp.path("gcc/13/include/vendor_intrinsics.h"));
+    auto atomic = resolve_include("stdatomic.h", true, "", false, {}, search, scope);
+    ZASSERT(atomic);
+    ZEXPECT(llvm::sys::fs::equivalent(atomic->path,
+                                      path::join(resource_dir(), "include", "stdatomic.h")));
+    ZEXPECT(!resolve_include("stdatomic.h", true, "", true, atomic->found_dir_idx, search, scope));
+    auto limits = resolve_include("limits.h", true, "", false, {}, search, scope);
+    ZASSERT(limits);
+    auto next = resolve_include("limits.h", true, "", true, limits->found_dir_idx, search, scope);
+    ZASSERT(next);
+    ZEXPECT(next->path.str() == tmp.path("libc/include/limits.h"));
 }
 
 ZEST_CASE(GCCTargetNames, skip = Windows) {

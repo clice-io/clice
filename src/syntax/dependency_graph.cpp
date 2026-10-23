@@ -12,6 +12,7 @@ import :support.timer;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.scan;
+import :vfs.file_system;
 import :vfs.file_table;
 
 namespace clice {
@@ -639,13 +640,13 @@ struct FileScanner {
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
-                    toolchain
-                        .render({path_id, group.command, group.input, CommandSource::CDBExact},
-                                cdb.spelling(path_id))
-                        .argv;
-                auto declared = scan_module_decl(rendered,
-                                                 cdb.commands().get(group.command).directory,
-                                                 observed->content->getBuffer());
+                    toolchain.render({path_id, group.command, group.input, CommandSource::CDBExact},
+                                     cdb.spelling(path_id));
+                auto declared = scan_module_decl(
+                    rendered.argv,
+                    cdb.commands().get(group.command).directory,
+                    observed->content->getBuffer(),
+                    llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
                 return {declared.provided_module().str(), declared.is_internal_partition()};
             }
         }

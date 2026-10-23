@@ -113,7 +113,8 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
        memo->second.epoch == epoch) {
         scan = memo->second;
     } else {
-        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs =
+            llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
         if(auto& synthesized = resolution.synthesized) {
             auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
             for(auto& file: synthesized->files) {
@@ -121,8 +122,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
                                 0,
                                 llvm::MemoryBuffer::getMemBufferCopy(file.content, file.path));
             }
-            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::makeIntrusiveRefCnt<vfs::View>());
+            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
             overlay->pushOverlay(std::move(memory));
             vfs = std::move(overlay);
         }
@@ -255,7 +255,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     worker::BuildPCMParams bp;
     bp.file = file_path;
-    commands.resolve_command(path_id, bp.directory, bp.arguments);
+    bp.hidden = commands.resolve_command(path_id, bp.directory, bp.arguments).hidden;
 
     if(!project.store) {
         LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);

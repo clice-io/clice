@@ -287,7 +287,7 @@ private:
                      llvm::StringRef text,
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
-                     const SynthesizedContext* synthesized,
+                     const Resolution& resolution,
                      const PCMFamily::ModuleDeps& imports,
                      llvm::StringRef base);
 

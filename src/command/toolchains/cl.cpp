@@ -78,10 +78,10 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
         co_return job;
     }
     if(!names_standard && !parsed.standard.empty()) {
-        job->push_back("-std=" + parsed.standard);
+        job->args.push_back("-std=" + parsed.standard);
     }
     if(family == CompilerFamily::MSVC && !names_version && !parsed.version.empty()) {
-        job->push_back("-fms-compatibility-version=" + parsed.version);
+        job->args.push_back("-fms-compatibility-version=" + parsed.version);
     }
     co_return job;
 }

@@ -1,9 +1,9 @@
 /// The macro oracle: what the real compiler defines under a database
-/// entry's own flags, written as a header of `#error` checks that the
-/// entry's source includes when it exists. The real build ran before the
-/// header did, so only clice's parse sees it, and every value clice gets
-/// wrong is reported as a compile error naming the macro and the value the
-/// compiler has.
+/// entry's own flags, and which headers it finds, written as a header of
+/// `#error` checks that the entry's source includes when it exists. The
+/// real build ran before the header did, so only clice's parse sees it,
+/// and every answer clice gets wrong is reported as a compile error naming
+/// the macro or the header and what the compiler has.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -92,6 +92,20 @@ const MSVC_MACROS = [
     "_MSVC_STL_VERSION",
 ];
 
+/// Headers none of clice's own builtin headers is, so clice finds one
+/// exactly where the toolchain has it: in GCC's private include directory
+/// (`omp.h`, `quadmath.h`, `openacc.h`), or in another clang's resource
+/// directory (Apple's `ptrcheck.h`, compiler-rt's). The sources include the
+/// ones the compiler finds, so clice parses them too.
+const HEADERS = [
+    "omp.h",
+    "quadmath.h",
+    "openacc.h",
+    "ptrcheck.h",
+    "sanitizer/memprof_interface.h",
+    "xray/xray_interface.h",
+];
+
 /// What nvcc defines for every pass. `__CUDA_ARCH__` stays out: the
 /// preprocessing run below is nvcc's host pass, clice parses a CUDA source
 /// in the device view.
@@ -104,15 +118,22 @@ const DROPPED = new Set(["-c", "-MD", "-MMD", "-MP"]);
 const DROPPED_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
 const MSVC_DROPPED = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
 
-/// The macro values the entry's compiler has under the entry's flags:
-/// the entry rerun on a probe file of the same extension, preprocessing
-/// only. An undefined macro maps to undefined.
-export async function compilerMacros(
+/// What the entry's compiler answers under the entry's flags.
+export interface CompilerAnswers {
+    /// Each macro's value, undefined for an undefined macro.
+    macros: Map<string, string | undefined>;
+    /// Whether it finds each of HEADERS.
+    headers: Map<string, boolean>;
+}
+
+/// The entry rerun on a probe file of the same extension, preprocessing
+/// only.
+export async function compilerAnswers(
     entry: DatabaseEntry,
     scratch: string,
     env: NodeJS.ProcessEnv,
     posix?: string,
-): Promise<Map<string, string | undefined>> {
+): Promise<CompilerAnswers> {
     const source = entrySource(entry);
     const [driver, ...rest] = entryArguments(entry);
     if (driver === undefined) {
@@ -129,7 +150,14 @@ export async function compilerMacros(
         : path.extname(source) === ".c"
           ? "#include <string.h>\n"
           : "#include <cstdio>\n";
-    fs.writeFileSync(probe, library + macros.map((name) => `"${name}"=${name}\n`).join(""));
+    const headers = HEADERS.map(
+        (header) =>
+            `#if __has_include(<${header}>)\n"<${header}>"=1\n#else\n"<${header}>"=0\n#endif\n`,
+    );
+    fs.writeFileSync(
+        probe,
+        library + macros.map((name) => `"${name}"=${name}\n`).join("") + headers.join(""),
+    );
 
     // A POSIX database names the source as its runtime spells it.
     const written = posix === undefined ? [] : rest.filter((arg) => arg.startsWith("/"));
@@ -169,26 +197,37 @@ export async function compilerMacros(
                 `(${probed.error ?? `exit ${probed.status}`}): ${driver} ${args.join(" ")}\n${probed.stderr}`,
         );
     }
-    const values = new Map<string, string | undefined>();
+    const answers: CompilerAnswers = { macros: new Map(), headers: new Map() };
     for (const line of probed.stdout.split("\n")) {
-        const match = /^"(\w+)"\s*=\s*(.*?)\s*$/.exec(line);
-        if (match?.[1] !== undefined && match[2] !== undefined) {
-            values.set(match[1], match[2] === match[1] ? undefined : match[2]);
+        const macro = /^"(\w+)"\s*=\s*(.*?)\s*$/.exec(line);
+        if (macro?.[1] !== undefined && macro[2] !== undefined) {
+            answers.macros.set(macro[1], macro[2] === macro[1] ? undefined : macro[2]);
+        }
+        const header = /^"<(.+)>"\s*=\s*([01])\s*$/.exec(line);
+        if (header?.[1] !== undefined) {
+            answers.headers.set(header[1], header[2] === "1");
         }
     }
-    for (const name of macros) {
-        if (!values.has(name)) {
+    for (const name of [...macros, ...HEADERS]) {
+        if (!answers.macros.has(name) && !answers.headers.has(name)) {
             throw new Error(`${source}: the probe output lacks ${name}:\n${probed.stdout}`);
         }
     }
-    return values;
+    return answers;
 }
 
 /// Write the expectation header the source includes: `<file>.expect.h`
 /// beside it.
-export function writeExpectations(source: string, values: Map<string, string | undefined>): void {
+export function writeExpectations(source: string, answers: CompilerAnswers): void {
     const lines: string[] = [];
-    for (const [name, value] of values) {
+    for (const [header, found] of answers.headers) {
+        lines.push(
+            `#if ${found ? "!" : ""}__has_include(<${header}>)`,
+            `#error "<${header}>: the compiler ${found ? "finds" : "does not find"} it"`,
+            "#endif",
+        );
+    }
+    for (const [name, value] of answers.macros) {
         if (value === undefined) {
             lines.push(
                 `#ifdef ${name}`,

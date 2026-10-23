@@ -6,6 +6,7 @@ module clice:syntax.include_resolver;
 
 import :command.search_config;
 import :vfs.dir_cache;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -32,6 +33,7 @@ struct ResolvedSearchDir {
 struct ResolvedSearchConfig {
     llvm::SmallVector<ResolvedSearchDir> dirs;
     unsigned angled_start_idx = 0;
+    std::shared_ptr<const vfs::HiddenFiles> hidden;
 };
 
 /// Pre-resolve a SearchConfig against the operation's listings. Call once

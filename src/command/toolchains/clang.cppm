@@ -6,8 +6,17 @@ module clice:command.toolchains.clang;
 
 namespace clice {
 
-/// A cc1 job as a driver runs it: the program, `-cc1`, then its arguments.
-using Job = std::vector<std::string>;
+/// A cc1 job as a driver runs it.
+struct Job {
+    /// The program, `-cc1`, then its arguments.
+    std::vector<std::string> args;
+
+    /// The search directories of `args` that hold another compiler's
+    /// builtin headers, clang's own right before each: GCC's private
+    /// include directory. clang's take the place of theirs (see
+    /// Toolchain::Frontend::hidden).
+    std::vector<std::string> shadowed;
+};
 
 /// The job clang's own driver builds for `args` (a driver, its flags and
 /// the input) when run in `cwd`, the process's own when empty. The errors

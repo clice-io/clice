@@ -233,10 +233,11 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
-                                       const SynthesizedContext* synthesized,
+                                       const Resolution& resolution,
                                        const PCMFamily::ModuleDeps& imports,
                                        llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
+    auto* synthesized = resolution.synthesized.get();
     // The part of the prefix inside braces comes after the preamble, which
     // the header's own directives would otherwise precede. A preamble still
     // being typed ends before its unfinished directive: the finished part
@@ -335,6 +336,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .file = std::string(path),
                       .directory = directory,
                       .arguments = arguments,
+                      .hidden = resolution.hidden,
                       .content = std::string(text),
                       .preamble_bound = bound,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
@@ -841,7 +843,8 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     worker::IncludeTreeParams params;
     params.file = files.resolve(host).str();
     params.workspace = project.config.workspace_root.str();
-    contexts.commands.resolve_command(host, params.directory, params.arguments);
+    params.hidden =
+        contexts.commands.resolve_command(host, params.directory, params.arguments).hidden;
     auto started = std::pair(project.commands_epoch, project.context_epoch);
     // The tree does not depend on the header's buffer: an edit superseding
     // the round must not cancel the run, or typing would restart it.
@@ -997,6 +1000,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         if(synthesized) {
             params.synthesized = synthesized->files;
         }
+        params.hidden = resolution.hidden;
 
         // Whether this round is the self-containment probe: a header
         // deliberately compiled without its includer prefix to see if it
@@ -1053,7 +1057,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                  params.text,
                                  params.directory,
                                  params.arguments,
-                                 synthesized,
+                                 resolution,
                                  *imports,
                                  base_pch.value_or(""));
             switch(plan.decision) {
@@ -1511,13 +1515,8 @@ kota::task<std::optional<std::string>>
         }
     }
 
-    auto plan = plan_pch(path_id,
-                         text,
-                         directory,
-                         arguments,
-                         resolution.synthesized.get(),
-                         imports,
-                         base.value_or(""));
+    auto plan =
+        plan_pch(path_id, text, directory, arguments, resolution, imports, base.value_or(""));
     switch(plan.decision) {
         case PCHPlan::Decision::None:
             if(license()) {

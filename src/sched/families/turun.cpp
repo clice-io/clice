@@ -111,6 +111,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(resolved.synthesized) {
         params.synthesized = resolved.synthesized->files;
     }
+    params.hidden = resolved.hidden;
     // A header compiles here in another context than the editor's, which
     // gives it its includer's.
     params.skipped_diagnostics =

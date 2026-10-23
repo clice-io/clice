@@ -397,6 +397,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(resolution.synthesized) {
         wp.synthesized = resolution.synthesized->files;
     }
+    wp.hidden = std::move(resolution.hidden);
 
     Quarantine::Attempt attempt(*session.quarantine, evidence);
     auto result = co_await deliver(

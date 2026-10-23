@@ -392,6 +392,28 @@ ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
         "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));
 }
 
+ZEST_CASE(OtherBuiltinHeadersStay, skip = Windows) {
+    /// Another clang's builtin headers stay right after ours: a header only
+    /// it has is found there, one ours have as well stays hidden.
+    tmp.touch("clang-22/include/stddef.h");
+    tmp.touch("clang-22/include/xray/xray_interface.h");
+    auto theirs = tmp.path("clang-22/include");
+    auto driver = fake_clang(std::format(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include")",
+        tmp.path("clang-22")));
+    auto ref = add("a.cpp", {driver.c_str()});
+    auto argv = f.resolve(ref);
+    auto builtin_headers = path::join(resource_dir(), "include");
+    auto ours = ranges::find_if(argv, [&](llvm::StringRef arg) { return arg == builtin_headers; });
+    ZASSERT(argv.end() - ours > 2);
+    ZEXPECT(ours[1] == "-internal-isystem"sv);
+    ZEXPECT(ours[2] == theirs);
+
+    auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
+    ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
+    ZEXPECT(!hidden.hides(path::join(theirs, "xray", "xray_interface.h")));
+}
+
 ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
     // A matched LLVM-MinGW installation keeps the resource tree it derives
     // (the query hands it none), also when warmed (the driver gone, only the

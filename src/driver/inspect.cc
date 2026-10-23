@@ -602,12 +602,13 @@ std::string build_pch(Project& project,
         LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
         return {};
     }
-    auto argv = project.toolchain.render(writer, project.cdb.spelling(writer.file)).argv;
+    auto rendered = project.toolchain.render(writer, project.cdb.spelling(writer.file));
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
-        .input = {.arguments = {argv.begin(), argv.end()},
+        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
                   .directory = project.commands.get(writer.command).directory,
-                  .workspace = workspace.str()},
+                  .workspace = workspace.str(),
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = *output,
         .skip_bodies = project.config.project.skip_header_bodies,
     });
@@ -637,6 +638,7 @@ auto project_input(const SourceFile& file, Project& project, CommandResolver& co
     CompilationInput input{.workspace = project.config.workspace_root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolution = commands.resolve_command(path_id, input.directory, input.arguments);
+    input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(resolution.hidden));
     input.add_focus(file.path, file.content);
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);

@@ -100,8 +100,8 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
             LOG_WARN("clang's driver, reading the command of {}: {}", args.front(), message);
         }
     }
-    Job job{arguments[0]};
-    job.insert(job.end(), cmd->getArguments().begin(), cmd->getArguments().end());
+    Job job{.args = {arguments[0]}};
+    job.args.insert(job.args.end(), cmd->getArguments().begin(), cmd->getArguments().end());
     return job;
 }
 

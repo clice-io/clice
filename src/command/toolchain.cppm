@@ -7,6 +7,8 @@ module clice:command.toolchain;
 import :command.argument;
 import :command.search_config;
 import :command.table;
+import :command.toolchains.clang;
+import :vfs.file_system;
 import :vfs.file_table;
 
 namespace clice {
@@ -35,6 +37,9 @@ public:
 
         /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
         llvm::ArrayRef<Arg> args;
+
+        /// The files its compiles do not see (Frontend::hidden).
+        std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
@@ -77,6 +82,9 @@ public:
 
         /// ResolvedCommand::query_failure of the resolution `argv` renders.
         std::string query_failure;
+
+        /// The files the compiles of `argv` do not see.
+        vfs::HiddenFiles hidden;
     };
 
     /// Render the full compile argv for a ref, naming the input `path`:
@@ -152,14 +160,21 @@ private:
         /// The job keeps its own clang resource tree: a matched LLVM-MinGW
         /// installation, whose builtin headers and libc++ belong together.
         bool own_resource_dir = false;
+
+        /// What the job's compiles do not see of the builtin headers of
+        /// another compiler the job keeps behind clang's own (GCC's, another
+        /// clang's): those clang has as well, which clang's stand in for,
+        /// and further down the search list the copies that compiler never
+        /// reaches. Null when the job keeps none.
+        std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
 
     /// The frontend of a query's job (the program, -cc1, its arguments):
     /// what only the query asked for goes (its action, input and outputs),
     /// and so does what clice's frontend cannot take — flags our cc1 does
     /// not know, codegen flags, CPU and ABI names clang's target does not
-    /// know. Another clang's builtin headers become ours.
-    Frontend frontend(llvm::ArrayRef<std::string> job);
+    /// know. Another clang's builtin headers go behind ours.
+    Frontend frontend(const Job& job);
 
     /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& query);
@@ -179,8 +194,7 @@ private:
 
     /// Commits a query's outcome: the job's frontend into the query cache, a
     /// failure into the negative cache with its time.
-    void commit_query(llvm::StringRef key,
-                      const std::expected<std::vector<std::string>, std::string>& job);
+    void commit_query(llvm::StringRef key, const std::expected<Job, std::string>& job);
 
 private:
     CommandTable& commands;

@@ -96,7 +96,7 @@ struct UnknownNames {
 };
 
 UnknownNames unknown_names(const Job& job) {
-    std::vector<std::string> cc1(job.begin() + 2, job.end());
+    std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
     auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
     UnknownNames result;
     std::vector<kota::option::ParsedArg> given;
