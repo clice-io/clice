@@ -566,7 +566,13 @@ class Run {
             args:
                 this.server === "clice"
                     ? ["serve"]
-                    : [`--compile-commands-dir=${opts.cdbDir}`, ...opts.clangdArgs],
+                    : [
+                          `--compile-commands-dir=${opts.cdbDir}`,
+                          // The counterpart of clice's rule overlay: no .clangd
+                          // or user config edits the commands either.
+                          "--enable-config=0",
+                          ...opts.clangdArgs,
+                      ],
             // A relative CDB `directory` anchors at the database for clice but
             // at the process cwd for clangd; running clangd from the CDB
             // directory makes both servers compile under the same command.
@@ -944,14 +950,14 @@ async function runScenario(
     number: number,
 ): Promise<RunResult> {
     const run = new Run(opts, server, scenario, number);
-    if (scenario === "cold_start" || scenario === "index") {
-        wipeCache(opts, server);
-        if (opts.dropCaches) {
-            run.result.dropped = dropFileCache();
-        }
-    }
     // A run that fails is a result too: the session goes on to the others.
     try {
+        if (scenario === "cold_start" || scenario === "index") {
+            wipeCache(opts, server);
+            if (opts.dropCaches) {
+                run.result.dropped = dropFileCache();
+            }
+        }
         switch (scenario) {
             case "cold_start":
                 await runStart(run, false);

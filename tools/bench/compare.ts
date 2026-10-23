@@ -1,8 +1,8 @@
 /// Tables from bench.ts results: for every scenario and measure, the median
 /// and p90 of each server over all runs of all files given, and the ratio
 /// of clice's median to clangd's. Results pool only within one workload on
-/// one machine: another focus file, probe, query, binary or machine gets a
-/// table of its own.
+/// one machine: another focus file, probe, query, clangd argument or machine
+/// gets a table of its own. Each table lists every binary its runs used.
 ///
 /// Usage:
 ///   node tools/bench/compare.ts <results.json>...
@@ -31,14 +31,17 @@ if (files.length === 0) {
 /// Every sample of one measure, per server.
 type Samples = Partial<Record<ServerName, number[]>>;
 
-const groups = new Map<string, { result: BenchResult; runs: RunResult[] }>();
+const groups = new Map<string, { result: BenchResult; runs: RunResult[]; binaries: Set<string> }>();
 for (const file of files) {
     const result = JSON.parse(fs.readFileSync(file, "utf8")) as BenchResult;
-    const { workspace, file: focus, probes, query, binaries, clangdArgs } = result;
+    const { workspace, file: focus, probes, query, clangdArgs } = result;
     const machine = [result.env.platform, result.env.cpuModel, result.env.cpus];
-    const key = JSON.stringify([workspace, focus, probes, query, binaries, clangdArgs, machine]);
-    const group = groups.get(key) ?? { result, runs: [] };
+    const key = JSON.stringify([workspace, focus, probes, query, clangdArgs, machine]);
+    const group = groups.get(key) ?? { result, runs: [], binaries: new Set() };
     group.runs.push(...result.runs);
+    for (const [server, binary] of Object.entries(result.binaries)) {
+        group.binaries.add(`${server} ${binary}`);
+    }
     groups.set(key, group);
 }
 
@@ -70,7 +73,7 @@ function ratio(samples: Samples): string {
         : `${(clice.p50 / clangd.p50).toFixed(2)}×`;
 }
 
-for (const { result, runs } of groups.values()) {
+for (const { result, runs, binaries } of groups.values()) {
     const { env } = result;
     // Results of a Windows run read the same on any machine.
     const paths = env.platform === "win32" ? path.win32 : path.posix;
@@ -79,7 +82,8 @@ for (const { result, runs } of groups.values()) {
     );
     console.log(
         `${env.platform} ${env.arch}, ${env.cpuModel}, ${env.cpus} CPUs, ${env.memoryMB} MB; ` +
-            `probes ${JSON.stringify(result.probes)}, query ${result.query}\n`,
+            `probes ${JSON.stringify(result.probes)}, query ${result.query}; ` +
+            `${[...binaries].join(", ")}\n`,
     );
     const servers = SERVERS.filter((server) => runs.some((run) => run.server === server));
     console.log(
