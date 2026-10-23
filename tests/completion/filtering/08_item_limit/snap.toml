@@ -6,8 +6,30 @@ items = [
     { label = "a_lpha", kind = "Variable", detail = "int" },
 ]
 
+[default.many.completion]
+items = [
+    { label = "cap_a0", kind = "Variable", detail = "int" },
+    { label = "cap_a1", kind = "Variable", detail = "int" },
+    { label = "cap_a2", kind = "Variable", detail = "int" },
+    { label = "cap_a3", kind = "Variable", detail = "int" },
+    { label = "cap_a4", kind = "Variable", detail = "int" },
+    { label = "cap_a5", kind = "Variable", detail = "int" },
+    { label = "cap_a6", kind = "Variable", detail = "int" },
+    { label = "cap_a7", kind = "Variable", detail = "int" },
+    { label = "cap_a8", kind = "Variable", detail = "int" },
+    { label = "cap_a9", kind = "Variable", detail = "int" },
+]
+more = 90
+incomplete = true
+
 [configured.pos.completion]
 items = [
     { label = "alpha_one", kind = "Variable", detail = "int" },
+]
+incomplete = true
+
+[configured.many.completion]
+items = [
+    { label = "cap_a0", kind = "Variable", detail = "int" },
 ]
 incomplete = true

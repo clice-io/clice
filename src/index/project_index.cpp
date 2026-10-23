@@ -597,37 +597,93 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
     });
 }
 
+VersionID ProjectIndex::version_of(std::uint32_t id) const {
+    if(auto it = id_versions.find(id); it != id_versions.end()) {
+        return it->second;
+    }
+    auto key = number_key(id);
+    auto* persisted = read(version_records, key, decode_version);
+    if(!persisted) {
+        damaged_record(BlobKind::Version, key);
+        return {};
+    }
+    auto file = fid_of(persisted->path);
+    if(!file.valid()) {
+        return {};
+    }
+    auto version = files.intern_version(file, persisted->content_hash);
+    id_versions.try_emplace(id, version);
+    version_ids.try_emplace(version, id);
+    return version;
+}
+
+void ProjectIndex::retain_version(VersionID version) {
+    auto& record = files.version(version);
+    auto& versions = change_dependents(record.fid).versions;
+    auto it = ranges::lower_bound(versions, record.content_hash, {}, &NamedVersion::content_hash);
+    if(it == versions.end() || it->content_hash != record.content_hash) {
+        it = versions.insert(it, {.content_hash = record.content_hash, .id = header.next_version});
+        header.next_version += 1;
+        version_records.changed[number_key(it->id)] =
+            PersistedVersion{.path = path_id(record.fid), .content_hash = record.content_hash};
+    }
+    it->manifests += 1;
+    id_versions.try_emplace(it->id, version);
+    version_ids.try_emplace(version, it->id);
+}
+
+void ProjectIndex::release_version(VersionID version) {
+    auto& record = files.version(version);
+    auto& versions = change_dependents(record.fid).versions;
+    auto it = ranges::lower_bound(versions, record.content_hash, {}, &NamedVersion::content_hash);
+    // Only a stored manifest whose dependents record lost the version gets
+    // here.
+    if(it == versions.end() || it->content_hash != record.content_hash) {
+        damaged_record(BlobKind::Dependents, file_key(record.fid));
+        return;
+    }
+    it->manifests -= 1;
+    if(it->manifests == 0) {
+        version_records.changed[number_key(it->id)] = std::nullopt;
+        id_versions.erase(it->id);
+        version_ids.erase(version);
+        versions.erase(it);
+    }
+}
+
 std::optional<TUManifest> ProjectIndex::decode_manifest(llvm::StringRef data) const {
     auto persisted = deserialize_manifest(data);
     if(!persisted) {
         return std::nullopt;
     }
     llvm::SmallVector<VersionID> versions;
-    for(auto& version: persisted->versions) {
-        auto file = fid_of(version.path);
-        if(!file.valid()) {
+    for(auto id: persisted->versions) {
+        auto version = version_of(id);
+        if(!version.valid()) {
             return std::nullopt;
         }
-        versions.push_back(files.intern_version(file, version.content_hash));
+        versions.push_back(version);
     }
     auto& manifest = persisted->manifest;
     for_each_version(manifest, [&](std::uint32_t& id) { id = versions[id].raw; });
     return std::move(manifest);
 }
 
-std::vector<std::byte> ProjectIndex::encode_manifest(const TUManifest& manifest) {
-    std::vector<PersistedVersion> versions;
-    llvm::DenseMap<std::uint32_t, std::uint32_t> local;
-    auto persisted = manifest;
-    for_each_version(persisted, [&](std::uint32_t& id) {
-        auto [it, inserted] = local.try_emplace(id, static_cast<std::uint32_t>(versions.size()));
-        if(inserted) {
-            auto& record = files.version(VersionID{id});
-            versions.push_back({.path = path_id(record.fid), .content_hash = record.content_hash});
-        }
-        id = it->second;
+std::vector<std::byte> ProjectIndex::encode_manifest(const TUManifest& manifest) const {
+    std::vector<std::uint32_t> ids;
+    for_each_version(manifest, [&](std::uint32_t version) {
+        auto it = version_ids.find(VersionID{version});
+        assert(it != version_ids.end() && "an installed manifest's versions are named");
+        ids.push_back(it->second);
     });
-    return serialize_manifest(persisted, versions);
+    ranges::sort(ids);
+    ids.erase(ranges::unique(ids).begin(), ids.end());
+    auto persisted = manifest;
+    for_each_version(persisted, [&](std::uint32_t& version) {
+        auto id = version_ids.find(VersionID{version})->second;
+        version = static_cast<std::uint32_t>(ranges::lower_bound(ids, id) - ids.begin());
+    });
+    return serialize_manifest(persisted, ids);
 }
 
 llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu, TUManifest manifest) {
@@ -842,6 +898,34 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             compact.insert(files.version(use.file).fid);
         }
     }
+    auto versions_of = [&](const std::optional<TUManifest>& of) {
+        llvm::DenseSet<VersionID> versions;
+        if(of) {
+            for_each_version(*of,
+                             [&](std::uint32_t version) { versions.insert(VersionID{version}); });
+        }
+        return versions;
+    };
+    auto old_versions = versions_of(old);
+    auto new_versions = versions_of(manifest);
+    for(auto version: new_versions) {
+        if(!old_versions.contains(version)) {
+            retain_version(version);
+        }
+    }
+    for(auto version: old_versions) {
+        if(!new_versions.contains(version)) {
+            release_version(version);
+        }
+    }
+
+    if(indexed(tu) != manifest.has_value()) {
+        if(manifest) {
+            header.unit_count += 1;
+        } else {
+            header.unit_count -= 1;
+        }
+    }
     change_file(tu).run = manifest ? manifest->built_at : 0;
     changed_manifests[tu] = std::move(manifest);
 
@@ -881,8 +965,9 @@ bool ProjectIndex::has_unsaved_state() const {
            !retired_instantiations.empty() || !changed_manifests.empty() ||
            !symbol_records.changed.empty() || !file_records.changed.empty() ||
            !dependent_records.changed.empty() || !shared_local_records.changed.empty() ||
-           !path_records.changed.empty() || !internals_changed.empty() || !compact.empty() ||
-           header_changed || !search_bytes.empty();
+           !path_records.changed.empty() || !version_records.changed.empty() ||
+           !internals_changed.empty() || !compact.empty() || header_changed ||
+           !search_bytes.empty();
 }
 
 }  // namespace clice::index

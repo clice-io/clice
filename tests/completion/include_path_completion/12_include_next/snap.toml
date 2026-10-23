@@ -1,0 +1,19 @@
+[answers.angled.completion]
+items = [
+    {
+        label = "nextsnap_header.h",
+        kind = "File",
+        insert = "nextsnap_header.h>",
+        replace = "#include_next <⟦nextsnap>⟧",
+    },
+]
+
+[answers.quoted.completion]
+items = [
+    {
+        label = "nextsnap_header.h",
+        kind = "File",
+        insert = 'nextsnap_header.h"',
+        replace = '#include_next "⟦nextsnap"⟧',
+    },
+]

@@ -11,6 +11,7 @@ import :index.format;
 import :index.include_tree;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.search_index;
 import :index.shard;
 import :index.symbol;
 import :semantic.decls;
@@ -439,7 +440,11 @@ public:
             symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
-            symbol.flags = SymbolFlags::Completable;
+            // An include guard is no name to complete, nor is a macro its
+            // header undefines.
+            symbol.flags = def && (def->isUsedForHeaderGuard() || undefined.contains(def))
+                               ? SymbolFlags::None
+                               : SymbolFlags::Completable;
             symbol.token_class = def ? token_class(*def, unit.context().getSourceManager())
                                      : TokenClass{.kind = SemanticTokenKind::Macro};
         }
@@ -1680,6 +1685,15 @@ public:
             }
         }
 
+        auto& sm = unit.context().getSourceManager();
+        for(auto& [fid, directive]: unit.directives()) {
+            for(auto& macro: directive.macros) {
+                if(macro.kind == MacroRef::Kind::Undef &&
+                   sm.getFileID(macro.macro->getDefinitionLoc()) == fid) {
+                    undefined.insert(macro.macro);
+                }
+            }
+        }
         for(auto& [fid, directive]: unit.directives()) {
             for(auto& macro: directive.macros) {
                 switch(macro.kind) {
@@ -2020,6 +2034,24 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
+        if(preamble) {
+            SearchSnapshot names;
+            for(auto hash: table) {
+                auto& symbol = symbols.find(hash)->second;
+                if(has_flag(symbol.flags, SymbolFlags::Completable) &&
+                   symbol.scope == SymbolScope::External) {
+                    names.entries.push_back({
+                        .hash = hash,
+                        .name = symbol.name,
+                        .args = symbol.args,
+                        .parent = symbol.parent,
+                        .kind = symbol.kind,
+                        .flags = symbol.flags,
+                    });
+                }
+            }
+            blob.names = build_search_blob(names);
+        }
 
         ScopedTimer pack_timer;
         auto bytes = encode(blob);
@@ -2071,6 +2103,10 @@ private:
     IncludeTree tree;
 
     SymbolTable symbols;
+
+    /// The macro definitions an `#undef` in their own file ends: including
+    /// that file leaves none of them defined.
+    llvm::DenseSet<const clang::MacroInfo*> undefined;
 
     /// Build-time working state keyed by FileID — clang::FileID means
     /// nothing outside the compilation, so it never leaves the builder;

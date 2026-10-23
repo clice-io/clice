@@ -1,0 +1,5 @@
+["directive names".include.completion]
+items = [
+    { label = "include", kind = "Keyword" },
+    { label = "include_next", kind = "Keyword" },
+]

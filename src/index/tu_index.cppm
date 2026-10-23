@@ -5,6 +5,7 @@ module;
 module clice:index.tu_index;
 
 import :index.instantiation_shard;
+import :index.search_index;
 import :index.shard;
 import :index.symbol;
 
@@ -173,6 +174,10 @@ public:
     /// the TU index.
     llvm::StringRef preamble_diagnostics() const;
 
+    /// The preamble's completable names (TUIndexBlob::names), searchable;
+    /// empty for an ordinary TU index.
+    const SearchIndex& names() const;
+
 private:
     /// The section holding `path_id`'s entries, or nullopt when the file had
     /// none (no entries means no contribution). Sections ascend by path id.
@@ -190,6 +195,8 @@ private:
     mutable std::vector<Shard> shards;
 
     mutable std::vector<InstantiationShard> instantiation_shards;
+
+    mutable std::optional<SearchIndex> name_index;
 };
 
 }  // namespace clice::index

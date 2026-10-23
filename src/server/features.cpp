@@ -696,6 +696,13 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     }
 
     if(offset) {
+        if(completing.kind == CompletionName::Kind::Directive) {
+            co_return to_raw(feature::directive_completion(completing,
+                                                           map,
+                                                           dialect,
+                                                           project.config.code_completion,
+                                                           client));
+        }
         if(completing.kind == CompletionName::Kind::IncludeQuoted ||
            completing.kind == CompletionName::Kind::IncludeAngled) {
             std::string directory;
@@ -727,7 +734,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     std::vector<feature::ScopeCandidate> candidates;
     bool exhausted = true;
     if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
-       prefix && project.config.code_completion.all_scopes) {
+       prefix && project.config.code_completion.all_scopes && completing.directive.empty()) {
         exhausted =
             feature::scope_candidates(query, project.dep_graph, *prefix, path_id, candidates);
     }
@@ -761,6 +768,21 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              std::string selected,
                                              kota::cancellation_token token) {
+    // A directive's name, a header name and the arguments the preprocessor
+    // does not expand hold no call: `#include <` and `#define MAX(a, ` ask
+    // for none, `#if CHECK(1, ` and `#include PICK(1, ` do.
+    if(auto offset = session->positions().offset(position, PositionEncoding::UTF16)) {
+        using enum CompletionName::Kind;
+        auto completing =
+            completion_name(session->text(), *offset, contexts.dialect(session->path_id));
+        constexpr std::array<llvm::StringRef, 8> unexpanded =
+            {"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef", "error", "warning"};
+        if(completing.kind == Directive || completing.kind == IncludeQuoted ||
+           completing.kind == IncludeAngled ||
+           ranges::contains(unexpanded, llvm::StringRef(completing.directive))) {
+            return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
+        }
+    }
     ast.escalate(*session);
     return kota::co_invoke([this,
                             ticket = Ticket::take(std::move(session)),

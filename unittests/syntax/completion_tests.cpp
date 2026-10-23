@@ -160,8 +160,12 @@ ZEST_CASE(IncludeEmpty) {
 }
 
 ZEST_CASE(CursorInsideKeyword) {
-    // A keyword is only "typed" once the cursor passed its end.
-    ZEXPECT(completion_name("#include", 5).kind == CompletionName::Kind::None);
+    // A keyword is only "typed" once the cursor passed its end; inside a
+    // directive's name, the name is.
+    auto directive = completion_name("#include", 5);
+    ZEXPECT(directive.kind == CompletionName::Kind::Directive);
+    ZEXPECT(directive.prefix == "incl");
+    ZEXPECT(directive.replace == LocalSourceRange(1, 8));
     ZEXPECT(completion_name("import", 3).kind == CompletionName::Kind::None);
 }
 
@@ -236,7 +240,36 @@ ZEST_CASE(NotImportKeyword) {
 
 ZEST_CASE(HashOnly) {
     auto ctx = completion_name("#", 1);
+    ZEXPECT(ctx.kind == CompletionName::Kind::Directive);
+    ZEXPECT(ctx.prefix.empty());
+    ZEXPECT(ctx.replace == LocalSourceRange(1, 1));
+}
+
+ZEST_CASE(DirectiveInConditional) {
+    using enum CompletionName::Conditional;
+    ZEXPECT(completion_name("#ifndef G\n#el", 13).conditional == Open);
+    ZEXPECT(completion_name("#if A\n#endif\n#el", 16).conditional == None);
+    ZEXPECT(completion_name("#if A\n#else\n#e", 14).conditional == Else);
+    ZEXPECT(completion_name("#if A\n#else\n#if B\n#e", 20).conditional == Open);
+}
+
+ZEST_CASE(DirectiveArgument) {
+    auto ctx = completion_name("#ifdef FO", 9);
     ZEXPECT(ctx.kind == CompletionName::Kind::None);
+    ZEXPECT(ctx.directive == "ifdef");
+    ZEXPECT(completion_name("#include <ve", 12).directive == "include");
+    ZEXPECT(completion_name("#include_next <ve", 17).kind == CompletionName::Kind::IncludeAngled);
+}
+
+ZEST_CASE(CommentAfterHash) {
+    ZEXPECT(completion_name("# // see fo", 11).kind == CompletionName::Kind::None);
+}
+
+ZEST_CASE(DirectiveAfterSpaces) {
+    auto ctx = completion_name("#  if", 5);
+    ZEXPECT(ctx.kind == CompletionName::Kind::Directive);
+    ZEXPECT(ctx.prefix == "if");
+    ZEXPECT(completion_name("#if ", 4).kind == CompletionName::Kind::None);
 }
 
 ZEST_CASE(ImportDottedPrefix) {

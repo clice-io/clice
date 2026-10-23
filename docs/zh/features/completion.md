@@ -437,6 +437,26 @@ tests/completion/overrides/01_override_declaration
 
 <!-- END GENERATED ITEMS -->
 
+## 预处理指令
+
+在行首的 `#` 之后会补全预处理指令，在 `#ifdef` 之后会补全它上方已定义的宏。
+
+<!-- BEGIN GENERATED ITEMS: completion/directives -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**指令名**
+
+在 `#` 之后会补全预处理指令，其中 `#elif`、`#else` 和 `#endif` 只在条件编译块内提供；启用 `statement_snippets` 后，每种写法都带有其参数的占位符
+
+```case
+tests/completion/directives/01_directive_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 包含路径
 
 在 `#include` 之后会补全头文件名：引号形式先搜索包含方文件自身所在的目录，再搜索包含目录，系统目录排在最后。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
@@ -501,6 +521,18 @@ tests/completion/include_path_completion/04_sibling_headers
 
 ```case
 tests/completion/include_path_completion/09_header_order
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**库内部名称排在最后**
+
+库的保留名称（`__algorithm/`、`_mingw.h`）排在同一搜索组的其他名称之后，隐藏名称（`.git/`）排在所有其他名称之后
+
+```case
+tests/completion/include_path_completion/11_reserved_names
 ```
 
 <!-- END CAPABILITY -->

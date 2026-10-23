@@ -1,0 +1,7 @@
+[answers.local.completion]
+items = [
+    { label = "pick", kind = "Variable", detail = "int", insert = "pick" },
+]
+
+[answers.undefined.completion]
+items = []

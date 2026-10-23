@@ -1,0 +1,9 @@
+[answers.angled.completion]
+items = [
+    { label = "own.h", kind = "File", insert = "own.h>", replace = "#include <rsvlast/⟦>⟧" },
+    { label = "_own.h", kind = "File", insert = "_own.h>", replace = "#include <rsvlast/⟦>⟧" },
+    { label = "vector.h", kind = "File", insert = "vector.h>", replace = "#include <rsvlast/⟦>⟧" },
+    { label = "__detail/", kind = "Folder", insert = "__detail", replace = "#include <rsvlast/⟦⟧>" },
+    { label = "_config.h", kind = "File", insert = "_config.h>", replace = "#include <rsvlast/⟦>⟧" },
+    { label = ".build/", kind = "Folder", insert = ".build", replace = "#include <rsvlast/⟦⟧>" },
+]

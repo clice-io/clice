@@ -152,13 +152,30 @@ CompletionName completion_name(llvm::StringRef text,
     // cursor applies as a logical bound: a keyword must end at or before it
     // to count as typed.
     llvm::SmallVector<Token, 16> tokens;
+    // The conditional blocks the lines before it leave open, innermost
+    // last: whether each has taken its `#else`.
+    llvm::SmallVector<bool, 8> open;
     {
         Lexer lexer(text, dialect);
+        auto track = [&] {
+            if(tokens.size() < 2 || !tokens[0].is_directive_hash() || !tokens[1].is_identifier()) {
+                return;
+            }
+            auto name = tokens[1].text(text);
+            if(name == "if" || name == "ifdef" || name == "ifndef") {
+                open.push_back(false);
+            } else if(name == "else" && !open.empty()) {
+                open.back() = true;
+            } else if(name == "endif" && !open.empty()) {
+                open.pop_back();
+            }
+        };
         for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
             if(token.is_at_start_of_line) {
                 if(token.range.begin > offset) {
                     break;
                 }
+                track();
                 tokens.clear();
             }
             tokens.push_back(token);
@@ -214,33 +231,57 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
-        if(tokens.size() < 2 || !tokens[1].is_identifier() || !before_cursor(tokens[1])) {
+        using enum CompletionName::Conditional;
+        auto conditional = open.empty() ? None : open.back() ? Else : Open;
+        if((tokens.size() < 2 || tokens[1].is_eod()) &&
+           ranges::all_of(text.slice(first.range.end, offset), clang::isHorizontalWhitespace)) {
+            return {
+                .kind = CompletionName::Kind::Directive,
+                .replace = {offset, offset},
+                .conditional = conditional,
+            };
+        }
+        if(tokens[1].is_identifier() && tokens[1].range.begin <= offset &&
+           offset <= tokens[1].range.end) {
+            return {
+                .kind = CompletionName::Kind::Directive,
+                .prefix = text.slice(tokens[1].range.begin, offset).str(),
+                .replace = tokens[1].range,
+                .conditional = conditional,
+            };
+        }
+        if(!tokens[1].is_identifier() || !before_cursor(tokens[1])) {
             return {};
         }
         auto& keyword = tokens[1];
-        if(keyword.text(text) == "include") {
-            return header_name(keyword.range.end, /*parenthesized=*/false);
-        }
-        // In a condition, a `__has_include(` whose header name the cursor
-        // is in: the lexer reads a whole one as a single token.
-        if(keyword.text(text) != "if" && keyword.text(text) != "elif") {
-            return {};
-        }
-        std::optional<std::uint32_t> header_begin;
-        bool after_has_include = false;
-        for(auto& token: after(1)) {
-            if(token.is_eod() || !before_cursor(token)) {
-                break;
+        auto name = keyword.text(text);
+        CompletionName result;
+        if(name == "include" || name == "include_next") {
+            result = header_name(keyword.range.end, /*parenthesized=*/false);
+        } else if(name == "if" || name == "elif") {
+            // In a condition, a `__has_include(` whose header name the cursor
+            // is in: the lexer reads a whole one as a single token.
+            std::optional<std::uint32_t> header_begin;
+            bool after_has_include = false;
+            for(auto& token: after(1)) {
+                if(token.is_eod() || !before_cursor(token)) {
+                    break;
+                }
+                if(after_has_include && token.kind == clang::tok::l_paren) {
+                    header_begin = token.range.end;
+                } else if(token.is_header_name()) {
+                    header_begin.reset();
+                }
+                after_has_include =
+                    token.is_identifier() && (token.text(text) == "__has_include" ||
+                                              token.text(text) == "__has_include_next");
             }
-            if(after_has_include && token.kind == clang::tok::l_paren) {
-                header_begin = token.range.end;
-            } else if(token.is_header_name()) {
-                header_begin.reset();
+            if(header_begin) {
+                result = header_name(*header_begin, /*parenthesized=*/true);
             }
-            after_has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
-                                                          token.text(text) == "__has_include_next");
         }
-        return header_begin ? header_name(*header_begin, /*parenthesized=*/true) : CompletionName{};
+        result.directive = name.str();
+        return result;
     }
 
     // `[export] import` opening a logical line always means an import
@@ -357,37 +398,42 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
     std::vector<IncludeCandidate> results;
     llvm::StringSet<> seen;
 
-    auto collect = [&](llvm::StringRef search_dir, bool system, std::uint32_t order) {
-        llvm::SmallString<256> dir(search_dir);
-        if(!dir_prefix.empty()) {
-            llvm::sys::path::append(dir, dir_prefix);
-        }
-        for(auto& entry: scope.list(dir).entries) {
-            auto name = entry.getKey();
-            if(!name.starts_with(file_prefix) || seen.contains(name)) {
-                continue;
+    auto collect =
+        [&](llvm::StringRef search_dir, bool system, std::uint32_t tier, std::uint32_t position) {
+            llvm::SmallString<256> dir(search_dir);
+            if(!dir_prefix.empty()) {
+                llvm::sys::path::append(dir, dir_prefix);
             }
+            for(auto& entry: scope.list(dir).entries) {
+                auto name = entry.getKey();
+                if(!name.starts_with(file_prefix) || seen.contains(name)) {
+                    continue;
+                }
 
-            bool is_dir = entry.getValue();
-            if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
-                continue;
+                bool is_dir = entry.getValue();
+                if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
+                    continue;
+                }
+
+                seen.insert(name);
+                std::uint32_t hidden = name.starts_with(".");
+                std::uint32_t reserved = name.starts_with("_");
+                results.push_back({name.str(),
+                                   is_dir,
+                                   (hidden << 20) | (tier << 17) | (reserved << 16) | position});
             }
-
-            seen.insert(name);
-            results.push_back({name.str(), is_dir, order});
-        }
-    };
+        };
 
     // A quoted include looks next to the file that contains it first.
     if(!angled) {
-        collect(includer_dir, false, 0);
+        collect(includer_dir, false, 0, 0);
     }
     for(unsigned i = angled ? config.angled_start_idx : 0; i < config.dirs.size(); i += 1) {
         std::uint32_t tier = i < config.angled_start_idx   ? 1
                              : i < config.system_start_idx ? 2
                              : config.dirs[i].driver       ? 4
                                                            : 3;
-        collect(config.dirs[i].path, i >= config.system_start_idx, (tier << 16) | (i + 1));
+        collect(config.dirs[i].path, i >= config.system_start_idx, tier, i + 1);
     }
 
     return results;

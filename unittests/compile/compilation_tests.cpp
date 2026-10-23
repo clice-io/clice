@@ -234,6 +234,24 @@ ZEST_CASE(CompletionOffsetsInText) {
     ZEXPECT(file.offset(file.location(point)) == point);
 }
 
+ZEST_CASE(CompletionSkipsOtherBodies) {
+    // A completion parses the one body it completes in: the others are
+    // skipped, the error in one of them unseen.
+    llvm::StringRef text = "int other() { return missing; }\nint sum() { return 1 + oth; }\n";
+    add_focus("main.cpp", text);
+    prepare();
+    params.input.add_focus(TestVFS::path("main.cpp"), text);
+    params.kind = CompilationKind::Completion;
+    params.completion = {
+        .offset = static_cast<std::uint32_t>(text.find("oth;") + 3),
+        .consumer = [](CompilationUnit&) { return std::make_unique<IgnoreCompletions>(); },
+    };
+    ZASSERT(try_compile());
+    ZEXPECT(ranges::none_of(unit->diagnostics(), [](const auto& diagnostic) {
+        return llvm::StringRef(diagnostic.message).contains("missing");
+    }));
+}
+
 ZEST_CASE(SuffixNeedsFocus) {
     // A compile not served the focus file's text — a preamble's build, a
     // compile of the file on disk — takes no suffix.

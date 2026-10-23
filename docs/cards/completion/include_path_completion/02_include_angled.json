@@ -43,8 +43,8 @@
               "items": [
                 {
                   "label": "snap_dir/",
-                  "kind": "File",
-                  "insert": "snap_dir/",
+                  "kind": "Folder",
+                  "insert": "snap_dir",
                   "replace": {
                     "$place": "#include <⟦snap⟧>",
                     "path": "main.cpp",

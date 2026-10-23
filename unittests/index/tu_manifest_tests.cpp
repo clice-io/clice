@@ -7,18 +7,22 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
+import :support.bitmap;
 import :support.bytes;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
-/// A version table of `count` entries, path id and hash apart per entry.
+/// A version table of the ids below `count`, and no failed lookups or
+/// imports.
 void give_versions(index::TUManifestBlob& layout, std::uint32_t count) {
-    for(std::uint32_t i = 0; i < count; i += 1) {
-        layout.version_paths.push_back(i);
-        layout.version_hashes.push_back(100 + i);
-    }
+    Bitmap ids;
+    ids.addRange(0, count);
+    layout.version_bound = count;
+    layout.versions = index::write_postings(ids, count);
+    layout.absent = index::write_postings({}, count);
+    layout.imports = index::write_postings({}, count);
 }
 
 ZEST_SUITE(TUManifest) {
@@ -57,12 +61,7 @@ ZEST_CASE(ManifestRoundTrip) {
         {.symbol = 5, .files = {VersionID{0}, VersionID{2}}},
         {.symbol = 9, .files = {VersionID{2}, VersionID{1}}},
     };
-    // Versions 4 and 5 are two versions of one path, read through modules
-    // built at different times.
-    std::vector<index::PersistedVersion> versions;
-    for(std::uint32_t i = 0; i < 9; i += 1) {
-        versions.push_back({.path = i == 5 ? 4 : i, .content_hash = 100 + i});
-    }
+    std::vector<std::uint32_t> versions = {3, 10, 11, 200, 201, 202, 300, 301, 70000};
 
     auto buf = index::serialize_manifest(manifest, versions);
 
@@ -74,6 +73,32 @@ ZEST_CASE(ManifestRoundTrip) {
     // A version past the table is no manifest.
     versions.pop_back();
     ZASSERT(!index::deserialize_manifest(as_chars(index::serialize_manifest(manifest, versions))));
+}
+
+ZEST_CASE(ManifestVersionSetsRejected) {
+    index::TUManifestBlob valid;
+    valid.format_version = index::index_format_version;
+    give_versions(valid, 3);
+    valid.absent = index::write_postings(Bitmap({2}), 3);
+    auto decodes = [&](const index::TUManifestBlob& layout) {
+        return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
+    };
+    ZASSERT(decodes(valid));
+
+    // The bound is one past the last id.
+    auto layout = valid;
+    layout.version_bound = 4;
+    layout.versions = index::write_postings(Bitmap({0, 1, 2}), 4);
+    ZEXPECT(!decodes(layout));
+
+    // A set of versions past the table.
+    layout = valid;
+    layout.imports = index::write_postings(Bitmap({3}), 3);
+    ZEXPECT(!decodes(layout));
+
+    layout = valid;
+    layout.absent = {};
+    ZEXPECT(!decodes(layout));
 }
 
 ZEST_CASE(ManifestJunkRejected) {
@@ -172,6 +197,7 @@ ZEST_CASE(ManifestVarintOverflowRejected) {
     index::TUManifestBlob layout;
     layout.format_version = index::index_format_version;
     layout.node_count = 1;
+    give_versions(layout, 1);
     layout.nodes = {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00, 0x00};
 
     ZASSERT(!index::deserialize_manifest(as_chars(index::encode(layout))).has_value());

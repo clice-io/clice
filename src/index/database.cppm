@@ -52,6 +52,9 @@ enum class BlobKind : std::uint8_t {
     Header,
     /// Path id (a number_key) -> the file's name, the raw bytes.
     Path,
+    /// Version id (a number_key) -> the file version manifests name by it
+    /// (PersistedVersion).
+    Version,
     /// Per-file records (FileBlob): what the start-up scan reads.
     File,
     /// Per-file records (DependentsBlob): the units depending on the file.

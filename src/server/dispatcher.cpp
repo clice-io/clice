@@ -365,6 +365,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ASTFamily::StatelessInputs inputs;
     if(!co_await ast.prepare_stateless_inputs(ticket,
                                               wp.text,
+                                              wp.offset,
                                               wp.directory,
                                               wp.arguments,
                                               resolution,

@@ -151,9 +151,9 @@ enum class SymbolFlags : std::uint16_t {
     /// The canonical declaration sits in a system header.
     SystemHeader = 1 << 7,
     /// Offered by unqualified code completion from the index: declared at
-    /// namespace scope, or an enumerator of an unscoped enum there or in a
-    /// class. Members are completed after `.` by Sema and specializations
-    /// share their template's name.
+    /// namespace scope, an enumerator of an unscoped enum there or in a
+    /// class, or a macro other than an include guard. Members are completed
+    /// after `.` by Sema and specializations share their template's name.
     Completable = 1 << 8,
     /// Three bits holding the NameForm.
     FormMask = 7 << 9,

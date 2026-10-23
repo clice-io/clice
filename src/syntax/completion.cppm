@@ -13,11 +13,13 @@ import :vfs.file_table;
 
 namespace clice {
 
-/// The name the cursor is completing, where the text tells: a header name,
-/// or the name of an import or a module declaration.
+/// The name the cursor is completing, where the text tells: a directive's
+/// name, a header name, or the name of an import or a module declaration.
 struct CompletionName {
     enum class Kind : std::uint8_t {
         None,
+        /// The name of a directive, after its `#`.
+        Directive,
         IncludeQuoted,
         IncludeAngled,
         Import,
@@ -35,11 +37,27 @@ struct CompletionName {
     /// The name ends in its delimiter already: a header name's `>` or `"`,
     /// an import's or a module declaration's semicolon.
     bool closed = false;
+
+    /// On a directive's line past its name, the name: `include` in
+    /// `#include <vec`, `ifdef` in `#ifdef FO`. Empty off a directive, and
+    /// while the name itself is typed (Kind::Directive).
+    std::string directive;
+
+    /// For Kind::Directive: the conditional block open around the line.
+    enum class Conditional : std::uint8_t {
+        None,
+        /// `#elif`, `#else` and `#endif` continue it.
+        Open,
+        /// It has taken its `#else`: only `#endif` continues it.
+        Else,
+    };
+
+    Conditional conditional = Conditional::None;
 };
 
-/// The name the cursor at `offset` is in: the header name of an #include
-/// or a `__has_include`, or the name of an import or a module declaration.
-/// Pure text parsing — no compiler state needed.
+/// The name the cursor at `offset` is in: a directive's name, the header
+/// name of an #include or a `__has_include`, or the name of an import or a
+/// module declaration. Pure text parsing — no compiler state needed.
 CompletionName completion_name(llvm::StringRef text,
                                std::uint32_t offset,
                                const clang::LangOptions& dialect);
@@ -91,7 +109,10 @@ struct IncludeCandidate {
 
     /// Where the search found it, ascending: the includer's directory, the
     /// quoted then the angled search directories, the system ones the
-    /// command names, last the toolchain's own; in search order within each.
+    /// command names, last the toolchain's own; in search order within each,
+    /// after the others of its group when the name is reserved (`_`-led: a
+    /// library's internals, libc++'s `__algorithm/`, MinGW's `_mingw.h`).
+    /// A hidden name (`.git/`) follows all the others.
     std::uint32_t order = 0;
 };
 

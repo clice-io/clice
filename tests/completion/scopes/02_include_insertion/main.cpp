@@ -16,6 +16,7 @@ double draw() {
     int count = circle_cou§(class_member);
     vecto§(standard_name) values;
     double scale = GEO_SC§(macro);
+    int most = SIZES_§(macro_not_included);
     repai§(deprecated);
     return geo::area(c.radius) * scale;
 }

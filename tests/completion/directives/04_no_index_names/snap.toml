@@ -1,0 +1,18 @@
+[answers.directive.completion]
+items = []
+
+[answers.code.completion]
+items = [
+    { label = "far::dir_a0", kind = "Variable" },
+    { label = "far::dir_a1", kind = "Variable" },
+    { label = "far::dir_a2", kind = "Variable" },
+    { label = "far::dir_a3", kind = "Variable" },
+    { label = "far::dir_a4", kind = "Variable" },
+    { label = "far::dir_a5", kind = "Variable" },
+    { label = "far::dir_a6", kind = "Variable" },
+    { label = "far::dir_a7", kind = "Variable" },
+    { label = "far::dir_a8", kind = "Variable" },
+    { label = "far::dir_a9", kind = "Variable" },
+]
+more = 90
+incomplete = true

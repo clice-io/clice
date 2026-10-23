@@ -514,11 +514,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
         .skip_bodies = params.config.project.skip_header_bodies,
         .stop = stop,
     };
-    // Clang does not read again the part of the file the PCH stands in for:
-    // a point there is completed without it.
-    use_artifacts(cp.input,
-                  params.offset <= params.pch.second ? decltype(params.pch){} : params.pch,
-                  params.pcms);
+    use_artifacts(cp.input, params.pch, params.pcms);
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
 

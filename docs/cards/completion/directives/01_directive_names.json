@@ -1,0 +1,349 @@
+{
+  "id": "completion/directives/01_directive_names",
+  "topic": "completion",
+  "subtopic": "directives",
+  "title": "Directive names",
+  "summary": "After a `#`, the directives complete, and `#elif`, `#else` and `#endif` only inside a conditional block; with `statement_snippets`, each form with placeholders for its arguments",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#\n#in\n#ifndef DIRECTIVE_NAMES\n#el\n#endif\n#ifdef DIRECTIVE_NAMES\n#else\n#e\n#endif\n",
+      "markers": [
+        {
+          "name": "empty",
+          "begin": 1,
+          "end": 1,
+          "range": false
+        },
+        {
+          "name": "include",
+          "begin": 5,
+          "end": 5,
+          "range": false
+        },
+        {
+          "name": "conditional",
+          "begin": 33,
+          "end": 33,
+          "range": false
+        },
+        {
+          "name": "after_else",
+          "begin": 72,
+          "end": 72,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "empty",
+          "marker": "empty",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "define",
+                  "kind": "Keyword",
+                  "insert": "define"
+                },
+                {
+                  "label": "error",
+                  "kind": "Keyword",
+                  "insert": "error"
+                },
+                {
+                  "label": "if",
+                  "kind": "Keyword",
+                  "insert": "if"
+                },
+                {
+                  "label": "ifdef",
+                  "kind": "Keyword",
+                  "insert": "ifdef"
+                },
+                {
+                  "label": "ifndef",
+                  "kind": "Keyword",
+                  "insert": "ifndef"
+                },
+                {
+                  "label": "include",
+                  "kind": "Keyword",
+                  "insert": "include"
+                },
+                {
+                  "label": "include_next",
+                  "kind": "Keyword",
+                  "insert": "include_next"
+                },
+                {
+                  "label": "line",
+                  "kind": "Keyword",
+                  "insert": "line"
+                },
+                {
+                  "label": "pragma",
+                  "kind": "Keyword",
+                  "insert": "pragma"
+                },
+                {
+                  "label": "undef",
+                  "kind": "Keyword",
+                  "insert": "undef"
+                }
+              ],
+              "more": 1
+            }
+          }
+        },
+        {
+          "label": "include",
+          "marker": "include",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "include",
+                  "kind": "Keyword",
+                  "insert": "include"
+                },
+                {
+                  "label": "include_next",
+                  "kind": "Keyword",
+                  "insert": "include_next"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "conditional",
+          "marker": "conditional",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "elif",
+                  "kind": "Keyword",
+                  "insert": "elif"
+                },
+                {
+                  "label": "elifdef",
+                  "kind": "Keyword",
+                  "insert": "elifdef"
+                },
+                {
+                  "label": "elifndef",
+                  "kind": "Keyword",
+                  "insert": "elifndef"
+                },
+                {
+                  "label": "else",
+                  "kind": "Keyword",
+                  "insert": "else"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "after_else",
+          "marker": "after_else",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "endif",
+                  "kind": "Keyword",
+                  "insert": "endif"
+                },
+                {
+                  "label": "error",
+                  "kind": "Keyword",
+                  "insert": "error"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "statement_snippets": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "empty",
+          "marker": "empty",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "define macro",
+                  "kind": "Snippet",
+                  "insert": "define ${1:macro}",
+                  "snippet": true
+                },
+                {
+                  "label": "define macro(args)",
+                  "kind": "Snippet",
+                  "insert": "define ${1:macro}(${2:args})",
+                  "snippet": true
+                },
+                {
+                  "label": "error message",
+                  "kind": "Snippet",
+                  "insert": "error ${1:message}",
+                  "snippet": true
+                },
+                {
+                  "label": "if condition",
+                  "kind": "Snippet",
+                  "insert": "if ${1:condition}",
+                  "snippet": true
+                },
+                {
+                  "label": "ifdef macro",
+                  "kind": "Snippet",
+                  "insert": "ifdef ${1:macro}",
+                  "snippet": true
+                },
+                {
+                  "label": "ifndef macro",
+                  "kind": "Snippet",
+                  "insert": "ifndef ${1:macro}",
+                  "snippet": true
+                },
+                {
+                  "label": "include \"header\"",
+                  "kind": "Snippet",
+                  "insert": "include \"${1:header}\"",
+                  "snippet": true
+                },
+                {
+                  "label": "include <header>",
+                  "kind": "Snippet",
+                  "insert": "include <${1:header}>",
+                  "snippet": true
+                },
+                {
+                  "label": "include_next \"header\"",
+                  "kind": "Snippet",
+                  "insert": "include_next \"${1:header}\"",
+                  "snippet": true
+                },
+                {
+                  "label": "include_next <header>",
+                  "kind": "Snippet",
+                  "insert": "include_next <${1:header}>",
+                  "snippet": true
+                }
+              ],
+              "more": 5
+            }
+          }
+        },
+        {
+          "label": "include",
+          "marker": "include",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "include \"header\"",
+                  "kind": "Snippet",
+                  "insert": "include \"${1:header}\"",
+                  "snippet": true
+                },
+                {
+                  "label": "include <header>",
+                  "kind": "Snippet",
+                  "insert": "include <${1:header}>",
+                  "snippet": true
+                },
+                {
+                  "label": "include_next \"header\"",
+                  "kind": "Snippet",
+                  "insert": "include_next \"${1:header}\"",
+                  "snippet": true
+                },
+                {
+                  "label": "include_next <header>",
+                  "kind": "Snippet",
+                  "insert": "include_next <${1:header}>",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "conditional",
+          "marker": "conditional",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "elif condition",
+                  "kind": "Snippet",
+                  "insert": "elif ${1:condition}",
+                  "snippet": true
+                },
+                {
+                  "label": "elifdef macro",
+                  "kind": "Snippet",
+                  "insert": "elifdef ${1:macro}",
+                  "snippet": true
+                },
+                {
+                  "label": "elifndef macro",
+                  "kind": "Snippet",
+                  "insert": "elifndef ${1:macro}",
+                  "snippet": true
+                },
+                {
+                  "label": "else",
+                  "kind": "Snippet",
+                  "insert": "else"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "after_else",
+          "marker": "after_else",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "endif",
+                  "kind": "Snippet",
+                  "insert": "endif"
+                },
+                {
+                  "label": "error message",
+                  "kind": "Snippet",
+                  "insert": "error ${1:message}",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

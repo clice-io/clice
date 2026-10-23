@@ -7,8 +7,9 @@ module clice:syntax.preamble;
 namespace clice {
 
 /// The end of the preamble: the directives, and the global module
-/// fragment's `module;`, that open the file.
-std::uint32_t preamble_bound(llvm::StringRef content);
+/// fragment's `module;`, that open the file, those starting before `limit`.
+std::uint32_t preamble_bound(llvm::StringRef content,
+                             std::uint32_t limit = std::numeric_limits<std::uint32_t>::max());
 
 /// The part of the preamble up to `bound` that is finished: `bound` itself,
 /// or the end of the line before the first header-name directive

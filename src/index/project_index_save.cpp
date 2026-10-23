@@ -43,9 +43,7 @@ bool ProjectIndex::search_rebuild_due(SearchRebuild rebuild) const {
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
-    auto units = (db ? db->count(BlobKind::TUManifest) : 0) +
-                 static_cast<std::uint32_t>(changed_manifests.size());
-    return merges_since_search_build > std::min<std::uint32_t>(20, units / 20);
+    return merges_since_search_build > std::min<std::uint32_t>(20, header.unit_count / 20);
 }
 
 Internals ProjectIndex::internal_names(Fid file) const {
@@ -278,8 +276,6 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     }
     internals_changed.clear();
 
-    // Everything below hands out path ids before the records are taken:
-    // the manifests name their files by them, and so does the header.
     auto& blobs = batch.blobs;
     for(auto& [tu, manifest]: changed_manifests) {
         auto key = file_key(tu);
@@ -289,6 +285,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         }
         blobs.push_back({BlobKind::TUManifest, std::move(key), encode_manifest(*manifest)});
     }
+    // The header names its files by path ids, handed out before the
+    // records are taken.
     header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
     ranges::sort(header.search_pending);
     header.search_pending_files.clear();
@@ -341,6 +339,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     take(symbol_records, encode_value);
     take(shared_local_records, encode_value);
     take(path_records, [](const std::string& name) { return copy_bytes(name); });
+    take(version_records, encode_value);
 
     if(!blobs.empty() || !batch.removals.empty() || header_changed || !search_bytes.empty()) {
         blobs.push_back({BlobKind::Header, "header", encode_record(header)});
@@ -380,6 +379,7 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     restore(symbol_records);
     restore(shared_local_records);
     restore(path_records);
+    restore(version_records);
     for(auto& [tu, manifest]: written_manifests) {
         changed_manifests.try_emplace(tu, std::move(manifest));
     }
@@ -458,6 +458,7 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     drop_written(symbol_records);
     drop_written(shared_local_records);
     drop_written(path_records);
+    drop_written(version_records);
     written_manifests.clear();
     written_retired_shards.clear();
     written_retired_instantiations.clear();

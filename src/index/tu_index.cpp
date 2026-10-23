@@ -9,6 +9,7 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.instantiation_shard;
+import :index.search_index;
 import :index.shard;
 import :index.tu_index;
 import :semantic.token_class;
@@ -421,6 +422,17 @@ llvm::StringRef TUIndex::preamble_diagnostics() const {
         return {};
     }
     return llvm::StringRef(view_of(data).diagnostics);
+}
+
+const SearchIndex& TUIndex::names() const {
+    if(!name_index) {
+        name_index.emplace();
+        if(auto bytes = loaded() ? as_chars(view_of(data).names) : llvm::StringRef();
+           !bytes.empty()) {
+            name_index->load(llvm::MemoryBuffer::getMemBuffer(bytes, "", false));
+        }
+    }
+    return *name_index;
 }
 
 }  // namespace clice::index

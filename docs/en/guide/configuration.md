@@ -652,7 +652,7 @@ Where an unqualified name is being typed, also offer the project's names of othe
 | ----------------- | ------ | ------- |
 | `insert_includes` | `bool` | `true`  |
 
-With `all_scopes`, also offer names declared in headers the file does not include yet, adding the `#include` of the header that declares them.
+With `all_scopes`, also offer names declared, and macros defined, in headers the file does not include yet, adding the `#include` of the header that holds them.
 
 </div>
 
@@ -670,7 +670,7 @@ With `all_scopes`, also offer names exported by modules the file does not import
 
 | Option  | Type     | Default |
 | ------- | -------- | ------- |
-| `limit` | `uint32` | `0`     |
+| `limit` | `uint32` | `100`   |
 
 Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.
 

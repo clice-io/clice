@@ -7,19 +7,48 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
+import :support.bitmap;
 
 namespace clice::index {
 
+namespace {
+
+std::vector<std::uint8_t> version_set(llvm::ArrayRef<VersionID> versions,
+                                      std::uint32_t version_count) {
+    Bitmap set;
+    for(auto version: versions) {
+        set.add(version.raw);
+    }
+    return write_postings(set, version_count);
+}
+
+template <typename Seq>
+std::optional<std::vector<VersionID>> version_set_of(const Seq& bytes,
+                                                     std::uint32_t version_count) {
+    auto set =
+        read_postings(llvm::ArrayRef<std::uint8_t>(bytes.data(), bytes.size()), version_count);
+    if(!set) {
+        return std::nullopt;
+    }
+    std::vector<VersionID> versions;
+    for(std::uint32_t version: *set) {
+        versions.push_back(VersionID{version});
+    }
+    return versions;
+}
+
+}  // namespace
+
 std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
-                                          llvm::ArrayRef<PersistedVersion> versions) {
+                                          llvm::ArrayRef<std::uint32_t> versions) {
     TUManifestBlob blob;
     blob.format_version = index_format_version;
     blob.built_at = manifest.built_at;
     blob.peak = manifest.peak;
-    for(auto& version: versions) {
-        blob.version_paths.push_back(version.path);
-        blob.version_hashes.push_back(version.content_hash);
-    }
+    Bitmap ids;
+    ids.addMany(versions.size(), versions.data());
+    blob.version_bound = versions.empty() ? 0 : versions.back() + 1;
+    blob.versions = write_postings(ids, blob.version_bound);
     blob.tu_version = manifest.tu_version.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
@@ -45,12 +74,9 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
     }
 
-    for(auto version: manifest.absent) {
-        blob.absent.push_back(version.raw);
-    }
-    for(auto version: manifest.imports) {
-        blob.imports.push_back(version.raw);
-    }
+    auto version_count = static_cast<std::uint32_t>(versions.size());
+    blob.absent = version_set(manifest.absent, version_count);
+    blob.imports = version_set(manifest.imports, version_count);
 
     for(auto& local: manifest.shared_locals) {
         blob.local_symbols.push_back(local.symbol);
@@ -84,15 +110,17 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
 
-    if(root.version_hashes.size() != root.version_paths.size()) {
+    auto ids =
+        read_postings(llvm::ArrayRef<std::uint8_t>(root.versions.data(), root.versions.size()),
+                      root.version_bound);
+    // The bound is one past the last id: no other bound writes these bytes.
+    if(!ids ||
+       (ids->isEmpty() ? root.version_bound != 0 : ids->maximum() + 1 != root.version_bound)) {
         return std::nullopt;
     }
-    std::uint32_t version_count = root.version_paths.size();
     PersistedManifest persisted;
-    for(std::uint32_t i = 0; i < version_count; i += 1) {
-        persisted.versions.push_back(
-            {.path = root.version_paths[i], .content_hash = root.version_hashes[i]});
-    }
+    persisted.versions.assign(ids->begin(), ids->end());
+    auto version_count = static_cast<std::uint32_t>(persisted.versions.size());
     auto& manifest = persisted.manifest;
     manifest.built_at = root.built_at;
     manifest.peak = root.peak;
@@ -159,12 +187,13 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
 
-    for(auto version: root.absent) {
-        manifest.absent.push_back(VersionID{version});
+    auto absent = version_set_of(root.absent, version_count);
+    auto imports = version_set_of(root.imports, version_count);
+    if(!absent || !imports) {
+        return std::nullopt;
     }
-    for(auto version: root.imports) {
-        manifest.imports.push_back(VersionID{version});
-    }
+    manifest.absent = std::move(*absent);
+    manifest.imports = std::move(*imports);
 
     if(root.local_file_ends.size() != root.local_symbols.size() ||
        !covering_ends(root.local_file_ends, root.local_files.size())) {

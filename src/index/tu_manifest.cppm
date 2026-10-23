@@ -45,7 +45,7 @@ struct InstantiationUse {
 /// dependency set for staleness) and the variant each file received, keyed by content-identity
 /// so a re-merge can tell "already stored" from "new variant" without
 /// touching any shard. In memory its versions are the file table's ids;
-/// persisted, indexes into a version table of its own (serialize_manifest).
+/// persisted, indexes into the version record ids it lists (serialize_manifest).
 struct TUManifest {
     /// Milliseconds since epoch, sampled before the indexed build started.
     std::uint64_t built_at = 0;
@@ -116,25 +116,17 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     }
 }
 
-/// A persisted file version: the file's path id and the content hash.
-struct PersistedVersion {
-    std::uint32_t path = 0;
-
-    std::uint64_t content_hash = 0;
-
-    friend bool operator==(const PersistedVersion&, const PersistedVersion&) = default;
-};
-
-/// Serialize a manifest whose versions index `versions` (varint-packed
-/// nodes inside a small reflected wrapper).
+/// Serialize a manifest whose versions index `versions`, ascending version
+/// record ids (varint-packed nodes inside a small reflected wrapper). Its
+/// failed lookups and imports are kept as sets: they come back ascending.
 std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
-                                          llvm::ArrayRef<PersistedVersion> versions);
+                                          llvm::ArrayRef<std::uint32_t> versions);
 
 /// A manifest as deserialized: its versions index `versions`.
 struct PersistedManifest {
     TUManifest manifest;
 
-    std::vector<PersistedVersion> versions;
+    std::vector<std::uint32_t> versions;
 };
 
 /// Verify and decode a manifest blob; nullopt for corrupt, truncated or

@@ -110,6 +110,7 @@ public:
     /// that did not build is the compile's to report.
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
                                               llvm::StringRef text,
+                                              std::uint32_t point,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
                                               const Resolution& resolution,
@@ -272,20 +273,27 @@ private:
 
     /// What a buffer state owes the PCH family: nothing (an empty
     /// preamble with no injected prefix, or a module unit's global module
-    /// fragment that imports — a previously adopted key must be cleared),
-    /// or the acquisition of `request`.
+    /// fragment that imports — a previously adopted key must be cleared,
+    /// unless the plan is partial), or the acquisition of `request`.
     struct PCHPlan {
         enum class Decision : std::uint8_t { None, Acquire };
 
         Decision decision = Decision::None;
 
         PCHFamily::Request request;
+
+        /// The preamble ends before the text's own, at a completion's point:
+        /// what the request loads is its own, not the document's.
+        bool partial = false;
     };
 
     /// `base` is the key of the precompiled header the build declares for
-    /// the command, built already; empty for none.
+    /// the command, built already; empty for none. `point` is where a
+    /// completion's parse stops: the preamble ends before the line holding
+    /// it, so the lines typed there keep the PCH of the lines above them.
     PCHPlan plan_pch(Fid path_id,
                      llvm::StringRef text,
+                     std::optional<std::uint32_t> point,
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const Resolution& resolution,
@@ -295,10 +303,12 @@ private:
     /// Revalidate or build the preamble PCH of `text` through the family,
     /// over the precompiled header the build declares for the command, and
     /// adopt the key of what the request loads under its license (see
-    /// prepare_stateless_inputs). Returns the key the request compiles
-    /// against, adopted or not; none when it compiles without a PCH.
+    /// prepare_stateless_inputs), but for a partial plan's. Returns the key
+    /// the request compiles against, adopted or not; none when it compiles
+    /// without a PCH.
     kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
                                                       llvm::StringRef text,
+                                                      std::optional<std::uint32_t> point,
                                                       std::uint64_t license_generation,
                                                       std::uint64_t license_epoch,
                                                       const std::string& directory,

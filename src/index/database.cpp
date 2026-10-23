@@ -65,6 +65,7 @@ char kind_prefix(BlobKind kind) {
         case BlobKind::TUManifest: return 'M';
         case BlobKind::Header: return 'H';
         case BlobKind::Path: return 'P';
+        case BlobKind::Version: return 'V';
         case BlobKind::File: return 'F';
         case BlobKind::Dependents: return 'D';
         case BlobKind::Internals: return 'T';

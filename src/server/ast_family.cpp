@@ -22,6 +22,7 @@ import :support.anomaly;
 import :support.bytes;
 import :support.json;
 import :support.logging;
+import :support.text;
 import :support.timer;
 import :syntax.dependency_graph;
 import :syntax.preamble;
@@ -232,6 +233,7 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
 
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
+                                       std::optional<std::uint32_t> point,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        const Resolution& resolution,
@@ -245,15 +247,20 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // keeps its PCH — the key of the one before, when the directive goes at
     // the end of the block — and the unfinished one parses with the body,
     // which reports its own error.
-    auto bound = synthesized && !synthesized->open.empty()
-                     ? 0
-                     : finished_preamble_bound(text, preamble_bound(text));
+    auto bound = preamble_bound(text);
+    bool partial = false;
+    if(point) {
+        auto before = preamble_bound(text, logical_line_begin(text, *point));
+        partial = before < bound;
+        bound = before;
+    }
+    bound = synthesized && !synthesized->open.empty() ? 0 : finished_preamble_bound(text, bound);
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow
         // a command but inject nothing. A precompiled header the build
         // declares is loaded by the parse itself.
-        return {};
+        return {.partial = partial};
     }
 
     // With a synthesized prefix, the PCH is worth building even at
@@ -293,7 +300,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     }
     if(imported && imports.module_unit) {
         LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
-        return {};
+        return {.partial = partial};
     }
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
@@ -344,6 +351,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .base = base.str(),
                       .skip_bodies = skip_bodies,
                       },
+        .partial = partial,
     };
     if(imported) {
         project.fill_pcm_deps(plan.request.pcms, pcm.closure(imports.resolved).getArrayRef());
@@ -1056,6 +1064,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             }
             auto plan = plan_pch(path_id,
                                  params.text,
+                                 std::nullopt,
                                  params.directory,
                                  params.arguments,
                                  resolution,
@@ -1492,6 +1501,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 kota::task<std::optional<std::string>>
     ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
                           llvm::StringRef text,
+                          std::optional<std::uint32_t> point,
                           std::uint64_t license_generation,
                           std::uint64_t license_epoch,
                           const std::string& directory,
@@ -1516,11 +1526,17 @@ kota::task<std::optional<std::string>>
         }
     }
 
-    auto plan =
-        plan_pch(path_id, text, directory, arguments, resolution, imports, base.value_or(""));
+    auto plan = plan_pch(path_id,
+                         text,
+                         point,
+                         directory,
+                         arguments,
+                         resolution,
+                         imports,
+                         base.value_or(""));
     switch(plan.decision) {
         case PCHPlan::Decision::None:
-            if(license()) {
+            if(license() && !plan.partial) {
                 compiles.set_pch_key(path_id, base);
                 session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
@@ -1552,7 +1568,7 @@ kota::task<std::optional<std::string>>
     // may describe nothing — neither the key write nor the evidence
     // wash belongs to this request anymore. The request itself still
     // compiles against the artifact: it was planned from the text it sends.
-    if(license()) {
+    if(license() && !plan.partial) {
         compiles.set_pch_key(path_id, pch_key);
         // Adopting a proven-good artifact clears the session's PCH record as
         // surely as building one — but only its own; every consumer clears
@@ -1564,6 +1580,7 @@ kota::task<std::optional<std::string>>
 
 kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                                      llvm::StringRef text,
+                                                     std::uint32_t point,
                                                      const std::string& directory,
                                                      const std::vector<std::string>& arguments,
                                                      const Resolution& resolution,
@@ -1589,6 +1606,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     if(readonly != ReadonlyMode::On) {
         auto pch_key = co_await ensure_pch(session,
                                            text,
+                                           point,
                                            ticket.generation,
                                            license_epoch,
                                            directory,
