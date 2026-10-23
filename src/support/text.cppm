@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:support.text;
 
@@ -20,6 +20,11 @@ inline std::uint32_t logical_line_begin(llvm::StringRef content, std::uint32_t o
         begin = line_begin(content, begin - 1);
     }
     return begin;
+}
+
+/// Whether only whitespace precedes `offset` on its line.
+inline bool begins_line(llvm::StringRef content, std::uint32_t offset) {
+    return content.slice(line_begin(content, offset), offset).trim().empty();
 }
 
 /// One past the newline ending the line containing `offset`, or the

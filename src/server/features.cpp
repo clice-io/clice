@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -27,6 +27,7 @@ import :server.editor_context;
 import :server.features;
 import :server.format;
 import :server.query_commands;
+import :support.json;
 import :support.text;
 import :syntax.completion;
 import :syntax.lexer;
@@ -34,16 +35,15 @@ import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 
-using serde_raw = kota::codec::RawValue;
+using serde_raw = codec::RawValue;
 
 /// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
                                           std::uint32_t offset) {
-    auto it = std::ranges::find_if(links, [&](const index::DocumentLink& link) {
+    auto it = ranges::find_if(links, [&](const index::DocumentLink& link) {
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
@@ -56,15 +56,15 @@ static bool is_null(const serde_raw& raw) {
 }
 
 /// Error response for feature requests on files with no open session.
-static kota::ipc::Error document_not_open() {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
+static ipc::Error document_not_open() {
+    return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
 }
 
 /// Error response when a call/type hierarchy item cannot be resolved back to
 /// an indexed symbol.
-static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                            std::format("Failed to resolve {} item", kind)};
+static ipc::Error item_not_resolved(llvm::StringRef kind) {
+    return ipc::Error{protocol::ErrorCode::InvalidParams,
+                      std::format("Failed to resolve {} item", kind)};
 }
 
 /// The largest buffer the master lexes whole on its own thread.
@@ -189,7 +189,7 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     if(!cursor) {
         return std::nullopt;
     }
-    return feature::index_hover(peer_queries(), *cursor, project.config.documentation);
+    return feature::hover_info(peer_queries(), *cursor, project.config.documentation);
 }
 
 std::vector<index::DocumentLink> Features::find_preamble_links(const Session& session) {
@@ -197,7 +197,7 @@ std::vector<index::DocumentLink> Features::find_preamble_links(const Session& se
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 
-kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, ipc::Error>
     Features::directive_links(const Ticket& ticket, kota::cancellation_token token) {
     auto result = co_await dispatcher.document_links(ticket, std::move(token)).or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
@@ -207,7 +207,7 @@ kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
     co_return links;
 }
 
-kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
     Features::document_links(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
 
@@ -217,18 +217,16 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
             // __has_include/#embed have no edge and produce no link.
-            auto links = feature::index_document_links(text_of(*session), query, session->path_id);
+            auto links = feature::document_links(text_of(*session), query, session->path_id);
             session->index_served = true;
-            co_return feature::document_links_to_protocol(links,
-                                                          session->positions(),
-                                                          project.file_table);
+            co_return feature::to_protocol(links, session->positions(), project.file_table);
         }
         case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
         case Route::Ast: break;
     }
 
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
-    co_return feature::document_links_to_protocol(links, session->positions(), project.file_table);
+    co_return feature::to_protocol(links, session->positions(), project.file_table);
 }
 
 kota::task<std::vector<feature::FileDiagnostic>>
@@ -314,7 +312,7 @@ Features::RawResult Features::definition(Ticket ticket,
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
        (shard_served && !cursor_at(path_id, position))) {
         if(offset) {
-            auto links = feature::index_document_links(text_of(*session), query, session->path_id);
+            auto links = feature::document_links(text_of(*session), query, session->path_id);
             if(auto* link = link_at(links, *offset)) {
                 co_return to_raw(
                     std::vector{feature::directive_location(project.file_table, *link)});
@@ -362,10 +360,8 @@ Features::RawResult Features::hover(Ticket ticket,
     auto path_id = session->path_id;
 
     auto index_card = [&](const feature::HoverInfo& info) {
-        return to_raw(feature::to_protocol_hover(info,
-                                                 markup,
-                                                 session->positions(),
-                                                 PositionEncoding::UTF16));
+        return to_raw(
+            feature::to_protocol(info, markup, session->positions(), PositionEncoding::UTF16));
     };
 
     switch(co_await pick_route(ticket, {})) {
@@ -454,10 +450,10 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             session->index_served = true;
-            tokens = feature::index_semantic_tokens(text_of(*session),
-                                                    query,
-                                                    *source,
-                                                    project.config.semantic_tokens);
+            tokens = feature::semantic_tokens(text_of(*session),
+                                              query,
+                                              *source,
+                                              project.config.semantic_tokens);
             break;
         }
         case Route::Empty: {
@@ -498,13 +494,13 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
     if(!label_parts) {
         co_return to_raw(
-            feature::inlay_hints_to_protocol(hints, session->positions(), PositionEncoding::UTF16));
+            feature::to_protocol(hints, session->positions(), PositionEncoding::UTF16));
     }
-    co_return to_raw(feature::inlay_hints_to_protocol(hints,
-                                                      session->positions(),
-                                                      PositionEncoding::UTF16,
-                                                      peer_queries(),
-                                                      session->path_id));
+    co_return to_raw(feature::to_protocol(hints,
+                                          session->positions(),
+                                          PositionEncoding::UTF16,
+                                          peer_queries(),
+                                          session->path_id));
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
@@ -512,18 +508,18 @@ Features::RawResult Features::folding_range(Ticket ticket,
                                             kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-        return to_raw(feature::folding_ranges_to_protocol(folds,
-                                                          session->text(),
-                                                          session->positions(),
-                                                          PositionEncoding::UTF16,
-                                                          client));
+        return to_raw(feature::to_protocol(folds,
+                                           session->text(),
+                                           session->positions(),
+                                           PositionEncoding::UTF16,
+                                           client));
     };
 
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto folds = feature::index_folding_ranges(text_of(*session), query, *source);
+            auto folds = feature::folding_ranges(text_of(*session), query, *source);
             session->index_served = true;
             co_return convert(folds);
         }
@@ -551,25 +547,25 @@ Features::RawResult Features::document_symbol(Ticket ticket,
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::DocumentSymbol> symbols) {
         if(client.hierarchical) {
-            return to_raw(feature::document_symbols_to_protocol(symbols,
-                                                                session->positions(),
-                                                                PositionEncoding::UTF16,
-                                                                client));
+            return to_raw(feature::to_protocol(symbols,
+                                               session->positions(),
+                                               PositionEncoding::UTF16,
+                                               client));
         }
-        return to_raw(feature::document_symbols_to_information(symbols,
-                                                               session->positions(),
-                                                               PositionEncoding::UTF16,
-                                                               client,
-                                                               uri));
+        return to_raw(feature::to_symbol_information(symbols,
+                                                     session->positions(),
+                                                     PositionEncoding::UTF16,
+                                                     client,
+                                                     uri));
     };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto symbols = feature::index_document_symbols(text_of(*session),
-                                                           query,
-                                                           *source,
-                                                           project.config.document_symbols);
+            auto symbols = feature::document_symbols(text_of(*session),
+                                                     query,
+                                                     *source,
+                                                     project.config.document_symbols);
             session->index_served = true;
             co_return convert(symbols);
         }
@@ -595,9 +591,8 @@ Features::RawResult Features::selection_range(Ticket ticket,
     auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
         std::vector<protocol::SelectionRange> result;
         for(const auto& chain: chains) {
-            result.push_back(feature::selection_range_to_protocol(chain,
-                                                                  session->positions(),
-                                                                  PositionEncoding::UTF16));
+            result.push_back(
+                feature::to_protocol(chain, session->positions(), PositionEncoding::UTF16));
         }
         return to_raw(result);
     };
@@ -745,8 +740,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     }
 
     protocol::CompletionList list;
-    [[maybe_unused]] auto decoded =
-        kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
+    [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
     assert(decoded && "the worker encodes the list");
     std::string directory;
     std::vector<std::string> arguments;
@@ -822,17 +816,16 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        feature::document_highlights_to_protocol(feature::document_highlights(query, *cursor)));
+    co_return to_raw(feature::to_protocol(feature::document_highlights(query, *cursor)));
 }
 
-static kota::ipc::Error rename_refused(std::string message) {
-    return kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-                            std::move(message)};
+static ipc::Error rename_refused(std::string message) {
+    return ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                      std::move(message)};
 }
 
 /// Refused up front, before the cursor costs a compile.
-static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
+static std::optional<ipc::Error> refuse_rootless(const Project& project) {
     if(project.config.workspace_root.empty()) {
         return rename_refused("a rename edits the sources of a workspace folder; open one");
     }
@@ -864,7 +857,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
     });
 }
 
-kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
+kota::task<std::optional<feature::Renamed>, ipc::Error>
     Features::rename(Ticket ticket,
                      Fid path_id,
                      const protocol::Position& position,
@@ -976,7 +969,7 @@ kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
     if(plan.blocked()) {
         co_await kota::fail(rename_refused(feature::refusal(plan)));
     }
-    co_return feature::rename_to_protocol(plan, new_name, [&](Fid file) -> std::optional<int> {
+    co_return feature::to_protocol(plan, new_name, [&](Fid file) -> std::optional<int> {
         auto document = sessions.find(file);
         return document ? std::optional(document->version) : std::nullopt;
     });

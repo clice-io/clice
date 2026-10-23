@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -21,7 +21,7 @@ import :syntax.source_text;
 
 namespace clice::feature {
 
-auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
+auto to_protocol(SymbolKind kind) -> protocol::SymbolKind {
     using enum protocol::SymbolKind;
 
     switch(kind) {
@@ -314,13 +314,13 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
     };
 
     auto child_containing = [](DocumentSymbol& scope, LocalSourceRange range) -> DocumentSymbol* {
-        auto child = std::ranges::find_if(scope.children, [&](const DocumentSymbol& child) {
+        auto child = ranges::find_if(scope.children, [&](const DocumentSymbol& child) {
             return child.range.contains(range);
         });
         return child == scope.children.end() ? nullptr : &*child;
     };
 
-    for(auto [index, mark]: std::views::enumerate(marks)) {
+    for(auto [index, mark]: views::enumerate(marks)) {
         auto* scope = &root;
         while(auto* child = child_containing(*scope, mark.range)) {
             scope = child;
@@ -353,7 +353,7 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
         }
 
         auto& siblings = scope->children;
-        auto owned = std::ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
+        auto owned = ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
             return sibling.range.begin < mark.range.begin || sibling.range.begin >= end;
         });
         for(auto& child: owned) {
@@ -370,7 +370,7 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
 /// Sibling order: by position, a shorter range first, then by name and
 /// kind — the members of one macro invocation share their range.
 void sort_symbols(std::vector<DocumentSymbol>& symbols) {
-    std::ranges::stable_sort(symbols, {}, [](const DocumentSymbol& symbol) {
+    ranges::stable_sort(symbols, {}, [](const DocumentSymbol& symbol) {
         return std::tuple(symbol.range.begin,
                           symbol.range.end,
                           std::string_view(symbol.name),
@@ -419,8 +419,7 @@ struct Node {
 /// Whether `outer` holds `inner` in the outline.
 bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& inner) {
     const auto& outer = nodes[outer_index];
-    if(outer.entry.range.begin > inner.entry.range.begin ||
-       inner.entry.range.end > outer.entry.range.end) {
+    if(!outer.entry.range.contains(inner.entry.range)) {
         return false;
     }
     if(inner.group == outer_index) {
@@ -464,21 +463,19 @@ bool names_tag(const LexicalInfo& lexical, const OutlineEntry& tag, const Outlin
 /// names, unnamed or named alike, lists once, as the typedef's name.
 void merge_typedefs(std::vector<Node>& nodes, const LexicalInfo& lexical) {
     std::vector<std::uint32_t> tags;
-    for(auto [index, node]: std::views::enumerate(nodes)) {
+    for(auto [index, node]: views::enumerate(nodes)) {
         if(is_tag(node.entry.kind)) {
             tags.push_back(static_cast<std::uint32_t>(index));
         }
     }
-    std::ranges::sort(tags, {}, [&](std::uint32_t index) {
-        return nodes[index].entry.range.begin;
-    });
+    ranges::sort(tags, {}, [&](std::uint32_t index) { return nodes[index].entry.range.begin; });
 
     std::vector<bool> merged(nodes.size(), false);
     for(auto& alias: nodes) {
         if(alias.entry.kind != SymbolKind::Type) {
             continue;
         }
-        auto first = std::ranges::upper_bound(tags, alias.entry.range.begin, {}, [&](auto index) {
+        auto first = ranges::upper_bound(tags, alias.entry.range.begin, {}, [&](auto index) {
             return nodes[index].entry.range.begin;
         });
         for(auto it = first; it != tags.end(); ++it) {
@@ -569,10 +566,10 @@ auto outline(std::vector<OutlineEntry> entries,
     auto width = [](const OutlineEntry& entry) {
         return entry.range.end - entry.range.begin;
     };
-    std::ranges::stable_sort(entries, [&](const OutlineEntry& lhs, const OutlineEntry& rhs) {
+    ranges::stable_sort(entries, [&](const OutlineEntry& lhs, const OutlineEntry& rhs) {
         return std::tuple(key(lhs), width(rhs)) < std::tuple(key(rhs), width(lhs));
     });
-    auto duplicates = std::ranges::unique(entries, {}, key);
+    auto duplicates = ranges::unique(entries, {}, key);
     entries.erase(duplicates.begin(), duplicates.end());
 
     std::vector<Node> nodes;
@@ -614,7 +611,7 @@ auto outline(std::vector<OutlineEntry> entries,
 
     std::vector<std::uint32_t> order(nodes.size());
     std::iota(order.begin(), order.end(), 0U);
-    std::ranges::stable_sort(order, [&](std::uint32_t lhs, std::uint32_t rhs) {
+    ranges::stable_sort(order, [&](std::uint32_t lhs, std::uint32_t rhs) {
         const auto& left = nodes[lhs];
         const auto& right = nodes[rhs];
         if(left.entry.range.begin != right.entry.range.begin) {
@@ -905,7 +902,7 @@ private:
 /// The protocol's kind of a symbol, as the client takes kinds: clangd's
 /// stand-ins for one it lacks.
 auto client_kind(SymbolKind kind, const SymbolClient& client) -> protocol::SymbolKind {
-    auto result = to_protocol_symbol_kind(kind);
+    auto result = to_protocol(kind);
     if(client.all_kinds || result <= protocol::SymbolKind::Array) {
         return result;
     }
@@ -965,7 +962,7 @@ auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
     auto inactive = [&](std::uint32_t offset) {
-        auto bounds = std::ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
+        auto bounds = ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
         return bounds % 2 == 1;
     };
     auto& semantics = unit.get<Semantics>();
@@ -991,11 +988,10 @@ auto document_symbols(CompilationUnit& unit,
                    options);
 }
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  const PositionMap& map,
-                                  PositionEncoding encoding,
-                                  const SymbolClient& client)
-    -> std::vector<protocol::DocumentSymbol> {
+auto to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const SymbolClient& client) -> std::vector<protocol::DocumentSymbol> {
     std::vector<protocol::DocumentSymbol> result;
     result.reserve(symbols.size());
 
@@ -1008,12 +1004,11 @@ auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
     return result;
 }
 
-auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
-                                     const PositionMap& map,
-                                     PositionEncoding encoding,
-                                     const SymbolClient& client,
-                                     llvm::StringRef uri)
-    -> std::vector<protocol::SymbolInformation> {
+auto to_symbol_information(llvm::ArrayRef<DocumentSymbol> symbols,
+                           const PositionMap& map,
+                           PositionEncoding encoding,
+                           const SymbolClient& client,
+                           llvm::StringRef uri) -> std::vector<protocol::SymbolInformation> {
     std::vector<protocol::SymbolInformation> result;
     auto flatten = [&](this auto& self,
                        llvm::ArrayRef<DocumentSymbol> level,
@@ -1042,10 +1037,10 @@ auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
     return result;
 }
 
-auto index_document_symbols(SourceText& source,
-                            const IndexEntries& entries,
-                            IndexSymbolResolver resolve,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+auto document_symbols(SourceText& source,
+                      const IndexEntries& entries,
+                      IndexSymbolResolver resolve,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
     // A name the text writes is where an occurrence of its symbol starts.
     llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
     for(const auto& occurrence: entries.occurrences) {
@@ -1100,7 +1095,7 @@ auto index_document_symbols(SourceText& source,
 
     // The `#define`s the preprocessor read, the ones whose macro the index
     // knows.
-    std::ranges::sort(macro_names);
+    ranges::sort(macro_names);
     const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
@@ -1113,7 +1108,7 @@ auto index_document_symbols(SourceText& source,
         if(directive.kind != LexicalInfo::Directive::Kind::Define) {
             continue;
         }
-        auto name = std::ranges::lower_bound(macro_names, directive.range.begin);
+        auto name = ranges::lower_bound(macro_names, directive.range.begin);
         if(name != macro_names.end() && *name < directive.range.end) {
             macros.push_back(directive);
         }
@@ -1130,11 +1125,11 @@ auto index_document_symbols(SourceText& source,
     return outline(std::move(declarations), source, macros, modules, marks, options);
 }
 
-auto index_document_symbols(SourceText& source,
-                            const index::IndexQuery& query,
-                            const index::IndexSource& index,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    return index_document_symbols(
+auto document_symbols(SourceText& source,
+                      const index::IndexQuery& query,
+                      const index::IndexSource& index,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    return document_symbols(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },

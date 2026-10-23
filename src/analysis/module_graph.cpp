@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -31,7 +31,7 @@ constexpr std::uint32_t none = ~0u;
 
 /// 1-based line of `offset` in the content a shard describes.
 std::uint32_t line_of(const index::Shard& shard, std::uint32_t offset) {
-    return kota::ipc::lsp::line_of(shard.line_starts(), offset) + 1;
+    return lsp::line_of(shard.line_starts(), offset) + 1;
 }
 
 /// Whether naming an entity of this kind ties the naming file to the
@@ -98,7 +98,7 @@ void for_each_expanded(const std::string& directive,
         }
     }
     for(const auto& token: definition->body) {
-        if(token.is_identifier() && !std::ranges::contains(parameters, token.text(directive))) {
+        if(token.is_identifier() && !ranges::contains(parameters, token.text(directive))) {
             visit(token.text(directive));
         }
     }
@@ -229,11 +229,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             list(table.version(VersionID{node.file}).fid);
         }
     }
-    std::ranges::sort(paths);
-    for(auto fid: std::views::values(paths)) {
+    ranges::sort(paths);
+    for(auto fid: views::values(paths)) {
         add(fid);
     }
-    std::ranges::sort(manifests, {}, [&](const auto& unit) { return display(unit.first); });
+    ranges::sort(manifests, {}, [&](const auto& unit) { return display(unit.first); });
     auto id_of = [&](Fid fid) {
         auto it = ids.find(fid);
         return it == ids.end() ? none : it->second;
@@ -299,12 +299,12 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         }
     }
     for(auto& file: facts.files) {
-        std::ranges::sort(file.directives);
-        file.directives.erase(std::ranges::unique(file.directives).begin(), file.directives.end());
+        ranges::sort(file.directives);
+        file.directives.erase(ranges::unique(file.directives).begin(), file.directives.end());
     }
     for(auto& [includer, targets]: includes) {
-        std::ranges::sort(targets);
-        targets.erase(std::ranges::unique(targets).begin(), targets.end());
+        ranges::sort(targets);
+        targets.erase(ranges::unique(targets).begin(), targets.end());
         auto id = id_of(includer);
         for(auto target: targets) {
             included_by[target].push_back(includer);
@@ -525,8 +525,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     unstable.push_back(qualified_name(hash, &shard));
                 }
             }
-            std::ranges::sort(unstable);
-            unstable.erase(std::ranges::unique(unstable).begin(), unstable.end());
+            ranges::sort(unstable);
+            unstable.erase(ranges::unique(unstable).begin(), unstable.end());
         }
 
         names(shard, [&](index::SymbolHash hash, const index::Relation& relation) {
@@ -568,7 +568,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             }
             if(auto fragment = id_of(it->second);
                fragment != none && facts.files[fragment].fragment &&
-               !std::ranges::contains(facts.files[fragment].pasters, id)) {
+               !ranges::contains(facts.files[fragment].pasters, id)) {
                 facts.files[fragment].pasters.push_back(id);
             }
         }
@@ -598,11 +598,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // Elsewhere, an #undef is one file's cleanup (a consumer dropping
             // <windows.h>'s min), not the end of the macro.
             auto here = sites.lookup(hash);
-            auto scoped =
-                facts.files[id].fragment || std::ranges::any_of(here, [&](const Site& site) {
-                    return site.file == id && site.line < line;
-                });
-            auto redefined = std::ranges::any_of(here, [&](const Site& site) {
+            auto scoped = facts.files[id].fragment || ranges::any_of(here, [&](const Site& site) {
+                              return site.file == id && site.line < line;
+                          });
+            auto redefined = ranges::any_of(here, [&](const Site& site) {
                 return site.file == id && site.line > line;
             });
             if(scoped && !redefined) {
@@ -730,7 +729,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(parent && parent->kind != SymbolKind::Namespace) {
             continue;
         }
-        auto site = std::ranges::find_if(list, [&](const Site& site) {
+        auto site = ranges::find_if(list, [&](const Site& site) {
             return !facts.files[site.file].source && site.line != 0 &&
                    site.line <= text_of(site.file).lines.size() &&
                    declares_alias(text_of(site.file), site.line - 1, identity->name);
@@ -809,15 +808,14 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     }
                 }
             }
-            bool implemented =
-                index.indexed(canonical) &&
-                !std::ranges::contains(std::array<SymbolKind, 6>{SymbolKind::Class,
-                                                                 SymbolKind::Struct,
-                                                                 SymbolKind::Union,
-                                                                 SymbolKind::Enum,
-                                                                 SymbolKind::Type,
-                                                                 SymbolKind::Concept},
-                                       kind);
+            bool implemented = index.indexed(canonical) &&
+                               !ranges::contains(std::array<SymbolKind, 6>{SymbolKind::Class,
+                                                                           SymbolKind::Struct,
+                                                                           SymbolKind::Union,
+                                                                           SymbolKind::Enum,
+                                                                           SymbolKind::Type,
+                                                                           SymbolKind::Concept},
+                                                 kind);
             if(owner == none && !implemented) {
                 if(kind == SymbolKind::Macro) {
                     foreign_macros[hash] = {canonical, identity->name.str()};
@@ -883,13 +881,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             }
             // A site in a fragment stands for the files including it.
             auto stand_for = [&](std::uint32_t file, std::uint32_t includer) {
-                return std::ranges::contains(including_files(facts, file, true), includer);
+                return ranges::contains(including_files(facts, file, true), includer);
             };
             auto narrow = [&](auto keeps) {
                 auto kept = includers;
                 kept.erase(
-                    std::ranges::remove_if(kept,
-                                           [&](std::uint32_t includer) { return !keeps(includer); })
+                    ranges::remove_if(kept,
+                                      [&](std::uint32_t includer) { return !keeps(includer); })
                         .begin(),
                     kept.end());
                 if(!kept.empty()) {
@@ -898,7 +896,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             };
             if(auto enclosing = sites.find(identity->parent); enclosing != sites.end()) {
                 narrow([&](std::uint32_t includer) {
-                    return std::ranges::any_of(enclosing->second, [&](const Site& site) {
+                    return ranges::any_of(enclosing->second, [&](const Site& site) {
                         return stand_for(site.file, includer);
                     });
                 });
@@ -906,7 +904,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // The includer defining the X-macro the table's line expands, a
             // level deep (OMPConstants.h defines OMP_DEFAULT_KIND, which
             // OMPKinds.def's __OMP_DEFAULT_KIND(none) expands to a constant).
-            if(auto site = std::ranges::find(scoped, declared_in, &Site::file);
+            if(auto site = ranges::find(scoped, declared_in, &Site::file);
                site != scoped.end() && includers.size() > 1) {
                 llvm::StringSet<> names;
                 for(const auto& token: tokens_on(declared_in, site->line)) {
@@ -914,28 +912,28 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                         names.insert(token.text(text_of(declared_in).content));
                     }
                 }
-                for(auto& word: std::ranges::to<llvm::SmallVector<llvm::StringRef>>(names.keys())) {
+                for(auto& word: ranges::to<llvm::SmallVector<llvm::StringRef>>(names.keys())) {
                     for(auto [file, line]: macro_definitions.lookup(word)) {
                         for_each_identifier(directive_text(file, line),
                                             [&](llvm::StringRef inner) { names.insert(inner); });
                     }
                 }
                 narrow([&](std::uint32_t includer) {
-                    return std::ranges::any_of(names.keys(), [&](llvm::StringRef word) {
-                        return std::ranges::any_of(macro_definitions.lookup(word),
-                                                   [&](auto& definition) {
-                                                       return definition.first != declared_in &&
-                                                              stand_for(definition.first, includer);
-                                                   });
+                    return ranges::any_of(names.keys(), [&](llvm::StringRef word) {
+                        return ranges::any_of(macro_definitions.lookup(word),
+                                              [&](auto& definition) {
+                                                  return definition.first != declared_in &&
+                                                         stand_for(definition.first, includer);
+                                              });
                     });
                 });
             }
-            owner = *std::ranges::min_element(includers, [&](std::uint32_t lhs, std::uint32_t rhs) {
+            owner = *ranges::min_element(includers, [&](std::uint32_t lhs, std::uint32_t rhs) {
                 return facts.files[lhs].path < facts.files[rhs].path;
             });
         }
         auto* owner_shard = index.shard(fids[declared_in]);
-        auto site = std::ranges::find(scoped, declared_in, &Site::file);
+        auto site = ranges::find(scoped, declared_in, &Site::file);
         auto line = site != scoped.end() ? site->line : 0;
 
         auto linkage = InternalLinkage::None;
@@ -945,7 +943,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // A parent skips an anonymous namespace, as a qualified name
             // does; its definition still encloses the declaration.
             if(site != scoped.end() &&
-               std::ranges::any_of(definitions[declared_in], [&](const auto& definition) {
+               ranges::any_of(definitions[declared_in], [&](const auto& definition) {
                    auto scope = find_symbol(definition.second, owner_shard);
                    return definition.first.begin <= site->offset &&
                           site->offset < definition.first.end && scope &&
@@ -990,23 +988,23 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             .units =
                 [&] {
                     auto units = declaring_units.lookup({declared_in, hash});
-                    std::ranges::sort(units);
-                    units.erase(std::ranges::unique(units).begin(), units.end());
+                    ranges::sort(units);
+                    units.erase(ranges::unique(units).begin(), units.end());
                     return std::vector<std::uint32_t>(units.begin(), units.end());
                 }(),
             .partial = partially_declared.contains({declared_in, hash}),
             // A hidden friend has no name lookup finds; argument dependent
             // lookup reaches it through its class.
-            .export_name = std::ranges::contains(std::array<SymbolKind, 5>{SymbolKind::Function,
-                                                                           SymbolKind::Operator,
-                                                                           SymbolKind::Class,
-                                                                           SymbolKind::Struct,
-                                                                           SymbolKind::Union},
-                                                 kind) &&
-                                   std::ranges::all_of(scoped,
-                                                       [&](const Site& site) {
-                                                           return friend_site(site, identity->name);
-                                                       })
+            .export_name = ranges::contains(std::array<SymbolKind, 5>{SymbolKind::Function,
+                                                                      SymbolKind::Operator,
+                                                                      SymbolKind::Class,
+                                                                      SymbolKind::Struct,
+                                                                      SymbolKind::Union},
+                                            kind) &&
+                                   ranges::all_of(scoped,
+                                                  [&](const Site& site) {
+                                                      return friend_site(site, identity->name);
+                                                  })
                                ? std::string()
                                : c_linkage_name(export_name_of(hash, *identity, owner_shard)),
             .directive =
@@ -1040,7 +1038,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         llvm::SmallVector<std::uint32_t> defining_headers;
         for(auto& site: scoped) {
             if(site.definition && !facts.files[site.file].source &&
-               !std::ranges::contains(defining_headers, site.file)) {
+               !ranges::contains(defining_headers, site.file)) {
                 defining_headers.push_back(site.file);
             }
             if(site.file != owner && site.file != declared_in) {
@@ -1100,24 +1098,23 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     }
     auto names_owned = [&](index::SymbolHash specialization, std::uint32_t file) {
         auto it = sites.find(specialization);
-        return it != sites.end() && std::ranges::any_of(it->second, [&](const Site& site) {
+        return it != sites.end() && ranges::any_of(it->second, [&](const Site& site) {
                    if(site.file != file) {
                        return false;
                    }
                    // From the name to the body: the arguments and the bases.
                    auto& text = text_of(file);
-                   auto from = std::ranges::lower_bound(
-                       text.tokens,
-                       site.offset,
-                       {},
-                       [](const Token& token) { return token.range.begin; });
-                   auto head = std::ranges::subrange(
+                   auto from =
+                       ranges::lower_bound(text.tokens, site.offset, {}, [](const Token& token) {
+                           return token.range.begin;
+                       });
+                   auto head = ranges::subrange(
                        from,
                        std::find_if(from, text.tokens.end(), [](const Token& token) {
                            return token.kind == clang::tok::l_brace ||
                                   token.kind == clang::tok::semi;
                        }));
-                   return std::ranges::any_of(owned[file], [&](std::uint32_t entity) {
+                   return ranges::any_of(owned[file], [&](std::uint32_t entity) {
                        // The specialization and its members are no arguments.
                        if(facts.entities[entity].hash == specialization ||
                           parents[entity] == specialization) {
@@ -1127,7 +1124,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                        auto separator = name.rfind("::");
                        auto last =
                            separator == llvm::StringRef::npos ? name : name.substr(separator + 2);
-                       return std::ranges::any_of(head, [&](const Token& token) {
+                       return ranges::any_of(head, [&](const Token& token) {
                            return token.is_identifier() && token.text(text.content) == last;
                        });
                    });
@@ -1140,7 +1137,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 continue;
             }
             if(auto name = qualified_name(primary, index.shard(fids[file]));
-               !name.empty() && !std::ranges::contains(facts.files[file].specializes, name)) {
+               !name.empty() && !ranges::contains(facts.files[file].specializes, name)) {
                 facts.files[file].specializes.push_back(std::move(name));
             }
             continue;
@@ -1148,14 +1145,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(facts.entities[entity].owner == file) {
             continue;
         }
-        if(std::ranges::none_of(facts.specializations, [&](const Specialization& known) {
+        if(ranges::none_of(facts.specializations, [&](const Specialization& known) {
                return known.primary == entity && known.file == file;
            })) {
             std::uint32_t line = 0;
             if(auto it = sites.find(specialization); it != sites.end()) {
-                if(auto site =
-                       std::ranges::find_if(it->second,
-                                            [&](const Site& site) { return site.file == file; });
+                if(auto site = ranges::find_if(it->second,
+                                               [&](const Site& site) { return site.file == file; });
                    site != it->second.end()) {
                     line = site->line;
                 }
@@ -1171,7 +1167,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // needs no other file for it.
     auto defines = [&](std::uint32_t file, index::SymbolHash hash) {
         auto it = sites.find(hash);
-        return it != sites.end() && std::ranges::any_of(it->second, [&](const Site& site) {
+        return it != sites.end() && ranges::any_of(it->second, [&](const Site& site) {
                    return site.file == file && site.definition;
                });
     };
@@ -1199,7 +1195,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
             auto it = sites.find(hash);
-            return it != sites.end() && std::ranges::any_of(it->second, [&](const Site& site) {
+            return it != sites.end() && ranges::any_of(it->second, [&](const Site& site) {
                        return closure->contains(fids[site.file]);
                    });
         };
@@ -1214,9 +1210,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             into.push_back({.entity = entity, .count = use.count, .line = use.line});
         }
         for(auto* list: {&facts.uses[id], &facts.macro_uses[id]}) {
-            std::ranges::sort(*list, {}, &Use::entity);
+            ranges::sort(*list, {}, &Use::entity);
         }
-        std::ranges::sort(facts.files[id].specializes);
+        ranges::sort(facts.files[id].specializes);
     }
 
     // Each use relation inside a definition the file provides belongs to the
@@ -1245,11 +1241,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(definitions.empty()) {
             continue;
         }
-        std::ranges::sort(definitions, [](const Extent& lhs, const Extent& rhs) {
+        ranges::sort(definitions, [](const Extent& lhs, const Extent& rhs) {
             return std::tuple(lhs.begin, rhs.end) < std::tuple(rhs.begin, lhs.end);
         });
         auto& file_sites = use_sites[id];
-        std::ranges::sort(file_sites);
+        ranges::sort(file_sites);
         std::vector<std::pair<std::uint32_t, std::uint32_t>> owned_uses;
         llvm::SmallVector<const Extent*> open;
         std::size_t next = 0;
@@ -1274,7 +1270,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 owned_uses.emplace_back(open.back()->entity, used);
             }
         }
-        std::ranges::sort(owned_uses);
+        ranges::sort(owned_uses);
         for(auto& [entity, used]: owned_uses) {
             auto& body = facts.entities[entity].body;
             if(body.empty() || body.back().entity != used) {
@@ -1402,13 +1398,13 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         stale.dropped.emplace_back(files.display(unit));
     }
     if(!stale.dropped.empty()) {
-        std::ranges::sort(stale.dropped);
+        ranges::sort(stale.dropped);
         return std::unexpected(std::move(stale));
     }
 
     auto facts = collect(project, [&](llvm::StringRef path) {
         if(!globs.empty()) {
-            return std::ranges::any_of(globs, [&](auto& glob) { return glob.match(path); });
+            return ranges::any_of(globs, [&](auto& glob) { return glob.match(path); });
         }
         return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
                !path.contains("/.");
@@ -1432,7 +1428,7 @@ std::expected<void, std::string> move_entities(Facts& facts,
     llvm::SmallVector<std::uint32_t> selected;
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
-        if(info.kind != SymbolKind::Macro && std::ranges::contains(symbols, info.hash)) {
+        if(info.kind != SymbolKind::Macro && ranges::contains(symbols, info.hash)) {
             selected.push_back(entity);
         }
     }
@@ -1461,7 +1457,7 @@ std::expected<void, std::string> move_entities(Facts& facts,
     }
 
     auto moves = [&](std::uint32_t entity) {
-        return std::ranges::contains(selected, facts.entities[entity].top);
+        return ranges::contains(selected, facts.entities[entity].top);
     };
     llvm::SmallVector<std::uint32_t> moved;
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
@@ -1471,14 +1467,14 @@ std::expected<void, std::string> move_entities(Facts& facts,
     }
     auto add =
         [](std::vector<Use>& uses, std::uint32_t entity, std::uint32_t count, std::uint32_t line) {
-            auto use = std::ranges::lower_bound(uses, entity, {}, &Use::entity);
+            auto use = ranges::lower_bound(uses, entity, {}, &Use::entity);
             if(use == uses.end() || use->entity != entity) {
                 use = uses.insert(use, {.entity = entity, .line = line});
             }
             use->count += count;
         };
     auto remove = [](std::vector<Use>& uses, std::uint32_t entity, std::uint32_t count) {
-        auto use = std::ranges::lower_bound(uses, entity, {}, &Use::entity);
+        auto use = ranges::lower_bound(uses, entity, {}, &Use::entity);
         assert(use != uses.end() && use->entity == entity && use->count >= count);
         use->count -= count;
         if(use->count == 0) {
@@ -1535,7 +1531,7 @@ std::expected<void, std::string> move_entities(Facts& facts,
             add(facts.uses[info.owner], entity, behind, moving == 0 ? info.self_line : 0);
         }
         auto& from_target = facts.uses[target];
-        if(auto use = std::ranges::lower_bound(from_target, entity, {}, &Use::entity);
+        if(auto use = ranges::lower_bound(from_target, entity, {}, &Use::entity);
            use != from_target.end() && use->entity == entity) {
             inside += use->count;
             from_target.erase(use);
@@ -1559,9 +1555,9 @@ bool is_keyword(llvm::StringRef word) {
 bool is_module_name(llvm::StringRef name) {
     llvm::SmallVector<llvm::StringRef> parts;
     name.split(parts, '.');
-    return std::ranges::all_of(parts, [](llvm::StringRef part) {
+    return ranges::all_of(parts, [](llvm::StringRef part) {
         return !part.empty() && (llvm::isAlpha(part.front()) || part.front() == '_') &&
-               std::ranges::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; }) &&
+               ranges::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; }) &&
                !is_keyword(part) && part != "module" && part != "import";
     });
 }
@@ -1609,7 +1605,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     llvm::StringSet<> matched_names;
     for(auto& file: facts.files) {
         auto matched =
-            std::ranges::find_if(globs, [&](auto& glob) { return glob.second.match(file.path); });
+            ranges::find_if(globs, [&](auto& glob) { return glob.second.match(file.path); });
         if(matched != globs.end()) {
             matched_names.insert(matched->first);
         }
@@ -1654,7 +1650,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
             joined[member] = members.front();
         }
         for(auto& module: result.module_of) {
-            if(std::ranges::contains(members, module)) {
+            if(ranges::contains(members, module)) {
                 module = members.front();
             }
         }
@@ -1838,7 +1834,7 @@ struct Reverse {
                     for(auto& use: *list) {
                         auto& named = users[use.entity];
                         if(charged != facts.entities[use.entity].owner &&
-                           !std::ranges::contains(named, charged)) {
+                           !ranges::contains(named, charged)) {
                             named.push_back(charged);
                         }
                     }
@@ -1924,7 +1920,7 @@ struct Graph {
         for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
             for(auto entity: reverse.owned[file]) {
                 for(auto user: reverse.users[entity]) {
-                    if(std::ranges::contains(dependents[file], user) ||
+                    if(ranges::contains(dependents[file], user) ||
                        (forward_declared.contains({user, entity}) &&
                         partition.module_of[user] == partition.module_of[file])) {
                         continue;
@@ -1937,7 +1933,7 @@ struct Graph {
             auto& info = facts.files[file];
             internal[file] = !info.source && !info.fragment && info.specializes.empty() &&
                              !dependents[file].empty() &&
-                             std::ranges::all_of(dependents[file], [&](std::uint32_t user) {
+                             ranges::all_of(dependents[file], [&](std::uint32_t user) {
                                  return partition.module_of[user] == partition.module_of[file];
                              });
         }
@@ -1945,7 +1941,7 @@ struct Graph {
         for(bool changed = true; changed;) {
             changed = false;
             for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
-                if(internal[file] && std::ranges::any_of(dependents[file], [&](std::uint32_t user) {
+                if(internal[file] && ranges::any_of(dependents[file], [&](std::uint32_t user) {
                        return !facts.files[user].source && !internal[user];
                    })) {
                     internal[file] = false;
@@ -1965,7 +1961,7 @@ struct Graph {
                     }
                     auto& edge = edges[{from, to}];
                     auto& files = edge.entities[use.entity];
-                    if(!std::ranges::contains(files, user)) {
+                    if(!ranges::contains(files, user)) {
                         files.push_back(user);
                     }
                     if(!facts.files[user].source && !internal[user] &&
@@ -2054,11 +2050,11 @@ struct Graph {
             for(auto set = full; set != 0; set &= ~(1u << last[set])) {
                 order.push_back(members[last[set]]);
             }
-            std::ranges::reverse(order);
+            ranges::reverse(order);
         } else {
             llvm::SmallVector<std::uint32_t> rest(members);
             while(!rest.empty()) {
-                auto lowest = std::ranges::min_element(rest, {}, [&](std::uint32_t v) {
+                auto lowest = ranges::min_element(rest, {}, [&](std::uint32_t v) {
                     std::uint64_t out = 0;
                     for(auto u: rest) {
                         out += weight(v, u);
@@ -2088,13 +2084,11 @@ std::vector<std::string> sample(const Facts& facts, const Graph::Edge& edge, std
     for(auto& [entity, files]: edge.entities) {
         ranked.emplace_back(entity, files.size());
     }
-    std::ranges::stable_sort(ranked, std::ranges::greater{}, [](auto& entry) {
-        return entry.second;
-    });
+    ranges::stable_sort(ranked, ranges::greater{}, [](auto& entry) { return entry.second; });
     std::vector<std::string> names;
     for(auto& entry: ranked) {
         auto& name = facts.entities[entry.first].name;
-        if(!std::ranges::contains(names, name)) {
+        if(!ranges::contains(names, name)) {
             names.push_back(name);
         }
         if(names.size() == limit) {
@@ -2126,7 +2120,7 @@ std::string component_label(const Graph& graph, std::uint32_t component) {
     for(auto module: graph.components[component]) {
         names.push_back(graph.partition.modules[module]);
     }
-    std::ranges::sort(names);
+    ranges::sort(names);
     return llvm::join(names, " + ");
 }
 
@@ -2206,8 +2200,7 @@ struct Rebuild {
             for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
                 if(facts.files[file].source &&
                    (affected[module_of[file]] ||
-                    std::ranges::any_of(named[file],
-                                        [&](std::uint32_t m) { return affected[m]; }))) {
+                    ranges::any_of(named[file], [&](std::uint32_t m) { return affected[m]; }))) {
                     rebuilt_by_module[module].push_back(file);
                 }
             }
@@ -2231,7 +2224,7 @@ struct Rebuild {
             }
             // Summed in file order, so the floating-point total is stable.
             llvm::SmallVector<std::uint32_t> sources(rebuilt.begin(), rebuilt.end());
-            std::ranges::sort(sources);
+            ranges::sort(sources);
             double after = 0;
             for(auto source: sources) {
                 after += cost(source);
@@ -2259,7 +2252,7 @@ Overview Report::overview(std::uint32_t limit) const {
         (facts.files[file].source ? summary.sources : summary.headers) += 1;
         summary.lines += facts.files[file].lines;
     }
-    std::ranges::sort(result.modules, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.modules, [](auto& lhs, auto& rhs) {
         return std::tie(rhs.layer, lhs.name) < std::tie(lhs.layer, rhs.name);
     });
 
@@ -2273,7 +2266,7 @@ Overview Report::overview(std::uint32_t limit) const {
             .sample = sample(facts, edge, 5),
         });
     }
-    std::ranges::sort(result.edges, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.edges, [](auto& lhs, auto& rhs) {
         return std::tie(rhs.interface_entities, rhs.implementation_entities, lhs.from, lhs.to) <
                std::tie(lhs.interface_entities, lhs.implementation_entities, rhs.from, rhs.to);
     });
@@ -2287,7 +2280,7 @@ Overview Report::overview(std::uint32_t limit) const {
         for(auto module: component) {
             cycle.modules.push_back(partition.modules[module]);
         }
-        std::ranges::sort(cycle.modules);
+        ranges::sort(cycle.modules);
         for(auto [from, to]: graph.cut(component)) {
             auto& edge = graph.edges.at({from, to});
             auto& cut = cycle.cut.emplace_back();
@@ -2309,7 +2302,7 @@ Overview Report::overview(std::uint32_t limit) const {
                 }
             }
             cut.sample = sample(facts, interface, 8);
-            std::ranges::sort(cut.files);
+            ranges::sort(cut.files);
         }
     }
 
@@ -2326,7 +2319,7 @@ Overview Report::overview(std::uint32_t limit) const {
                 if(owner != header && partition.module_of[owner] == partition.module_of[header] &&
                    !facts.files[owner].source &&
                    !graph.forward_declared.contains({file, use.entity}) &&
-                   !std::ranges::contains(header_uses[header], owner)) {
+                   !ranges::contains(header_uses[header], owner)) {
                     header_uses[header].push_back(owner);
                 }
             }
@@ -2341,16 +2334,16 @@ Overview Report::overview(std::uint32_t limit) const {
         for(auto file: component) {
             cycle.headers.push_back(facts.files[file].path);
         }
-        std::ranges::sort(cycle.headers);
+        ranges::sort(cycle.headers);
     }
-    std::ranges::sort(result.partition_cycles, {}, &PartitionCycle::module);
-    result.internal_headers = static_cast<std::uint32_t>(std::ranges::count(graph.internal, true));
+    ranges::sort(result.partition_cycles, {}, &PartitionCycle::module);
+    result.internal_headers = static_cast<std::uint32_t>(ranges::count(graph.internal, true));
 
     if(!graph.components.empty()) {
         // Down from the highest component through the import that sets
         // each one's layer.
-        auto top = std::ranges::max_element(
-            std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(graph.components.size())),
+        auto top = ranges::max_element(
+            views::iota(std::uint32_t(0), static_cast<std::uint32_t>(graph.components.size())),
             {},
             [&](std::uint32_t c) { return graph.layer[graph.components[c].front()]; });
         for(auto c = *top;;) {
@@ -2396,8 +2389,7 @@ Overview Report::overview(std::uint32_t limit) const {
            facts.files[header].source) {
             continue;
         }
-        if(auto& sources = implemented_by[header];
-           !std::ranges::contains(sources, redeclaration.file)) {
+        if(auto& sources = implemented_by[header]; !ranges::contains(sources, redeclaration.file)) {
             sources.push_back(redeclaration.file);
             implements[redeclaration.file].push_back(header);
         }
@@ -2427,7 +2419,7 @@ Overview Report::overview(std::uint32_t limit) const {
             }
         }
         auto home = partition.module_of[file];
-        if(std::ranges::any_of(unit, [&](std::uint32_t member) {
+        if(ranges::any_of(unit, [&](std::uint32_t member) {
                auto& info = facts.files[member];
                return info.fragment || !info.specializes.empty() ||
                       partition.module_of[member] != home;
@@ -2439,14 +2431,14 @@ Overview Report::overview(std::uint32_t limit) const {
         for(auto member: unit) {
             for(auto& use: llvm::concat<const Use>(facts.uses[member], facts.macro_uses[member])) {
                 auto owner = facts.entities[use.entity].owner;
-                if(!std::ranges::contains(unit, owner)) {
+                if(!ranges::contains(unit, owner)) {
                     exchanged[partition.module_of[owner]].insert(use.entity);
                 }
             }
             for(auto entity:
                 llvm::concat<const std::uint32_t>(reverse.owned[member], macros[member])) {
                 for(auto user: reverse.users[entity]) {
-                    if(!std::ranges::contains(unit, user)) {
+                    if(!ranges::contains(unit, user)) {
                         exchanged[partition.module_of[user]].insert(entity);
                         user_modules.insert(partition.module_of[user]);
                     }
@@ -2455,10 +2447,10 @@ Overview Report::overview(std::uint32_t limit) const {
         }
         // Moving the whole module is a merge.
         if(exchanged.contains(home) || user_modules.size() != 1 ||
-           std::ranges::count(partition.module_of, home) == unit.size()) {
+           ranges::count(partition.module_of, home) == unit.size()) {
             continue;
         }
-        std::ranges::sort(unit, {}, [&](std::uint32_t member) {
+        ranges::sort(unit, {}, [&](std::uint32_t member) {
             return std::tie(facts.files[member].source, facts.files[member].path);
         });
         auto target = *user_modules.begin();
@@ -2466,12 +2458,12 @@ Overview Report::overview(std::uint32_t limit) const {
         move.path = facts.files[unit.front()].path;
         move.from = partition.modules[home];
         move.to = partition.modules[target];
-        for(auto member: std::views::drop(unit, 1)) {
+        for(auto member: views::drop(unit, 1)) {
             move.with.push_back(facts.files[member].path);
         }
         move.entities = static_cast<std::uint32_t>(exchanged[target].size());
     }
-    std::ranges::sort(result.moves, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.moves, [](auto& lhs, auto& rhs) {
         return std::tie(rhs.entities, lhs.path) < std::tie(lhs.entities, rhs.path);
     });
     if(result.moves.size() > limit) {
@@ -2522,7 +2514,7 @@ Overview Report::overview(std::uint32_t limit) const {
             std::set<std::string> modules;
             auto range = groups.members(*group);
             llvm::SmallVector<std::uint32_t> members(range.begin(), range.end());
-            std::ranges::sort(members, {}, [&](std::uint32_t member) {
+            ranges::sort(members, {}, [&](std::uint32_t member) {
                 return std::tie(facts.entities[member].line, facts.entities[member].name);
             });
             part.count = static_cast<std::uint32_t>(members.size());
@@ -2538,7 +2530,7 @@ Overview Report::overview(std::uint32_t limit) const {
             part.consumers.assign(modules.begin(), modules.end());
         }
         if(parts.size() > 1) {
-            std::ranges::sort(parts, [](auto& lhs, auto& rhs) {
+            ranges::sort(parts, [](auto& lhs, auto& rhs) {
                 return std::tuple(rhs.consumers.size(), lhs.consumers, lhs.entities) <
                        std::tuple(lhs.consumers.size(), rhs.consumers, rhs.entities);
             });
@@ -2549,7 +2541,7 @@ Overview Report::overview(std::uint32_t limit) const {
             });
         }
     }
-    std::ranges::sort(result.splits, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.splits, [](auto& lhs, auto& rhs) {
         return std::tuple(rhs.parts.size(), lhs.path) < std::tuple(lhs.parts.size(), rhs.path);
     });
     if(result.splits.size() > limit) {
@@ -2559,7 +2551,7 @@ Overview Report::overview(std::uint32_t limit) const {
     auto blocked = obstacles();
     result.obstacles = {
         .variant_headers = static_cast<std::uint32_t>(
-            std::ranges::count_if(blocked.variant_headers, &VariantHeader::declarations_differ)),
+            ranges::count_if(blocked.variant_headers, &VariantHeader::declarations_differ)),
         .context_macros = static_cast<std::uint32_t>(blocked.context_macros.size()),
         .borrowed_macros = static_cast<std::uint32_t>(blocked.borrowed_macros.size()),
         .internal_uses = static_cast<std::uint32_t>(blocked.internal_uses.size()),
@@ -2596,7 +2588,7 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
     auto line_in = [&](std::uint32_t user, std::uint32_t entity) {
         for(auto file: llvm::concat<const std::uint32_t>(llvm::ArrayRef(user), pasted[user])) {
             auto& uses = facts.uses[file];
-            auto use = std::ranges::lower_bound(uses, entity, {}, &Use::entity);
+            auto use = ranges::lower_bound(uses, entity, {}, &Use::entity);
             if(use != uses.end() && use->entity == entity) {
                 return use->line == 0 ? facts.files[file].path
                                       : std::format("{}:{}", facts.files[file].path, use->line);
@@ -2617,9 +2609,9 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
         for(auto file: files) {
             entry.users.push_back(line_in(file, entity));
         }
-        std::ranges::sort(entry.users);
+        ranges::sort(entry.users);
     }
-    std::ranges::sort(result.entities, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.entities, [](auto& lhs, auto& rhs) {
         return std::tuple(lhs.interface, lhs.users.size(), rhs.entity) >
                std::tuple(rhs.interface, rhs.users.size(), lhs.entity);
     });
@@ -2640,7 +2632,7 @@ std::expected<ModuleDetail, std::string> Report::module(llvm::StringRef name) co
             result.push_back({.module = partition.modules[other],
                               .entities = static_cast<std::uint32_t>(entities.size())});
         }
-        std::ranges::sort(result, by_entities);
+        ranges::sort(result, by_entities);
         return result;
     };
     // A header's consumers are the other modules using it, directly or
@@ -2720,16 +2712,16 @@ std::expected<ModuleDetail, std::string> Report::module(llvm::StringRef name) co
                 }
             }
         }
-        std::ranges::sort(group.consumers);
-        std::ranges::sort(group.headers);
+        ranges::sort(group.consumers);
+        ranges::sort(group.headers);
         group.depends_on.assign(depends_on.begin(), depends_on.end());
     }
-    std::ranges::sort(result.groups, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.groups, [](auto& lhs, auto& rhs) {
         return std::tuple(rhs.consumers.size(), lhs.headers) <
                std::tuple(lhs.consumers.size(), rhs.headers);
     });
-    std::ranges::sort(result.files, {}, &FileLinks::path);
-    std::ranges::sort(result.internal_headers);
+    ranges::sort(result.files, {}, &FileLinks::path);
+    ranges::sort(result.internal_headers);
     return result;
 }
 
@@ -2785,7 +2777,7 @@ std::expected<FileDetail, std::string> Report::file(llvm::StringRef path) const 
         result.affinity.push_back({.module = partition.modules[module],
                                    .entities = static_cast<std::uint32_t>(entities.size())});
     }
-    std::ranges::sort(result.affinity, by_entities);
+    ranges::sort(result.affinity, by_entities);
     return result;
 }
 
@@ -2806,7 +2798,7 @@ Obstacles Report::obstacles() const {
                                    std::min<std::size_t>(file.unstable.size(), 10));
         header.declarations_differ = file.declarations_differ;
     }
-    std::ranges::sort(result.variant_headers, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.variant_headers, [](auto& lhs, auto& rhs) {
         return std::tie(rhs.declarations_differ, rhs.variants, lhs.path) <
                std::tie(lhs.declarations_differ, lhs.variants, rhs.path);
     });
@@ -2838,7 +2830,7 @@ Obstacles Report::obstacles() const {
         for(auto user: reverse.users[entity]) {
             use.users.push_back(facts.files[user].path);
         }
-        std::ranges::sort(use.users);
+        ranges::sort(use.users);
     }
 
     for(auto& redeclaration: facts.redeclarations) {
@@ -2859,7 +2851,7 @@ Obstacles Report::obstacles() const {
             }
             continue;
         }
-        auto named = std::ranges::any_of(facts.uses[redeclaration.file], [&](const Use& use) {
+        auto named = ranges::any_of(facts.uses[redeclaration.file], [&](const Use& use) {
             return use.entity == redeclaration.entity;
         });
         result.cross_module_redeclarations.push_back({
@@ -2889,9 +2881,9 @@ Obstacles Report::obstacles() const {
         for(auto file: duplicate.files) {
             entry.files.push_back(facts.files[file].path);
         }
-        std::ranges::sort(entry.files);
+        ranges::sort(entry.files);
     }
-    std::ranges::sort(result.duplicate_definitions, {}, &DuplicateEntry::entity);
+    ranges::sort(result.duplicate_definitions, {}, &DuplicateEntry::entity);
 
     for(auto& specialization: facts.specializations) {
         auto& primary = facts.entities[specialization.primary];
@@ -2913,7 +2905,7 @@ Obstacles Report::obstacles() const {
             .readers = macro.readers,
         });
     }
-    std::ranges::sort(result.configuring_macros, {}, &ConfiguringEntry::macro);
+    ranges::sort(result.configuring_macros, {}, &ConfiguringEntry::macro);
 
     for(auto& file: facts.files) {
         if(!file.specializes.empty()) {
@@ -2921,10 +2913,10 @@ Obstacles Report::obstacles() const {
                 {.path = file.path, .specializes = file.specializes});
         }
     }
-    std::ranges::sort(result.implicit_providers, {}, &ProviderEntry::path);
+    ranges::sort(result.implicit_providers, {}, &ProviderEntry::path);
 
     auto by_file = [](auto& entries) {
-        std::ranges::sort(entries, [](auto& lhs, auto& rhs) {
+        ranges::sort(entries, [](auto& lhs, auto& rhs) {
             return std::tie(lhs.file, lhs.line) < std::tie(rhs.file, rhs.line);
         });
     };
@@ -2934,7 +2926,7 @@ Obstacles Report::obstacles() const {
     by_file(result.foreign_declarations);
     by_file(result.split_definitions);
     by_file(result.specializations);
-    std::ranges::sort(result.internal_uses, [](auto& lhs, auto& rhs) {
+    ranges::sort(result.internal_uses, [](auto& lhs, auto& rhs) {
         return std::tie(lhs.owner, lhs.entity) < std::tie(rhs.owner, rhs.entity);
     });
     return result;
@@ -2959,7 +2951,7 @@ std::vector<MacroUse> Report::macros() const {
             use.users.push_back({.module = partition.modules[module], .entities = count});
         }
     }
-    std::ranges::sort(result, [](auto& lhs, auto& rhs) {
+    ranges::sort(result, [](auto& lhs, auto& rhs) {
         return std::tuple(lhs.users.size(), rhs.macro) > std::tuple(rhs.users.size(), lhs.macro);
     });
     return result;
@@ -2983,7 +2975,7 @@ std::vector<Impact> Report::impact() const {
             impact.churn = churn->values.lookup(impact.path);
         }
     }
-    std::ranges::sort(result, [](auto& lhs, auto& rhs) {
+    ranges::sort(result, [](auto& lhs, auto& rhs) {
         auto weight = [](const Impact& impact) {
             return impact.churn.value_or(1.0) * impact.partitioned;
         };
@@ -3012,8 +3004,7 @@ std::vector<Unit> Report::units() const {
     for(bool changed = true; changed;) {
         changed = false;
         for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
-            if(internal[file] &&
-               std::ranges::any_of(facts.files[file].includers, [&](std::uint32_t by) {
+            if(internal[file] && ranges::any_of(facts.files[file].includers, [&](std::uint32_t by) {
                    return partition.module_of[by] != partition.module_of[file] ||
                           (!facts.files[by].source && !facts.files[by].fragment && !internal[by]);
                })) {
@@ -3045,8 +3036,8 @@ std::vector<Unit> Report::units() const {
             }
         }
         for(auto* owners: {&unit.names, &unit.macros}) {
-            std::ranges::sort(*owners);
-            owners->erase(std::ranges::unique(*owners).begin(), owners->end());
+            ranges::sort(*owners);
+            owners->erase(ranges::unique(*owners).begin(), owners->end());
         }
     }
     return result;
@@ -3095,7 +3086,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> closures;
     auto reaches = [&](std::uint32_t user, std::uint32_t target, bool every_reading) {
         if(contextual(target) && !every_reading) {
-            return user == target || std::ranges::contains(facts.files[user].includes, target);
+            return user == target || ranges::contains(facts.files[user].includes, target);
         }
         auto [it, inserted] = closures.try_emplace(user);
         auto& closure = it->second;
@@ -3204,9 +3195,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             file_imports[file].insert(module_of(included));
         }
         if(!facts.files[file].fragment &&
-           std::ranges::any_of(facts.files[file].includers, [&](std::uint32_t includer) {
-               return module_of(includer) != module;
-           })) {
+           ranges::any_of(facts.files[file].includers,
+                          [&](std::uint32_t includer) { return module_of(includer) != module; })) {
             entries[module].insert(file);
         }
     }
@@ -3233,7 +3223,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto module = module_of(info.owner);
         auto kept = partition.kinds[module] == ModuleKind::Textual;
         auto& users = reverse.users[entity];
-        auto user = std::ranges::find_if(users, [&](std::uint32_t candidate) {
+        auto user = ranges::find_if(users, [&](std::uint32_t candidate) {
             return module_of(candidate) != module &&
                    partition.kinds[module_of(candidate)] != ModuleKind::External &&
                    (!kept || (!self_declared.contains({entity, candidate}) &&
@@ -3341,13 +3331,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto module = module_of(info.owner);
         if(info.kind == SymbolKind::Macro || info.linkage != InternalLinkage::None ||
            info.export_name.empty() || !reached[module].contains(info.owner) ||
-           std::ranges::none_of(info.units.empty() ? facts.files[info.owner].units : info.units,
-                                [&](std::uint32_t unit) { return module_of(unit) != module; })) {
+           ranges::none_of(info.units.empty() ? facts.files[info.owner].units : info.units,
+                           [&](std::uint32_t unit) { return module_of(unit) != module; })) {
             continue;
         }
-        auto used = std::ranges::any_of(reverse.users[entity], [&](std::uint32_t user) {
-            return module_of(user) != module;
-        });
+        auto used = ranges::any_of(reverse.users[entity],
+                                   [&](std::uint32_t user) { return module_of(user) != module; });
         auto& enumeration = facts.entities[info.top];
         if(info.kind != SymbolKind::EnumMember || enumeration.kind != SymbolKind::Enum) {
             exports[module][{info.export_name, info.owner, ExportForm::Name}] |= used;
@@ -3376,7 +3365,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         llvm::DenseSet<std::uint32_t> chain;
         for(auto [tree, node]: nodes_of[header]) {
             auto& in = facts.trees[tree];
-            if(in.skipped[node] || (in.unit != user && !std::ranges::contains(in.files, user))) {
+            if(in.skipped[node] || (in.unit != user && !ranges::contains(in.files, user))) {
                 continue;
             }
             // A persisted parent column can be cyclic (see the manifest
@@ -3395,7 +3384,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             llvm::SmallVector<std::uint32_t> entries, next;
             for(auto file: level) {
                 auto& includers = facts.files[file].includers;
-                if(std::ranges::any_of(includers, [&](std::uint32_t includer) {
+                if(ranges::any_of(includers, [&](std::uint32_t includer) {
                        return module_of(includer) != module;
                    })) {
                     entries.push_back(file);
@@ -3407,7 +3396,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 }
             }
             if(!entries.empty()) {
-                auto on_chain = std::ranges::find_if(entries, [&](std::uint32_t file) {
+                auto on_chain = ranges::find_if(entries, [&](std::uint32_t file) {
                     return chain.contains(file);
                 });
                 return on_chain != entries.end() ? *on_chain : entries.front();
@@ -3450,14 +3439,14 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                (spelled.starts_with("<") && !llvm::StringRef(header.include).starts_with("<"))) {
                 header.include = spelled;
             }
-            if(!std::ranges::contains(header.names, name)) {
+            if(!ranges::contains(header.names, name)) {
                 header.names.push_back(name.str());
             }
         }
         if(header.include == by_path && !own_spelling.empty()) {
             header.include = own_spelling.str();
         }
-        std::ranges::sort(header.names);
+        ranges::sort(header.names);
         return header;
     };
 
@@ -3473,10 +3462,10 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                info.linkage == InternalLinkage::AnonymousNamespace;
     };
     auto function = [&](const Entity& info) {
-        return std::ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Function,
-                                                               SymbolKind::Method,
-                                                               SymbolKind::Operator},
-                                     info.kind);
+        return ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Function,
+                                                          SymbolKind::Method,
+                                                          SymbolKind::Operator},
+                                info.kind);
     };
     auto emitted = [&](std::uint32_t entity) {
         auto& info = facts.entities[entity];
@@ -3514,12 +3503,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             }
             for(auto entity: owned[file]) {
                 if(!tu_local(facts.entities[entity])) {
-                    std::ranges::for_each(facts.entities[entity].body, use);
+                    ranges::for_each(facts.entities[entity].body, use);
                 }
             }
         }
         while(!pending.empty()) {
-            std::ranges::for_each(facts.entities[pending.pop_back_val()].body, use);
+            ranges::for_each(facts.entities[pending.pop_back_val()].body, use);
         }
         for(auto entity: used) {
             local_users[entity].insert(module);
@@ -3548,11 +3537,11 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         for(auto imported: imports[module]) {
             interface.imports.push_back(partition.modules[imported]);
         }
-        std::ranges::sort(interface.imports);
+        ranges::sort(interface.imports);
         for(auto file: entries[module]) {
             interface.entries.push_back(header_of(module, file, {}));
         }
-        std::ranges::sort(interface.entries, {}, &InterfaceHeader::file);
+        ranges::sort(interface.entries, {}, &InterfaceHeader::file);
         std::map<std::uint32_t, std::string> included;
         for(auto header: textual[module]) {
             if(partition.kinds[module] != ModuleKind::Textual) {
@@ -3567,7 +3556,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         for(auto& [file, reason]: included) {
             interface.textual.push_back(header_of(module, file, reason));
         }
-        std::ranges::sort(interface.textual, {}, &InterfaceHeader::file);
+        ranges::sort(interface.textual, {}, &InterfaceHeader::file);
         if(partition.kinds[module] == ModuleKind::Wrapped) {
             // The internal-linkage entities of another wrapped module its
             // headers name: their headers no emptied entry brings in.
@@ -3617,13 +3606,13 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         for(auto& alias: facts.aliases) {
             auto charged = charged_files(facts, alias.file);
-            if(std::ranges::any_of(charged, [&](std::uint32_t file) {
+            if(ranges::any_of(charged, [&](std::uint32_t file) {
                    return module_of(file) == module && reached[module].contains(file);
                })) {
                 interface.aliases.push_back({.name = alias.name, .target = alias.target});
             }
         }
-        std::ranges::sort(interface.aliases, {}, &InterfaceAlias::name);
+        ranges::sort(interface.aliases, {}, &InterfaceAlias::name);
 
         // What the macros other modules use expand, transitively, within
         // the module: the other modules' macros come with their headers.
@@ -3640,7 +3629,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                               });
         }
         llvm::SmallVector<std::uint32_t> ordered(closure.begin(), closure.end());
-        std::ranges::sort(ordered, [&](std::uint32_t lhs, std::uint32_t rhs) {
+        ranges::sort(ordered, [&](std::uint32_t lhs, std::uint32_t rhs) {
             auto& left = facts.entities[lhs];
             auto& right = facts.entities[rhs];
             return std::tie(facts.files[left.owner].path, left.line) <
@@ -3661,7 +3650,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         for(auto entity: reads[module]) {
             interface.reads.push_back(macro(entity));
         }
-        std::ranges::sort(interface.reads, [](auto& lhs, auto& rhs) {
+        ranges::sort(interface.reads, [](auto& lhs, auto& rhs) {
             return std::tie(lhs.file, lhs.name) < std::tie(rhs.file, rhs.name);
         });
     }

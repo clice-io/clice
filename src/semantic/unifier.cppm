@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`

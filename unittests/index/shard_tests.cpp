@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -164,7 +164,7 @@ ZEST_CASE(ContentNotStored) {
     ZASSERT(shard.content_hash() == llvm::xxh3_64bits(content));
     ZASSERT(hash_at(shard, 4) == 111u);
 
-    auto expected = kota::ipc::lsp::line_starts(content);
+    auto expected = lsp::line_starts(content);
     auto starts = shard.line_starts();
     ZASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
@@ -217,15 +217,15 @@ ZEST_CASE(NonAsciiLinesMapPositions) {
         {{4, 6}, 111}
     });
     auto shard = make_shard(write_fresh(file_index, content));
-    auto starts = kota::ipc::lsp::line_starts(content);
+    auto starts = lsp::line_starts(content);
     PositionMap text(content, starts);
     auto stored = shard.positions();
-    using Position = kota::ipc::protocol::Position;
+    using Position = protocol::Position;
     auto point = [](const std::optional<Position>& position) {
         return position ? std::optional(std::pair(position->line, position->character))
                         : std::nullopt;
     };
-    auto span = [&](const std::optional<kota::ipc::protocol::Range>& range) {
+    auto span = [&](const std::optional<protocol::Range>& range) {
         return range ? std::optional(std::pair(point(range->start), point(range->end)))
                      : std::nullopt;
     };
@@ -242,7 +242,7 @@ ZEST_CASE(NonAsciiLinesMapPositions) {
                 ZEXPECT(stored.offset(position, encoding) == text.offset(position, encoding));
                 ZEXPECT(stored.offset_clamped(position, encoding) ==
                         text.offset_clamped(position, encoding));
-                kota::ipc::protocol::Range range{
+                protocol::Range range{
                     .start = {.line = 0, .character = 5},
                     .end = position
                 };
@@ -261,7 +261,7 @@ ZEST_CASE(LongLineEscape) {
     });
     auto shard = make_shard(write_fresh(file_index, content));
 
-    auto expected = kota::ipc::lsp::line_starts(content);
+    auto expected = lsp::line_starts(content);
     auto starts = shard.line_starts();
     ZASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
@@ -622,7 +622,7 @@ ZEST_CASE(MergedNonAsciiLines) {
     }),
                            content);
     ZASSERT(shard.variants().size() == std::size_t(2));
-    auto starts = kota::ipc::lsp::line_starts(content);
+    auto starts = lsp::line_starts(content);
     PositionMap text(content, starts);
     auto stored = shard.positions();
     for(std::uint32_t offset = 0; offset <= content.size(); offset += 1) {
@@ -796,14 +796,13 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     blob.utf8_lines.clear();
     blob.utf8_text.clear();
     blob.utf8_text_ends.clear();
-    auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
+    auto starts = lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
         auto last = i + 1 == starts.size();
         auto next = last ? blob.content_size : starts[i + 1];
         auto length = next - starts[i];
         auto line = text.slice(starts[i], last ? next : next - 1);
-        if(std::ranges::any_of(line,
-                               [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
+        if(ranges::any_of(line, [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
             blob.utf8_lines.push_back(static_cast<std::uint32_t>(i));
             blob.utf8_text += line;
             blob.utf8_text_ends.push_back(static_cast<std::uint32_t>(blob.utf8_text.size()));

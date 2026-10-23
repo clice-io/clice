@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -21,7 +21,7 @@ protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                llvm::StringRef container) {
     protocol::SymbolInformation info;
     info.name = symbol.display_name() + symbol.signature;
-    info.kind = to_protocol_symbol_kind(symbol.kind);
+    info.kind = to_protocol(symbol.kind);
     if(!container.empty()) {
         info.container_name = container.str();
     }

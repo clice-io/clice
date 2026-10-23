@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -100,7 +100,7 @@ void FileTable::spell_root(const Spelling& root) {
 void FileTable::unspell_root(const Spelling& root) {
     auto folded = fold(root);
     spelled_roots.erase(
-        std::ranges::remove_if(spelled_roots, [&](auto& entry) { return entry.second == folded; })
+        ranges::remove_if(spelled_roots, [&](auto& entry) { return entry.second == folded; })
             .begin(),
         spelled_roots.end());
 }

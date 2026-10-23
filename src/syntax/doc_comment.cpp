@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -25,8 +25,7 @@ bool marked_trailing(llvm::StringRef text) {
 }
 
 bool follows_code(llvm::StringRef content, const Comment& comment) {
-    auto begin = line_begin(content, comment.range.begin);
-    return !content.slice(begin, comment.range.begin).trim().empty();
+    return !begins_line(content, comment.range.begin);
 }
 
 std::uint32_t column_of(llvm::StringRef content, const Comment& comment) {
@@ -121,8 +120,8 @@ llvm::ArrayRef<LexicalInfo::Comment>
     auto& range = decl.range;
 
     llvm::ArrayRef<Comment> trailing;
-    auto after = static_cast<std::size_t>(
-        std::ranges::lower_bound(comments, range.end, {}, begin_of) - comments.begin());
+    auto after = static_cast<std::size_t>(ranges::lower_bound(comments, range.end, {}, begin_of) -
+                                          comments.begin());
     if(decl.trailing && after < comments.size() &&
        content.slice(range.end, comments[after].range.begin).find_first_not_of(" \t;,") ==
            llvm::StringRef::npos) {
@@ -139,8 +138,8 @@ llvm::ArrayRef<LexicalInfo::Comment>
         }
     }
 
-    auto at = static_cast<std::size_t>(
-        std::ranges::lower_bound(comments, range.begin, {}, begin_of) - comments.begin());
+    auto at = static_cast<std::size_t>(ranges::lower_bound(comments, range.begin, {}, begin_of) -
+                                       comments.begin());
     if(at == 0) {
         return trailing;
     }
@@ -215,12 +214,11 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
         text.split(block, '\n');
 
         // Javadoc decorates every line after the first with a leading `*`.
-        bool decorated =
-            block.size() > 1 && std::ranges::all_of(std::views::drop(block, 1), [](auto line) {
-                line = line.trim();
-                return line.empty() || line.starts_with("*");
-            });
-        for(auto [index, line]: std::views::enumerate(block)) {
+        bool decorated = block.size() > 1 && ranges::all_of(views::drop(block, 1), [](auto line) {
+                             line = line.trim();
+                             return line.empty() || line.starts_with("*");
+                         });
+        for(auto [index, line]: views::enumerate(block)) {
             if(index > 0 && decorated) {
                 line = line.ltrim();
                 line.consume_front("*");

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.code_completion;
 
@@ -16,8 +16,6 @@ import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {

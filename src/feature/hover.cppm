@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.hover;
 
@@ -17,8 +17,6 @@ import :syntax.position;
 import :vfs.file_table;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {
@@ -160,10 +158,10 @@ auto hover_info(CompilationUnit& unit,
 
 /// Render structured hover information as `kind` and convert its byte range
 /// through the caller's current line map.
-auto to_protocol_hover(const HoverInfo& info,
-                       protocol::MarkupKind kind,
-                       const PositionMap& map,
-                       PositionEncoding encoding) -> protocol::Hover;
+auto to_protocol(const HoverInfo& info,
+                 protocol::MarkupKind kind,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::Hover;
 
 auto hover(CompilationUnit& unit,
            std::uint32_t offset,
@@ -175,18 +173,18 @@ auto hover(CompilationUnit& unit,
 /// Assemble the read-only hover card: name, kind, where it is (`scopes`,
 /// the containers outermost first) and what the index can prove from
 /// stored text — no Sema products (type, value, size, aka).
-auto index_hover(const index::SymbolInfo& info,
-                 llvm::ArrayRef<index::SymbolInfo> scopes,
-                 llvm::StringRef definition_text,
-                 Documentation documentation) -> HoverInfo;
+auto hover_info(const index::SymbolInfo& info,
+                llvm::ArrayRef<index::SymbolInfo> scopes,
+                llvm::StringRef definition_text,
+                Documentation documentation) -> HoverInfo;
 
 /// The card the index gives for the symbol under the cursor: name and kind
 /// from the symbol tables, the definition text sliced from stored content,
 /// the documentation read from the indexed text (the overload above). A
 /// module's is module_hover.
-auto index_hover(const index::PeerQueries& queries,
-                 const index::IndexQuery::Cursor& cursor,
-                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
+auto hover_info(const index::PeerQueries& queries,
+                const index::IndexQuery::Cursor& cursor,
+                const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
 
 /// A module name's card: the module and the unit defining it, named the
 /// way the user knows the file. Only the index knows the defining unit,

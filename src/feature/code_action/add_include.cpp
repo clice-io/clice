@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -53,9 +53,8 @@ struct QualifiedName {
 /// another kind, or it holds a `<`: the text alone cannot tell a less-than
 /// from a template argument list, whose commas separate no arguments.
 std::optional<std::size_t> call_arguments(llvm::ArrayRef<Token> tokens) {
-    auto code = std::views::filter(tokens, [](const Token& token) {
-        return token.kind != clang::tok::comment;
-    });
+    auto code =
+        views::filter(tokens, [](const Token& token) { return token.kind != clang::tok::comment; });
     if(code.begin() == code.end() || code.begin()->kind != clang::tok::l_paren) {
         return std::nullopt;
     }
@@ -98,7 +97,7 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint3
     auto tokens = focus.tokens().spelled();
     // The token under the cursor, else the one the cursor sits right
     // after: editors ask at either end of a name.
-    auto it = std::ranges::partition_point(tokens, [&](const Token& token) {
+    auto it = ranges::partition_point(tokens, [&](const Token& token) {
         return token.range.end <= offset;
     });
     if((it == tokens.end() || it->range.begin > offset || it->kind == clang::tok::comment) &&
@@ -200,8 +199,7 @@ std::optional<std::uint32_t> fragment_end(const LexicalInfo& lexical) {
     }
     auto rest = llvm::ArrayRef(lexical.tokens)
                     .drop_front(lexical.token_at(lexical.modules.front().keyword.end));
-    return std::ranges::find_if(rest, [](const Token& token) { return token.is_eod(); })
-        ->range.begin;
+    return ranges::find_if(rest, [](const Token& token) { return token.is_eod(); })->range.begin;
 }
 
 /// Where the code of the file starts: its first token that is neither a
@@ -259,7 +257,7 @@ IncludeInsertion include_insertion(CompilationUnit& unit) {
     }
     auto& guard = lexical.include_guard;
     auto code = code_begin(content, lexical);
-    for(auto [index, directive]: std::views::enumerate(lexical.directives)) {
+    for(auto [index, directive]: views::enumerate(lexical.directives)) {
         if(directive.range.begin >= code) {
             break;
         }
@@ -275,7 +273,7 @@ IncludeInsertion include_insertion(CompilationUnit& unit) {
     // A line starting with `module` declares one only in a module unit; a
     // header compiled in its includer's context is none, whatever the
     // includer is.
-    bool declares_module = std::ranges::any_of(lexical.modules, [](const auto& module) {
+    bool declares_module = ranges::any_of(lexical.modules, [](const auto& module) {
         return module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration;
     });
     if(declares_module && !fragment && unit.is_named_module()) {
@@ -360,7 +358,7 @@ void add_include(CompilationUnit& unit, LocalSourceRange selection, std::vector<
         return;
     }
     auto focus = unit.focus_file();
-    bool unresolved = std::ranges::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
+    bool unresolved = ranges::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
         return focus.contains(diagnostic.fid) && diagnostic.range.valid() &&
                unresolved_name(diagnostic.id.value) && diagnostic.range.intersects(name->range);
     });

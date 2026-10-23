@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Shared utilities for stateful and stateless worker processes.
 
@@ -12,7 +12,6 @@ import :support.bytes;
 import :support.timer;
 import :vfs.file_system;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 

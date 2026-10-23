@@ -1,14 +1,12 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
 import :server.uri;
 
 namespace clice {
-
-namespace lsp = kota::ipc::lsp;
 
 std::optional<Spelling> uri_to_path(llvm::StringRef uri) {
     auto parsed = lsp::URI::parse(uri.str());

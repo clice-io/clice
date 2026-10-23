@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -352,7 +352,7 @@ ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
     }
     /// g++ takes an LTO job count (-flto=8), which clang rejects.
     if(id == option::OPT_flto_EQ && values.size() == 1 &&
-       !std::ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
+       !ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
         return ArgClass::Discarded;
     }
     if(is_discarded_option(id)) {
@@ -424,7 +424,7 @@ std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
     auto& options = option::table().option_infos;
     auto written = [&](std::uint32_t id) {
         auto& option = options[id - 1];
-        return std::ranges::any_of(option.prefixes, [&](std::string_view prefix) {
+        return ranges::any_of(option.prefixes, [&](std::string_view prefix) {
             return parsed.spelling.size() == prefix.size() + option.name().size() &&
                    parsed.spelling.starts_with(prefix) && parsed.spelling.ends_with(option.name());
         });
@@ -442,7 +442,7 @@ std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
         return aliases;
     }();
     auto& candidates = aliases.find(parsed.id)->second;
-    auto alias = std::ranges::find_if(candidates, written);
+    auto alias = ranges::find_if(candidates, written);
     assert(alias != candidates.end() && "the parse matched the option or an alias of it");
     return *alias;
 }
@@ -488,7 +488,7 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
             }
             return;
         case kota::option::RenderStyle::CommaJoined:
-            for(auto [i, value]: std::views::enumerate(arg.values)) {
+            for(auto [i, value]: views::enumerate(arg.values)) {
                 name += i == 0 ? "" : ",";
                 name += value;
             }
@@ -524,10 +524,9 @@ void render_driver_arg(const Arg& arg,
         for(auto& parsed: option::table().parse(fragments, parse_options)) {
             count += 1;
             same = same && parsed && parsed->id == arg.opt_id &&
-                   std::ranges::equal(
-                       parsed->values,
-                       arg.values,
-                       [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
+                   ranges::equal(parsed->values,
+                                 arg.values,
+                                 [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
         }
         return same && count == 1;
     };

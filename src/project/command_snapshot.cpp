@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -103,7 +103,7 @@ Blob build_snapshot(Project& project,
                 continue;
             }
             auto source = project.index.portable(database);
-            if(!std::ranges::contains(sources, source)) {
+            if(!ranges::contains(sources, source)) {
                 sources.push_back(std::move(source));
             }
         }
@@ -154,8 +154,8 @@ Blob build_snapshot(Project& project,
         snapshot.provisional.push_back(project.index.portable(project.file_table.resolve(file)));
     }
     // Deterministic bytes: a save decides "unchanged" by byte equality.
-    std::ranges::sort(snapshot.entries, {}, &Entry::file);
-    std::ranges::sort(snapshot.provisional);
+    ranges::sort(snapshot.entries, {}, &Entry::file);
+    ranges::sort(snapshot.provisional);
     return snapshot;
 }
 
@@ -184,14 +184,13 @@ CommandSnapshot::Remembered CommandSnapshot::remembered(const Project& project) 
     }
     auto blob = project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     Blob persisted;
-    if(!blob ||
-       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+    if(!blob || !json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         return result;
     }
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
             auto absolute = project.index.local(source);
-            if(!std::ranges::contains(result.sources, absolute)) {
+            if(!ranges::contains(result.sources, absolute)) {
                 result.sources.push_back(std::move(absolute));
             }
         }
@@ -218,7 +217,7 @@ bool CommandSnapshot::owes_save(const Project& project) const {
 
 std::optional<std::string> CommandSnapshot::serialize(Project& project, llvm::ArrayRef<Fid> debt) {
     serialized_records = project.build.recorded_generation();
-    auto json = kota::codec::json::to_string<PathJsonConfig>(
+    auto json = json::to_string<PathJsonConfig>(
         build_snapshot(project, header_hosts, standalone_of(project, debt)));
     if(!json) {
         LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
@@ -247,13 +246,13 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         return;
     }
     Blob persisted;
-    if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+    if(!json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
                   std::string_view(project.config.project.cache_dir));
         dirty = true;
         llvm::SmallVector<Fid> units;
         project_index.for_each_unit([&](Fid tu) { units.push_back(tu); });
-        std::ranges::for_each(units, rebuild);
+        ranges::for_each(units, rebuild);
         return;
     }
     persisted_bytes = blob.buffer->getBuffer().str();
@@ -358,7 +357,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             continue;
         }
         auto host_id = file_of(old.host);
-        if(project.build.commands(host_id).empty() || std::ranges::contains(changed_ids, host_id) ||
+        if(project.build.commands(host_id).empty() || ranges::contains(changed_ids, host_id) ||
            old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      project.file_table.resolve(server_id));
@@ -409,7 +408,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         if(!project.build.commands(server_id).empty()) {
             continue;
         }
-        bool healthy = std::ranges::all_of(old.sources, [&](const std::string& source) {
+        bool healthy = ranges::all_of(old.sources, [&](const std::string& source) {
             auto id = project.cdb.find_source(project_index.local(source));
             return id ? project.cdb.loaded(*id) : declared || replaced;
         });
@@ -448,7 +447,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             return;
         }
-        if(std::ranges::any_of(changed_ids, [&](Fid host) {
+        if(ranges::any_of(changed_ids, [&](Fid host) {
                return !project.dep_graph.find_include_chain(host, tu).empty();
            })) {
             hosted.push_back(tu);

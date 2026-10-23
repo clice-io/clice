@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -30,7 +30,7 @@ enum class MaskEncoding : std::uint8_t {
 
 namespace {
 
-using Root = kota::codec::blob::view_t<ShardBlob>;
+using Root = codec::blob::view_t<ShardBlob>;
 
 MaskEncoding encoding_of(std::uint32_t variant_count) {
     if(variant_count <= 1) {
@@ -52,7 +52,7 @@ MaskEncoding encoding_of(std::uint32_t variant_count) {
 }
 
 const Root& view_of(llvm::StringRef bytes) {
-    return kota::codec::blob::view_verified<ShardBlob>(as_bytes(bytes));
+    return codec::blob::view_verified<ShardBlob>(as_bytes(bytes));
 }
 
 MaskEncoding encoding_of(const Root& root) {
@@ -300,8 +300,8 @@ struct LineLengths {
 CheckResult variants_ok(const Root& root) {
     auto& variants = root.variants;
     llvm::SmallVector<VariantHash> sorted(variants.begin(), variants.end());
-    std::ranges::sort(sorted);
-    if(std::ranges::adjacent_find(sorted) != sorted.end()) {
+    ranges::sort(sorted);
+    if(ranges::adjacent_find(sorted) != sorted.end()) {
         return std::unexpected("duplicate variant identity");
     }
     return {};
@@ -350,7 +350,7 @@ CheckResult line_table_ok(const Root& root) {
         if(utf8_cursor < utf8_lines.size() && utf8_lines[utf8_cursor] == line) {
             auto text = slice(utf8_text, utf8_ends, utf8_cursor);
             if(text.size() != (last ? length : length - (crlf ? 2 : 1)) || text.contains('\n') ||
-               kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
+               lsp::is_ascii({text.data(), text.size()})) {
                 return std::unexpected("a non-ASCII line's text does not match its line");
             }
             utf8_cursor += 1;
@@ -602,7 +602,7 @@ CheckResult masks_ok(const Root& root) {
             }
             continue;
         }
-        if(!std::ranges::is_sorted(roaring_offsets) || roaring_offsets.back() != roaring.size() ||
+        if(!ranges::is_sorted(roaring_offsets) || roaring_offsets.back() != roaring.size() ||
            (count != 0 && roaring_offsets.front() != 0)) {
             return std::unexpected("mask encoding is not the canonical one");
         }
@@ -725,7 +725,7 @@ bool Shard::has_variant(VariantHash hash) const {
     if(stored.empty()) {
         return hash == blob_hash;
     }
-    return std::ranges::contains(stored, hash);
+    return ranges::contains(stored, hash);
 }
 
 void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
@@ -738,7 +738,7 @@ void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
     std::uint32_t matched = 0;
     Live next;
     for(std::uint32_t id = 0; id < stored.size(); id += 1) {
-        if(!std::ranges::contains(live_hashes, stored[id])) {
+        if(!ranges::contains(live_hashes, stored[id])) {
             continue;
         }
         matched += 1;
@@ -1112,7 +1112,7 @@ void combine_equal(std::vector<Entry>& entries, Key key) {
 /// Sort a run and combine its equal-key entries.
 template <typename Entry, typename Key>
 void canonicalize(std::vector<Entry>& entries, Key key) {
-    std::ranges::sort(entries, {}, key);
+    ranges::sort(entries, {}, key);
     combine_equal(entries, key);
 }
 
@@ -1229,7 +1229,7 @@ ContentInfo content_info_of(llvm::StringRef content) {
     info.hash = llvm::xxh3_64bits(content);
     info.size = static_cast<std::uint32_t>(content.size());
 
-    auto starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
+    auto starts = lsp::line_starts({content.data(), content.size()});
     info.line_lengths.reserve(starts.size());
     for(std::uint32_t i = 0; i < starts.size(); i += 1) {
         auto last = i + 1 == starts.size();
@@ -1241,7 +1241,7 @@ ContentInfo content_info_of(llvm::StringRef content) {
             info.crlf_lines[i / 64] |= std::uint64_t(1) << (i % 64);
         }
         auto text = content.slice(starts[i], next - (last ? 0 : crlf ? 2 : 1));
-        if(!kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
+        if(!lsp::is_ascii({text.data(), text.size()})) {
             info.utf8_lines.push_back(i);
             info.utf8_text += text;
             info.utf8_text_ends.push_back(static_cast<std::uint32_t>(info.utf8_text.size()));
@@ -1366,7 +1366,7 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
             kept.emplace_back(hash, &info);
         }
     }
-    std::ranges::sort(kept, {}, [](const auto& entry) { return entry.first; });
+    ranges::sort(kept, {}, [](const auto& entry) { return entry.first; });
     for(auto& entry: kept) {
         if(entry.second->parent != 0) {
             symbols.insert(entry.second->parent);
@@ -1387,7 +1387,7 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
     blob.variants = std::move(variants);
 
     blob.symbol_hashes.assign(symbols.begin(), symbols.end());
-    std::ranges::sort(blob.symbol_hashes);
+    ranges::sort(blob.symbol_hashes);
     auto symbol_index = [&](SymbolHash hash) {
         return *sorted_find(llvm::ArrayRef(blob.symbol_hashes), hash);
     };
@@ -1565,7 +1565,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
         canonicalize(entries, relation_key);
         fresh_groups.push_back({hash, std::move(entries)});
     }
-    std::ranges::sort(fresh_groups, {}, group_key);
+    ranges::sort(fresh_groups, {}, group_key);
 
     std::vector<StoredGroup> old_groups;
     std::optional<RelationTable> old_table;
@@ -1651,7 +1651,7 @@ std::vector<std::byte>
         canonicalize(group, relation_key);
         merged.relations.push_back({hash, std::move(group)});
     }
-    std::ranges::sort(merged.relations, {}, group_key);
+    ranges::sort(merged.relations, {}, group_key);
 
     llvm::DenseMap<SymbolHash, SymbolInfo> locals;
     if(symbols) {
@@ -1675,7 +1675,7 @@ std::vector<std::byte> merge_shards(const Shard& old,
     llvm::SmallVector<std::int64_t> id_map(old_variants.size(), -1);
     std::vector<VariantHash> variants;
     for(std::uint32_t id = 0; id < old_variants.size(); id += 1) {
-        if(std::ranges::contains(keep, old_variants[id])) {
+        if(ranges::contains(keep, old_variants[id])) {
             id_map[id] = static_cast<std::int64_t>(variants.size());
             variants.push_back(old_variants[id]);
         }
@@ -1691,7 +1691,7 @@ std::vector<std::byte> merge_shards(const Shard& old,
         assert(shard.loaded() && "fresh shards must hold a blob");
         auto identity = shard.variants();
         assert(identity.size() == 1 && "fresh shards are single-variant worker blobs");
-        assert(!std::ranges::contains(variants, identity.front()) &&
+        assert(!ranges::contains(variants, identity.front()) &&
                "a variant already stored must not be re-appended");
         variants.push_back(identity.front());
     }

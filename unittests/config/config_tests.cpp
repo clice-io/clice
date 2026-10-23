@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -19,8 +19,8 @@ namespace clice::testing {
 
 /// The schema object of a property named `name`, found anywhere in the
 /// document's nested `properties` maps.
-const static kota::codec::dyn::Value* find_property(const kota::codec::dyn::Value& value,
-                                                    std::string_view name) {
+const static codec::dyn::Value* find_property(const codec::dyn::Value& value,
+                                              std::string_view name) {
     if(const auto* object = value.get_object()) {
         for(const auto& [key, child]: *object) {
             if(key == "properties") {
@@ -46,7 +46,7 @@ const static kota::codec::dyn::Value* find_property(const kota::codec::dyn::Valu
 
 /// Whether `name` appears as an object key anywhere below a `default`
 /// annotation in the schema document.
-static bool default_mentions(const kota::codec::dyn::Value& value,
+static bool default_mentions(const codec::dyn::Value& value,
                              std::string_view name,
                              bool under_default) {
     if(const auto* object = value.get_object()) {
@@ -126,7 +126,7 @@ ZEST_CASE(CacheDirServesOneProject) {
 ZEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.
-    auto result = kota::codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
+    auto result = codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
     ZEXPECT(result);
     ZEXPECT(std::string_view(result->cache_dir) == "/tmp/test");
     ZEXPECT(result->enable_indexing.value == true);
@@ -134,7 +134,7 @@ ZEST_CASE(ParsePartialProject) {
 }
 
 ZEST_CASE(ParseConfigRule) {
-    auto result = kota::codec::toml::from_string<ConfigRule>(R"(
+    auto result = codec::toml::from_string<ConfigRule>(R"(
 patterns = ["**/*.cpp"]
 append = ["-std=c++20"]
 )");
@@ -146,7 +146,7 @@ append = ["-std=c++20"]
 }
 
 ZEST_CASE(ParseFullConfig) {
-    auto result = kota::codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Config>(R"(
 [project]
 cache_dir = "/tmp/test"
 enable_indexing = false
@@ -163,7 +163,7 @@ append = ["-std=c++20"]
 }
 
 ZEST_CASE(ParseInlayHints) {
-    auto result = kota::codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Config>(R"(
 [inlay_hints]
 block_end = true
 parameters = false
@@ -180,14 +180,14 @@ types = 64
 }
 
 ZEST_CASE(ParseEmptyConfig) {
-    auto result = kota::codec::toml::from_string<Config>("");
+    auto result = codec::toml::from_string<Config>("");
     ZEXPECT(result);
     ZEXPECT(result->rules.empty());
     ZEXPECT(std::string_view(result->project.cache_dir).empty());
 }
 
 ZEST_CASE(ParseOnlyRules) {
-    auto result = kota::codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Config>(R"(
 [[rules]]
 patterns = ["*.h"]
 remove = ["-Werror"]
@@ -386,7 +386,7 @@ ZEST_CASE(WorkspaceVarSubst) {
 }
 
 ZEST_CASE(ParseRuleSources) {
-    auto result = kota::codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Config>(R"(
 default_configuration = "debug"
 
 [[rules]]
@@ -519,7 +519,7 @@ compile_commands = ["../build"]
                                               nullptr,
                                               nullptr,
                                               /*finalized=*/false);
-    auto ov = kota::codec::json::from_string(
+    auto ov = json::from_string(
         R"({ "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }, { "compile_commands": ["out"] }] })",
         config);
     ZASSERT(ov);
@@ -847,7 +847,7 @@ append = ["-DFROM_TOML"]
     ZEXPECT(config.compiled_rules.size() == 1u);
 
     // Overlay only `idle_timeout_ms` via JSON.
-    auto ov = kota::codec::json::from_string(R"({ "project": { "idle_timeout_ms": 99 } })", config);
+    auto ov = json::from_string(R"({ "project": { "idle_timeout_ms": 99 } })", config);
     ZEXPECT(ov);
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
@@ -880,7 +880,7 @@ bundle_overloads = false
                                               nullptr,
                                               nullptr,
                                               /*finalized=*/false);
-    auto ov = kota::codec::json::from_string(
+    auto ov = json::from_string(
         R"({ "inlay_hints": { "parameters": false, "block_end": false }, "code_completion": { "limit": 5 } })",
         config);
     ZEXPECT(ov);
@@ -911,7 +911,7 @@ append = ["-DTOML_ONLY"]
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(config.compiled_rules.size() == 1u);
 
-    auto ov = kota::codec::json::from_string(
+    auto ov = json::from_string(
         R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
         config);
     ZEXPECT(ov);
@@ -933,7 +933,7 @@ append = ["-DTOML_ONLY"]
 ZEST_CASE(JsonSchema) {
     auto schema = Config::json_schema();
     ZASSERT(schema);
-    auto doc = kota::codec::json::from_string<kota::codec::dyn::Value>(*schema);
+    auto doc = json::from_string<codec::dyn::Value>(*schema);
     ZASSERT(doc);
 
     // Machine-derived worker counts describe their derivation but carry no
@@ -980,11 +980,11 @@ ZEST_CASE(JsonSchema) {
     ZASSERT(readonly != nullptr);
     const auto* modes = readonly->get_object()->find("enum");
     ZASSERT(modes != nullptr);
-    ZEXPECT(*modes == kota::codec::dyn::Value(kota::codec::dyn::Array{"off", "on", "auto"}));
+    ZEXPECT(*modes == codec::dyn::Value(codec::dyn::Array{"off", "on", "auto"}));
 
     // Root and every section body reject unknown properties, so editors
     // flag typos the way loading reports unknown keys.
-    auto denies_unknown = [](const kota::codec::dyn::Value& body) {
+    auto denies_unknown = [](const codec::dyn::Value& body) {
         const auto* additional = body.get_object()->find("additionalProperties");
         return additional != nullptr && additional->get_bool() == false;
     };

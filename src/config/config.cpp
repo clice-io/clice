@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
@@ -217,7 +217,7 @@ void Config::finalize(CanonicalRef workspace_root) {
         }
     }
     if(!default_configuration.empty() &&
-       !std::ranges::contains(configurations(), llvm::StringRef(default_configuration))) {
+       !ranges::contains(configurations(), llvm::StringRef(default_configuration))) {
         LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
     }
 }
@@ -234,7 +234,7 @@ bool CompiledRule::matches(CanonicalRef path) const {
     if(unmatchable) {
         return false;
     }
-    return patterns.empty() || std::ranges::any_of(patterns, [&](const Pattern& pattern) {
+    return patterns.empty() || ranges::any_of(patterns, [&](const Pattern& pattern) {
                return pattern.glob.match(llvm::StringRef(path));
            });
 }
@@ -254,7 +254,7 @@ llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
 llvm::SmallVector<llvm::StringRef> Config::configurations() const {
     llvm::SmallVector<llvm::StringRef> tags;
     for(auto& rule: compiled_rules) {
-        if(!rule.configuration.empty() && !std::ranges::contains(tags, rule.configuration)) {
+        if(!rule.configuration.empty() && !ranges::contains(tags, rule.configuration)) {
             tags.push_back(rule.configuration);
         }
     }
@@ -305,7 +305,7 @@ static std::optional<toml::source_position> end_at(const toml::node& node,
 /// that does not parse has no such extent, its error marks a point.
 static ConfigIssue make_issue(ConfigIssue::Severity severity,
                               llvm::StringRef path,
-                              const kota::codec::rich_error& error,
+                              const codec::rich_error& error,
                               const toml::table* parsed) {
     ConfigIssue issue;
     issue.severity = severity;
@@ -336,16 +336,16 @@ std::optional<Config> Config::load(llvm::StringRef path,
     if(!content)
         return std::nullopt;
 
-    auto parsed = kota::codec::toml::parse_table((*content)->getBuffer());
+    auto parsed = codec::toml::parse_table((*content)->getBuffer());
     auto* table = parsed ? &*parsed : nullptr;
     Config config;
-    kota::codec::UnknownFields unknown;
-    auto decoded = [&]() -> std::expected<void, kota::codec::rich_error> {
+    codec::UnknownFields unknown;
+    auto decoded = [&]() -> std::expected<void, codec::rich_error> {
         if(!parsed) {
             return std::unexpected(parsed.error());
         }
-        kota::codec::scoped_context<kota::codec::UnknownFields> collecting(unknown);
-        return kota::codec::toml::from_toml(*parsed, config);
+        codec::scoped_context<codec::UnknownFields> collecting(unknown);
+        return codec::toml::from_toml(*parsed, config);
     }();
     if(!decoded) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, decoded.error().to_string());
@@ -378,7 +378,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
 }
 
 std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef workspace_root) {
-    auto config = kota::codec::json::from_string<Config>(json);
+    auto config = json::from_string<Config>(json);
     if(!config) {
         LOG_WARN("Failed to parse initializationOptions JSON: {}", config.error().message);
         return std::nullopt;
@@ -479,7 +479,7 @@ void Config::keep_own_cache_dir() {
 }
 
 std::expected<std::string, std::string> Config::json_schema() {
-    auto schema = kota::codec::json::schema_string<Config, DenyUnknownKeys>(/*pretty=*/true);
+    auto schema = json::schema_string<Config, DenyUnknownKeys>(/*pretty=*/true);
     if(!schema) {
         return std::unexpected(schema.error().message);
     }

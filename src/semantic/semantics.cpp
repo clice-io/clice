@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -735,8 +735,8 @@ private:
     // set — preprocessor nodes own their directive tokens — but never for a
     // comment, which a Comment node stands for by its range alone.
     void add_directive_entry(unsigned offset, std::uint32_t self) {
-        auto indices = std::views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
-        auto it = std::ranges::partition_point(indices, [&](std::uint32_t i) {
+        auto indices = views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
+        auto it = ranges::partition_point(indices, [&](std::uint32_t i) {
             return semantics.tokens[i].range.begin < offset;
         });
         if(it != indices.end() && semantics.tokens[*it].range.begin == offset &&
@@ -890,7 +890,7 @@ private:
             directives.push_back(std::move(entry));
         }
 
-        std::ranges::sort(directives, {}, &Entry::offset);
+        ranges::sort(directives, {}, &Entry::offset);
 
         for(auto& entry: directives) {
             auto self = static_cast<std::uint32_t>(semantics.nodes.size());
@@ -925,10 +925,9 @@ private:
         for(std::size_t token = 0; token + 1 < offsets.size(); token += 1) {
             auto stop = offsets[token + 1];
             auto bucket = std::span(owners).subspan(start, stop - start);
-            std::ranges::sort(bucket);
+            ranges::sort(bucket);
             offsets[token] = kept;
-            for(auto node:
-                std::ranges::subrange(bucket.begin(), std::ranges::unique(bucket).begin())) {
+            for(auto node: ranges::subrange(bucket.begin(), ranges::unique(bucket).begin())) {
                 owners[kept] = node;
                 kept += 1;
                 semantics.nodes[node].owned += 1;
@@ -1052,7 +1051,7 @@ void refer_calls_named(References& out,
     if(auto* call = llvm::dyn_cast<clang::CallExpr>(S)) {
         auto* callee = call->getDirectCallee();
         if(auto* name = callee ? callee->getIdentifier() : nullptr;
-           name && std::ranges::contains(names, name->getName())) {
+           name && ranges::contains(names, name->getName())) {
             refer(out, callee, RelationKind::Reference, location);
             return;
         }
@@ -1890,12 +1889,11 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
             return op->isIncrementDecrementOp();
         }
         const auto* call = enclosing(parent_index).first;
-        return call &&
-               std::ranges::any_of(decls::parameter_bindings(call),
-                                   [&](const decls::ParameterBinding& binding) {
-                                       return binding.argument->IgnoreParenImpCasts() == op &&
-                                              to_mutable(binding.forwarded->getType());
-                                   });
+        return call && ranges::any_of(decls::parameter_bindings(call),
+                                      [&](const decls::ParameterBinding& binding) {
+                                          return binding.argument->IgnoreParenImpCasts() == op &&
+                                                 to_mutable(binding.forwarded->getType());
+                                      });
     }
 
     if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent);
@@ -1903,7 +1901,7 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
         auto op = call->getOperator();
         return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
     }
-    return std::ranges::any_of(
+    return ranges::any_of(
         decls::parameter_bindings(parent),
         [&](const decls::ParameterBinding& binding) {
             auto type = binding.forwarded->getType();

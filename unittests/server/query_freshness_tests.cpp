@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -110,13 +110,13 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Baseline: the main TU contributes its reference relation, and the
     // definition resolves into the header shard.
-    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text its shard indexed, so the shard keeps serving.
     indexer.enqueue(focus_id, ReindexReason::DepsOnly);
-    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its index is current.
     index::SymbolQuery by_line;
@@ -127,7 +127,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // skipped until its shard describes the disk again; other files' shards
     // are unaffected.
     project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
-    ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(!ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Cursor-style resolution against the stale index is unresolvable: the
@@ -141,7 +141,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // With background indexing disabled nothing would ever catch up:
     // the last-known index keeps serving instead of leaving a permanent hole.
     gate.options.withhold = false;
-    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 }
 
 ZEST_CASE(DeletedFileWithdrawsIndex) {
@@ -154,11 +154,11 @@ ZEST_CASE(DeletedFileWithdrawsIndex) {
     merge_into_workspace();
     auto hash = symbol_at(focus_id, point("use"));
     ZASSERT(hash != 0UL);
-    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 
     // The index of a file seen gone points at text that is gone with it.
     project.file_table.disk.saw_missing(focus_id);
-    ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(!ranges::contains(reference_files(hash), "main.cpp"));
 }
 
 };  // ZEST_SUITE(QueryFreshness)

@@ -1,12 +1,14 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
 import :feature.document_links;
+import :index.tu_manifest;
 import :syntax.lexer;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -205,6 +207,25 @@ ZEST_CASE(MissingInclude) {
 )cpp");
 
     ZASSERT(links.empty());
+}
+
+ZEST_CASE(LinksFromEdges) {
+    llvm::StringRef content = R"cpp(#include "first.h"
+#include "skipped.h"
+#include <second>
+)cpp";
+    std::vector<index::IncludeEdge> edges = {
+        {.line = 1, .target = "/tmp/first.h"       },
+        {.line = 3, .target = "/usr/include/second"},
+    };
+
+    SourceText text(content, dialect_of("main.cpp", false));
+    auto links = feature::document_links(text, edges);
+    ZASSERT(links.size() == std::size_t(2));
+    ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
+    ZASSERT(links[0].target == "/tmp/first.h");
+    ZASSERT(content.substr(links[1].range.begin, links[1].range.length()) == "<second>");
+    ZASSERT(links[1].target == "/usr/include/second");
 }
 
 };  // ZEST_SUITE(document_link)

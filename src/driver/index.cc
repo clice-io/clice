@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -428,8 +428,8 @@ Stats collect_stats(Project& project) {
         stats.keys += held.keys;
         stats.instantiations.push_back(std::move(held));
     });
-    std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
-    std::ranges::sort(stats.instantiations, std::ranges::greater{}, &InstantiationStat::bytes);
+    ranges::sort(stats.shards, ranges::greater{}, &ShardStat::bytes);
+    ranges::sort(stats.instantiations, ranges::greater{}, &InstantiationStat::bytes);
 
     project_index.for_each_symbol(
         [&](index::SymbolHash, const index::SymbolView& symbol, std::uint32_t references) {
@@ -461,7 +461,7 @@ Stats collect_stats(Project& project) {
     }
 
     stats.usage = db.usage();
-    for(auto [i, kind]: std::views::enumerate(std::views::keys(stored_kinds))) {
+    for(auto [i, kind]: views::enumerate(views::keys(stored_kinds))) {
         auto& stored = stats.stored[i];
         db.for_each_key(kind, [&](llvm::StringRef key) {
             if(auto blob = db.read(kind, key)) {
@@ -533,7 +533,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     }
     driver::println();
     driver::println("Stored blobs by kind:");
-    for(auto [i, label]: std::views::enumerate(std::views::values(stored_kinds))) {
+    for(auto [i, label]: views::enumerate(views::values(stored_kinds))) {
         auto& stored = stats.stored[i];
         driver::println("  {:<24} {:>10}  {:>7}", label, format_bytes(stored.bytes), stored.count);
     }
@@ -542,7 +542,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     // the blobs' size.
     auto fields = [&](llvm::StringRef title, const index::FieldBytes& bytes, std::uint64_t whole) {
         auto sorted = bytes.fields;
-        std::ranges::stable_sort(sorted, std::ranges::greater{}, [](const auto& field) {
+        ranges::stable_sort(sorted, ranges::greater{}, [](const auto& field) {
             return field.second;
         });
         std::uint64_t measured = 0;
@@ -574,7 +574,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
 
     driver::println();
     driver::println("Top {} file shards by size:", std::min<std::size_t>(top, stats.shards.size()));
-    for(auto& stat: stats.shards | std::views::take(top)) {
+    for(auto& stat: stats.shards | views::take(top)) {
         driver::println("  {:>10}  {:>4} variants  {:>9} occurrences  {:>9} relations  {}",
                         format_bytes(stat.bytes),
                         stat.variants,
@@ -586,7 +586,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     driver::println();
     driver::println("Top {} instantiation shards by size:",
                     std::min<std::size_t>(top, stats.instantiations.size()));
-    for(auto& stat: stats.instantiations | std::views::take(top)) {
+    for(auto& stat: stats.instantiations | views::take(top)) {
         driver::println("  {:>10}  {:>6} resolutions  {:>8} records  {:>7} keys  {}",
                         format_bytes(stat.bytes),
                         stat.resolutions,
@@ -599,11 +599,11 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     for(auto [pattern, count]: stats.keys_per_template) {
         templates.emplace_back(count, pattern);
     }
-    std::ranges::sort(templates, std::ranges::greater{});
+    ranges::sort(templates, ranges::greater{});
     driver::println();
     driver::println("Top {} templates by instantiations:",
                     std::min<std::size_t>(top, templates.size()));
-    for(auto [count, pattern]: templates | std::views::take(top)) {
+    for(auto [count, pattern]: templates | views::take(top)) {
         auto identity = project_index.find_symbol(pattern);
         driver::println("  {:>8}  {}", count, identity ? identity->name : llvm::StringRef("?"));
     }
@@ -613,7 +613,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
 /// machine-readable form for cross-run comparisons.
 void print_variants(const Stats& stats) {
     auto by_variants = stats.shards;
-    std::ranges::stable_sort(by_variants, std::ranges::greater{}, &ShardStat::variants);
+    ranges::stable_sort(by_variants, ranges::greater{}, &ShardStat::variants);
     driver::println();
     driver::println("variants\tpath");
     for(auto& stat: by_variants) {
@@ -809,7 +809,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     driver::println("  variants={}", variants.size());
     for(auto hash: variants) {
         auto& units = contributors[hash];
-        std::ranges::sort(units);
+        ranges::sort(units);
         driver::println("    {}  contributed by {} unit{}",
                         format_hash(hash),
                         units.size(),

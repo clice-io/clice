@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -20,8 +20,6 @@ import :vfs.path;
 namespace clice {
 
 namespace {
-
-namespace ranges = std::ranges;
 
 /// The query working directory, empty when the wanted one does not exist
 /// (a stale CDB directory, or a foreign-platform path): querying from the

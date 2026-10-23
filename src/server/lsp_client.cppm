@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.lsp_client;
 
@@ -19,11 +19,11 @@ namespace clice {
 
 class LSPClient {
 public:
-    LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer);
+    LSPClient(MasterServer& server, ipc::JSONPeer& peer);
     ~LSPClient();
 
 private:
-    using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
+    using RawResult = kota::task<codec::RawValue, ipc::Error>;
 
     /// Shared front half of every document-addressed handler: URI → path →
     /// interned path_id → open session (null when the document is not open)
@@ -88,7 +88,7 @@ private:
     void forward_notify_messages();
 
     MasterServer& server;
-    kota::ipc::JSONPeer& peer;
+    ipc::JSONPeer& peer;
 
     /// The client completed the initialized handshake. Until then the LSP
     /// spec forbids server→client traffic other than window/* messages, so
@@ -115,7 +115,7 @@ private:
     bool related_information = false;
 
     /// The diagnostics in the shape the client takes.
-    std::vector<kota::ipc::protocol::Diagnostic>
+    std::vector<protocol::Diagnostic>
         to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
     /// How the client takes folds (textDocument.foldingRange).
@@ -128,13 +128,13 @@ private:
     /// edits from the result the client holds, or the tokens in a range.
     struct TokensRequest {
         std::optional<std::string> previous;
-        std::optional<kota::ipc::protocol::Range> window;
+        std::optional<protocol::Range> window;
     };
 
     RawResult send_tokens(std::shared_ptr<ProjectServer> project,
                           Fid path_id,
                           std::shared_ptr<Session> session,
-                          kota::ipc::JSONPeer::RequestContext& ctx,
+                          ipc::JSONPeer::RequestContext& ctx,
                           TokensRequest request);
 
     /// The last full or delta result sent for each open document, which
@@ -169,7 +169,7 @@ private:
 
     /// The markup the client shows hover cards in: markdown when its
     /// textDocument.hover.contentFormat lists it.
-    kota::ipc::protocol::MarkupKind hover_markup = kota::ipc::protocol::MarkupKind::PlainText;
+    protocol::MarkupKind hover_markup = protocol::MarkupKind::PlainText;
 
     /// Whether the client applies versioned document changes (the
     /// workspace/workspaceEdit.documentChanges capability): code action
@@ -222,7 +222,7 @@ private:
     AliasDocument take_alias(Fid path_id, AliasDocument* alias);
 
     /// Why a request on a document has no session to answer it.
-    kota::ipc::Error unserved(llvm::StringRef spelling);
+    ipc::Error unserved(llvm::StringRef spelling);
 
     /// What a second name tells the user while its text differs from the
     /// first name's.
@@ -301,7 +301,7 @@ private:
 
         /// The active work-done progress token, held across
         /// begin/report/end.
-        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JSONPeer>> reporter;
+        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
     };
 
     std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();

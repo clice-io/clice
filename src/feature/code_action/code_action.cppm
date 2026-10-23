@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.code_action.code_action;
 
@@ -12,8 +12,6 @@ import :vfs.ids;
 import :vfs.path;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// One kind per refactoring, below the standard `refactor.rewrite` and
 /// `refactor.inline`, so that a client can ask for one alone: an editor
@@ -133,9 +131,7 @@ struct FileEdit {
     std::vector<protocol::TextEdit> edits;
 };
 
-protocol::CodeAction code_action_to_protocol(std::string title,
-                                             protocol::CodeActionKind kind,
-                                             FileEdit file);
+protocol::CodeAction to_protocol(std::string title, protocol::CodeActionKind kind, FileEdit file);
 
 /// A DefineRequest's edit of the focus file `file`, whose text is
 /// `content`: the pieces the index keeps (assemble_definitions) formatted

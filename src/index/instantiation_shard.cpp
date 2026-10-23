@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -16,10 +16,10 @@ namespace clice::index {
 
 namespace {
 
-using Root = kota::codec::blob::view_t<InstantiationShardBlob>;
+using Root = codec::blob::view_t<InstantiationShardBlob>;
 
 const Root& view_of(llvm::StringRef bytes) {
-    return kota::codec::blob::view_verified<InstantiationShardBlob>(as_bytes(bytes));
+    return codec::blob::view_verified<InstantiationShardBlob>(as_bytes(bytes));
 }
 
 /// A record kind's byte: the InstantiationKind, with this bit set for a
@@ -104,8 +104,8 @@ struct SetTable {
 
     /// The members of set `set`.
     auto members_of(std::uint32_t set) const {
-        return std::views::iota(set == 0 ? 0 : ends[set - 1], ends[set]) |
-               std::views::transform([this](std::uint32_t i) { return members[i]; });
+        return views::iota(set == 0 ? 0 : ends[set - 1], ends[set]) |
+               views::transform([this](std::uint32_t i) { return members[i]; });
     }
 
     std::optional<std::uint32_t> find(std::uint64_t hash) const {
@@ -154,7 +154,7 @@ CheckResult symbols_ok(const Root& root) {
     if(!strictly_ascending(hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
-    if(std::ranges::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+    if(ranges::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
         return std::unexpected("a reserved symbol hash");
     }
     return {};
@@ -215,7 +215,7 @@ CheckResult records_ok(const Root& root) {
 // empty set is a key's "nothing here" in disguise.
 CheckResult sets_ok(const SetTable& table) {
     if(!strictly_ascending(table.hashes) ||
-       std::ranges::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+       ranges::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
         return std::unexpected("set identities are not strictly ascending");
     }
     if(table.ends.size() != table.hashes.size() ||
@@ -245,7 +245,7 @@ CheckResult resolutions_ok(const Root& root) {
     for(std::uint32_t i = 0; i < table.members.size(); i += 1) {
         owned[table.members[i]] = true;
     }
-    if(std::ranges::contains(owned, false)) {
+    if(ranges::contains(owned, false)) {
         return std::unexpected("a record no resolution holds");
     }
     return {};
@@ -290,7 +290,7 @@ CheckResult keys_ok(const Root& root) {
     if(producer_runs.size() != producers) {
         return std::unexpected("producer columns do not line up");
     }
-    if(std::ranges::any_of(producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
+    if(ranges::any_of(producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
         return std::unexpected("a reserved producer unit");
     }
     for(std::uint32_t i = 1; i < producers; i += 1) {
@@ -396,7 +396,7 @@ llvm::ArrayRef<UseHash> InstantiationShard::uses() const {
 }
 
 bool InstantiationShard::has_use(UseHash use) const {
-    return std::ranges::binary_search(uses(), use);
+    return ranges::binary_search(uses(), use);
 }
 
 std::vector<ResolutionHash> InstantiationShard::resolutions_of(UseHash use) const {
@@ -421,14 +421,14 @@ void InstantiationShard::set_live(llvm::ArrayRef<UseHash> live) {
         return;
     }
     llvm::SmallVector<UseHash> sorted(live);
-    std::ranges::sort(sorted);
+    ranges::sort(sorted);
     auto& root = view_of(bytes());
     auto uses = SetTable::uses_of(root);
     auto resolutions = SetTable::resolutions_of(root);
     bool dead = false;
     std::vector<bool> live_resolutions(resolutions.hashes.size());
     for(std::uint32_t use = 0; use < uses.hashes.size(); use += 1) {
-        if(!std::ranges::binary_search(sorted, uses.hashes[use])) {
+        if(!ranges::binary_search(sorted, uses.hashes[use])) {
             dead = true;
             continue;
         }
@@ -565,7 +565,7 @@ std::vector<std::byte> emit(const Draft& draft) {
             held.emplace_back(record, resolution);
         }
     }
-    std::ranges::sort(held, {}, [](const auto& entry) {
+    ranges::sort(held, {}, [](const auto& entry) {
         return std::tuple_cat(record_key(entry.first), std::tuple(entry.second));
     });
 
@@ -585,7 +585,7 @@ std::vector<std::byte> emit(const Draft& draft) {
     blob.content_hash = draft.content_hash;
     blob.content_size = draft.content_size;
     blob.symbol_hashes.assign(referenced.begin(), referenced.end());
-    std::ranges::sort(blob.symbol_hashes);
+    ranges::sort(blob.symbol_hashes);
     auto symbol_index = [&](SymbolHash hash) {
         return *sorted_find(llvm::ArrayRef(blob.symbol_hashes), hash);
     };
@@ -635,8 +635,8 @@ std::vector<std::byte> emit(const Draft& draft) {
     auto producer_order = [](const Producer& producer) {
         return std::pair(producer.unit, producer.run);
     };
-    std::ranges::sort(producers, {}, producer_order);
-    producers.erase(std::ranges::unique(producers).begin(), producers.end());
+    ranges::sort(producers, {}, producer_order);
+    producers.erase(ranges::unique(producers).begin(), producers.end());
     for(auto& producer: producers) {
         blob.producer_units.push_back(producer.unit);
         blob.producer_runs.push_back(producer.run);
@@ -656,12 +656,9 @@ std::vector<std::byte> emit(const Draft& draft) {
         }
         resolutions.add(resolution);
         if(key.producer) {
-            key_producers.add(
-                static_cast<std::uint32_t>(std::ranges::lower_bound(producers,
-                                                                    producer_order(*key.producer),
-                                                                    {},
-                                                                    producer_order) -
-                                           producers.begin()));
+            key_producers.add(static_cast<std::uint32_t>(
+                ranges::lower_bound(producers, producer_order(*key.producer), {}, producer_order) -
+                producers.begin()));
         }
     }
 
@@ -701,8 +698,8 @@ void fold_resolutions(DecodedResolutions& resolutions) {
     auto identity = [](const auto& resolution) {
         return resolution.first;
     };
-    std::ranges::stable_sort(resolutions, {}, identity);
-    resolutions.erase(std::ranges::unique(resolutions, {}, identity).begin(), resolutions.end());
+    ranges::stable_sort(resolutions, {}, identity);
+    resolutions.erase(ranges::unique(resolutions, {}, identity).begin(), resolutions.end());
 }
 
 }  // namespace
@@ -713,8 +710,8 @@ std::vector<std::byte> write_instantiations(const FileInstantiations& instantiat
     Draft draft{.content_hash = content_hash, .content_size = content_size};
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
-        std::ranges::sort(records, {}, record_key);
-        records.erase(std::ranges::unique(records).begin(), records.end());
+        ranges::sort(records, {}, record_key);
+        records.erase(ranges::unique(records).begin(), records.end());
         identities.push_back(resolution_hash(content_hash, records));
         draft.resolutions.emplace_back(identities.back(), std::move(records));
     }
@@ -728,8 +725,8 @@ std::vector<std::byte> write_instantiations(const FileInstantiations& instantiat
             added.resolution = identities[*key.resolution];
         }
     }
-    std::ranges::sort(draft.keys, {}, &InstantiationShard::Key::key);
-    draft.keys.erase(std::ranges::unique(draft.keys, {}, &InstantiationShard::Key::key).begin(),
+    ranges::sort(draft.keys, {}, &InstantiationShard::Key::key);
+    draft.keys.erase(ranges::unique(draft.keys, {}, &InstantiationShard::Key::key).begin(),
                      draft.keys.end());
     return emit(draft);
 }
@@ -752,9 +749,9 @@ std::optional<std::vector<std::byte>>
     // The uses kept, and the added one; their resolutions are the ones of
     // `old` that survive.
     llvm::SmallVector<UseHash> kept_uses(keep);
-    std::ranges::sort(kept_uses);
+    ranges::sort(kept_uses);
     for(auto use: old.uses()) {
-        if(std::ranges::binary_search(kept_uses, use)) {
+        if(ranges::binary_search(kept_uses, use)) {
             draft.uses.emplace_back(use, old.resolutions_of(use));
         }
     }
@@ -765,10 +762,10 @@ std::optional<std::vector<std::byte>>
     auto use_order = [](const auto& use) {
         return use.first;
     };
-    std::ranges::sort(draft.uses, {}, use_order);
-    draft.uses.erase(std::ranges::unique(draft.uses, {}, use_order).begin(), draft.uses.end());
+    ranges::sort(draft.uses, {}, use_order);
+    draft.uses.erase(ranges::unique(draft.uses, {}, use_order).begin(), draft.uses.end());
     llvm::DenseSet<ResolutionHash> used;
-    for(auto& resolutions: std::views::values(draft.uses)) {
+    for(auto& resolutions: views::values(draft.uses)) {
         used.insert(resolutions.begin(), resolutions.end());
     }
 
@@ -784,10 +781,9 @@ std::optional<std::vector<std::byte>>
     fold_resolutions(draft.resolutions);
     auto stored = [&](const std::optional<ResolutionHash>& resolution) {
         return !resolution ||
-               std::ranges::binary_search(draft.resolutions,
-                                          *resolution,
-                                          {},
-                                          [](const auto& entry) { return entry.first; });
+               ranges::binary_search(draft.resolutions, *resolution, {}, [](const auto& entry) {
+                   return entry.first;
+               });
     };
 
     std::vector<InstantiationShard::Key> walked;
@@ -803,7 +799,7 @@ std::optional<std::vector<std::byte>>
     std::vector<InstantiationShard::Key> kept;
     old.for_each_key([&](const InstantiationShard::Key& key) {
         if(keep_producer(*key.producer) && stored(key.resolution) &&
-           !std::ranges::binary_search(walked, key.key, {}, &InstantiationShard::Key::key)) {
+           !ranges::binary_search(walked, key.key, {}, &InstantiationShard::Key::key)) {
             kept.push_back({.key = key.key,
                             .pattern = key.pattern,
                             .resolution = key.resolution,
@@ -811,12 +807,12 @@ std::optional<std::vector<std::byte>>
         }
         return true;
     });
-    std::ranges::merge(kept,
-                       walked,
-                       std::back_inserter(draft.keys),
-                       {},
-                       &InstantiationShard::Key::key,
-                       &InstantiationShard::Key::key);
+    ranges::merge(kept,
+                  walked,
+                  std::back_inserter(draft.keys),
+                  {},
+                  &InstantiationShard::Key::key,
+                  &InstantiationShard::Key::key);
     if(draft.resolutions.empty() && draft.keys.empty()) {
         return std::nullopt;
     }

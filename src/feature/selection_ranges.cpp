@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -59,7 +59,7 @@ std::vector<LocalSourceRange> nest(Steps steps) {
     auto holds_start = [&](const LocalSourceRange& range) {
         return !steps.start || range.contains(*steps.start);
     };
-    std::ranges::sort(steps.ranges, {}, by_length);
+    ranges::sort(steps.ranges, {}, by_length);
     std::vector<LocalSourceRange> chain;
     for(auto& range: steps.ranges) {
         if(holds_start(range) &&
@@ -67,9 +67,9 @@ std::vector<LocalSourceRange> nest(Steps steps) {
             chain.push_back(range);
         }
     }
-    std::ranges::sort(steps.loose, {}, by_length);
+    ranges::sort(steps.loose, {}, by_length);
     for(auto& range: steps.loose) {
-        auto outer = std::ranges::partition_point(chain, [&](const LocalSourceRange& step) {
+        auto outer = ranges::partition_point(chain, [&](const LocalSourceRange& step) {
             return range.contains(step);
         });
         bool fits = holds_start(range) && (outer == chain.begin() || *std::prev(outer) != range) &&
@@ -110,7 +110,7 @@ LocalSourceRange comment_text(llvm::StringRef content, LocalSourceRange comment)
     constexpr llvm::StringLiteral markers[] =
         {"///<", "//!<", "/**<", "/*!<", "///", "//!", "/**", "/*!", "//", "/*"};
     auto text = content.slice(comment.begin, comment.end);
-    std::size_t begin = std::ranges::find_if(markers, [&](llvm::StringRef marker) {
+    std::size_t begin = ranges::find_if(markers, [&](llvm::StringRef marker) {
                             return text.starts_with(marker);
                         })->size();
     std::size_t end = text.size();
@@ -124,12 +124,12 @@ LocalSourceRange comment_text(llvm::StringRef content, LocalSourceRange comment)
 
 bool quoted(TokenKind kind) {
     return clang::tok::isStringLiteral(kind) || kind == clang::tok::header_name ||
-           std::ranges::contains(std::array{clang::tok::char_constant,
-                                            clang::tok::wide_char_constant,
-                                            clang::tok::utf8_char_constant,
-                                            clang::tok::utf16_char_constant,
-                                            clang::tok::utf32_char_constant},
-                                 kind);
+           ranges::contains(std::array{clang::tok::char_constant,
+                                       clang::tok::wide_char_constant,
+                                       clang::tok::utf8_char_constant,
+                                       clang::tok::utf16_char_constant,
+                                       clang::tok::utf32_char_constant},
+                            kind);
 }
 
 /// The characters between a literal's quotes: past an encoding prefix and
@@ -171,8 +171,8 @@ struct TextSteps {
 
 /// The first token at or after `offset` that is not a comment.
 const Token* token_after(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
-    auto it = std::ranges::find_if(
-        std::ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; }),
+    auto it = ranges::find_if(
+        ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; }),
         tokens.end(),
         [](const Token& t) { return t.kind != clang::tok::comment; });
     return it == tokens.end() ? nullptr : &*it;
@@ -180,8 +180,7 @@ const Token* token_after(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
 
 /// The last token before `offset` that is not a comment.
 const Token* token_before(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
-    auto it =
-        std::ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; });
+    auto it = ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; });
     while(it != tokens.begin()) {
         it = std::prev(it);
         if(it->kind != clang::tok::comment) {
@@ -340,7 +339,7 @@ TextSteps scan_text(llvm::StringRef content,
 /// right one. None when the cursor touches only one token, or none.
 std::optional<LocalSourceRange> start_token(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
     auto right =
-        std::ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; });
+        ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; });
     if(right == tokens.begin() || right == tokens.end() || right->range.begin != offset ||
        right->is_eod()) {
         return std::nullopt;
@@ -366,8 +365,7 @@ std::optional<LocalSourceRange> start_token(llvm::ArrayRef<Token> tokens, std::u
 std::optional<LocalSourceRange> comment_line(llvm::StringRef content,
                                              llvm::ArrayRef<Token> tokens,
                                              std::uint32_t offset) {
-    auto it =
-        std::ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.end; });
+    auto it = ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.end; });
     if(it == tokens.end() || it->kind != clang::tok::comment || it->range.begin > offset) {
         return std::nullopt;
     }
@@ -423,11 +421,10 @@ llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint3
     };
 
     auto count = static_cast<std::uint32_t>(tokens.size());
-    auto indices = std::views::iota(0u, count);
+    auto indices = views::iota(0u, count);
     auto first = static_cast<std::uint32_t>(
-        std::ranges::partition_point(
-            indices,
-            [&](std::uint32_t i) { return tokens[i].range.end < offset; }) -
+        ranges::partition_point(indices,
+                                [&](std::uint32_t i) { return tokens[i].range.end < offset; }) -
         indices.begin());
 
     std::optional<std::uint32_t> touched;
@@ -508,8 +505,8 @@ std::optional<LocalSourceRange> attribute_extent(CompilationUnit& unit,
     }
     // Of the lists ending after the attribute, the first holding it is the
     // innermost (an attribute in a lambda in another's argument).
-    auto list = std::ranges::find_if(
-        std::ranges::lower_bound(text.attributes, range->end, {}, &LocalSourceRange::end),
+    auto list = ranges::find_if(
+        ranges::lower_bound(text.attributes, range->end, {}, &LocalSourceRange::end),
         text.attributes.end(),
         [&](const LocalSourceRange& list) { return list.contains(*range); });
     if(list != text.attributes.end()) {
@@ -610,7 +607,7 @@ bool ends_statement(const SelectionTree::Node& node) {
     } else if(const auto* attributed = llvm::dyn_cast<clang::AttributedStmt>(owner)) {
         bodies = {attributed->getSubStmt()};
     }
-    return std::ranges::contains(bodies, statement);
+    return ranges::contains(bodies, statement);
 }
 
 /// The angle brackets of the explicit template arguments a name carries
@@ -656,14 +653,8 @@ llvm::SmallVector<clang::SourceRange, 2> angles(const SelectionTree::Node& node)
             lists.push_back(*arguments);
         }
     } else if(const auto* decl = node.get<clang::Decl>()) {
-        if(const auto* temp = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            add_parameters(temp->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
-            add_parameters(partial->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
-            add_parameters(partial->getTemplateParameters());
+        if(const auto* parameters = decls::own_template_parameters(decl)) {
+            add_parameters(parameters);
         }
         if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
             add_arguments(spec->getTemplateArgsAsWritten());
@@ -711,8 +702,7 @@ void add_function(CompilationUnit& unit,
             // A type's location leaves out the qualifiers written before it
             // (`const std::string& name()` starts at `std`).
             for(const auto* token = token_before(tokens, begin);
-                token &&
-                std::ranges::contains(std::array{"const", "volatile"}, token->text(content));
+                token && ranges::contains(std::array{"const", "volatile"}, token->text(content));
                 token = token_before(tokens, begin)) {
                 begin = token->range.begin;
             }
@@ -770,8 +760,7 @@ std::optional<clang::SourceRange> case_section(const SelectionTree::Node& node) 
         return std::nullopt;
     }
     llvm::ArrayRef<clang::Stmt*> statements(body->body_begin(), body->body_end());
-    auto first =
-        static_cast<std::size_t>(std::ranges::find(statements, statement) - statements.begin());
+    auto first = static_cast<std::size_t>(ranges::find(statements, statement) - statements.begin());
     while(first > 0 && !is_label(statements[first])) {
         first -= 1;
     }
@@ -898,11 +887,11 @@ auto lexical_selection_ranges(SourceText& source, llvm::ArrayRef<std::uint32_t> 
     return result;
 }
 
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding) -> protocol::SelectionRange {
+auto to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::SelectionRange {
     std::unique_ptr<protocol::SelectionRange> parent;
-    for(const auto& range: std::views::reverse(ranges)) {
+    for(const auto& range: views::reverse(ranges)) {
         auto node = std::make_unique<protocol::SelectionRange>();
         node->range = *map.range(range, encoding);
         node->parent = std::move(parent);

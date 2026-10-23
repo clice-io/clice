@@ -1,12 +1,14 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
 import :feature.protocol;
 import :unittests.utils;
 import :vfs.file_table;
+import :vfs.ids;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -42,7 +44,7 @@ ZEST_CASE(RoundTripIdentity) {
     FileTable pool;
     constexpr Fid bad{0xFFFFFFFF};
     auto ingest = [&](llvm::StringRef uri) -> Fid {
-        auto parsed = kota::ipc::lsp::URI::parse(std::string_view(uri.data(), uri.size()));
+        auto parsed = lsp::URI::parse(std::string_view(uri.data(), uri.size()));
         if(!parsed.has_value()) {
             return bad;
         }

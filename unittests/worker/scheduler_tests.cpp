@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -37,7 +37,7 @@ struct Core {
     }
 
     void take() {
-        std::ranges::move(scheduler.take_actions(), std::back_inserter(actions));
+        ranges::move(scheduler.take_actions(), std::back_inserter(actions));
     }
 
     void advance(std::chrono::milliseconds by) {

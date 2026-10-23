@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 
@@ -130,7 +130,7 @@ bool DiskState::present(Fid fid) {
 }
 
 void DiskState::add_root(llvm::StringRef dir, Policy rule) {
-    if(auto it = std::ranges::find(roots, dir, &Root::dir); it != roots.end()) {
+    if(auto it = ranges::find(roots, dir, &Root::dir); it != roots.end()) {
         it->policy = rule;
     } else {
         roots.push_back({.dir = dir.str(), .policy = rule});
@@ -161,7 +161,7 @@ void DiskState::expire_under(llvm::StringRef dir) {
 }
 
 void DiskState::add_package(llvm::StringRef dir) {
-    if(std::ranges::find(roots, dir, &Root::dir) != roots.end()) {
+    if(ranges::find(roots, dir, &Root::dir) != roots.end()) {
         return;
     }
     add_root(dir, package_policy);
@@ -200,7 +200,7 @@ std::size_t DiskState::tick(Clock::duration budget) {
                 break;
             }
             popped += 1;
-            std::ranges::pop_heap(queue, std::ranges::greater{}, &Due::at);
+            ranges::pop_heap(queue, ranges::greater{}, &Due::at);
             auto entry = queue.back();
             queue.pop_back();
             auto& file = files.find(entry.fid)->second;
@@ -218,11 +218,11 @@ std::size_t DiskState::tick(Clock::duration budget) {
         if(batch.empty()) {
             return changes.size() - before;
         }
-        std::ranges::sort(batch, {}, [&](Fid fid) { return path(fid); });
+        ranges::sort(batch, {}, [&](Fid fid) { return path(fid); });
         StatusBatch statuses;
-        for(auto [index, fid]: std::views::enumerate(batch)) {
+        for(auto [index, fid]: views::enumerate(batch)) {
             if(looked != 0 && Clock::now() >= deadline) {
-                for(auto rest: std::views::drop(batch, index)) {
+                for(auto rest: views::drop(batch, index)) {
                     auto& file = files.find(rest)->second;
                     schedule(rest, file, file.due);
                 }
@@ -239,9 +239,9 @@ std::size_t DiskState::tick(Clock::duration budget) {
 }
 
 void DiskState::look(llvm::ArrayRef<Fid> fids) {
-    auto sorted = std::ranges::to<llvm::SmallVector<Fid>>(fids);
-    std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
-    sorted.erase(std::ranges::unique(sorted).begin(), sorted.end());
+    auto sorted = ranges::to<llvm::SmallVector<Fid>>(fids);
+    ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
+    sorted.erase(ranges::unique(sorted).begin(), sorted.end());
     StatusBatch statuses;
     for(auto fid: sorted) {
         look_at(fid, statuses);
@@ -249,8 +249,8 @@ void DiskState::look(llvm::ArrayRef<Fid> fids) {
 }
 
 void DiskState::find_missing(llvm::ArrayRef<Fid> fids) {
-    auto sorted = std::ranges::to<llvm::SmallVector<Fid>>(fids);
-    std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
+    auto sorted = ranges::to<llvm::SmallVector<Fid>>(fids);
+    ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
     StatusBatch statuses;
     for(auto fid: sorted) {
         if(!statuses.status(path(fid))) {
@@ -261,8 +261,8 @@ void DiskState::find_missing(llvm::ArrayRef<Fid> fids) {
 
 void DiskState::look_all() {
     look_flags();
-    look(std::ranges::to<llvm::SmallVector<Fid>>(
-        std::views::transform(files, [](auto& entry) { return entry.first; })));
+    look(ranges::to<llvm::SmallVector<Fid>>(
+        views::transform(files, [](auto& entry) { return entry.first; })));
 }
 
 std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<void()> on_change) {
@@ -377,7 +377,7 @@ void DiskState::verify(Fid fid, const Look& found) {
 
 std::uint32_t DiskState::root_of(llvm::StringRef path) const {
     auto found = no_root;
-    for(auto [index, root]: std::views::enumerate(roots)) {
+    for(auto [index, root]: views::enumerate(roots)) {
         if(path::under(path, root.dir) &&
            (found == no_root || root.dir.size() > roots[found].dir.size())) {
             found = static_cast<std::uint32_t>(index);
@@ -397,14 +397,14 @@ void DiskState::enqueue(Fid fid, File& file, Clock::time_point at) {
     }
     file.queued = at;
     queue.push_back({.at = at, .fid = fid});
-    std::ranges::push_heap(queue, std::ranges::greater{}, &Due::at);
+    ranges::push_heap(queue, ranges::greater{}, &Due::at);
 }
 
 void DiskState::look_flags() {
     // An owner may watch or drop flags when it hears of a change.
     watches.erase(
-        std::ranges::remove_if(watches,
-                               [](const std::weak_ptr<Watch>& watch) { return watch.expired(); })
+        ranges::remove_if(watches,
+                          [](const std::weak_ptr<Watch>& watch) { return watch.expired(); })
             .begin(),
         watches.end());
     llvm::SmallVector<std::shared_ptr<Watch>> live;

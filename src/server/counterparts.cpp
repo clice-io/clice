@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -243,7 +243,7 @@ struct Pairing {
             named.emplace_back(other, distance_to(other_path));
         }
         auto nearest = std::numeric_limits<std::uint32_t>::max();
-        for(auto distance: std::views::values(named)) {
+        for(auto distance: views::values(named)) {
             nearest = std::min(nearest, distance);
         }
         for(auto [other, distance]: named) {
@@ -257,7 +257,7 @@ struct Pairing {
 }  // namespace
 
 Ranking rank_counterparts(std::vector<Evidence> candidates) {
-    std::ranges::sort(candidates, [](const Evidence& a, const Evidence& b) {
+    ranges::sort(candidates, [](const Evidence& a, const Evidence& b) {
         if(signals(a) != signals(b)) {
             return signals(a) > signals(b);
         }
@@ -283,11 +283,10 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
         }
         return !a.module.empty() && b.module.empty();
     };
-    bool decisive =
-        !candidates.empty() &&
-        std::ranges::all_of(std::views::drop(candidates, 1), [&](const Evidence& candidate) {
-            return beats(candidates.front(), candidate);
-        });
+    bool decisive = !candidates.empty() &&
+                    ranges::all_of(views::drop(candidates, 1), [&](const Evidence& candidate) {
+                        return beats(candidates.front(), candidate);
+                    });
     return {.candidates = std::move(candidates), .decisive = decisive};
 }
 

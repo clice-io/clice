@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -44,10 +44,10 @@ std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef cont
                                                             const LexicalInfo& info) {
     auto& directives = info.directives;
     auto opening = static_cast<std::uint32_t>(
-        std::ranges::find_if(directives,
-                             [](const Directive& directive) {
-                                 return directive.kind != Directive::Kind::PragmaOnce;
-                             }) -
+        ranges::find_if(directives,
+                        [](const Directive& directive) {
+                            return directive.kind != Directive::Kind::PragmaOnce;
+                        }) -
         directives.begin());
     if(opening + 1 >= directives.size() || directives[opening].kind != Directive::Kind::If) {
         return std::nullopt;
@@ -84,7 +84,7 @@ std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef cont
     // Whether a token in [from, to) is code: neither a comment nor a
     // directive's.
     auto code_in = [&](std::uint32_t from, std::uint32_t to) {
-        auto directive = std::ranges::lower_bound(directives, from, {}, &Directive::first);
+        auto directive = ranges::lower_bound(directives, from, {}, &Directive::first);
         for(auto index = from; index < to; index += 1) {
             if(directive != directives.end() && index == directive->first) {
                 index = directive->last;
@@ -161,7 +161,7 @@ std::optional<MacroDefinition> macro_definition(llvm::ArrayRef<Token> words) {
     // Function-like when the parenthesis touches the name.
     if(auto& body = definition.body; !body.empty() && body.front().kind == clang::tok::l_paren &&
                                      body.front().range.begin == definition.name.range.end) {
-        auto close = std::ranges::find_if(body, [](const Token& token) {
+        auto close = ranges::find_if(body, [](const Token& token) {
             return token.kind == clang::tok::r_paren;
         });
         auto length = close == body.end() ? body.size() : close - body.begin() + 1;
@@ -397,16 +397,16 @@ llvm::SmallVector<Token, 8> LexicalInfo::words(const Directive& directive) const
 
 std::uint32_t LexicalInfo::token_at(std::uint32_t offset) const {
     return static_cast<std::uint32_t>(
-        std::ranges::upper_bound(tokens,
-                                 offset,
-                                 {},
-                                 [](const Token& token) { return token.range.end; }) -
+        ranges::upper_bound(tokens,
+                            offset,
+                            {},
+                            [](const Token& token) { return token.range.end; }) -
         tokens.begin());
 }
 
 auto LexicalInfo::directive_at(llvm::StringRef content, std::uint32_t offset) const
     -> const Directive* {
-    auto it = std::ranges::lower_bound(directives, offset, {}, [](const Directive& directive) {
+    auto it = ranges::lower_bound(directives, offset, {}, [](const Directive& directive) {
         return directive.range.end;
     });
     if(it == directives.end() || line_begin(content, it->range.begin) > offset) {
@@ -517,9 +517,8 @@ std::optional<LocalSourceRange> BracketPairs::visit(const Token& token, bool ski
         opens.push_back({kind, token.range});
         return std::nullopt;
     }
-    if(!std::ranges::contains(
-           std::array{clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace},
-           token.kind)) {
+    if(!ranges::contains(std::array{clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace},
+                         token.kind)) {
         return std::nullopt;
     }
     auto bottom = scopes.empty() ? 0 : scopes.back();
@@ -552,9 +551,8 @@ std::vector<Brace> code_braces(const LexicalInfo& lexical) {
 
 std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
                                                  LocalSourceRange extent) {
-    auto begin = std::ranges::lower_bound(braces, extent.begin, {}, [](const Brace& b) {
-        return b.range.begin;
-    });
+    auto begin =
+        ranges::lower_bound(braces, extent.begin, {}, [](const Brace& b) { return b.range.begin; });
     std::optional<LocalSourceRange> group;
     std::int32_t depth = 0;
     std::uint32_t open_begin = 0;

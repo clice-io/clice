@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -28,7 +28,7 @@ ZEST_CASE(AsciiColumnsAgree) {
 ZEST_CASE(StoredContentCountsUtf16) {
     // The é on line 1 is two UTF-8 bytes but one UTF-16 unit.
     llvm::StringRef content = "ab\né!\n";
-    auto starts = kota::ipc::lsp::line_starts(content);
+    auto starts = lsp::line_starts(content);
     PositionMap map(content, starts);
 
     auto position = index::line_column(map, 5);
@@ -41,7 +41,7 @@ ZEST_CASE(StoredContentCountsUtf16) {
 ZEST_CASE(CRLFLineEnds) {
     // "é\r\ncd": both offsets of the line end are at the line's end.
     llvm::StringRef content = "\xc3\xa9\r\ncd";
-    auto starts = kota::ipc::lsp::line_starts(content);
+    auto starts = lsp::line_starts(content);
     PositionMap map(content, starts);
 
     for(std::uint32_t offset: {2u, 3u}) {

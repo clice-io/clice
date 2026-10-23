@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Parts of this file (only_instantiation) are ported from clangd's AST.cpp
 /// (llvmorg-21.1.8), and resolve_forwarding_params follows clangd's
 /// resolveForwardingParameters;
@@ -29,6 +29,30 @@ bool is_templated(const clang::Decl* decl) {
     }
 
     return false;
+}
+
+auto own_template_parameters(const clang::Decl* decl) -> const clang::TemplateParameterList* {
+    if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+        return templated->getTemplateParameters();
+    }
+    if(const auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
+        return partial->getTemplateParameters();
+    }
+    if(const auto* partial = llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
+        return partial->getTemplateParameters();
+    }
+    return nullptr;
+}
+
+auto outer_template_parameters(const clang::Decl* decl)
+    -> llvm::ArrayRef<clang::TemplateParameterList*> {
+    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
+        return declarator->getTemplateParameterLists();
+    }
+    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+        return tag->getTemplateParameterLists();
+    }
+    return {};
 }
 
 namespace {
@@ -147,7 +171,7 @@ bool is_exported(const clang::Decl* decl) {
     }
     // Clang marks what a named module exports visible to importers — a
     // namespace too once it holds an exported declaration.
-    return std::ranges::any_of(decl->redecls(), [](const clang::Decl* redecl) {
+    return ranges::any_of(decl->redecls(), [](const clang::Decl* redecl) {
         auto* module = redecl->getOwningModule();
         return module && module->isNamedModule() &&
                redecl->getModuleOwnershipKind() ==
@@ -543,7 +567,7 @@ auto function_pack_type(const clang::FunctionDecl* callee) -> const clang::Templ
         auto template_params = decl->getTemplateParameters()->asArray();
         // find the template parameter pack from the back
         const auto it =
-            std::ranges::find_if(template_params.rbegin(), template_params.rend(), is_type_pack);
+            ranges::find_if(template_params.rbegin(), template_params.rend(), is_type_pack);
         if(it != template_params.rend()) {
             const auto* TTPD = llvm::dyn_cast<clang::TemplateTypeParmDecl>(*it);
             return TTPD->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
@@ -689,14 +713,14 @@ struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
         args = args.take_front(named);
         // A written expansion, left in a dependent call, stands for any
         // number of arguments: the ones after it bind unknown parameters.
-        if(std::ranges::any_of(args, llvm::IsaPred<clang::PackExpansionExpr>)) {
+        if(ranges::any_of(args, llvm::IsaPred<clang::PackExpansionExpr>)) {
             return;
         }
         auto passes = [](const clang::Expr* arg, const clang::ParmVarDecl* param) {
             return passed_param(arg) == param;
         };
         for(std::size_t start = 0; start + pack.size() <= args.size(); start += 1) {
-            if(std::ranges::equal(args.slice(start, pack.size()), pack, passes)) {
+            if(ranges::equal(args.slice(start, pack.size()), pack, passes)) {
                 callee = fn;
                 params = fn->parameters().slice(start, pack.size());
                 return;
@@ -733,7 +757,7 @@ auto resolve_forwarding_params(const clang::FunctionDecl* decl, unsigned max_dep
            primary && !seen.insert(primary).second) {
             return {own.begin(), own.end()};
         }
-        std::ranges::copy(finder.params, resolved.begin() + offset);
+        ranges::copy(finder.params, resolved.begin() + offset);
         auto next = expanded_pack(finder.callee, finder.params);
         offset += next.data() - finder.params.data();
         pack = next;
@@ -787,7 +811,7 @@ auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterB
 
     llvm::SmallVector<ParameterBinding> bindings;
     llvm::SmallVector<const clang::ParmVarDecl*> forwarded_params;
-    for(auto [offset, arg]: std::views::enumerate(args)) {
+    for(auto [offset, arg]: views::enumerate(args)) {
         auto position = skipped_params + static_cast<std::size_t>(offset);
         if(position >= callee->getNumParams()) {
             break;

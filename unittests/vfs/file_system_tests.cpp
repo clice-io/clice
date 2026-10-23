@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -153,7 +153,7 @@ ZEST_CASE(KeptMappingShared) {
 #ifdef _WIN32
     // The master and clang spell one PCH with different separators.
     auto slashed = a;
-    std::ranges::replace(slashed, '\\', '/');
+    ranges::replace(slashed, '\\', '/');
     ZASSERT(map(slashed)->getBufferStart() == map(a)->getBufferStart());
 #endif
     ZASSERT(map(b)->getBufferStart() != map(b)->getBufferStart());
@@ -250,7 +250,7 @@ ZEST_CASE(WalkPrunesAndSkipsLinks) {
         }
         return true;
     });
-    std::ranges::sort(seen);
+    ranges::sort(seen);
     ZASSERT(seen == (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
 
     seen.clear();
@@ -259,7 +259,7 @@ ZEST_CASE(WalkPrunesAndSkipsLinks) {
         seen.push_back(name.str());
         return name != "skip" && name != "src";
     });
-    std::ranges::sort(seen);
+    ranges::sort(seen);
     ZASSERT(seen == (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
 }
 

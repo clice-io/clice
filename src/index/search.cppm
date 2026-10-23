@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Symbols by name: the ranked search over the search index, what
 /// unqualified completion may offer, and the symbols a locator names.

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -66,7 +66,7 @@ std::vector<feature::FileDiagnostic>
     auto diagnostics = output.diagnostics;
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
         auto start = diagnostic.range.start;
-        return std::ranges::contains(options.suppress, diagnostic.code) ||
+        return ranges::contains(options.suppress, diagnostic.code) ||
                (diagnostic.origin != feature::DiagnosticOrigin::File &&
                 !relocated
                      .insert(
@@ -75,7 +75,7 @@ std::vector<feature::FileDiagnostic>
     });
 
     auto warn = [&](feature::FileDiagnostic diagnostic) {
-        if(!std::ranges::contains(options.suppress, diagnostic.code)) {
+        if(!ranges::contains(options.suppress, diagnostic.code)) {
             diagnostics.insert(diagnostics.begin(), std::move(diagnostic));
         }
     };
@@ -85,7 +85,7 @@ std::vector<feature::FileDiagnostic>
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
-       std::ranges::any_of(diagnostics, is_file_not_found)) {
+       ranges::any_of(diagnostics, is_file_not_found)) {
         warn(make_inferred_command_diagnostic(output.source));
     }
     if(!output.unmatched_host.empty()) {

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Ported from clangd's unittests/HoverTests.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
@@ -8,14 +8,15 @@ module;
 module clice;
 
 import :feature.hover;
+import :index.symbol;
+import :semantic.symbol;
+import :syntax.position;
 import :unittests.utils;
 import :unittests.utils.tester;
 
 namespace clice::testing {
 
 namespace {
-
-namespace protocol = kota::ipc::protocol;
 
 using HoverInfo = feature::HoverInfo;
 using PrintedType = display::Type;
@@ -754,6 +755,28 @@ int y = 2;
 
     // No spelled token touches the empty line, so there is no hover.
     ZASSERT(!feature::hover_info(*unit, point("p")).has_value());
+}
+
+ZEST_CASE(HoverDefinitionShape) {
+    // The stored extent is the whole definition; the card shows what the
+    // AST card prints, except that a type's members are left out: the AST
+    // card's member summary needs the AST.
+    auto card = [](SymbolKind::Kind kind,
+                   llvm::StringRef text,
+                   index::SymbolFlags flags = index::SymbolFlags::None) {
+        index::SymbolInfo info{.name = "name", .kind = kind, .flags = flags};
+        return feature::hover_info(info, {}, text, {}).definition;
+    };
+    ZASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") ==
+            "int twice(int x)");
+    ZASSERT(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}") == "int open()");
+    ZASSERT(card(SymbolKind::Method, "Holder() = default") == "Holder() = default");
+    ZASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point { ... }");
+    ZASSERT(card(SymbolKind::Namespace, "namespace app {\nint value;\n}") == "namespace app {}");
+    ZASSERT(card(SymbolKind::Macro, "LIMIT 10") == "#define LIMIT 10");
+    ZASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");
+    ZASSERT(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported) ==
+            "export int entry()");
 }
 
 };  // ZEST_SUITE(hover)

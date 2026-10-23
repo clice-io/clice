@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -39,9 +39,8 @@ static llvm::SmallVector<PeerQueries::Asked> peers_of(const PeerQueries& queries
         files.push_back(site.file);
     }
     for(auto* peer: others) {
-        if(std::ranges::any_of(declared(*peer, symbol), [&](const Site& site) {
-               return std::ranges::contains(files, site.file);
-           })) {
+        if(ranges::any_of(declared(*peer, symbol),
+                          [&](const Site& site) { return ranges::contains(files, site.file); })) {
             relevant.push_back({peer, symbol});
             continue;
         }
@@ -92,9 +91,8 @@ std::string PeerQueries::qualified_name(SymbolHash symbol, Fid anchor) const {
 
 bool PeerQueries::answers_for(const IndexQuery& from, Fid file, llvm::ArrayRef<Asked> asked) const {
     auto* serving = open_in(file);
-    return !serving || serving == &from || std::ranges::none_of(asked, [&](const Asked& source) {
-        return source.query == serving;
-    });
+    return !serving || serving == &from ||
+           ranges::none_of(asked, [&](const Asked& source) { return source.query == serving; });
 }
 
 std::vector<Site> PeerQueries::gather(

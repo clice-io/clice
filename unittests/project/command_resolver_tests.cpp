@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -42,8 +42,8 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     std::string directory;
     std::vector<std::string> arguments;
     ZEXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
-    ZEXPECT(std::ranges::any_of(arguments,
-                                [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    ZEXPECT(
+        ranges::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
     auto header_resolution = resolver.resolve_command(header, directory, arguments);
     ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
     ZEXPECT(header_resolution.host == main);
@@ -71,8 +71,8 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     std::vector<std::string> extras{"-DLINT_EXTRA"};
     CommandRequest request{.extra_append = extras};
     auto has_extra = [](llvm::ArrayRef<std::string> arguments) {
-        return std::ranges::any_of(arguments,
-                                   [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
+        return ranges::any_of(arguments,
+                              [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
     };
     std::string directory;
     std::vector<std::string> arguments;
@@ -310,7 +310,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     ZASSERT(names.size() == 2u);
     ZEXPECT(names[0] == "config.h");
     ZEXPECT(names[1] == resolution.synthesized->prefix);
-    ZEXPECT(std::ranges::any_of(resolution.synthesized->files, [](const SynthesizedFile& file) {
+    ZEXPECT(ranges::any_of(resolution.synthesized->files, [](const SynthesizedFile& file) {
         return llvm::StringRef(file.content).contains("FROM_PCH");
     }));
 }

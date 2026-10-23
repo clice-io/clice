@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -161,11 +161,11 @@ ZEST_CASE(Loads) {
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
     auto original = index::build_search_blob(corpus.snapshot);
-    auto blob = kota::codec::blob::from_bytes<index::SearchIndexBlob>(original);
+    auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(original);
     ZASSERT(blob);
     // Bytes no posting list starts with: the blob's structure stays
     // intact and every token's list is undecodable.
-    std::ranges::fill(blob->token_postings, 0xff);
+    ranges::fill(blob->token_postings, 0xff);
     auto bytes = index::encode(*blob);
     SearchIndex built;
     ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
@@ -446,7 +446,7 @@ ZEST_CASE(MatchesFullScan) {
                 all.push_back({*rank, entry.name, entry.hash});
             }
         }
-        std::ranges::sort(all, [](const Scored& lhs, const Scored& rhs) {
+        ranges::sort(all, [](const Scored& lhs, const Scored& rhs) {
             return index::ranks_after(rhs.rank,
                                       rhs.name,
                                       "",
@@ -503,7 +503,7 @@ ZEST_CASE(LocalHitsNameFile) {
     for(auto& hit: built.search(*SymbolQuery::parse("helper"), 10, {}).hits) {
         hits.emplace_back(corpus.name_of(hit.hash), hit.file.str());
     }
-    std::ranges::sort(hits);
+    ranges::sort(hits);
     ZEXPECT(hits == (std::vector<std::pair<std::string, std::string>>{
                         {"helper",     ""            },
                         {"helper",     "/w/src/b.cpp"},

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifdef _WIN32
 // The defines keep windows.h from spilling the min/max macros (and other
@@ -99,12 +99,12 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
 /// writable open creates `tmp/{pid}` and keeps it until shutdown.
 bool has_live_instance(llvm::StringRef base) {
     auto tmp_parent = path::join(base, "tmp");
-    return std::ranges::any_of(vfs::read_dir(tmp_parent).value_or(std::vector<vfs::Entry>()),
-                               [](const vfs::Entry& entry) {
-                                   std::uint32_t pid = 0;
-                                   return !path::filename(entry.path).getAsInteger(10, pid) &&
-                                          process_alive(pid);
-                               });
+    return ranges::any_of(vfs::read_dir(tmp_parent).value_or(std::vector<vfs::Entry>()),
+                          [](const vfs::Entry& entry) {
+                              std::uint32_t pid = 0;
+                              return !path::filename(entry.path).getAsInteger(10, pid) &&
+                                     process_alive(pid);
+                          });
 }
 
 std::int64_t now_ms() {
@@ -297,7 +297,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     auto manifest_path = path::join(state->base, "manifest.json");
     if(auto content = vfs::read(manifest_path, vfs::Read::Bytes)) {
         ManifestData data;
-        if(kota::codec::json::from_string((*content)->getBuffer(), data)) {
+        if(json::from_string((*content)->getBuffer(), data)) {
             for(auto& entry: data.entries) {
                 auto key = entry.ns + "/" + entry.key;
                 state->manifest_atimes[key] = entry.atime;
@@ -750,7 +750,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
                 {entry.first(), entry.second.atime, entry.second.size + entry.second.aux_size});
         }
     }
-    std::ranges::sort(candidates, {}, &Candidate::atime);
+    ranges::sort(candidates, {}, &Candidate::atime);
 
     for(auto& candidate: candidates) {
         if(ns.total_size <= ns.config.max_bytes) {
@@ -809,7 +809,7 @@ void CacheStore::State::checkpoint_locked() {
         }
     }
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = json::to_string(data);
     if(!json) {
         LOG_WARN("CacheStore: failed to serialize manifest");
         return;

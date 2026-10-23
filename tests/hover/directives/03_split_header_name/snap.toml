@@ -1,0 +1,7 @@
+[answers.include_path.hover]
+markdown = '''
+**header** `split_header.h`
+
+`${WS}/split_header.h`
+'''
+range = '#include ⟦"split_\ … header.h"⟧ (2 lines)'

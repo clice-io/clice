@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -444,7 +444,7 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     ZASSERT(symbol != 0);
     auto fresh_id = fresh.find(Spelling::absolute(pool.resolve(focus)));
     ZASSERT(fresh_id);
-    ZASSERT(std::ranges::contains(reference_files(loaded, symbol), fresh_id->raw));
+    ZASSERT(ranges::contains(reference_files(loaded, symbol), fresh_id->raw));
     ZASSERT(loaded.indexed(*fresh_id));
 }
 
@@ -507,12 +507,12 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
         ZEXPECT(index.reference_count(30) == 4u);
         std::vector<std::uint32_t> referencing;
         index.for_each_reference_file(30, [&](Fid file) { referencing.push_back(file.raw); });
-        std::ranges::sort(referencing);
+        ranges::sort(referencing);
         std::vector<std::uint32_t> expected{id_of("/proj/0.h"),
                                             id_of("/proj/1.h"),
                                             id_of("/proj/2.h"),
                                             id_of("/proj/3.h")};
-        std::ranges::sort(expected);
+        ranges::sort(expected);
         ZEXPECT(referencing == expected);
         std::vector<std::uint32_t> instantiating;
         index.for_each_instantiation_file(30, [&](Fid file) { instantiating.push_back(file.raw); });
@@ -628,7 +628,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
             for(auto name: names) {
                 fids.push_back(table.intern(Spelling::absolute(name)));
             }
-            std::ranges::sort(fids);
+            ranges::sort(fids);
             return fids;
         };
         for(auto group: {ids({"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}),
@@ -638,7 +638,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
                 index.for_each_file_of_local(helper, start, [&](Fid file) {
                     reached.push_back(file);
                 });
-                std::ranges::sort(reached);
+                ranges::sort(reached);
                 ZEXPECT(reached == group);
             }
         }

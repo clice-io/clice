@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Declaration identity: the entity hash that keys the symbol index, equal
 /// across translation units and processes for declarations the compiler

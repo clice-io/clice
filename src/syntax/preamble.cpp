@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -103,15 +103,15 @@ bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
             continue;
         }
         auto name = lexer.advance();
-        if(name.is_identifier() && std::ranges::contains(std::array{"define",
-                                                                    "undef",
-                                                                    "if",
-                                                                    "ifdef",
-                                                                    "ifndef",
-                                                                    "elif",
-                                                                    "elifdef",
-                                                                    "elifndef"},
-                                                         name.text(content))) {
+        if(name.is_identifier() && ranges::contains(std::array{"define",
+                                                               "undef",
+                                                               "if",
+                                                               "ifdef",
+                                                               "ifndef",
+                                                               "elif",
+                                                               "elifdef",
+                                                               "elifndef"},
+                                                    name.text(content))) {
             return true;
         }
     }

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -15,9 +15,11 @@ import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
 import :index.text;
+import :semantic.decls;
 import :semantic.display;
 import :semantic.semantics;
 import :semantic.symbol;
+import :support.text;
 import :syntax.lexer;
 import :syntax.source_text;
 import :vfs.file_table;
@@ -70,7 +72,7 @@ constexpr std::array specs = {
 
 void format_actions(CompilationUnit& unit, std::vector<CodeAction>& actions, std::size_t from) {
     auto path = unit.file_path(unit.focus_file().file());
-    for(auto& action: std::views::drop(actions, from)) {
+    for(auto& action: views::drop(actions, from)) {
         if(!action.edits.empty()) {
             action.edits = format_edits(path, unit.focus_file().content(), std::move(action.edits));
         }
@@ -91,7 +93,7 @@ void enumerate(CompilationUnit& unit,
     std::bitset<specs.size()> fired;
     for(const auto* node = innermost; node; node = node->parent) {
         auto kind = node->data.getNodeKind();
-        for(auto [index, spec]: std::views::enumerate(specs)) {
+        for(auto [index, spec]: views::enumerate(specs)) {
             if(fired[index] || (spec.reach == Reach::Innermost && node != innermost) ||
                !spec.anchor.isBaseOf(kind)) {
                 continue;
@@ -120,17 +122,6 @@ std::string bind_declarators(std::string text) {
         }
     }
     return text;
-}
-
-/// The parameters a class template or partial specialization declares.
-const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDecl* record) {
-    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-        return partial->getTemplateParameters();
-    }
-    if(auto* described = record->getDescribedClassTemplate()) {
-        return described->getTemplateParameters();
-    }
-    return nullptr;
 }
 
 /// The name a class template's parameter is spelled with out of line. An
@@ -167,11 +158,11 @@ std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
             taken.insert(word);
             text = text.drop_front(word.size());
         }
-        auto* params = template_parameters(record);
+        auto* params = record->getDescribedTemplateParams();
         if(scope == param->getDeclContext() || !params) {
             continue;
         }
-        for(auto [other_index, other]: std::views::enumerate(*params)) {
+        for(auto [other_index, other]: views::enumerate(*params)) {
             taken.insert(parameter_name(other, static_cast<std::size_t>(other_index)));
         }
     }
@@ -194,7 +185,7 @@ std::string record_component(const clang::RecordDecl* record) {
         if(auto* described = cxx->getDescribedClassTemplate()) {
             llvm::raw_string_ostream os(name);
             os << '<';
-            for(auto [index, param]: std::views::enumerate(*described->getTemplateParameters())) {
+            for(auto [index, param]: views::enumerate(*described->getTemplateParameters())) {
                 if(index) {
                     os << ", ";
                 }
@@ -236,8 +227,8 @@ void add_found(Entities& entities, clang::DeclContext::lookup_result found) {
 }
 
 Entities normalized(Entities entities) {
-    std::ranges::sort(entities);
-    entities.erase(std::ranges::unique(entities).begin(), entities.end());
+    ranges::sort(entities);
+    entities.erase(ranges::unique(entities).begin(), entities.end());
     return entities;
 }
 
@@ -246,7 +237,7 @@ using Namespaces = llvm::SmallVector<const clang::NamespaceDecl*, 4>;
 /// Add `ns` and the namespaces its using-directives nominate, transitively.
 void add_nominated(Namespaces& nominated, const clang::NamespaceDecl* ns) {
     ns = ns->getCanonicalDecl();
-    if(std::ranges::contains(nominated, ns)) {
+    if(ranges::contains(nominated, ns)) {
         return;
     }
     nominated.push_back(ns);
@@ -325,13 +316,7 @@ void add_template_parameters(Entities& entities,
     if(const auto* params = decl->getDescribedTemplateParams()) {
         add(params);
     }
-    llvm::ArrayRef<clang::TemplateParameterList*> outer;
-    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-        outer = declarator->getTemplateParameterLists();
-    } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-        outer = tag->getTemplateParameterLists();
-    }
-    for(const auto* params: outer) {
+    for(const auto* params: decls::outer_template_parameters(decl)) {
         add(params);
     }
 }
@@ -621,7 +606,7 @@ std::optional<std::string> respell(clang::ASTContext& context,
             namespaces.push_back(ns);
         }
     }
-    std::ranges::reverse(namespaces);
+    ranges::reverse(namespaces);
 
     auto spell = [&](llvm::ArrayRef<llvm::StringRef> components) -> std::optional<std::string> {
         auto joined = [&](std::size_t skipped) {
@@ -630,7 +615,7 @@ std::optional<std::string> respell(clang::ASTContext& context,
         if(auto spelling = spellings->find(joined(0)); spelling != spellings->end()) {
             return spelling->second;
         }
-        const auto* root = std::ranges::find_if(names.roots, [&](const auto& entry) {
+        const auto* root = ranges::find_if(names.roots, [&](const auto& entry) {
             return entry.first == components[0];
         });
         if(root == names.roots.end()) {
@@ -639,10 +624,9 @@ std::optional<std::string> respell(clang::ASTContext& context,
         for(auto depth = std::min(namespaces.size(), components.size() - 1); depth > 0;
             depth -= 1) {
             auto prefix = llvm::ArrayRef(namespaces).take_front(depth);
-            if(!std::ranges::equal(
-                   prefix,
-                   components.take_front(depth),
-                   [](auto* ns, auto component) { return ns->getName() == component; })) {
+            if(!ranges::equal(prefix, components.take_front(depth), [](auto* ns, auto component) {
+                   return ns->getName() == component;
+               })) {
                 continue;
             }
             auto* name = &context.Idents.get(components[depth]);
@@ -720,7 +704,7 @@ void print_constraint(llvm::raw_ostream& os,
         return;
     }
     os << '<';
-    for(auto [index, argument]: std::views::enumerate(arguments->arguments())) {
+    for(auto [index, argument]: views::enumerate(arguments->arguments())) {
         if(index) {
             os << ", ";
         }
@@ -740,7 +724,7 @@ std::string template_head(CompilationUnit& unit,
     for(const clang::DeclContext* context = record;
         auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(context);
         context = context->getParent()) {
-        if(auto* list = template_parameters(enclosing)) {
+        if(auto* list = enclosing->getDescribedTemplateParams()) {
             for(const auto* param: *list) {
                 parameters.insert(param->getName());
             }
@@ -749,7 +733,7 @@ std::string template_head(CompilationUnit& unit,
     std::string head;
     llvm::raw_string_ostream os(head);
     os << "template <";
-    for(auto [index, param]: std::views::enumerate(*params)) {
+    for(auto [index, param]: views::enumerate(*params)) {
         if(index) {
             os << ", ";
         }
@@ -894,7 +878,7 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
         }
     }
     std::string qualifier;
-    for(auto& component: std::views::reverse(components)) {
+    for(auto& component: views::reverse(components)) {
         qualifier += component;
         qualifier += "::";
     }
@@ -964,12 +948,12 @@ std::string template_heads(CompilationUnit& unit,
             break;
         }
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-        if(auto* params = record ? template_parameters(record) : nullptr) {
+        if(auto* params = record ? record->getDescribedTemplateParams() : nullptr) {
             lists.emplace_back(params, record);
         }
     }
     std::string heads;
-    for(auto [params, record]: std::views::reverse(lists)) {
+    for(auto [params, record]: views::reverse(lists)) {
         heads += template_head(unit, params, record, from, decl->getBeginLoc());
         heads += '\n';
     }
@@ -986,8 +970,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
     }
     auto content = unit.focus_file().content();
     auto record_indent = line_indent(content, head->begin);
-    auto begin = line_begin(content, brace->begin);
-    bool own_line = content.substr(begin, brace->begin - begin).trim().empty();
+    bool own_line = begins_line(content, brace->begin);
 
     std::string indent;
     for(const auto* member: record->decls()) {
@@ -1022,7 +1005,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
     if(!own_line) {
         text += record_indent;
     }
-    auto offset = own_line ? begin : brace->begin;
+    auto offset = own_line ? line_begin(content, brace->begin) : brace->begin;
     return TextReplacement{
         {offset, offset},
         std::move(text)};
@@ -1062,10 +1045,7 @@ std::vector<const clang::FunctionDecl*>
     std::vector<const clang::FunctionDecl*> definitions;
     const auto* canonical = record->getCanonicalDecl();
     for_each_file_scope_decl(unit, [&](const clang::Decl* decl) {
-        if(auto* described = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
-            decl = described->getTemplatedDecl();
-        }
-        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
+        const auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(decl->getAsFunction());
         if(method && method->isThisDeclarationADefinition() && method->isOutOfLine() &&
            method->getParent()->getCanonicalDecl() == canonical) {
             definitions.push_back(method);
@@ -1092,9 +1072,9 @@ auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vec
     auto before = out.size();
     action::expand_macro(unit, selection, out);
     action::format_actions(unit, out, before);
-    assert(std::ranges::all_of(out, [](const CodeAction& action) {
-        return std::ranges::any_of(code_action_kinds,
-                                   [&](llvm::StringRef kind) { return kind == action.kind; });
+    assert(ranges::all_of(out, [](const CodeAction& action) {
+        return ranges::any_of(code_action_kinds,
+                              [&](llvm::StringRef kind) { return kind == action.kind; });
     }));
     return out;
 }
@@ -1122,15 +1102,13 @@ bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind)
     if(only.empty()) {
         return true;
     }
-    return std::ranges::any_of(only, [&](const protocol::CodeActionKind& wanted) {
+    return ranges::any_of(only, [&](const protocol::CodeActionKind& wanted) {
         llvm::StringRef prefix = wanted;
         return kind == prefix || (kind.starts_with(prefix) && kind[prefix.size()] == '.');
     });
 }
 
-protocol::CodeAction code_action_to_protocol(std::string title,
-                                             protocol::CodeActionKind kind,
-                                             FileEdit file) {
+protocol::CodeAction to_protocol(std::string title, protocol::CodeActionKind kind, FileEdit file) {
     protocol::TextDocumentEdit change{
         .text_document = {.uri = std::move(file.uri), .version = file.version},
     };
@@ -1179,7 +1157,7 @@ auto host_edit(const index::IndexQuery& query,
                     return true;
                 }
                 auto chain = query.container_chain(hash, source->file);
-                if(std::ranges::none_of(chain, [&](const index::SymbolInfo& each) {
+                if(ranges::none_of(chain, [&](const index::SymbolInfo& each) {
                        return each.hash == container;
                    })) {
                     return true;

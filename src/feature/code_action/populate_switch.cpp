@@ -1,19 +1,20 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
 import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
+import :support.text;
 
 namespace clice::feature::action {
 
 /// Whether a switch body declares something at its own scope, which a
 /// label added after the declaration would jump past.
 static bool declares_in_scope(const clang::CompoundStmt* body) {
-    return std::ranges::any_of(body->body(), [](const clang::Stmt* statement) {
+    return ranges::any_of(body->body(), [](const clang::Stmt* statement) {
         return llvm::isa<clang::DeclStmt>(statement->stripLabelLikeStatements());
     });
 }
@@ -114,8 +115,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         indent = line_indent(content, range->begin).str() + "    ";
     }
 
-    auto begin = line_begin(content, anchor->begin);
-    bool own_line = content.substr(begin, anchor->begin - begin).trim().empty();
+    bool own_line = begins_line(content, anchor->begin);
     const auto& from = ctx.node.decl_context();
     std::string text = own_line ? "" : "\n";
     for(const auto* enumerator: missing) {
@@ -130,7 +130,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     if(!own_line) {
         text += indent;
     }
-    auto offset = own_line ? begin : anchor->begin;
+    auto offset = own_line ? line_begin(content, anchor->begin) : anchor->begin;
     out.push_back(CodeAction{
         .title = std::format("Add {} missing enum case{} to switch",
                              missing.size(),

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The questions an editor asks at a cursor: where a symbol is defined and
 /// declared, its references, highlights, type definition and implementations.
@@ -16,8 +16,6 @@ import :index.symbol;
 import :semantic.symbol;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {
@@ -97,8 +95,7 @@ struct PlacedHighlight {
 std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
                                                  const index::IndexQuery::Cursor& cursor);
 
-std::vector<protocol::DocumentHighlight>
-    document_highlights_to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
+std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,

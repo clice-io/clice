@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.folding_ranges;
 
@@ -12,8 +12,6 @@ import :syntax.position;
 import :syntax.source_text;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// A fold in byte offsets of the focus file; it becomes an LSP FoldingRange
 /// only at the reply edge, which knows how the client folds.
@@ -69,11 +67,11 @@ auto declaration_lines(llvm::StringRef content,
 /// collapsed text, that text is the fold's whole first line, and a fold
 /// whose closer sits on a line of its own folds that line too
 /// (`int f() {...}`).
-auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                const PositionMap& map,
-                                PositionEncoding encoding,
-                                const FoldingClient& client) -> std::vector<protocol::FoldingRange>;
+auto to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                 llvm::StringRef content,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const FoldingClient& client) -> std::vector<protocol::FoldingRange>;
 
 /// Declaration folds: each definition extent folds its last balanced brace
 /// group (brace matching over a raw lex, so braces in strings, comments
@@ -81,13 +79,13 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 /// visible like the AST folds do. Extents touching a conditional whose
 /// branches unbalance braces produce no fold — a raw pairing there is
 /// wrong for some preprocessing variant.
-auto index_folding_ranges(SourceText& source,
-                          llvm::ArrayRef<IndexDecl> decls,
-                          IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
+auto folding_ranges(SourceText& source,
+                    llvm::ArrayRef<IndexDecl> decls,
+                    IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
 
-/// The same from the index serving the file (see index_semantic_tokens).
-auto index_folding_ranges(SourceText& source,
-                          const index::IndexQuery& query,
-                          const index::IndexSource& index) -> std::vector<FoldingRange>;
+/// The same from the index serving the file (see semantic_tokens).
+auto folding_ranges(SourceText& source,
+                    const index::IndexQuery& query,
+                    const index::IndexSource& index) -> std::vector<FoldingRange>;
 
 }  // namespace clice::feature

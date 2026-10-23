@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.master_server;
 
@@ -189,10 +189,10 @@ public:
     /// message, so the look is exact — with periodic ticks off, as tests
     /// run: workspace polling and checkpoints start work on their own. The
     /// metadata save that follows a build is not waited for.
-    kota::task<> wait_idle(const kota::ipc::JSONPeer& editor);
+    kota::task<> wait_idle(const ipc::JSONPeer& editor);
 
     /// What wait_idle() still waits for, one line each; empty once idle.
-    std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor);
+    std::vector<std::string> pending_work(const ipc::JSONPeer& editor);
 
     kota::cancellation_token shutdown_token() const {
         return shutdown_source.token();
@@ -266,7 +266,7 @@ public:
     std::vector<CanonicalPath> workspace_roots;
 
     /// The client's initializationOptions, applied to every project.
-    std::optional<kota::codec::dyn::Value> init_options;
+    std::optional<codec::dyn::Value> init_options;
 
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the

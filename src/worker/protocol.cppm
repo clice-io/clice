@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:worker.protocol;
 
@@ -18,8 +18,6 @@ import :syntax.header_context;
 import :syntax.token;
 
 namespace clice::worker {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Error codes attached to master-side dispatch failures. They mark expected
 /// operational conditions — memory-pressure preemption, worker deaths and
@@ -100,9 +98,7 @@ std::string crash_tag(const Params& params) {
 /// in Error::data. One process death fails every request in flight on it;
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
-inline kota::codec::dyn::Value death_identity(std::size_t index,
-                                              unsigned generation,
-                                              bool stateful) {
+inline codec::dyn::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
@@ -128,7 +124,7 @@ struct HoverParams {
     uint32_t offset = 0;
 
     /// What a hover card renders as: the markup the client shows it in.
-    feature::protocol::MarkupKind markup = feature::protocol::MarkupKind::Markdown;
+    protocol::MarkupKind markup = protocol::MarkupKind::Markdown;
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -344,7 +340,7 @@ struct CompletionParams {
 /// `#include` goes that the items marked with their symbol need
 /// (feature::Completion).
 struct CompletionResult {
-    kota::codec::RawValue list{"null"};
+    codec::RawValue list{"null"};
     std::optional<feature::IncludePlace> include;
 };
 
@@ -587,7 +583,7 @@ struct RequestTraits<clice::worker::CompileParams> {
 
 template <>
 struct RequestTraits<clice::worker::HoverParams> {
-    using Result = kota::codec::RawValue;
+    using Result = codec::RawValue;
     constexpr inline static std::string_view method = "clice/worker/hover";
 };
 
@@ -670,7 +666,7 @@ struct RequestTraits<clice::worker::CompletionParams> {
 
 template <>
 struct RequestTraits<clice::worker::SignatureHelpParams> {
-    using Result = kota::codec::RawValue;
+    using Result = codec::RawValue;
     constexpr inline static std::string_view method = "clice/worker/signatureHelp";
 };
 

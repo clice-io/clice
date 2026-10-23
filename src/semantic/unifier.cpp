@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -694,7 +694,7 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
-                    bool undecided = std::ranges::contains(open, expr);
+                    bool undecided = ranges::contains(open, expr);
                     undecided_values |= undecided;
                     return undecided;
                 }
@@ -818,7 +818,7 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
                     }
                 }
             }
-            for(auto [index, group]: std::views::enumerate(elements)) {
+            for(auto [index, group]: views::enumerate(elements)) {
                 if(!group.empty() &&
                    !bind(static_cast<unsigned>(index),
                          clang::TemplateArgument::CreatePackCopy(context, group))) {
@@ -1322,7 +1322,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
     }
 
     deduced.assign(unifier.results().begin(), unifier.results().end());
-    for(auto [i, argument]: std::views::enumerate(deduced)) {
+    for(auto [i, argument]: views::enumerate(deduced)) {
         if(!argument.isNull()) {
             continue;
         }

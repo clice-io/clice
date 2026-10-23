@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -600,8 +600,8 @@ int main() {{ gen(); return 0; }}
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
         ZEXPECT(index.path(i) != synthesized);
     }
-    ZEXPECT(!std::ranges::any_of(unit->deps(),
-                                 [&](const DepFile& dep) { return dep.path == synthesized; }));
+    ZEXPECT(
+        !ranges::any_of(unit->deps(), [&](const DepFile& dep) { return dep.path == synthesized; }));
 }
 
 ZEST_CASE(UnreadableBlobCleared) {

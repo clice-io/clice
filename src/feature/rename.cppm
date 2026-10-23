@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
@@ -13,8 +13,6 @@ module clice:feature.rename;
 import :index.query;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Why `name` cannot name a C or C++ declaration — not an identifier, or a
 /// keyword in either language; nullopt when it can.
@@ -177,7 +175,7 @@ struct BatchPlan {
     std::vector<std::string> conflicts;
 
     bool blocked() const {
-        return !conflicts.empty() || std::ranges::any_of(plans, &RenamePlan::blocked);
+        return !conflicts.empty() || ranges::any_of(plans, &RenamePlan::blocked);
     }
 };
 
@@ -209,8 +207,8 @@ struct Renamed {
 
 /// A plan's edits renaming to `new_name`, each file versioned by
 /// `version_of` (none for a file not open).
-Renamed rename_to_protocol(const RenamePlan& plan,
-                           llvm::StringRef new_name,
-                           llvm::function_ref<std::optional<int>(Fid)> version_of);
+Renamed to_protocol(const RenamePlan& plan,
+                    llvm::StringRef new_name,
+                    llvm::function_ref<std::optional<int>(Fid)> version_of);
 
 }  // namespace clice::feature

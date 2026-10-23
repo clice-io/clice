@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The index of one compiled unit: its AST, semantic map and preprocessor
 /// directives projected into the entries of each file it indexes, the

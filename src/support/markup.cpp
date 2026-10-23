@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Ported from clangd's support/Markup.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
@@ -73,7 +73,7 @@ bool needs_leading_escape(char c, llvm::StringRef before, llvm::StringRef after,
             return 0;
         }
         llvm::StringRef rest = after.rtrim();
-        return std::ranges::all_of(rest, [c](char d) { return c == d; }) ? 1 + rest.size() : 0;
+        return ranges::all_of(rest, [c](char d) { return c == d; }) ? 1 + rest.size() : 0;
     };
 
     auto is_bullet = [&]() {
@@ -147,15 +147,15 @@ bool needs_leading_escape(char c, llvm::StringRef before, llvm::StringRef after,
             llvm::StringRef content = after.substr(0, end);
             if(content.consume_front("#")) {
                 if(content.consume_front("x") || content.consume_front("X")) {
-                    return std::ranges::all_of(content, llvm::isHexDigit);
+                    return ranges::all_of(content, llvm::isHexDigit);
                 }
-                return std::ranges::all_of(content, llvm::isDigit);
+                return ranges::all_of(content, llvm::isDigit);
             }
-            return std::ranges::all_of(content, llvm::isAlpha);
+            return ranges::all_of(content, llvm::isAlpha);
         }
         case '.':  // Numbered list indicator. Escape 12. -> 12\. at start of line.
         case ')':
-            return starts_line && !before.empty() && std::ranges::all_of(before, llvm::isDigit) &&
+            return starts_line && !before.empty() && ranges::all_of(before, llvm::isDigit) &&
                    after.starts_with(" ");
         default: return false;
     }

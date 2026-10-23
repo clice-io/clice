@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -146,7 +146,7 @@ InactiveScan inactive_regions(CompilationUnit& unit,
     for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
         pairs.emplace_back(regions[i], regions[i + 1]);
     }
-    std::ranges::sort(pairs);
+    ranges::sort(pairs);
     regions.clear();
     for(auto [begin, end]: pairs) {
         if(!regions.empty() && begin <= regions.back()) {

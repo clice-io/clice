@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:analysis.text;
 
@@ -135,8 +135,7 @@ struct Text {
     }
 
     std::uint32_t line_of(std::uint32_t offset) const {
-        return static_cast<std::uint32_t>(std::ranges::upper_bound(starts, offset) -
-                                          starts.begin() - 1);
+        return static_cast<std::uint32_t>(ranges::upper_bound(starts, offset) - starts.begin() - 1);
     }
 
     /// The kind of the directive `line` starts; Other off a directive.
@@ -163,7 +162,7 @@ struct Text {
     /// Whether `line` writes the identifier `word`, outside its comments,
     /// literals and directives.
     bool names(std::uint32_t line, llvm::StringRef word) const {
-        return std::ranges::any_of(tokens_on(line), [&](const Token& token) {
+        return ranges::any_of(tokens_on(line), [&](const Token& token) {
             return token.is_identifier() && token.text(content) == word;
         });
     }
@@ -203,15 +202,15 @@ struct Text {
 
     /// The tokens on `line`.
     llvm::ArrayRef<Token> tokens_on(std::uint32_t line) const {
-        auto begin = std::ranges::lower_bound(token_lines, line) - token_lines.begin();
-        auto end = std::ranges::upper_bound(token_lines, line) - token_lines.begin();
+        auto begin = ranges::lower_bound(token_lines, line) - token_lines.begin();
+        auto end = ranges::upper_bound(token_lines, line) - token_lines.begin();
         return llvm::ArrayRef(tokens).slice(begin, end - begin);
     }
 
     /// The tokens on lines `first` through `last`.
     llvm::ArrayRef<Token> tokens_on(std::uint32_t first, std::uint32_t last) const {
-        auto begin = std::ranges::lower_bound(token_lines, first) - token_lines.begin();
-        auto end = std::ranges::upper_bound(token_lines, last) - token_lines.begin();
+        auto begin = ranges::lower_bound(token_lines, first) - token_lines.begin();
+        auto end = ranges::upper_bound(token_lines, last) - token_lines.begin();
         return llvm::ArrayRef(tokens).slice(begin, end - begin);
     }
 
@@ -353,7 +352,7 @@ struct Text {
             auto on_open = tokens_on(open);
             if(&on_open.front() != &tokens[i] || on_open.front().text(content) != "namespace" ||
                on_open.size() < 3 || on_open.back().kind != clang::tok::l_brace ||
-               !std::ranges::all_of(on_open.drop_front().drop_back(), [](const auto& token) {
+               !ranges::all_of(on_open.drop_front().drop_back(), [](const auto& token) {
                    return token.is_identifier() || token.kind == clang::tok::coloncolon;
                })) {
                 continue;

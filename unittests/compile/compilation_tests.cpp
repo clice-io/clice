@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -42,7 +42,7 @@ bool defines_specialization(CompilationUnit& unit, llvm::StringRef name) {
     auto found = unit.tu()->lookup(&unit.context().Idents.get(name));
     auto* pattern = llvm::dyn_cast<clang::FunctionTemplateDecl>(found.front());
     ZASSERT(pattern);
-    ZASSERT(std::ranges::distance(pattern->specializations()) == 1U);
+    ZASSERT(ranges::distance(pattern->specializations()) == 1U);
     return (*pattern->specializations().begin())->isDefined();
 }
 
@@ -147,8 +147,7 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
     ZASSERT(built->completed());
     ZASSERT(built->diagnostics().empty());
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
-    ZEXPECT(
-        std::ranges::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
+    ZEXPECT(ranges::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
 }
 
 ZEST_CASE(StopCompilation) {
@@ -390,7 +389,7 @@ int main() { return preamble_func(); }
         // a diagnostic naming the blob, or an AST-deserialization error —
         // that family's messages do not reliably carry the path ("Blob
         // ends too soon").
-        bool blames_pch = std::ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
+        bool blames_pch = ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
             return llvm::StringRef(diag.message).contains(pch_path) ||
                    diag.id.is_deserialization_error();
         });
@@ -435,7 +434,7 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     {
         auto unit = compile_with();
         ZASSERT(unit->completed());
-        ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
+        ZASSERT(ranges::none_of(unit->diagnostics(), [](auto& diag) {
             return diag.id.level >= DiagnosticLevel::Error;
         }));
     }
@@ -498,9 +497,8 @@ int main() { return before() + after(); }
 )");
 
     ZASSERT(compile_with_pch());
-    ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
-        return diag.id.level >= DiagnosticLevel::Error;
-    }));
+    ZASSERT(ranges::none_of(unit->diagnostics(),
+                            [](auto& diag) { return diag.id.level >= DiagnosticLevel::Error; }));
 }
 
 ZEST_CASE(PCMBuildChain) {
@@ -586,9 +584,8 @@ ZEST_CASE(PCHKeepsModuleImports) {
 
     auto unit = clice::compile(std::move(params));
     ZASSERT(unit->completed());
-    ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
-        return diag.id.level >= DiagnosticLevel::Error;
-    }));
+    ZASSERT(ranges::none_of(unit->diagnostics(),
+                            [](auto& diag) { return diag.id.level >= DiagnosticLevel::Error; }));
 }
 
 ZEST_CASE(PCHWithoutModule) {

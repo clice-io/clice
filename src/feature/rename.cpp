@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -450,7 +450,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                     // one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    if(std::ranges::any_of(written, is_identifier_char) &&
+                    if(ranges::any_of(written, is_identifier_char) &&
                        keyword_kind(written, cxx_keywords) == clang::tok::identifier) {
                         plan.unconfirmed.push_back(
                             {.site = site,
@@ -536,7 +536,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             }
             if(auto cursor = query.symbol_at(file, offset);
                cursor && cursor->site.range.contains(offset)) {
-                if(std::ranges::any_of(cursor->symbols, [&](index::SymbolHash symbol) {
+                if(ranges::any_of(cursor->symbols, [&](index::SymbolHash symbol) {
                        return renames(symbol, file);
                    })) {
                     add_edit(file, cursor->site, offset, false);
@@ -554,7 +554,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         }
     }
 
-    for(auto& key: std::views::keys(edits)) {
+    for(auto& key: views::keys(edits)) {
         edited.insert(key.first);
     }
 
@@ -743,18 +743,18 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     for(auto& [key, edit]: edits) {
         plan.edits.push_back(std::move(edit));
     }
-    std::ranges::sort(plan.edits, [](const RenameEdit& lhs, const RenameEdit& rhs) {
+    ranges::sort(plan.edits, [](const RenameEdit& lhs, const RenameEdit& rhs) {
         return std::tie(lhs.site.path, lhs.site.range.begin) <
                std::tie(rhs.site.path, rhs.site.range.begin);
     });
-    std::ranges::sort(plan.unconfirmed, [](const RenameNote& lhs, const RenameNote& rhs) {
+    ranges::sort(plan.unconfirmed, [](const RenameNote& lhs, const RenameNote& rhs) {
         return std::tie(lhs.site.path, lhs.site.range.begin) <
                std::tie(rhs.site.path, rhs.site.range.begin);
     });
     for(auto& entry: stale) {
         plan.stale.push_back(entry.getKey().str());
     }
-    std::ranges::sort(plan.stale);
+    ranges::sort(plan.stale);
     return plan;
 }
 
@@ -812,8 +812,8 @@ BatchPlan plan_renames(const index::IndexQuery& query,
                 own.append_range(found->second);
             }
         }
-        std::ranges::sort(own);
-        own.erase(std::ranges::unique(own).begin(), own.end());
+        ranges::sort(own);
+        own.erase(ranges::unique(own).begin(), own.end());
         auto narrowed = scope;
         narrowed.files = own;
         result.plans.push_back(plan_rename(query, files, target, new_name, narrowed, batch));
@@ -838,7 +838,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
             it->second.edit.heuristic &= edit.heuristic;
         }
     }
-    for(auto& edit: std::views::values(edits)) {
+    for(auto& edit: views::values(edits)) {
         result.edits.push_back(std::move(edit));
     }
     return result;
@@ -892,9 +892,9 @@ static void list_notice(std::string& notice,
     }
 }
 
-Renamed rename_to_protocol(const RenamePlan& plan,
-                           llvm::StringRef new_name,
-                           llvm::function_ref<std::optional<int>(Fid)> version_of) {
+Renamed to_protocol(const RenamePlan& plan,
+                    llvm::StringRef new_name,
+                    llvm::function_ref<std::optional<int>(Fid)> version_of) {
     Renamed renamed;
     using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
                                              protocol::CreateFile,

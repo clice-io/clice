@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -318,11 +318,11 @@ void swap_page_keys(llvm::StringRef file, char prefix) {
             pages.emplace_back(bytes.substr(node + 8, u16(node + 6)), page);
         }
     }
-    std::ranges::sort(pages);
+    ranges::sort(pages);
     require(pages.size() > 1, "too few leaf pages of the kind");
     auto pointers = pages[1].second + 16;
     auto first = bytes.begin() + static_cast<std::ptrdiff_t>(pointers);
-    std::ranges::swap_ranges(first, first + 2, first + 2, first + 4);
+    ranges::swap_ranges(first, first + 2, first + 2, first + 4);
     std::error_code ec;
     llvm::raw_fd_ostream os(file, ec);
     require(!ec, "rewriting index.mdb failed");

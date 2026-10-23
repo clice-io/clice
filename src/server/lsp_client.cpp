@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "version.h"
 #include "support/anomaly.macros.h"
@@ -26,21 +26,20 @@ import :server.master_server;
 import :server.query_commands;
 import :server.uri;
 import :support.anomaly;
+import :support.json;
 import :support.logging;
 import :syntax.header_context;
 import :vfs.path;
 import :worker.probe;
-import :worker.serialize;
 
 namespace clice {
 
-namespace protocol = kota::ipc::protocol;
-using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::JSONPeer::RequestContext;
+using ipc::RequestResult;
+using RequestContext = ipc::JSONPeer::RequestContext;
 
 /// Error response for feature requests on files with no open session.
-static kota::ipc::Error document_not_open() {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
+static ipc::Error document_not_open() {
+    return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
 }
 
 /// True once the server has begun shutting down; document-sync
@@ -49,8 +48,8 @@ static bool past_shutdown(ServerLifecycle lifecycle) {
     return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
 }
 
-static kota::ipc::Error hooks_off() {
-    return kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
+static ipc::Error hooks_off() {
+    return ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
 }
 
 /// Fire a workspace refresh request without awaiting the reply. Peer
@@ -59,8 +58,8 @@ static kota::ipc::Error hooks_off() {
 /// captureless coroutine lambda invoked immediately: parameters are copied
 /// into the frame, captures would dangle.
 template <typename Params>
-static void fire_refresh(kota::event_loop& loop, kota::ipc::JSONPeer& peer, Params params) {
-    loop.schedule([](kota::ipc::JSONPeer* peer, Params request) -> kota::task<> {
+static void fire_refresh(kota::event_loop& loop, ipc::JSONPeer& peer, Params params) {
+    loop.schedule([](ipc::JSONPeer* peer, Params request) -> kota::task<> {
         // Hang detection: nothing waits on the answer; the bound only frees
         // the request of a client that never answers.
         co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
@@ -70,8 +69,8 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JSONPeer& peer, Para
 /// Awaits `task` with the request holding the project it is served in: a
 /// removed project lives on while a request still runs in it.
 template <typename T>
-static kota::task<T, kota::ipc::Error> holding(std::shared_ptr<ProjectServer> project,
-                                               kota::task<T, kota::ipc::Error> task) {
+static kota::task<T, ipc::Error> holding(std::shared_ptr<ProjectServer> project,
+                                         kota::task<T, ipc::Error> task) {
     co_return co_await std::move(task);
 }
 
@@ -111,16 +110,15 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::Pol
 /// requests carry it under. Refused once the server is shutting down: the
 /// stopping pool released every one, and a later one would park work the
 /// shutdown waits on.
-static std::expected<std::string, kota::ipc::Error> park_target(MasterServer& srv,
-                                                                const Spelling& path) {
+static std::expected<std::string, ipc::Error> park_target(MasterServer& srv, const Spelling& path) {
     if(past_shutdown(srv.lifecycle)) {
         return std::unexpected(
-            kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
+            ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }
     return std::string(srv.files.resolve(srv.files.intern(path)));
 }
 
-LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(server), peer(peer) {
+LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
             push_output(project, *session);
@@ -162,14 +160,14 @@ void LSPClient::forward_notify_messages() {
 }
 
 /// Pushes `params`; a push that cannot be encoded is logged, not lost unseen.
-static void publish(kota::ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params) {
+static void publish(ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params) {
     if(auto sent = peer.send_notification(params); !sent) {
         LOG_WARN("Cannot publish the diagnostics of {}: {}", params.uri, sent.error().message);
     }
 }
 
 /// The answer to a diagnostics pull.
-static kota::codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
+static codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
 }
 
@@ -229,7 +227,7 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
     if(it == aliases.end()) {
         return nullptr;
     }
-    auto alias = std::ranges::find_if(it->second, [&](const AliasDocument& document) {
+    auto alias = ranges::find_if(it->second, [&](const AliasDocument& document) {
         return document.spelling == spelling;
     });
     return alias != it->second.end() ? &*alias : nullptr;
@@ -241,7 +239,7 @@ LSPClient::AliasDocument* LSPClient::find_alias(llvm::StringRef spelling) {
     return path_id ? find_alias(*path_id, spelling) : nullptr;
 }
 
-kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
+ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
     return find_alias(spelling) ? content_modified() : document_not_open();
 }
 
@@ -384,7 +382,7 @@ void LSPClient::register_lifecycle() {
            params.capabilities.text_document->hover.has_value() &&
            params.capabilities.text_document->hover->content_format.has_value()) {
             auto& formats = *params.capabilities.text_document->hover->content_format;
-            auto preferred = std::ranges::find_if(formats, [](const protocol::MarkupKind& kind) {
+            auto preferred = ranges::find_if(formats, [](const protocol::MarkupKind& kind) {
                 return kind == protocol::MarkupKind::Markdown ||
                        kind == protocol::MarkupKind::PlainText;
             });
@@ -419,10 +417,10 @@ void LSPClient::register_lifecycle() {
                 .snippets = item.snippet_support,
                 .insert_replace = item.insert_replace_support,
                 .markdown = item.documentation_format &&
-                            std::ranges::any_of(*item.documentation_format,
-                                                [](const std::string& kind) {
-                                                    return kind == protocol::MarkupKind::Markdown;
-                                                }),
+                            ranges::any_of(*item.documentation_format,
+                                           [](const std::string& kind) {
+                                               return kind == protocol::MarkupKind::Markdown;
+                                           }),
             };
         }
 
@@ -801,21 +799,19 @@ LSPClient::RawResult LSPClient::send_tokens(std::shared_ptr<ProjectServer> proje
                                                     ctx.cancellation)]() mutable -> RawResult {
             auto found = co_await std::move(tokens).or_fail();
             if(!found) {
-                co_return kota::codec::RawValue{"null"};
+                co_return codec::RawValue{"null"};
             }
             auto positions = session->positions();
             if(request.window) {
                 auto window = positions.offset_range(*request.window, PositionEncoding::UTF16);
-                co_return to_raw(feature::semantic_tokens_to_protocol(*found,
-                                                                      positions,
-                                                                      PositionEncoding::UTF16,
-                                                                      token_legend,
-                                                                      window));
+                co_return to_raw(feature::to_protocol(*found,
+                                                      positions,
+                                                      PositionEncoding::UTF16,
+                                                      token_legend,
+                                                      window));
             }
-            auto encoded = feature::semantic_tokens_to_protocol(*found,
-                                                                positions,
-                                                                PositionEncoding::UTF16,
-                                                                token_legend);
+            auto encoded =
+                feature::to_protocol(*found, positions, PositionEncoding::UTF16, token_legend);
             next_result_id += 1;
             encoded.result_id = std::to_string(next_result_id);
             auto& sent = sent_tokens[path_id];
@@ -1051,7 +1047,7 @@ void LSPClient::register_language_features() {
                                                 params.new_name)]() mutable -> RawResult {
                 auto result = co_await std::move(renamed).or_fail();
                 if(!result) {
-                    co_return kota::codec::RawValue{"null"};
+                    co_return codec::RawValue{"null"};
                 }
                 auto& [edit, notice] = *result;
                 if(!versioned_edits) {
@@ -1269,8 +1265,7 @@ void LSPClient::register_extensions() {
             return resolve_uri(*uri).project;
         }
         auto& projects = this->server.projects;
-        auto it =
-            std::ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
+        auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
         return it != projects.end() ? *it : projects.front();
     };
 
@@ -1322,21 +1317,21 @@ void LSPClient::register_extensions() {
 
     // Runs one file-tracker tick (see ext::PollParams).
     // Test-only and not a stable API.
-    peer.on_request(
-        "clice/internal/poll",
-        [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
-            auto& srv = this->server;
-            if(params.loop != "cdb" && params.loop != "workspace") {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                                     R"(loop must be "cdb" or "workspace")"});
-            }
-            if(std::ranges::none_of(srv.projects,
-                                    [](auto& project) { return project->tracker != nullptr; })) {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                     "No workspace is loaded"});
-            }
-            co_return to_raw(ext::PollResult{co_await tick_trackers(srv, params)});
-        });
+    peer.on_request("clice/internal/poll",
+                    [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        if(params.loop != "cdb" && params.loop != "workspace") {
+                            co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                           R"(loop must be "cdb" or "workspace")"});
+                        }
+                        if(ranges::none_of(srv.projects, [](auto& project) {
+                               return project->tracker != nullptr;
+                           })) {
+                            co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                           "No workspace is loaded"});
+                        }
+                        co_return to_raw(ext::PollResult{co_await tick_trackers(srv, params)});
+                    });
 
     peer.on_request(
         "clice/internal/sync",
@@ -1365,7 +1360,7 @@ void LSPClient::register_extensions() {
                 }
                 result.unsaved = result.unsaved || has_unsaved_state(project->project);
             }
-            std::ranges::sort(result.failed);
+            ranges::sort(result.failed);
             result.pending = srv.pending_work(this->peer);
             co_return to_raw(result);
         });
@@ -1380,7 +1375,7 @@ void LSPClient::register_extensions() {
             auto kind = parse_build_kind(params.kind);
             auto path = uri_to_path(params.uri);
             if(!kind || !path) {
-                co_await kota::fail(kota::ipc::Error{
+                co_await kota::fail(ipc::Error{
                     protocol::ErrorCode::InvalidParams,
                     R"(a hold names a kind of "compile", "pch", "pcm" or "index", and a file URI)"});
             }
@@ -1391,25 +1386,25 @@ void LSPClient::register_extensions() {
             co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::move(*file))});
         });
 
-    peer.on_request("clice/internal/gate",
-                    [this](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
-                        auto& srv = this->server;
-                        if(!srv.test_hooks()) {
-                            co_await kota::fail(hooks_off());
-                        }
-                        auto path = uri_to_path(params.uri);
-                        if(params.request.empty() || !path) {
-                            co_await kota::fail(
-                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                                 "a gate names a worker request and a file URI"});
-                        }
-                        auto file = park_target(srv, *path);
-                        if(!file) {
-                            co_await kota::fail(std::move(file.error()));
-                        }
-                        co_return to_raw(ext::HoldResult{srv.probe.gate(
-                            std::format("clice/worker/{} {}", params.request, *file))});
-                    });
+    peer.on_request(
+        "clice/internal/gate",
+        [this](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
+            }
+            auto path = uri_to_path(params.uri);
+            if(params.request.empty() || !path) {
+                co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                               "a gate names a worker request and a file URI"});
+            }
+            auto file = park_target(srv, *path);
+            if(!file) {
+                co_await kota::fail(std::move(file.error()));
+            }
+            co_return to_raw(ext::HoldResult{
+                srv.probe.gate(std::format("clice/worker/{} {}", params.request, *file))});
+        });
 
     peer.on_request("clice/internal/release",
                     [this](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
@@ -1418,9 +1413,8 @@ void LSPClient::register_extensions() {
                             co_await kota::fail(hooks_off());
                         }
                         if(!srv.probe.release(params.id)) {
-                            co_await kota::fail(
-                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                                 std::format("no hold {}", params.id)});
+                            co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                           std::format("no hold {}", params.id)});
                         }
                         co_return to_raw(ext::ReleaseResult{});
                     });
@@ -1433,7 +1427,7 @@ void LSPClient::register_extensions() {
                         }
                         auto event = parse_loop_event(params.event);
                         if(!event) {
-                            co_await kota::fail(kota::ipc::Error{
+                            co_await kota::fail(ipc::Error{
                                 protocol::ErrorCode::InvalidParams,
                                 R"(a watch names "databaseChange", "diskChange" or "checkpoint")"});
                         }
@@ -1487,9 +1481,9 @@ void LSPClient::register_extensions() {
 
                 stats.header_contexts +=
                     static_cast<std::uint32_t>(served->contexts.header_contexts.size());
-                stats.synthesized_contexts += static_cast<std::uint32_t>(std::ranges::count_if(
-                    std::views::transform(served->contexts.header_contexts,
-                                          [](auto& entry) -> auto& { return entry.second; }),
+                stats.synthesized_contexts += static_cast<std::uint32_t>(ranges::count_if(
+                    views::transform(served->contexts.header_contexts,
+                                     [](auto& entry) -> auto& { return entry.second; }),
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
                 stats.import_scans += served->sched.pcm.import_scans;

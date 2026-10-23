@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// What the source says at a symbol: its definition and declaration text,
 /// its documentation comment, and the lines its sites lie on.

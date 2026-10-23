@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:worker.probe;
 
@@ -82,7 +82,7 @@ public:
     /// gate waiting for one, if any, goes ahead of it; returns its id.
     /// Called with every request the pool sends.
     std::optional<std::uint64_t> sending(llvm::StringRef tag,
-                                         const std::shared_ptr<kota::ipc::BincodePeer>& peer);
+                                         const std::shared_ptr<ipc::BincodePeer>& peer);
 
     /// The request the gate went ahead of came back. A gate whose work it
     /// never reached — the request withdrawn first, or finding nothing to
@@ -131,7 +131,7 @@ public:
 
         /// The gated request went to a worker, the one behind `worker`.
         bool sent = false;
-        std::weak_ptr<kota::ipc::BincodePeer> worker;
+        std::weak_ptr<ipc::BincodePeer> worker;
 
         /// The worker parked the request's work.
         bool parked = false;

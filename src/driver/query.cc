@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -173,8 +173,8 @@ int run_query(const Options& opts, bool with_build, const char* self_path, Ask a
     }
     stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
     stale.insert(stale.end(), failed.begin(), failed.end());
-    std::ranges::sort(stale);
-    auto duplicates = std::ranges::unique(stale);
+    ranges::sort(stale);
+    auto duplicates = ranges::unique(stale);
     stale.erase(duplicates.begin(), duplicates.end());
     if(outcome) {
         print_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});

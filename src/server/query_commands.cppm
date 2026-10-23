@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.query_commands;
 
@@ -265,7 +265,7 @@ struct PlannedRename {
 
     /// Whether anything keeps the edits from being written.
     bool blocked() const {
-        return plan.blocked() || std::ranges::any_of(result.renames, [](const RenameEntry& entry) {
+        return plan.blocked() || ranges::any_of(result.renames, [](const RenameEntry& entry) {
                    return entry.error.has_value();
                });
     }

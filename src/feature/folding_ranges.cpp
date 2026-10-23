@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -38,7 +38,7 @@ struct Candidate {
 /// The folds by position, one per range and none crossing another, the
 /// ones a client can nest.
 std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
-    std::ranges::stable_sort(candidates, [](const Candidate& lhs, const Candidate& rhs) {
+    ranges::stable_sort(candidates, [](const Candidate& lhs, const Candidate& rhs) {
         return std::tuple(lhs.fold.range.begin, rhs.fold.range.end, rhs.priority) <
                std::tuple(rhs.fold.range.begin, lhs.fold.range.end, lhs.priority);
     });
@@ -69,7 +69,7 @@ std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
     }
 
     std::vector<FoldingRange> folds;
-    for(auto [candidate, gone]: std::views::zip(candidates, dropped)) {
+    for(auto [candidate, gone]: views::zip(candidates, dropped)) {
         if(!gone) {
             folds.push_back(std::move(candidate.fold));
         }
@@ -350,7 +350,7 @@ private:
         }
 
         auto focus = unit.focus_file();
-        for(auto [index, item]: std::views::enumerate(cases)) {
+        for(auto [index, item]: views::enumerate(cases)) {
             auto next = static_cast<std::size_t>(index) + 1 < cases.size() ? cases[index + 1].begin
                                                                            : body->getRBracLoc();
             auto colon = focus.produced_range(item.label->getColonLoc());
@@ -369,23 +369,10 @@ private:
     /// A template's own parameter list, and the outer lists an out-of-line
     /// member definition repeats for its enclosing templates.
     void collect_template_parameters(const clang::Decl* decl) {
-        if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            add_template_parameters(templated->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
-            add_template_parameters(partial->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
-            add_template_parameters(partial->getTemplateParameters());
+        if(const auto* parameters = decls::own_template_parameters(decl)) {
+            add_template_parameters(parameters);
         }
-
-        llvm::ArrayRef<clang::TemplateParameterList*> outer;
-        if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-            outer = declarator->getTemplateParameterLists();
-        } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-            outer = tag->getTemplateParameterLists();
-        }
-        for(const auto* parameters: outer) {
+        for(const auto* parameters: decls::outer_template_parameters(decl)) {
             add_template_parameters(parameters);
         }
     }
@@ -408,8 +395,8 @@ private:
         auto& tokens = lexical.tokens;
         auto skipped = unit.focus_file().tokens().preprocessed_away();
         BracketPairs pairs;
-        assert(std::ranges::size(tokens) == std::ranges::size(skipped));
-        for(auto [token, skip]: std::views::zip(tokens, skipped)) {
+        assert(ranges::size(tokens) == ranges::size(skipped));
+        for(auto [token, skip]: views::zip(tokens, skipped)) {
             auto open = pairs.visit(token, skip);
             if(!open || pairs.in_directive() ||
                (token.kind == clang::tok::r_brace && !pairs.in_skipped())) {
@@ -475,7 +462,7 @@ private:
     /// The global module fragment runs to the module declaration, the
     /// private one to the end of the file.
     void collect_module_fragments(llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules) {
-        for(auto [index, module]: std::views::enumerate(modules)) {
+        for(auto [index, module]: views::enumerate(modules)) {
             if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                 continue;
             }
@@ -496,7 +483,7 @@ private:
         for(const auto& comment: comments) {
             if(comment.kind == LexicalInfo::Comment::Kind::Line) {
                 line_comments.push_back(comment.range);
-            } else if(begins_line(comment.range.begin)) {
+            } else if(begins_line(content, comment.range.begin)) {
                 // A block comment trailing code would cut across the folds
                 // that start at the end of that code's line.
                 add_range(comment.range,
@@ -536,7 +523,7 @@ private:
                 imports.push_back(directive.range);
             }
         }
-        std::ranges::sort(imports, {}, &LocalSourceRange::begin);
+        ranges::sort(imports, {}, &LocalSourceRange::begin);
         add_runs(imports, protocol::FoldingRangeKind::Imports, true);
     }
 
@@ -683,7 +670,7 @@ private:
 
         for(auto item: items) {
             auto rest = content.slice(item.end, line_text_end(item.end)).ltrim(" \t;");
-            if(!begins_line(item.begin) || !(rest.empty() || rest.starts_with("//"))) {
+            if(!begins_line(content, item.begin) || !(rest.empty() || rest.starts_with("//"))) {
                 continue;
             }
             if(first) {
@@ -702,11 +689,10 @@ private:
     /// Whether `range` holds nothing but blanks and comments.
     bool blank(LocalSourceRange range) {
         const auto& comments = lexical.comments;
-        auto comment = std::ranges::lower_bound(
-            comments,
-            range.begin,
-            {},
-            [](const LexicalInfo::Comment& comment) { return comment.range.begin; });
+        auto comment =
+            ranges::lower_bound(comments, range.begin, {}, [](const LexicalInfo::Comment& comment) {
+                return comment.range.begin;
+            });
         auto begin = range.begin;
         for(; comment != comments.end() && comment->range.end <= range.end; ++comment) {
             if(!content.slice(begin, comment->range.begin).trim().empty()) {
@@ -715,11 +701,6 @@ private:
             begin = comment->range.end;
         }
         return content.slice(begin, range.end).trim().empty();
-    }
-
-    /// Whether only blanks precede `offset` on its line.
-    bool begins_line(std::uint32_t offset) {
-        return content.slice(line_begin(content, offset), offset).trim(" \t").empty();
     }
 
     /// Where a section under a label ending at `label_end` begins: at the
@@ -808,7 +789,7 @@ auto declaration_lines(llvm::StringRef content,
        line_begin(content, head) >= line_begin(content, block.begin)) {
         return std::nullopt;
     }
-    auto next = std::ranges::lower_bound(block_directives, head);
+    auto next = ranges::lower_bound(block_directives, head);
     if(next != block_directives.end() && *next <= block.begin) {
         return std::nullopt;
     }
@@ -858,12 +839,11 @@ std::string line_collapsed_text(llvm::StringRef content, const LineFold& fold) {
 
 }  // namespace
 
-auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                const PositionMap& map,
-                                PositionEncoding encoding,
-                                const FoldingClient& client)
-    -> std::vector<protocol::FoldingRange> {
+auto to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                 llvm::StringRef content,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const FoldingClient& client) -> std::vector<protocol::FoldingRange> {
     std::vector<protocol::FoldingRange> result;
     if(!client.line_folding_only) {
         result.reserve(ranges.size());
@@ -928,7 +908,7 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     for(auto& fold: folds) {
         order.push_back(&fold);
     }
-    std::ranges::stable_sort(order, [](const LineFold* lhs, const LineFold* rhs) {
+    ranges::stable_sort(order, [](const LineFold* lhs, const LineFold* rhs) {
         return std::tuple(lhs->item->range.begin, rhs->item->range.end) <
                std::tuple(rhs->item->range.begin, lhs->item->range.end);
     });
@@ -938,9 +918,9 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
             around.pop_back();
         }
         auto line = fold->closer_line;
-        if(line && !starts.contains(*line) &&
-           std::ranges::none_of(around,
-                                [&](const LineFold* outer) { return outer->end + 1 == *line; })) {
+        if(line && !starts.contains(*line) && ranges::none_of(around, [&](const LineFold* outer) {
+               return outer->end + 1 == *line;
+           })) {
             fold->end = *line;
             fold->joined = true;
         }
@@ -953,10 +933,10 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     // folding from that line, so outer folds go first; of folds hiding the
     // same lines, as a call's and the lambda closing it on one line do,
     // one stays.
-    std::ranges::stable_sort(folds, [](const LineFold& lhs, const LineFold& rhs) {
+    ranges::stable_sort(folds, [](const LineFold& lhs, const LineFold& rhs) {
         return std::tie(lhs.start, rhs.end) < std::tie(rhs.start, lhs.end);
     });
-    auto same = std::ranges::unique(folds, [](const LineFold& lhs, const LineFold& rhs) {
+    auto same = ranges::unique(folds, [](const LineFold& lhs, const LineFold& rhs) {
         return lhs.start == rhs.start && lhs.end == rhs.end;
     });
     folds.erase(same.begin(), same.end());
@@ -975,9 +955,9 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     return result;
 }
 
-auto index_folding_ranges(SourceText& source,
-                          llvm::ArrayRef<IndexDecl> decls,
-                          IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
+auto folding_ranges(SourceText& source,
+                    llvm::ArrayRef<IndexDecl> decls,
+                    IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
     // The braces outside comments, literals and directive lines, and the
     // conditional levels: a branch switch or #endif observing a brace depth
     // other than its #if's means the branches unbalance braces — any raw
@@ -1034,7 +1014,7 @@ auto index_folding_ranges(SourceText& source,
         if(!decl.definition || !decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
             continue;
         }
-        if(std::ranges::any_of(ambiguous, [&](const LocalSourceRange& region) {
+        if(ranges::any_of(ambiguous, [&](const LocalSourceRange& region) {
                return region.begin < decl.extent.end && decl.extent.begin < region.end;
            })) {
             continue;
@@ -1074,23 +1054,22 @@ auto index_folding_ranges(SourceText& source,
 
     // One fold per range, the declaration's own where several entries share
     // its braces (`typedef struct {...} T;`, the struct's and the alias's).
-    std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+    ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
         return std::tuple(lhs.range.begin, lhs.range.end, !lhs.kind, lhs.kind) <
                std::tuple(rhs.range.begin, rhs.range.end, !rhs.kind, rhs.kind);
     });
-    auto duplicates =
-        std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
-            return lhs.range == rhs.range;
-        });
+    auto duplicates = ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+        return lhs.range == rhs.range;
+    });
     ranges.erase(duplicates.begin(), duplicates.end());
 
     return ranges;
 }
 
-auto index_folding_ranges(SourceText& source,
-                          const index::IndexQuery& query,
-                          const index::IndexSource& index) -> std::vector<FoldingRange> {
-    return index_folding_ranges(
+auto folding_ranges(SourceText& source,
+                    const index::IndexQuery& query,
+                    const index::IndexSource& index) -> std::vector<FoldingRange> {
+    return folding_ranges(
         source,
         extract_index_entries(*index.shard).decls,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });

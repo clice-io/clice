@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -26,7 +26,7 @@ bool is_specifier(TokenKind kind) {
                                        kw_thread_local,
                                        kw_register,
                                        kw_friend};
-    return std::ranges::contains(specifiers, kind);
+    return ranges::contains(specifiers, kind);
 }
 
 }  // namespace
@@ -102,11 +102,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         auto focus = unit.focus_file();
         auto& token_map = focus.tokens();
         auto tokens = token_map.spelled();
-        auto at = static_cast<std::size_t>(
-            std::ranges::partition_point(
-                tokens,
-                [&](const Token& token) { return token.range.begin < range->begin; }) -
-            tokens.begin());
+        std::size_t at = token_map.spelled_at_or_after(range->begin);
         auto first = at;
         for(auto it = code_before(tokens, at); it && is_cv(focus.kind(tokens[*it]));
             it = code_before(tokens, *it)) {

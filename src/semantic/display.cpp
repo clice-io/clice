@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
@@ -1059,7 +1059,7 @@ auto token_text(const clang::ASTContext& context,
         if(token.is_eod()) {
             continue;
         }
-        const auto* body = std::ranges::find_if(skipped, [&](const auto& skip) {
+        const auto* body = ranges::find_if(skipped, [&](const auto& skip) {
             return skip.first <= offset && offset <= skip.second;
         });
         if(body != skipped.end()) {
@@ -1322,7 +1322,7 @@ llvm::SmallVector<const clang::Decl*> source_order(const clang::RecordDecl& reco
         }
     }
     auto& sources = record.getASTContext().getSourceManager();
-    std::ranges::stable_sort(decls, [&](const clang::Decl* left, const clang::Decl* right) {
+    ranges::stable_sort(decls, [&](const clang::Decl* left, const clang::Decl* right) {
         return sources.isBeforeInTranslationUnit(left->getLocation(), right->getLocation());
     });
     return decls;
@@ -1539,12 +1539,12 @@ struct DeclarationPrinter {
                 } else if(depth == 0 && token.is_identifier()) {
                     auto name = token.text(content);
                     if(context.Idents.get(name).isKeyword(context.getLangOpts()) &&
-                       !std::ranges::contains(std::array{"__attribute__",
-                                                         "__attribute",
-                                                         "__declspec",
-                                                         "alignas",
-                                                         "_Alignas"},
-                                              name)) {
+                       !ranges::contains(std::array{"__attribute__",
+                                                    "__attribute",
+                                                    "__declspec",
+                                                    "alignas",
+                                                    "_Alignas"},
+                                         name)) {
                         return false;
                     }
                 }
@@ -1588,7 +1588,7 @@ struct DeclarationPrinter {
                 bool named = !whole && attributes_only(location);
                 location = expansion.getBegin();
                 if(named) {
-                    auto use = std::ranges::find_if(uses, [&](const auto& entry) {
+                    auto use = ranges::find_if(uses, [&](const auto& entry) {
                         return entry.first == location;
                     });
                     if(use != uses.end()) {
@@ -1597,7 +1597,7 @@ struct DeclarationPrinter {
                     }
                     text = clang::Lexer::getSourceText(expansion, sources, context.getLangOpts())
                                .str();
-                    auto known = std::ranges::find_if(macros, [&](const AttributeMacro& macro) {
+                    auto known = ranges::find_if(macros, [&](const AttributeMacro& macro) {
                         return macro.use == text;
                     });
                     if(known == macros.end()) {
@@ -1616,14 +1616,13 @@ struct DeclarationPrinter {
                     : after;
             /// By where each ends: an attribute with arguments in
             /// `[[using gnu: used, aligned(8)]]` starts at the scope.
-            if(std::ranges::none_of(side,
-                                    [&](const auto& entry) { return entry.second == text; })) {
+            if(ranges::none_of(side, [&](const auto& entry) { return entry.second == text; })) {
                 side.emplace_back(attr->getRange().isValid() ? attr->getRange().getEnd() : location,
                                   std::move(text));
             }
         }
         auto ordered = [&](Placed& side) {
-            std::ranges::stable_sort(side, [&](const auto& left, const auto& right) {
+            ranges::stable_sort(side, [&](const auto& left, const auto& right) {
                 return sources.isBeforeInTranslationUnit(sources.getExpansionLoc(left.first),
                                                          sources.getExpansionLoc(right.first));
             });
@@ -1775,13 +1774,7 @@ struct DeclarationPrinter {
         /// A parameter of the template the class is instantiated from, not
         /// of a template around it.
         const auto* record = spec->getTemplateInstantiationPattern();
-        const clang::TemplateParameterList* params = nullptr;
-        if(const auto* partial =
-               llvm::dyn_cast_if_present<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-            params = partial->getTemplateParameters();
-        } else if(const auto* described = record ? record->getDescribedClassTemplate() : nullptr) {
-            params = described->getTemplateParameters();
-        }
+        const auto* params = record ? record->getDescribedTemplateParams() : nullptr;
         const auto& arguments = spec->getTemplateInstantiationArgs();
         if(!params || param->getIndex() >= params->size() ||
            params->getParam(param->getIndex()) != param || param->getIndex() >= arguments.size() ||
@@ -2367,7 +2360,7 @@ struct DeclarationPrinter {
                 /// The first declarator writes the type, the tag's members
                 /// with it when it has no name of its own.
                 text += declaration(*declarators.front());
-                for(const auto* declarator: std::views::drop(declarators, 1)) {
+                for(const auto* declarator: views::drop(declarators, 1)) {
                     text += ", ";
                     text += later(*declarator);
                 }
@@ -2806,12 +2799,12 @@ auto instance_named(const clang::CXXRecordDecl& pattern, const clang::Stmt& expr
 /// Whether a using-declaration in the namespace around `ns` brings `decl`,
 /// a member of `ns`, out of it.
 bool exported(const clang::NamedDecl& decl, const clang::NamespaceDecl& ns) {
-    return std::ranges::any_of(
-        ns.getParent()->lookup(decl.getDeclName()),
-        [&](const clang::NamedDecl* found) {
-            const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(found);
-            return shadow && shadow->getTargetDecl()->getCanonicalDecl() == decl.getCanonicalDecl();
-        });
+    return ranges::any_of(ns.getParent()->lookup(decl.getDeclName()),
+                          [&](const clang::NamedDecl* found) {
+                              const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(found);
+                              return shadow && shadow->getTargetDecl()->getCanonicalDecl() ==
+                                                   decl.getCanonicalDecl();
+                          });
 }
 
 /// Whether `name` in `derived`, a class derived from `record`, finds
@@ -2824,9 +2817,9 @@ bool inherits(const clang::CXXRecordDecl& derived,
     if(!derived.isDerivedFrom(&record, paths) || !derived.lookup(name).empty()) {
         return false;
     }
-    return std::ranges::all_of(paths, [&](const clang::CXXBasePath& path) {
+    return ranges::all_of(paths, [&](const clang::CXXBasePath& path) {
         return path.Access == clang::AS_public &&
-               std::ranges::all_of(path, [&](const clang::CXXBasePathElement& element) {
+               ranges::all_of(path, [&](const clang::CXXBasePathElement& element) {
                    const auto* base = element.Base->getType()->getAsCXXRecordDecl();
                    return base->getCanonicalDecl() == record.getCanonicalDecl() ||
                           base->lookup(name).empty();
@@ -2879,8 +2872,8 @@ bool mentions(clang::QualType within, const clang::Type* type) {
     }
     if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(canonical)) {
         return mentions(function->getReturnType(), type) ||
-               std::ranges::any_of(function->param_types(),
-                                   [&](clang::QualType param) { return mentions(param, type); });
+               ranges::any_of(function->param_types(),
+                              [&](clang::QualType param) { return mentions(param, type); });
     }
     const auto* record = canonical->getAsCXXRecordDecl();
     return record && mentions(*record, type);
@@ -2888,7 +2881,7 @@ bool mentions(clang::QualType within, const clang::Type* type) {
 
 bool mentions(const clang::TemplateArgument& argument, const clang::Type* type) {
     if(argument.getKind() == clang::TemplateArgument::Pack) {
-        return std::ranges::any_of(
+        return ranges::any_of(
             argument.pack_elements(),
             [&](const clang::TemplateArgument& element) { return mentions(element, type); });
     }
@@ -2902,10 +2895,10 @@ bool mentions(const clang::CXXRecordDecl& record, const clang::Type* type) {
     for(const auto* scope = &record; scope;
         scope = llvm::dyn_cast<clang::CXXRecordDecl>(scope->getDeclContext())) {
         const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(scope);
-        if(spec && std::ranges::any_of(spec->getTemplateArgs().asArray(),
-                                       [&](const clang::TemplateArgument& argument) {
-                                           return mentions(argument, type);
-                                       })) {
+        if(spec && ranges::any_of(spec->getTemplateArgs().asArray(),
+                                  [&](const clang::TemplateArgument& argument) {
+                                      return mentions(argument, type);
+                                  })) {
             return true;
         }
     }
@@ -3035,7 +3028,7 @@ auto ReadableTypes::qualifier(const clang::NamedDecl& decl,
     // without naming it: `std`, or one a using-directive brings in; short
     // names keep only those inside `std`.
     if(hinted || !scoped) {
-        auto seen = std::ranges::find_if(namespaces, [&](const clang::NamespaceDecl* ns) {
+        auto seen = ranges::find_if(namespaces, [&](const clang::NamespaceDecl* ns) {
             return ns->isStdNamespace() || (hinted && nominated(*ns, shown));
         });
         bool in_std = seen != namespaces.end() && (*seen)->isStdNamespace();
@@ -3045,7 +3038,7 @@ auto ReadableTypes::qualifier(const clang::NamedDecl& decl,
         }
     }
     clang::NestedNameSpecifier result = std::nullopt;
-    for(const auto* ns: std::views::reverse(namespaces)) {
+    for(const auto* ns: views::reverse(namespaces)) {
         result = clang::NestedNameSpecifier(context, ns, result);
     }
     return result;
@@ -3121,16 +3114,16 @@ bool ReadableTypes::shows_internal(clang::QualType type) const {
         const auto* qualified = TST->getTemplateName().getAsQualifiedTemplateName();
         return internal(TST->getTemplateName().getAsTemplateDecl()) ||
                (qualified && through(qualified->getQualifier())) ||
-               std::ranges::any_of(TST->template_arguments(),
-                                   [&](const clang::TemplateArgument& argument) {
-                                       return argument.getKind() == clang::TemplateArgument::Type &&
-                                              shows_internal(argument.getAsType());
-                                   });
+               ranges::any_of(TST->template_arguments(),
+                              [&](const clang::TemplateArgument& argument) {
+                                  return argument.getKind() == clang::TemplateArgument::Type &&
+                                         shows_internal(argument.getAsType());
+                              });
     }
     if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(T)) {
         return shows_internal(function->getReturnType()) ||
-               std::ranges::any_of(function->getParamTypes(),
-                                   [&](clang::QualType param) { return shows_internal(param); });
+               ranges::any_of(function->getParamTypes(),
+                              [&](clang::QualType param) { return shows_internal(param); });
     }
     if(const auto* array = llvm::dyn_cast<clang::ArrayType>(T)) {
         return shows_internal(array->getElementType());
@@ -3157,7 +3150,7 @@ auto ReadableTypes::public_alias(const clang::TagDecl& tag, const clang::Expr* s
         // (`reverse_iterator<T>::iterator_type`) would need its name first.
         const auto* record = candidate->getAsCXXRecordDecl();
         if(record && record->hasDefinition() && !internal(record) &&
-           !std::ranges::contains(classes, record) && !mentions(*record, type.getTypePtr())) {
+           !ranges::contains(classes, record) && !mentions(*record, type.getTypePtr())) {
             classes.push_back(record);
         }
     };
@@ -3225,9 +3218,8 @@ bool template_bound(const clang::Stmt& expr) {
        reference->getDecl()->getDeclContext()->isRecord()) {
         return true;
     }
-    return std::ranges::any_of(expr.children(), [](const clang::Stmt* child) {
-        return child && template_bound(*child);
-    });
+    return ranges::any_of(expr.children(),
+                          [](const clang::Stmt* child) { return child && template_bound(*child); });
 }
 
 /// The typedefs the standard declares for specializations of its class
@@ -3316,10 +3308,9 @@ auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl&
     if(!inserted) {
         return cached->second;
     }
-    const auto* typedefs =
-        std::ranges::find_if(standard_typedefs, [&](const StandardTypedefs& entry) {
-            return entry.pattern == spec.getSpecializedTemplate()->getName();
-        });
+    const auto* typedefs = ranges::find_if(standard_typedefs, [&](const StandardTypedefs& entry) {
+        return entry.pattern == spec.getSpecializedTemplate()->getName();
+    });
     const auto* outermost = decls::outermost_namespace(&spec);
     if(typedefs == std::end(standard_typedefs) || !outermost || !outermost->isStdNamespace()) {
         return nullptr;
@@ -3392,10 +3383,10 @@ auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::T
     const auto arguments = substitution->template_arguments();
     /// A pack's arguments are many, and an expansion among them stands for
     /// many: the template's own name stays.
-    if(param->isParameterPack() || std::ranges::any_of(arguments.take_front(index + 1),
-                                                       [](const clang::TemplateArgument& argument) {
-                                                           return argument.isPackExpansion();
-                                                       })) {
+    if(param->isParameterPack() ||
+       ranges::any_of(arguments.take_front(index + 1), [](const clang::TemplateArgument& argument) {
+           return argument.isPackExpansion();
+       })) {
         return nullptr;
     }
     /// The parameter of any of its declarations: libstdc++ declares `map`
@@ -3406,12 +3397,11 @@ auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::T
                params->getParam(index) == param->getDecl();
     };
     const auto* redeclarable = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(pattern);
-    bool own = redeclarable
-                   ? std::ranges::any_of(redeclarable->redecls(),
-                                         [&](const clang::RedeclarableTemplateDecl* redecl) {
-                                             return declares(*redecl);
-                                         })
-                   : declares(*pattern);
+    bool own = redeclarable ? ranges::any_of(redeclarable->redecls(),
+                                             [&](const clang::RedeclarableTemplateDecl* redecl) {
+                                                 return declares(*redecl);
+                                             })
+                            : declares(*pattern);
     if(!own || index >= arguments.size()) {
         return nullptr;
     }

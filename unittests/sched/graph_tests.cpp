@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -10,8 +10,6 @@ import :unittests.utils;
 
 namespace clice::testing {
 namespace {
-
-namespace ranges = std::ranges;
 
 /// Two arbitrary families exercising the multi-family surface.
 constexpr Family FamA = Family{1};
@@ -231,7 +229,7 @@ ZEST_CASE(reference_survives_commit) {
         ZASSERT(probe.outcome == JoinOutcome::Success);
 
         auto dirtied = graph.update(sentinel);
-        ZEXPECT(std::ranges::find(dirtied, a(1)) != dirtied.end());
+        ZEXPECT(ranges::find(dirtied, a(1)) != dirtied.end());
         ZEXPECT(graph.is_dirty(a(1)));
     });
 }

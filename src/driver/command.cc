@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -17,12 +17,12 @@ import :project.configuration;
 import :project.load;
 import :project.open_index;
 import :project.project;
+import :support.json;
 import :support.shell;
 import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
-import :worker.serialize;
 
 namespace clice::driver {
 
@@ -64,21 +64,21 @@ struct ConvertOptions {
 struct WrittenEntry {
     std::string directory;
     std::string file;
-    kota::ipc::protocol::optional<kota::codec::RawValue> arguments;
-    kota::ipc::protocol::optional<kota::codec::RawValue> command;
-    kota::ipc::protocol::optional<kota::codec::RawValue> output;
+    protocol::optional<codec::RawValue> arguments;
+    protocol::optional<codec::RawValue> command;
+    protocol::optional<codec::RawValue> output;
 
     /// The command as clice reads it: the `arguments` when they are an
     /// array, else the `command` split as the host's shell splits it, or
     /// as sh does in a database written inside Cygwin or MSYS2.
     std::vector<std::string> argv() const {
         std::vector<std::string> argv;
-        if(arguments && kota::codec::json::from_string(arguments->data, argv)) {
+        if(arguments && json::from_string(arguments->data, argv)) {
             return argv;
         }
         std::string text;
         if(command) {
-            kota::codec::json::from_string(command->data, text);
+            json::from_string(command->data, text);
         }
         llvm::BumpPtrAllocator allocator;
         llvm::StringSaver saver(allocator);
@@ -93,7 +93,7 @@ struct DatabaseEntry {
     std::string directory;
     std::string file;
     std::vector<std::string> arguments;
-    kota::ipc::protocol::optional<kota::codec::RawValue> output;
+    protocol::optional<codec::RawValue> output;
 };
 
 /// A command and where it runs.
@@ -118,7 +118,7 @@ struct EntryCommands {
     /// Why the compiler could not be queried, which leaves `resolved` the
     /// driver command clang's own driver reads in its place; absent on
     /// success.
-    kota::ipc::protocol::optional<std::string> toolchain_error;
+    protocol::optional<std::string> toolchain_error;
 };
 
 struct FileCommands {
@@ -156,7 +156,7 @@ std::expected<Workspace, std::string> open_workspace(const WorkspaceOptions& whe
 /// records (CompilationDatabase::inputs). Only then do the load's entries
 /// pair with these by position.
 struct DatabaseText {
-    std::vector<kota::codec::RawValue> entries;
+    std::vector<codec::RawValue> entries;
     std::uint64_t hash = 0;
 
     bool loaded_by(const CompilationDatabase& cdb, SourceID source) const {
@@ -171,9 +171,9 @@ std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
     }
     DatabaseText text{.hash = observed->obs.hash};
     auto repaired = repaired_database_text(observed->content->getBuffer());
-    if(auto result = kota::codec::json::from_string(repaired ? llvm::StringRef(*repaired)
-                                                             : observed->content->getBuffer(),
-                                                    text.entries);
+    if(auto result =
+           json::from_string(repaired ? llvm::StringRef(*repaired) : observed->content->getBuffer(),
+                             text.entries);
        !result) {
         return std::unexpected(
             std::format("{} holds no array of entries: {}", path, result.error().message));
@@ -219,7 +219,7 @@ std::optional<DatabaseEntry> written_entry(const CompilationDatabase& cdb,
         return std::nullopt;
     }
     WrittenEntry entry;
-    if(!kota::codec::json::from_string(text->entries[loaded.ordinal].data, entry)) {
+    if(!json::from_string(text->entries[loaded.ordinal].data, entry)) {
         return std::nullopt;
     }
     return DatabaseEntry{.directory = std::move(entry.directory),
@@ -283,8 +283,8 @@ int run_file(const FileOptions& opts) {
     }
     project.toolchain.warm(refs);
     FileCommands commands{.file = files.display(file)};
-    assert(std::ranges::size(entries) == std::ranges::size(refs));
-    for(auto [entry, ref]: std::views::zip(entries, refs)) {
+    assert(ranges::size(entries) == ranges::size(refs));
+    for(auto [entry, ref]: views::zip(entries, refs)) {
         auto written = written_entry(project.cdb, entry);
         auto database = Spelling::absolute(project.cdb.source_path(entry.source));
         if(!written) {
@@ -315,9 +315,8 @@ int run_file(const FileOptions& opts) {
 /// `directory` moved by -working-directory.
 llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command,
                                              const Spelling& directory) {
-    auto family = std::ranges::contains(command, "--driver-mode=cl")
-                      ? CompilerFamily::ClangCL
-                      : driver_family(command.front());
+    auto family = ranges::contains(command, "--driver-mode=cl") ? CompilerFamily::ClangCL
+                                                                : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = family_visibility(family)};
@@ -364,10 +363,10 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
                       ? "no C-family source"
                       : std::format("{} C-family sources ({})",
                                     sources.size(),
-                                    llvm::join(std::views::transform(sources,
-                                                                     [](const Spelling& source) {
-                                                                         return source.str();
-                                                                     }),
+                                    llvm::join(views::transform(sources,
+                                                                [](const Spelling& source) {
+                                                                    return source.str();
+                                                                }),
                                                ", ")));
         return 1;
     }
@@ -457,13 +456,13 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     // the database is read from anywhere.
     auto base = database.parent();
     std::size_t unconverted = 0;
-    std::vector<kota::codec::RawValue> converted;
+    std::vector<codec::RawValue> converted;
     converted.reserve(written->entries.size());
     for(std::uint32_t index = 0; index < written->entries.size(); index += 1) {
         auto& value = written->entries[index];
         WrittenEntry entry;
         // A malformed entry, which clice skips, is left as it is.
-        if(!kota::codec::json::from_string(value.data, entry)) {
+        if(!json::from_string(value.data, entry)) {
             converted.push_back(std::move(value));
             continue;
         }
@@ -530,7 +529,7 @@ CommandHandler convert_operation() {
         Errors::Text,
         [command](const ConvertOptions& opts) { return run_convert(opts, *command); });
     return [command, parse = std::move(parse)](std::span<std::string> args) mutable {
-        auto dash = std::ranges::find(args, "--");
+        auto dash = ranges::find(args, "--");
         command->assign(dash == args.end() ? dash : std::next(dash), args.end());
         return parse(args.first(static_cast<std::size_t>(dash - args.begin())));
     };

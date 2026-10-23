@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -19,7 +19,7 @@ namespace {
 ZEST_SUITE(BincodeRoundTrip) {
 
 ZEST_CASE(CompileParamsRoundTrip) {
-    namespace bincode = kota::codec::bincode;
+    namespace bincode = codec::bincode;
 
     worker::CompileParams params;
     params.path = "/tmp/test.cpp";
@@ -46,7 +46,7 @@ ZEST_CASE(CompileParamsRoundTrip) {
 }
 
 ZEST_CASE(CompileResultRoundTrip) {
-    namespace bincode = kota::codec::bincode;
+    namespace bincode = codec::bincode;
 
     worker::CompileResult result;
     result.version = 1;

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -143,9 +143,8 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
                          "/project/tool.cpp",
                          "clang++ -working-directory build -include app /project/tool.cpp"sv);
     auto tool = database.candidate_entries("/project/tool.cpp").front().command;
-    ZEXPECT(std::ranges::any_of(commands.pch_inputs(tool), [&](const Spelling& input) {
-        return file_table.find(input) == pch;
-    }));
+    ZEXPECT(ranges::any_of(commands.pch_inputs(tool),
+                           [&](const Spelling& input) { return file_table.find(input) == pch; }));
 };
 
 ZEST_CASE(CommandHashSurvivesMove) {
@@ -243,10 +242,10 @@ ZEST_CASE(TargetFromName) {
         auto argv = commands.render_driver(ref, database.spelling(ref.file));
         return std::vector<std::string>(argv.begin(), argv.end());
     };
-    ZEXPECT(std::ranges::contains(render("a.c"), "--target=riscv32-wch-elf"));
+    ZEXPECT(ranges::contains(render("a.c"), "--target=riscv32-wch-elf"));
     auto own = render("b.c");
-    ZEXPECT(!std::ranges::contains(own, "--target=riscv32-wch-elf"));
-    ZEXPECT(std::ranges::contains(own, "riscv64-unknown-elf"));
+    ZEXPECT(!ranges::contains(own, "--target=riscv32-wch-elf"));
+    ZEXPECT(ranges::contains(own, "riscv64-unknown-elf"));
 };
 
 };  // ZEST_SUITE(CommandTable)

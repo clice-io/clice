@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -116,7 +116,7 @@ ZEST_CASE(SpecialArchCarried) {
 
     // As an edit it clears the base architectures like a numeric choice.
     auto edit = translate({"nvcc", "-arch=native"}, "", true);
-    auto clear = std::ranges::find(edit, "--no-offload-arch=all");
+    auto clear = ranges::find(edit, "--no-offload-arch=all");
     ZASSERT((clear != edit.end() && clear + 1 != edit.end()));
     ZEXPECT(*(clear + 1) == "-arch=native"sv);
 }
@@ -153,9 +153,8 @@ ZEST_CASE(QueryFlagsCarried) {
     // dot-relative values are directory-relative.
     ZEXPECT(contains(translate({"nvcc", "-ccbin=g++-13"}, "/base"), "-ccbin=g++-13"));
     auto dot = translate({"nvcc", "-ccbin=."}, "/base");
-    ZEXPECT(std::ranges::any_of(dot, [](llvm::StringRef arg) {
-        return arg.starts_with("-ccbin=/base");
-    }));
+    ZEXPECT(
+        ranges::any_of(dot, [](llvm::StringRef arg) { return arg.starts_with("-ccbin=/base"); }));
 }
 
 ZEST_CASE(XcompilerUnwrapped) {
@@ -420,7 +419,7 @@ ZEST_CASE(EditEmitsStateOverrides) {
     // clang accumulates --cuda-gpu-arch while nvcc's -arch is last-wins: an
     // arch edit clears the base architectures right before its own choice.
     auto arch = translate({"nvcc", "-arch=sm_80"}, "", true);
-    auto clear = std::ranges::find(arch, "--no-offload-arch=all");
+    auto clear = ranges::find(arch, "--no-offload-arch=all");
     ZASSERT((clear != arch.end() && clear + 1 != arch.end()));
     ZEXPECT(*(clear + 1) == "--cuda-gpu-arch=sm_80"sv);
     ZEXPECT(!contains(translate({"nvcc", "-arch=sm_80"}), "--no-offload-arch=all"));
@@ -454,20 +453,20 @@ ZEST_CASE(DryrunParsed) {
     ZEXPECT(info->host_compiler == "g++");
     ZEXPECT(info->cpp_dialect == "c++17");
     ZEXPECT(info->default_arch == "sm_52");
-    ZEXPECT(std::ranges::contains(info->search_path, "/opt/host/bin"));
+    ZEXPECT(ranges::contains(info->search_path, "/opt/host/bin"));
 
     // clang derives the blocklisted three itself; the rest must survive.
     for(auto defines: {&info->host_defines, &info->device_defines}) {
-        ZEXPECT(std::ranges::contains(*defines, "__CUDACC_VER_MAJOR__=12"));
-        ZEXPECT(std::ranges::contains(*defines, "__NV_LEGACY_LAUNCH"));
-        ZEXPECT(!std::ranges::contains(*defines, "__CUDACC__"));
+        ZEXPECT(ranges::contains(*defines, "__CUDACC_VER_MAJOR__=12"));
+        ZEXPECT(ranges::contains(*defines, "__NV_LEGACY_LAUNCH"));
+        ZEXPECT(!ranges::contains(*defines, "__CUDACC__"));
         for(llvm::StringRef define: *defines) {
             ZEXPECT(!define.starts_with("__CUDA_ARCH__"));
             ZEXPECT(!define.starts_with("__CUDA_ARCH_LIST__"));
         }
     }
-    ZEXPECT(std::ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
-    ZEXPECT(!std::ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+    ZEXPECT(ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+    ZEXPECT(!ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
 
     // A query carrying -arch=all runs one cicc per architecture; the newest
     // wins regardless of emission order.
@@ -496,9 +495,9 @@ ZEST_CASE(DryrunHostOnly) {
     auto info = parse_nvcc_dryrun(host_only);
     ZASSERT(info);
     ZEXPECT(info->host_compiler == "g++");
-    ZEXPECT(std::ranges::contains(info->host_defines, "__NVCC__"));
-    ZEXPECT(std::ranges::contains(info->host_defines, "__CUDA_ARCH_LIST__=520"));
-    ZEXPECT(std::ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=12"));
+    ZEXPECT(ranges::contains(info->host_defines, "__NVCC__"));
+    ZEXPECT(ranges::contains(info->host_defines, "__CUDA_ARCH_LIST__=520"));
+    ZEXPECT(ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=12"));
     ZEXPECT(info->device_defines.empty());
 }
 
@@ -567,8 +566,8 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
     ZEXPECT(contains(flags, "MY_FLAG=1"));
     /// nvcc-only leftovers are unknown-class: full view keeps them for
     /// identity, the compile render must not pass them to clang.
-    ZEXPECT(!std::ranges::contains(render_entry(db, "/tmp/kern.cu"),
-                                   llvm::StringRef("-forward-unknown-to-host-compiler")));
+    ZEXPECT(!ranges::contains(render_entry(db, "/tmp/kern.cu"),
+                              llvm::StringRef("-forward-unknown-to-host-compiler")));
     for(llvm::StringRef flag: flags) {
         ZEXPECT(!flag.starts_with("--generate-code"));
     }
@@ -627,10 +626,10 @@ ZEST_CASE(RuleOptionsFileExpanded) {
     };
     CommandEdits options{.edits = edits};
     auto flags = commands.render_full(apply_edits(commands, file_table, entry->command, options));
-    ZEXPECT(std::ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
-    ZEXPECT(!std::ranges::contains(flags, llvm::StringRef("--options-file")));
+    ZEXPECT(ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
+    ZEXPECT(!ranges::contains(flags, llvm::StringRef("--options-file")));
     auto ccbin = "-ccbin=" + path::join(Spelling::absolute(tmp.path("rules")).str(), "tc/g++");
-    ZEXPECT(std::ranges::contains(flags, llvm::StringRef(ccbin)));
+    ZEXPECT(ranges::contains(flags, llvm::StringRef(ccbin)));
 }
 
 ZEST_CASE(AppendOverridesBase) {
@@ -651,9 +650,7 @@ ZEST_CASE(AppendOverridesBase) {
     auto flags = render_entry(db, "/tmp/kern.cu", options);
     auto count = std::ptrdiff_t(flags.size());
     auto index_of = [&](llvm::StringRef flag) {
-        return std::ranges::find(flags,
-                                 flag,
-                                 [](const char* arg) { return llvm::StringRef(arg); }) -
+        return ranges::find(flags, flag, [](const char* arg) { return llvm::StringRef(arg); }) -
                flags.begin();
     };
     /// Defines and undefs render as two tokens; locate the value preceded
@@ -738,16 +735,16 @@ ZEST_CASE(GencodeAppendAccumulates) {
     // nothing.
     std::vector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
     auto kept = arch_flags(older);
-    ZEXPECT(std::ranges::contains(kept, "--offload-arch=sm_90"));
-    ZEXPECT(!std::ranges::contains(kept, "--offload-arch=sm_75"));
-    ZEXPECT(!std::ranges::contains(kept, "--no-offload-arch=all"));
+    ZEXPECT(ranges::contains(kept, "--offload-arch=sm_90"));
+    ZEXPECT(!ranges::contains(kept, "--offload-arch=sm_75"));
+    ZEXPECT(!ranges::contains(kept, "--no-offload-arch=all"));
 
     // A newer append takes over — by numeric rank, not string order, which
     // would sort sm_100a below sm_90.
     std::vector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
     auto switched = arch_flags(newer);
-    ZEXPECT(std::ranges::contains(switched, "--offload-arch=sm_100a"));
-    ZEXPECT(!std::ranges::contains(switched, "--offload-arch=sm_90"));
+    ZEXPECT(ranges::contains(switched, "--offload-arch=sm_100a"));
+    ZEXPECT(!ranges::contains(switched, "--offload-arch=sm_90"));
 }
 
 ZEST_CASE(CollapseHonorsNegatives) {
@@ -816,9 +813,9 @@ ZEST_CASE(WildcardRemoveClearsArch) {
         return result;
     };
 
-    ZEXPECT(std::ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
-    ZEXPECT(std::ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
-    ZEXPECT(std::ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
+    ZEXPECT(ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
+    ZEXPECT(ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
+    ZEXPECT(ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
 
     // The wildcard must clear whichever form the base carries: numeric archs
     // translate to --offload-arch, non-numeric ones persist as query tokens.
@@ -840,8 +837,8 @@ ZEST_CASE(WildcardRemoveClearsArch) {
     edits.push_back({CommandEdit::Kind::Append, {"-gencode=arch=compute_90a,code=sm_90a"}});
     options.edits = edits;
     auto replaced = arch_flags("/tmp/other.cu", options);
-    ZEXPECT(!std::ranges::contains(replaced, "--offload-arch=sm_80"));
-    ZEXPECT(std::ranges::contains(replaced, "--offload-arch=sm_90a"));
+    ZEXPECT(!ranges::contains(replaced, "--offload-arch=sm_80"));
+    ZEXPECT(ranges::contains(replaced, "--offload-arch=sm_90a"));
 }
 
 ZEST_CASE(RemoveMatchesUnknownSpelling) {

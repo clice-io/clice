@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -238,8 +238,8 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
         }
         all.insert(all.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         all.insert(all.end(), failed.begin(), failed.end());
-        std::ranges::sort(all);
-        auto duplicates = std::ranges::unique(all);
+        ranges::sort(all);
+        auto duplicates = ranges::unique(all);
         all.erase(duplicates.begin(), duplicates.end());
         return all;
     };

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifdef _WIN32
 #include "vfs/win32.h"

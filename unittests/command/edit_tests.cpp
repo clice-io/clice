@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -114,8 +114,8 @@ ZEST_CASE(RuleLeavesClSpellings) {
                    commands.input_kind(entry.command, "a.cpp"),
                    CommandSource::CDBExact};
     auto argv = commands.render_driver(ref, database.spelling(ref.file));
-    ZEXPECT(std::ranges::contains(argv, "-D"sv));
-    ZEXPECT(!std::ranges::contains(argv, "/D"sv));
+    ZEXPECT(ranges::contains(argv, "-D"sv));
+    ZEXPECT(!ranges::contains(argv, "/D"sv));
 };
 
 ZEST_CASE(PrependAfterBinary) {

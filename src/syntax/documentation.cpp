@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -16,13 +16,13 @@ bool Documentation::empty() const {
 }
 
 const Documentation::Param* Documentation::param(llvm::StringRef name) const {
-    auto it = std::ranges::find_if(params, [&](const Param& param) { return param.name == name; });
+    auto it = ranges::find_if(params, [&](const Param& param) { return param.name == name; });
     return it == params.end() ? nullptr : &*it;
 }
 
 const Documentation::Param* Documentation::template_param(llvm::StringRef name) const {
-    auto it = std::ranges::find_if(template_params,
-                                   [&](const Param& param) { return param.name == name; });
+    auto it =
+        ranges::find_if(template_params, [&](const Param& param) { return param.name == name; });
     return it == template_params.end() ? nullptr : &*it;
 }
 
@@ -393,8 +393,7 @@ bool adds_name(llvm::StringRef longer, llvm::StringRef shorter) {
                                                  "double",
                                                  "const",
                                                  "volatile"};
-    return !name.empty() && std::ranges::all_of(name, identifier_char) &&
-           !type_words.contains(name);
+    return !name.empty() && ranges::all_of(name, identifier_char) && !type_words.contains(name);
 }
 
 /// Whether two normalized parameters are one, a name only one of them
@@ -547,7 +546,7 @@ public:
         // GTK-Doc and kernel-doc name what a comment documents on its
         // first line.
         auto first =
-            std::ranges::find_if(lines, [](llvm::StringRef line) { return !line.trim().empty(); });
+            ranges::find_if(lines, [](llvm::StringRef line) { return !line.trim().empty(); });
         if(first != lines.end()) {
             auto line = first->trim();
             bool strong = false;
@@ -560,7 +559,7 @@ public:
                        (line.starts_with("@") &&
                         line.drop_front().drop_while(identifier_char).starts_with(":"));
             };
-            bool marked = std::ranges::any_of(lines, marks_gtk);
+            bool marked = ranges::any_of(lines, marks_gtk);
             if(auto brief = kernel_name_line(line, marked)) {
                 gtk = true;
                 doc.brief = brief->str();
@@ -646,9 +645,8 @@ private:
             }
             auto rest = trimmed.substr(1 + name.size());
             // `@TODO:` marks a line, as `TODO:` does, outside GTK-Doc.
-            bool marker = !gtk && name.size() > 1 && std::ranges::all_of(name, [](char c) {
-                return llvm::isUpper(c) || c == '_';
-            });
+            bool marker = !gtk && name.size() > 1 &&
+                          ranges::all_of(name, [](char c) { return llvm::isUpper(c) || c == '_'; });
             if(!name.empty() && rest.starts_with(":") && !marker) {
                 if(gtk || !commands().contains(name)) {
                     close();
@@ -759,7 +757,7 @@ private:
             if(c == '%' && at_doc_word_start(line, index)) {
                 auto word = line.substr(index + 1).take_while(identifier_char);
                 if(word.size() >= 4 ||
-                   std::ranges::any_of(word, [](char c) { return llvm::isUpper(c) || c == '_'; })) {
+                   ranges::any_of(word, [](char c) { return llvm::isUpper(c) || c == '_'; })) {
                     out += word;
                     index += 1 + word.size();
                     continue;
@@ -1022,8 +1020,8 @@ private:
 
         // An entry whose name went to the next line.
         if(names.empty() && !text.empty() &&
-           std::ranges::contains(std::array{Kind::Param, Kind::TParam, Kind::Retval, Kind::Throws},
-                                 kind)) {
+           ranges::contains(std::array{Kind::Param, Kind::TParam, Kind::Retval, Kind::Throws},
+                            kind)) {
             auto name = llvm::StringRef(text).take_until(llvm::isSpace);
             names.push_back(name.str());
             text = description(llvm::StringRef(text).substr(name.size())).str();
@@ -1037,8 +1035,7 @@ private:
         };
         auto add_params = [&](std::vector<Documentation::Param>& params) {
             for(auto& name: names) {
-                auto it =
-                    std::ranges::find_if(params, [&](auto& param) { return param.name == name; });
+                auto it = ranges::find_if(params, [&](auto& param) { return param.name == name; });
                 if(it == params.end()) {
                     params.push_back({.name = name, .direction = direction, .text = text});
                 } else {
@@ -1117,7 +1114,7 @@ private:
     /// Without `@brief`, the first paragraph is the brief when a blank
     /// line or a command ends it — not a list, a table or code.
     void finish_brief() {
-        auto begin = std::ranges::find_if(details, [](auto& line) { return !line.empty(); });
+        auto begin = ranges::find_if(details, [](auto& line) { return !line.empty(); });
         if(!doc.brief.empty() || !starts_free || begin == details.end()) {
             return;
         }
@@ -1271,7 +1268,7 @@ bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::
     auto rest = content.substr(name_end).ltrim();
     if(rest.starts_with("<")) {
         int depth = 0;
-        auto close = std::ranges::find_if(rest, [&](char c) {
+        auto close = ranges::find_if(rest, [&](char c) {
             depth += c == '<' ? 1 : c == '>' ? -1 : 0;
             return depth == 0;
         });
@@ -1281,7 +1278,7 @@ bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::
         return false;
     }
     int depth = 0;
-    auto close = std::ranges::find_if(rest, [&](char c) {
+    auto close = ranges::find_if(rest, [&](char c) {
         depth += c == '(' ? 1 : c == ')' ? -1 : 0;
         return depth < 0;
     });
@@ -1294,7 +1291,7 @@ bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::
     if(declared.size() != wanted.size()) {
         return false;
     }
-    for(auto [declared_parameter, wanted_parameter]: std::views::zip(declared, wanted)) {
+    for(auto [declared_parameter, wanted_parameter]: views::zip(declared, wanted)) {
         if(!same_parameter(normalized_parameter(declared_parameter),
                            normalized_parameter(wanted_parameter))) {
             return false;

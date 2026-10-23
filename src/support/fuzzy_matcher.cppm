@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Name matching for symbol search and completion: how identifiers split
 /// into words, the matcher that scores a typed pattern against a name,

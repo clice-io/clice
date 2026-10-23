@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// What each code action renders is pinned by the cases
 /// (tests/code_actions/); these tests apply one action and compile the
 /// result: the edited file must be the expected text, compile cleanly and,
@@ -73,7 +73,7 @@ std::vector<std::string> definitions(llvm::StringRef marker) {
 void apply(llvm::StringRef marker, llvm::StringRef title) {
     auto offset = point(marker);
     actions = feature::code_actions(*unit, {offset, offset});
-    auto action = std::ranges::find_if(actions, [&](const feature::CodeAction& action) {
+    auto action = ranges::find_if(actions, [&](const feature::CodeAction& action) {
         return action.title == title;
     });
     ZASSERT(action != actions.end());
@@ -89,7 +89,7 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
         ZASSERT(defined);
         edits = *defined;
     }
-    std::ranges::sort(edits, [](const auto& lhs, const auto& rhs) {
+    ranges::sort(edits, [](const auto& lhs, const auto& rhs) {
         return lhs.range.begin > rhs.range.begin;
     });
     applied = original;

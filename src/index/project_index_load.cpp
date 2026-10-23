@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -78,7 +78,7 @@ llvm::SmallVector<Fid> ProjectIndex::stale_units() {
         }
         for(auto& keyed: {&found->readers, &found->importers}) {
             for(auto& [hash, units]: *keyed) {
-                if(std::ranges::contains(changed, hash)) {
+                if(ranges::contains(changed, hash)) {
                     stale |= units;
                 }
             }

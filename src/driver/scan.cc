@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -87,7 +87,7 @@ Output describe(const Loaded& loaded) {
         auto name = include.angled ? std::format("<{}>", include.name)
                                    : std::format("\"{}\"", include.name);
         auto& names = unresolved[include.includer];
-        if(!std::ranges::contains(names, name)) {
+        if(!ranges::contains(names, name)) {
             names.push_back(std::move(name));
         }
     }
@@ -96,11 +96,11 @@ Output describe(const Loaded& loaded) {
     for(auto fid: graph.all_files()) {
         auto& file = output.files.emplace_back();
         file.path = files.display(fid);
-        file.source = std::ranges::any_of(graph.contexts(fid),
-                                          [](ScanContext context) { return context.unit; });
+        file.source =
+            ranges::any_of(graph.contexts(fid), [](ScanContext context) { return context.unit; });
         if(auto it = modules.find(fid); it != modules.end()) {
             file.modules = std::move(it->second);
-            std::ranges::sort(file.modules);
+            ranges::sort(file.modules);
         }
         for(auto included: graph.get_all_includes(fid)) {
             file.includes.push_back(files.display(included));
@@ -109,13 +109,13 @@ Output describe(const Loaded& loaded) {
             file.unresolved = std::move(it->second);
         }
     }
-    std::ranges::sort(output.files, {}, &ScannedFile::path);
+    ranges::sort(output.files, {}, &ScannedFile::path);
     return output;
 }
 
 void print_summary(const Output& output, const ScanReport& scan) {
     auto sources = static_cast<std::size_t>(
-        std::ranges::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
+        ranges::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
     auto headers = output.files.size() - sources;
     auto found = scan.includes_resolved + scan.unresolved.size();
     driver::println(
@@ -140,7 +140,7 @@ void print_summary(const Output& output, const ScanReport& scan) {
 /// The smallest and the median of `times`, which it sorts; an even count
 /// takes the lower middle, as the benchmarks' statistics do.
 std::pair<std::int64_t, std::int64_t> spread(std::vector<std::int64_t>& times) {
-    std::ranges::sort(times);
+    ranges::sort(times);
     return {times.front(), times[(times.size() - 1) / 2]};
 }
 

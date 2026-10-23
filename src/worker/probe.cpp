@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -17,7 +17,7 @@ llvm::StringRef build_kind_name(BuildKind kind) {
 template <typename Enum, std::size_t N>
 static std::optional<Enum> parse_name(const std::array<llvm::StringLiteral, N>& names,
                                       llvm::StringRef name) {
-    auto it = std::ranges::find(names, name);
+    auto it = ranges::find(names, name);
     if(it == names.end()) {
         return std::nullopt;
     }
@@ -34,7 +34,7 @@ std::optional<LoopEvent> parse_loop_event(llvm::StringRef name) {
 
 kota::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
     builds[file][std::to_underlying(kind)] += 1;
-    auto it = std::ranges::find_if(placed, [&](const Hold& hold) {
+    auto it = ranges::find_if(placed, [&](const Hold& hold) {
         return !hold.parked && hold.kind == kind && hold.file == file;
     });
     if(it == placed.end()) {
@@ -65,10 +65,10 @@ std::uint64_t BuildProbe::gate(std::string tag) {
     return id;
 }
 
-std::optional<std::uint64_t>
-    BuildProbe::sending(llvm::StringRef tag, const std::shared_ptr<kota::ipc::BincodePeer>& peer) {
-    auto it = std::ranges::find_if(standing,
-                                   [&](const Gate& gate) { return !gate.sent && gate.tag == tag; });
+std::optional<std::uint64_t> BuildProbe::sending(llvm::StringRef tag,
+                                                 const std::shared_ptr<ipc::BincodePeer>& peer) {
+    auto it =
+        ranges::find_if(standing, [&](const Gate& gate) { return !gate.sent && gate.tag == tag; });
     if(it == standing.end()) {
         return std::nullopt;
     }
@@ -79,7 +79,7 @@ std::optional<std::uint64_t>
 }
 
 void BuildProbe::gate_parked(std::uint64_t id) {
-    auto it = std::ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
+    auto it = ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
     if(it == standing.end()) {
         return;
     }
@@ -95,7 +95,7 @@ static void release_gate(const BuildProbe::Gate& gate) {
 }
 
 void BuildProbe::answered(std::uint64_t id) {
-    auto it = std::ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
+    auto it = ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
     if(it != standing.end() && !it->parked) {
         release_gate(*it);
         standing.erase(it);
@@ -103,13 +103,13 @@ void BuildProbe::answered(std::uint64_t id) {
 }
 
 bool BuildProbe::release(std::uint64_t id) {
-    if(auto it = std::ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
+    if(auto it = ranges::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
        it != standing.end()) {
         release_gate(*it);
         standing.erase(it);
         return true;
     }
-    auto it = std::ranges::find_if(placed, [&](const Hold& hold) { return hold.id == id; });
+    auto it = ranges::find_if(placed, [&](const Hold& hold) { return hold.id == id; });
     if(it == placed.end()) {
         return false;
     }

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -231,10 +231,9 @@ ZEST_CASE(EveryAliasRendersBack) {
         if(again) {
             ZEXPECT(again->opt_id == first->opt_id);
             ZEXPECT(again->alias == first->alias);
-            ZEXPECT(
-                std::ranges::equal(again->values, first->values, [](const char* l, const char* r) {
-                    return llvm::StringRef(l) == r;
-                }));
+            ZEXPECT(ranges::equal(again->values, first->values, [](const char* l, const char* r) {
+                return llvm::StringRef(l) == r;
+            }));
         }
         checked += 1;
     }
