@@ -135,7 +135,7 @@ bool parses(llvm::StringRef isa) {
 /// 2.1), or an extension LLVM has only as experimental (GCC 15's
 /// `zicfilp`), and every feature macro of the rest with it. The second
 /// takes the version LLVM knows, the others go; a string LLVM reads stays.
-std::string riscv_isa_for_clang(llvm::StringRef isa) {
+std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
     if(parses(isa)) {
         return isa.str();
     }
@@ -149,9 +149,11 @@ std::string riscv_isa_for_clang(llvm::StringRef isa) {
         }
         auto name = unversioned(extension);
         if(name.size() < extension.size() && usable(name)) {
-            LOG_INFO("LLVM knows no version {} of the RISC-V extension {}: clang reads its own",
-                     extension.drop_front(name.size()),
-                     name);
+            if(!quiet) {
+                LOG_INFO("LLVM knows no version {} of the RISC-V extension {}: clang reads its own",
+                         extension.drop_front(name.size()),
+                         name);
+            }
             return name;
         }
         return std::nullopt;
@@ -179,7 +181,7 @@ std::string riscv_isa_for_clang(llvm::StringRef isa) {
         if(auto name = known(extension)) {
             result += '_';
             result += *name;
-        } else {
+        } else if(!quiet) {
             LOG_WARN(
                 "clang takes no RISC-V extension {} (LLVM has none, or an experimental "
                 "one): it reads -march={} without it",
@@ -192,18 +194,18 @@ std::string riscv_isa_for_clang(llvm::StringRef isa) {
 
 }  // namespace
 
-std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
+std::string for_clang(llvm::StringRef arg, const llvm::Triple& target, bool quiet) {
     if(arg.starts_with("-mcpu=")) {
         auto features = arg.find('+');
         auto first = (arg.substr(0, features).split('.').first + arg.substr(features)).str();
-        if(first != arg) {
+        if(first != arg && !quiet) {
             LOG_INFO("clang reads {} as {}, its first core", arg, first);
         }
         return first;
     }
     llvm::StringRef isa = arg;
     if(target.isRISCV() && isa.consume_front("-march=")) {
-        return "-march=" + riscv_isa_for_clang(isa);
+        return "-march=" + riscv_isa_for_clang(isa, quiet);
     }
     return arg.str();
 }

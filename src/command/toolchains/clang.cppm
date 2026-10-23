@@ -11,10 +11,10 @@ using Job = std::vector<std::string>;
 
 /// The job clang's own driver builds for `args` (a driver, its flags and
 /// the input) when run in `cwd`, the process's own when empty. The errors
-/// the driver reports though it builds one are logged unless `quiet`.
+/// the driver reports though it builds one go to `errors`, else the log.
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd,
-                                             bool quiet = false);
+                                             std::vector<std::string>* errors = nullptr);
 
 /// `args` (a driver and its flags) as clang's own driver is handed them,
 /// with `mode` (what the driver's name does not tell clang) ahead of the

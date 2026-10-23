@@ -35,17 +35,19 @@ struct DriverErrors : clang::DiagnosticConsumer {
 
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd,
-                                             bool quiet) {
+                                             std::vector<std::string>* errors) {
     clang::DiagnosticOptions options;
-    DriverErrors errors;
+    DriverErrors driver_errors;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
                                     options,
-                                    &errors,
+                                    &driver_errors,
                                     /*ShouldOwnClient=*/false);
     auto failure = [&](llvm::StringRef what) {
-        return errors.messages.empty()
-                   ? std::format("{} for {}", what.str(), args.front())
-                   : std::format("{} for {}: {}", what.str(), args.front(), errors.messages[0]);
+        return driver_errors.messages.empty() ? std::format("{} for {}", what.str(), args.front())
+                                              : std::format("{} for {}: {}",
+                                                            what.str(),
+                                                            args.front(),
+                                                            driver_errors.messages[0]);
     };
 
     llvm::SmallVector<const char*, 256> list;
@@ -91,8 +93,10 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
         return std::unexpected(failure("No clang job found"));
     }
 
-    if(!quiet) {
-        for(auto& message: errors.messages) {
+    if(errors) {
+        *errors = std::move(driver_errors.messages);
+    } else {
+        for(auto& message: driver_errors.messages) {
             LOG_WARN("clang's driver, reading the command of {}: {}", args.front(), message);
         }
     }

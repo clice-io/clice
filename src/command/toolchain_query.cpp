@@ -119,15 +119,16 @@ UnknownNames unknown_names(const Job& job) {
     return result;
 }
 
-/// Whether a driver option names one of `unknown`: the CPU of -mcpu and
-/// -march (`-mcpu=cortex-a72+crc` names cortex-a72, `native` this
-/// machine's), the tuning CPU of -mtune, the ABI of -mabi.
+/// Whether a driver option names one of `unknown`: the CPU of -mcpu,
+/// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
+/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
 bool names_unknown(const kota::option::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
     unsigned given = 0;
     switch(arg.id) {
         case option::OPT_mcpu_EQ:
-        case option::OPT_march_EQ: given = option::OPT_target_cpu; break;
+        case option::OPT_march_EQ:
+        case option::OPT_mmcu_EQ: given = option::OPT_target_cpu; break;
         case option::OPT_mtune_EQ: given = option::OPT_tune_cpu; break;
         case option::OPT_mabi_EQ: given = option::OPT_target_abi; break;
         default: return false;
@@ -209,18 +210,23 @@ ClangReading read_as_clang(std::vector<std::string> args,
     // when its library builds a compilation.
     auto target = named.empty() ? name_target(args[0]) : named;
     if(named.empty() && !target.empty()) {
-        LOG_INFO("clang reads the command of {} for {}, the target its name sets", args[0], target);
+        if(!quiet) {
+            LOG_INFO("clang reads the command of {} for {}, the target its name sets",
+                     args[0],
+                     target);
+        }
         mode.push_back("--target=" + target);
     }
     if(family == CompilerFamily::GCC) {
         llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
         for(auto& arg: llvm::MutableArrayRef<std::string>(args).drop_front()) {
-            arg = for_clang(arg, triple);
+            arg = for_clang(arg, triple, quiet);
         }
     }
 
     ClangReading reading{.argv = clang_argv(args, mode)};
-    reading.job = query_driver(reading.argv, cwd, quiet);
+    std::vector<std::string> errors;
+    reading.job = query_driver(reading.argv, cwd, &errors);
     // The options naming what clang's target does not know go, and the
     // driver reads the command again without them; one a later option
     // overrode names it only once that one goes (`-mabi=eabi -mabi=o64`).
@@ -232,9 +238,12 @@ ClangReading read_as_clang(std::vector<std::string> args,
         bool dropped = false;
         for(auto& parsed: option::table().parse(flags, parse_options)) {
             if(parsed && names_unknown(*parsed, unknown.names)) {
-                LOG_INFO("clang's target {} knows no CPU or ABI {} names: its default stands in",
-                         unknown.triple,
-                         flags[parsed->index]);
+                if(!quiet) {
+                    LOG_INFO(
+                        "clang's target {} knows no CPU or ABI {} names: its default stands in",
+                        unknown.triple,
+                        flags[parsed->index]);
+                }
                 argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
                 next = parsed->index + 1;
                 dropped = true;
@@ -245,7 +254,12 @@ ClangReading read_as_clang(std::vector<std::string> args,
         }
         argv.insert(argv.end(), flags.begin() + next, flags.end());
         reading.argv = std::move(argv);
-        reading.job = query_driver(reading.argv, cwd, quiet);
+        reading.job = query_driver(reading.argv, cwd, &errors);
+    }
+    if(reading.job && !quiet) {
+        for(auto& error: errors) {
+            LOG_WARN("clang's driver, reading the command of {}: {}", reading.argv[0], error);
+        }
     }
     return reading;
 }
