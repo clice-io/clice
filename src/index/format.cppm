@@ -1,7 +1,8 @@
 module;
 
-#include "support/logging.macros.h"
 #include "support/prelude.h"
+
+#include "support/logging.macros.h"
 
 /// The persisted index format: every blob layout the index writes, to the
 /// database or between processes, and the version gating them. Writers,

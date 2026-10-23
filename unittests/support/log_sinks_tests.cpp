@@ -1,8 +1,8 @@
 module;
 
-#include <fcntl.h>
-
 #include "support/prelude.h"
+
+#include <fcntl.h>
 
 #ifdef _WIN32
 #include <io.h>

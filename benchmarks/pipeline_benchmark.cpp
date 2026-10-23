@@ -22,9 +22,10 @@
 
 module;
 
+#include "support/prelude.h"
+
 #include "stats.h"
 #include "support/logging.macros.h"
-#include "support/prelude.h"
 
 module clice;
 
@@ -38,11 +39,11 @@ import :feature.inactive_regions;
 import :index.indexer;
 import :index.symbol;
 import :index.tu_index;
+import :support.json;
 import :support.logging;
 import :support.timer;
 import :syntax.preamble;
 import :vfs.file_system;
-import :worker.serialize;
 
 using namespace clice;
 

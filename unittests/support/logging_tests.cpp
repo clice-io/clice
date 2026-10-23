@@ -1,7 +1,8 @@
 module;
 
-#include "version.h"
 #include "support/prelude.h"
+
+#include "version.h"
 
 module clice;
 

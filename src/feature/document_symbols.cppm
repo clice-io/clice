@@ -117,12 +117,11 @@ auto to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
 
 /// The symbols flat, for a client taking no tree: each in `uri`, naming the
 /// symbol it nests in.
-auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
-                                     const PositionMap& map,
-                                     PositionEncoding encoding,
-                                     const SymbolClient& client,
-                                     llvm::StringRef uri)
-    -> std::vector<protocol::SymbolInformation>;
+auto to_symbol_information(llvm::ArrayRef<DocumentSymbol> symbols,
+                           const PositionMap& map,
+                           PositionEncoding encoding,
+                           const SymbolClient& client,
+                           llvm::StringRef uri) -> std::vector<protocol::SymbolInformation>;
 
 /// The outline of the file `source` holds, from its index entries: the
 /// AST's (outline()) without details, a macro's parameters aside.

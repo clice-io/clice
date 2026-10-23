@@ -1004,12 +1004,11 @@ auto to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
     return result;
 }
 
-auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
-                                     const PositionMap& map,
-                                     PositionEncoding encoding,
-                                     const SymbolClient& client,
-                                     llvm::StringRef uri)
-    -> std::vector<protocol::SymbolInformation> {
+auto to_symbol_information(llvm::ArrayRef<DocumentSymbol> symbols,
+                           const PositionMap& map,
+                           PositionEncoding encoding,
+                           const SymbolClient& client,
+                           llvm::StringRef uri) -> std::vector<protocol::SymbolInformation> {
     std::vector<protocol::SymbolInformation> result;
     auto flatten = [&](this auto& self,
                        llvm::ArrayRef<DocumentSymbol> level,

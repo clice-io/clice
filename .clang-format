@@ -102,7 +102,7 @@ IncludeBlocks: Regroup
 IncludeCategories:
   # The module prelude: it imports the standard library and the third-party
   # modules every later include reads.
-  - Regex: '^"modules/prelude.h"$'
+  - Regex: '^"support/prelude.h"$'
     Priority: 1
 
   - Regex: '^["<](spdlog|toml\+\+|coraing|cpptrace|kota)/'

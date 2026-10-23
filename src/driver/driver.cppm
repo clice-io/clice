@@ -1,9 +1,10 @@
 module;
 
+#include "support/prelude.h"
+
 #include <errno.h>
 
 #include "support/logging.macros.h"
-#include "support/prelude.h"
 
 module clice:driver.driver;
 

@@ -1,7 +1,8 @@
 module;
 
-#include "support/anomaly.macros.h"
 #include "support/prelude.h"
+
+#include "support/anomaly.macros.h"
 
 module clice:syntax.position;
 

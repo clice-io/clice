@@ -1,8 +1,9 @@
 module;
 
+#include "support/prelude.h"
+
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
-#include "support/prelude.h"
 
 module clice;
 

@@ -552,11 +552,11 @@ Features::RawResult Features::document_symbol(Ticket ticket,
                                                PositionEncoding::UTF16,
                                                client));
         }
-        return to_raw(feature::document_symbols_to_information(symbols,
-                                                               session->positions(),
-                                                               PositionEncoding::UTF16,
-                                                               client,
-                                                               uri));
+        return to_raw(feature::to_symbol_information(symbols,
+                                                     session->positions(),
+                                                     PositionEncoding::UTF16,
+                                                     client,
+                                                     uri));
     };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
