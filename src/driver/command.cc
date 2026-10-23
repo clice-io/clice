@@ -115,8 +115,9 @@ struct EntryCommands {
     /// compiler: what clice compiles with.
     CommandLine resolved;
 
-    /// Why the compiler could not be queried, which leaves `resolved` clang's
-    /// own reading of the command; absent on success.
+    /// Why the compiler could not be queried, which leaves `resolved` the
+    /// driver command clang's own driver reads in its place; absent on
+    /// success.
     kota::ipc::protocol::optional<std::string> toolchain_error;
 };
 
@@ -184,17 +185,28 @@ std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
 struct Rendered {
     std::vector<std::string> arguments;
 
-    /// Why the compiler could not be queried, which leaves `arguments` clang's
-    /// own reading of the command.
+    /// Why the compiler could not be queried, which leaves `arguments` the
+    /// driver command clang's own driver reads in its place.
     std::optional<std::string> error;
 };
 
 Rendered render_command(Project& project, const CommandRef& ref) {
-    auto argv = project.toolchain.render(ref, project.cdb.spelling(ref.file));
-    return {
+    auto path = project.cdb.spelling(ref.file);
+    auto resolved = project.toolchain.resolve(ref.command, ref.input);
+    auto failure = project.toolchain.query_failure(ref.command, ref.input);
+    // Shown as clang's own driver reads it, a command whose compiler could
+    // not be queried reads the same on every host; its cc1 names the host's
+    // own headers.
+    auto argv = resolved && !failure ? project.toolchain.render(ref, path)
+                                     : project.commands.render_driver(ref, path);
+    Rendered rendered{
         .arguments = {argv.begin(), argv.end()},
-        .error = project.toolchain.query_failure(ref.command, ref.input),
+        .error = std::move(failure),
     };
+    if(!resolved) {
+        rendered.error = std::move(resolved.error());
+    }
+    return rendered;
 }
 
 /// A loaded entry as its database writes it; nullopt when the database
@@ -388,7 +400,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
         driver::println("{}", join_command(rendered.arguments));
     }
     if(rendered.error) {
-        LOG_ERROR("The compiler could not be queried, so the command is clang's own reading of it");
+        LOG_ERROR("The compiler could not be queried, so clang's own driver reads the command");
         return 1;
     }
     return 0;
@@ -479,7 +491,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     if(unresolved != 0) {
         LOG_ERROR(
             "{} of the converted entries could not be resolved: the compiler could not be "
-            "queried, so they are clang's own reading of their command",
+            "queried, so clang's own driver reads their command",
             unresolved);
         return 1;
     }

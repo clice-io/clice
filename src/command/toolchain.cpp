@@ -466,13 +466,18 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
         return read_unqueried(id, input, std::move(admission.error));
     }
     if(admission.kind == QueryAdmission::Kind::Ready) {
-        LOG_WARN("Toolchain query miss: driver={} kind={}", commands.get(id).driver, input.value);
+        bool runs_compiler = commands.get(id).query_toolchain;
+        if(runs_compiler) {
+            LOG_WARN("Toolchain query miss: driver={} kind={}",
+                     commands.get(id).driver,
+                     input.value);
+        }
 
         auto [ended] = kota::run(query_one(admission.spec));
         auto& result = *ended;
         commit_query(admission.key, result);
         if(!result) {
-            if(commands.get(id).query_toolchain) {
+            if(runs_compiler) {
                 LOG_WARN(
                     "The compiler {} could not be queried: {}; clang's own driver reads its "
                     "command",

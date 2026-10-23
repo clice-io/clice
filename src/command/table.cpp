@@ -274,6 +274,15 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
         argv.push_back(command.subcommand);
     }
 
+    // clang reads a target off its program's name in its main alone, never
+    // when its library builds the invocation.
+    bool names_target = ranges::any_of(command.args, [](const Arg& arg) {
+        return arg.opt_id == option::OPT_target;
+    });
+    if(auto target = name_target(command.driver); !target.empty() && !names_target) {
+        argv.push_back(intern("--target=" + target).data());
+    }
+
     // Inject our resource dir if the command names none, so the embedded
     // frontend and its builtin headers stay version-matched.
     bool has_resource_dir = ranges::any_of(command.args, [](const Arg& arg) {
