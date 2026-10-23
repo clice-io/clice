@@ -10,9 +10,9 @@ test("completion reuses the pch", async (t) => {
     const builds = async () => (await s.counts()).files["config.h"]?.pch ?? 0;
     expect(await s.errors("config.h")).toEqual([]);
     await s.sync();
-    await t.show("builds after open", builds());
+    await t.show("builds after open", await builds());
     s.edit("config.h", { after: "#define LIMIT 2\n", insert: "#ifdef LIM\n#endif\n" });
     await t.show("macros", s.completion(t.at("config.h", "#ifdef LIM|")));
     await s.sync();
-    await t.show("builds after edit and completion", builds());
+    await t.show("builds after edit and completion", await builds());
 });
