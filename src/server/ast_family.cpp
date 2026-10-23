@@ -521,8 +521,9 @@ void ASTFamily::checked(Fid path_id,
     } else {
         checks[path_id] = {.text_hash = text_hash, .diagnostics = diagnostics};
     }
+    // A compile owed shows it as it commits (run).
     auto session = sessions.find(path_id);
-    if(!session || session->hash != text_hash) {
+    if(!session || session->hash != text_hash || !compiles.current(path_id)) {
         return;
     }
     auto compiled = compiles.latest_at(path_id, session->version);

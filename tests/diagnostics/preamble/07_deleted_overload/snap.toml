@@ -1,3 +1,2 @@
 [test."main.cpp"]
-wrong = "clang instantiates show<app::Point> at the end of the file, where describe picks the overload main.cpp deletes; the precompiled preamble instantiates it before that overload exists"
 diagnostics = []

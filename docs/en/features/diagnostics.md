@@ -17,7 +17,7 @@
   // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
   ```
 
-- [x] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
+- [x] Diagnostics for template instantiation errors in preamble headers, once the background index has compiled the file ([clangd#137](https://github.com/clangd/clangd/issues/137))
 
 ## Errors in Included Headers
 
@@ -164,6 +164,7 @@ tests/diagnostics/suppression/01_by_code
 
 - [ ] Include-cleaner diagnostics for unused and missing `#include` directives
 - [x] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
+- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body, which the editor skips: the background index reports the unused ones ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
 
   ```cpp
   // utils.h
