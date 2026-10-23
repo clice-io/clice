@@ -30,7 +30,9 @@ struct DiagnosticsOptions {
                          "Diagnostics open files do not show, by their code: a "
                          "compiler warning's option (`-Wunused-variable`), "
                          "clang's name for any other diagnostic "
-                         "(`err_undeclared_var_use`), or a clang-tidy check. "
+                         "(`err_undeclared_var_use`), a clang-tidy check, or "
+                         "one of clice's own warnings "
+                         "(`toolchain-query-failed`). "
                          "For code clang gets wrong: everything else works on "
                          "the file as before, and `clice lint` still reports "
                          "them.")

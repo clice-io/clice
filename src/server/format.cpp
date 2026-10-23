@@ -74,21 +74,25 @@ std::vector<feature::FileDiagnostic>
                      .second);
     });
 
+    auto warn = [&](feature::FileDiagnostic diagnostic) {
+        if(!std::ranges::contains(options.suppress, diagnostic.code)) {
+            diagnostics.insert(diagnostics.begin(), std::move(diagnostic));
+        }
+    };
+
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
        std::ranges::any_of(diagnostics, is_file_not_found)) {
-        diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
+        warn(make_inferred_command_diagnostic(output.source));
     }
     if(!output.unmatched_host.empty()) {
-        diagnostics.insert(diagnostics.begin(),
-                           make_unmatched_context_diagnostic(output.unmatched_host));
+        warn(make_unmatched_context_diagnostic(output.unmatched_host));
     }
     if(!output.query_failure.empty()) {
-        diagnostics.insert(diagnostics.begin(),
-                           make_query_failure_diagnostic(output.query_failure));
+        warn(make_query_failure_diagnostic(output.query_failure));
     }
 
     return diagnostics;

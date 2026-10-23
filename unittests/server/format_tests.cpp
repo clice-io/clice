@@ -42,6 +42,12 @@ ZEST_CASE(QueryFailureWarns) {
     ZEXPECT(diagnostics[0].code == "toolchain-query-failed");
     ZEXPECT(llvm::StringRef(diagnostics[0].message).contains("riscv32-wch-elf-gcc not found"));
     ZEXPECT(diagnostics[0].range.start.line == 0u);
+
+    /// A project that knows its compiler is not here hides it by its code.
+    feature::DiagnosticsOptions options;
+    options.suppress = {"toolchain-query-failed"};
+    ZEXPECT(format_diagnostics({.query_failure = "Driver gcc not found or not executable"}, options)
+                .empty());
 };
 
 };  // ZEST_SUITE(Format)
