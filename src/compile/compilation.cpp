@@ -384,8 +384,13 @@ public:
         return clang::MultiplexConsumer::HandleTopLevelDecl(group);
     }
 
-    /// Asked only under CompilationParams::skip_bodies.
+    /// Asked under CompilationParams::skip_bodies, and by every completion's
+    /// parse, which skips each body but the one holding the point unless told
+    /// otherwise.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
+        if(unit.kind() == CompilationKind::Completion) {
+            return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
+        }
         return unit.in_preamble(unit.produced_at(decl->getLocation()).file) &&
                !likely_forwarding(decl);
     }
