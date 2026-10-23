@@ -276,11 +276,14 @@ struct RelationTable {
 
     Relation decode(std::uint32_t entry, Cursor& cursor) const {
         auto payload = cursor;
-        Relation relation{
-            .kind = kind_of(entry),
-            .range = range_at(*advance(cursor, entry)),
-            .target = 0,
-        };
+        return with_payload(entry, payload, range_at(*advance(cursor, entry)));
+    }
+
+    /// The relation at `entry` of range `range`, its payload at `payload`.
+    Relation with_payload(std::uint32_t entry,
+                          const Cursor& payload,
+                          LocalSourceRange range) const {
+        Relation relation{.kind = kind_of(entry), .range = range, .target = 0};
         if(has_payload(entry)) {
             if(RelationKind(relation.kind).carries_extent()) {
                 relation.set_extent(extent_at(payload.extent, relation.range.begin));
@@ -541,6 +544,8 @@ CheckResult relations_ok(const Root& root) {
     auto spanned = [&](LocalSourceRange range) {
         return ranges::binary_search(spans, bounds(range), {}, bounds);
     };
+    std::vector<LocalSourceRange> entry_ranges;
+    entry_ranges.reserve(table.size());
     RelationTable::Cursor counted;
     for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
         if(entry % rank_block == 0) {
@@ -563,13 +568,18 @@ CheckResult relations_ok(const Root& root) {
                 if(!table.kind_of(entry).isBetweenSymbol()) {
                     return std::unexpected("no range on a relation that carries one");
                 }
+                entry_ranges.emplace_back();
                 break;
             }
             case range_explicit: {
-                if(at->index >= explicit_count ||
-                   spanned(range_of(table.explicit_ranges, at->index))) {
+                if(at->index >= explicit_count) {
+                    return std::unexpected("explicit relation range past its column");
+                }
+                auto range = range_of(table.explicit_ranges, at->index);
+                if(spanned(range)) {
                     return std::unexpected("explicit relation range is not the canonical one");
                 }
+                entry_ranges.push_back(range);
                 break;
             }
             default: {
@@ -577,6 +587,7 @@ CheckResult relations_ok(const Root& root) {
                    (at->index != 0 && spans[at->index - 1] == spans[at->index])) {
                     return std::unexpected("relation occurrence is not the canonical one");
                 }
+                entry_ranges.push_back(spans[at->index]);
                 break;
             }
         }
@@ -601,8 +612,10 @@ CheckResult relations_ok(const Root& root) {
     for(std::uint32_t id = 0; id < symbol_hashes.size(); id += 1) {
         std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
         for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
-            auto k = cursor.extent;
-            auto relation = table.decode(entry, cursor);
+            auto payload = cursor;
+            table.advance(cursor, entry);
+            auto relation = table.with_payload(entry, payload, entry_ranges[entry]);
+            auto k = payload.extent;
             if(k != cursor.extent) {
                 auto extent = relation.extent();
                 bool escaped = extent_heads[k] == extent_escape;
