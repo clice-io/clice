@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
@@ -52,8 +52,8 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
 bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
     auto it = project.pch_cache.find(key);
     return it != project.pch_cache.end() &&
-           std::ranges::any_of(it->second.deps,
-                               [&](const DepState& dep) { return dep.path_id == file; });
+           ranges::any_of(it->second.deps,
+                          [&](const DepState& dep) { return dep.path_id == file; });
 }
 
 NodeId PCHFamily::prepare(Request request) {
@@ -236,7 +236,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
-        [&](const kota::ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
+        [&](const ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("PCH build preempted for {}, will retry", bp.file);
@@ -424,7 +424,7 @@ std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_ke
 }
 
 void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
-    auto it = std::ranges::find(loaded_state_lru, pch_key);
+    auto it = ranges::find(loaded_state_lru, pch_key);
     if(it != loaded_state_lru.end()) {
         loaded_state_lru.erase(it);
     }

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -82,7 +82,7 @@ bool SelectionTree::create_each(CompilationUnit& unit,
     auto& tokens = focus.tokens();
 
     // Prefer right token over left.
-    for(const auto& token: std::views::reverse(tokens.spelled_touching(focus.location(begin)))) {
+    for(const auto& token: views::reverse(tokens.spelled_touching(focus.location(begin)))) {
         if(should_ignore_token(focus.kind(token))) {
             continue;
         }
@@ -127,8 +127,8 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) {
     // Find the spelled tokens overlapping the selection, and fold their
     // per-token selectedness into the nodes owning them.
     auto count = static_cast<std::uint32_t>(tokens.size());
-    auto indices = std::views::iota(0u, count);
-    auto lower = std::ranges::partition_point(indices, [&](std::uint32_t i) {
+    auto indices = views::iota(0u, count);
+    auto lower = ranges::partition_point(indices, [&](std::uint32_t i) {
         return tokens[i].range.end <= begin;
     });
     auto first = static_cast<std::uint32_t>(lower - indices.begin());
@@ -178,7 +178,7 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) {
     // Materialize the selected nodes and their ancestor chains. Ancestors
     // always have smaller indices (pre-order), so processing hits in ascending
     // order keeps siblings in traversal order and materializes parents first.
-    std::ranges::sort(selected);
+    ranges::sort(selected);
     llvm::DenseMap<std::uint32_t, Node*> materialized;
 
     /// Iterative on purpose: a selected leaf under a deep expression chain

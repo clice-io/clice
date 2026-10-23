@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -21,13 +21,13 @@ CDBWatcher::CDBWatcher(Project& project, CanonicalPath root) :
 }
 
 CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
-    return std::ranges::to<Hashes>(
-        std::views::transform(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
+    return ranges::to<Hashes>(
+        views::transform(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
 }
 
 CDBWatcher::Hashes CDBWatcher::looked(const TrackedSource& tracked) {
-    return std::ranges::to<Hashes>(
-        std::views::transform(tracked.inputs, [](auto& input) { return input->hash; }));
+    return ranges::to<Hashes>(
+        views::transform(tracked.inputs, [](auto& input) { return input->hash; }));
 }
 
 void CDBWatcher::watch_inputs(TrackedSource& tracked) {
@@ -49,14 +49,14 @@ void CDBWatcher::track(SourceID id) {
 
 llvm::SmallVector<Fid> CDBWatcher::shared_files(SourceID id) const {
     llvm::SmallVector<Fid> shared;
-    for(auto group: project.cdb.entries() | std::views::chunk_by([](const CompilationEntry& a,
-                                                                    const CompilationEntry& b) {
-                        return a.file == b.file;
-                    })) {
+    for(auto group: project.cdb.entries() |
+                        views::chunk_by([](const CompilationEntry& a, const CompilationEntry& b) {
+                            return a.file == b.file;
+                        })) {
         auto listed = [&](const CompilationEntry& entry) {
             return entry.source == id;
         };
-        if(std::ranges::any_of(group, listed) && !std::ranges::all_of(group, listed)) {
+        if(ranges::any_of(group, listed) && !ranges::all_of(group, listed)) {
             shared.push_back(group.front().file);
         }
     }
@@ -65,8 +65,8 @@ llvm::SmallVector<Fid> CDBWatcher::shared_files(SourceID id) const {
 
 llvm::SmallVector<std::optional<SourceID>>
     CDBWatcher::default_sources(llvm::ArrayRef<Fid> files) const {
-    return std::ranges::to<llvm::SmallVector<std::optional<SourceID>>>(
-        std::views::transform(files, [&](Fid file) -> std::optional<SourceID> {
+    return ranges::to<llvm::SmallVector<std::optional<SourceID>>>(
+        views::transform(files, [&](Fid file) -> std::optional<SourceID> {
             auto entries = project.build.entries(file);
             if(entries.empty()) {
                 return std::nullopt;
@@ -81,8 +81,8 @@ static void push_moved(llvm::ArrayRef<Fid> files,
                        llvm::ArrayRef<std::optional<SourceID>> before,
                        llvm::ArrayRef<std::optional<SourceID>> after,
                        llvm::SmallVectorImpl<Fid>& changed) {
-    for(auto [file, was, now]: std::views::zip(files, before, after)) {
-        if(was != now && !std::ranges::contains(changed, file)) {
+    for(auto [file, was, now]: views::zip(files, before, after)) {
+        if(was != now && !ranges::contains(changed, file)) {
             changed.push_back(file);
         }
     }
@@ -214,8 +214,8 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
         // against the never-loaded source and goes through the normal
         // debounce-and-reload path.
         auto id = project.cdb.add_source(place);
-        if(std::ranges::none_of(sources,
-                                [&](const TrackedSource& tracked) { return tracked.id == id; })) {
+        if(ranges::none_of(sources,
+                           [&](const TrackedSource& tracked) { return tracked.id == id; })) {
             LOG_INFO("Found compilation database: {}", place);
             track(id);
         }

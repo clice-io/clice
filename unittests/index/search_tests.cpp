@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -88,7 +88,7 @@ ZEST_CASE(InternalNamesSearched) {
     for(auto& result: search("cached")) {
         names.push_back(result.symbol.name);
     }
-    std::ranges::sort(names);
+    ranges::sort(names);
     ZEXPECT(names == (std::vector<std::string>{"CachedEntry", "cached_total"}));
 }
 

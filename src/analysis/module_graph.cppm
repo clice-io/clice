@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:analysis.module_graph;
 
@@ -347,7 +347,7 @@ struct Partition {
 
     /// The module so named; `modules.size()` for none.
     std::uint32_t module_named(llvm::StringRef name) const {
-        return static_cast<std::uint32_t>(std::ranges::find(modules, name) - modules.begin());
+        return static_cast<std::uint32_t>(ranges::find(modules, name) - modules.begin());
     }
 };
 

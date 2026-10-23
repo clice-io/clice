@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.invalidator;
 
@@ -140,7 +140,7 @@ struct DirtySet {
         // handling: every drop emission is paired with a reindex adder,
         // which already un-clears.
         erase_id(drop_index, path_id);
-        if(std::ranges::find(clear_reindex, path_id) == clear_reindex.end()) {
+        if(ranges::find(clear_reindex, path_id) == clear_reindex.end()) {
             clear_reindex.push_back(path_id);
         }
     }
@@ -152,10 +152,10 @@ struct DirtySet {
     void add_retire(Fid path_id) {
         erase_id(reindex_content_changed, path_id);
         erase_id(reindex_deps_only, path_id);
-        if(std::ranges::find(clear_reindex, path_id) == clear_reindex.end()) {
+        if(ranges::find(clear_reindex, path_id) == clear_reindex.end()) {
             clear_reindex.push_back(path_id);
         }
-        if(std::ranges::find(drop_index, path_id) == drop_index.end()) {
+        if(ranges::find(drop_index, path_id) == drop_index.end()) {
             drop_index.push_back(path_id);
         }
     }

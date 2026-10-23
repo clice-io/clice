@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:unittests.utils.cdb_helper;
 
@@ -77,7 +77,7 @@ inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef js
 /// print_argv escapes backslashes, so the printed line cannot be searched
 /// for a `/`-spelled path.
 inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
-    return std::ranges::any_of(argv, [&](const char* arg) {
+    return ranges::any_of(argv, [&](const char* arg) {
         return llvm::StringRef(path::convert_to_slash(arg)).contains(needle);
     });
 }

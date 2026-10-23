@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -59,9 +59,9 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
             changes.appeared.push_back(entry.getKey().str());
             continue;
         }
-        auto now = std::ranges::to<llvm::SmallVector<Fid>>(entry.getValue());
-        std::ranges::sort(it->second);
-        std::ranges::sort(now);
+        auto now = ranges::to<llvm::SmallVector<Fid>>(entry.getValue());
+        ranges::sort(it->second);
+        ranges::sort(now);
         if(it->second != now) {
             changes.replaced.append(it->second.begin(), it->second.end());
         }
@@ -71,8 +71,8 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
 
 CDBDiff Project::refresh_provisional() {
     CDBDiff diff;
-    auto recorded = std::ranges::to<llvm::SmallVector<Fid>>(build.recorded());
-    std::ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
+    auto recorded = ranges::to<llvm::SmallVector<Fid>>(build.recorded());
+    ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
     for(auto file: recorded) {
         if(build.declared(file)) {
             build.forget(file);
@@ -80,7 +80,7 @@ CDBDiff Project::refresh_provisional() {
         }
         // A file a declared unit includes compiles in its includer's
         // context, as the part of a unity build does.
-        auto hosted = std::ranges::any_of(dep_graph.find_host_sources(file), [&](Fid root) {
+        auto hosted = ranges::any_of(dep_graph.find_host_sources(file), [&](Fid root) {
             return root != file && build.declared(root);
         });
         std::optional<CommandID> command;
@@ -115,16 +115,15 @@ std::optional<Spelling> database_in(const Spelling& dir) {
 /// The places that hold a database.
 llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
     places.erase(
-        std::ranges::remove_if(places, [](const Spelling& place) { return !vfs::exists(place); })
+        ranges::remove_if(places, [](const Spelling& place) { return !vfs::exists(place); })
             .begin(),
         places.end());
     return places;
 }
 
 bool configured(const Spelling& dir) {
-    return std::ranges::any_of(config_file_names, [&](llvm::StringRef name) {
-        return vfs::exists(Spelling(name, dir));
-    });
+    return ranges::any_of(config_file_names,
+                          [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
 }
 
 }  // namespace
@@ -147,7 +146,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
             subdirectories.push_back(Spelling::absolute(entry.path));
         }
     }
-    std::ranges::sort(subdirectories, {}, &Spelling::str);
+    ranges::sort(subdirectories, {}, &Spelling::str);
     for(auto& subdirectory: subdirectories) {
         places.emplace_back(database_name, subdirectory);
     }
@@ -166,8 +165,8 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
     constexpr std::size_t deepest = 3;
     auto depth = [&](llvm::StringRef dir) {
         return static_cast<std::size_t>(
-            std::ranges::count_if(dir.drop_front(workspace_root.size()),
-                                  [](char c) { return path::is_separator(c); }));
+            ranges::count_if(dir.drop_front(workspace_root.size()),
+                             [](char c) { return path::is_separator(c); }));
     };
     llvm::SmallVector<Spelling> found;
     vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
@@ -192,7 +191,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
         }
         return false;
     });
-    std::ranges::sort(found, {}, &Spelling::str);
+    ranges::sort(found, {}, &Spelling::str);
     return found;
 }
 
@@ -315,7 +314,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // — conservative, retried by the rebuild's capture.
         return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
     };
-    return std::ranges::count_if(snap, changed) != 0;
+    return ranges::count_if(snap, changed) != 0;
 }
 
 std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
@@ -350,7 +349,7 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
 
 const DepsSnapshot* Project::build_inputs(Fid module) const {
     llvm::SmallVector<Fid, 4> chain;
-    for(auto current = module; !std::ranges::contains(chain, current);) {
+    for(auto current = module; !ranges::contains(chain, current);) {
         auto it = pcm_builds.find(current);
         if(it == pcm_builds.end()) {
             return nullptr;

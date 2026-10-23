@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -18,8 +18,8 @@ namespace clice::index {
 namespace {
 
 template <typename Blob>
-const kota::codec::blob::view_t<Blob>* view_record(llvm::StringRef data) {
-    auto root = kota::codec::blob::view<Blob>(as_bytes(data));
+const codec::blob::view_t<Blob>* view_record(llvm::StringRef data) {
+    auto root = codec::blob::view<Blob>(as_bytes(data));
     return root ? *root : nullptr;
 }
 
@@ -48,7 +48,7 @@ std::optional<Bitmap> file_set_of(const Seq& bytes) {
     return read_file_set(llvm::ArrayRef<std::uint8_t>(bytes.data(), bytes.size()));
 }
 
-void encode_units(const KeyedUnits& sets, std::vector<UnitSetOf<kota::codec::blob::Owned>>& out) {
+void encode_units(const KeyedUnits& sets, std::vector<UnitSetOf<codec::blob::Owned>>& out) {
     for(auto& [key, units]: sets) {
         out.push_back({.key = key, .units = file_set(units)});
     }
@@ -117,7 +117,7 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
 }
 
 void add_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
-    auto it = std::ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
+    auto it = ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
     if(it == sets.end() || it->first != key) {
         it = sets.emplace(it, key, Bitmap());
     }
@@ -125,7 +125,7 @@ void add_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
 }
 
 void remove_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
-    auto it = std::ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
+    auto it = ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
     if(it == sets.end() || it->first != key) {
         return;
     }
@@ -149,13 +149,11 @@ std::vector<std::byte> encode_record(const Header& header) {
 std::optional<Header> decode_header(llvm::StringRef data) {
     auto* root = verify_root<HeaderBlob>(data, "index database header");
     auto named = [&](const auto& paths) {
-        return strictly_ascending(paths) && std::ranges::all_of(paths, [&](std::uint32_t path) {
-                   return path < root->next_path;
-               });
+        return strictly_ascending(paths) &&
+               ranges::all_of(paths, [&](std::uint32_t path) { return path < root->next_path; });
     };
     if(!root || !strictly_ascending(root->search_pending) ||
-       std::ranges::any_of(root->search_pending,
-                           [](SymbolHash hash) { return reserved_key(hash); }) ||
+       ranges::any_of(root->search_pending, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !named(root->search_pending_files) || !named(root->owed_units)) {
         return std::nullopt;
     }
@@ -276,8 +274,8 @@ std::optional<Internals> decode_internals(llvm::StringRef data) {
     if(root->name_ends.size() != count || root->args_ends.size() != count ||
        root->parents.size() != count || root->kinds.size() != count ||
        root->flags.size() != count || !strictly_ascending(root->hashes) ||
-       std::ranges::any_of(root->hashes, [](SymbolHash hash) { return reserved_key(hash); }) ||
-       std::ranges::any_of(root->parents, [](SymbolHash hash) { return reserved_key(hash); }) ||
+       ranges::any_of(root->hashes, [](SymbolHash hash) { return reserved_key(hash); }) ||
+       ranges::any_of(root->parents, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !monotone_ends(root->name_ends, root->names.size()) ||
        !monotone_ends(root->args_ends, root->args.size())) {
         return std::nullopt;

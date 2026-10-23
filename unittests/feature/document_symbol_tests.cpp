@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -18,7 +18,7 @@ ZEST_SUITE(document_symbol, IndexEntriesTester) {
 /// The outline the index computes from the unit's own entries.
 auto index_outline() -> std::vector<feature::DocumentSymbol> {
     SourceText text(unit->focus_file().content(), unit->lang_options());
-    return feature::index_document_symbols(text, entries, resolver(), {});
+    return feature::document_symbols(text, entries, resolver(), {});
 }
 
 ZEST_CASE(ModuleOutlineMatchesAst) {

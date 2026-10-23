@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -51,7 +51,7 @@ bool is_context_header_path(llvm::StringRef path) {
 bool is_c_family_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
     return types::isAcceptedByClang(type) && type != types::TY_Asm && !types::isLLVMIR(type) &&
-           !std::ranges::contains(
+           !ranges::contains(
                std::array{types::TY_AST, types::TY_ModuleFile, types::TY_PCH, types::TY_API_INFO},
                type);
 }

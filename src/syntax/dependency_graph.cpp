@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -20,7 +20,7 @@ namespace clice {
 
 void DependencyGraph::add_module(llvm::StringRef module_name, Fid path_id, bool internal) {
     auto& ids = module_to_path[module_name];
-    if(std::ranges::find(ids, path_id) == ids.end()) {
+    if(ranges::find(ids, path_id) == ids.end()) {
         ids.push_back(path_id);
     }
     module_by_path[path_id] = module_name.str();
@@ -35,7 +35,7 @@ void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_nam
     // Re-declaring the unchanged name is a no-op: providers are selected
     // by list order, so an erase-and-append would silently reselect
     // among a duplicated name's providers without any cascade.
-    if(!module_name.empty() && std::ranges::contains(lookup_module(module_name), path_id)) {
+    if(!module_name.empty() && ranges::contains(lookup_module(module_name), path_id)) {
         // The file may still be listed under a name another configuration
         // scanned it as; the declaration the save met is the one it
         // provides now.
@@ -46,7 +46,7 @@ void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_nam
     // treats it the same as absent.
     for(auto& entry: module_to_path) {
         auto& ids = entry.getValue();
-        ids.erase(std::ranges::remove(ids, path_id).begin(), ids.end());
+        ids.erase(ranges::remove(ids, path_id).begin(), ids.end());
     }
     module_by_path.erase(path_id);
     internal_partitions.erase(path_id);
@@ -70,7 +70,7 @@ llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) 
 
 /// Insert into a sorted list, once.
 static void insert_sorted(llvm::SmallVectorImpl<Fid>& list, Fid fid) {
-    auto it = std::ranges::lower_bound(list, fid);
+    auto it = ranges::lower_bound(list, fid);
     if(it == list.end() || *it != fid) {
         list.insert(it, fid);
     }
@@ -82,7 +82,7 @@ void DependencyGraph::unlink(Fid includer, Fid target) {
         return;
     }
     auto& includers = found->second;
-    auto it = std::ranges::lower_bound(includers, includer);
+    auto it = ranges::lower_bound(includers, includer);
     if(it != includers.end() && *it == includer) {
         includers.erase(it);
     }
@@ -102,9 +102,9 @@ void DependencyGraph::set_includes(Fid path_id,
             includes.erase(old);
             auto still_included = get_all_includes(path_id);
             for(auto edge: dropped) {
-                if(!std::ranges::contains(still_included, edge.fid) &&
-                   std::ranges::none_of(included,
-                                        [&](IncludeEdge kept) { return kept.fid == edge.fid; })) {
+                if(!ranges::contains(still_included, edge.fid) &&
+                   ranges::none_of(included,
+                                   [&](IncludeEdge kept) { return kept.fid == edge.fid; })) {
                     unlink(path_id, edge.fid);
                 }
             }
@@ -160,8 +160,8 @@ llvm::SmallVector<Fid> DependencyGraph::all_files() const {
     for(auto& [path_id, includers]: reverse_includes) {
         files.push_back(path_id);
     }
-    std::ranges::sort(files);
-    files.erase(std::ranges::unique(files).begin(), files.end());
+    ranges::sort(files);
+    files.erase(ranges::unique(files).begin(), files.end());
     return files;
 }
 
@@ -209,8 +209,8 @@ void DependencyGraph::build_reverse_map() {
     // a widely included header has thousands of includers: deduplicate by
     // sorting, not by a linear search per edge.
     for(auto& [path_id, includers]: reverse_includes) {
-        std::ranges::sort(includers);
-        includers.erase(std::ranges::unique(includers).begin(), includers.end());
+        ranges::sort(includers);
+        includers.erase(ranges::unique(includers).begin(), includers.end());
     }
 }
 
@@ -266,15 +266,15 @@ std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
         return most;
     }
     for(auto config_id: it->second) {
-        auto count = std::ranges::count_if(get_includes(includer, config_id),
-                                           [&](IncludeEdge edge) { return edge.fid == target; });
+        auto count = ranges::count_if(get_includes(includer, config_id),
+                                      [&](IncludeEdge edge) { return edge.fid == target; });
         most = std::max(most, static_cast<std::uint32_t>(count));
     }
     return most;
 }
 
 void DependencyGraph::add_forced_include(Fid unit, Fid header) {
-    if(auto& forced = forced_includes[unit]; !std::ranges::contains(forced, header)) {
+    if(auto& forced = forced_includes[unit]; !ranges::contains(forced, header)) {
         forced.push_back(header);
     }
     insert_sorted(forcing_units[header], unit);
@@ -798,8 +798,8 @@ struct FullScan {
                 it->second = graph.add_group(unit);
             }
             auto& contexts = unit_contexts[unit.file];
-            if(std::ranges::any_of(contexts,
-                                   [&](ScanContext known) { return known.group == it->second; })) {
+            if(ranges::any_of(contexts,
+                              [&](ScanContext known) { return known.group == it->second; })) {
                 continue;
             }
             ScanContext context{.group = it->second, .unit = true};
@@ -836,7 +836,7 @@ struct FullScan {
             auto reach = [&](Fid fid, ScanContext context) {
                 add(*next, fid, llvm::ArrayRef(context));
             };
-            for(auto [file, scanned]: std::views::zip(wave->files, wave->scans)) {
+            for(auto [file, scanned]: views::zip(wave->files, wave->scans)) {
                 report.total_files += 1;
                 if(!scanned) {
                     LOG_WARN("Failed to read file for scanning: {}", files.resolve(file.fid));
@@ -923,7 +923,7 @@ void rescan_dependency_graph(CompilationDatabase& cdb,
             reach);
         // A unit provides what its commands declare, as on the full scan;
         // a name it keeps declaring keeps its place among the providers.
-        if(std::ranges::any_of(contexts, [](ScanContext context) { return context.unit; })) {
+        if(ranges::any_of(contexts, [](ScanContext context) { return context.unit; })) {
             graph.update_module_decl(fid, declared.empty() ? "" : declared.front().name);
             for(auto& module: declared) {
                 graph.add_module(module.name, fid, module.internal);
@@ -932,7 +932,7 @@ void rescan_dependency_graph(CompilationDatabase& cdb,
     };
 
     graph.clear_includes(path_id);
-    scan(path_id, std::ranges::to<llvm::SmallVector<ScanContext>>(graph.contexts(path_id)));
+    scan(path_id, ranges::to<llvm::SmallVector<ScanContext>>(graph.contexts(path_id)));
     while(!reached.empty()) {
         auto [fid, context] = reached.pop_back_val();
         scan(fid, context);

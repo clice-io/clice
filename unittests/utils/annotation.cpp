@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -65,7 +65,7 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                 // A name must be a plain identifier (or empty): `§` directly
                 // before a real parenthesized expression is ambiguous — write
                 // the explicit nameless form `§()` in front of it instead.
-                if(!std::ranges::all_of(key, [](char c) {
+                if(!ranges::all_of(key, [](char c) {
                        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
                    })) {
                     LOG_FATAL(
@@ -77,7 +77,7 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                 // a real annotation with such a name would collide.
                 if(llvm::StringRef rest = key;
                    rest.consume_front("nameless_") && !rest.empty() &&
-                   std::ranges::all_of(rest, [](char c) {
+                   ranges::all_of(rest, [](char c) {
                        return std::isdigit(static_cast<unsigned char>(c)) != 0;
                    })) {
                     LOG_FATAL("§({}) collides with generated nameless keys; rename it.", key);

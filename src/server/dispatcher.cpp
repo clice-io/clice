@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
@@ -16,18 +16,17 @@ import :feature.semantic_tokens;
 import :server.dispatcher;
 import :server.editor_context;
 import :support.anomaly;
+import :support.json;
 import :support.logging;
 import :support.timer;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 
-using serde_raw = kota::codec::RawValue;
+using serde_raw = codec::RawValue;
 
-kota::ipc::Error content_modified() {
-    return kota::ipc::Error{content_modified_code,
-                            "Document changed while the request was in flight"};
+ipc::Error content_modified() {
+    return ipc::Error{content_modified_code, "Document changed while the request was in flight"};
 }
 
 namespace {
@@ -58,8 +57,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                                       bool& unanswered) {
     auto unsent = [&] {
         unanswered = true;
-        return kota::outcome_error(
-            kota::ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
+        return kota::outcome_error(ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
     };
     // The caller's compile gave a crash of the kind time to be booked.
     if(ticket.session->quarantine->barred(evidence, Quarantine::Clock::now())) {
@@ -99,7 +97,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                 ast.invalidate(ticket.session->path_id);
             }
         },
-        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
+        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
 }
 
 template <typename Outcome>
@@ -205,7 +203,7 @@ Dispatcher::RawResult Dispatcher::hover(const Ticket& ticket,
 }
 
 template <typename Params>
-kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Dispatcher::typed(const Ticket& ticket,
                       EvidenceKind kind,
                       llvm::StringRef label,
@@ -252,7 +250,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     co_return std::move(result);
 }
 
-kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
+kota::task<std::vector<feature::InlayHint>, ipc::Error>
     Dispatcher::inlay_hints(const Ticket& ticket,
                             const protocol::Range& range,
                             kota::cancellation_token token) {
@@ -267,7 +265,7 @@ kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, ipc::Error>
     Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
@@ -277,7 +275,7 @@ kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
+kota::task<std::optional<std::vector<feature::FoldingRange>>, ipc::Error>
     Dispatcher::folding_ranges(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
@@ -287,7 +285,7 @@ kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::optional<std::vector<feature::DocumentSymbol>>, kota::ipc::Error>
+kota::task<std::optional<std::vector<feature::DocumentSymbol>>, ipc::Error>
     Dispatcher::document_symbols(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
@@ -297,7 +295,7 @@ kota::task<std::optional<std::vector<feature::DocumentSymbol>>, kota::ipc::Error
                              std::move(token));
 }
 
-kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>
+kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>
     Dispatcher::semantic_tokens(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
@@ -307,7 +305,7 @@ kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
+kota::task<std::vector<std::vector<LocalSourceRange>>, ipc::Error>
     Dispatcher::selection_ranges(const Ticket& ticket,
                                  std::vector<std::uint32_t> offsets,
                                  kota::cancellation_token token) {
@@ -319,7 +317,7 @@ kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
+kota::task<std::vector<feature::CodeAction>, ipc::Error>
     Dispatcher::code_actions(const Ticket& ticket,
                              const protocol::Range& range,
                              kota::cancellation_token token) {
@@ -335,7 +333,7 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
 }
 
 template <typename Params>
-kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Dispatcher::interactive(std::uint8_t evidence,
                             llvm::StringRef label,
                             const Ticket& ticket,
@@ -372,7 +370,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
                                               resolution,
                                               inputs)) {
         co_await kota::fail(
-            kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
+            ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }
     wp.pch = std::move(inputs.pch);
     wp.pcms = std::move(inputs.pcms);
@@ -405,7 +403,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
         pool,
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
-        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
+        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
     result = finish(ticket, evidence, label, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
@@ -418,7 +416,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     co_return std::move(result);
 }
 
-kota::task<worker::CompletionResult, kota::ipc::Error>
+kota::task<worker::CompletionResult, ipc::Error>
     Dispatcher::completion(const Ticket& ticket,
                            const protocol::Position& position,
                            const feature::CompletionClient& client,
@@ -473,7 +471,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
         pool,
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
-        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
+        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
     result = finish(ticket, evidence, "Format", std::move(result));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));
@@ -481,8 +479,8 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     if(!result->error.empty()) {
         co_return kota::outcome_error(
-            kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-                             std::move(result->error)});
+            ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                       std::move(result->error)});
     }
     auto positions = session.positions();
     std::vector<protocol::TextEdit> edits;

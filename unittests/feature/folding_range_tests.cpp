@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -43,11 +43,11 @@ int compute() {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(!from_index.empty());
     for(auto& fold: from_index) {
-        bool known = std::ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
+        bool known = ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
             return twin.range == fold.range;
         });
         ZASSERT(known);
@@ -56,7 +56,7 @@ int compute() {
     // The constructor's fold anchors at its body, not the member
     // initializer's braces.
     auto body = unit->focus_file().content().find("{\n        value += 1;");
-    bool anchored = std::ranges::any_of(from_index, [&](const feature::FoldingRange& fold) {
+    bool anchored = ranges::any_of(from_index, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });
     ZASSERT(anchored);
@@ -89,11 +89,11 @@ typedef struct {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(from_index.size() == std::size_t(3));
     for(auto& fold: from_index) {
-        auto twin = std::ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
+        auto twin = ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
             return candidate.range == fold.range;
         });
         ZASSERT(twin != ast.end());
@@ -117,7 +117,7 @@ int values[] =
     extract_entries();
 
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
     ZASSERT(from_index.size() == std::size_t(1));
     ZASSERT(!from_index[0].lines.has_value());
 }
@@ -156,7 +156,7 @@ void g() {
     };
 
     SourceText text(content, dialect_of("main.cpp", false));
-    auto folds = feature::index_folding_ranges(text, entries, resolve_synthetic);
+    auto folds = feature::folding_ranges(text, entries, resolve_synthetic);
     ZASSERT(folds.size() == std::size_t(1));
     ZASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
     ZASSERT(folds[0].range.end == g_end);

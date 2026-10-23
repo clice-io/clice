@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:index.tu_manifest;
 
@@ -97,7 +97,7 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     for(auto& node: manifest.nodes) {
         visit(node.file);
     }
-    for(auto& version: std::views::keys(manifest.contributions)) {
+    for(auto& version: views::keys(manifest.contributions)) {
         visit(version.raw);
     }
     for(auto& version: manifest.absent) {

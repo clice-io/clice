@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -886,7 +886,7 @@ struct S {
 #endif
 )");
     auto open =
-        std::ranges::find_if(result->files, [&](auto& file) { return file.path == result->open; });
+        ranges::find_if(result->files, [&](auto& file) { return file.path == result->open; });
     ZASSERT(open != result->files.end());
     ZEXPECT(open->entry == SynthesizedFile::Entry::Forced);
     ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
@@ -922,7 +922,7 @@ struct S {
 int a;
 )");
     auto open =
-        std::ranges::find_if(result->files, [&](auto& file) { return file.path == result->open; });
+        ranges::find_if(result->files, [&](auto& file) { return file.path == result->open; });
     ZASSERT(open != result->files.end());
     ZEXPECT(open->origin.source == "/proj/mid.h");
 }
@@ -949,15 +949,14 @@ int tail;
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     auto path = suffix_path(result->files);
-    auto suffix =
-        std::ranges::find_if(result->files, [&](auto& file) { return file.path == path; });
+    auto suffix = ranges::find_if(result->files, [&](auto& file) { return file.path == path; });
     ZASSERT(suffix != result->files.end());
     ZASSERT(suffix->origin.runs.size() == 2u);
     auto& after = suffix->origin.runs.back();
     ZEXPECT(suffix->content.substr(after.offset, after.length) == "\nint tail;\n};");
     ZEXPECT(host.content.substr(after.source_offset, after.length) == "\nint tail;\n};");
-    auto prefix = std::ranges::find_if(result->files,
-                                       [&](auto& file) { return file.path == result->prefix; });
+    auto prefix =
+        ranges::find_if(result->files, [&](auto& file) { return file.path == result->prefix; });
     ZASSERT(prefix != result->files.end());
     ZEXPECT(prefix->origin.source == "/proj/main.cpp");
     ZASSERT(prefix->origin.runs.size() == 1u);

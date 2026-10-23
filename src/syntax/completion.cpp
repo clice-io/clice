@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -28,20 +28,20 @@ bool looks_like_header(llvm::StringRef name,
                        llvm::StringRef search_dir,
                        bool system) {
     auto extension = llvm::sys::path::extension(name).lower();
-    if(std::ranges::contains(std::array{".h",
-                                        ".hh",
-                                        ".hpp",
-                                        ".hxx",
-                                        ".h++",
-                                        ".inc",
-                                        ".inl",
-                                        ".ipp",
-                                        ".tcc",
-                                        ".tpp",
-                                        ".txx",
-                                        ".def",
-                                        ".cuh"},
-                             extension)) {
+    if(ranges::contains(std::array{".h",
+                                   ".hh",
+                                   ".hpp",
+                                   ".hxx",
+                                   ".h++",
+                                   ".inc",
+                                   ".inl",
+                                   ".ipp",
+                                   ".tcc",
+                                   ".tpp",
+                                   ".txx",
+                                   ".def",
+                                   ".cuh"},
+                        extension)) {
         return true;
     }
     if(name.contains('.')) {
@@ -272,7 +272,7 @@ CompletionName completion_name(llvm::StringRef text,
     // `import->x` in C is a member access on a variable named `import`,
     // and `module.x` one on `module`.
     auto prefix = text.slice(keyword.range.end, offset).ltrim();
-    if(!std::ranges::all_of(
+    if(!ranges::all_of(
            prefix,
            [](char c) { return is_module_name_char(c) || clang::isHorizontalWhitespace(c); }) ||
        prefix.starts_with(".")) {
@@ -284,9 +284,8 @@ CompletionName completion_name(llvm::StringRef text,
     }
     // A semicolon before the cursor ended the statement above, so one on
     // the rest of the line, past comments and attributes, closes this one.
-    bool closed = std::ranges::any_of(after(at), [](const Token& token) {
-        return token.kind == clang::tok::semi;
-    });
+    bool closed = ranges::any_of(after(at),
+                                 [](const Token& token) { return token.kind == clang::tok::semi; });
     return {kind,
             prefix.str(),
             LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),
@@ -302,7 +301,7 @@ std::vector<std::string> complete_module_declaration(const DependencyGraph& grap
             results.push_back(name.str());
         }
     }
-    std::ranges::sort(results);
+    ranges::sort(results);
     return results;
 }
 
@@ -338,7 +337,7 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
             results.push_back(std::move(name));
         }
     }
-    std::ranges::sort(results);
+    ranges::sort(results);
     return results;
 }
 

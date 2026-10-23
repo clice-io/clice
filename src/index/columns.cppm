@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The column encodings the blobs share: entry ranges in whichever
 /// encoding the side and the content size pick (shard and instantiation
@@ -106,7 +106,7 @@ inline llvm::ArrayRef<std::uint32_t> slice(llvm::ArrayRef<std::uint32_t> arena,
 /// The position of `value` in an ascending column; nullopt when it is absent.
 template <typename T>
 std::optional<std::uint32_t> sorted_find(llvm::ArrayRef<std::type_identity_t<T>> column, T value) {
-    auto it = std::ranges::lower_bound(column, value);
+    auto it = ranges::lower_bound(column, value);
     if(it == column.end() || *it != value) {
         return std::nullopt;
     }
@@ -114,9 +114,9 @@ std::optional<std::uint32_t> sorted_find(llvm::ArrayRef<std::type_identity_t<T>>
 }
 
 /// Whether a column ascends strictly, which sorted_find relies on.
-template <std::ranges::forward_range Column>
+template <ranges::forward_range Column>
 bool strictly_ascending(Column&& column) {
-    return std::ranges::adjacent_find(column, std::greater_equal{}) == std::ranges::end(column);
+    return ranges::adjacent_find(column, std::greater_equal{}) == ranges::end(column);
 }
 
 /// Load-time verification outcome: the violated invariant, spelled for the
@@ -156,8 +156,8 @@ struct IdColumnView {
 
     /// Whether an ascending column holds `id`, and where.
     std::optional<std::uint32_t> find(std::uint32_t id) const {
-        auto positions = std::views::iota(std::uint32_t(0), size());
-        auto it = std::ranges::lower_bound(positions, id, {}, [&](std::uint32_t position) {
+        auto positions = views::iota(std::uint32_t(0), size());
+        auto it = ranges::lower_bound(positions, id, {}, [&](std::uint32_t position) {
             return (*this)[position];
         });
         if(it == positions.end() || (*this)[*it] != id) {
@@ -178,15 +178,15 @@ struct IdColumnView {
 /// load-time pairing (escapes_ok) proves every escape owns exactly one entry
 /// there, so the search always finds it.
 inline std::uint32_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::uint32_t entry) {
-    return static_cast<std::uint32_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
+    return static_cast<std::uint32_t>(ranges::lower_bound(entries, entry) - entries.begin());
 }
 
 /// The ranges of one side of a blob's entries read in place, in whichever
 /// range encoding the side stores.
-using RangeColumnsView = kota::codec::blob::view_t<RangeColumns>;
+using RangeColumnsView = codec::blob::view_t<RangeColumns>;
 
 /// The variant masks of one side of a shard's entries read in place.
-using MaskColumnsView = kota::codec::blob::view_t<MaskColumns>;
+using MaskColumnsView = codec::blob::view_t<MaskColumns>;
 
 inline std::uint32_t entry_count(const RangeColumnsView& side) {
     return side.packed.empty() ? side.lengths.size() : side.packed.size();
@@ -271,9 +271,9 @@ void for_each_range(const RangeColumnsView& side, Visit&& visit) {
 /// block starts, whose begins are stored, then a scan of one block.
 template <typename Below>
 std::uint32_t partition_point(const RangeColumnsView& side, Below&& below) {
-    auto blocks = std::views::iota(std::uint32_t(0), side.block_begins.size());
+    auto blocks = views::iota(std::uint32_t(0), side.block_begins.size());
     auto block = static_cast<std::uint32_t>(
-        std::ranges::partition_point(
+        ranges::partition_point(
             blocks,
             [&](std::uint32_t b) {
                 auto begin = side.block_begins[b];

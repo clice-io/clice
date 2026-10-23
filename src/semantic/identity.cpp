@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -150,7 +150,7 @@ const clang::DeclContext* context_of(const clang::Decl* decl) {
         return context;
     }
     for(auto* redecl: deduced->redecls()) {
-        if(!std::ranges::contains(redecl->getTemplateParameters()->asArray(), decl)) {
+        if(!ranges::contains(redecl->getTemplateParameters()->asArray(), decl)) {
             continue;
         }
         if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(redecl->getTemplatedDecl())) {

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -21,6 +21,7 @@ import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
+import :support.json;
 import :support.logging;
 import :support.process;
 import :worker.common;
@@ -31,9 +32,8 @@ import :worker.stateful;
 
 namespace clice {
 
-using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::BincodePeer::RequestContext;
-namespace protocol = kota::ipc::protocol;
+using ipc::RequestResult;
+using RequestContext = ipc::BincodePeer::RequestContext;
 
 struct DocumentEntry {
     int version = 0;
@@ -125,7 +125,7 @@ struct [[nodiscard]] CompileGuard {
 };
 
 class StatefulWorker {
-    kota::ipc::BincodePeer& peer;
+    ipc::BincodePeer& peer;
     std::size_t max_documents;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
@@ -184,23 +184,23 @@ class StatefulWorker {
     /// perf series: query kinds have very different costs and must not
     /// collapse into one distribution.
     template <typename Params, typename R, typename F>
-    kota::task<R, kota::ipc::Error>
+    kota::task<R, ipc::Error>
         with_ast_or(llvm::StringRef kind, const Params& params, R missing, F fn) {
         auto it = documents.find(params.path);
         if(it == documents.end()) {
-            return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::document_unloaded,
-                                                        "Document is not loaded"});
+            return kota::outcome_error(
+                ipc::Error{worker::dispatch_errc::document_unloaded, "Document is not loaded"});
         }
         touch_lru(params.path);
         return serve_ast(kind, PendingGuard(it->second), params, std::move(missing), std::move(fn));
     }
 
     template <typename Params, typename R, typename F>
-    kota::task<R, kota::ipc::Error> serve_ast(llvm::StringRef kind,
-                                              PendingGuard pending,
-                                              const Params& params,
-                                              R missing,
-                                              F fn) {
+    kota::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
+                                        PendingGuard pending,
+                                        const Params& params,
+                                        R missing,
+                                        F fn) {
         auto& doc = *pending.doc;
         ScopedTimer timer;
         co_await doc.ast_ready.wait();
@@ -241,17 +241,17 @@ class StatefulWorker {
 
     /// Answers "null" if the AST is not usable.
     template <typename Params, typename F>
-    kota::task<kota::codec::RawValue, kota::ipc::Error> with_ast(llvm::StringRef kind,
-                                                                 const Params& params,
-                                                                 F fn) {
-        return with_ast_or(kind, params, kota::codec::RawValue{"null"}, std::move(fn));
+    kota::task<codec::RawValue, ipc::Error> with_ast(llvm::StringRef kind,
+                                                     const Params& params,
+                                                     F fn) {
+        return with_ast_or(kind, params, codec::RawValue{"null"}, std::move(fn));
     }
 
     RequestResult<worker::CompileParams> serve_compile(CompileGuard guard,
                                                        const worker::CompileParams& params);
 
 public:
-    StatefulWorker(kota::ipc::BincodePeer& peer, std::size_t max_documents) :
+    StatefulWorker(ipc::BincodePeer& peer, std::size_t max_documents) :
         peer(peer), max_documents(max_documents) {}
 
     void register_handlers();
@@ -334,12 +334,12 @@ RequestResult<worker::CompileParams>
                     if(!diag.id.is_deserialization_error()) {
                         return false;
                     }
-                    return std::ranges::none_of(doc->pcms, [&](auto& entry) {
+                    return ranges::none_of(doc->pcms, [&](auto& entry) {
                         return message.contains(entry.second);
                     });
                 };
-                result.pch_suspect = std::ranges::any_of(unit->diagnostics(), [&](auto& diag) {
-                    return blames_pch(diag) || std::ranges::any_of(diag.notes, blames_pch);
+                result.pch_suspect = ranges::any_of(unit->diagnostics(), [&](auto& diag) {
+                    return blames_pch(diag) || ranges::any_of(diag.notes, blames_pch);
                 });
             }
 
@@ -511,7 +511,7 @@ void StatefulWorker::register_handlers() {
                                              params.config.hover,
                                              params.config.documentation,
                                              params.markup);
-                return result ? to_raw(*result) : kota::codec::RawValue{"null"};
+                return result ? to_raw(*result) : codec::RawValue{"null"};
             });
         });
 }
@@ -531,14 +531,14 @@ int run_stateful_worker_mode(const std::string& worker_name,
 
     kota::event_loop loop;
 
-    auto transport_result = kota::ipc::StreamTransport::open_stdio(loop);
+    auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
-    (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
+    (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
-    kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_gates(peer, loop);
 
     StatefulWorker worker(peer, max_documents);

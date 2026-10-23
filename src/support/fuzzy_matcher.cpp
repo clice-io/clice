@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -40,7 +40,7 @@ bool is_upper(char c) {
 }
 
 bool has_lowercase_letter(llvm::StringRef text) {
-    return std::ranges::any_of(text, [](char c) { return c >= 'a' && c <= 'z'; });
+    return ranges::any_of(text, [](char c) { return c >= 'a' && c <= 'z'; });
 }
 
 /// Whether a match may land on the character after a gap: a word head, a
@@ -83,8 +83,8 @@ NameToken trigram(char a, char b, char c) {
 }
 
 void sort_unique(llvm::SmallVectorImpl<NameToken>& tokens) {
-    std::ranges::sort(tokens);
-    tokens.erase(std::ranges::unique(tokens).begin(), tokens.end());
+    ranges::sort(tokens);
+    tokens.erase(ranges::unique(tokens).begin(), tokens.end());
 }
 
 /// The lowercase letters of a pattern in order, separators dropped —
@@ -353,7 +353,7 @@ llvm::SmallVector<std::uint8_t, 32> FuzzyMatcher::matched_positions() {
         }
         current = &cell(p, n, prev_run, prev_typo);
     }
-    std::ranges::reverse(positions);
+    ranges::reverse(positions);
     return positions;
 }
 
@@ -406,7 +406,7 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
         if(i + 1 < name.size() && roles[i + 1] == CharRole::Tail) {
             next.push_back(static_cast<std::uint32_t>(i + 1));
         }
-        auto later = std::ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
+        auto later = ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
         for(auto it = later; it != anchors.end(); it += 1) {
             if(next.empty() || next.front() != *it) {
                 next.push_back(*it);

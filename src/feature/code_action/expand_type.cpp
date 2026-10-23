@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -26,7 +26,7 @@ bool is_specifier(TokenKind kind) {
                                        kw_thread_local,
                                        kw_register,
                                        kw_friend};
-    return std::ranges::contains(specifiers, kind);
+    return ranges::contains(specifiers, kind);
 }
 
 }  // namespace

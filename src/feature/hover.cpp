@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -265,7 +265,7 @@ auto namespace_path(const clang::NamespaceDecl& ns) -> std::string {
             names.push_back(outer->isAnonymousNamespace() ? "(anonymous)" : outer->getName());
         }
     }
-    return llvm::join(std::views::reverse(names), "::");
+    return llvm::join(views::reverse(names), "::");
 }
 
 /// Where a declaration is: the kind and qualified name of the namespace,
@@ -411,7 +411,7 @@ void add_alias(HoverInfo& info,
         }
     }
     auto shown = display::type(context, type.getUnqualifiedType(), options);
-    if(shown.aka && std::ranges::none_of(info.aliases, [&](const display::Type& known) {
+    if(shown.aka && ranges::none_of(info.aliases, [&](const display::Type& known) {
            return known.text == shown.text;
        })) {
         info.aliases.push_back(std::move(shown));
@@ -540,7 +540,7 @@ void add_macros(HoverInfo& info,
         return;
     }
     for(const auto& macro: definition.attribute_macros) {
-        if(std::ranges::none_of(info.attribute_macros, [&](const display::AttributeMacro& known) {
+        if(ranges::none_of(info.attribute_macros, [&](const display::AttributeMacro& known) {
                return known.use == macro.use;
            })) {
             info.attribute_macros.push_back(macro);
@@ -624,18 +624,16 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         /// as many as a class's members at most.
         auto targets = brought_in(*using_decl);
         auto& sources = context.getSourceManager();
-        std::ranges::sort(targets,
-                          [&](const clang::NamedDecl* left, const clang::NamedDecl* right) {
-                              return sources.isBeforeInTranslationUnit(left->getLocation(),
-                                                                       right->getLocation());
-                          });
+        ranges::sort(targets, [&](const clang::NamedDecl* left, const clang::NamedDecl* right) {
+            return sources.isBeforeInTranslationUnit(left->getLocation(), right->getLocation());
+        });
         /// The using-declaration of inheriting constructors is named after
         /// the class it is in.
         if(!targets.empty()) {
             info.kind = card_kind(templated(targets.front()));
             info.name = title_name(targets.front(), options);
         }
-        for(auto [index, target]: std::views::enumerate(targets)) {
+        for(auto [index, target]: views::enumerate(targets)) {
             if(static_cast<std::size_t>(index) == options.max_members) {
                 info.target_definition += "\n// ...";
                 break;
@@ -797,7 +795,7 @@ void add_layout(const clang::NamedDecl& decl, HoverInfo& info) {
             break;
         }
         auto fields = holder->fields();
-        const auto* member = *std::ranges::find_if(fields, [&](const clang::FieldDecl* field) {
+        const auto* member = *ranges::find_if(fields, [&](const clang::FieldDecl* field) {
             return field->getType()->getAsRecordDecl() == outer;
         });
         outer_offset += context.getASTRecordLayout(holder).getFieldOffset(member->getFieldIndex());
@@ -1318,7 +1316,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
                at.offset <= end.offset;
     };
 
-    for(const auto& token: std::views::reverse(touched)) {
+    for(const auto& token: views::reverse(touched)) {
         auto kind = focus.kind(token);
         if(should_ignore_token(kind)) {
             continue;
@@ -1351,7 +1349,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
                             decls.push_back(occurrence.decl);
                         }
                     } else if(inside(occurrence, location) &&
-                              !std::ranges::contains(named, occurrence.decl)) {
+                              !ranges::contains(named, occurrence.decl)) {
                         named.push_back(occurrence.decl);
                     }
                 }
@@ -1365,13 +1363,13 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
             return decl->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName;
         };
         if(!decls.empty() && &token != &touched.front() &&
-           std::ranges::contains(std::array{clang::tok::colon,
-                                            clang::tok::equal,
-                                            clang::tok::ampamp,
-                                            clang::tok::pipepipe,
-                                            clang::tok::question},
-                                 kind) &&
-           std::ranges::none_of(decls, spells_operator)) {
+           ranges::contains(std::array{clang::tok::colon,
+                                       clang::tok::equal,
+                                       clang::tok::ampamp,
+                                       clang::tok::pipepipe,
+                                       clang::tok::question},
+                            kind) &&
+           ranges::none_of(decls, spells_operator)) {
             separated = {.decls = std::move(decls), .token = &token};
             decls.clear();
             continue;
@@ -1396,7 +1394,7 @@ auto pick_decl(llvm::ArrayRef<const clang::NamedDecl*> candidates, const Selecti
     if(candidates.empty()) {
         return nullptr;
     }
-    const auto* using_decl = std::ranges::find_if(candidates, [](const clang::NamedDecl* decl) {
+    const auto* using_decl = ranges::find_if(candidates, [](const clang::NamedDecl* decl) {
         return llvm::isa<clang::UsingDecl>(decl);
     });
     if(using_decl == candidates.end()) {
@@ -1522,8 +1520,8 @@ void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
         if(before.ends_with(":")) {
             auto start = before.drop_back().rfind(':');
             if(start != llvm::StringRef::npos &&
-               std::ranges::all_of(before.slice(start + 1, before.size() - 1),
-                                   [](char c) { return llvm::isAlpha(c) || c == '-'; })) {
+               ranges::all_of(before.slice(start + 1, before.size() - 1),
+                              [](char c) { return llvm::isAlpha(c) || c == '-'; })) {
                 before = before.substr(0, start);
                 role = true;
             }
@@ -1682,10 +1680,10 @@ auto kind_noun(SymbolKind kind) -> llvm::StringRef {
     std::unreachable();
 }
 
-auto to_protocol_hover(const HoverInfo& info,
-                       protocol::MarkupKind kind,
-                       const PositionMap& map,
-                       PositionEncoding encoding) -> protocol::Hover {
+auto to_protocol(const HoverInfo& info,
+                 protocol::MarkupKind kind,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::Hover {
     auto document = info.present();
 
     protocol::Hover result{
@@ -1761,7 +1759,7 @@ markup::Document HoverInfo::present() const {
     }
     if(!overrides.empty()) {
         auto& line = output.add_paragraph().append_text("Overrides: ");
-        for(auto [index, overridden]: std::views::enumerate(overrides)) {
+        for(auto [index, overridden]: views::enumerate(overrides)) {
             if(index != 0) {
                 line.append_text(", ");
             }
@@ -1985,7 +1983,7 @@ auto hover(CompilationUnit& unit,
         return std::nullopt;
     }
 
-    return to_protocol_hover(*info, kind, unit.focus_file().positions(), encoding);
+    return to_protocol(*info, kind, unit.focus_file().positions(), encoding);
 }
 
 /// The text of a definition before the body its extent ends with, or
@@ -2002,10 +2000,10 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
-auto index_hover(const index::SymbolInfo& info,
-                 llvm::ArrayRef<index::SymbolInfo> scopes,
-                 llvm::StringRef definition_text,
-                 Documentation documentation) -> HoverInfo {
+auto hover_info(const index::SymbolInfo& info,
+                llvm::ArrayRef<index::SymbolInfo> scopes,
+                llvm::StringRef definition_text,
+                Documentation documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
@@ -2083,9 +2081,9 @@ auto index_hover(const index::SymbolInfo& info,
     return hover;
 }
 
-auto index_hover(const index::PeerQueries& queries,
-                 const index::IndexQuery::Cursor& cursor,
-                 const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
+auto hover_info(const index::PeerQueries& queries,
+                const index::IndexQuery::Cursor& cursor,
+                const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
     auto& query = queries.own;
     auto symbol = cursor.symbols.front();
     auto info = query.symbol_info(symbol, cursor.site.file);
@@ -2103,11 +2101,10 @@ auto index_hover(const index::PeerQueries& queries,
     if(text) {
         definition = std::move(text->text);
     }
-    auto hover =
-        index_hover(*info,
-                    query.container_chain(symbol, cursor.site.file),
-                    definition,
-                    feature::documentation(query, symbol, cursor.site.file, documentation));
+    auto hover = hover_info(*info,
+                            query.container_chain(symbol, cursor.site.file),
+                            definition,
+                            feature::documentation(query, symbol, cursor.site.file, documentation));
     hover.symbol_range = cursor.site.range;
     return hover;
 }
@@ -2141,7 +2138,7 @@ auto directive_hover(llvm::StringRef text,
     }
     auto info = header_card(text, link.range, files.display_identity(link.target));
 
-    auto hover = to_protocol_hover(info, kind, map, PositionEncoding::UTF16);
+    auto hover = to_protocol(info, kind, map, PositionEncoding::UTF16);
     if(!hover.range) {
         return std::nullopt;
     }

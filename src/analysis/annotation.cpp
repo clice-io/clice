@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -11,7 +11,7 @@ import :vfs.file_system;
 namespace clice::analysis {
 
 const Annotation* Annotations::find(llvm::StringRef name) const {
-    auto it = std::ranges::find_if(list, [&](const Annotation& annotation) {
+    auto it = ranges::find_if(list, [&](const Annotation& annotation) {
         return annotation.name == name;
     });
     return it == list.end() ? nullptr : &*it;
@@ -40,7 +40,7 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
     };
 
     File file;
-    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
+    if(auto result = json::from_string((*buffer)->getBuffer(), file); !result) {
         return std::unexpected(std::format("{} is not an annotation file: {}",
                                            std::string_view(path),
                                            result.error().message));

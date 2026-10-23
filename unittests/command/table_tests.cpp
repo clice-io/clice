@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -143,9 +143,8 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
                          "/project/tool.cpp",
                          "clang++ -working-directory build -include app /project/tool.cpp"sv);
     auto tool = database.candidate_entries("/project/tool.cpp").front().command;
-    ZEXPECT(std::ranges::any_of(commands.pch_inputs(tool), [&](const Spelling& input) {
-        return file_table.find(input) == pch;
-    }));
+    ZEXPECT(ranges::any_of(commands.pch_inputs(tool),
+                           [&](const Spelling& input) { return file_table.find(input) == pch; }));
 };
 
 ZEST_CASE(CommandHashSurvivesMove) {

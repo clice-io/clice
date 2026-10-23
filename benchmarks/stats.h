@@ -12,7 +12,7 @@ namespace clice::bench {
 /// in place here would make call sites that read front()/back() in the
 /// same argument list depend on argument evaluation order.
 inline double percentile(const std::vector<double>& sorted, double p) {
-    assert(!sorted.empty() && std::ranges::is_sorted(sorted));
+    assert(!sorted.empty() && ranges::is_sorted(sorted));
     auto index = static_cast<std::size_t>(p * static_cast<double>(sorted.size() - 1));
     return sorted[index];
 }

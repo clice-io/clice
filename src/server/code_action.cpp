@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -15,15 +15,15 @@ import :vfs.file_system;
 
 namespace clice {
 
-kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
+kota::task<std::vector<protocol::CodeAction>, ipc::Error>
     Features::code_action(Ticket ticket,
                           const protocol::Range& range,
                           llvm::ArrayRef<protocol::CodeActionKind> only,
                           kota::cancellation_token token) {
     auto& session = ticket.session;
     std::vector<protocol::CodeAction> out;
-    if(std::ranges::none_of(feature::code_action_kinds,
-                            [&](std::string_view kind) { return feature::admits(only, kind); })) {
+    if(ranges::none_of(feature::code_action_kinds,
+                       [&](std::string_view kind) { return feature::admits(only, kind); })) {
         co_return out;
     }
     // Code actions are AST products the index cannot compute; a session
@@ -47,7 +47,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!edits) {
             return;
         }
-        out.push_back(feature::code_action_to_protocol(
+        out.push_back(feature::to_protocol(
             std::move(title),
             std::move(kind),
             {.uri = uri, .version = session->version, .edits = std::move(*edits)}));
@@ -87,7 +87,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!edit) {
             return;
         }
-        out.push_back(feature::code_action_to_protocol(
+        out.push_back(feature::to_protocol(
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             {

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
@@ -19,8 +19,6 @@ import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
-
-namespace ranges = std::ranges;
 
 namespace {
 
@@ -288,7 +286,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
         if(damaged(dir_sv) || damaged(file_ref) ||
-           (command ? damaged(*command) : std::ranges::any_of(args, damaged))) {
+           (command ? damaged(*command) : ranges::any_of(args, damaged))) {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {} ({}): "
                 "it holds bytes that are not UTF-8.",
@@ -371,7 +369,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.entries = std::move(new_entries);
     source.loaded = true;
     source.present = true;
-    auto responses = std::ranges::subrange(source.inputs.begin() + 1, source.inputs.end());
+    auto responses = ranges::subrange(source.inputs.begin() + 1, source.inputs.end());
     ranges::sort(responses, {}, &LoadInput::file);
     auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
     source.inputs.erase(duplicates.begin(), duplicates.end());
@@ -449,8 +447,8 @@ std::optional<CompilationEntry>
     }
     /// Commands added one at a time accumulate into one anonymous source;
     /// its path is empty, which no real database can have.
-    auto anonymous = std::ranges::find_if(source_files,
-                                          [](const Source& source) { return source.path.empty(); });
+    auto anonymous =
+        ranges::find_if(source_files, [](const Source& source) { return source.path.empty(); });
     if(anonymous == source_files.end()) {
         source_files.push_back({});
         anonymous = source_files.end() - 1;

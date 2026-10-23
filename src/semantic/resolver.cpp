@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -230,11 +230,11 @@ struct InstantiationStack {
 
     /// Whether a frame holds the parameter's template, bound or not.
     bool owns(const clang::NamedDecl* decl, unsigned depth) const {
-        return std::ranges::any_of(data, [&](const Frame& frame) {
+        return ranges::any_of(data, [&](const Frame& frame) {
             if(!frame.params) {
                 return false;
             }
-            return decl ? std::ranges::contains(frame.params->asArray(), decl)
+            return decl ? ranges::contains(frame.params->asArray(), decl)
                         : frame.params->getDepth() == depth;
         });
     }
@@ -263,7 +263,7 @@ struct PackParmFinder : clang::RecursiveASTVisitor<PackParmFinder> {
     llvm::SmallVector<const clang::NonTypeTemplateParmDecl*, 2> value_packs;
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
-        if(T->isParameterPack() && !std::ranges::contains(packs, T)) {
+        if(T->isParameterPack() && !ranges::contains(packs, T)) {
             packs.push_back(T);
         }
         return true;
@@ -271,7 +271,7 @@ struct PackParmFinder : clang::RecursiveASTVisitor<PackParmFinder> {
 
     bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
         if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
-           NTTP && NTTP->isParameterPack() && !std::ranges::contains(value_packs, NTTP)) {
+           NTTP && NTTP->isParameterPack() && !ranges::contains(value_packs, NTTP)) {
             value_packs.push_back(NTTP);
         }
         return true;
@@ -280,7 +280,7 @@ struct PackParmFinder : clang::RecursiveASTVisitor<PackParmFinder> {
     bool TraverseTemplateName(clang::TemplateName name) {
         if(auto TTP =
                llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl());
-           TTP && TTP->isParameterPack() && !std::ranges::contains(template_packs, TTP)) {
+           TTP && TTP->isParameterPack() && !ranges::contains(template_packs, TTP)) {
             template_packs.push_back(TTP);
         }
         return RecursiveASTVisitor::TraverseTemplateName(name);
@@ -294,7 +294,7 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
         bool found = false;
 
         bool owns(const clang::NamedDecl* decl) const {
-            return decl && std::ranges::contains(*params, decl);
+            return decl && ranges::contains(*params, decl);
         }
 
         bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
@@ -403,7 +403,7 @@ public:
     /// internal DeclContext storage.
     clang::Decl* preferred(lookup_result members) {
         clang::Decl* decl = nullptr;
-        std::ranges::for_each(members, [&](auto member) { decl = member; });
+        ranges::for_each(members, [&](auto member) { decl = member; });
         return decl;
     }
 
@@ -606,7 +606,7 @@ public:
                 [&](clang::Decl* decl, clang::TemplateParameterList* params) {
                     stack.push(decl, params, params->getInjectedTemplateArgs(context));
                 });
-            std::ranges::reverse(stack.frames());
+            ranges::reverse(stack.frames());
         }
 
         stack.push(decl, list, deduced);
@@ -1614,7 +1614,7 @@ public:
         if(count <= FD->getNumParams() || FD->isVariadic()) {
             return true;
         }
-        return std::ranges::any_of(FD->parameters(), [](const clang::ParmVarDecl* param) {
+        return ranges::any_of(FD->parameters(), [](const clang::ParmVarDecl* param) {
             return param->isParameterPack();
         });
     }
@@ -1630,7 +1630,7 @@ public:
     /// to any number of arguments: fixed-arity filtering would remove viable
     /// overloads.
     static bool expands_pack(llvm::ArrayRef<const clang::Expr*> arguments) {
-        return std::ranges::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
+        return ranges::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
     }
 
     /// Drop the function overloads `viable` rejects. Non-function candidates
@@ -1638,7 +1638,7 @@ public:
     /// them.
     static void drop_unviable(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                               llvm::function_ref<bool(const clang::FunctionDecl*)> viable) {
-        auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
+        auto removed = ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
             auto FD = as_function(decl);
             return FD && !viable(FD);
         });
@@ -1709,7 +1709,7 @@ public:
         };
         auto alike = [&](const clang::CXXMethodDecl* lhs, const clang::CXXMethodDecl* rhs) {
             return !lhs->getDescribedFunctionTemplate() == !rhs->getDescribedFunctionTemplate() &&
-                   std::ranges::equal(
+                   ranges::equal(
                        lhs->parameters(),
                        rhs->parameters(),
                        [&](const clang::ParmVarDecl* left, const clang::ParmVarDecl* right) {
@@ -2563,7 +2563,7 @@ private:
         /// query — if the TU never named this specialization, we keep the
         /// bare canonical TST rather than fabricating a declaration.
         clang::QualType underlying;
-        bool concrete = std::ranges::none_of(canonical, [](const clang::TemplateArgument& arg) {
+        bool concrete = ranges::none_of(canonical, [](const clang::TemplateArgument& arg) {
             return arg.isDependent();
         });
         if(concrete) {
@@ -2583,10 +2583,9 @@ private:
         /// to compute. Failure degrades to an unrewritten (null) result.
         if(auto TATD =
                llvm::dyn_cast_or_null<clang::TypeAliasTemplateDecl>(name.getAsTemplateDecl())) {
-            bool expansions =
-                std::ranges::any_of(canonical, [](const clang::TemplateArgument& arg) {
-                    return arg.isPackExpansion();
-                });
+            bool expansions = ranges::any_of(canonical, [](const clang::TemplateArgument& arg) {
+                return arg.isPackExpansion();
+            });
             if(!expansions) {
                 clang::QualType aliased;
                 if(deduce_template_arguments(TATD, arguments) != Deduction::Failed) {
@@ -2818,7 +2817,7 @@ private:
                 return false;
             }
             length = bound.pack_size();
-            if(!std::ranges::contains(slots, *handle)) {
+            if(!ranges::contains(slots, *handle)) {
                 slots.push_back(*handle);
             }
             return true;
@@ -2840,8 +2839,8 @@ private:
             }
         }
 
-        auto saved = std::ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
-            std::views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
+        auto saved = ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
+            views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
         /// While narrowed, node-pointer-keyed caches are bypassed: the same
         /// pattern node resolves differently per element, and a cached first
@@ -2850,7 +2849,7 @@ private:
         bool ok = true;
         llvm::SmallVector<clang::TemplateArgument, 4> expanded;
         for(unsigned k = 0; k < length && ok; k += 1) {
-            for(auto [handle, pack]: std::views::zip(slots, saved)) {
+            for(auto [handle, pack]: views::zip(slots, saved)) {
                 stack.slot(handle) = pack.pack_begin()[k];
             }
             auto element = rewrite(pattern, policy);
@@ -2861,7 +2860,7 @@ private:
         }
         pack_narrowing -= 1;
 
-        for(auto [handle, pack]: std::views::zip(slots, saved)) {
+        for(auto [handle, pack]: views::zip(slots, saved)) {
             stack.slot(handle) = pack;
         }
 
@@ -3063,7 +3062,7 @@ private:
         if(!definition) {
             return true;
         }
-        return std::ranges::any_of(definition->bases(), [](const clang::CXXBaseSpecifier& base) {
+        return ranges::any_of(definition->bases(), [](const clang::CXXBaseSpecifier& base) {
             return base.getType()->isDependentType();
         });
     }
@@ -3080,8 +3079,8 @@ private:
 
         llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
         CTD->getPartialSpecializations(partials);
-        return std::ranges::any_of(partials, declares) ||
-               std::ranges::any_of(CTD->specializations(), declares);
+        return ranges::any_of(partials, declares) ||
+               ranges::any_of(CTD->specializations(), declares);
     }
 
     /// Is `decl` provably unusable for the probe's usage form? `typename
@@ -3119,7 +3118,7 @@ private:
         /// Empty lookups and lookups whose every candidate is provably
         /// unusable both fail the probe conclusively.
         auto conclusive = [&](lookup_result members) {
-            return std::ranges::all_of(members, [&](clang::Decl* decl) {
+            return ranges::all_of(members, [&](clang::Decl* decl) {
                 return unusable_member(decl, wants_template);
             });
         };

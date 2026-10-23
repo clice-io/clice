@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifdef _WIN32
 #include "vfs/win32.h"
@@ -403,7 +403,7 @@ public:
         it->second = std::move(entry);
         bytes += cost(*it);
         while(bytes > budget) {
-            auto oldest = std::ranges::min_element(entries, {}, [](const auto& candidate) {
+            auto oldest = ranges::min_element(entries, {}, [](const auto& candidate) {
                 return candidate.second.used;
             });
             bytes -= cost(*oldest);
@@ -439,7 +439,7 @@ public:
     void keep(llvm::StringRef path) {
         auto key = spelling(path);
         std::lock_guard lock(mutex);
-        auto it = std::ranges::find(entries, key, &Entry::path);
+        auto it = ranges::find(entries, key, &Entry::path);
         if(it == entries.end()) {
             entries.insert(entries.begin(), Entry{.path = std::move(key)});
             if(entries.size() > capacity) {
@@ -457,7 +457,7 @@ public:
                                                   const Status& status) {
         auto key = spelling(path);
         std::lock_guard lock(mutex);
-        auto it = std::ranges::find(entries, key, &Entry::path);
+        auto it = ranges::find(entries, key, &Entry::path);
         if(it == entries.end()) {
             return nullptr;
         }

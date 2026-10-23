@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:unittests.utils.cdb_layouts;
 
@@ -279,7 +279,7 @@ compile_commands = ["cmake"]
 
 /// Writes layout `name` into `dir/name` and returns that directory.
 inline std::string write_layout(TempDir& dir, llvm::StringRef name) {
-    auto found = std::ranges::find(cdb_layouts(), name, &NamedLayout::name);
+    auto found = ranges::find(cdb_layouts(), name, &NamedLayout::name);
     assert(found != cdb_layouts().end() && "no such layout");
     for(auto& file: found->files) {
         dir.touch(path::join(name, file.path), file.content);

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -27,7 +27,7 @@ MountTable MountTable::parse(llvm::StringRef listing) {
         }
         table.mounts.emplace_back(("/" + point).str(), windows.str());
     }
-    std::ranges::stable_sort(table.mounts, std::ranges::greater{}, [](const auto& mount) {
+    ranges::stable_sort(table.mounts, ranges::greater{}, [](const auto& mount) {
         return mount.first.size();
     });
     return table;
@@ -92,7 +92,7 @@ kota::task<std::expected<MountTable, std::string>> read_mount_table(std::string 
         co_return std::unexpected(std::move(output->failure));
     }
     auto table = MountTable::parse(output->out);
-    if(!std::ranges::contains(table.mounts, "/", &std::pair<std::string, std::string>::first)) {
+    if(!ranges::contains(table.mounts, "/", &std::pair<std::string, std::string>::first)) {
         co_return std::unexpected(std::format("{} lists no root mount", mount));
     }
     co_return table;
@@ -109,7 +109,7 @@ kota::task<std::expected<MountTable, std::string>>
             misses.push_back(std::format("{}: {}", dir, table.error()));
             continue;
         }
-        auto missing = std::ranges::find_if(written, [&](const std::string& file) {
+        auto missing = ranges::find_if(written, [&](const std::string& file) {
             // A program is named as Cygwin names it, without `.exe`.
             auto windows = table->to_windows(file);
             return !vfs::exists(windows) && !vfs::exists(windows + ".exe");

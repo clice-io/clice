@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include <errno.h>
 
@@ -14,11 +14,11 @@ import :project.configuration;
 import :sched.batch;
 import :server.control_client;
 import :server.query_commands;
+import :support.json;
 import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :vfs.path;
-import :worker.serialize;
 
 namespace clice::driver {
 
@@ -293,7 +293,7 @@ struct Answer {
 /// wanted lists them.
 struct Failure {
     std::string error;
-    kota::ipc::protocol::optional<std::vector<query::SymbolEntry>> candidates;
+    protocol::optional<std::vector<query::SymbolEntry>> candidates;
     std::vector<std::string> stale;
 };
 
@@ -384,7 +384,7 @@ inline int run_subcommands(kota::deco::cli::SubCommander& commander,
                            Errors errors = Errors::Text) {
     namespace text = kota::deco::cli::text;
     if(!args.empty() && args.front().starts_with("-") &&
-       !std::ranges::contains(kota::deco::decl::help_names, args.front())) {
+       !ranges::contains(kota::deco::decl::help_names, args.front())) {
         return usage_error(
             errors,
             text::render_diagnostic(
@@ -429,13 +429,13 @@ inline CommandHandler with_operations(std::string_view overview,
     return [commander, main = std::move(*main), names = std::move(names), main_targets](
                std::span<std::string> args) mutable {
         if(!args.empty() && !args.front().starts_with("-") &&
-           (!main_targets || std::ranges::contains(names, args.front()))) {
+           (!main_targets || ranges::contains(names, args.front()))) {
             return (*commander)(args);
         }
         auto code = main(args);
         // Arguments that do not parse fail before --help is seen.
-        if(code == 0 && std::ranges::any_of(args, [](std::string_view arg) {
-               return std::ranges::contains(kota::deco::decl::help_names, arg);
+        if(code == 0 && ranges::any_of(args, [](std::string_view arg) {
+               return ranges::contains(kota::deco::decl::help_names, arg);
            })) {
             driver::println();
             print_usage(*commander);

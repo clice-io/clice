@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.protocol;
 
@@ -12,8 +12,6 @@ import :vfs.path;
 
 namespace clice::feature {
 
-namespace protocol = kota::ipc::protocol;
-
 /// Render an absolute path as an LSP URI string.
 ///
 /// On Windows the path is canonicalized first (lowercase drive, forward
@@ -22,7 +20,7 @@ namespace protocol = kota::ipc::protocol;
 inline auto to_uri(llvm::StringRef file) -> std::string {
     llvm::SmallString<256> storage;
     file = path::canonical(file, storage);
-    auto uri = kota::ipc::lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
+    auto uri = lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
     assert(uri && "a URI names an absolute path");
     return uri->str();
 }

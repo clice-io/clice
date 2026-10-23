@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -100,10 +100,10 @@ llvm::SmallString<256> join_path(llvm::StringRef base, llvm::StringRef relative)
 llvm::SmallVector<llvm::StringRef> manifest_paths(llvm::StringRef manifest) {
     llvm::SmallVector<llvm::StringRef> paths;
     manifest.split(paths, '\n', -1, false);
-    paths.erase(std::ranges::remove_if(paths,
-                                       [](llvm::StringRef path) {
-                                           return path.starts_with("/") || path.contains("..");
-                                       })
+    paths.erase(ranges::remove_if(paths,
+                                  [](llvm::StringRef path) {
+                                      return path.starts_with("/") || path.contains("..");
+                                  })
                     .begin(),
                 paths.end());
     return paths;
@@ -167,7 +167,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
             std::format("cannot read {}: {}", path.str(), buffer.error().message()));
     }
     MergeFile file;
-    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
+    if(auto result = json::from_string((*buffer)->getBuffer(), file); !result) {
         return std::unexpected(
             std::format("{} is not a merge file: {}", path.str(), result.error().message));
     }
@@ -264,7 +264,7 @@ int run_modularize(const Options& opts) {
     Spelling out_spelling(*opts.output.out, Spelling::cwd());
     auto out = out_spelling.str();
     std::optional<analysis::Rewriting> rewriting;
-    if(std::ranges::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
+    if(ranges::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the
         // rewritten files' include path holds.
         CanonicalPath canonical_out(out_spelling);

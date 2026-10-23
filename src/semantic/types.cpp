@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Parts of this file (deduced_type and its helpers) are ported from
 /// clangd's AST.cpp (llvmorg-21.1.8), part of the LLVM project, licensed
 /// under Apache License v2.0 with LLVM Exceptions. See
@@ -274,7 +274,7 @@ auto deduced_param_type(const clang::ParmVarDecl* param, clang::TemplateTypeParm
 
     auto* params = template_decl->getTemplateParameters();
     auto parameters = params->asArray();
-    auto* found = std::ranges::find(parameters, written.getDecl());
+    auto* found = ranges::find(parameters, written.getDecl());
     assert(found != params->end() && "auto TTP is not from enclosing function?");
 
     // The helper keeps its clangd signature, which speaks mutable pointers;

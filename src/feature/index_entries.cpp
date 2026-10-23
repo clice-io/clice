@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -18,12 +18,11 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
         return true;
     });
     auto written = entries.occurrences;
-    std::ranges::sort(written, {}, [](const index::Occurrence& o) { return o.range.begin; });
+    ranges::sort(written, {}, [](const index::Occurrence& o) { return o.range.begin; });
     auto nested = [&](LocalSourceRange range) {
-        auto it =
-            std::ranges::upper_bound(written, range.begin, {}, [](const index::Occurrence& o) {
-                return o.range.begin;
-            });
+        auto it = ranges::upper_bound(written, range.begin, {}, [](const index::Occurrence& o) {
+            return o.range.begin;
+        });
         return it != written.begin() && std::prev(it)->range.contains(range) &&
                std::prev(it)->range != range;
     };

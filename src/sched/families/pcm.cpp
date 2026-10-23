@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
@@ -40,7 +40,7 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
         });
         return up;
     };
-    return *std::ranges::min_element(providers, {}, [&](Fid provider) {
+    return *ranges::min_element(providers, {}, [&](Fid provider) {
         return std::pair(distance(provider), llvm::StringRef(files.resolve(provider)));
     });
 }
@@ -278,7 +278,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         imports.push_back('\0');
     }
     auto safe_module_name = module_name;
-    std::ranges::replace(safe_module_name, ':', '-');
+    ranges::replace(safe_module_name, ':', '-');
     auto pcm_key = std::format("{}-{}",
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
@@ -355,7 +355,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
-        [&](const kota::ipc::Error& error) {
+        [&](const ipc::Error& error) {
             build_crashes.insert_or_assign(path_id, Crash{content, error});
         });
 
@@ -422,7 +422,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 std::optional<PCMFamily::BuildFailure> PCMFamily::build_failure(Fid module) const {
     BuildFailure failure;
     for(auto current = module;;) {
-        if(auto seen = std::ranges::find(failure.chain, current); seen != failure.chain.end()) {
+        if(auto seen = ranges::find(failure.chain, current); seen != failure.chain.end()) {
             failure.cycle = seen - failure.chain.begin();
             return failure;
         }
@@ -469,7 +469,7 @@ std::uint64_t PCMFamily::content_hash(Fid module) {
     return seen ? seen->hash : 0;
 }
 
-const kota::ipc::Error* PCMFamily::crashed(Fid module) {
+const ipc::Error* PCMFamily::crashed(Fid module) {
     auto it = build_crashes.find(module);
     if(it == build_crashes.end()) {
         return nullptr;
@@ -514,13 +514,13 @@ bool PCMFamily::revalidate_blobs() {
     // a round is what rebuilds an import first.
     for(bool marked = true; marked;) {
         marked = false;
-        for(auto pid: std::views::transform(project.pcm_builds,
-                                            [](auto& entry) -> auto& { return entry.first; })) {
+        for(auto pid: views::transform(project.pcm_builds,
+                                       [](auto& entry) -> auto& { return entry.first; })) {
             auto id = node(pid);
             if(!graph.has_node(id) || graph.is_dirty(id)) {
                 continue;
             }
-            if(std::ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
+            if(ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
                    return dep.family == Family::PCM && !is_unresolved(dep) && graph.is_dirty(dep);
                })) {
                 graph.mark_dirty(id);
@@ -575,7 +575,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
             waits.push_back(graph.request(node(dep), {.foreground = true}));
         }
         auto results = co_await kota::when_all(std::move(waits));
-        if(std::ranges::contains(results, JoinOutcome::Shutdown)) {
+        if(ranges::contains(results, JoinOutcome::Shutdown)) {
             co_return std::nullopt;
         }
     }

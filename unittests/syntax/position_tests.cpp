@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -22,7 +22,7 @@ std::string at(const PositionMap& map, std::uint32_t offset, PositionEncoding en
     return position ? std::format("{}:{}", position->line, position->character) : "none";
 }
 
-kota::ipc::protocol::Position point(std::uint32_t line, std::uint32_t character) {
+protocol::Position point(std::uint32_t line, std::uint32_t character) {
     return {.line = line, .character = character};
 }
 
@@ -31,8 +31,8 @@ ZEST_SUITE(PositionMap) {
 /// "xé😀y\n": é is two bytes and one unit of either kind, 😀 four bytes, a
 /// UTF-16 surrogate pair and one code point.
 std::string_view content = "x\xC3\xA9\xF0\x9F\x98\x80y\n";
-std::vector<std::uint32_t> lines = kota::ipc::lsp::line_starts(content);
-std::vector<std::uint64_t> non_ascii = kota::ipc::lsp::non_ascii_lines(content);
+std::vector<std::uint32_t> lines = lsp::line_starts(content);
+std::vector<std::uint64_t> non_ascii = lsp::non_ascii_lines(content);
 
 ZEST_CASE(EncodingColumns) {
     PositionMap read(content, lines);
@@ -82,7 +82,7 @@ ZEST_CASE(ReversedRange) {
 /// between them and an edit past the line's end lands before the '\r'.
 ZEST_CASE(CRLFLineEnd) {
     llvm::StringRef text = "int a\r\n;\n";
-    auto starts = kota::ipc::lsp::line_starts(text);
+    auto starts = lsp::line_starts(text);
     std::vector<std::uint64_t> crlf = {1};
     PositionMap read(text, starts);
     PositionMap sized(static_cast<std::uint32_t>(text.size()), starts, crlf);
@@ -99,7 +99,7 @@ ZEST_CASE(CRLFLineEnd) {
 
 ZEST_CASE(LoneCRIsText) {
     llvm::StringRef text = "a\rb\n";
-    auto starts = kota::ipc::lsp::line_starts(text);
+    auto starts = lsp::line_starts(text);
     PositionMap map(text, starts);
     ZEXPECT(at(map, 2, UTF16) == "0:2");
     ZEXPECT(map.line_bounds(0) == std::optional(LocalSourceRange{0, 3}));

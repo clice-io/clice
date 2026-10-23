@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:unittests.utils.index_internals;
 
@@ -61,7 +61,7 @@ struct IndexInternals {
     /// Whether the file records the manifests derive (contributions, absent
     /// lookups, importers) hold no entry of any unit.
     static bool derived_tables_empty(const index::ProjectIndex& index) {
-        return std::ranges::all_of(index.dependent_records.changed, [](const auto& entry) {
+        return ranges::all_of(index.dependent_records.changed, [](const auto& entry) {
             return !entry.second || entry.second->empty();
         });
     }

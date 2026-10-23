@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -105,7 +105,7 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     auto ticket = pending->ticket;
     auto& waits = attempt_waits[server_path_id];
     auto it =
-        std::ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
+        ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
     if(it == waits.end()) {
         waits.push_back({ticket, std::make_shared<kota::event>()});
         it = waits.end() - 1;
@@ -129,8 +129,8 @@ void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
         }
     }
     it->second.erase(
-        std::ranges::remove_if(it->second,
-                               [&](const AttemptWait& wait) { return wait.ticket <= ticket; })
+        ranges::remove_if(it->second,
+                          [&](const AttemptWait& wait) { return wait.ticket <= ticket; })
             .begin(),
         it->second.end());
     if(it->second.empty()) {
@@ -173,7 +173,7 @@ kota::task<> IndexPump::stop() {
     // Cancelled tasks unwind before their finish bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
     for(auto& waits:
-        std::views::transform(attempt_waits, [](auto& entry) -> auto& { return entry.second; })) {
+        views::transform(attempt_waits, [](auto& entry) -> auto& { return entry.second; })) {
         for(auto& wait: waits) {
             wait.event->set();
         }

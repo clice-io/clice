@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -277,8 +277,8 @@ ZEST_CASE(ClangJobCleaned, skip = Windows) {
     auto argv = f.resolve(add("dir/a.cpp", {driver.c_str()}));
 
     ZEXPECT(contains(argv, "-fmodules-reduced-bmi"));
-    ZEXPECT(std::ranges::count(argv, "-fsyntax-only"sv) == 1);
-    ZEXPECT(std::ranges::count(argv, "-main-file-name"sv) == 1);
+    ZEXPECT(ranges::count(argv, "-fsyntax-only"sv) == 1);
+    ZEXPECT(ranges::count(argv, "-main-file-name"sv) == 1);
     ZEXPECT(adjacent(argv, "-main-file-name", "a.cpp"));
     for(llvm::StringRef arg: argv) {
         ZEXPECT(arg != "-E");

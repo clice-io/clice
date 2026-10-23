@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -82,7 +82,7 @@ int use() { return 1; }
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     auto blob = tu_index_blob(index::TUIndex::from_bytes(indexed.data));
-    auto header_path = std::ranges::find_if(blob.paths, [](const std::string& path) {
+    auto header_path = ranges::find_if(blob.paths, [](const std::string& path) {
         return llvm::StringRef(path).ends_with("shared.h");
     });
     ZASSERT(header_path != blob.paths.end());
@@ -266,7 +266,7 @@ ZEST_CASE(KnownVariantsFromManifest) {
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     std::vector<std::uint64_t> expected = project.index.shard(header_id)->variants();
     expected.append_range(project.index.shard(a_id)->variants());
-    std::ranges::sort(expected);
+    ranges::sort(expected);
     ZEXPECT(project.index.known_variants(a_id, project.dep_graph.include_closure(a_id)) ==
             expected);
 
@@ -459,7 +459,7 @@ ZEST_CASE(IncludeResolutionsPerUnit) {
             found.push_back(
                 llvm::sys::path::filename(llvm::sys::path::parent_path(edge.target)).str());
         }
-        std::ranges::sort(found);
+        ranges::sort(found);
         return found;
     };
     ZEXPECT(targets() == std::vector<std::string>{"a", "b"});
@@ -539,7 +539,7 @@ ZEST_CASE(AbsentSpellingsOnePlace) {
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto manifest = *f.project.index.manifest(tu);
     auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
-    ZASSERT(std::ranges::count_if(manifest.absent, [&](VersionID version) {
+    ZASSERT(ranges::count_if(manifest.absent, [&](VersionID version) {
                 return f.project.file_table.version(version).fid == place;
             }) == 1);
 }
@@ -840,7 +840,7 @@ void a() {}
     f.project.index.for_each_file_of_local(*print, id("a.h"), [&](Fid file) {
         reached.push_back(file);
     });
-    ZEXPECT(std::ranges::contains(reached, id("box.h")));
+    ZEXPECT(ranges::contains(reached, id("box.h")));
 }
 
 ZEST_CASE(GoneKeyReruns) {

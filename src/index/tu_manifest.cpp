@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -187,8 +187,8 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     if(root.instantiation_uses.size() != root.instantiation_files.size() ||
-       std::ranges::any_of(root.instantiation_uses,
-                           [](std::uint64_t use) { return reserved_key(use); })) {
+       ranges::any_of(root.instantiation_uses,
+                      [](std::uint64_t use) { return reserved_key(use); })) {
         return std::nullopt;
     }
     for(std::uint32_t i = 0; i < root.instantiation_files.size(); i += 1) {

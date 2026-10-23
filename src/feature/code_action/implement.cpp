@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -43,7 +43,7 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
     std::string declarator;
     llvm::raw_string_ostream os(declarator);
     os << display::name_of(method, {.qualified = false}) << '(';
-    for(auto [index, param]: std::views::enumerate(method->parameters())) {
+    for(auto [index, param]: views::enumerate(method->parameters())) {
         if(index) {
             os << ", ";
         }
@@ -116,7 +116,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
                 if(!final.Method->isPureVirtual() || final.Method->getParent() == record) {
                     continue;
                 }
-                auto* group = std::ranges::find_if(groups, [&](const auto& group) {
+                auto* group = ranges::find_if(groups, [&](const auto& group) {
                     return group.front()->getDeclName() == final.Method->getDeclName() &&
                            context.hasSameFunctionTypeIgnoringExceptionSpec(
                                group.front()->getType(),
@@ -124,7 +124,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
                 });
                 if(group == groups.end()) {
                     groups.emplace_back().push_back(final.Method);
-                } else if(!std::ranges::contains(*group, final.Method)) {
+                } else if(!ranges::contains(*group, final.Method)) {
                     group->push_back(final.Method);
                 }
             }
@@ -135,9 +135,9 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
     // keeps it private); the sections go public, protected, private.
     std::vector<Member> members;
     for(const auto& group: groups) {
-        auto specs = std::views::transform(group, requires_noexcept);
-        bool is_nothrow = std::ranges::contains(specs, std::optional(true));
-        if(!is_nothrow && std::ranges::contains(specs, std::optional<bool>())) {
+        auto specs = views::transform(group, requires_noexcept);
+        bool is_nothrow = ranges::contains(specs, std::optional(true));
+        if(!is_nothrow && ranges::contains(specs, std::optional<bool>())) {
             continue;
         }
         // The bases may spell the signature differently, not all of them
@@ -152,7 +152,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
     if(members.empty()) {
         return;
     }
-    std::ranges::stable_sort(members, [](const Member& left, const Member& right) {
+    ranges::stable_sort(members, [](const Member& left, const Member& right) {
         return left.access < right.access;
     });
     if(auto edit = insert_members(unit, record, members)) {

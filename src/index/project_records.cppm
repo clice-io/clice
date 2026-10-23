@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The records the project index keeps in the database besides shards,
 /// instantiation shards and manifests, decoded: the header, a file's

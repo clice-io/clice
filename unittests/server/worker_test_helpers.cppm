@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -47,7 +47,7 @@ inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
             held.set();
         }
     });
-    if(std::ranges::none_of(probe.gates(), [&](const BuildProbe::Gate& gate) {
+    if(ranges::none_of(probe.gates(), [&](const BuildProbe::Gate& gate) {
            return gate.id == id && gate.parked;
        })) {
         co_await held.wait();
@@ -57,8 +57,8 @@ inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
 /// Helper: spawn a worker process and return a BincodePeer connected to it.
 struct WorkerHandle : kota::zest::LoopFixture {
     kota::process proc{};
-    std::unique_ptr<kota::ipc::StreamTransport> transport;
-    std::unique_ptr<kota::ipc::BincodePeer> peer;
+    std::unique_ptr<ipc::StreamTransport> transport;
+    std::unique_ptr<ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
     /// Changes to the environment the worker inherits.
@@ -112,9 +112,9 @@ struct WorkerHandle : kota::zest::LoopFixture {
         }
 
         auto& spawn = *result;
-        transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
-                                                                 std::move(spawn.stdin_pipe));
-        peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
+        transport = std::make_unique<ipc::StreamTransport>(std::move(spawn.stdout_pipe),
+                                                           std::move(spawn.stdin_pipe));
+        peer = std::make_unique<ipc::BincodePeer>(loop, std::move(transport));
         peer->on_notification([this](const worker::GateParkedParams& params) {
             parked_gates.insert(params.id);
             gate_parked.set();

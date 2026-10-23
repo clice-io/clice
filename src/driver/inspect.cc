@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -95,19 +95,19 @@ struct SchemaOptions {
 /// names; the TS side owns any mapping to LSP vocabulary. Text that is not
 /// UTF-8 is written as U+FFFD, as the server writes it to the client.
 struct JsonConfig {
-    constexpr static auto enum_repr = kota::codec::enum_repr::String;
-    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
+    constexpr static auto enum_repr = codec::enum_repr::String;
+    constexpr static auto invalid_utf8 = codec::invalid_utf8::Replace;
 };
 
 struct FileEntry {
     /// The whole-document feature payload, absent when compilation failed
     /// or the feature is marker-driven.
-    std::optional<kota::codec::RawValue> result;
+    std::optional<codec::RawValue> result;
 
     /// Marker-driven payloads, keyed by the names --markers gives: position
     /// features run once per point, range features once per range. A null
     /// value records a position with no result (e.g. hover on whitespace).
-    std::optional<std::map<std::string, kota::codec::RawValue>> markers;
+    std::optional<std::map<std::string, codec::RawValue>> markers;
 
     std::optional<std::string> error;
     std::optional<std::vector<std::string>> diagnostics;
@@ -129,13 +129,13 @@ struct Output {
 };
 
 template <typename T>
-std::optional<kota::codec::RawValue> to_raw_json(const T& value) {
-    auto json = kota::codec::json::to_string<JsonConfig>(value);
+std::optional<codec::RawValue> to_raw_json(const T& value) {
+    auto json = json::to_string<JsonConfig>(value);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return std::nullopt;
     }
-    return kota::codec::RawValue{std::move(*json)};
+    return codec::RawValue{std::move(*json)};
 }
 
 /// Marker payload for hover: the feature-layer reply before the edge —
@@ -143,7 +143,7 @@ std::optional<kota::codec::RawValue> to_raw_json(const T& value) {
 /// symbol range still in byte offsets.
 struct HoverResult {
     std::optional<LocalSourceRange> range;
-    feature::protocol::MarkupKind kind;
+    protocol::MarkupKind kind;
     std::string contents;
 };
 
@@ -186,40 +186,40 @@ struct FeatureSpec {
     llvm::StringRef name;
     llvm::StringRef description;
     Shape shape = Shape::File;
-    std::optional<kota::codec::RawValue> (*run)(const FeatureParams&) = nullptr;
+    std::optional<codec::RawValue> (*run)(const FeatureParams&) = nullptr;
     const FeatureSpec* check = nullptr;
 };
 
-std::optional<kota::codec::RawValue> run_folding_ranges(const FeatureParams& params) {
+std::optional<codec::RawValue> run_folding_ranges(const FeatureParams& params) {
     return to_raw_json(feature::folding_ranges(params.unit));
 }
 
-std::optional<kota::codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
+std::optional<codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
     const auto& options = params.config.semantic_tokens;
     return to_raw_json(feature::named_tokens(feature::semantic_tokens(params.unit, options),
                                              feature::semantic_token_legend(options)));
 }
 
-std::optional<kota::codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
+std::optional<codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
     return to_raw_json(feature::check_semantic_tokens(params.unit, params.config.semantic_tokens));
 }
 
-std::optional<kota::codec::RawValue> run_document_symbols(const FeatureParams& params) {
+std::optional<codec::RawValue> run_document_symbols(const FeatureParams& params) {
     return to_raw_json(feature::document_symbols(params.unit, params.config.document_symbols));
 }
 
-std::optional<kota::codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
+std::optional<codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
     return to_raw_json(
         feature::check_document_symbols(params.unit, params.config.document_symbols));
 }
 
-std::optional<kota::codec::RawValue> run_document_links(const FeatureParams& params) {
+std::optional<codec::RawValue> run_document_links(const FeatureParams& params) {
     return to_raw_json(feature::document_links(params.unit));
 }
 
 struct RawLocation {
     std::string path;
-    kota::ipc::protocol::Range range;
+    protocol::Range range;
 };
 
 struct RawInlayHintPart {
@@ -241,7 +241,7 @@ struct RawInlayHint {
 /// as the server places it, from the unit's own TU index standing in for
 /// the server's — a declaration, else the definition, the focus file's shard
 /// first as an open buffer's is.
-std::optional<kota::codec::RawValue> run_inlay_hints(const FeatureParams& params) {
+std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
     auto& unit = params.unit;
     auto hints = feature::inlay_hints(unit, params.range, params.config.inlay_hints);
 
@@ -300,7 +300,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(const FeatureParams& params
     return to_raw_json(out);
 }
 
-std::optional<kota::codec::RawValue> run_selection_range(const FeatureParams& params) {
+std::optional<codec::RawValue> run_selection_range(const FeatureParams& params) {
     return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
 
@@ -315,7 +315,7 @@ struct RawCodeAction {
 
 /// The index requests resolved as an empty index would: definitions into
 /// the focus file are all kept, no header declares any name.
-std::optional<kota::codec::RawValue> run_code_action(const FeatureParams& params) {
+std::optional<codec::RawValue> run_code_action(const FeatureParams& params) {
     auto& unit = params.unit;
     std::vector<RawCodeAction> out;
     auto path = unit.file_path(unit.focus_file().file());
@@ -349,15 +349,15 @@ std::optional<kota::codec::RawValue> run_code_action(const FeatureParams& params
 /// nullopt = serialization failure; an empty RawValue serializes as null
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
-std::optional<kota::codec::RawValue> run_hover(const FeatureParams& params) {
+std::optional<codec::RawValue> run_hover(const FeatureParams& params) {
     const auto& config = params.config;
     auto info =
         feature::hover_info(params.unit, params.range.begin, config.hover, config.documentation);
     if(!info) {
-        return kota::codec::RawValue{};
+        return codec::RawValue{};
     }
     return to_raw_json(HoverResult{info->symbol_range,
-                                   feature::protocol::MarkupKind::Markdown,
+                                   protocol::MarkupKind::Markdown,
                                    info->present().as_markdown()});
 }
 
@@ -374,7 +374,7 @@ CompilationParams completion_at(const FeatureParams& params) {
     };
 }
 
-std::optional<kota::codec::RawValue> run_code_completion(const FeatureParams& params) {
+std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) {
     const auto& config = params.config;
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
@@ -385,7 +385,7 @@ std::optional<kota::codec::RawValue> run_code_completion(const FeatureParams& pa
             .list);
 }
 
-std::optional<kota::codec::RawValue> run_signature_help(const FeatureParams& params) {
+std::optional<codec::RawValue> run_signature_help(const FeatureParams& params) {
     const auto& config = params.config;
     return to_raw_json(feature::signature_help(completion_at(params),
                                                config.signature_help,
@@ -394,7 +394,7 @@ std::optional<kota::codec::RawValue> run_signature_help(const FeatureParams& par
 
 /// Marker payload for document-highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
-std::optional<kota::codec::RawValue> run_document_highlight(const FeatureParams& params) {
+std::optional<codec::RawValue> run_document_highlight(const FeatureParams& params) {
     auto offset = params.range.begin;
     auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
@@ -510,15 +510,14 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
             std::format("cannot read --markers {}: {}", *markers, text.error().message()));
     }
     auto& [points, ranges] = file.markers;
-    if(auto result = kota::codec::json::from_string<StrictJson>((*text)->getBuffer(), file.markers);
-       !result) {
+    if(auto result = json::from_string<StrictJson>((*text)->getBuffer(), file.markers); !result) {
         return std::unexpected(std::format("invalid --markers: {}", result.error().message));
     }
     if(points.contains("") || ranges.contains("")) {
         return std::unexpected("--markers gives every marker a name");
     }
     // A selection feature answers points and ranges under one name each.
-    for(const auto& name: points | std::views::keys) {
+    for(const auto& name: points | views::keys) {
         if(ranges.contains(name)) {
             return std::unexpected(std::format("--markers names a point and a range {}", name));
         }
@@ -526,8 +525,8 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     auto inside = [&](std::uint32_t offset) {
         return offset <= file.content.size();
     };
-    if(!std::ranges::all_of(points | std::views::values, inside) ||
-       !std::ranges::all_of(ranges | std::views::values, [&](const LocalSourceRange& range) {
+    if(!ranges::all_of(points | views::values, inside) ||
+       !ranges::all_of(ranges | views::values, [&](const LocalSourceRange& range) {
            return range.begin <= range.end && inside(range.end);
        })) {
         return std::unexpected(std::format("--markers puts a marker outside the text of {}", name));
@@ -544,10 +543,10 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 CanonicalPath workspace_of(CanonicalRef start) {
     CanonicalPath workspace = start;
     path::walk_ancestors(start, [&](CanonicalRef dir) {
-        bool marked = std::ranges::any_of(config_file_names,
-                                          [&](llvm::StringRef marker) {
-                                              return vfs::exists(path::join(dir, marker));
-                                          }) ||
+        bool marked = ranges::any_of(config_file_names,
+                                     [&](llvm::StringRef marker) {
+                                         return vfs::exists(path::join(dir, marker));
+                                     }) ||
                       vfs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             workspace = dir;
@@ -569,8 +568,7 @@ auto load_inspected(Project& project, const Options& opts, const Spelling& direc
     auto root = workspace_of(identity);
     project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
     if(opts.config_overlay) {
-        if(auto result =
-               kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
+        if(auto result = json::from_string<StrictJson>(*opts.config_overlay, project.config);
            !result) {
             return std::unexpected(
                 std::format("invalid --config-overlay: {}", result.error().message));
@@ -614,7 +612,7 @@ std::string build_pch(Project& project,
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
     auto self = files.intern(Spelling::absolute(file));
-    bool reads = writer.file == self || std::ranges::any_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = writer.file == self || ranges::any_of(unit->deps(), [&](const DepFile& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
     bool built = unit->has_output() && !reads;
@@ -715,7 +713,7 @@ void run_feature(FileEntry& entry,
         entry.error = "no_markers";
         return;
     }
-    std::map<std::string, kota::codec::RawValue> markers;
+    std::map<std::string, codec::RawValue> markers;
     for(const auto& [name, range]: places) {
         auto value = run(range);
         if(!value) {
@@ -754,7 +752,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         vfs::remove(input.pch.first);
     }
 
-    auto json = kota::codec::json::to_string<JsonConfig>(output);
+    auto json = json::to_string<JsonConfig>(output);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;

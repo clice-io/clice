@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.ast_family;
 
@@ -173,7 +173,7 @@ public:
     /// the crash note shows.
     void record_crash(const std::shared_ptr<Session>& session,
                       std::uint8_t kind,
-                      const kota::ipc::Error& error);
+                      const ipc::Error& error);
 
     /// Push the document's output again: its crash notes changed with no
     /// compile to carry them. A document that never compiled gets an empty

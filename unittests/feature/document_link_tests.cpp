@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -220,7 +220,7 @@ ZEST_CASE(LinksFromEdges) {
     };
 
     SourceText text(content, dialect_of("main.cpp", false));
-    auto links = feature::index_document_links(text, edges);
+    auto links = feature::document_links(text, edges);
     ZASSERT(links.size() == std::size_t(2));
     ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
     ZASSERT(links[0].target == "/tmp/first.h");

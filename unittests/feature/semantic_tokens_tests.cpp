@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Primary semantic-tokens coverage lives in the cases
 /// (tests/semantic_tokens/), which pin both the inspect and the
 /// server path. This file drives the feature layer directly: preamble
@@ -24,9 +24,6 @@ import :unittests.utils.index_entries_tester;
 namespace clice::testing {
 
 namespace {
-
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
 
 struct DecodedToken {
     /// Absolute positions are accumulated in 64 bits so that a broken delta
@@ -80,17 +77,14 @@ void run(llvm::StringRef code) {
 }
 
 protocol::SemanticTokens encode(PositionEncoding encoding) {
-    return feature::semantic_tokens_to_protocol(tokens,
-                                                unit->focus_file().positions(),
-                                                encoding,
-                                                legend);
+    return feature::to_protocol(tokens, unit->focus_file().positions(), encoding, legend);
 }
 
 void EXPECT_TOKEN(llvm::StringRef name,
                   SemanticTokenKind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto expected = range(name);
-    auto it = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+    auto it = ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
         return token.range == expected;
     });
     ZASSERT(it != tokens.end());
@@ -176,7 +170,7 @@ u8"你";
     auto wide = encode(PositionEncoding::UTF16);
     auto length = [&](const protocol::SemanticTokens& encoded) {
         auto decoded = decode_relative_tokens(encoded);
-        auto it = std::ranges::find_if(decoded, [&](const DecodedToken& token) {
+        auto it = ranges::find_if(decoded, [&](const DecodedToken& token) {
             return token.type == string_type && token.length > 2;
         });
         return it == decoded.end() ? 0u : it->length;
@@ -369,7 +363,7 @@ void expect_tokens_match_ast() {
     auto ast =
         feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
     SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));
-    auto from_index = feature::index_semantic_tokens(served, entries, resolver(), {});
+    auto from_index = feature::semantic_tokens(served, entries, resolver(), {});
 
     ZASSERT(from_index.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
@@ -387,7 +381,7 @@ auto tokens_from(llvm::StringRef content,
                  feature::IndexEntries synthetic,
                  llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
     SourceText text(content, lang_opts);
-    return feature::index_semantic_tokens(
+    return feature::semantic_tokens(
         text,
         synthetic,
         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
@@ -532,7 +526,7 @@ ZEST_CASE(ModuleNameComponents) {
 
 /// The kind of the token beginning at `begin`, None without one.
 SemanticTokenKind kind_at(llvm::ArrayRef<feature::SemanticToken> tokens, std::uint32_t begin) {
-    auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+    auto token = ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
         return token.range.begin == begin;
     });
     return token == tokens.end() ? SemanticTokenKind::None : token->kind;
@@ -568,7 +562,7 @@ ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
     auto tokens = tokens_from(content, dialect_of("main.cpp", false, "c++17"), {}, {});
-    ZASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
+    ZASSERT(ranges::none_of(tokens, [](const feature::SemanticToken& token) {
         return token.kind == SemanticTokenKind::Keyword;
     }));
 }

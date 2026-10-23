@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -291,9 +291,8 @@ ZEST_CASE(MergeReportsIndexChanged) {
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     ZASSERT(f.merge(indexed.data));
 
-    ZASSERT(
-        std::ranges::contains(notified,
-                              f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
+    ZASSERT(ranges::contains(notified,
+                             f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
 }
 
 ZEST_CASE(DropReportsServedIndex) {
@@ -317,11 +316,11 @@ ZEST_CASE(DropReportsServedIndex) {
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     index::IndexReport report;
     f.project.index.drop(tu_id, report);
-    ZASSERT(std::ranges::contains(report.index_changed(), tu_id));
-    ZASSERT(std::ranges::contains(report.index_changed(), header_id));
+    ZASSERT(ranges::contains(report.index_changed(), tu_id));
+    ZASSERT(ranges::contains(report.index_changed(), header_id));
 
     f.pump.apply_report(report);
-    ZASSERT(std::ranges::contains(notified, header_id));
+    ZASSERT(ranges::contains(notified, header_id));
 }
 
 ZEST_CASE(RetireReportsIndexChanged) {
@@ -354,7 +353,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     f.save();
 
     ZASSERT(!f.project.index.shard(header_id));
-    ZASSERT(std::ranges::contains(notified, header_id));
+    ZASSERT(ranges::contains(notified, header_id));
 }
 
 ZEST_CASE(BoostRearmsIdleTimer) {

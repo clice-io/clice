@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -88,12 +88,12 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
 
     // Directives are collected grouped by kind; the reply promises
     // document order.
-    std::ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
+    ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
 
     return links;
 }
 
-auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
     -> std::vector<index::DocumentLink> {
     auto positions = source.positions();
 
@@ -110,30 +110,29 @@ auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge>
         links.push_back({.range = *range, .target = edge.target});
     }
 
-    std::ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+    ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
     auto duplicates =
-        std::ranges::unique(links,
-                            [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
-                                return lhs.range == rhs.range && lhs.target == rhs.target;
-                            });
+        ranges::unique(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+            return lhs.range == rhs.range && lhs.target == rhs.target;
+        });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;
 }
 
-auto index_document_links(SourceText& source, const index::IndexQuery& query, Fid file)
+auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink> {
     if(!query.shard_matching(file, source.text())) {
         return {};
     }
-    return index_document_links(source, query.project().include_edges(file));
+    return document_links(source, query.project().include_edges(file));
 }
 
-auto document_links_to_protocol(llvm::ArrayRef<index::DocumentLink> links,
-                                const PositionMap& map,
-                                FileTable& files) -> std::vector<protocol::DocumentLink> {
+auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
+                 const PositionMap& map,
+                 FileTable& files) -> std::vector<protocol::DocumentLink> {
     std::vector<protocol::DocumentLink> result;
     for(const auto& link: links) {
         auto range = map.range(link.range, PositionEncoding::UTF16);

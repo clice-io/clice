@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -42,7 +42,7 @@ llvm::SmallVector<SymbolInfo, 4>
         chain.push_back(std::move(scope));
         return true;
     });
-    std::ranges::reverse(chain);
+    ranges::reverse(chain);
     return chain;
 }
 
@@ -51,10 +51,10 @@ bool covers(const Site& site, const Site& cursor) {
 }
 
 void dedup_sites(std::vector<Site>& sites) {
-    std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
+    ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
         return std::tuple(site_key(lhs), lhs.origin) < std::tuple(site_key(rhs), rhs.origin);
     });
-    auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
+    auto dup = ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
         return site_key(lhs) == site_key(rhs);
     });
     sites.erase(dup.begin(), dup.end());
@@ -167,7 +167,7 @@ void add_resolved(const InstantiationShard& shard,
         if(!named) {
             named = Named{.range = record.range};
         }
-        if(!std::ranges::contains(named->symbols, record.target)) {
+        if(!ranges::contains(named->symbols, record.target)) {
             named->symbols.push_back(record.target);
         }
         return true;
@@ -498,15 +498,15 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     std::unique_ptr<llvm::MemoryBuffer> kept;
     auto separates = [&](const Named& named) {
         if(named.range.begin != offset || named.range.length() > 2 ||
-           std::ranges::any_of(named.symbols, [&](SymbolHash hash) {
+           ranges::any_of(named.symbols, [&](SymbolHash hash) {
                auto info = symbol_info(hash, file);
                return info && name_form(info->flags) == NameForm::Operator;
            })) {
             return false;
         }
         auto text = source_text(*source, kept);
-        return text && std::ranges::contains(std::array{":", "=", "&&", "||", "?"},
-                                             text->slice(named.range.begin, named.range.end));
+        return text && ranges::contains(std::array{":", "=", "&&", "||", "?"},
+                                        text->slice(named.range.begin, named.range.end));
     };
     auto hit = [&](const Shard& shard) {
         auto named = named_at(shard, offset, is_macro);

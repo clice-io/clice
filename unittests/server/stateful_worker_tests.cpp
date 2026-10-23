@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -71,7 +71,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         cp.pcms = {};
 
         kota::cancellation_source source;
-        kota::ipc::request_options opts;
+        ipc::request_options opts;
         opts.token = source.token();
 
         bool first_failed = false;
@@ -96,7 +96,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         // handler's frame unwinds).
         cp.version = 2;
         cp.text = "int done;\n";
-        kota::ipc::request_options retry_opts;
+        ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here,
         // attributably, rather than the whole run at its timeout.
         retry_opts.timeout = std::chrono::milliseconds(30'000);
@@ -263,7 +263,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         qp.path = src;
 
         kota::cancellation_source source;
-        kota::ipc::request_options opts;
+        ipc::request_options opts;
         opts.token = source.token();
 
         kota::task_group<> group;
@@ -274,7 +274,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         source.cancel();
         co_await group.join();
 
-        kota::ipc::request_options retry_opts;
+        ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here.
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(qp, retry_opts);

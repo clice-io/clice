@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The call graph and the type hierarchy around a symbol, and the functions
 /// enclosing sites.
@@ -13,8 +13,6 @@ import :index.site;
 import :index.symbol;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The qualified name of the function whose definition holds each site,
 /// the innermost; empty where none does. A function's own name lies in

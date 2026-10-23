@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.context_service;
 
@@ -12,8 +12,6 @@ import :server.session;
 import :server.session_store;
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
 
 /// How many errors name what an includer would have provided: an
 /// undeclared name, a missing member or template of a namespace, a call to

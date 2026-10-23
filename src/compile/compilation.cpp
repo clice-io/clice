@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -445,7 +445,7 @@ private:
 /// was built under, which conflict with the unit's own — not for its
 /// bytes, a failure the master must still see to retract the PCH.
 static bool refused_for_options(CompilationUnit& unit) {
-    return std::ranges::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
+    return ranges::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
         if(diag.id.source != DiagnosticSource::Clang) {
             return false;
         }

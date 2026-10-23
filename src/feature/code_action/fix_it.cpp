@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -42,7 +42,7 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
     } else {
         return diagnostic.message;
     }
-    std::ranges::replace(title, '\n', ' ');
+    ranges::replace(title, '\n', ' ');
     return title;
 }
 
@@ -77,7 +77,7 @@ std::vector<TextReplacement> fix_edits(CompilationUnit& unit,
     // Only a removal leaves anything dangling: cleaning up after a mere
     // replacement drops the comma of an empty macro argument on its line.
     if(main.id.source != DiagnosticSource::ClangTidy ||
-       std::ranges::none_of(edits, [](const TextReplacement& edit) { return edit.text.empty(); })) {
+       ranges::none_of(edits, [](const TextReplacement& edit) { return edit.text.empty(); })) {
         return edits;
     }
     return cleanup_edits(unit.file_path(unit.focus_file().file()),

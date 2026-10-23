@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:index.query;
 
@@ -121,7 +121,7 @@ public:
 
     /// The files whose indexes were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const {
-        return std::ranges::to<llvm::SmallVector<Fid>>(withheld_files);
+        return ranges::to<llvm::SmallVector<Fid>>(withheld_files);
     }
 
     FreshnessOptions options;
@@ -199,7 +199,7 @@ inline auto site_key(const Site& site) {
 }
 
 inline bool is_function(SymbolKind kind) {
-    return std::ranges::contains(
+    return ranges::contains(
         std::array<SymbolKind, 3>{SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
         kind);
 }

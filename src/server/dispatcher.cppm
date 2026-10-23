@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.dispatcher;
 
@@ -17,8 +17,6 @@ import :worker.pool;
 
 namespace clice {
 
-namespace protocol = kota::ipc::protocol;
-
 /// LSP's ContentModified: the request's answer would describe a buffer the
 /// client already moved past. Clients keep what they have and re-pull —
 /// unlike a null, which a client is entitled to read as "there is nothing"
@@ -26,7 +24,7 @@ namespace protocol = kota::ipc::protocol;
 constexpr inline auto content_modified_code =
     static_cast<protocol::integer>(protocol::LSPErrorCodes::ContentModified);
 
-kota::ipc::Error content_modified();
+ipc::Error content_modified();
 
 /// The document side of talking to workers. Every request that carries an
 /// open document's content to a worker — or asks the worker holding its
@@ -48,7 +46,7 @@ class Dispatcher {
 public:
     Dispatcher(Project& project, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
 
-    using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
+    using RawResult = kota::task<codec::RawValue, ipc::Error>;
 
     /// An AST query to the stateful worker holding the file's AST, once the
     /// family compiled it. Position-sensitive queries (hover) pass a
@@ -67,7 +65,7 @@ public:
 
     /// The inlay hints of the open file's AST within `range` of the buffer
     /// the ticket was taken on.
-    kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
+    kota::task<std::vector<feature::InlayHint>, ipc::Error>
         inlay_hints(const Ticket& ticket,
                     const protocol::Range& range,
                     kota::cancellation_token token = {});
@@ -75,30 +73,30 @@ public:
     /// The focus file's document links from the stateful worker holding the
     /// AST; the preamble's live in the PCH's TU index (see
     /// PCHState::load_state).
-    kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
+    kota::task<std::vector<index::DocumentLink>, ipc::Error>
         document_links(const Ticket& ticket, kota::cancellation_token token = {});
 
     /// The folding ranges from the stateful worker holding the AST, none
     /// without one.
-    kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
+    kota::task<std::optional<std::vector<feature::FoldingRange>>, ipc::Error>
         folding_ranges(const Ticket& ticket, kota::cancellation_token token = {});
 
-    kota::task<std::optional<std::vector<feature::DocumentSymbol>>, kota::ipc::Error>
+    kota::task<std::optional<std::vector<feature::DocumentSymbol>>, ipc::Error>
         document_symbols(const Ticket& ticket, kota::cancellation_token token = {});
 
-    kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>
+    kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>
         semantic_tokens(const Ticket& ticket, kota::cancellation_token token = {});
 
     /// The selection ranges around offsets of the buffer from the stateful
     /// worker holding the AST, none without one.
-    kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
+    kota::task<std::vector<std::vector<LocalSourceRange>>, ipc::Error>
         selection_ranges(const Ticket& ticket,
                          std::vector<std::uint32_t> offsets,
                          kota::cancellation_token token = {});
 
     /// The code actions on a range of the buffer, from the stateful worker
     /// holding the AST; index requests come back unresolved.
-    kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
+    kota::task<std::vector<feature::CodeAction>, ipc::Error>
         code_actions(const Ticket& ticket,
                      const protocol::Range& range,
                      kota::cancellation_token token = {});
@@ -106,7 +104,7 @@ public:
     /// The interactive stateless builds: the buffer and its compile inputs
     /// go to a stateless worker, which compiles a buffer state the shared
     /// AST round may not have seen yet.
-    kota::task<worker::CompletionResult, kota::ipc::Error>
+    kota::task<worker::CompletionResult, ipc::Error>
         completion(const Ticket& ticket,
                    const protocol::Position& position,
                    const feature::CompletionClient& client,
@@ -129,7 +127,7 @@ private:
     /// (document links, folding ranges, code actions): the compile, the gate, the send
     /// and the finish; a missing AST answers an empty result.
     template <typename Params>
-    kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+    kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         typed(const Ticket& ticket,
               EvidenceKind kind,
               llvm::StringRef label,
@@ -140,7 +138,7 @@ private:
     /// quarantine passage, different IPC type, evidence slot and label.
     /// `wp` arrives with the fields particular to its request filled in.
     template <typename Params>
-    kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+    kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         interactive(std::uint8_t evidence,
                     llvm::StringRef label,
                     const Ticket& ticket,

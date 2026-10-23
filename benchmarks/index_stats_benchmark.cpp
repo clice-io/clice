@@ -22,7 +22,7 @@
 
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -99,7 +99,7 @@ struct Dist {
     }
 
     void finalize() {
-        std::ranges::sort(samples);
+        ranges::sort(samples);
     }
 
     std::uint64_t pct(double p) const {
@@ -356,7 +356,7 @@ struct Stats {
             }
             std::uint64_t parent_hash = tu.content_hash(parent_path_id);
 
-            std::ranges::sort(list, [&](auto& a, auto& b) {
+            ranges::sort(list, [&](auto& a, auto& b) {
                 if(a.first != b.first) {
                     return a.first < b.first;
                 }
@@ -1091,9 +1091,9 @@ extern "C++" int main(int argc, const char** argv) {
             }
             sized.emplace_back(size, path);
         }
-        std::ranges::stable_sort(sized, std::greater{}, [](auto& pair) { return pair.first; });
+        ranges::stable_sort(sized, std::greater{}, [](auto& pair) { return pair.first; });
         files.clear();
-        for(auto& [size, path]: sized | std::views::take(*opts.limit)) {
+        for(auto& [size, path]: sized | views::take(*opts.limit)) {
             files.push_back(path);
         }
     }

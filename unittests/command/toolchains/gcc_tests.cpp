@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -77,8 +77,8 @@ End of search list.
 LIBRARY_PATH=/usr/lib/gcc/arm-none-eabi/13.2.1/thumb/v7e-m+fp/hard/:/usr/lib/gcc/arm-none-eabi/13.2.1/:/usr/lib/gcc/arm-none-eabi/13.2.1/../../../arm-none-eabi/lib/)";
     auto output = parse_gcc_style_output("#define __STDC_VERSION__ 201710L", err);
     ZEXPECT(output.private_dir == std::optional<std::size_t>(1));
-    ZEXPECT(std::ranges::contains(output.gcc_options, "-D__USES_INITFINI__"));
-    ZEXPECT(std::ranges::contains(output.gcc_options, "-mthumb"));
+    ZEXPECT(ranges::contains(output.gcc_options, "-D__USES_INITFINI__"));
+    ZEXPECT(ranges::contains(output.gcc_options, "-mthumb"));
     ZEXPECT(output.standard == "gnu17");
 }
 
@@ -268,7 +268,7 @@ LIBRARY_PATH={4}/)",
     /// The command names no standard: the one GCC compiles in.
     ZEXPECT(contains(argv, "-std=gnu++14"));
     /// Debug info stays out of the parse.
-    ZEXPECT(!std::ranges::any_of(argv, [](llvm::StringRef arg) {
+    ZEXPECT(!ranges::any_of(argv, [](llvm::StringRef arg) {
         return arg.starts_with("-debug-info-kind");
     }));
 

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -40,7 +40,7 @@ ZEST_CASE(FileSetForms) {
             std::vector<std::uint8_t> bytes;
             index::append_file_set(bytes, set);
             read = index::read_file_set(bytes);
-            std::ranges::fill(bytes, 0xff);
+            ranges::fill(bytes, 0xff);
         }
         ZASSERT(read);
         ZEXPECT(*read == set);
@@ -212,7 +212,7 @@ ZEST_CASE(SymbolBytesChecked) {
         index::write_varint(varint, value);
         auto changed = bytes;
         changed.erase(changed.begin() + at);
-        for(auto byte: std::views::reverse(varint)) {
+        for(auto byte: views::reverse(varint)) {
             changed.insert(changed.begin() + at, std::byte(byte));
         }
         return index::decode_symbol(as_chars(changed));

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -18,8 +18,6 @@ import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
-
-namespace lsp = kota::ipc::lsp;
 
 namespace {
 
@@ -79,11 +77,10 @@ bool dominated(const clang::FunctionDecl* method, const clang::FunctionDecl* bet
         return false;
     }
     auto& context = method->getASTContext();
-    return std::ranges::all_of(std::views::zip(method->parameters(), better->parameters()),
-                               [&](auto pair) {
-                                   auto [lhs, rhs] = pair;
-                                   return context.hasSameType(lhs->getType(), rhs->getType());
-                               });
+    return ranges::all_of(views::zip(method->parameters(), better->parameters()), [&](auto pair) {
+        auto [lhs, rhs] = pair;
+        return context.hasSameType(lhs->getType(), rhs->getType());
+    });
 }
 
 /// The declaration a candidate shows as: a function template's
@@ -110,7 +107,7 @@ void place_implicit(
         const auto* function = candidate.getFunction();
         return function && function->isImplicit() && llvm::isa<clang::CXXConstructorDecl>(function);
     };
-    if(std::ranges::none_of(candidates, implicit)) {
+    if(ranges::none_of(candidates, implicit)) {
         return;
     }
     auto rank = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
@@ -128,7 +125,7 @@ void place_implicit(
                : constructor->isMoveConstructor()  ? 3
                                                    : 0;
     };
-    std::ranges::stable_sort(candidates, [&](const auto& left, const auto& right) {
+    ranges::stable_sort(candidates, [&](const auto& left, const auto& right) {
         return rank(left) < rank(right);
     });
 }
@@ -143,7 +140,7 @@ std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function)
         return {};
     }
     auto params = pattern->parameters();
-    auto pack = std::ranges::find_if(params, [](auto* param) { return param->isParameterPack(); });
+    auto pack = ranges::find_if(params, [](auto* param) { return param->isParameterPack(); });
     if(pack == params.end()) {
         return {};
     }
@@ -222,7 +219,7 @@ public:
                                    bool braced) final {
         if(forwarding) {
             // The standard library reaches only public constructors.
-            for(auto& candidate: std::ranges::subrange(candidates, candidates + candidate_count)) {
+            for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
                 auto* constructor = candidate.getFunction();
                 if(constructor->getAccess() == clang::AS_public) {
                     add_forwarded(*shown(constructor), [&](Signature& signature) {
@@ -242,9 +239,9 @@ public:
             place_implicit({candidates, candidate_count});
         }
         llvm::SmallVector<const clang::FunctionDecl*> listed;
-        for(auto& candidate: std::ranges::subrange(candidates, candidates + candidate_count)) {
+        for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
             if(auto* function = candidate.getFunction()) {
-                if(ranked && std::ranges::any_of(listed, [&](auto* better) {
+                if(ranked && ranges::any_of(listed, [&](auto* better) {
                        return dominated(function, better);
                    })) {
                     continue;
@@ -420,7 +417,7 @@ private:
             if(!name.empty()) {
                 names.push_back(name.str());
                 for(const auto* named: decls::named_parameters(function, index)) {
-                    if(!std::ranges::contains(names, named->getName())) {
+                    if(!ranges::contains(names, named->getName())) {
                         names.push_back(named->getName().str());
                     }
                 }
@@ -513,7 +510,7 @@ private:
         auto params = shown(&function)->parameters();
         if(!name || !function.getTemplateSpecializationArgs() || params.empty() ||
            !params.back()->isParameterPack() ||
-           std::ranges::any_of(params.drop_back(), [&](auto* param) {
+           ranges::any_of(params.drop_back(), [&](auto* param) {
                return sema.isStdInitializerList(param->getType().getNonReferenceType(), nullptr);
            })) {
             return {};
@@ -536,8 +533,8 @@ private:
             target = alias->getUnderlyingType();
         } else {
             if(!function.isInStdNamespace() ||
-               !std::ranges::contains(std::array{"make_unique", "make_shared", "allocate_shared"},
-                                      name->getName())) {
+               !ranges::contains(std::array{"make_unique", "make_shared", "allocate_shared"},
+                                 name->getName())) {
                 return {};
             }
             // The call names the class in its first template argument.
@@ -572,7 +569,7 @@ private:
         // then holds no type for some argument, or one for an argument not
         // written yet.
         auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
-        auto pack = std::ranges::find_if(template_arguments, [](const auto& argument) {
+        auto pack = ranges::find_if(template_arguments, [](const auto& argument) {
             return argument.getKind() == clang::TemplateArgument::Pack;
         });
         if(pack->pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
@@ -751,7 +748,7 @@ void document(protocol::SignatureInformation& signature,
     auto claim = [&](protocol::ParameterInformation& parameter,
                      llvm::ArrayRef<std::string> written) {
         for(const auto& name: written) {
-            for(auto [index, param]: std::views::enumerate(doc.params)) {
+            for(auto [index, param]: views::enumerate(doc.params)) {
                 if(!claimed[index] && param.name == name && !param.text.empty()) {
                     claimed[index] = true;
                     parameter.documentation = param.text;
@@ -762,8 +759,8 @@ void document(protocol::SignatureInformation& signature,
         }
     };
     if(signature.parameters) {
-        assert(std::ranges::size(*signature.parameters) == std::ranges::size(names));
-        for(auto [parameter, written]: std::views::zip(*signature.parameters, names)) {
+        assert(ranges::size(*signature.parameters) == ranges::size(names));
+        for(auto [parameter, written]: views::zip(*signature.parameters, names)) {
             claim(parameter, written);
         }
     }
@@ -917,8 +914,8 @@ auto signature_help(CompilationParams params,
     }
 
     if(options.documentation) {
-        assert(std::ranges::size(help.signatures) == std::ranges::size(sources));
-        for(auto [signature, source]: std::views::zip(help.signatures, sources)) {
+        assert(ranges::size(help.signatures) == ranges::size(sources));
+        for(auto [signature, source]: views::zip(help.signatures, sources)) {
             if(source.decl) {
                 document(signature,
                          feature::documentation(*unit, source.decl, documentation),
@@ -935,9 +932,8 @@ auto signature_help(CompilationParams params,
 
     // The overload the client shows stays active while it is listed: the
     // user may have picked it over the one Sema ranks first.
-    auto kept = std::ranges::find_if(help.signatures, [&](const auto& signature) {
-        return signature.label == selected;
-    });
+    auto kept = ranges::find_if(help.signatures,
+                                [&](const auto& signature) { return signature.label == selected; });
     if(kept != help.signatures.end()) {
         help.active_signature = kept - help.signatures.begin();
     }

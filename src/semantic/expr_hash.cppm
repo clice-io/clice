@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// Expression profiling for declaration identity: a port of clang's
 /// StmtProfiler (clang/lib/AST/StmtProfile.cpp, LLVM 23.1.1) restricted to

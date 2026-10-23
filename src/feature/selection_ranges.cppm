@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.selection_ranges;
 
@@ -9,8 +9,6 @@ import :syntax.position;
 import :syntax.source_text;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The ranges an expanding selection steps through from each offset of the
 /// focus file, innermost first, each strictly containing the one before:
@@ -27,8 +25,8 @@ auto lexical_selection_ranges(SourceText& source, llvm::ArrayRef<std::uint32_t> 
     -> std::vector<std::vector<LocalSourceRange>>;
 
 /// Protocol encoding of one offset's ranges as a chain of parents.
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding) -> protocol::SelectionRange;
+auto to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::SelectionRange;
 
 }  // namespace clice::feature

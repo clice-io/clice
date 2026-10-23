@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.session_store;
 
@@ -8,8 +8,6 @@ import :server.session;
 import :vfs.file_table;
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The table of open documents plus the buffer-synchronization logic: the
 /// single owner of editor buffer truth. Every didOpen/didChange edit arrives

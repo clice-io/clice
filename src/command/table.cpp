@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -15,8 +15,6 @@ import :vfs.path;
 namespace clice {
 
 namespace {
-
-namespace ranges = std::ranges;
 
 /// Version salt of the persistent command identity: command hashes change
 /// wholesale on schema changes even when old and new renders happen to
@@ -56,7 +54,7 @@ bool cxx_driver(const Command& command) {
     if(command.subcommand) {
         return llvm::StringRef(command.subcommand) == "c++";
     }
-    for(auto& arg: std::views::reverse(command.args)) {
+    for(auto& arg: views::reverse(command.args)) {
         if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
             return llvm::StringRef(arg.values[0]) == "g++";
         }

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.session;
 
@@ -131,7 +131,7 @@ struct Session {
     /// FIXME: held on the session, the suspicion is lost when the document
     /// closes during the retry (its next open crashes once more), and a retry
     /// finishing on edited text books the crash there: the pass waits one more edit.
-    std::optional<kota::ipc::Error> tidy_crash;
+    std::optional<ipc::Error> tidy_crash;
 };
 
 /// A request's hold on the buffer it was asked about: the generation

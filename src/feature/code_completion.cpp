@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -259,11 +259,9 @@ bool hidden_tag(const clang::TagDecl* tag) {
     if(!tag->getDeclName() || !scope->isFileContext()) {
         return false;
     }
-    return std::ranges::any_of(scope->lookup(tag->getDeclName()),
-                               [](const clang::NamedDecl* found) {
-                                   return found->isInIdentifierNamespace(
-                                       clang::Decl::IDNS_Ordinary);
-                               });
+    return ranges::any_of(scope->lookup(tag->getDeclName()), [](const clang::NamedDecl* found) {
+        return found->isInIdentifierNamespace(clang::Decl::IDNS_Ordinary);
+    });
 }
 
 /// The place of each field a designator in an initializer of `record`
@@ -304,7 +302,7 @@ auto base_access(const clang::CXXRecordDecl* derived, const clang::CXXRecordDecl
     if(!derived->lookupInBases(reaches, paths, /*LookupInDependent=*/true)) {
         return std::nullopt;
     }
-    return std::ranges::min_element(paths, {}, &clang::CXXBasePath::Access)->Access;
+    return ranges::min_element(paths, {}, &clang::CXXBasePath::Access)->Access;
 }
 
 /// Whether `befriended`, the entity a friend declaration names, is `scope`.
@@ -382,7 +380,7 @@ auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& con
         if(auto* type = entry->getFriendType()) {
             befriended = type->getType()->getAsCXXRecordDecl();
         }
-        if(befriended && std::ranges::any_of(scopes, [&](const clang::NamedDecl* scope) {
+        if(befriended && ranges::any_of(scopes, [&](const clang::NamedDecl* scope) {
                return befriends(befriended, scope);
            })) {
             return nullptr;
@@ -914,7 +912,7 @@ struct Rebuilder {
             for(auto parameter: function->getParamTypes()) {
                 parameters.push_back(type(parameter));
             }
-            if(!returned.isNull() && std::ranges::none_of(parameters, &clang::QualType::isNull)) {
+            if(!returned.isNull() && ranges::none_of(parameters, &clang::QualType::isNull)) {
                 // The exception specification's expressions and types live in
                 // the other compile; of it, the type keeps whether it throws.
                 auto info = function->getExtProtoInfo();
@@ -1020,7 +1018,7 @@ struct Rebuilder {
                 written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
             };
             if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
-                std::ranges::for_each(rebuilt->pack_elements(), add);
+                ranges::for_each(rebuilt->pack_elements(), add);
             } else {
                 add(*rebuilt);
             }
@@ -1360,7 +1358,7 @@ public:
             if(!base) {
                 /// A class without a named field offers no designator; the
                 /// resolved reply is empty, not what Sema found elsewhere.
-                bool named = std::ranges::any_of(record->decls(), [](const clang::Decl* decl) {
+                bool named = ranges::any_of(record->decls(), [](const clang::Decl* decl) {
                     return llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl>(decl) &&
                            llvm::cast<clang::NamedDecl>(decl)->getDeclName();
                 });
@@ -1642,7 +1640,7 @@ public:
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
         auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
-        auto declared = std::ranges::any_of(
+        auto declared = ranges::any_of(
             sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
             [&](const clang::Decl* decl) {
                 return !decl->isImplicit() && !llvm::isa<clang::ImportDecl>(decl) &&
@@ -1818,10 +1816,10 @@ public:
         llvm::DenseSet<const clang::Decl*> offered;
         /// After `struct`, `union` or `enum`, where Sema offers only tags.
         bool tags_only =
-            std::ranges::contains(std::array{clang::CodeCompletionContext::CCC_ClassOrStructTag,
-                                             clang::CodeCompletionContext::CCC_UnionTag,
-                                             clang::CodeCompletionContext::CCC_EnumTag},
-                                  context.getKind());
+            ranges::contains(std::array{clang::CodeCompletionContext::CCC_ClassOrStructTag,
+                                        clang::CodeCompletionContext::CCC_UnionTag,
+                                        clang::CodeCompletionContext::CCC_EnumTag},
+                             context.getKind());
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             if(auto* tag = llvm::dyn_cast<clang::TagDecl>(candidate.Declaration);
@@ -1996,7 +1994,7 @@ public:
             add(item);
         };
 
-        for(auto& candidate: std::ranges::subrange(candidates, candidates + candidate_count)) {
+        for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
             switch(candidate.Kind) {
                 case clang::CodeCompletionResult::RK_Keyword:
                     if(allowed_keyword(candidate.Keyword)) {
@@ -2122,7 +2120,7 @@ public:
                     around.push_back(space->getCanonicalDecl());
                 }
             }
-            std::ranges::reverse(around);
+            ranges::reverse(around);
 
             /// Whether a namespace or a class between the completion point
             /// and the namespace `shared` deep around it declares a scope
@@ -2166,7 +2164,7 @@ public:
                         return std::nullopt;
                     }
                 }
-                std::ranges::reverse(spaces);
+                ranges::reverse(spaces);
                 std::size_t shared = 0;
                 while(shared < spaces.size() && shared < around.size() &&
                       spaces[shared]->getCanonicalDecl() == around[shared]) {
@@ -2180,7 +2178,7 @@ public:
                     qualifier = clang::NestedNameSpecifier::getGlobal();
                     shared = 0;
                 }
-                for(auto* space: std::views::drop(spaces, shared)) {
+                for(auto* space: views::drop(spaces, shared)) {
                     qualifier = clang::NestedNameSpecifier(ast, space, qualifier);
                 }
                 return qualifier;
@@ -2278,7 +2276,7 @@ public:
                 if((!language.CPlusPlus && (!segments.empty() || candidate.kind == Kind::Class ||
                                             candidate.kind == Kind::Enum)) ||
                    (!language.CPlusPlusModules && !candidate.module.empty()) ||
-                   std::ranges::any_of(segments, [](llvm::StringRef segment) {
+                   ranges::any_of(segments, [](llvm::StringRef segment) {
                        return segment.starts_with("_");
                    })) {
                     continue;
@@ -2287,8 +2285,8 @@ public:
                 for(const auto& segment: segments) {
                     auto found = visible(scope, segment);
                     auto space =
-                        std::ranges::find_if(found,
-                                             llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
+                        ranges::find_if(found,
+                                        llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
                     scope = space == found.end() ? nullptr : llvm::cast<clang::DeclContext>(*space);
                     if(!scope) {
                         break;
@@ -2347,7 +2345,7 @@ public:
                     qualifier = "::";
                     shared = 0;
                 }
-                for(const auto& segment: std::views::drop(segments, shared)) {
+                for(const auto& segment: views::drop(segments, shared)) {
                     qualifier += segment + "::";
                 }
                 Candidate item{
@@ -2508,8 +2506,8 @@ auto code_complete(CompilationParams params,
     };
     auto unit = compile(std::move(params));
 
-    assert(std::ranges::size(items) == std::ranges::size(documented));
-    for(auto [item, decl]: std::views::zip(items, documented)) {
+    assert(ranges::size(items) == ranges::size(documented));
+    for(auto [item, decl]: views::zip(items, documented)) {
         if(!decl) {
             continue;
         }
@@ -2557,7 +2555,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
     -> protocol::CompletionList {
     protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
     if(limit != 0 && list.items.size() > limit) {
-        std::ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
+        ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
             return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
                             item.label);
         });
@@ -2609,7 +2607,7 @@ bool scope_candidates(const index::IndexQuery& query,
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();
         }
-        if(std::ranges::any_of(namespaces, [](const index::SymbolInfo& container) {
+        if(ranges::any_of(namespaces, [](const index::SymbolInfo& container) {
                return container.kind != SymbolKind::Namespace;
            })) {
             continue;
@@ -2659,7 +2657,7 @@ static std::optional<std::string> include_for(const index::IndexQuery& query,
     }
     for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
         if(site.file.valid() && is_header_path(site.path) &&
-           !std::ranges::contains(headers, site.file)) {
+           !ranges::contains(headers, site.file)) {
             headers.push_back(site.file);
         }
     }
@@ -2690,7 +2688,7 @@ auto finish_completion(protocol::CompletionList list,
             return false;
         }
         item.data.reset();
-        auto candidate = std::ranges::find_if(candidates, [&](const ScopeCandidate& each) {
+        auto candidate = ranges::find_if(candidates, [&](const ScopeCandidate& each) {
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
@@ -2787,7 +2785,7 @@ auto module_completion(const CompletionName& completing,
         if(name.starts_with(":")) {
             return std::uint32_t(0);
         }
-        return std::ranges::min(graph.lookup_module(name) | std::views::transform(up_to));
+        return ranges::min(graph.lookup_module(name) | views::transform(up_to));
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(module_names.size());

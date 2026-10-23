@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #include "support/logging.macros.h"
 
@@ -26,8 +26,6 @@ import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
 
 namespace clice::testing {
-
-namespace lsp = kota::ipc::lsp;
 
 namespace {
 
@@ -116,13 +114,13 @@ void decode_index(std::span<const std::byte> bytes) {
         for(auto& occurrence: decoded.occurrences) {
             record_local(occurrence.target);
         }
-        for(auto& hash: std::views::transform(decoded.relations,
-                                              [](auto& entry) -> auto& { return entry.first; })) {
+        for(auto& hash:
+            views::transform(decoded.relations, [](auto& entry) -> auto& { return entry.first; })) {
             record_local(hash);
         }
     };
     record_locals(tu_index.focus_file_index);
-    for(auto& decoded: std::views::values(tu_index.file_indices)) {
+    for(auto& decoded: views::values(tu_index.file_indices)) {
         record_locals(decoded);
     }
 }
@@ -168,10 +166,9 @@ auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
     auto offset = point(pos);
     auto& index = tu_index.focus_file_index;
 
-    auto it =
-        std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
-            return occurrence.range.end;
-        });
+    auto it = ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
+        return occurrence.range.end;
+    });
 
     std::vector<index::Occurrence> occurrences;
     while(it != index.occurrences.end()) {
@@ -209,7 +206,7 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
     if(it == tu_index.focus_file_index.relations.end()) {
         return false;
     }
-    return std::ranges::any_of(it->second, [&](const index::Relation& relation) {
+    return ranges::any_of(it->second, [&](const index::Relation& relation) {
         return relation.kind == kind && relation.target == targets.front().target;
     });
 }
@@ -260,7 +257,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     ZASSERT(it != index.relations.end());
 
     auto& relations = it->second;
-    auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
+    auto target = ranges::find_if(relations, [](const index::Relation& relation) {
         return relation.kind == RelationKind::Definition;
     });
 
@@ -506,7 +503,7 @@ ZEST_CASE(Reference) {
     ZASSERT(it != index.relations.end());
 
     auto& relations = it->second;
-    auto ref = std::ranges::find_if(relations, [](const index::Relation& r) {
+    auto ref = ranges::find_if(relations, [](const index::Relation& r) {
         return r.kind == RelationKind::Reference;
     });
     ZASSERT(ref != relations.end());
@@ -587,7 +584,7 @@ ZEST_CASE(SpecializationRelations) {
 
     // Instantiations, explicit or implicit, specialize nothing.
     auto& relations = tu_index.focus_file_index.relations[select("box").front().target];
-    ZASSERT(std::ranges::count_if(relations, [](const index::Relation& relation) {
+    ZASSERT(ranges::count_if(relations, [](const index::Relation& relation) {
                 return relation.kind == RelationKind::Specialization;
             }) == 2);
 }
@@ -837,7 +834,7 @@ ZEST_CASE(SpecializedMemberType) {
     auto it = relations.find(select("value").front().target);
     ZASSERT(it != relations.end());
     auto widget = select("widget").front().target;
-    ZASSERT(std::ranges::any_of(it->second, [&](const index::Relation& relation) {
+    ZASSERT(ranges::any_of(it->second, [&](const index::Relation& relation) {
         return relation.kind == RelationKind::TypeDefinition && relation.range == range("use") &&
                relation.target == widget;
     }));
@@ -931,7 +928,7 @@ ZEST_CASE(MacroDefinedOperand) {
         auto occurrences = select(name);
         ZASSERT(occurrences.size() == 1U);
         ZASSERT(occurrences.front().target == target);
-        ZASSERT(std::ranges::any_of(relations, [&](const index::Relation& relation) {
+        ZASSERT(ranges::any_of(relations, [&](const index::Relation& relation) {
             return relation.kind == RelationKind::Reference && relation.range == range(name);
         }));
     }
@@ -1052,8 +1049,7 @@ ZEST_CASE(InternalPartitionName) {
     auto& index = tu_index.focus_file_index;
     auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
-    ZEXPECT(std::ranges::any_of(it->second,
-                                [](auto& r) { return r.kind == RelationKind::Definition; }));
+    ZEXPECT(ranges::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
 }
 
 ZEST_CASE(ImportedDeclarationsSkipped) {
@@ -1242,7 +1238,7 @@ ZEST_CASE(MacroDefinitionExtent) {
 
     auto [hash, symbol] = symbol_named("generated");
     auto& relations = tu_index.focus_file_index.relations[hash];
-    auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
+    auto definition = ranges::find_if(relations, [](const index::Relation& relation) {
         return relation.kind == RelationKind::Definition;
     });
     ZASSERT(definition != relations.end());
@@ -1288,10 +1284,10 @@ ZEST_CASE(CrossFileHeaderIndex) {
 
     // Find 'helper' reference in focus file.
     auto use_offset = point("use_helper");
-    auto it = std::ranges::lower_bound(focus_index.occurrences,
-                                       use_offset,
-                                       {},
-                                       [](const index::Occurrence& o) { return o.range.end; });
+    auto it = ranges::lower_bound(focus_index.occurrences,
+                                  use_offset,
+                                  {},
+                                  [](const index::Occurrence& o) { return o.range.end; });
     ZASSERT(it != focus_index.occurrences.end());
     ZASSERT(it->range.touches(use_offset));
 
@@ -1369,7 +1365,7 @@ ZEST_CASE(KnownVariantsSkipped) {
             names.emplace_back(identity.name);
             return true;
         });
-        std::ranges::sort(names);
+        ranges::sort(names);
         return names;
     };
     ZASSERT(table_names(full_view) ==
@@ -1776,13 +1772,13 @@ ZEST_CASE(FunctionSignatures) {
     )");
 
     llvm::SmallVector<std::string> overloads;
-    for(auto& symbol: std::views::transform(tu_index.symbols,
-                                            [](auto& entry) -> auto& { return entry.second; })) {
+    for(auto& symbol:
+        views::transform(tu_index.symbols, [](auto& entry) -> auto& { return entry.second; })) {
         if(symbol.name == "scale") {
             overloads.push_back(symbol.signature);
         }
     }
-    std::ranges::sort(overloads);
+    ranges::sort(overloads);
     ZEXPECT(overloads == (llvm::SmallVector<std::string>{"(geometry::Point point)",
                                                          "(int factor, double ratio = 1.0)"}));
     ZEXPECT(symbol_named("resize").second.signature == "(int width, int height) const");
@@ -2006,7 +2002,7 @@ ZEST_CASE(DeepExpressionChain) {
     // The traversal must have actually reached the decl behind the chain,
     // not bailed out early: expect an occurrence exactly at `bomb`.
     auto& occurrences = tu_index.focus_file_index.occurrences;
-    auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
+    auto bomb = ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
         return occurrence.range.begin;
     });
     ZASSERT(bomb != occurrences.end());
@@ -2137,7 +2133,7 @@ ZEST_CASE(CoAwaitReferencesOperator) {
     auto declaration = select("operator");
     ZASSERT(keyword.size() == 4U);
     ZASSERT(declaration.size() == 1U);
-    ZEXPECT(std::ranges::any_of(keyword, [&](const index::Occurrence& occurrence) {
+    ZEXPECT(ranges::any_of(keyword, [&](const index::Occurrence& occurrence) {
         return occurrence.target == declaration.front().target;
     }));
 }
@@ -2159,7 +2155,7 @@ ZEST_CASE(InvalidBindingKeepsFile) {
         }
     )");
 
-    ZEXPECT(std::ranges::any_of(unit->diagnostics(), [](const Diagnostic& diagnostic) {
+    ZEXPECT(ranges::any_of(unit->diagnostics(), [](const Diagnostic& diagnostic) {
         return diagnostic.id.level >= DiagnosticLevel::Error;
     }));
     ZEXPECT(spelled_in("broken") == std::vector<Spelled>{
@@ -3178,7 +3174,7 @@ ZEST_CASE(AbbreviatedPackDeduced) {
     )");
     auto records = resolved();
     for(auto type: {"A", "B"}) {
-        ZEXPECT(std::ranges::contains(records, Resolved{"values", TypeDefinition, type, "values"}));
+        ZEXPECT(ranges::contains(records, Resolved{"values", TypeDefinition, type, "values"}));
     }
 }
 
@@ -3196,10 +3192,10 @@ ZEST_CASE(PackParametersMapped) {
     // parameter of its own.
     auto records = resolved();
     for(auto type: {"A", "B"}) {
-        ZEXPECT(std::ranges::contains(records, Resolved{"auto", Deduced, type}));
+        ZEXPECT(ranges::contains(records, Resolved{"auto", Deduced, type}));
     }
-    ZEXPECT(std::ranges::none_of(records,
-                                 [](const Resolved& record) { return record.target == "values"; }));
+    ZEXPECT(
+        ranges::none_of(records, [](const Resolved& record) { return record.target == "values"; }));
 }
 
 ZEST_CASE(MacroDeclaredAutoUnwritten) {
@@ -3211,9 +3207,8 @@ ZEST_CASE(MacroDeclaredAutoUnwritten) {
         void make(T maker) { TAKE; }
         void use() { make(Maker{}); }
     )");
-    ZEXPECT(std::ranges::none_of(resolved(), [](const Resolved& record) {
-        return record.kind == TypeDefinition;
-    }));
+    ZEXPECT(ranges::none_of(resolved(),
+                            [](const Resolved& record) { return record.kind == TypeDefinition; }));
 }
 
 ZEST_CASE(MacroBodyNamesResolved) {
@@ -3263,8 +3258,8 @@ ZEST_CASE(SignatureNamesItsParameter) {
     // The specialization takes its parameter from the declaration: the
     // declaration's signature names its own `c`, the definition its own, as
     // the written code does.
-    ZEXPECT(std::ranges::none_of(resolved(),
-                                 [](const Resolved& record) { return record.target == "c"; }));
+    ZEXPECT(
+        ranges::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
 }
 
 ZEST_CASE(WrappedSignatureNamesParameter) {
@@ -3281,8 +3276,8 @@ ZEST_CASE(WrappedSignatureNamesParameter) {
     )");
     // One macro argument holds both declarations: their text, not the
     // invocation, tells them apart.
-    ZEXPECT(std::ranges::none_of(resolved(),
-                                 [](const Resolved& record) { return record.target == "c"; }));
+    ZEXPECT(
+        ranges::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
 }
 
 ZEST_CASE(ForeignCallerUnkeyed) {
