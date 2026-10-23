@@ -109,7 +109,7 @@
                 "all_scopes": true,
                 "insert_includes": true,
                 "insert_imports": true,
-                "limit": 0
+                "limit": 100
             }
         },
         "signature_help": {
@@ -504,7 +504,7 @@
                     "minimum": 0,
                     "maximum": 4294967295,
                     "description": "Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.",
-                    "default": 0
+                    "default": 100
                 }
             },
             "additionalProperties": false

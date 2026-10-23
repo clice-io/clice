@@ -660,7 +660,7 @@ With `all_scopes`, also offer names exported by modules the file does not import
 
 | Option  | Type     | Default |
 | ------- | -------- | ------- |
-| `limit` | `uint32` | `0`     |
+| `limit` | `uint32` | `100`   |
 
 Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.
 
