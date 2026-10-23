@@ -1015,7 +1015,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
 
     Stack stack;
     stack.register_pch_store(tmp);
-    auto session = stack.open(src, "#pragma clang __debug crash\n");
+    auto session = stack.open(src, "#pragma clang __debug crash\nint value;\n");
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -1025,8 +1025,12 @@ ZEST_CASE(PCHCrashStopsBuild) {
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
 
-        auto result =
-            co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
+        // Past the preamble: a completion before it parses none of it.
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session),
+                                                           {.line = 1, .character = 0},
+                                                           {},
+                                                           {},
+                                                           false);
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
         auto notes = session->quarantine->notes();

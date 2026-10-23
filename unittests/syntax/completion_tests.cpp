@@ -160,8 +160,12 @@ ZEST_CASE(IncludeEmpty) {
 }
 
 ZEST_CASE(CursorInsideKeyword) {
-    // A keyword is only "typed" once the cursor passed its end.
-    ZEXPECT(completion_name("#include", 5).kind == CompletionName::Kind::None);
+    // A keyword is only "typed" once the cursor passed its end; inside a
+    // directive's name, the name is.
+    auto directive = completion_name("#include", 5);
+    ZEXPECT(directive.kind == CompletionName::Kind::Directive);
+    ZEXPECT(directive.prefix == "incl");
+    ZEXPECT(directive.replace == LocalSourceRange(1, 8));
     ZEXPECT(completion_name("import", 3).kind == CompletionName::Kind::None);
 }
 
@@ -236,7 +240,16 @@ ZEST_CASE(NotImportKeyword) {
 
 ZEST_CASE(HashOnly) {
     auto ctx = completion_name("#", 1);
-    ZEXPECT(ctx.kind == CompletionName::Kind::None);
+    ZEXPECT(ctx.kind == CompletionName::Kind::Directive);
+    ZEXPECT(ctx.prefix.empty());
+    ZEXPECT(ctx.replace == LocalSourceRange(1, 1));
+}
+
+ZEST_CASE(DirectiveAfterSpaces) {
+    auto ctx = completion_name("#  if", 5);
+    ZEXPECT(ctx.kind == CompletionName::Kind::Directive);
+    ZEXPECT(ctx.prefix == "if");
+    ZEXPECT(completion_name("#if ", 4).kind == CompletionName::Kind::None);
 }
 
 ZEST_CASE(ImportDottedPrefix) {
