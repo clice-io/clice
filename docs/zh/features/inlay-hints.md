@@ -161,6 +161,20 @@ tests/inlay_hints/parameter_hints/24_single_letter_names
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件中的转发包装函数**
+
+头文件定义的包装函数与文件自身的包装函数一样，会解析出目标函数的参数名
+
+编辑器会跳过文件顶部所包含的头文件中的函数体，但最后一个参数是由其自身模板参数构成的参数包的函数模板除外，`std::make_unique` 和 `emplace_back` 就是这样：它们转发到的调用就在函数体中，提示显示的正是该调用的参数名。
+
+```case
+tests/inlay_hints/parameter_hints/27_forwarding_in_headers
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 类型提示

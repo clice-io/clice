@@ -17,7 +17,7 @@
   // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
   ```
 
-- [x] Preamble 头文件中的模板实例化错误诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
+- [x] Preamble 头文件中的模板实例化错误诊断，在后台索引编译过该文件后显示（[clangd#137](https://github.com/clangd/clangd/issues/137)）
 
 ## 所包含的头文件中的错误
 
@@ -39,6 +39,20 @@ tests/diagnostics/headers/01_errors_on_include
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: partial -->
+
+**头文件函数体中的错误**
+
+头文件某个函数体中的错误，会在后台索引按保存后的内容编译过该文件后显示
+
+与 clangd 一样，编辑器编译文件时会跳过文件顶部所包含的头文件中的函数体：文件打开以及编辑后的重建因此快上数倍。后台索引会编译这些函数体，它在其中发现的错误——内联函数的错误、模板以文件给出的实参实例化时的错误，或这类模板调用的、文件自身的泛型 Lambda 中的错误——只要文件中仍是它编译过的文本，就会显示在该文件上：编辑会让它们消失，直到文件保存并再次编译。在 `[project]` 中设置 `skip_header_bodies = false`，编辑器也会解析这些函数体。
+
+```case
+tests/diagnostics/headers/09_skipped_bodies
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 模板实例化
@@ -53,7 +67,7 @@ tests/diagnostics/headers/01_errors_on_include
 
 模板内部的错误会显示在代码触发实例化的位置
 
-如果模板使用给定实参实例化时出错，错误会报告在触发实例化的代码处，而非模板内部。错误附带的备注会沿实例化链指向模板中的出错位置。
+如果模板使用给定实参实例化时出错，错误会报告在触发实例化的代码处，而非模板内部。错误附带的备注会沿实例化链指向模板中的出错位置。文件顶部所包含的头文件中的模板由后台索引实例化，而不是由编辑器的编译实例化，因为后者会跳过该头文件中的函数体：这类模板的错误要等索引按保存后的内容编译过该文件后才会显示。
 
 ```case
 tests/diagnostics/templates/01_instantiation_errors
@@ -171,6 +185,7 @@ tests/diagnostics/suppression/01_by_code
   // should NOT warn "unused function" when checking header standalone
   ```
 
+- [x] 声明只在头文件的函数体中用到时，不会误报 `-Wunused-function` 或 `-Wunused-member-function`——编辑器会跳过这些函数体；确实未使用的声明由后台索引报告（[clangd#363](https://github.com/clangd/clangd/issues/363)、[clangd#636](https://github.com/clangd/clangd/issues/636)）
 - [ ] 传递来自头文件的 `-Wpadded` 等布局警告（[clangd#1429](https://github.com/clangd/clangd/issues/1429)）
 - [ ] 抑制 Preamble 优化导致的 `-Wempty-translation-unit` 误报（[clangd#2358](https://github.com/clangd/clangd/issues/2358)）
 - [ ] 跨头文件边界的线程安全分析（[clangd#2386](https://github.com/clangd/clangd/issues/2386)）
