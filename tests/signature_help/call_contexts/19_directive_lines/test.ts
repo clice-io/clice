@@ -12,7 +12,7 @@ test("an include line", async (t) => {
 
 // A condition or a computed include may call a function-like macro, whose
 // parameters it shows.
-test("a condition", async (t) => {
+test("a macro call", async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
     await t.show("condition", s.signatureHelp(t.marker("condition")));

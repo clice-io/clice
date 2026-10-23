@@ -1,6 +1,10 @@
 ["an include line".include.signature_help]
 signatures = []
 
-["a condition".condition.signature_help]
+["a macro call".condition.signature_help]
 signatures = ["CHECK(left, ⟦right⟧)"]
+active = 0
+
+["a macro call".computed.signature_help]
+signatures = ["PICK(first, ⟦second⟧)"]
 active = 0
