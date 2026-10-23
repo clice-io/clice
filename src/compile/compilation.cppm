@@ -285,6 +285,10 @@ public:
         return params.kind;
     }
 
+    bool skips_bodies() {
+        return params.skip_bodies;
+    }
+
     bool completed() {
         return outcome == CompilationStatus::Completed;
     }
@@ -733,7 +737,8 @@ constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
 };
 
 /// The messages of a finished compilation's error-level diagnostics, in
-/// the order clang raised them.
+/// the order clang raised them, but for the unused declarations a compile
+/// skipping bodies raises, which -Werror may have made errors.
 std::vector<std::string> collect_errors(CompilationUnit& unit);
 
 }  // namespace clice

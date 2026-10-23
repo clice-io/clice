@@ -312,8 +312,9 @@ private:
     /// What of the file's last background run shows beside `output`, a
     /// compile of the session's text: what the compile does not report
     /// itself, and the warnings it holds back that the run raises too.
-    /// Nothing when the run read other text, or when the user chose the
-    /// file's context, which the run does not compile in.
+    /// Nothing when the run read other text, when the compile had no
+    /// database entry of the file's, which the run compiles with, or when
+    /// the user chose the file's context, which the run does not compile in.
     std::vector<feature::FileDiagnostic> shown_skipped(const Session& session,
                                                        const CompileOutput& output) const;
 

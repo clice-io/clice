@@ -262,7 +262,7 @@ void ProjectServer::saved(Fid path_id) {
     // finds as soon as it can (ASTFamily::report_skipped).
     if(project.config.project.skip_header_bodies) {
         for(auto& [open, session]: sessions.sessions) {
-            if(sched.pump.pending_reason(open)) {
+            if(sched.pump.pending_reason(open) && !sched.pump.in_flight(open)) {
                 sched.pump.boost(open);
             }
         }
@@ -304,9 +304,11 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
     // what those hold (ASTFamily::report_skipped), and goes first when none
     // has reported on its text.
     if(session->serving == ServingMode::Escalated) {
+        auto path_id = session->path_id;
         if(project.config.project.skip_header_bodies &&
-           project.config.project.enable_indexing.value && ast.lacks_skipped(session->path_id)) {
-            sched.pump.boost(session->path_id);
+           project.config.project.enable_indexing.value && ast.lacks_skipped(path_id) &&
+           !sched.pump.in_flight(path_id) && !sched.pump.failed().contains(path_id)) {
+            sched.pump.boost(path_id);
         }
         return;
     }

@@ -142,6 +142,13 @@ public:
         return pending_table.pending_reason(server_path_id);
     }
 
+    /// See PendingTable::in_flight. A boost then records debt anew, which
+    /// outlives the running attempt and drops what it reports to
+    /// on_skipped_diagnostics.
+    bool in_flight(Fid server_path_id) const {
+        return pending_table.in_flight(server_path_id);
+    }
+
     /// Forget a file's pending-reindex debt: used when the file is removed
     /// from disk — nothing is left to reindex, and a lingering
     /// ContentChanged reason would suppress its deliberately still-serving

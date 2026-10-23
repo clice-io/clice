@@ -693,7 +693,8 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
 std::vector<std::string> collect_errors(CompilationUnit& unit) {
     std::vector<std::string> errors;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error) {
+        if(diag.id.level >= DiagnosticLevel::Error &&
+           !(unit.skips_bodies() && ranges::contains(unused_declaration_warnings, diag.id.value))) {
             errors.push_back(diag.message);
         }
     }

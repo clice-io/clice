@@ -503,7 +503,7 @@ std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& ses
                                                               const CompileOutput& output) const {
     auto it = skipped.find(session.path_id);
     if(it == skipped.end() || it->second.text_hash != session.hash ||
-       contexts.selection(session.path_id)) {
+       output.source != CommandSource::CDBExact || contexts.selection(session.path_id)) {
         return {};
     }
     std::vector<feature::FileDiagnostic> result;
@@ -526,7 +526,7 @@ std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& ses
 bool ASTFamily::lacks_skipped(Fid path_id) const {
     auto session = sessions.find(path_id);
     if(!session || session->serving != ServingMode::Escalated ||
-       project.build.commands(path_id).empty()) {
+       project.build.entries(path_id).empty()) {
         return false;
     }
     auto it = skipped.find(path_id);
