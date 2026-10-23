@@ -414,6 +414,28 @@ ZEST_CASE(OtherBuiltinHeadersStay, skip = Windows) {
     ZEXPECT(!hidden.hides(path::join(theirs, "xray", "xray_interface.h")));
 }
 
+ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {
+    /// Directories of builtin headers the job names twice, by a symlink as
+    /// well (CPATH's -I): clice's own, and another clang's, whose files
+    /// clang's own have stay hidden.
+    tmp.touch("clang-22/include/__stddef_max_align_t.h");
+    tmp.touch("clang-22/include/stddef.h");
+    auto theirs = tmp.path("clang-22/include");
+    auto own = tmp.path("own");
+    auto alias = tmp.path("alias");
+    ZASSERT(!llvm::sys::fs::create_link(resource_dir(), own));
+    ZASSERT(!llvm::sys::fs::create_link(theirs, alias));
+    auto driver = fake_clang(std::format(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include" "-I" "{1}" "-internal-isystem" "{2}")",
+        own,
+        alias,
+        theirs));
+    auto ref = add("a.cpp", {driver.c_str()});
+    ZASSERT(f.toolchain.resolve(ref.command, ref.input));
+    auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
+    ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
+}
+
 ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
     // A matched LLVM-MinGW installation keeps the resource tree it derives
     // (the query hands it none), also when warmed (the driver gone, only the

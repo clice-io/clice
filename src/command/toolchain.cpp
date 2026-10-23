@@ -159,13 +159,23 @@ std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
                                                      llvm::ArrayRef<Spelling> shadowed) {
     std::map<std::string, std::set<std::string>> hidden;
     for(auto& dir: shadowed) {
+        // The search list keeps one spelling of a directory the job names
+        // twice (by a symlink, through `..`), as clang does: the files of
+        // the other are never looked up.
         auto found = ranges::find(search.dirs, dir.str(), &SearchDir::path);
-        assert(found != search.dirs.end() && "a shadowed directory the job does not search");
+        if(found == search.dirs.end()) {
+            continue;
+        }
         for(auto& name: files_under(dir)) {
             if(!resource_headers().contains(name)) {
                 continue;
             }
             hidden[dir.str()].insert(name);
+            // A module map is no header: clang reads the one of every
+            // directory it searches, #include_next or not.
+            if(llvm::StringRef(name).ends_with(".modulemap")) {
+                continue;
+            }
             std::optional<bool> defers;
             for(auto& later: llvm::make_range(std::next(found), search.dirs.end())) {
                 if(!vfs::is_file(path::join(later.path, name))) {

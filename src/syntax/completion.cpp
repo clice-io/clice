@@ -10,8 +10,6 @@ import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.scan;
-import :vfs.file_system;
-import :vfs.path;
 
 namespace clice {
 
@@ -371,8 +369,7 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
             }
 
             bool is_dir = entry.getValue();
-            if(!is_dir && (!looks_like_header(name, dir, search_dir, system) ||
-                           (config.hidden && config.hidden->hides(path::join(dir, name))))) {
+            if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
                 continue;
             }
 

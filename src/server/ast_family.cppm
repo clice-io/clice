@@ -5,6 +5,7 @@ module;
 module clice:server.ast_family;
 
 import :feature.diagnostics;
+import :project.command_resolver;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;

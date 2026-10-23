@@ -13,6 +13,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
+import :project.command_resolver;
 import :sched.families.build_common;
 import :server.ast_family;
 import :server.context_service;

@@ -10,7 +10,8 @@
 #if __has_include(<omp.h>)
 #include <omp.h>
 #endif
-#if __has_include(<quadmath.h>)
+// clang has no __float128 on some targets GCC has it on (Darwin, Cygwin).
+#if __has_include(<quadmath.h>) && defined(__SIZEOF_FLOAT128__)
 #include <quadmath.h>
 #endif
 #if __has_include(<openacc.h>)

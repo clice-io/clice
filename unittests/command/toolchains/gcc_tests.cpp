@@ -300,6 +300,8 @@ ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
     tmp.touch("gcc/13/include/limits.h", "#include_next <limits.h>\n");
     tmp.touch("libc/include/stdatomic.h", "#error the C library's stdatomic.h\n");
     tmp.touch("libc/include/limits.h", "#define LIBC_LIMITS 1\n");
+    tmp.touch("gcc/13/include/module.modulemap");
+    tmp.touch("libc/include/module.modulemap");
     tmp.touch("a.c", R"(#include <vendor_intrinsics.h>
 #include <stdatomic.h>
 #include <limits.h>
@@ -327,6 +329,9 @@ echo '#define __STDC_VERSION__ 201710L'
     auto ref = add("a.c", {driver.c_str(), "-c"});
     ZASSERT(f.toolchain.resolve(ref.command, ref.input));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    /// A module map is no header, which only #include_next reaches.
+    ZEXPECT(rendered.hidden.hides(tmp.path("gcc/13/include/module.modulemap")));
+    ZEXPECT(!rendered.hidden.hides(tmp.path("libc/include/module.modulemap")));
     auto unit = clice::compile({
         .kind = CompilationKind::Content,
         .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
