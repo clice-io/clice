@@ -2291,9 +2291,11 @@ public:
                    })) {
                     continue;
                 }
-                // Sema offers the macros defined here already; a macro is
-                // no declaration to look up.
-                if(candidate.macro && sema.getPreprocessor().isMacroDefined(candidate.name)) {
+                // Sema offers the macros defined here already, and no
+                // include brings back one the file undefined; a macro is no
+                // declaration to look up.
+                if(candidate.macro &&
+                   sema.getPreprocessor().getIdentifierInfo(candidate.name)->hadMacroDefinition()) {
                     continue;
                 }
                 clang::DeclContext* scope =
