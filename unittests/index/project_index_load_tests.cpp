@@ -655,6 +655,7 @@ ZEST_CASE(VersionsLiveWhileNamed) {
     // A file version keeps its record while some manifest names it: two
     // units share the header's, a dropped unit takes only its own along,
     // and an edit replaces the header's once its last unit is reindexed.
+    // The database's header counts the units along.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("a.cpp", "#include \"dep.h\"\nint use_a() { return dep(); }\n");
@@ -672,6 +673,7 @@ ZEST_CASE(VersionsLiveWhileNamed) {
         }
         f.save();
         shared = versions(f);
+        ZEXPECT(IndexInternals::unit_count(f.project.index) == 2u);
         f.drop_index(f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp"))));
         f.save();
         ZEXPECT(versions(f) == shared - 1);
@@ -680,6 +682,7 @@ ZEST_CASE(VersionsLiveWhileNamed) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
+    ZEXPECT(IndexInternals::unit_count(f.project.index) == 1u);
     ZASSERT(!f.needs_reindex(tmp.path("a.cpp")));
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
     auto indexed = index_file(tmp, tmp.path("a.cpp"));

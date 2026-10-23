@@ -140,6 +140,7 @@ std::vector<std::byte> encode_record(const Header& header) {
     blob.format_version = index_format_version;
     blob.next_path = header.next_path;
     blob.next_version = header.next_version;
+    blob.unit_count = header.unit_count;
     blob.search_generation = header.search_generation;
     blob.search_pending = header.search_pending;
     blob.search_pending_files = header.search_pending_files;
@@ -153,7 +154,7 @@ std::optional<Header> decode_header(llvm::StringRef data) {
         return strictly_ascending(paths) &&
                ranges::all_of(paths, [&](std::uint32_t path) { return path < root->next_path; });
     };
-    if(!root || !strictly_ascending(root->search_pending) ||
+    if(!root || root->unit_count > root->next_path || !strictly_ascending(root->search_pending) ||
        ranges::any_of(root->search_pending, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !named(root->search_pending_files) || !named(root->owed_units)) {
         return std::nullopt;
@@ -161,6 +162,7 @@ std::optional<Header> decode_header(llvm::StringRef data) {
     return Header{
         .next_path = root->next_path,
         .next_version = root->next_version,
+        .unit_count = root->unit_count,
         .search_generation = root->search_generation,
         .search_pending = {root->search_pending.begin(),       root->search_pending.end()},
         .search_pending_files = {root->search_pending_files.begin(),

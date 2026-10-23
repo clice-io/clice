@@ -68,6 +68,7 @@ ZEST_CASE(HeaderRoundTrip) {
     index::Header header{
         .next_path = 12,
         .next_version = 30,
+        .unit_count = 7,
         .search_generation = 3,
         .search_pending = {5, 8},
         .search_pending_files = {2, 11},
@@ -78,13 +79,18 @@ ZEST_CASE(HeaderRoundTrip) {
     ZASSERT(read);
     ZEXPECT(read->next_path == 12);
     ZEXPECT(read->next_version == 30);
+    ZEXPECT(read->unit_count == 7);
     ZEXPECT(read->search_generation == 3);
     ZEXPECT(read->search_pending == header.search_pending);
     ZEXPECT(read->search_pending_files == header.search_pending_files);
     ZEXPECT(read->owed_units == header.owed_units);
 
-    // A pending file past the path ids handed out is no header, nor is a
-    // pending symbol of a reserved hash.
+    // More units than path ids handed out, or a pending file past them,
+    // is no header, nor is a pending symbol of a reserved hash.
+    header.unit_count = 13;
+    auto crowded = aligned(index::encode_record(header));
+    ZEXPECT(!index::decode_header(crowded->getBuffer()));
+    header.unit_count = 7;
     header.search_pending_files = {2, 12};
     auto past = aligned(index::encode_record(header));
     ZEXPECT(!index::decode_header(past->getBuffer()));

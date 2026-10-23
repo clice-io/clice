@@ -588,6 +588,9 @@ struct HeaderBlobOf {
     /// The id the next file version the manifests name receives.
     std::uint32_t next_version = 0;
 
+    /// The units the database holds a manifest of.
+    std::uint32_t unit_count = 0;
+
     /// The generation of the search blob saved with this header, and the
     /// symbols and the files (path ids) whose names of internal linkage
     /// changed since that blob was built, ascending.

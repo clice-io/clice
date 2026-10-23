@@ -33,6 +33,8 @@ struct Header {
 
     std::uint32_t next_version = 0;
 
+    std::uint32_t unit_count = 0;
+
     std::uint64_t search_generation = 0;
 
     std::vector<SymbolHash> search_pending;

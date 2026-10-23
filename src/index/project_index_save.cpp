@@ -43,9 +43,7 @@ bool ProjectIndex::search_rebuild_due(SearchRebuild rebuild) const {
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
-    auto units = (db ? db->count(BlobKind::TUManifest) : 0) +
-                 static_cast<std::uint32_t>(changed_manifests.size());
-    return merges_since_search_build > std::min<std::uint32_t>(20, units / 20);
+    return merges_since_search_build > std::min<std::uint32_t>(20, header.unit_count / 20);
 }
 
 Internals ProjectIndex::internal_names(Fid file) const {

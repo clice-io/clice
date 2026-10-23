@@ -919,6 +919,13 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
         }
     }
 
+    if(indexed(tu) != manifest.has_value()) {
+        if(manifest) {
+            header.unit_count += 1;
+        } else {
+            header.unit_count -= 1;
+        }
+    }
     change_file(tu).run = manifest ? manifest->built_at : 0;
     changed_manifests[tu] = std::move(manifest);
 
