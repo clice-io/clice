@@ -92,6 +92,13 @@ struct FileDiagnostic {
 auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<FileDiagnostic>;
 
+/// Of the diagnostics of a compile parsing every body, those a compile
+/// skipping the bodies of the headers (CompilationParams::skip_bodies) can
+/// get wrong: what is raised outside the focus file's text or inside an
+/// instantiation, which it may miss, and the warnings about unused
+/// declarations, which it also raises for those only a skipped body uses.
+auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
+
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
 FileDiagnostic file_warning(std::string message);

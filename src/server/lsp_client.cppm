@@ -59,13 +59,10 @@ private:
     /// answer it holds went stale — plus the refresh requests its arrival
     /// warrants. Invoked by the compiler's on_output signal, and by the
     /// initialized handler to replay outputs that materialized before the
-    /// client was ready. No-op until client_ready.
-    void push_output(ProjectServer& project, const Session& session);
-
-    /// The diagnostics half of push_output: to a pushing client the
-    /// session's diagnostics, to a pulling one a refresh when the answer it
-    /// holds went stale. Invoked alone by the on_diagnostics signal.
-    void push_diagnostics(ProjectServer& project, const Session& session);
+    /// client was ready. No-op until client_ready. An output that changed
+    /// with no compile (`compiled` false: the on_diagnostics signal) pushes
+    /// its diagnostics alone.
+    void push_output(ProjectServer& project, const Session& session, bool compiled);
 
     /// React to a background-indexing progress change: drive the LSP
     /// work-done progress token through its begin/report/end lifecycle,

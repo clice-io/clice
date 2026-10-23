@@ -69,7 +69,6 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.workspace = project.config.workspace_root.str();
     params.index = plan.index;
     params.errors = plan.errors;
-    params.diagnostics = plan.diagnostics;
     params.tidy = std::move(plan.tidy);
     // Whole-TU runs stick to the build's commands; a synthesized one, or
     // one borrowed for a file outside the build, would fill the index (and
@@ -112,6 +111,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(resolved.synthesized) {
         params.synthesized = resolved.synthesized->files;
     }
+    // A header compiles here in another context than the editor's, which
+    // gives it its includer's.
+    params.skipped_diagnostics =
+        plan.skipped_diagnostics && resolved.source == CommandSource::CDBExact;
 
     // A unit waits on the PCMs of its imports: the fill_pcm_deps snapshot
     // below would otherwise race a cold build and parse without the module
@@ -250,7 +253,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         outcome.result = Result::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
         outcome.errors = std::move(value.errors);
-        outcome.diagnostics = std::move(value.diagnostics);
+        outcome.skipped_diagnostics = std::move(value.skipped_diagnostics);
         outcome.text_hash = value.text_hash;
         outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {

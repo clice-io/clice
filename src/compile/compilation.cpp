@@ -528,11 +528,6 @@ CompilationStatus CompilationUnit::run() {
     instance->getDiagnostics().setSeverity(clang::diag::err_pp_file_not_found,
                                            clang::diag::Severity::Error,
                                            {});
-    if(params.skip_bodies) {
-        for(auto id: unused_declaration_warnings) {
-            instance->getDiagnostics().setSeverity(id, clang::diag::Severity::Ignored, {});
-        }
-    }
     instance->createFileManager();
 
     if(!instance->createTarget()) {

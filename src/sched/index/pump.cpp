@@ -338,12 +338,13 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool content_changed =
         pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
-    if(!served && (content_changed || project.index.needs_reindex(server_path_id))) {
+    bool skipped = on_skipped_diagnostics && project.config.project.skip_header_bodies;
+    if(!served && (content_changed || (skipped && lacks_skipped_diagnostics(server_path_id)) ||
+                   project.index.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-        bool diagnostics = on_diagnostics && project.config.project.skip_header_bodies;
         auto outcome = co_await turun.run(
             server_path_id,
-            {.index = true, .errors = errors_wanted, .diagnostics = diagnostics},
+            {.index = true, .errors = errors_wanted, .skipped_diagnostics = skipped},
             {.superseded = [this, taken] { return pending_table.superseded(taken); }});
         if(outcome.result == TURunFamily::Result::Shutdown) {
             // The graph refused the round: nothing ran, so the debt
@@ -363,10 +364,11 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         switch(outcome.result) {
             case TURunFamily::Result::Completed: {
                 record_indexed(server_path_id, std::move(outcome.errors));
-                if(diagnostics) {
-                    on_diagnostics(server_path_id,
-                                   outcome.text_hash,
-                                   std::move(outcome.diagnostics));
+                if(auto pending = pending_table.peek(server_path_id);
+                   skipped && pending && pending->ticket == taken.ticket) {
+                    on_skipped_diagnostics(server_path_id,
+                                           outcome.text_hash,
+                                           std::move(outcome.skipped_diagnostics));
                 }
                 indexed_total += 1;
                 LOG_PERF("index",

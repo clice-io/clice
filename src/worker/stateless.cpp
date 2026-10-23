@@ -471,12 +471,8 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     if(params.errors) {
         result.errors = located_errors(*unit);
     }
-    if(params.diagnostics) {
-        result.diagnostics = feature::diagnostics(*unit);
-        std::erase_if(result.diagnostics, [](const feature::FileDiagnostic& diagnostic) {
-            return diagnostic.origin == feature::DiagnosticOrigin::File &&
-                   !ranges::contains(unused_declaration_warnings, diagnostic.id);
-        });
+    if(params.skipped_diagnostics) {
+        result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
         result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
     }
 

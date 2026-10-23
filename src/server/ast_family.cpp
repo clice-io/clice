@@ -499,43 +499,59 @@ static bool same_diagnostic(const feature::FileDiagnostic& left,
            left.message == right.message;
 }
 
-/// What of a background run's diagnostics a compile does not report itself.
-static std::vector<feature::FileDiagnostic>
-    unshown(const CompileOutput& output, llvm::ArrayRef<feature::FileDiagnostic> checked) {
+std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& session,
+                                                              const CompileOutput& output) const {
+    auto it = skipped.find(session.path_id);
+    if(it == skipped.end() || it->second.text_hash != session.hash ||
+       contexts.selection(session.path_id)) {
+        return {};
+    }
     std::vector<feature::FileDiagnostic> result;
-    for(const auto& diagnostic: checked) {
-        if(ranges::none_of(output.diagnostics, [&](const feature::FileDiagnostic& own) {
-               return same_diagnostic(own, diagnostic);
-           })) {
+    for(const auto& diagnostic: it->second.diagnostics) {
+        auto same = [&](const feature::FileDiagnostic& own) {
+            return same_diagnostic(own, diagnostic);
+        };
+        if(ranges::contains(unused_declaration_warnings, diagnostic.id)) {
+            if(auto own = ranges::find_if(output.unconfirmed, same);
+               own != output.unconfirmed.end()) {
+                result.push_back(*own);
+            }
+        } else if(ranges::none_of(output.diagnostics, same)) {
             result.push_back(diagnostic);
         }
     }
     return result;
 }
 
-void ASTFamily::checked(Fid path_id,
-                        std::uint64_t text_hash,
-                        std::vector<feature::FileDiagnostic> diagnostics) {
-    if(diagnostics.empty()) {
-        checks.erase(path_id);
-    } else {
-        checks[path_id] = {.text_hash = text_hash, .diagnostics = diagnostics};
-    }
-    // A compile owed shows it as it commits (run).
+bool ASTFamily::lacks_skipped(Fid path_id) const {
     auto session = sessions.find(path_id);
-    if(!session || session->hash != text_hash || !compiles.current(path_id)) {
+    if(!session || session->serving != ServingMode::Escalated ||
+       project.build.commands(path_id).empty()) {
+        return false;
+    }
+    auto it = skipped.find(path_id);
+    return it == skipped.end() || it->second.text_hash != session->hash;
+}
+
+void ASTFamily::report_skipped(Fid path_id,
+                               std::uint64_t text_hash,
+                               std::vector<feature::FileDiagnostic> diagnostics) {
+    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+    // A compile owed shows them as it commits (run).
+    auto session = sessions.find(path_id);
+    if(!session || !compiles.current(path_id)) {
         return;
     }
     auto compiled = compiles.latest_at(path_id, session->version);
     if(!compiled) {
         return;
     }
-    auto shown = unshown(*compiled->output, diagnostics);
-    if(ranges::equal(compiled->output->checked, shown, same_diagnostic)) {
+    auto shown = shown_skipped(*session, *compiled->output);
+    if(ranges::equal(compiled->output->skipped, shown, same_diagnostic)) {
         return;
     }
     auto output = *compiled->output;
-    output.checked = std::move(shown);
+    output.skipped = std::move(shown);
     compiles.set_output(path_id, std::move(output));
     on_diagnostics.emit(session);
 }
@@ -1409,20 +1425,26 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
-        auto& entry = compiles.entries[path_id];
+        std::vector<feature::FileDiagnostic> unconfirmed;
+        if(params.skip_bodies) {
+            auto unused = [](const feature::FileDiagnostic& diagnostic) {
+                return ranges::contains(unused_declaration_warnings, diagnostic.id);
+            };
+            ranges::copy_if(diagnostics, std::back_inserter(unconfirmed), unused);
+            std::erase_if(diagnostics, unused);
+        }
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
             .diagnostics = std::move(diagnostics),
+            .unconfirmed = std::move(unconfirmed),
             .unmatched_host = resolution.unmatched_host.valid()
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
         };
-        if(auto it = checks.find(path_id);
-           it != checks.end() && it->second.text_hash == session->hash) {
-            next->output->checked = unshown(*next->output, it->second.diagnostics);
-        }
+        next->output->skipped = shown_skipped(*session, *next->output);
 
+        auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it.
         // FIXME: released even while another open document still fails on that

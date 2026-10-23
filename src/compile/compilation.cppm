@@ -721,7 +721,8 @@ constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
 }
 
 /// The warnings that a declaration is unused: a use in a body skip_bodies
-/// skipped goes unseen, so compiles under it report none of them.
+/// skipped goes unseen, so a compile under it raises them for the
+/// declarations only such a body uses too.
 constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
     clang::diag::warn_unused_function,
     clang::diag::warn_unused_member_function,

@@ -52,9 +52,10 @@ public:
         /// The errors the compile reports, in the outcome.
         bool errors = false;
 
-        /// The diagnostics an editor skipping header bodies misses, in the
-        /// outcome.
-        bool diagnostics = false;
+        /// The diagnostics an editor skipping header bodies can get wrong,
+        /// in the outcome: none but for a file of its own database entry,
+        /// which the editor compiles as this run does.
+        bool skipped_diagnostics = false;
 
         /// A tidy pass under this frozen configuration.
         std::optional<tidy::TidyParams> tidy;
@@ -113,9 +114,11 @@ public:
         /// `errors`).
         std::vector<worker::LocatedMessage> errors;
 
-        /// See worker::TURunResult::diagnostics (plan product
-        /// `diagnostics`).
-        std::vector<feature::FileDiagnostic> diagnostics;
+        /// See worker::TURunResult::skipped_diagnostics (plan product
+        /// `skipped_diagnostics`).
+        std::vector<feature::FileDiagnostic> skipped_diagnostics;
+
+        /// The hash of the text skipped_diagnostics describe.
         std::uint64_t text_hash = 0;
 
         struct Perf {

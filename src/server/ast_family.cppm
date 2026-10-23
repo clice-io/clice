@@ -157,7 +157,7 @@ public:
     Signal<std::shared_ptr<Session>> on_output;
 
     /// Emitted when the diagnostics a document shows changed with no
-    /// compile: a background run's check arrived (checked).
+    /// compile: a background run's skipped diagnostics arrived (report_skipped).
     Signal<std::shared_ptr<Session>> on_diagnostics;
 
     /// Callback invoked when indexing should be scheduled.
@@ -205,19 +205,25 @@ public:
     void publish_output(const std::shared_ptr<Session>& session, CompileOutput output);
 
     /// A background index run of the file reported `diagnostics` for the
-    /// text hashing to `text_hash`: what the editor's compile cannot, which
-    /// skips the function bodies of the headers the file includes at its
-    /// top (worker::TURunResult::diagnostics). They show on the document
-    /// while it holds that text, open now or later.
-    void checked(Fid path_id,
-                 std::uint64_t text_hash,
-                 std::vector<feature::FileDiagnostic> diagnostics);
+    /// text hashing to `text_hash`: what the editor's compile, which skips
+    /// the function bodies of the headers the file includes at its top, can
+    /// get wrong (feature::skipped_diagnostics). They show on the document
+    /// while it holds that text, open now or later (shown_skipped).
+    void report_skipped(Fid path_id,
+                        std::uint64_t text_hash,
+                        std::vector<feature::FileDiagnostic> diagnostics);
 
-    /// What the file reads changed on disk: its last run's diagnostics no
-    /// longer describe it.
-    void forget_check(Fid path_id) {
-        checks.erase(path_id);
+    /// What the file reads changed: its last run's diagnostics no longer
+    /// describe it.
+    void forget_skipped(Fid path_id) {
+        skipped.erase(path_id);
     }
+
+    /// Whether the file's escalated session holds text no background run has
+    /// reported on, as after a restart, when the index is current and runs
+    /// nothing. Only a file of its own database entry is reported on
+    /// (TURunFamily::Plan::skipped_diagnostics).
+    bool lacks_skipped(Fid path_id) const;
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves finish in TaskGraph::shutdown — the
@@ -303,8 +309,16 @@ private:
     /// invalidation kind.
     void touch(Fid path_id);
 
-    /// A background run's diagnostics of a file (see checked).
-    struct Check {
+    /// What of the file's last background run shows beside `output`, a
+    /// compile of the session's text: what the compile does not report
+    /// itself, and the warnings it holds back that the run raises too.
+    /// Nothing when the run read other text, or when the user chose the
+    /// file's context, which the run does not compile in.
+    std::vector<feature::FileDiagnostic> shown_skipped(const Session& session,
+                                                       const CompileOutput& output) const;
+
+    /// A background run's diagnostics of a file (see report_skipped).
+    struct SkippedDiagnostics {
         std::uint64_t text_hash = 0;
 
         std::vector<feature::FileDiagnostic> diagnostics;
@@ -333,9 +347,8 @@ private:
     /// supersede() and stop() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
 
-    /// The last background run's diagnostics of every file that had some,
-    /// open or not.
-    llvm::DenseMap<Fid, Check> checks;
+    /// The last background run's diagnostics of every file, open or not.
+    llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
 };
 
 /// Discriminators for Quarantine's per-kind records.

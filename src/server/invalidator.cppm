@@ -238,6 +238,12 @@ public:
     /// before it exists.
     llvm::SmallVector<Fid> readers(Fid path_id) const;
 
+    /// Whether an open document's own compile serves the file's index
+    /// (IndexPump::compiled_by_session): an escalated session's does, unless
+    /// it skips the bodies of the headers — then only a background run shows
+    /// what the skipped bodies hold (ASTFamily::report_skipped).
+    bool compiled_by_session(Fid path_id) const;
+
 private:
     /// Rescan the file's disk state (include edges, module maps). A module
     /// name the rescan gave its first provider cascades to the consumers
@@ -268,8 +274,8 @@ private:
     /// of every other one choose among them again.
     void cascade_providers(llvm::StringRef module_name, Fid except, DirtySet& dirty);
 
-    /// See the definition: the open/closed/index-only split of a
-    /// dependency invalidation.
+    /// See the definition: the recompile/reindex split of a dependency
+    /// invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
 private:

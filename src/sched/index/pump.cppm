@@ -57,12 +57,18 @@ public:
     std::function<bool(Fid path_id)> compiled_by_session;
 
     /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor misses on its file (TURunFamily::Plan::
-    /// diagnostics), handed here with the hash of the text they describe.
+    /// diagnostics an editor can get wrong on its file (TURunFamily::Plan::
+    /// skipped_diagnostics), handed here with the hash of the text they
+    /// describe — unless debt booked during the run says they describe
+    /// inputs that changed.
     std::function<void(Fid path_id,
                        std::uint64_t text_hash,
                        std::vector<feature::FileDiagnostic> diagnostics)>
-        on_diagnostics;
+        on_skipped_diagnostics;
+
+    /// Whether the serving side lacks those diagnostics for the file: its
+    /// run goes ahead even when its index is current.
+    std::function<bool(Fid path_id)> lacks_skipped_diagnostics;
 
     /// Emitted when shards that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the

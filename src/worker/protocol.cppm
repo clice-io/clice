@@ -296,7 +296,7 @@ struct TURunParams {
     /// pass under this frozen configuration.
     bool index = false;
     bool errors = false;
-    bool diagnostics = false;
+    bool skipped_diagnostics = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
@@ -459,12 +459,12 @@ struct TURunResult {
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
 
-    /// The diagnostics an editor shows on the file that a compile skipping
-    /// the function bodies of its headers misses: those raised in another
-    /// file and those of a declaration unused (CompilationParams::
-    /// skip_bodies). With the hash of the text they describe (plan product
-    /// `diagnostics`).
-    std::vector<feature::FileDiagnostic> diagnostics;
+    /// The diagnostics a compile skipping the function bodies of the
+    /// headers can get wrong (feature::skipped_diagnostics) (plan product
+    /// `skipped_diagnostics`).
+    std::vector<feature::FileDiagnostic> skipped_diagnostics;
+
+    /// The hash of the text skipped_diagnostics describe.
     std::uint64_t text_hash = 0;
 };
 
