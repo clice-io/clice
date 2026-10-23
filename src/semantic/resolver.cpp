@@ -115,12 +115,7 @@ llvm::SmallVector<OnlyInstantiation> only_instantiations(const clang::VarDecl* v
             enclosing.push_back({owner, owner->getTemplateParameters(), instantiation});
         }
         /// A member class template's own list is not among its outer ones.
-        llvm::ArrayRef<clang::TemplateParameterList*> lists;
-        if(auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-            lists = declarator->getTemplateParameterLists();
-        } else if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-            lists = tag->getTemplateParameterLists();
-        }
+        auto lists = decls::outer_template_parameters(decl);
         if(!lists.empty()) {
             outside.emplace_back(lists, enclosing.size());
         }
@@ -1542,10 +1537,7 @@ public:
         if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
             decl = shadow->getTargetDecl();
         }
-        if(auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
-            return FTD->getTemplatedDecl();
-        }
-        return llvm::dyn_cast<clang::FunctionDecl>(decl);
+        return decl->getAsFunction();
     }
 
     /// What `->` reaches from `type`: the pointee, once overloaded

@@ -1775,13 +1775,7 @@ struct DeclarationPrinter {
         /// A parameter of the template the class is instantiated from, not
         /// of a template around it.
         const auto* record = spec->getTemplateInstantiationPattern();
-        const clang::TemplateParameterList* params = nullptr;
-        if(const auto* partial =
-               llvm::dyn_cast_if_present<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-            params = partial->getTemplateParameters();
-        } else if(const auto* described = record ? record->getDescribedClassTemplate() : nullptr) {
-            params = described->getTemplateParameters();
-        }
+        const auto* params = record ? record->getDescribedTemplateParams() : nullptr;
         const auto& arguments = spec->getTemplateInstantiationArgs();
         if(!params || param->getIndex() >= params->size() ||
            params->getParam(param->getIndex()) != param || param->getIndex() >= arguments.size() ||

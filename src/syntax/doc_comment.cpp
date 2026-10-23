@@ -25,8 +25,7 @@ bool marked_trailing(llvm::StringRef text) {
 }
 
 bool follows_code(llvm::StringRef content, const Comment& comment) {
-    auto begin = line_begin(content, comment.range.begin);
-    return !content.slice(begin, comment.range.begin).trim().empty();
+    return !begins_line(content, comment.range.begin);
 }
 
 std::uint32_t column_of(llvm::StringRef content, const Comment& comment) {
