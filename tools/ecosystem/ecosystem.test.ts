@@ -42,7 +42,6 @@ describe("projects", () => {
             "llvm/all/flang",
             "llvm/all/lldb",
             "mp-units",
-            "sqlite",
         ]);
         expect(named("perf")).toEqual([
             "abseil/editing",

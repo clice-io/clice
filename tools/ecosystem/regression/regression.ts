@@ -4,6 +4,7 @@
 /// reproduce it, the failures the project knows apart. Counts, sizes,
 /// memory and times are recorded, never judged.
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { quote } from "shell-quote";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
@@ -284,7 +285,11 @@ async function indexStep(context: Context): Promise<void> {
 async function sweepStep(context: Context, jobEnd: number): Promise<void> {
     const { options, checkout, entries, results } = context;
     const { job } = options;
-    const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
+    // A unit the preparation did not write is the index step's to report:
+    // the compiler cannot read it either.
+    const units = entries
+        .filter((entry) => fs.existsSync(entrySource(entry)))
+        .flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
     const seed = `${options.seed} ${job.name}`;
     // A machine asking fewer files at once samples fewer: a sweep takes the
     // same time everywhere.

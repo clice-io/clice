@@ -179,7 +179,10 @@ async function buildGenerated(build: string, env: NodeJS.ProcessEnv | undefined)
     // a tool of the tree writes (MLIR's yamlgen.td) its readers name as an
     // input; building that tool first would compile code whose generated
     // headers race the first pass.
-    const passes = [tablegenFiles, generated.filter((target) => /\.(cpp|h|inc)$/.test(target))];
+    const passes = [
+        tablegenFiles,
+        generated.filter((target) => /\.(c|cc|cpp|cxx|h|hpp|inc)$/.test(target)),
+    ];
     for (const targets of passes) {
         // A few hundred targets a command: Windows bounds a command line at
         // 32767 characters, and LLVM has over a thousand.
