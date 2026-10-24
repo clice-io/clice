@@ -850,7 +850,7 @@ ID(TWO)
     ZEXPECT(entities.size() == 2U);
 }
 
-ZEST_CASE(RescannedMacroLocals) {
+ZEST_CASE(RescannedMacroStructs) {
     llvm::StringRef header = R"cpp(
 #pragma once
 #define EVAL0(...) __VA_ARGS__
@@ -871,37 +871,55 @@ ZEST_CASE(RescannedMacroLocals) {
 #define MAP0(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP1)(f, peek, __VA_ARGS__)
 #define MAP1(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP0)(f, peek, __VA_ARGS__)
 #define MAP(f, ...) EVAL(MAP1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
-#define LOCAL(x) int x = 0;
-void §(f)f() {
-    MAP(LOCAL, §(first)a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, §(last)a23)
-}
+#define UNNAMED(x) struct { int v; } x;
+MAP(UNNAMED, §(first)a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, §(last)a23)
 )cpp";
 
-    add_file("locals.h", header);
+    add_file("unnamed.h", header);
     add_focus("a.cpp", R"cpp(
 #define PASTE(a, b) a##b
 int PASTE(x, y);
-#include "locals.h"
+#include "unnamed.h"
 )cpp");
     ZASSERT(compile());
 
     Tester other;
-    other.add_file("locals.h", header);
+    other.add_file("unnamed.h", header);
     other.add_focus("b.cpp", R"cpp(
-#include "locals.h"
+#include "unnamed.h"
 )cpp");
     ZASSERT(other.compile());
 
+    auto unnamed = [](Tester& tester, const clang::NamedDecl* variable) {
+        return tester.unit->get<EntityTable>().entity(
+            llvm::cast<clang::VarDecl>(variable)->getType()->getAsRecordDecl());
+    };
     std::set<std::uint64_t> entities;
-    auto* body = llvm::cast<clang::FunctionDecl>(find_decl(*this, "locals.h", "f"))->getBody();
-    for(auto* statement: llvm::cast<clang::CompoundStmt>(body)->body()) {
-        for(auto* decl: llvm::cast<clang::DeclStmt>(statement)->decls()) {
-            entities.insert(unit->get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl)));
+    for(auto* decl: unit->tu()->decls()) {
+        if(auto* variable = llvm::dyn_cast<clang::VarDecl>(decl);
+           variable && variable->getType()->getAsRecordDecl()) {
+            entities.insert(unnamed(*this, variable));
         }
     }
     ZEXPECT(entities.size() == 24U);
-    ZEXPECT(entity_at(*this, "locals.h", "first") == entity_at(other, "locals.h", "first"));
-    ZEXPECT(entity_at(*this, "locals.h", "last") == entity_at(other, "locals.h", "last"));
+    for(auto marker: {"first", "last"}) {
+        ZEXPECT(unnamed(*this, find_decl(*this, "unnamed.h", marker)) ==
+                unnamed(other, find_decl(other, "unnamed.h", marker)));
+    }
+}
+
+ZEST_CASE(PreExpandedArgumentCopies) {
+    add_focus("main.cpp", R"cpp(
+#define ID(...) __VA_ARGS__
+#define TWICE(...) __VA_ARGS__ __VA_ARGS__
+void §(f)f(TWICE(ID(int,)) int);
+)cpp");
+    ZASSERT(compile());
+
+    auto* function = llvm::cast<clang::FunctionDecl>(find_decl(*this, "main.cpp", "f"));
+    ZASSERT(function->getNumParams() == 3U);
+    ZEXPECT(unit->get<EntityTable>().entity(function->getParamDecl(0)) !=
+            unit->get<EntityTable>().entity(function->getParamDecl(1)));
 }
 
 ZEST_CASE(CpuSpecificVersions) {

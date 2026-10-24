@@ -338,15 +338,14 @@ void TokenMap::set_macro_origins(clang::FileID fid,
         }
         // One the macro expands more than once stands for itself at a single
         // copy, so a single node owns it: the copy in the macro FileID made
-        // last. That is the expansion getMacroArgExpandedLocation picks
-        // whenever that one reaches the stream, but asking it walks the
-        // spelling chain of every argument expansion in the file, quadratic
-        // under a macro that rescans its output pass after pass (an `EVAL`).
-        // The pick is per token: a nested macro rereading part of a
-        // `__VA_ARGS__` copy takes that part over.
-        auto [copy, inserted] = arguments.try_emplace(written, ArgumentCopy{fid, index});
-        if(!inserted && copy->second.file < fid) {
-            copy->second = {fid, index};
+        // last. The pick is per token: a nested macro rereading part of a
+        // `__VA_ARGS__` copy takes that part over. getMacroArgExpandedLocation
+        // is no shortcut: it walks the spelling chain of every argument
+        // expansion in the file, quadratic under a macro that rescans its
+        // output pass after pass (an `EVAL`).
+        auto copy = arguments.try_emplace(written, ArgumentCopy{.file = fid, .index = index}).first;
+        if(copy->second.file < fid) {
+            copy->second = {.file = fid, .index = index};
         }
     }
 }

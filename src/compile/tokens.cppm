@@ -118,6 +118,7 @@ private:
     /// FileID holding it.
     struct ArgumentCopy {
         clang::FileID file;
+
         std::uint32_t index;
     };
 

@@ -284,12 +284,16 @@ ZEST_CASE(StringizedArguments) {
     add_focus("main.cpp", R"cpp(
 #define STR(x) #x
 #define CHECK(e) ((e) ? 0 : fail(STR(e)))
+#define EQUAL(e) ((e) == (e) ? 0 : fail(STR(e)))
 int fail(const char*);
-int n;
+int n, m;
 int v = CHECK(§(n)n);
+int w = §(equal)EQUAL(§(m)m);
 )cpp");
     ZASSERT(compile());
     ZEXPECT(origin_offset("n", 1) == std::optional(point("n")));
+    ZEXPECT(origin_offset("m", 1) == std::optional(point("equal")));
+    ZEXPECT(origin_offset("m", 2) == std::optional(point("m")));
 }
 
 ZEST_CASE(RescannedArguments) {
