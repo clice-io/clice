@@ -47,7 +47,7 @@ function failureOf(run: RunResult, options: PerfOptions): Failure {
     const error = run.error ?? "";
     const kind = /timed out after|not idle after|announced no/.test(error)
         ? "hang"
-        : /exited (with|while)/.test(error)
+        : /exited (with|while)|worker crashed/.test(error)
           ? "crash"
           : "server";
     return {

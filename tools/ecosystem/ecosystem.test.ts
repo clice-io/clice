@@ -6,10 +6,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
-import { jobDatabase, sampleFiles, syntaxOnly, thinned } from "./database.ts";
+import { inPart, jobDatabase, sampleFiles, syntaxOnly, thinned } from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
 import { withoutOrderOnly } from "./prepare.ts";
-import type { Configuration } from "./project.ts";
+import { validated, type Configuration, type Project } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
 import { allJobs, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
@@ -70,6 +70,32 @@ describe("projects", () => {
         expect(gcc?.platforms).toEqual(["linux"]);
         expect(gcc?.config.packages).toEqual(["g++-13"]);
     });
+
+    test("a project.json that cannot be what it says is an error", () => {
+        const project: Project = {
+            name: "p",
+            about: "",
+            repository: "https://example.com/p",
+            commit: "0123456789abcdef0123456789abcdef01234567",
+            configurations: { c: { about: "", prepare: [], database: "db.json" } },
+        };
+        expect(validated(project)).toBe(project);
+        const broken = (change: Partial<Project>) => () => validated({ ...project, ...change });
+        expect(broken({ commit: "main" })).toThrow(/pins main, not a full commit hash/);
+        const { commit: _, ...uncommitted } = project;
+        expect(() => validated(uncommitted)).toThrow(/a repository without a commit/);
+        expect(broken({ archive: { url: "u", sha256: "0".repeat(64) } })).toThrow(
+            /both a repository and an archive/,
+        );
+        expect(broken({ configurations: {} })).toThrow(/has no configuration/);
+        const config = { about: "", prepare: [], database: "db.json" };
+        expect(
+            broken({ configurations: { c: { ...config, platforms: ["mac" as "macos"] } } }),
+        ).toThrow(/c names unknown platforms: mac/);
+        expect(
+            broken({ configurations: { c: { ...config, parts: { a: ["a/"] }, keep: 1 } } }),
+        ).toThrow(/c both splits its database and thins it/);
+    });
 });
 
 describe("positions", () => {
@@ -120,6 +146,7 @@ describe("known issues", () => {
                 request: "signatureHelp",
             },
             { issue: "10-22#7", why: "too big", platform: "macos", kind: "memory", file: /^big\// },
+            { issue: "10-22#8", why: "flang's", part: "flang", kind: "hang" },
         ],
     } as unknown as Job;
 
@@ -134,6 +161,15 @@ describe("known issues", () => {
         expect(knownIssue(job, "macos", { ...memory, file: "big/x.cpp" })?.issue).toBe("10-22#7");
         expect(knownIssue(job, "linux", { ...memory, file: "big/x.cpp" })).toBeUndefined();
         expect(knownIssue(job, "macos", { ...memory, file: "small/x.cpp" })).toBeUndefined();
+    });
+
+    test("a known issue of one configuration or part matches no other", () => {
+        const disagree = { kind: "disagree", request: "signatureHelp", detail: "", repro: "" };
+        expect(knownIssue({ ...job, configuration: "clang" }, "linux", disagree)).toBeUndefined();
+        const hang = { kind: "hang", detail: "", repro: "" };
+        expect(knownIssue({ ...job, part: "flang" } as Job, "linux", hang)?.issue).toBe("10-22#8");
+        expect(knownIssue({ ...job, part: "mlir" } as Job, "linux", hang)).toBeUndefined();
+        expect(knownIssue(job, "linux", hang)).toBeUndefined();
     });
 
     test("known failures move apart, the issues not seen listed", () => {
@@ -156,7 +192,7 @@ describe("known issues", () => {
                 issue: "10-22#6",
             },
         ]);
-        expect(results.unseen.map((known) => known.issue)).toEqual(["10-22#7"]);
+        expect(results.unseen.map((known) => known.issue)).toEqual(["10-22#7", "10-22#8"]);
     });
 });
 
@@ -242,6 +278,33 @@ describe("database", () => {
         ).toEqual(["cl.exe", "/nologo", "/FIcmake_pch.hxx", "/Zs", "--", "a.cpp"]);
     });
 
+    test("nvcc checks the code by compiling it into the null device", () => {
+        expect(
+            syntaxOnly({
+                directory: "/b",
+                file: "a.cu",
+                command: "nvcc -arch=sm_80 -c a.cu -o a.o",
+            }),
+        ).toEqual(["nvcc", "-arch=sm_80", "a.cu", "-c", "-o", os.devNull]);
+    });
+
+    test("a part's headers are those its longest prefixes hold", () => {
+        const config: Configuration = {
+            about: "",
+            prepare: [],
+            database: "db.json",
+            parts: { llvm: ["llvm/", "build/"], clang: ["clang/", "build/tools/clang/"] },
+        };
+        const root = "/w";
+        expect(inPart(config, "clang", root, "build/tools/clang/a.inc")).toBe(true);
+        expect(inPart(config, "llvm", root, "build/tools/clang/a.inc")).toBe(false);
+        expect(inPart(config, "llvm", root, "build/include/b.inc")).toBe(true);
+        expect(inPart(config, "llvm", root, "third/c.h")).toBe(false);
+        expect(
+            inPart({ ...config, parts: undefined } as Configuration, undefined, root, "x.h"),
+        ).toBe(true);
+    });
+
     test("a part takes the units under its longest prefixes", () => {
         const root = scratch();
         try {
@@ -288,10 +351,19 @@ describe("database", () => {
             arguments: [],
         }));
         expect(thinned(entries, 3).map((entry) => entry.file)).toEqual([
-            "/p/f0.cpp",
-            "/p/f3.cpp",
-            "/p/f6.cpp",
+            "/p/f1.cpp",
+            "/p/f5.cpp",
+            "/p/f8.cpp",
         ]);
+        const many = Array.from({ length: 239 }, (_, i) => ({
+            directory: "/p",
+            file: `/p/f${String(i).padStart(3, "0")}.cpp`,
+            arguments: [],
+        }));
+        const kept = thinned(many, 120).map((entry) => entry.file);
+        expect(kept).toHaveLength(120);
+        expect(kept[0]).toBe("/p/f000.cpp");
+        expect(kept.at(-1)).toBe("/p/f238.cpp");
     });
 
     test("the seed picks the same sources", () => {
@@ -468,6 +540,20 @@ describe("report", () => {
         expect(text).toContain("# regression p on windows: green");
         expect(text).toContain(
             "## Server requests that took over a minute (2)\n\n- a.cpp, references p3: 300 s\n- a.cpp, hover p0: 75 s",
+        );
+    });
+
+    test("what fails nothing is listed: units the compiler rejects too, error lines", () => {
+        const text = regressionReport({
+            ...base,
+            compilerRejects: [{ unit: "/w/a.c", output: "a.c:1:1: error: x\nmore" }],
+            logErrors: ["master.log: [error] no"],
+        });
+        expect(text).toContain(
+            "## Units the compiler rejects too (1)\n\n- `/w/a.c`: a.c:1:1: error: x",
+        );
+        expect(text).toContain(
+            "## Error lines in clice's logs (1)\n\n```\nmaster.log: [error] no\n```",
         );
     });
 

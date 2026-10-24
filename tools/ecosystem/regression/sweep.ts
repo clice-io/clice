@@ -24,6 +24,7 @@ import { writeToml } from "../../testing/render/value.ts";
 import { Serve } from "../../testing/server/serve.ts";
 import { StepRecord } from "../../testing/server/steps.ts";
 import { KEYWORDS, lex } from "../../lex.ts";
+import { spread } from "../database.ts";
 import {
     residentNow,
     watchTree,
@@ -150,16 +151,6 @@ export function acceptedDifference(
 /// The name a module declaration declares: the server answers about it from
 /// the index of module interfaces, which inspect does not build.
 const MODULE_NAME = /(?<=^[ \t]*(?:export[ \t]+)?module[ \t]+)[\w.:]+/gm;
-
-function spread<T>(items: readonly T[], count: number): T[] {
-    if (items.length <= count) {
-        return [...items];
-    }
-    return Array.from(
-        { length: count },
-        (_, i) => items[Math.floor(((i + 0.5) * items.length) / count)] as T,
-    );
-}
 
 /// The places a file is asked at, the same every night: identifiers
 /// spread over the file, member accesses, and the insides of calls.

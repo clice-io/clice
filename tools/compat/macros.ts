@@ -12,6 +12,7 @@ import {
     entryArguments,
     entrySource,
     isMsvc,
+    isNvcc,
     samePath,
     withoutOutputs,
     type DatabaseEntry,
@@ -141,7 +142,7 @@ export async function compilerAnswers(
         throw new Error(`${source}: empty compile command`);
     }
     const msvc = isMsvc(driver);
-    const nvcc = /^nvcc(\.exe)?$/i.test(path.basename(driver));
+    const nvcc = isNvcc(driver);
     const macros = msvc ? MSVC_MACROS : nvcc ? NVCC_MACROS : GNU_MACROS;
     const probe = path.join(scratch, `probe${path.extname(source)}`);
     // The libraries define their versions in their headers: the probe reads

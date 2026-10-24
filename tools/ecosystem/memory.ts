@@ -5,10 +5,11 @@
 /// the tree spent. What a process holds is its own memory: anonymous and
 /// shared pages on Linux, the physical footprint `top` reports on macOS,
 /// the private commit on Windows; its high-water mark is the system's on
-/// Linux and Windows, the largest sample on macOS. A descendant that ends
-/// between two samples keeps the peak and the CPU seen last. The tree's
-/// total counts each process's own memory only: the pages of a binary its
-/// processes share are not counted once per process.
+/// Windows, the largest sample elsewhere (Linux's VmHWM counts the pages
+/// mapped from files too, clice's PCHs and LMDB index among them). A
+/// descendant that ends between two samples keeps the peak and the CPU seen
+/// last. The tree's total counts each process's own memory only: the pages
+/// of a binary its processes share are not counted once per process.
 
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -59,12 +60,13 @@ function procUsage(): Usage[] {
             // after it are what counts, the parent the second, the user and
             // system times the twelfth and thirteenth.
             const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+            const own = procField(status, "RssAnon") + procField(status, "RssShmem");
             return [
                 {
                     pid: Number(pid),
                     parent: Number(fields[1]),
-                    own: procField(status, "RssAnon") + procField(status, "RssShmem"),
-                    peak: procField(status, "VmHWM"),
+                    own,
+                    peak: own,
                     cpu: (Number(fields[11]) + Number(fields[12])) / TICKS,
                     started: Number(fields[19]),
                 },

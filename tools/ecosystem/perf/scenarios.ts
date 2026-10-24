@@ -25,7 +25,7 @@ import {
     type Probe,
 } from "../script.ts";
 import type { RunResult, ServerName } from "./results.ts";
-import { cacheMB, dropFileCache, isClice, wipeCache } from "./servers.ts";
+import { cacheMB, dropFileCache, indexToken, isClice, wipeCache } from "./servers.ts";
 import { bounded, median, nowMs, pause, Session, sizeOf, type PerfContext } from "./session.ts";
 
 /// A file a scenario opens: its path alone, or with its request positions.
@@ -703,9 +703,8 @@ export class Perf {
     }
 
     /// Editing while the background index runs from scratch: every `every`
-    /// ms an edit, a completion, a hover and semantic tokens, until the
-    /// index has been quiet for 15 s (at most `minutes`), then ten rounds
-    /// more.
+    /// ms an edit, a completion, a hover and semantic tokens while an index
+    /// round is running (at most `minutes`), then ten rounds once none is.
     async duringIndex(
         file: FileArg,
         options: { every?: number; minutes?: number } = {},
@@ -715,21 +714,26 @@ export class Perf {
         await this.each("duringIndex", opened.file, { wipe: "cache" }, async (s) => {
             const client = await s.start();
             const { uri } = await s.open(opened.file);
-            let lastProgress = nowMs();
-            let seen = client.progressEvents.length;
+            const token = indexToken(s.server);
+            let seen = 0;
+            let active = false;
+            let begun = false;
             let after = 0;
             let rounds = 0;
             while (after < 10) {
                 // Time is the feature: the rounds come at an editor's pace.
                 await pause(options.every ?? 5000);
-                if (client.progressEvents.length !== seen) {
-                    seen = client.progressEvents.length;
-                    lastProgress = nowMs();
+                for (const event of client.progressEvents.slice(seen)) {
+                    if (event.token === token) {
+                        active = (event.value as { kind?: string }).kind !== "end";
+                        begun = true;
+                    }
                 }
-                const phase =
-                    nowMs() - lastProgress < 15_000 && nowMs() - s.started < cap
-                        ? "during"
-                        : "after";
+                seen = client.progressEvents.length;
+                // The first round announces itself within a minute of the
+                // open (clice waits for the editor to go idle first).
+                const indexing = active || (!begun && nowMs() - s.started < 60_000);
+                const phase = indexing && nowMs() - s.started < cap ? "during" : "after";
                 const end = s.end(uri);
                 s.record(`${phase}_edit`, (await s.edit(uri)).diagnostics);
                 await s.measure(`${phase}_completion`, () =>

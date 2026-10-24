@@ -146,6 +146,10 @@ export function isMsvc(driver: string): boolean {
     return /^(cl|clang-cl)(\.exe)?$/i.test(path.basename(driver));
 }
 
+export function isNvcc(driver: string): boolean {
+    return /^nvcc(\.exe)?$/i.test(path.basename(driver));
+}
+
 /// An entry's argv, driver first, without the arguments that name the
 /// build's outputs or its own dependency files: rerunning the entry must
 /// neither overwrite them nor compile.

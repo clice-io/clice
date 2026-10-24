@@ -72,7 +72,7 @@ function fail(name: string, message: string): never {
     throw new Error(`ecosystem/${name}/project.json: ${message}`);
 }
 
-function validated(project: Project): Project {
+export function validated(project: Project): Project {
     const { name } = project;
     if ((project.repository === undefined) !== (project.commit === undefined)) {
         fail(name, "names a repository without a commit, or a commit without one");

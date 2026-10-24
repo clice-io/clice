@@ -5,7 +5,6 @@
 /// memory and times are recorded, never judged.
 
 import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
 import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
@@ -21,6 +20,7 @@ import {
     sampleHeaders,
 } from "../database.ts";
 import type { PeakMemory } from "../memory.ts";
+import { wipeCache } from "../perf/servers.ts";
 import { compilerEnvironment, prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
 import { sortKnown, type Failure, type Known, type RegressionJob } from "../script.ts";
@@ -200,11 +200,7 @@ function located(error: { file: string; line: number; column: number; message: s
 
 async function indexStep(context: Context): Promise<void> {
     const { options, checkout, results } = context;
-    if (fs.existsSync(path.join(checkout, ".clice"))) {
-        console.warn(
-            `${checkout}/.clice exists: the index starts warm, its numbers are no cold start`,
-        );
-    }
+    wipeCache(checkout, checkout, "clice");
     const run = await runIndex(checkout);
     const report = run.report;
     const again = rerun(options, "--steps index");

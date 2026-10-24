@@ -7,8 +7,9 @@ import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../../client/client.ts";
 import { Workspace } from "../../client/workspace.ts";
-import { logFiles } from "../../process_gate.ts";
+import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
+import { CRASHED_IN } from "../../testing/server/serve.ts";
 import { watchTree, type TreeWatch } from "../memory.ts";
 import { parsePerfLines, summarize } from "./logs.ts";
 import type { RunResult, ServerName } from "./results.ts";
@@ -366,15 +367,24 @@ export class Session {
     /// Server-side breakdown from the session's log files — the worker
     /// processes' `[perf:build]`/`[perf:query]` lines only exist there
     /// (workers never mirror to stderr). Captured stderr, which carries the
-    /// master's lines, is the fallback when no log files appeared.
+    /// master's lines, is the fallback when no log files appeared. A worker
+    /// that crashed, or an anomaly, fails the run even when the master
+    /// recovered.
     private collectPerf(client: CliceClient): void {
         const fresh = logFiles(this.context.workspace).filter((f) => !this.priorLogs.has(f));
+        const texts =
+            fresh.length > 0
+                ? fresh.map((f) => fs.readFileSync(f, "utf8"))
+                : [client.drainedStderr().toString("utf8")];
+        const failed = texts
+            .flatMap((text) => text.split(/\r?\n/))
+            .find((line) => CRASHED_IN.test(line) || ANOMALY_PATTERN.test(line));
+        if (failed !== undefined) {
+            this.result.error ??= `clice logged: ${failed}`;
+        }
         // One pid per log file: master and workers are separate processes
         // and keep separate trace lanes.
-        let events =
-            fresh.length > 0
-                ? fresh.flatMap((f, i) => parsePerfLines(fs.readFileSync(f, "utf8"), i + 1))
-                : parsePerfLines(client.drainedStderr().toString("utf8"));
+        let events = texts.flatMap((text, i) => parsePerfLines(text, i + 1));
         const windowStart = this.perfWindowStart;
         if (windowStart !== null) {
             events = events.filter((e) => e.ts !== null && e.ts >= windowStart);

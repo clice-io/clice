@@ -4,6 +4,7 @@
 /// and no other the tree happens to hold.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { ending, runProcess } from "../client/process.ts";
 import { cliceExecutable } from "../client/session.ts";
@@ -11,6 +12,7 @@ import {
     entryArguments,
     entrySource,
     isMsvc,
+    isNvcc,
     withoutOutputs,
     type DatabaseEntry,
 } from "../compat/database.ts";
@@ -61,11 +63,24 @@ export function inPart(
     return closest.length === 1 && closest[0] === part;
 }
 
+/// `count` of the items, spread evenly over them: all when there are no
+/// more.
+export function spread<T>(items: readonly T[], count: number): T[] {
+    if (items.length <= count) {
+        return [...items];
+    }
+    return Array.from(
+        { length: count },
+        (_, i) => items[Math.floor(((i + 0.5) * items.length) / count)] as T,
+    );
+}
+
 /// `keep` entries spread evenly over the database in path order.
 export function thinned(entries: readonly DatabaseEntry[], keep: number): DatabaseEntry[] {
-    const sorted = [...entries].sort((a, b) => (entrySource(a) < entrySource(b) ? -1 : 1));
-    const step = Math.max(1, Math.floor(sorted.length / keep));
-    return sorted.filter((_, i) => i % step === 0).slice(0, keep);
+    return spread(
+        [...entries].sort((a, b) => (entrySource(a) < entrySource(b) ? -1 : 1)),
+        keep,
+    );
 }
 
 export interface JobDatabase {
@@ -183,11 +198,15 @@ export async function includedHeaders(
 }
 
 /// The entry's command checking the code only: what the build ran, without
-/// the files it writes, and `-fsyntax-only` (`/Zs` for cl). A CMake
-/// precompiled header is read from its source instead (the forced include
-/// beside it stays): the preparation builds no `.pch`.
+/// the files it writes, and `-fsyntax-only` (`/Zs` for cl; nvcc has no such
+/// mode, and compiles into the null device). A CMake precompiled header is
+/// read from its source instead (the forced include beside it stays): the
+/// preparation builds no `.pch`.
 export function syntaxOnly(entry: DatabaseEntry): string[] {
     const args = withoutOutputs(entryArguments(entry));
+    if (isNvcc(args[0] ?? "")) {
+        return [...args, "-c", "-o", os.devNull];
+    }
     if (isMsvc(args[0] ?? "")) {
         const kept = args.filter((arg) => !/^[/-](Yu|Yc|Fp)/.test(arg));
         // Options stay before a `--` that ends them (CMake writes one before

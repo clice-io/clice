@@ -242,9 +242,9 @@ listed. Numbers never fail.
 ### Memory
 
 Measured from outside, sampled every second, each process's own memory:
-anonymous and shared pages on Linux (its high-water mark the kernel's), the
-physical footprint `top` reports on macOS (the highest sample), the private
-commit on Windows (its peak the system's). A process that ends between two
+anonymous and shared pages on Linux, the physical footprint `top` reports on
+macOS, the private commit on Windows; a peak is the highest sample, the
+system's own on Windows. A process that ends between two
 samples keeps the peak seen last; a watch stopped takes one more sample. Pages
 mapped from files (clice's PCHs and its LMDB index, a binary its processes
 share) count nowhere. The measures differ by platform: compare within one.
