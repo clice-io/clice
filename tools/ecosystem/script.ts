@@ -37,6 +37,8 @@ export interface Known {
     request?: string;
     /// A checkout-relative path, or a pattern over one.
     file?: string | RegExp;
+    /// A pattern over what the failure says.
+    detail?: RegExp;
 }
 
 export interface RegressionOptions {
@@ -263,6 +265,7 @@ export function knownIssue(job: Job, platform: Platform, failure: Failure): Know
             applies(known, job, platform) &&
             (known.kind === undefined || known.kind === failure.kind) &&
             (known.request === undefined || known.request === failure.request) &&
+            (known.detail === undefined || known.detail.test(failure.detail)) &&
             (known.file === undefined ||
                 (failure.file !== undefined &&
                     (typeof known.file === "string"

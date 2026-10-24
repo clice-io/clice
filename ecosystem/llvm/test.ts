@@ -10,6 +10,19 @@ regression({
             platform: "macos",
             kind: "memory",
         },
+        {
+            issue: "10-24#7",
+            why: "in templates and macro arguments the open file's highlights hold more than the unit's own",
+            kind: "disagree",
+            request: "highlights",
+            detail: /^(?![\s\S]*\n-\s+\{)/,
+        },
+        {
+            issue: "10-24#8",
+            why: "a header in an include cycle reaches itself through its preamble, which clang refuses",
+            kind: "compile",
+            detail: /main file cannot be included recursively when building a preamble/,
+        },
     ],
 });
 

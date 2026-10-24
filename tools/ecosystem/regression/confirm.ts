@@ -34,18 +34,14 @@ export function missingInputs(args: readonly string[], directory: string): strin
         .filter((file) => !fs.existsSync(path.resolve(directory, file)));
 }
 
-/// Each unit (`item.unit`) with what the compiler says of it; a header
-/// with what it says of the unit including it (`item.host`). The compiler
-/// runs in `env`, the configuration's environment.
-export async function confirm<T extends { unit: string; host?: string | undefined }>(
+/// The database's entry of a unit, its first. By the file's real path:
+/// Bazel names a source through its execution root, whose entries link
+/// back into the workspace clice names it by. On Windows clice spells a
+/// drive in lowercase and the build in uppercase: the file system's own
+/// spelling is the one both resolve to.
+export function entryOf(
     entries: readonly DatabaseEntry[],
-    items: readonly T[],
-    env: NodeJS.ProcessEnv | undefined,
-): Promise<(T & CompilerCheck)[]> {
-    // By the file's real path: Bazel names a source through its execution
-    // root, whose entries link back into the workspace clice names it by.
-    // On Windows clice spells a drive in lowercase and the build in
-    // uppercase: the file system's own spelling is the one both resolve to.
+): (unit: string) => DatabaseEntry | undefined {
     const real = (file: string) => (fs.existsSync(file) ? fs.realpathSync.native(file) : file);
     const byUnit = new Map<string, DatabaseEntry>();
     for (const entry of entries) {
@@ -54,10 +50,22 @@ export async function confirm<T extends { unit: string; host?: string | undefine
             byUnit.set(source, entry);
         }
     }
+    return (unit) => byUnit.get(real(unit));
+}
+
+/// Each unit (`item.unit`) with what the compiler says of it; a header
+/// with what it says of the unit including it (`item.host`). The compiler
+/// runs in `env`, the configuration's environment.
+export async function confirm<T extends { unit: string; host?: string | undefined }>(
+    entries: readonly DatabaseEntry[],
+    items: readonly T[],
+    env: NodeJS.ProcessEnv | undefined,
+): Promise<(T & CompilerCheck)[]> {
+    const find = entryOf(entries);
     const queue = [...items];
     const checks: (T & CompilerCheck)[] = [];
     const check = async (unit: string): Promise<CompilerCheck> => {
-        const entry = byUnit.get(real(unit));
+        const entry = find(unit);
         if (entry === undefined) {
             return { outcome: "unchecked", output: "no entry of the database names it" };
         }

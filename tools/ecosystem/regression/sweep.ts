@@ -18,7 +18,7 @@ import { Disk } from "../../testing/cases/disk.ts";
 import { importsModule, Inspect } from "../../testing/inspect/inspect.ts";
 import type { Diagnostic } from "../../testing/render/answers.ts";
 import type { Client } from "../../testing/render/client.ts";
-import { withoutBom } from "../../testing/render/position.ts";
+import { renderLocation, SourceText, withoutBom } from "../../testing/render/position.ts";
 import { block, type Shown } from "../../testing/render/shown.ts";
 import { writeToml } from "../../testing/render/value.ts";
 import { Serve } from "../../testing/server/serve.ts";
@@ -207,8 +207,18 @@ interface Ask {
     request: Request;
     /// The request and its place: what the answers are kept under.
     label: string;
-    at?: string;
+    place?: MarkerAnchor;
     ask: (client: Client) => Shown;
+}
+
+/// A place as answers show one: its line, `⟦⟧` where it stands.
+export function shownPlace(place: MarkerAnchor): string {
+    const source = new SourceText(place.path, place.text);
+    const position = source.positionAt(place.begin);
+    return renderLocation(
+        { path: place.path, range: { start: position, end: position } },
+        { file: () => source, query: { path: place.path } },
+    );
 }
 
 function asksOf(
@@ -219,7 +229,7 @@ function asksOf(
     const at = (request: Request, place: MarkerAnchor, ask: Ask["ask"]): Ask => ({
         request,
         label: `${request} ${place.name}`,
-        at: place.name,
+        place,
         ask,
     });
     const atPoints = <K extends Request>(
@@ -330,8 +340,9 @@ export interface SweepRun {
     serverExit: string[];
     /// The work the server still had once every file closed.
     unsettled?: string;
-    /// The files the server opened with errors, the first few of each.
-    serverErrors: { file: string; errors: string[] }[];
+    /// The files the server opened with errors; an error a warning raised
+    /// names the warning's group.
+    serverErrors: { file: string; errors: { text: string; group?: string }[] }[];
     /// The files left unasked when the sweep ran out of time, and those it
     /// ran out of time in.
     unasked: string[];
@@ -368,7 +379,7 @@ async function sweepFile(
             kind,
             file,
             request: ask.request,
-            ...(ask.at === undefined ? {} : { at: ask.at }),
+            ...(ask.place === undefined ? {} : { at: shownPlace(ask.place) }),
             detail,
         });
     const cutoff = options.deadline + FINISH_MS;
@@ -485,9 +496,11 @@ async function sweepFile(
     if (cut.size > 0) {
         run.cut.push(file);
     }
-    for (const [label, { ms }] of fromServer) {
+    for (const ask of [opened, ...compared, ...navigation]) {
+        const ms = fromServer.get(ask.label)?.ms ?? 0;
         if (ms > SLOW_MS) {
-            run.slow.push({ file, label, seconds: Math.round(ms / 1000) });
+            const at = ask.place === undefined ? "" : ` at \`${shownPlace(ask.place)}\``;
+            run.slow.push({ file, label: `${ask.request}${at}`, seconds: Math.round(ms / 1000) });
         }
     }
     const [why] = errors;
@@ -502,12 +515,10 @@ async function sweepFile(
     if (opening.length > 0) {
         run.serverErrors.push({
             file,
-            errors: opening
-                .slice(0, 5)
-                .map(
-                    ({ location, message }) =>
-                        `${location.path}:${String(location.range.start.line + 1)}:${String(location.range.start.character + 1)}: ${message}`,
-                ),
+            errors: opening.map(({ location, message, code }) => ({
+                text: `${location.path}:${String(location.range.start.line + 1)}:${String(location.range.start.character + 1)}: ${message}`,
+                ...(code?.startsWith("-W") === true ? { group: code.slice(2) } : {}),
+            })),
         });
     }
 

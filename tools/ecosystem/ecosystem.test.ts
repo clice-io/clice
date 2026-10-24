@@ -6,13 +6,20 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
-import { inPart, jobDatabase, sampleFiles, syntaxOnly, thinned } from "./database.ts";
+import {
+    inPart,
+    jobDatabase,
+    sampleFiles,
+    syntaxOnly,
+    thinned,
+    warningIsError,
+} from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
 import { withoutOrderOnly } from "./prepare.ts";
 import { validated, type Configuration, type Project } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
-import { allJobs, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
+import { allJobs, findJob, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
 
 function scratch(): string {
     return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-ecosystem-")));
@@ -172,6 +179,20 @@ describe("known issues", () => {
         expect(knownIssue(job, "linux", hang)).toBeUndefined();
     });
 
+    test("a known issue naming what the failure says matches no other text", async () => {
+        const abseil = await findJob("regression", "abseil/clang");
+        const diff = (lines: string[]) => ({
+            kind: "disagree",
+            request: "highlights",
+            detail: ["--- inspect", "+++ server", "@@ -1,2 +1,3 @@", ...lines].join("\n"),
+            repro: "",
+        });
+        const more = diff([" highlights = [", '+    { at = "⟦a⟧", kind = "text" },', " ]"]);
+        expect(knownIssue(abseil, "linux", more)?.issue).toBe("10-24#7");
+        const fewer = diff([" highlights = [", '-    { at = "⟦a⟧", kind = "text" },', " ]"]);
+        expect(knownIssue(abseil, "linux", fewer)).toBeUndefined();
+    });
+
     test("known failures move apart, the issues not seen listed", () => {
         const results: Parameters<typeof sortKnown>[2] = {
             failures: [
@@ -290,6 +311,22 @@ describe("database", () => {
                 command: "nvcc -arch=sm_80 -c a.cu -o a.o",
             }),
         ).toEqual(["nvcc", "-arch=sm_80", "a.cu", "-c", "-o", os.devNull]);
+    });
+
+    test("a warning is an error as the command's last word on it says", () => {
+        const entry = (command: string) => ({ directory: "/b", file: "a.c", command });
+        expect(warningIsError(entry("cc -Wall -c a.c"), "unused-result")).toBe(false);
+        expect(warningIsError(entry("cc -Werror -c a.c"), "unused-result")).toBe(true);
+        expect(warningIsError(entry("cc -Werror -Wno-error -c a.c"), "unused-result")).toBe(false);
+        expect(
+            warningIsError(entry("cc -Werror -Wno-error=unused-result -c a.c"), "unused-result"),
+        ).toBe(false);
+        expect(warningIsError(entry("cc -Werror=unused-result -c a.c"), "unused-result")).toBe(
+            true,
+        );
+        expect(warningIsError(entry("cc -Werror=vla -c a.c"), "unused-result")).toBe(false);
+        expect(warningIsError(entry("cl /W4 /WX /c a.c"), "unused-result")).toBe(true);
+        expect(warningIsError(entry("cl /WX /WX- /c a.c"), "unused-result")).toBe(false);
     });
 
     test("a part's headers are those its longest prefixes hold", () => {
@@ -481,7 +518,7 @@ describe("report", () => {
                     kind: "disagree",
                     file: "a.cpp",
                     request: "signatureHelp",
-                    at: "c0",
+                    at: "f(⟦⟧)",
                     detail: "- res_arg\n+ res",
                     repro: "r",
                     issue: "10-22#6",
@@ -490,7 +527,9 @@ describe("report", () => {
             unseen: [{ issue: "10-22#7", why: "too big" }],
         });
         expect(text).toContain("# regression p on linux: green, 1 known");
-        expect(text).toContain("## Known failures (1)\n\n### 10-22#6: a.cpp, signatureHelp c0");
+        expect(text).toContain(
+            "## Known failures (1)\n\n### 10-22#6: a.cpp, signatureHelp at `f(⟦⟧)`",
+        );
         expect(text).toContain("## Known issues not seen this round (1)\n\n- 10-22#7: too big");
     });
 
@@ -499,7 +538,7 @@ describe("report", () => {
             kind: "crash",
             file,
             request: "hover",
-            at: "p0",
+            at: "i⟦⟧nt x;",
             detail: "clice inspect crashed (SIGKILL)",
             repro: `run ${file}`,
         });
@@ -508,7 +547,9 @@ describe("report", () => {
             failures: [crash("a.c"), crash("b.c"), crash("c.c")],
         });
         expect(text).toContain("## Crashes (3)");
-        expect(text).toContain("### a.c, hover p0 and 2 more\n\n- b.c, hover p0\n- c.c, hover p0");
+        expect(text).toContain(
+            "### a.c, hover at `i⟦⟧nt x;` and 2 more\n\n- b.c, hover at `i⟦⟧nt x;`\n- c.c, hover at `i⟦⟧nt x;`",
+        );
         expect(text.match(/crashed \(SIGKILL\)/g)).toHaveLength(1);
         expect(text).toContain("run a.c");
         expect(text).not.toContain("run b.c");

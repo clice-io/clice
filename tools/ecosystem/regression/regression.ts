@@ -18,6 +18,7 @@ import {
     jobDatabase,
     sampleFiles,
     sampleHeaders,
+    warningIsError,
 } from "../database.ts";
 import type { PeakMemory } from "../memory.ts";
 import { wipeCache } from "../perf/servers.ts";
@@ -32,7 +33,7 @@ import {
     type Known,
     type RegressionJob,
 } from "../script.ts";
-import { confirm } from "./confirm.ts";
+import { confirm, entryOf } from "./confirm.ts";
 import { runIndex } from "./index.ts";
 import { CONCURRENCY, sweep, type Request, type SweepRun } from "./sweep.ts";
 
@@ -148,9 +149,7 @@ function scanLogs({ options, checkout, results }: Context, earlier: ReadonlySet<
                 detail: `${line.file}: ${line.text}`,
                 repro: rerun(
                     options,
-                    line.file === "index.log"
-                        ? "--steps index"
-                        : `--steps sweep --file ${quote([file])}`,
+                    line.file === "index.log" ? "--steps index" : `--file ${quote([file])}`,
                 ),
             });
         } else if (ANOMALY_PATTERN.test(line.text)) {
@@ -333,21 +332,21 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
                 ...run.unasked,
                 ...run.cut.map((file) => `${file} (in part)`),
             ].join("\n"),
-            repro: rerun(options, "--steps sweep"),
+            repro: rerun(options, ""),
         });
     }
     if (run.unsettled !== undefined) {
         results.failures.push({
             kind: "hang",
             detail: run.unsettled,
-            repro: rerun(options, "--steps sweep"),
+            repro: rerun(options, ""),
         });
     }
     for (const exit of run.serverExit) {
         results.failures.push({
             kind: exit.includes("did not exit within") ? "hang" : "crash",
             detail: `the server's exit: ${exit}`,
-            repro: rerun(options, "--steps sweep"),
+            repro: rerun(options, ""),
         });
     }
     results.accepted.push(...run.accepted);
@@ -358,10 +357,7 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
             request: failure.request,
             ...(failure.at === undefined ? {} : { at: failure.at }),
             detail: failure.detail,
-            repro: rerun(
-                options,
-                `--steps sweep --file ${quote([failure.file])} --only ${failure.request}`,
-            ),
+            repro: rerun(options, `--file ${quote([failure.file])} --only ${failure.request}`),
         });
     }
     // A file the index step judged already is reported once.
@@ -371,16 +367,31 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
     for (const reject of results.compilerRejects) {
         judged.add(inside(checkout, reject.unit) ?? reject.unit);
     }
+    // A warning the unit's command leaves a warning was made an error by
+    // the project's clang-tidy configuration (WarningsAsErrors), not by
+    // the compile the compiler is asked to judge.
+    const find = entryOf(context.entries);
     await judgeUnits(
-        run.serverErrors
-            .filter(({ file }) => !judged.has(file))
-            .map(({ file, errors }) => ({
-                unit: path.join(checkout, file),
-                host: hosts.get(file),
-                errors,
-                request: "errors",
-                repro: rerun(options, `--steps sweep --file ${quote([file])} --only errors`),
-            })),
+        run.serverErrors.flatMap(({ file, errors }) => {
+            const unit = path.join(checkout, file);
+            const host = hosts.get(file);
+            const entry = find(host ?? unit);
+            const own = errors.filter(
+                ({ group }) =>
+                    group === undefined || entry === undefined || warningIsError(entry, group),
+            );
+            return judged.has(file) || own.length === 0
+                ? []
+                : [
+                      {
+                          unit,
+                          host,
+                          errors: own.slice(0, 5).map(({ text }) => text),
+                          request: "errors",
+                          repro: rerun(options, `--file ${quote([file])} --only errors`),
+                      },
+                  ];
+        }),
         context,
     );
     // A source inspect compiles with errors that the server opens clean is
@@ -456,7 +467,7 @@ export async function runRegression(options: RegressionOptions): Promise<Results
             results.failures.push({
                 kind: "runner",
                 detail: error instanceof Error ? (error.stack ?? error.message) : String(error),
-                repro: rerun(options, `--steps ${step}`),
+                repro: rerun(options, step === "index" ? "--steps index" : ""),
             });
         }
     }

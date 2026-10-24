@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { describe, expect, test } from "vitest";
 import { missingInputs } from "./confirm.ts";
 import { unitsInFlight } from "./index.ts";
-import { acceptedDifference, placesOf } from "./sweep.ts";
+import { acceptedDifference, placesOf, shownPlace } from "./sweep.ts";
 
 describe("confirm", () => {
     test("a command reading what only the build writes cannot be checked", () => {
@@ -100,6 +100,20 @@ describe("sweep", () => {
                 answer("GetAsUInt64(uint64_t fail_value) const"),
             ),
         ).toBeUndefined();
+    });
+
+    test("a place is shown on its line, by its number where the line repeats", () => {
+        const text = "int f();\nint g() {\n    return f();\n}\nint h() {\n    return f();\n}\n";
+        const at = (begin: number) => ({
+            path: "m.cpp",
+            name: "p0",
+            begin,
+            end: begin,
+            range: false,
+            text,
+        });
+        expect(shownPlace(at(text.indexOf("f")))).toBe("int ⟦⟧f();");
+        expect(shownPlace(at(text.lastIndexOf("f")))).toBe("return ⟦⟧f(); @6");
     });
 
     test("places spread over a file with more identifiers than points", () => {

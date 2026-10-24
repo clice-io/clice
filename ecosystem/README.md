@@ -156,9 +156,9 @@ hierarchy), `member`, `unqualified` and `template` (completion there) and
 **Known issues** are the project's failures already on the board, each with
 its issue id and a `why` for the reader, like a case's `wrong`. One matches the
 failures of its job (`configuration`, `part`, `platform` when given) whose
-`kind`, `request` and `file` (a path or a pattern) it names. It is as narrow
-as its failure: one naming a kind alone would hide the next failure of that
-kind.
+`kind`, `request`, `file` (a path or a pattern) and `detail` (a pattern over
+what the failure says) it names. It is as narrow as its failure: one naming
+a kind alone would hide the next failure of that kind.
 
 ## The regression
 
@@ -295,8 +295,9 @@ node tools/ecosystem/perf/logs.ts <log>... [--trace <file>]      a session's [pe
 
 `CLICE_EXECUTABLE` names the clice under test. `--dir` is where projects are
 checked out and prepared (clice's own is the repository). The regression's
-`--steps index|sweep`, `--file` and `--only` narrow a job; `--seed` picks
-other files. Perf's `--clangd` names a clangd instead of the pinned one,
+`--steps index|sweep`, `--file` and `--only` narrow a job (the sweep asks a
+server of the index the index step built there); `--seed` picks other
+files. Perf's `--clangd` names a clangd instead of the pinned one,
 `--baseline <clice>` adds a second clice (an A/B of two commits), `--scenario`
 runs some of a job's. Preparing LLVM or the kernel takes a long build and
 several gigabytes of disk: a box, never this machine.

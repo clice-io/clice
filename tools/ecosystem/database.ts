@@ -222,6 +222,26 @@ export function syntaxOnly(entry: DatabaseEntry): string[] {
     return [...args, "-fsyntax-only"];
 }
 
+/// Whether an entry's command makes the warnings of `group` errors: the
+/// last of `-Werror`, `-Wno-error`, `/WX` and `/WX-`, unless a later
+/// `-Werror=` or `-Wno-error=` names the group.
+export function warningIsError(entry: DatabaseEntry, group: string): boolean {
+    let all = false;
+    let own: boolean | undefined;
+    for (const arg of entryArguments(entry)) {
+        if (arg === "-Werror" || /^[/-]WX$/.test(arg)) {
+            all = true;
+        } else if (arg === "-Wno-error" || /^[/-]WX-$/.test(arg)) {
+            all = false;
+        } else if (arg === `-Werror=${group}`) {
+            own = true;
+        } else if (arg === `-Wno-error=${group}`) {
+            own = false;
+        }
+    }
+    return own ?? all;
+}
+
 /// A deterministic shuffle: the same seed picks the same files.
 export function shuffled<T>(items: readonly T[], seed: string): T[] {
     let state = 2166136261;

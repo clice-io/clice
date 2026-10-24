@@ -9,6 +9,20 @@ regression({
             kind: "disagree",
             request: "signatureHelp",
         },
+        {
+            issue: "10-24#7",
+            why: "in templates and macro arguments the open file's highlights hold more than the unit's own",
+            kind: "disagree",
+            request: "highlights",
+            detail: /^(?![\s\S]*\n-\s+\{)/,
+        },
+        {
+            issue: "10-24#6",
+            why: "googletest builds with -WX, which makes clang's -Wcharacter-conversion (a warning cl does not have) an error",
+            configuration: "msvc",
+            kind: "compile",
+            file: "build/googletest-src/googletest/src/gtest-all.cc",
+        },
     ],
 });
 

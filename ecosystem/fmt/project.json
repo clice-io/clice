@@ -1,7 +1,7 @@
 {
-  "about": "12.2.0 with its tests, built as C++20",
+  "about": "12.2.0 and the module build's missing include (758d39eb), with its tests, built as C++20",
   "repository": "https://github.com/fmtlib/fmt",
-  "commit": "1be298e1bd68957e4cd352e1f676f00e07dcfb57",
+  "commit": "758d39eb239e6554d3ac0659b6f592fcd5317c24",
   "configurations": {
     "clang": {
       "about": "built by clang",

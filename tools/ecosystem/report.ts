@@ -94,7 +94,7 @@ function codeBlock(text: string): string {
 }
 
 function where(failure: Failure): string {
-    const request = [failure.request, failure.at].filter((part) => part !== undefined).join(" ");
+    const request = `${failure.request ?? ""}${failure.at === undefined ? "" : ` at \`${failure.at}\``}`;
     return (
         [failure.file, request].filter((part) => part !== undefined && part !== "").join(", ") ||
         failure.kind
