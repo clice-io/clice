@@ -306,8 +306,8 @@ tools/ecosystem/
   script.ts       test.ts: registrations, request positions, known issues
   memory.ts       a process tree's memory and CPU
   regression/     the index, the compiler's confirmation, the sweep, the job
-  perf/           the servers, a timed session, the scenarios, results, [perf:*] lines
-  report.ts       the summaries; perf/compare.ts the perf tables
+  perf/           the servers, a timed session, the scenarios, results and their tables, [perf:*] lines
+  report.ts       the summaries
   run.ts          the command line
   **/*.test.ts    the framework's own tests, beside the code
 ```
