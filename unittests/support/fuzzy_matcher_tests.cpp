@@ -410,12 +410,12 @@ ZEST_CASE(NameTokens) {
     ZEXPECT(!ranges::contains(three, token("bz")));
 }
 
-ZEST_CASE(NameTokensFollowEveryPath) {
+ZEST_CASE(NameTokensFollowPaths) {
     for(auto name: corpus) {
         ZEXPECT(tokens_of(name) == path_tokens(name));
     }
     // Long names past the bound, initialisms, digits, separators and the
-    // bytes of UTF-8 identifiers, more distinct letters than a word holds.
+    // bytes of UTF-8 identifiers, more than 64 distinct letters.
     constexpr llvm::StringRef pieces[] = {
         "get",
         "AST",
@@ -449,6 +449,9 @@ ZEST_CASE(NameTokensFollowEveryPath) {
     }
     std::string distinct;
     for(unsigned byte = 128; byte < 255; byte += 1) {
+        if(byte % 8 == 4) {
+            distinct += '_';
+        }
         distinct += static_cast<char>(byte);
         if(byte % 8 == 0) {
             distinct += static_cast<char>('A' + byte / 8 % 26);

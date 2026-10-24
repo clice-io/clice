@@ -126,7 +126,7 @@ ZEST_CASE(InvalidateKeepsResult) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
     stack.ast.compiles.entries[pid].current = true;
 
     stack.ast.invalidate(pid);
@@ -143,7 +143,7 @@ ZEST_CASE(DropErasesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
 
     stack.ast.drop(pid);
 
@@ -922,7 +922,7 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     auto pid = session->path_id;
     // No preamble directives: a current request would take the pch_key
     // reset branch; an invalidated continuation must not touch it.
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
 
     auto gen = session->generation;
     auto epoch = stack.ast.compiles.epoch(pid);

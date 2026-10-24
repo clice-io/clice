@@ -298,9 +298,9 @@ std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
         }
         std::partial_sum(starts.begin(), starts.end(), starts.begin());
         for(auto pair: pairs) {
-            auto& slot = starts[pair >> shift & 0xff];
-            sorted[slot] = pair;
-            slot += 1;
+            auto& next = starts[pair >> shift & 0xff];
+            sorted[next] = pair;
+            next += 1;
         }
         std::swap(pairs, sorted);
     }

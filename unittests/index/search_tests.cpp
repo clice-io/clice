@@ -52,7 +52,7 @@ struct CountingSessions : index::LiveSources {
         return nullptr;
     }
 
-    void for_each_pch_index(Fid, llvm::function_ref<bool(const index::TUIndex&)>) const override {}
+    void for_each_pch_index(Fid, llvm::function_ref<void(const index::TUIndex&)>) const override {}
 };
 
 ZEST_SUITE(IndexSearch, IndexQueryTester) {

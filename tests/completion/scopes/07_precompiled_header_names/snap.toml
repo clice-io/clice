@@ -1,3 +1,14 @@
+[answers.no_preamble.completion]
+items = [
+    {
+        label = "geometry::area_of_circle(double radius)",
+        kind = "Function",
+        detail = "double",
+        insert = "geometry::area_of_circle(${1:double radius})",
+        snippet = true,
+    },
+]
+
 [answers.other_namespaces.completion]
 items = [
     {

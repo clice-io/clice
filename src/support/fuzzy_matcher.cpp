@@ -90,23 +90,23 @@ void sort_unique(llvm::SmallVectorImpl<NameToken>& tokens) {
 /// A set of a name's distinct letters, each by its rank among them; a
 /// name holds at most max_name of them.
 struct Letters {
-    std::array<std::uint64_t, 2> words{};
+    std::array<std::uint64_t, 2> masks{};
 
     void add(std::uint32_t rank) {
-        words[rank / 64] |= std::uint64_t(1) << (rank % 64);
+        masks[rank / 64] |= std::uint64_t(1) << (rank % 64);
     }
 
     Letters& operator|=(const Letters& other) {
-        words[0] |= other.words[0];
-        words[1] |= other.words[1];
+        masks[0] |= other.masks[0];
+        masks[1] |= other.masks[1];
         return *this;
     }
 
     /// Visit the ranks in ascending order.
     void for_each(llvm::function_ref<void(std::uint32_t)> visit) const {
-        for(std::uint32_t word = 0; word < words.size(); word += 1) {
-            for(auto bits = words[word]; bits != 0; bits &= bits - 1) {
-                visit(word * 64 + std::countr_zero(bits));
+        for(std::uint32_t half = 0; half < masks.size(); half += 1) {
+            for(auto bits = masks[half]; bits != 0; bits &= bits - 1) {
+                visit(half * 64 + std::countr_zero(bits));
             }
         }
     }
@@ -419,7 +419,6 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     segment(name, roles);
     bool has_lower = has_lowercase_letter(name);
 
-    // The name's distinct letters in byte order, and each one's rank.
     std::array<std::uint64_t, 4> present{};
     for(std::size_t i = 0; i < name.size(); i += 1) {
         if(roles[i] != CharRole::Separator) {
@@ -429,9 +428,9 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     }
     llvm::SmallVector<char, 64> alphabet;
     std::array<std::uint8_t, 256> ranks{};
-    for(std::uint32_t word = 0; word < present.size(); word += 1) {
-        for(auto bits = present[word]; bits != 0; bits &= bits - 1) {
-            auto byte = word * 64 + std::countr_zero(bits);
+    for(std::uint32_t quarter = 0; quarter < present.size(); quarter += 1) {
+        for(auto bits = present[quarter]; bits != 0; bits &= bits - 1) {
+            auto byte = quarter * 64 + std::countr_zero(bits);
             ranks[byte] = static_cast<std::uint8_t>(alphabet.size());
             alphabet.push_back(static_cast<char>(byte));
         }
@@ -489,12 +488,12 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
             heads_seen += 1;
             out.push_back(unigram(lower(name[i])));
         }
-        auto* row = &thirds[rank(i) * alphabet.size()];
+        auto* after = &thirds[rank(i) * alphabet.size()];
         for_each_successor(i, [&](std::size_t j) {
             if(short_head) {
                 out.push_back(bigram(lower(name[i]), lower(name[j])));
             }
-            auto& ends = row[rank(j)];
+            auto& ends = after[rank(j)];
             ends |= later[j];
             if(j + 1 < name.size() && roles[j + 1] == CharRole::Tail) {
                 ends.add(rank(j + 1));

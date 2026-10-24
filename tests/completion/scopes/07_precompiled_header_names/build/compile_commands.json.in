@@ -10,5 +10,11 @@
     "command": "clang++ --target=x86_64-unknown-linux-gnu -std=c++20 -ffreestanding -undef -nostdinc -I${WS}/include -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/main.cpp.o -c ${WS}/main.cpp",
     "file": "${WS}/main.cpp",
     "output": "CMakeFiles/app.dir/main.cpp.o"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ --target=x86_64-unknown-linux-gnu -std=c++20 -ffreestanding -undef -nostdinc -I${WS}/include -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/bare.cpp.o -c ${WS}/bare.cpp",
+    "file": "${WS}/bare.cpp",
+    "output": "CMakeFiles/app.dir/bare.cpp.o"
   }
 ]

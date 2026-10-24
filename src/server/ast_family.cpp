@@ -1416,6 +1416,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto& index_data = result.value().tu_index_data;
         auto next = std::make_shared<DocumentCompile>();
         next->pch_key = consumed_pch;
+        next->base_pch_key = base_pch;
         next->failed_pch_key = failed_pch;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
@@ -1537,7 +1538,7 @@ kota::task<std::optional<std::string>>
     switch(plan.decision) {
         case PCHPlan::Decision::None:
             if(license() && !plan.partial) {
-                compiles.set_pch_key(path_id, base);
+                compiles.set_pch_keys(path_id, base, base);
                 session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
             co_return base;
@@ -1569,7 +1570,7 @@ kota::task<std::optional<std::string>>
     // wash belongs to this request anymore. The request itself still
     // compiles against the artifact: it was planned from the text it sends.
     if(license() && !plan.partial) {
-        compiles.set_pch_key(path_id, pch_key);
+        compiles.set_pch_keys(path_id, pch_key, base);
         // Adopting a proven-good artifact clears the session's PCH record as
         // surely as building one — but only its own; every consumer clears
         // for itself.

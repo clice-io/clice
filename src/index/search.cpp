@@ -284,7 +284,6 @@ Completables
             }
         }
         ranked.exhausted = ranked.exhausted && found.exhausted;
-        return true;
     });
     ranges::sort(ranked.hits, ranked_before);
 

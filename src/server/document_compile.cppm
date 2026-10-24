@@ -67,6 +67,11 @@ struct DocumentCompile {
     /// preamble text at the point of use.
     std::optional<std::string> pch_key;
 
+    /// Content key into Project.pch_cache for the precompiled header the
+    /// build declares for the document's command, when the parse loads it:
+    /// under its preamble's PCH, or as pch_key itself.
+    std::optional<std::string> base_pch_key;
+
     /// The preamble key whose build failed for the latest compilation,
     /// which then compiled without one: what a save of the document
     /// retries.
@@ -161,12 +166,15 @@ struct DocumentCompiles {
         return entry ? entry->epoch : 0;
     }
 
-    /// Replace one field of the latest compile, keeping the rest (readers
+    /// Replace some fields of the latest compile, keeping the rest (readers
     /// holding the old shared_ptr are unaffected).
-    void set_pch_key(Fid path_id, std::optional<std::string> pch_key) {
+    void set_pch_keys(Fid path_id,
+                      std::optional<std::string> pch_key,
+                      std::optional<std::string> base_pch_key) {
         auto& entry = entries[path_id];
         auto next = entry.latest ? DocumentCompile(*entry.latest) : DocumentCompile();
         next.pch_key = std::move(pch_key);
+        next.base_pch_key = std::move(base_pch_key);
         entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
     }
 

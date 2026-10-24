@@ -33,7 +33,7 @@ public:
     void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
     void for_each_pch_index(Fid file,
-                            llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
+                            llvm::function_ref<void(const index::TUIndex&)> visit) const override;
 
 private:
     /// The overlay TU index of an open buffer's PCH, or null when it has

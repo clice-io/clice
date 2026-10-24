@@ -94,12 +94,12 @@ public:
     /// the exact preamble the index was built from; null otherwise.
     virtual std::shared_ptr<TUIndex> preamble_index(Fid file) const = 0;
 
-    /// The PCH indexes naming what an open buffer's preamble declares: its
-    /// preamble_index, then the index of the build's precompiled header
-    /// that preamble's PCH chains onto, the only one naming what that
-    /// header declares.
+    /// The PCH indexes naming what an open buffer's parse loads from PCHs:
+    /// its preamble_index, then the index of the build's precompiled header
+    /// the parse loads, under the preamble's PCH (which indexes only what
+    /// the preamble adds) or alone.
     virtual void for_each_pch_index(Fid file,
-                                    llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
+                                    llvm::function_ref<void(const TUIndex&)> visit) const = 0;
 };
 
 struct FreshnessOptions {
@@ -306,7 +306,7 @@ public:
 
     /// The live sources' PCH indexes for an open buffer (see
     /// LiveSources::for_each_pch_index); none without live sources.
-    void for_each_pch_index(Fid file, llvm::function_ref<bool(const TUIndex&)> visit) const;
+    void for_each_pch_index(Fid file, llvm::function_ref<void(const TUIndex&)> visit) const;
 
     /// The symbols whose occurrences cover `offset` in the file's serving
     /// source (clauses 1 and 4), and the site of that occurrence. A session

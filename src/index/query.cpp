@@ -252,7 +252,7 @@ std::shared_ptr<TUIndex> IndexQuery::preamble_index(Fid file) const {
 }
 
 void IndexQuery::for_each_pch_index(Fid file,
-                                    llvm::function_ref<bool(const TUIndex&)> visit) const {
+                                    llvm::function_ref<void(const TUIndex&)> visit) const {
     if(live) {
         live->for_each_pch_index(file, visit);
     }
