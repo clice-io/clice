@@ -576,8 +576,14 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             if(stored && !symbol_changed && target.reference_files == stored->reference_files) {
                 return true;
             }
+            // The search ranks a symbol by its reference count's logarithm:
+            // a count crossing a power of two moves it far enough to re-read.
+            auto searched_count = [](const Symbol& symbol) {
+                return std::bit_width(symbol.reference_files.cardinality());
+            };
+            bool requalified = stored && searched_count(target) != searched_count(*stored);
             edit(hash) = std::move(target);
-            if(symbol_changed && added) {
+            if((symbol_changed || requalified) && added) {
                 added->push_back(hash);
             }
             return true;
@@ -966,8 +972,7 @@ bool ProjectIndex::has_unsaved_state() const {
            !symbol_records.changed.empty() || !file_records.changed.empty() ||
            !dependent_records.changed.empty() || !shared_local_records.changed.empty() ||
            !path_records.changed.empty() || !version_records.changed.empty() ||
-           !internals_changed.empty() || !compact.empty() || header_changed ||
-           !search_bytes.empty();
+           !internals_changed.empty() || !compact.empty() || header_changed;
 }
 
 }  // namespace clice::index

@@ -40,14 +40,24 @@ LoadOutcome ProjectIndex::open(BlobDatabase& db) {
             owed.insert(unit);
         }
     }
-    // The header pins the search blob it was saved with: another one
-    // describes entries that may have changed since.
-    if(auto search_blob = db.read(BlobKind::SearchIndex, "search")) {
-        SearchIndex loaded;
-        if(loaded.load(std::move(search_blob.buffer)) &&
-           loaded.generation() == header.search_generation) {
-            search = std::move(loaded);
+    // A segment that does not load leaves the index missing: searches scan
+    // the records until a full build replaces the segments the header lists.
+    std::uint32_t first = 0;
+    for(auto end: header.search_run_ends) {
+        std::vector<std::unique_ptr<llvm::MemoryBuffer>> run;
+        for(auto id: llvm::ArrayRef(header.search_segments).slice(first, end - first)) {
+            if(auto segment = db.read(BlobKind::SearchSegment, number_key(id))) {
+                run.push_back(std::move(segment.buffer));
+            } else {
+                break;
+            }
         }
+        if(run.size() != end - first || !search.replace(0, std::move(run))) {
+            LOG_INFO("The search index does not load; it is built again");
+            search.clear();
+            break;
+        }
+        first = end;
     }
     return LoadOutcome::Loaded;
 }

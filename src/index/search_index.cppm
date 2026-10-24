@@ -9,10 +9,15 @@ module;
 /// candidates by bitmap algebra and scores only those, stopping once the
 /// remaining quality cannot reach the results already held.
 ///
-/// The index is built from a snapshot of the symbol table and read as a
-/// blob: a short-lived reader maps it and answers at once. Symbols merged
-/// after the snapshot are not in it; the owner keeps their hashes aside
-/// and scans those directly.
+/// The index is runs of segments, oldest first, each run built from a
+/// snapshot of some symbols and read as blobs: a short-lived reader maps
+/// them and answers at once. A newer run hides what older ones say of the
+/// symbols it offers and of the names of internal linkage of the files it
+/// covers, so the owner records a change as a small run and folds runs
+/// together now and then. Each segment holds a bounded number of entries
+/// (segment_entries): a store rewrites a small run, never one big value.
+/// Symbols merged after the newest run's snapshot are not in it; the owner
+/// keeps their hashes aside and scans those directly.
 
 module clice:index.search_index;
 
@@ -20,7 +25,6 @@ import :index.symbol;
 import :index.symbol_query;
 import :support.bitmap;
 import :support.fuzzy_matcher;
-import :vfs.path;
 
 namespace clice::index {
 
@@ -50,7 +54,7 @@ struct SearchEntry {
     SymbolHash parent = 0;
     SymbolKind kind;
     SymbolFlags flags = SymbolFlags::None;
-    /// Index into SearchSnapshot::paths, or no_file.
+    /// The path id of the file declaring it, or no_file.
     std::uint32_t file = no_file;
     std::uint32_t reference_files = 0;
     /// Of internal linkage: no symbol record names the symbol, whose
@@ -58,21 +62,27 @@ struct SearchEntry {
     bool local = false;
 };
 
-/// The symbol table as the builder sees it: entries plus the path table
-/// their files index.
+/// What one run of the index is built from.
 struct SearchSnapshot {
+    /// The symbols the run offers; those of other kinds or without a name
+    /// are left out, and a symbol listed twice is offered once, as first
+    /// listed.
     std::vector<SearchEntry> entries;
-    /// Named the way the database names files (ProjectIndex::portable).
-    std::vector<std::string> paths;
-    /// The search generation the header will pin next to these entries; a
-    /// loader finding another knows entries may have changed under the
-    /// index.
-    std::uint64_t generation = 0;
+    /// Symbols above the entries that the run does not offer, through
+    /// which their qualified names are spelled.
+    std::vector<SearchEntry> scopes;
+    /// The files whose names of internal linkage `entries` lists in full
+    /// (path ids, ascending).
+    std::vector<std::uint32_t> covered;
 };
 
-/// Encode the search blob for a snapshot; symbols of other kinds or
-/// without a name are left out.
-std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot);
+/// How many symbols a segment offers at most.
+constexpr std::uint32_t segment_entries = 16384;
+
+/// Encode a run's segments, each offering at most `bound` symbols; one
+/// segment at least.
+std::vector<std::vector<std::byte>> build_search_segments(const SearchSnapshot& snapshot,
+                                                          std::uint32_t bound = segment_entries);
 
 /// How a symbol answers a query's name pattern.
 struct NameRank {
@@ -129,10 +139,10 @@ private:
 struct SearchHit {
     SymbolHash hash = 0;
     NameRank rank;
-    /// The portable name of the file holding a symbol of internal linkage
+    /// The path id of the file holding a symbol of internal linkage
     /// (SearchEntry::local), which a lookup of the symbol starts from;
-    /// empty for a project symbol.
-    llvm::StringRef file;
+    /// no_file for a project symbol.
+    std::uint32_t file = no_file;
 };
 
 /// A search's answer: its best hits, and whether they are all of them —
@@ -150,20 +160,42 @@ public:
     SearchIndex(SearchIndex&&) noexcept;
     SearchIndex& operator=(SearchIndex&&) noexcept;
 
-    /// Adopt a blob, copied when it is not readable_in_place. False — and
-    /// the index stays empty — when the bytes are not a search blob of this
-    /// build's formats or are inconsistent.
-    bool load(std::unique_ptr<llvm::MemoryBuffer> blob);
+    /// Adopt one segment as the only run (a TU's name table), copied when
+    /// it is not readable_in_place. False — and the index stays empty —
+    /// when the bytes are not a search segment of this build's formats or
+    /// are inconsistent.
+    bool load(std::unique_ptr<llvm::MemoryBuffer> segment);
+
+    /// Replace the newest `runs` runs by one made of `segments`, appending
+    /// it when `runs` is 0. False, the index unchanged, when a segment does
+    /// not load.
+    bool replace(std::uint32_t runs, std::vector<std::unique_ptr<llvm::MemoryBuffer>> segments);
+
+    /// Swap a segment's bytes for byte-identical ones elsewhere (a newer
+    /// read snapshot); false, keeping the old ones, when the sizes differ.
+    bool rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes);
+
+    void clear();
 
     bool loaded() const;
 
-    /// Number of symbols in the index.
+    std::uint32_t run_count() const;
+
+    /// How many symbols a run's segments offer, hidden ones included, and
+    /// files they cover: what a fold of the run reads again.
+    std::uint32_t run_size(std::uint32_t run) const;
+
+    /// Number of symbols the segments offer, hidden ones included.
     std::uint32_t size() const;
 
-    bool contains(SymbolHash hash) const;
+    /// Visit what a run is built from: the symbols of external linkage it
+    /// offers and the files it covers.
+    void for_each_source(std::uint32_t run,
+                         llvm::function_ref<void(SymbolHash)> symbol,
+                         llvm::function_ref<void(std::uint32_t)> file) const;
 
-    /// The search generation the entries were built for; 0 unloaded.
-    std::uint64_t generation() const;
+    /// Whether a segment offers the symbol.
+    bool contains(SymbolHash hash) const;
 
     /// Whether a posting list failed to decode since the load: the
     /// answers are incomplete until the owner rebuilds the index, and a
@@ -171,17 +203,33 @@ public:
     bool damaged() const;
 
     /// At most `limit` hits, best first. Empty for a query by id or
-    /// place. `workspace` is the root the index names files under
-    /// relative to (ProjectIndex::workspace).
+    /// place. `wanted_file` says whether a file (a path id) is one of the
+    /// query's paths; it is asked only when the query names paths.
     SearchOutcome search(const SymbolQuery& query,
                          std::uint32_t limit,
-                         CanonicalRef workspace) const;
+                         llvm::function_ref<bool(std::uint32_t)> wanted_file) const;
 
 private:
-    struct View;
+    struct Segment;
+
+    /// Whether a newer run than the segment's hides its entry.
+    bool hidden(const Segment& segment, std::uint32_t entry) const;
+
+    /// Index the symbols and files the runs after the first offer and
+    /// cover by the newest run doing so.
+    void index_runs();
 
 private:
-    std::unique_ptr<View> view;
+    std::vector<std::unique_ptr<Segment>> segments;
+
+    /// Where each run ends among the segments.
+    llvm::SmallVector<std::uint32_t> run_ends;
+
+    /// The symbols the runs after the first offer, and the files they
+    /// cover, by the newest run that does.
+    llvm::DenseMap<SymbolHash, std::uint32_t> newest_symbols;
+
+    llvm::DenseMap<std::uint32_t, std::uint32_t> newest_files;
 };
 
 }  // namespace clice::index

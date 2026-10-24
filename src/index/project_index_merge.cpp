@@ -266,7 +266,6 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     if(changed_during_search_build) {
         changed_during_search_build->symbols.insert(added.begin(), added.end());
     }
-    merges_since_search_build += 1;
 
     // Intern a FileVersion per file of the parse: the consumed-content hash
     // from the compiler's own buffers, shared by every TU that consumed it

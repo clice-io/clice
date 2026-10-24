@@ -55,8 +55,8 @@ ZEST_CASE(LoadRestoresIndex) {
 }
 
 ZEST_CASE(OpenReadsHeaderOnly) {
-    // Opening reads the header and the search index it pins: every other
-    // record is read when something asks for it.
+    // Opening reads the header and the search segments it lists: every
+    // other record is read when something asks for it.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
@@ -93,7 +93,7 @@ ZEST_CASE(OpenReadsHeaderOnly) {
     f.project.database = std::move(log);
     ZASSERT(f.project.index.open(*f.project.database) == index::LoadOutcome::Loaded);
     ZEXPECT(probe->reads == llvm::SmallVector<index::BlobKind>{index::BlobKind::Header,
-                                                               index::BlobKind::SearchIndex});
+                                                               index::BlobKind::SearchSegment});
     ZEXPECT(f.project.index.search_index().loaded());
 }
 
@@ -121,6 +121,34 @@ ZEST_CASE(IdleRebuildPinsSearch) {
     open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.index.search_index().loaded());
+}
+
+ZEST_CASE(RunsAcrossSessions) {
+    // A later session reads the runs an earlier one saved, newer ones still
+    // hiding what they replaced.
+    TempDir tmp;
+    tmp.touch("a.cpp", "static int old_local = 1;\nint use() { return old_local; }\n");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+        f.save(index::SearchRebuild::Idle);
+        tmp.touch("a.cpp", "static int new_local = 1;\nint use() { return new_local; }\n");
+        ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+        f.save(index::SearchRebuild::Never);
+        ZASSERT(f.project.index.search_index().run_count() == 2u);
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto& search = f.project.index.search_index();
+    ZASSERT(search.run_count() == 2u);
+    auto hits = [&](llvm::StringRef name) {
+        return search.search(*index::SymbolQuery::parse(name), 10, {}).hits.size();
+    };
+    ZEXPECT(hits("old_local") == 0u);
+    ZEXPECT(hits("new_local") == 1u);
 }
 
 ZEST_CASE(StaleUnitsFollowDisk) {
@@ -222,11 +250,11 @@ ZEST_CASE(PersistedInternalsSearched) {
     f.save(index::SearchRebuild::Idle);
     ZASSERT(f.project.index.search_index().loaded());
     ZEXPECT(f.project.index.search_pending_files().empty());
-    auto hits = f.project.index.search_index()
-                    .search(*index::SymbolQuery::parse("rows"), 10, f.project.index.workspace)
-                    .hits;
+    auto hits =
+        f.project.index.search_index().search(*index::SymbolQuery::parse("rows"), 10, {}).hits;
     ZASSERT(hits.size() == 1u);
-    ZEXPECT(hits.front().file.ends_with("b.cpp"));
+    llvm::StringRef file = f.project.file_table.resolve(f.project.index.fid_of(hits.front().file));
+    ZEXPECT(file.ends_with("b.cpp"));
 }
 
 ZEST_CASE(PathIdsAcrossSessions) {

@@ -377,8 +377,7 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
     ZASSERT(search.loaded());
 
     auto hits = [&](llvm::StringRef text) {
-        return search.search(*index::SymbolQuery::parse(text), 10, project.index.workspace)
-            .hits.size();
+        return search.search(*index::SymbolQuery::parse(text), 10, {}).hits.size();
     };
     ZEXPECT(hits("ns::kSize") == 1u);
     ZEXPECT(hits("::kSize") == 0u);
@@ -425,6 +424,73 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     }
 }
 
+ZEST_CASE(SavesAddRuns) {
+    // Every save adds what changed as a run of its own; a save that may
+    // fold the newest runs, and an idle one the whole index, once they
+    // outgrow the runs they fold into.
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\nstatic int first_local = 1;\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    tmp.touch("c.cpp", "int third_value() { return 3; }\n");
+    open_store(tmp, project);
+    auto& search = project.index.search_index();
+    auto hits = [&](llvm::StringRef name) {
+        return search.search(*index::SymbolQuery::parse(name), 10, {}).hits.size();
+    };
+    auto stored = [&] {
+        std::uint32_t segments = 0;
+        project.database->for_each_key(index::BlobKind::SearchSegment,
+                                       [&](llvm::StringRef) { segments += 1; });
+        return segments;
+    };
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(search.run_count() == 1u);
+
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZEXPECT(search.run_count() == 2u);
+    ZEXPECT(project.index.search_pending().empty());
+    ZEXPECT(hits("second_value") == 1u);
+
+    ZASSERT(merge(index_file(tmp, tmp.path("c.cpp")).data));
+    fx.save(index::SearchRebuild::Behind);
+    ZEXPECT(search.run_count() == 2u);
+    ZEXPECT(hits("third_value") == 1u);
+    ZEXPECT(stored() == 2u);
+
+    ZEXPECT(project.index.search_update_due(index::SearchRebuild::Idle));
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(search.run_count() == 1u);
+    ZEXPECT(stored() == 1u);
+    for(auto name: {"first_value", "first_local", "second_value", "third_value"}) {
+        ZEXPECT(hits(name) == 1u);
+    }
+}
+
+ZEST_CASE(ChangedFileHidesOldNames) {
+    // A file indexed again replaces its names of internal linkage, and a
+    // symbol its old ones in the older runs.
+    TempDir tmp;
+    tmp.touch("a.cpp", "static int old_local = 1;\nint use() { return old_local; }\n");
+    open_store(tmp, project);
+    auto& search = project.index.search_index();
+    auto hits = [&](llvm::StringRef name) {
+        return search.search(*index::SymbolQuery::parse(name), 10, {}).hits.size();
+    };
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(hits("old_local") == 1u);
+
+    tmp.touch("a.cpp", "static int new_local = 1;\nint use() { return new_local; }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZASSERT(search.run_count() == 2u);
+    ZEXPECT(hits("old_local") == 0u);
+    ZEXPECT(hits("new_local") == 1u);
+    ZEXPECT(hits("use") == 1u);
+}
+
 ZEST_CASE(FailedSaveKeepsSearch) {
     // A write failing after the search index was rebuilt: the build stays
     // for the retry, and searches keep finding what it holds.
@@ -456,7 +522,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     project.database = std::move(flaky);
     auto hits = [&](llvm::StringRef name) {
         return project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, project.index.workspace)
+            .search(*index::SymbolQuery::parse(name), 10, {})
             .hits.size();
     };
 
@@ -846,7 +912,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
     ZASSERT(ranges::contains(log.writes[0], index::BlobKind::TUManifest));
-    ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchIndex));
+    ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchSegment));
     ZASSERT(!project.index.search_index().loaded());
 }
 

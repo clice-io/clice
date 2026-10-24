@@ -326,7 +326,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Path,               "paths"               },
     {index::BlobKind::Version,            "versions"            },
     {index::BlobKind::Header,             "header"              },
-    {index::BlobKind::SearchIndex,        "search"              },
+    {index::BlobKind::SearchSegment,      "search segments"     },
     {index::BlobKind::CommandSnapshot,    "cdb"                 },
     {index::BlobKind::ArtifactRecords,    "artifacts"           },
     {index::BlobKind::ContextChoices,     "contexts"            },
@@ -457,10 +457,11 @@ Stats collect_stats(Project& project) {
         index::measure_symbol(blob.buffer->getBuffer(), stats.symbol_fields);
         return true;
     });
-    if(auto blob = db.read(index::BlobKind::SearchIndex, "search")) {
-        stats.search_bytes = blob.buffer->getBufferSize();
+    db.for_each(index::BlobKind::SearchSegment, [&](llvm::StringRef, index::ReadBlob blob) {
+        stats.search_bytes += blob.buffer->getBufferSize();
         index::measure_blob<index::SearchIndexBlob>(blob.buffer->getBuffer(), stats.search_fields);
-    }
+        return true;
+    });
 
     stats.usage = db.usage();
     for(auto [i, kind]: views::enumerate(views::keys(stored_kinds))) {
@@ -515,8 +516,9 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     driver::println("Global symbols: {}, file versions: {}",
                     project_index.symbol_count(),
                     project.file_table.versions.size());
-    driver::println("Search index: {} symbols ({}), {} merged since its build",
+    driver::println("Search index: {} symbols in {} runs ({}), {} merged since the newest",
                     project.index.search_index().size(),
+                    project.index.search_index().run_count(),
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
@@ -562,7 +564,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     fields("Instantiation shards", stats.instantiation_fields, stats.instantiation_bytes);
     fields("Manifests", stats.manifest_fields, stats.manifest_bytes);
     fields("Symbol records", stats.symbol_fields, stats.symbol_bytes);
-    fields("Search blob", stats.search_fields, stats.search_bytes);
+    fields("Search segments", stats.search_fields, stats.search_bytes);
 
     driver::println();
     driver::println("Symbols by reference file count:");

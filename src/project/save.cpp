@@ -104,7 +104,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    co_await index.rebuild_search(search);
+    co_await index.update_search(search);
     index::SaveBatch batch;
     index.begin_save(batch, report);
     auto& blobs = batch.blobs;

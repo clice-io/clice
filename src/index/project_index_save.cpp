@@ -19,31 +19,27 @@ import :support.timer;
 
 namespace clice::index {
 
-bool ProjectIndex::search_rebuild_due(SearchRebuild rebuild) const {
-    if(rebuild == SearchRebuild::Never) {
-        return false;
+bool ProjectIndex::search_update_due(SearchRebuild rebuild) const {
+    if(search.loaded() && !search.damaged()) {
+        if(!pending_symbols.empty() || !pending_files.empty()) {
+            return true;
+        }
+        std::uint32_t newer = 0;
+        for(std::uint32_t run = 1; run < search.run_count(); run += 1) {
+            newer += search.run_size(run);
+        }
+        return rebuild == SearchRebuild::Idle && newer * 2 >= search.run_size(0) && newer > 0;
     }
-    auto built = search.size();
-    if(pending_symbols.size() > std::max<std::uint32_t>(10000, built / 20)) {
-        return true;
+    // A missing or damaged index is built from the records; until then
+    // searches scan every symbol record.
+    switch(rebuild) {
+        case SearchRebuild::Never: return false;
+        case SearchRebuild::Behind: return search.damaged() || pending_symbols.size() > 10000;
+        case SearchRebuild::Idle:
+            return search.damaged() || symbol_count() > 0 || !pending_symbols.empty() ||
+                   !pending_files.empty();
     }
-    // A damaged index is replaced at the first save, idle or not: its
-    // entries may misdescribe the symbol records until then.
-    if(search.damaged()) {
-        return true;
-    }
-    if(rebuild == SearchRebuild::Behind) {
-        return false;
-    }
-    // A missing one — never built, or persisted under another pin than
-    // the header's — leaves searches scanning every symbol record until
-    // the first idle save.
-    if(!search.loaded()) {
-        return merges_since_search_build > 0 || symbol_count() > 0;
-    }
-    // A twentieth of the units, so a small project refreshes on any
-    // merge and a large one every twenty at most.
-    return merges_since_search_build > std::min<std::uint32_t>(20, header.unit_count / 20);
+    std::unreachable();
 }
 
 Internals ProjectIndex::internal_names(Fid file) const {
@@ -72,46 +68,35 @@ Internals ProjectIndex::internal_names(Fid file) const {
     return names;
 }
 
-kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
-    if(!search_rebuild_due(rebuild)) {
-        co_return;
-    }
-    ScopedTimer timer;
+SearchSnapshot ProjectIndex::full_search_snapshot() {
     SearchSnapshot snapshot;
-    // A rebuild changes the header (below): the save writes it with the
-    // search blob it pins.
-    snapshot.generation = header.search_generation + 1;
-    llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
-    auto path_of = [&](Fid file) {
-        auto [it, inserted] =
-            path_index.try_emplace(file.raw, static_cast<std::uint32_t>(snapshot.paths.size()));
-        if(inserted) {
-            snapshot.paths.push_back(portable(files.resolve(file)));
+    scan(symbol_records, decode_symbol, [&](llvm::StringRef key, const Symbol& symbol) {
+        auto hash = key_number<SymbolHash>(key);
+        if(!hash || reserved_key(*hash)) {
+            damaged_record(BlobKind::Symbol, key);
+            return true;
         }
-        return it->second;
-    };
-    for_each_symbol([&](SymbolHash hash, const SymbolView& symbol, std::uint32_t references) {
         // Unnamed scopes stay in: the build names their members through
         // them, and leaves them out of the index itself.
         if(!is_searchable_kind(symbol.kind) || symbol.name.empty()) {
             return true;
         }
         snapshot.entries.push_back({
-            .hash = hash,
-            .name = symbol.name.str(),
-            .args = symbol.args.str(),
+            .hash = *hash,
+            .name = symbol.name,
+            .args = symbol.args,
             .parent = symbol.parent,
             .kind = symbol.kind,
             .flags = symbol.flags,
-            .file = symbol.file != no_file ? path_of(Fid{symbol.file}) : no_file,
-            .reference_files = references,
+            .file = symbol.file,
+            .reference_files = static_cast<std::uint32_t>(symbol.reference_files.cardinality()),
         });
         return true;
     });
     // The symbols of internal linkage are in no symbol record but the
     // internals records of the files declaring them; those of the files
     // merged since the last save are only in their shards yet.
-    auto add_internals = [&](Fid file, const Internals& names) {
+    auto add_internals = [&](std::uint32_t path, const Internals& names) {
         for(auto& name: names) {
             snapshot.entries.push_back({
                 .hash = name.hash,
@@ -120,23 +105,156 @@ kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
                 .parent = name.parent,
                 .kind = name.kind,
                 .flags = name.flags,
-                .file = path_of(file),
+                .file = path,
                 .local = true,
             });
         }
     };
     scan(internal_records, decode_internals, [&](llvm::StringRef key, const Internals& names) {
         auto* record = read(file_records, key, decode_file);
-        auto file = record ? fid_of(record->path) : Fid{};
-        if(file.valid() && !internals_changed.contains(file)) {
-            add_internals(file, names);
+        if(record && !internals_changed.contains(fid_of(record->path))) {
+            add_internals(record->path, names);
         }
         return true;
     });
     for(auto file: internals_changed) {
-        add_internals(file, internal_names(file));
+        add_internals(path_id(file), internal_names(file));
     }
-    auto merges_in_snapshot = merges_since_search_build;
+    return snapshot;
+}
+
+SearchSnapshot ProjectIndex::search_snapshot(llvm::ArrayRef<SymbolHash> symbols,
+                                             llvm::ArrayRef<Fid> files) {
+    SearchSnapshot snapshot;
+    auto entry_of = [](SymbolHash hash, const Symbol& symbol) {
+        return SearchEntry{
+            .hash = hash,
+            .name = symbol.name,
+            .args = symbol.args,
+            .parent = symbol.parent,
+            .kind = symbol.kind,
+            .flags = symbol.flags,
+            .file = symbol.file,
+            .reference_files = static_cast<std::uint32_t>(symbol.reference_files.cardinality()),
+        };
+    };
+    for(auto hash: symbols) {
+        if(auto* found = symbol(hash)) {
+            snapshot.entries.push_back(entry_of(hash, *found));
+        }
+    }
+    for(auto file: files) {
+        auto path = path_id(file);
+        snapshot.covered.push_back(path);
+        auto add = [&](const Internals& names) {
+            for(auto& name: names) {
+                snapshot.entries.push_back({
+                    .hash = name.hash,
+                    .name = name.name,
+                    .args = name.args,
+                    .parent = name.parent,
+                    .kind = name.kind,
+                    .flags = name.flags,
+                    .file = path,
+                    .local = true,
+                });
+            }
+        };
+        if(internals_changed.contains(file)) {
+            add(internal_names(file));
+        } else if(auto* names = read(internal_records, file_key(file), decode_internals)) {
+            add(*names);
+        }
+    }
+    ranges::sort(snapshot.covered);
+    // The scopes above the entries, as far as the records name them: a
+    // scope of internal linkage another file declares is not looked up,
+    // and ends the chain there.
+    llvm::DenseSet<SymbolHash> known;
+    for(auto& entry: snapshot.entries) {
+        known.insert(entry.hash);
+    }
+    auto climb = [&](SymbolHash parent) {
+        while(parent != 0 && known.insert(parent).second) {
+            auto* found = symbol(parent);
+            if(!found) {
+                return;
+            }
+            snapshot.scopes.push_back(entry_of(parent, *found));
+            parent = found->parent;
+        }
+    };
+    for(std::size_t i = 0; i < snapshot.entries.size(); i += 1) {
+        climb(snapshot.entries[i].parent);
+    }
+    return snapshot;
+}
+
+void ProjectIndex::drop_search_runs(std::uint32_t runs) {
+    auto& ends = header.search_run_ends;
+    auto kept = static_cast<std::uint32_t>(ends.size()) - runs;
+    auto first = kept == 0 ? 0 : ends[kept - 1];
+    for(auto id: llvm::ArrayRef(header.search_segments).drop_front(first)) {
+        auto key = number_key(id);
+        // A segment no batch committed yet is only in memory.
+        auto it = ranges::find_if(search_writes,
+                                  [&](const BlobDatabase::Blob& blob) { return blob.key == key; });
+        if(it != search_writes.end()) {
+            search_writes.erase(it);
+        } else {
+            search_drops.push_back(id);
+        }
+    }
+    header.search_segments.resize(first);
+    ends.resize(kept);
+    header_changed = true;
+}
+
+kota::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
+    if(!search_update_due(rebuild)) {
+        co_return;
+    }
+    ScopedTimer timer;
+    auto runs = search.run_count();
+    bool full = !search.loaded() || search.damaged();
+    // The newest runs fold into the one built now while it comes to half
+    // of the next older one at least, so run sizes halve from the first on
+    // and a symbol is rebuilt a logarithmic number of times; the first run
+    // folds only into a full build, once the runs after it come to half of
+    // it.
+    std::uint32_t folded = 0;
+    if(!full && rebuild != SearchRebuild::Never) {
+        auto size = static_cast<std::uint32_t>(pending_symbols.size() + pending_files.size());
+        auto newer = size;
+        for(std::uint32_t run = 1; run < runs; run += 1) {
+            newer += search.run_size(run);
+        }
+        while(folded + 1 < runs && size * 2 >= search.run_size(runs - 1 - folded)) {
+            size += search.run_size(runs - 1 - folded);
+            folded += 1;
+        }
+        full = rebuild == SearchRebuild::Idle && newer * 2 >= search.run_size(0);
+    }
+
+    SearchSnapshot snapshot;
+    if(full) {
+        snapshot = full_search_snapshot();
+    } else {
+        llvm::SetVector<SymbolHash> symbols(pending_symbols.begin(), pending_symbols.end());
+        llvm::SetVector<Fid> files(pending_files.begin(), pending_files.end());
+        for(auto run = runs - folded; run < runs; run += 1) {
+            search.for_each_source(
+                run,
+                [&](SymbolHash hash) { symbols.insert(hash); },
+                [&](std::uint32_t path) {
+                    if(auto file = fid_of(path); file.valid()) {
+                        files.insert(file);
+                    }
+                });
+        }
+        snapshot = search_snapshot(symbols.getArrayRef(), files.getArrayRef());
+    }
+    auto read_ms = timer.ms();
     // The entries pending now are in the snapshot; the ones a merge changes
     // during the build stay pending once it is adopted.
     llvm::SmallVector<SymbolHash> pending_in_snapshot(pending_symbols.begin(),
@@ -145,19 +263,33 @@ kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
     changed_during_search_build.emplace();
     auto finished = llvm::make_scope_exit([&] { changed_during_search_build.reset(); });
 
-    std::vector<std::byte> bytes;
-    co_await kota::queue([&] { bytes = build_search_blob(snapshot); });
-    SearchIndex built;
-    if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)))) {
-        LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
+    std::vector<std::vector<std::byte>> segments;
+    co_await kota::queue([&] { segments = build_search_segments(snapshot); });
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> buffers;
+    for(auto& segment: segments) {
+        buffers.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(segment)));
+    }
+    auto replaced = full ? search.run_count() : folded;
+    drop_search_runs(full ? static_cast<std::uint32_t>(header.search_run_ends.size()) : folded);
+    if(!search.replace(replaced, std::move(buffers))) {
+        LOG_ERROR(
+            "The built search index does not load; searches scan the records until a "
+            "full build");
+        search.clear();
+        drop_search_runs(static_cast<std::uint32_t>(header.search_run_ends.size()));
         co_return;
     }
-    search = std::move(built);
-    header.search_generation = snapshot.generation;
-    header_changed = true;
-    merges_since_search_build -= merges_in_snapshot;
+    std::uint64_t bytes = 0;
+    for(auto& segment: segments) {
+        bytes += segment.size();
+        header.search_segments.push_back(header.next_segment);
+        search_writes.push_back(
+            {BlobKind::SearchSegment, number_key(header.next_segment), std::move(segment)});
+        header.next_segment += 1;
+    }
+    header.search_run_ends.push_back(static_cast<std::uint32_t>(header.search_segments.size()));
     for(auto hash: pending_in_snapshot) {
-        if(search.contains(hash) && !changed_during_search_build->symbols.contains(hash)) {
+        if(!changed_during_search_build->symbols.contains(hash)) {
             pending_symbols.erase(hash);
         }
     }
@@ -166,11 +298,15 @@ kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
             pending_files.erase(file);
         }
     }
-    search_bytes = std::move(bytes);
     LOG_PERF("index",
-             "phase=search_build symbols={} bytes={} elapsed_ms={}",
-             search.size(),
-             search_bytes.size(),
+             "phase=search_build full={} folded={} entries={} segments={} bytes={} read_ms={} "
+             "elapsed_ms={}",
+             full,
+             folded,
+             snapshot.entries.size(),
+             segments.size(),
+             bytes,
+             read_ms,
              timer.ms());
 }
 
@@ -286,14 +422,19 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         blobs.push_back({BlobKind::TUManifest, std::move(key), encode_manifest(*manifest)});
     }
     // The header names its files by path ids, handed out before the
-    // records are taken.
-    header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
-    ranges::sort(header.search_pending);
+    // records are taken. Without a search index the pending entries mean
+    // nothing past this session: every search scans the records then, and
+    // the first full build leaves them behind.
+    header.search_pending.clear();
     header.search_pending_files.clear();
-    for(auto file: pending_files) {
-        header.search_pending_files.push_back(path_id(file));
+    if(search.loaded()) {
+        header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
+        ranges::sort(header.search_pending);
+        for(auto file: pending_files) {
+            header.search_pending_files.push_back(path_id(file));
+        }
+        ranges::sort(header.search_pending_files);
     }
-    ranges::sort(header.search_pending_files);
     header.owed_units.clear();
     for(auto unit: owed) {
         header.owed_units.push_back(path_id(unit));
@@ -341,15 +482,19 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     take(path_records, [](const std::string& name) { return copy_bytes(name); });
     take(version_records, encode_value);
 
-    if(!blobs.empty() || !batch.removals.empty() || header_changed || !search_bytes.empty()) {
+    for(auto& segment: search_writes) {
+        blobs.push_back(std::move(segment));
+    }
+    search_writes.clear();
+    for(auto id: search_drops) {
+        batch.removals.push_back({BlobKind::SearchSegment, number_key(id)});
+    }
+    search_drops.clear();
+
+    if(!blobs.empty() || !batch.removals.empty() || header_changed) {
         blobs.push_back({BlobKind::Header, "header", encode_record(header)});
     }
     header_changed = false;
-    writing_search = !search_bytes.empty();
-    if(writing_search) {
-        blobs.push_back({BlobKind::SearchIndex, "search", std::move(search_bytes)});
-        search_bytes.clear();
-    }
 
     for(auto& [tu, manifest]: changed_manifests) {
         written_manifests[tu] = std::move(manifest);
@@ -411,11 +556,15 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     written_retired_shards.clear();
     written_retired_instantiations.clear();
     header_changed = true;
-    if(writing_search) {
-        search_bytes = std::move(ranges::find_if(batch.blobs, [](const BlobDatabase::Blob& blob) {
-                                     return blob.kind == BlobKind::SearchIndex;
-                                 })->bytes);
-        writing_search = false;
+    for(auto& blob: batch.blobs) {
+        if(blob.kind == BlobKind::SearchSegment) {
+            search_writes.push_back(std::move(blob));
+        }
+    }
+    for(auto& removal: batch.removals) {
+        if(removal.kind == BlobKind::SearchSegment) {
+            search_drops.push_back(*key_number<std::uint32_t>(removal.key));
+        }
     }
     writing_shards = 0;
 }
@@ -464,7 +613,6 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     written_retired_instantiations.clear();
     saved_shards = writing_shards;
     writing_shards = 0;
-    writing_search = false;
 
     // The resident shards borrow the previous snapshot, or own the bytes
     // the batch just wrote: both move onto the new snapshot, whose bytes are
@@ -503,13 +651,20 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     co_await rebind(instantiations, changed_instantiations, BlobKind::InstantiationShard);
     written_shards.clear();
     written_instantiations.clear();
-    // The search index borrows the snapshot, unless it is a build no batch
-    // committed yet, which owns its bytes.
-    if(search.loaded() && search_bytes.empty()) {
-        auto blob = db.read(BlobKind::SearchIndex, "search");
-        if(!blob || !search.load(std::move(blob.buffer))) {
-            LOG_ERROR("The index database lost the search index its header pins");
-            damage = true;
+    // The search index borrows the snapshot, but for the segments no batch
+    // committed yet, which own their bytes.
+    if(search.loaded()) {
+        for(std::uint32_t i = 0; i < header.search_segments.size() && !damage; i += 1) {
+            auto key = number_key(header.search_segments[i]);
+            if(ranges::any_of(search_writes,
+                              [&](const BlobDatabase::Blob& blob) { return blob.key == key; })) {
+                continue;
+            }
+            auto blob = db.read(BlobKind::SearchSegment, key);
+            if(!blob || !search.rebind(i, std::move(blob.buffer))) {
+                LOG_ERROR("The index database lost a search segment its header lists");
+                damage = true;
+            }
         }
     }
     // A view left unrebound — a shard that diverged and the ones after it,
