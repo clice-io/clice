@@ -23,6 +23,9 @@ bool CompilationUnit::has_output() {
 }
 
 auto CompilationUnit::file_id(clang::FileEntryRef entry) -> clang::FileID {
+    if(auto it = entered_files.find(&entry.getFileEntry()); it != entered_files.end()) {
+        return it->second;
+    }
     return SM().translateFile(entry);
 }
 
