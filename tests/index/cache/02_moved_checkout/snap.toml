@@ -47,6 +47,27 @@ stdout = '''
 '''
 exit = 0
 
+[test."$ clice query symbol-search \"helper path:src/a.cpp\" --workspace before"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/before/src/a.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#6ee96116f5b64099 path:${WS}/before/src/a.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
 [test."$ clice index --workspace after"]
 stdout = '''
 Indexed 0 translation units in #s: 3 file shards (# KB), 3 symbols.
@@ -76,6 +97,27 @@ stdout = '''
 exit = 0
 
 [test."$ clice query symbol-search src/a.cpp:2 --workspace after"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/after/src/a.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#6ee96116f5b64099 path:${WS}/after/src/a.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query symbol-search \"helper path:src/a.cpp\" --workspace after"]
 stdout = '''
 {
   "result": {

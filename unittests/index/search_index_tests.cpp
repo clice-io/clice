@@ -10,7 +10,6 @@ import :index.search_index;
 import :index.symbol_query;
 import :support.bitmap;
 import :support.bytes;
-import :unittests.utils.temp_dir;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -23,9 +22,11 @@ using index::SymbolFlags;
 using index::SymbolHash;
 using index::SymbolQuery;
 
-/// A snapshot built entry by entry; hashes are the entry numbers from 1.
+/// A snapshot built entry by entry; hashes are the entry numbers from 1,
+/// path ids the positions in `paths`.
 struct Corpus {
     SearchSnapshot snapshot;
+    std::vector<std::string> paths;
     llvm::StringMap<SymbolHash> by_qualified;
 
     SymbolHash add(llvm::StringRef qualified,
@@ -41,15 +42,9 @@ struct Corpus {
         } else {
             name = qualified;
         }
-        std::uint32_t file = index::no_file;
-        for(std::uint32_t i = 0; i < snapshot.paths.size(); i += 1) {
-            if(snapshot.paths[i] == path) {
-                file = i;
-            }
-        }
-        if(file == index::no_file) {
-            file = static_cast<std::uint32_t>(snapshot.paths.size());
-            snapshot.paths.push_back(path.str());
+        auto file = static_cast<std::uint32_t>(ranges::find(paths, path) - paths.begin());
+        if(file == paths.size()) {
+            paths.push_back(path.str());
         }
         auto hash = static_cast<SymbolHash>(snapshot.entries.size() + 1);
         snapshot.entries.push_back({
@@ -66,11 +61,27 @@ struct Corpus {
         return hash;
     }
 
-    SearchIndex build() {
+    /// The index of one run, its segments offering at most `bound` symbols.
+    SearchIndex build(std::uint32_t bound = index::segment_entries) const {
         SearchIndex built;
-        auto bytes = index::build_search_blob(snapshot);
-        built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+        built.replace(0, segments(snapshot, bound));
         return built;
+    }
+
+    static std::vector<std::unique_ptr<llvm::MemoryBuffer>>
+        segments(const SearchSnapshot& snapshot, std::uint32_t bound = index::segment_entries) {
+        std::vector<std::unique_ptr<llvm::MemoryBuffer>> buffers;
+        for(auto& bytes: index::build_search_segments(snapshot, bound)) {
+            buffers.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+        }
+        return buffers;
+    }
+
+    /// Whether a file is among a query's paths.
+    bool wanted(const SymbolQuery& query, std::uint32_t file) const {
+        return ranges::any_of(query.paths, [&](const std::string& wanted) {
+            return index::path_matches(wanted, paths[file]);
+        });
     }
 
     std::string name_of(SymbolHash hash) const {
@@ -131,7 +142,10 @@ std::vector<std::string> names(const Corpus& corpus,
         out.push_back("error: " + query.error());
         return out;
     }
-    for(auto& hit: built.search(*query, limit, {}).hits) {
+    auto wanted = [&](std::uint32_t file) {
+        return corpus.wanted(*query, file);
+    };
+    for(auto& hit: built.search(*query, limit, wanted).hits) {
         out.push_back(corpus.name_of(hit.hash));
     }
     return out;
@@ -143,13 +157,10 @@ ZEST_SUITE(SearchIndex) {
 
 ZEST_CASE(Loads) {
     auto corpus = sample();
-    corpus.snapshot.generation = 7;
     auto built = corpus.build();
     ZEXPECT(built.loaded());
-    ZEXPECT(built.generation() == std::uint64_t(7));
+    ZEXPECT(built.run_count() == 1u);
     ZEXPECT(built.size() == corpus.snapshot.entries.size());
-    ZEXPECT(built.contains(1));
-    ZEXPECT(!built.contains(999));
     SearchIndex empty;
     ZEXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
     ZEXPECT(!empty.loaded());
@@ -160,7 +171,7 @@ ZEST_CASE(Loads) {
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
-    auto original = index::build_search_blob(corpus.snapshot);
+    auto original = std::move(index::build_search_segments(corpus.snapshot).front());
     auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(original);
     ZASSERT(blob);
     // Bytes no posting list starts with: the blob's structure stays
@@ -468,30 +479,6 @@ ZEST_CASE(MatchesFullScan) {
     }
 }
 
-ZEST_CASE(PortablePathsFiltered) {
-    // The index names files under the workspace relative to it; a path
-    // filter sees them where the checkout sits now.
-    TempDir tmp;
-    CanonicalPath root(Spelling::absolute(tmp.root));
-    Corpus corpus;
-    corpus.add("inside",
-               SymbolKind::Function,
-               SymbolFlags::HasDefinition,
-               1,
-               "${workspace}/src/a.cpp");
-    corpus.add("outside", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/opt/b.h");
-    auto built = corpus.build();
-    auto found = [&](const std::string& text) {
-        Names out;
-        for(auto& hit: built.search(*SymbolQuery::parse(text), 10, root).hits) {
-            out.push_back(corpus.name_of(hit.hash));
-        }
-        return out;
-    };
-    ZEXPECT(found(std::format("side path:{}/src/", root.str())) == Names{"inside"});
-    ZEXPECT(found("side path:/opt/") == Names{"outside"});
-}
-
 ZEST_CASE(LocalHitsNameFile) {
     // A symbol of internal linkage has no symbol record: a hit on it
     // names the file whose shard holds it.
@@ -503,7 +490,8 @@ ZEST_CASE(LocalHitsNameFile) {
     auto built = corpus.build();
     std::vector<std::pair<std::string, std::string>> hits;
     for(auto& hit: built.search(*SymbolQuery::parse("helper"), 10, {}).hits) {
-        hits.emplace_back(corpus.name_of(hit.hash), hit.file.str());
+        hits.emplace_back(corpus.name_of(hit.hash),
+                          hit.file == index::no_file ? "" : corpus.paths[hit.file]);
     }
     ranges::sort(hits);
     ZEXPECT(hits == (std::vector<std::pair<std::string, std::string>>{
@@ -528,6 +516,135 @@ ZEST_CASE(ExternalOnlyLeavesLocals) {
         names.push_back(corpus.name_of(hit.hash));
     }
     ZEXPECT(names == std::vector<std::string>{"helper_function"});
+}
+
+ZEST_CASE(SegmentsAnswerAsOne) {
+    // Segments of two symbols each, every one carrying the scopes above
+    // its symbols, answer every query as a single segment does.
+    auto corpus = sample();
+    auto whole = corpus.build();
+    auto split = corpus.build(2);
+    ZEXPECT(index::build_search_segments(corpus.snapshot, 2).size() == 11u);
+    for(llvm::StringRef text: {"foo",
+                               "Foo",
+                               "up",
+                               "u_p",
+                               "strcpy",
+                               "aaaaaa",
+                               R"("foo")",
+                               "*foo",
+                               "*_*",
+                               "inner::paint",
+                               "::outer::inner::Widget<int>::paint",
+                               "outer::inner::*",
+                               "inner::**",
+                               "::outer::*",
+                               "::*",
+                               "::outer::**",
+                               "Widget::*",
+                               "foo kind:variable,function",
+                               "kind:namespace *",
+                               "* path:/w/src/b/"}) {
+        ZEXPECT(names(corpus, split, text, 100) == names(corpus, whole, text, 100));
+    }
+    ZEXPECT(names(corpus, split, "foo", 2) == (Names{"foo", "Foo"}));
+}
+
+ZEST_CASE(SegmentsBounded) {
+    auto corpus = sample();
+    std::uint32_t offered = 0;
+    for(auto& bytes: index::build_search_segments(corpus.snapshot, 3)) {
+        auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(bytes);
+        ZASSERT(blob);
+        ZEXPECT(blob->qualities.size() <= 3u);
+        offered += static_cast<std::uint32_t>(blob->qualities.size());
+    }
+    ZEXPECT(offered == corpus.snapshot.entries.size());
+    // A run with nothing to offer still has a segment, which carries the
+    // files it covers.
+    SearchSnapshot empty{.covered = {4}};
+    auto segments = index::build_search_segments(empty);
+    ZASSERT(segments.size() == 1u);
+    SearchIndex built;
+    ZASSERT(built.replace(0, Corpus::segments(empty)));
+    ZEXPECT(built.size() == 0u);
+}
+
+ZEST_CASE(NewerRunsHide) {
+    // A newer run hides an older one's entry of a symbol it offers, and the
+    // older entries of internal linkage in the files it covers.
+    Corpus corpus;
+    auto foo = corpus.add("foo", SymbolKind::Function);
+    corpus.add("helper", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/w/src/b.cpp");
+    corpus.add("other", SymbolKind::Function);
+    corpus.snapshot.entries[1].local = true;
+    auto built = corpus.build();
+
+    SearchSnapshot change{
+        .entries = {{.hash = foo,
+                     .name = "food",
+                     .kind = SymbolKind::Function,
+                     .flags = SymbolFlags::HasDefinition,
+                     .file = 0}},
+        .covered = {1},
+    };
+    ZASSERT(built.replace(0, Corpus::segments(change)));
+    ZEXPECT(built.run_count() == 2u);
+    auto query = *SymbolQuery::parse("foo");
+    auto hits = built.search(query, 10, {}).hits;
+    ZASSERT(hits.size() == 1u);
+    ZEXPECT(hits.front().hash == foo);
+    ZEXPECT(built.search(*SymbolQuery::parse("helper"), 10, {}).hits.empty());
+    ZEXPECT(built.search(*SymbolQuery::parse("other"), 10, {}).hits.size() == 1u);
+
+    std::vector<SymbolHash> symbols;
+    std::vector<std::uint32_t> files;
+    built.for_each_source(
+        1,
+        [&](SymbolHash hash) { symbols.push_back(hash); },
+        [&](std::uint32_t file) { files.push_back(file); });
+    ZEXPECT(symbols == std::vector<SymbolHash>{foo});
+    ZEXPECT(files == std::vector<std::uint32_t>{1});
+
+    // Folding the newer run back leaves the first one whole again.
+    SearchSnapshot none;
+    ZASSERT(built.replace(1, Corpus::segments(none)));
+    ZEXPECT(built.run_count() == 2u);
+    ZEXPECT(built.search(*SymbolQuery::parse("helper"), 10, {}).hits.size() == 1u);
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> junk;
+    junk.push_back(llvm::MemoryBuffer::getMemBufferCopy("junk"));
+    ZEXPECT(!built.replace(1, std::move(junk)));
+    ZEXPECT(built.run_count() == 2u);
+}
+
+ZEST_CASE(NewerRunsRespellScopes) {
+    // A newer run offering a container spelled anew renames it as the
+    // scope of the members older runs hold.
+    Corpus corpus;
+    auto ns = corpus.add("ns", SymbolKind::Namespace);
+    auto x = corpus.add("ns::X",
+                        SymbolKind::Struct,
+                        SymbolFlags::HasDefinition,
+                        1,
+                        "/w/src/a.cpp",
+                        "<LongName>");
+    corpus.add("ns::X<LongName>::member", SymbolKind::Method);
+    auto built = corpus.build();
+    ZASSERT(names(corpus, built, "X<LongName>::member") == (Names{"member"}));
+
+    SearchSnapshot respelled{
+        .entries = {{.hash = x,
+                     .name = "X",
+                     .args = "<int>",
+                     .parent = ns,
+                     .kind = SymbolKind::Struct,
+                     .flags = SymbolFlags::HasDefinition}},
+        .scopes = {corpus.snapshot.entries[ns - 1]},
+    };
+    ZASSERT(built.replace(0, Corpus::segments(respelled)));
+    ZEXPECT(names(corpus, built, "X<int>::member") == (Names{"member"}));
+    ZEXPECT(names(corpus, built, "::ns::X<int>::*") == (Names{"member"}));
+    ZEXPECT(names(corpus, built, "X<LongName>::member").empty());
 }
 
 };  // ZEST_SUITE(SearchIndex)

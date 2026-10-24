@@ -37,41 +37,43 @@ bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
 
+/// A symbol the builder places: one the run offers, or a scope above those.
+struct Node {
+    const SearchEntry* symbol = nullptr;
+    float quality = 0;
+    bool offered = false;
+    /// The node of the nearest enclosing symbol a qualified name spells,
+    /// or no_entry.
+    std::uint32_t scope = no_entry;
+};
+
 /// The hits held while a search runs: the worst on top of the heap, so
 /// a full set drops it for a better arrival.
 struct TopHits {
     struct Ranked {
         NameRank rank;
-        std::uint32_t entry;
+        llvm::StringRef name;
+        llvm::StringRef args;
+        SymbolHash hash = 0;
+        std::uint32_t file = no_file;
     };
 
     std::uint32_t limit;
-    llvm::function_ref<llvm::StringRef(std::uint32_t)> name_of;
-    llvm::function_ref<llvm::StringRef(std::uint32_t)> args_of;
-    llvm::function_ref<SymbolHash(std::uint32_t)> hash_of;
     std::vector<Ranked> hits;
 
     /// Whether a hit was turned away or evicted: the ranking runs past
     /// the limit.
     bool overflowed = false;
 
-    bool before(const NameRank& lhs,
-                llvm::StringRef lhs_name,
-                llvm::StringRef lhs_args,
-                SymbolHash lhs_hash,
-                const Ranked& rhs) const {
+    static bool before(const Ranked& lhs, const Ranked& rhs) {
         return ranks_after(rhs.rank,
-                           name_of(rhs.entry),
-                           args_of(rhs.entry),
-                           hash_of(rhs.entry),
-                           lhs,
-                           lhs_name,
-                           lhs_args,
-                           lhs_hash);
-    }
-
-    bool before(const Ranked& lhs, const Ranked& rhs) const {
-        return before(lhs.rank, name_of(lhs.entry), args_of(lhs.entry), hash_of(lhs.entry), rhs);
+                           rhs.name,
+                           rhs.args,
+                           rhs.hash,
+                           lhs.rank,
+                           lhs.name,
+                           lhs.args,
+                           lhs.hash);
     }
 
     bool full() const {
@@ -80,32 +82,227 @@ struct TopHits {
 
     /// Whether a hit of `rank` could still enter, whatever its name.
     bool admits(const NameRank& rank) const {
-        return !full() || before(rank, "", "", 0, hits.front());
+        return !full() || before({.rank = rank}, hits.front());
     }
 
     void push(Ranked hit) {
-        auto compare = [&](const Ranked& lhs, const Ranked& rhs) {
-            return before(lhs, rhs);
-        };
         if(!full()) {
             hits.push_back(hit);
-            ranges::push_heap(hits, compare);
+            ranges::push_heap(hits, before);
             return;
         }
         overflowed = true;
         if(!before(hit, hits.front())) {
             return;
         }
-        ranges::pop_heap(hits, compare);
+        ranges::pop_heap(hits, before);
         hits.back() = hit;
-        ranges::push_heap(hits, compare);
+        ranges::push_heap(hits, before);
     }
 
     std::vector<Ranked> sorted() && {
-        ranges::sort(hits, [&](const Ranked& lhs, const Ranked& rhs) { return before(lhs, rhs); });
+        ranges::sort(hits, before);
         return std::move(hits);
     }
 };
+
+/// Encode one segment offering `offered`, the nodes of a slice of the
+/// run, with the scopes above them it does not hold.
+std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
+                                      llvm::ArrayRef<std::uint32_t> offered,
+                                      llvm::ArrayRef<std::uint32_t> covered) {
+    std::vector<std::uint32_t> members(offered.begin(), offered.end());
+    ranges::sort(members, [&](std::uint32_t lhs, std::uint32_t rhs) {
+        if(nodes[lhs].quality != nodes[rhs].quality) {
+            return nodes[lhs].quality > nodes[rhs].quality;
+        }
+        return nodes[lhs].symbol->hash < nodes[rhs].symbol->hash;
+    });
+    auto count = static_cast<std::uint32_t>(members.size());
+    llvm::DenseMap<std::uint32_t, std::uint32_t> id_of;
+    id_of.reserve(count);
+    for(std::uint32_t id = 0; id < count; id += 1) {
+        id_of.try_emplace(members[id], id);
+    }
+    for(std::uint32_t id = 0; id < count; id += 1) {
+        for(auto at = nodes[members[id]].scope;
+            at != no_entry &&
+            id_of.try_emplace(at, static_cast<std::uint32_t>(members.size())).second;
+            at = nodes[at].scope) {
+            members.push_back(at);
+        }
+    }
+    auto total = static_cast<std::uint32_t>(members.size());
+    auto entry_of = [&](std::uint32_t id) -> const SearchEntry& {
+        return *nodes[members[id]].symbol;
+    };
+
+    SearchIndexBlob blob;
+    blob.format_version = index_format_version;
+    blob.search_version = search_format_version;
+    blob.hashes.reserve(total);
+    blob.name_ends.reserve(total);
+    blob.args_ends.reserve(total);
+    blob.parents.reserve(total);
+    blob.qualities.reserve(count);
+    std::vector<std::string> lower_names;
+    lower_names.reserve(total);
+    for(std::uint32_t id = 0; id < total; id += 1) {
+        auto& entry = entry_of(id);
+        if(id < count) {
+            if(entry.local) {
+                assert(entry.file != no_file && "an entry of internal linkage names its file");
+                blob.local_entries.push_back(id);
+                blob.local_paths.push_back(entry.file);
+            }
+            blob.qualities.push_back(nodes[members[id]].quality);
+        }
+        blob.hashes.push_back(entry.hash);
+        blob.names += entry.name;
+        blob.name_ends.push_back(static_cast<std::uint32_t>(blob.names.size()));
+        blob.args += entry.args;
+        blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
+        auto scope = nodes[members[id]].scope;
+        blob.parents.push_back(scope == no_entry ? no_entry : id_of.find(scope)->second);
+        lower_names.push_back(llvm::StringRef(entry.name).lower());
+    }
+
+    blob.by_lower_name.resize(total);
+    std::iota(blob.by_lower_name.begin(), blob.by_lower_name.end(), 0u);
+    ranges::sort(blob.by_lower_name, [&](std::uint32_t lhs, std::uint32_t rhs) {
+        if(lower_names[lhs] != lower_names[rhs]) {
+            return lower_names[lhs] < lower_names[rhs];
+        }
+        if(entry_of(lhs).name != entry_of(rhs).name) {
+            return entry_of(lhs).name < entry_of(rhs).name;
+        }
+        return lhs < rhs;
+    });
+    blob.by_hash.resize(count);
+    std::iota(blob.by_hash.begin(), blob.by_hash.end(), 0u);
+    ranges::sort(blob.by_hash, [&](std::uint32_t lhs, std::uint32_t rhs) {
+        return entry_of(lhs).hash < entry_of(rhs).hash;
+    });
+
+    // Every (token, id) pair, token-major, ordered by token with each
+    // token's ids left ascending as they arrive: an LSD radix sort over the
+    // token's three bytes, every pass stable.
+    std::vector<std::uint64_t> pairs;
+    llvm::SmallVector<NameToken, 64> tokens;
+    for(std::uint32_t id = 0; id < count; id += 1) {
+        name_tokens(entry_of(id).name, tokens);
+        for(auto token: tokens) {
+            pairs.push_back(std::uint64_t(token) << 32 | id);
+        }
+    }
+    std::vector<std::uint64_t> sorted(pairs.size());
+    for(unsigned shift = 32; shift < 56; shift += 8) {
+        std::array<std::size_t, 257> starts{};
+        for(auto pair: pairs) {
+            starts[(pair >> shift & 0xff) + 1] += 1;
+        }
+        std::partial_sum(starts.begin(), starts.end(), starts.begin());
+        for(auto pair: pairs) {
+            auto& next = starts[pair >> shift & 0xff];
+            sorted[next] = pair;
+            next += 1;
+        }
+        std::swap(pairs, sorted);
+    }
+    std::vector<std::uint32_t> ids;
+    for(std::size_t at = 0; at < pairs.size();) {
+        auto token = static_cast<NameToken>(pairs[at] >> 32);
+        ids.clear();
+        for(; at < pairs.size() && pairs[at] >> 32 == token; at += 1) {
+            ids.push_back(static_cast<std::uint32_t>(pairs[at]));
+        }
+        blob.token_keys.push_back(token);
+        append_postings(blob.token_postings, blob.token_ends, ids, count);
+    }
+
+    llvm::DenseMap<std::uint32_t, Bitmap> children;
+    Bitmap top_level;
+    for(std::uint32_t id = 0; id < total; id += 1) {
+        auto parent = blob.parents[id];
+        if(parent == no_entry) {
+            top_level.add(id);
+        } else {
+            children[parent].add(id);
+        }
+    }
+    for(auto container:
+        views::transform(children, [](auto& entry) -> auto& { return entry.first; })) {
+        blob.container_entries.push_back(container);
+    }
+    ranges::sort(blob.container_entries);
+    for(auto container: blob.container_entries) {
+        append_postings(blob.children_postings,
+                        blob.children_ends,
+                        children.find(container)->second,
+                        total);
+    }
+    blob.top_level = write_postings(top_level, total);
+    Bitmap long_names;
+    for(std::uint32_t id = 0; id < count; id += 1) {
+        if(entry_of(id).name.size() > name_bound) {
+            long_names.add(id);
+        }
+    }
+    blob.long_names = write_postings(long_names, count);
+
+    llvm::DenseMap<std::uint32_t, Bitmap> subtrees;
+    llvm::DenseSet<std::uint32_t> visiting;
+    auto subtree_of = [&](this auto& self, std::uint32_t container) -> const Bitmap& {
+        if(auto it = subtrees.find(container); it != subtrees.end()) {
+            return it->second;
+        }
+        Bitmap below;
+        // A container in its own subtree only comes from corrupt parent
+        // links; it contributes nothing rather than recursing forever.
+        if(visiting.insert(container).second) {
+            below = children.find(container)->second;
+            for(auto child: children.find(container)->second) {
+                if(children.contains(child)) {
+                    below |= self(child);
+                }
+            }
+            visiting.erase(container);
+        }
+        return subtrees.try_emplace(container, std::move(below)).first->second;
+    };
+    for(auto container: blob.container_entries) {
+        if(entry_of(container).kind == SymbolKind::Namespace) {
+            blob.subtree_entries.push_back(container);
+            append_postings(blob.subtree_postings, blob.subtree_ends, subtree_of(container), total);
+        }
+    }
+
+    constexpr auto kind_count = kota::meta::reflection<SymbolKind::Kind>::member_names.size();
+    std::vector<Bitmap> kinds(kind_count);
+    llvm::DenseMap<std::uint32_t, Bitmap> files;
+    for(std::uint32_t id = 0; id < count; id += 1) {
+        auto& entry = entry_of(id);
+        if(entry.kind.value() < kind_count) {
+            kinds[entry.kind.value()].add(id);
+        }
+        if(entry.file != no_file) {
+            files[entry.file].add(id);
+        }
+    }
+    for(auto& bitmap: kinds) {
+        append_postings(blob.kind_postings, blob.kind_ends, bitmap, count);
+    }
+    for(auto& [path, entries]: files) {
+        blob.paths.push_back(path);
+    }
+    ranges::sort(blob.paths);
+    for(auto path: blob.paths) {
+        append_postings(blob.file_postings, blob.file_ends, files.find(path)->second, count);
+    }
+    blob.covered.assign(covered.begin(), covered.end());
+
+    return encode(blob);
+}
 
 }  // namespace
 
@@ -165,38 +362,29 @@ float symbol_quality(llvm::StringRef name,
     return quality;
 }
 
-std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
-    struct Ranked {
-        std::uint32_t entry;
-        float quality;
-    };
-
-    std::vector<Ranked> ranked;
-    llvm::DenseSet<SymbolHash> seen;
-    for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
-        auto& entry = snapshot.entries[i];
+std::vector<std::vector<std::byte>> build_search_segments(const SearchSnapshot& snapshot,
+                                                          std::uint32_t bound) {
+    std::vector<Node> nodes;
+    llvm::DenseMap<SymbolHash, std::uint32_t> node_of;
+    auto place = [&](const SearchEntry& entry, bool offered) {
         if(!searchable(entry.kind, entry.name, entry.flags) || entry.hash == 0 ||
-           reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
-            continue;
+           reserved_key(entry.hash) ||
+           !node_of.try_emplace(entry.hash, static_cast<std::uint32_t>(nodes.size())).second) {
+            return;
         }
-        ranked.push_back(
-            {i, symbol_quality(entry.name, entry.kind, entry.flags, entry.reference_files)});
-    }
-    ranges::sort(ranked, [&](const Ranked& lhs, const Ranked& rhs) {
-        if(lhs.quality != rhs.quality) {
-            return lhs.quality > rhs.quality;
-        }
-        return snapshot.entries[lhs.entry].hash < snapshot.entries[rhs.entry].hash;
-    });
-    auto count = static_cast<std::uint32_t>(ranked.size());
-    auto entry_of = [&](std::uint32_t id) -> const SearchEntry& {
-        return snapshot.entries[ranked[id].entry];
+        nodes.push_back({
+            .symbol = &entry,
+            .quality =
+                offered ? symbol_quality(entry.name, entry.kind, entry.flags, entry.reference_files)
+                        : 0,
+            .offered = offered,
+        });
     };
-
-    llvm::DenseMap<SymbolHash, std::uint32_t> id_of;
-    id_of.reserve(count);
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        id_of.try_emplace(entry_of(id).hash, id);
+    for(auto& entry: snapshot.entries) {
+        place(entry, true);
+    }
+    for(auto& scope: snapshot.scopes) {
+        place(scope, false);
     }
 
     struct Scope {
@@ -208,191 +396,118 @@ std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
     // namespaces are documents, anonymous scopes are not, so their parents
     // are kept apart.
     llvm::DenseMap<SymbolHash, SymbolHash> anonymous_parents;
-    for(auto& entry: snapshot.entries) {
-        if(has_flag(entry.flags, SymbolFlags::AnonymousScope)) {
-            anonymous_parents.try_emplace(entry.hash, entry.parent);
+    for(auto* symbols: {&snapshot.entries, &snapshot.scopes}) {
+        for(auto& entry: *symbols) {
+            if(has_flag(entry.flags, SymbolFlags::AnonymousScope)) {
+                anonymous_parents.try_emplace(entry.hash, entry.parent);
+            }
         }
     }
     auto scope_of = [&](SymbolHash hash) -> std::optional<Scope> {
         if(auto anonymous = anonymous_parents.find(hash); anonymous != anonymous_parents.end()) {
             return Scope{SymbolFlags::AnonymousScope, anonymous->second};
         }
-        auto it = id_of.find(hash);
-        if(it == id_of.end()) {
+        auto it = node_of.find(hash);
+        if(it == node_of.end()) {
             return std::nullopt;
         }
-        auto& entry = entry_of(it->second);
-        return Scope{entry.flags, entry.parent};
+        auto& symbol = *nodes[it->second].symbol;
+        return Scope{symbol.flags, symbol.parent};
     };
-    auto parent_of = [&](std::uint32_t id) {
-        auto parent = no_entry;
-        auto& entry = entry_of(id);
-        for_each_spelled_scope(entry.hash, entry.parent, scope_of, [&](SymbolHash scope, Scope&) {
-            parent = id_of.find(scope)->second;
-            return false;
-        });
-        return parent;
-    };
-
-    SearchIndexBlob blob;
-    blob.format_version = index_format_version;
-    blob.search_version = search_format_version;
-    blob.generation = snapshot.generation;
-    blob.hashes.reserve(count);
-    blob.name_ends.reserve(count);
-    blob.args_ends.reserve(count);
-    blob.parents.reserve(count);
-    blob.qualities.reserve(count);
-    std::vector<std::string> lower_names;
-    lower_names.reserve(count);
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        auto& entry = entry_of(id);
-        if(entry.local) {
-            assert(entry.file != no_file && "an entry of internal linkage names its file");
-            blob.local_entries.push_back(id);
-            blob.local_paths.push_back(entry.file);
-        }
-        blob.hashes.push_back(entry.hash);
-        blob.names += entry.name;
-        blob.name_ends.push_back(static_cast<std::uint32_t>(blob.names.size()));
-        blob.args += entry.args;
-        blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
-        blob.parents.push_back(parent_of(id));
-        blob.qualities.push_back(ranked[id].quality);
-        lower_names.push_back(llvm::StringRef(entry.name).lower());
+    for(auto& node: nodes) {
+        for_each_spelled_scope(node.symbol->hash,
+                               node.symbol->parent,
+                               scope_of,
+                               [&](SymbolHash scope, Scope&) {
+                                   node.scope = node_of.find(scope)->second;
+                                   return false;
+                               });
     }
 
-    blob.by_lower_name.resize(count);
-    std::iota(blob.by_lower_name.begin(), blob.by_lower_name.end(), 0u);
-    ranges::sort(blob.by_lower_name, [&](std::uint32_t lhs, std::uint32_t rhs) {
-        if(lower_names[lhs] != lower_names[rhs]) {
-            return lower_names[lhs] < lower_names[rhs];
-        }
-        if(entry_of(lhs).name != entry_of(rhs).name) {
-            return entry_of(lhs).name < entry_of(rhs).name;
-        }
-        return lhs < rhs;
-    });
-    blob.by_hash.resize(count);
-    std::iota(blob.by_hash.begin(), blob.by_hash.end(), 0u);
-    ranges::sort(blob.by_hash, [&](std::uint32_t lhs, std::uint32_t rhs) {
-        return entry_of(lhs).hash < entry_of(rhs).hash;
-    });
-
-    // Every (token, id) pair, token-major, ordered by token with each
-    // token's ids left ascending as they arrive: an LSD radix sort over the
-    // token's three bytes, every pass stable.
-    std::vector<std::uint64_t> pairs;
-    llvm::SmallVector<NameToken, 64> tokens;
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        name_tokens(entry_of(id).name, tokens);
-        for(auto token: tokens) {
-            pairs.push_back(std::uint64_t(token) << 32 | id);
-        }
-    }
-    std::vector<std::uint64_t> sorted(pairs.size());
-    for(unsigned shift = 32; shift < 56; shift += 8) {
-        std::array<std::size_t, 257> starts{};
-        for(auto pair: pairs) {
-            starts[(pair >> shift & 0xff) + 1] += 1;
-        }
-        std::partial_sum(starts.begin(), starts.end(), starts.begin());
-        for(auto pair: pairs) {
-            auto& next = starts[pair >> shift & 0xff];
-            sorted[next] = pair;
-            next += 1;
-        }
-        std::swap(pairs, sorted);
-    }
-    std::vector<std::uint32_t> ids;
-    for(std::size_t at = 0; at < pairs.size();) {
-        auto token = static_cast<NameToken>(pairs[at] >> 32);
-        ids.clear();
-        for(; at < pairs.size() && pairs[at] >> 32 == token; at += 1) {
-            ids.push_back(static_cast<std::uint32_t>(pairs[at]));
-        }
-        blob.token_keys.push_back(token);
-        append_postings(blob.token_postings, blob.token_ends, ids, count);
-    }
-
-    llvm::DenseMap<std::uint32_t, Bitmap> children;
-    Bitmap top_level;
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        auto parent = blob.parents[id];
-        if(parent == no_entry) {
-            top_level.add(id);
-        } else {
-            children[parent].add(id);
-        }
-    }
-    for(auto container:
-        views::transform(children, [](auto& entry) -> auto& { return entry.first; })) {
-        blob.container_entries.push_back(container);
-    }
-    ranges::sort(blob.container_entries);
-    for(auto container: blob.container_entries) {
-        append_postings(blob.children_postings,
-                        blob.children_ends,
-                        children.find(container)->second,
-                        count);
-    }
-    blob.top_level = write_postings(top_level, count);
-    Bitmap long_names;
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        if(entry_of(id).name.size() > name_bound) {
-            long_names.add(id);
-        }
-    }
-    blob.long_names = write_postings(long_names, count);
-
-    llvm::DenseMap<std::uint32_t, Bitmap> subtrees;
-    llvm::DenseSet<std::uint32_t> visiting;
-    auto subtree_of = [&](this auto& self, std::uint32_t container) -> const Bitmap& {
-        if(auto it = subtrees.find(container); it != subtrees.end()) {
-            return it->second;
-        }
-        Bitmap below;
-        // A container in its own subtree only comes from corrupt parent
-        // links; it contributes nothing rather than recursing forever.
-        if(visiting.insert(container).second) {
-            below = children.find(container)->second;
-            for(auto child: children.find(container)->second) {
-                if(children.contains(child)) {
-                    below |= self(child);
-                }
+    // The offered nodes in the order of a walk down the scope tree, so a
+    // segment's symbols share their scopes and few of those are copied in.
+    std::vector<bool> placed(nodes.size());
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(nodes[i].offered) {
+            for(auto at = i; at != no_entry && !placed[at]; at = nodes[at].scope) {
+                placed[at] = true;
             }
-            visiting.erase(container);
         }
-        return subtrees.try_emplace(container, std::move(below)).first->second;
+    }
+    std::vector<std::uint32_t> child_ends(nodes.size() + 1);
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(placed[i] && nodes[i].scope != no_entry) {
+            child_ends[nodes[i].scope + 1] += 1;
+        }
+    }
+    std::partial_sum(child_ends.begin(), child_ends.end(), child_ends.begin());
+    std::vector<std::uint32_t> children(child_ends.back());
+    std::vector<std::uint32_t> roots;
+    {
+        auto next = child_ends;
+        for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+            if(!placed[i]) {
+                continue;
+            }
+            if(nodes[i].scope == no_entry) {
+                roots.push_back(i);
+            } else {
+                children[next[nodes[i].scope]] = i;
+                next[nodes[i].scope] += 1;
+            }
+        }
+    }
+    auto by_hash = [&](std::uint32_t lhs, std::uint32_t rhs) {
+        return nodes[lhs].symbol->hash < nodes[rhs].symbol->hash;
     };
-    for(auto container: blob.container_entries) {
-        if(entry_of(container).kind == SymbolKind::Namespace) {
-            blob.subtree_entries.push_back(container);
-            append_postings(blob.subtree_postings, blob.subtree_ends, subtree_of(container), count);
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        ranges::sort(children.begin() + child_ends[i],
+                     children.begin() + child_ends[i + 1],
+                     by_hash);
+    }
+    ranges::sort(roots, by_hash);
+    std::vector<std::uint32_t> order;
+    std::vector<bool> walked(nodes.size());
+    std::vector<std::uint32_t> pending;
+    auto walk = [&](std::uint32_t root) {
+        pending.push_back(root);
+        while(!pending.empty()) {
+            auto at = pending.back();
+            pending.pop_back();
+            if(walked[at]) {
+                continue;
+            }
+            walked[at] = true;
+            if(nodes[at].offered) {
+                order.push_back(at);
+            }
+            for(auto i = child_ends[at + 1]; i > child_ends[at]; i -= 1) {
+                pending.push_back(children[i - 1]);
+            }
+        }
+    };
+    for(auto root: roots) {
+        walk(root);
+    }
+    // Scopes linked in a cycle, which only corrupt parent columns form,
+    // lead to no root.
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(placed[i] && !walked[i]) {
+            walk(i);
         }
     }
 
-    constexpr auto kind_count = kota::meta::reflection<SymbolKind::Kind>::member_names.size();
-    std::vector<Bitmap> kinds(kind_count);
-    std::vector<Bitmap> files(snapshot.paths.size());
-    for(std::uint32_t id = 0; id < count; id += 1) {
-        auto& entry = entry_of(id);
-        if(entry.kind.value() < kind_count) {
-            kinds[entry.kind.value()].add(id);
-        }
-        if(entry.file != no_file && entry.file < files.size()) {
-            files[entry.file].add(id);
-        }
-    }
-    for(auto& bitmap: kinds) {
-        append_postings(blob.kind_postings, blob.kind_ends, bitmap, count);
-    }
-    blob.paths = snapshot.paths;
-    for(auto& bitmap: files) {
-        append_postings(blob.file_postings, blob.file_ends, bitmap, count);
-    }
-
-    return encode(blob);
+    std::vector<std::vector<std::byte>> segments;
+    llvm::ArrayRef<std::uint32_t> rest = order;
+    do {
+        auto slice = rest.take_front(bound);
+        rest = rest.drop_front(slice.size());
+        segments.push_back(encode_segment(nodes,
+                                          slice,
+                                          segments.empty() ? llvm::ArrayRef(snapshot.covered)
+                                                           : llvm::ArrayRef<std::uint32_t>()));
+    } while(!rest.empty());
+    return segments;
 }
 
 bool ranks_after(const NameRank& lhs,
@@ -483,14 +598,15 @@ std::optional<NameRank>
     return std::nullopt;
 }
 
-/// The mapped blob with its columns bound and its posting lists decoded
+/// A mapped segment with its columns bound and its posting lists decoded
 /// on first use.
-struct SearchIndex::View {
-    using Blob = SearchIndexBlob;
-
+struct SearchIndex::Segment {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    const codec::blob::view_t<Blob>* columns = nullptr;
+    const Root* columns = nullptr;
+
+    /// The run the segment belongs to.
+    std::uint32_t run = 0;
 
     mutable llvm::DenseMap<std::uint32_t, Bitmap> token_cache;
     mutable llvm::DenseMap<std::uint32_t, Bitmap> children_cache;
@@ -504,10 +620,19 @@ struct SearchIndex::View {
     /// incomplete, and the owner rebuilds the index.
     mutable bool damaged = false;
 
+    /// The segment the bytes hold; null when they do not hold one.
+    static std::unique_ptr<Segment> open(std::unique_ptr<llvm::MemoryBuffer> bytes);
+
     /// Bind the columns of a verified blob, checking they line up.
     std::expected<void, llvm::StringRef> bind(const Root& root);
 
+    /// The entries the segment offers.
     std::uint32_t count() const {
+        return static_cast<std::uint32_t>(columns->qualities.size());
+    }
+
+    /// The entries, the scopes above the offered ones included.
+    std::uint32_t total() const {
         return static_cast<std::uint32_t>(columns->hashes.size());
     }
 
@@ -519,22 +644,20 @@ struct SearchIndex::View {
         return slice(columns->args, columns->args_ends, entry);
     }
 
-    /// The portable name of the file an entry of internal linkage lives in;
-    /// empty for any other entry.
-    llvm::StringRef local_file(std::uint32_t entry) const {
+    /// The path id of the file an entry of internal linkage lives in;
+    /// no_file for any other entry.
+    std::uint32_t local_file(std::uint32_t entry) const {
         auto position = sorted_find(columns->local_entries, entry);
-        if(!position) {
-            return {};
-        }
-        return llvm::StringRef(columns->paths[columns->local_paths[*position]]);
+        return position ? columns->local_paths[*position] : no_file;
     }
 
-    /// A posting list decoded; a malformed one reads as empty and marks
-    /// the index damaged.
+    /// A posting list over `universe` decoded; a malformed one reads as
+    /// empty and marks the index damaged.
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
-                  std::uint32_t i) const {
-        auto decoded = read_postings(slice(arena, ends, i), count());
+                  std::uint32_t i,
+                  std::uint32_t universe) const {
+        auto decoded = read_postings(slice(arena, ends, i), universe);
         if(!decoded) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");
@@ -548,10 +671,11 @@ struct SearchIndex::View {
     const Bitmap& cached(llvm::DenseMap<std::uint32_t, Bitmap>& cache,
                          llvm::ArrayRef<std::uint8_t> arena,
                          llvm::ArrayRef<std::uint32_t> ends,
-                         std::uint32_t i) const {
+                         std::uint32_t i,
+                         std::uint32_t universe) const {
         auto [it, inserted] = cache.try_emplace(i);
         if(inserted) {
-            it->second = decode(arena, ends, i);
+            it->second = decode(arena, ends, i, universe);
         }
         return it->second;
     }
@@ -562,7 +686,7 @@ struct SearchIndex::View {
         if(!i) {
             return nullptr;
         }
-        return &cached(token_cache, columns->token_postings, columns->token_ends, *i);
+        return &cached(token_cache, columns->token_postings, columns->token_ends, *i, count());
     }
 
     /// The direct members of a container, the top level for no_entry.
@@ -570,7 +694,7 @@ struct SearchIndex::View {
         if(container == no_entry) {
             if(!top_level_cache) {
                 std::uint32_t ends[] = {static_cast<std::uint32_t>(columns->top_level.size())};
-                top_level_cache = decode(columns->top_level, ends, 0);
+                top_level_cache = decode(columns->top_level, ends, 0, total());
             }
             return *top_level_cache;
         }
@@ -579,14 +703,18 @@ struct SearchIndex::View {
             const static Bitmap none;
             return none;
         }
-        return cached(children_cache, columns->children_postings, columns->children_ends, *i);
+        return cached(children_cache,
+                      columns->children_postings,
+                      columns->children_ends,
+                      *i,
+                      total());
     }
 
     /// The entries whose name outruns the token bound.
     const Bitmap& long_names() const {
         if(!long_names_cache) {
             std::uint32_t ends[] = {static_cast<std::uint32_t>(columns->long_names.size())};
-            long_names_cache = decode(columns->long_names, ends, 0);
+            long_names_cache = decode(columns->long_names, ends, 0, count());
         }
         return *long_names_cache;
     }
@@ -604,7 +732,11 @@ struct SearchIndex::View {
             return all;
         }
         if(auto i = sorted_find(columns->subtree_entries, container)) {
-            return cached(subtree_cache, columns->subtree_postings, columns->subtree_ends, *i);
+            return cached(subtree_cache,
+                          columns->subtree_postings,
+                          columns->subtree_ends,
+                          *i,
+                          total());
         }
         Bitmap below = children(container);
         llvm::SmallVector<std::uint32_t> pending(below.begin(), below.end());
@@ -628,23 +760,23 @@ struct SearchIndex::View {
             const static Bitmap none;
             return none;
         }
-        return cached(kind_cache, columns->kind_postings, columns->kind_ends, value);
+        return cached(kind_cache, columns->kind_postings, columns->kind_ends, value, count());
     }
 
     const Bitmap& file(std::uint32_t index) const {
-        return cached(file_cache, columns->file_postings, columns->file_ends, index);
+        return cached(file_cache, columns->file_postings, columns->file_ends, index, count());
     }
 
-    /// The chain of containers above an entry, outermost first.
-    llvm::SmallVector<ScopeEntry, 8> chain(std::uint32_t entry) const {
-        llvm::SmallVector<ScopeEntry, 8> entries;
-        auto parent = columns->parents[entry];
-        for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
-            entries.push_back({.name = name(parent), .args = arguments(parent)});
-            parent = columns->parents[parent];
+    /// The entry offering a symbol, none when the segment offers none.
+    std::optional<std::uint32_t> offered(SymbolHash hash) const {
+        auto& by_hash = columns->by_hash;
+        auto it = ranges::lower_bound(by_hash, hash, {}, [&](std::uint32_t entry) {
+            return columns->hashes[entry];
+        });
+        if(it == by_hash.end() || columns->hashes[*it] != hash) {
+            return std::nullopt;
         }
-        ranges::reverse(entries);
-        return entries;
+        return *it;
     }
 
     /// The entries whose lowercase name is `lower`, in by_lower_name order.
@@ -684,20 +816,35 @@ struct SearchIndex::View {
     }
 };
 
-std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
-    auto& view = *this;
+std::unique_ptr<SearchIndex::Segment>
+    SearchIndex::Segment::open(std::unique_ptr<llvm::MemoryBuffer> bytes) {
+    bytes = in_place_buffer(std::move(bytes));
+    auto root = verify_root<SearchIndexBlob>(bytes->getBuffer(), "search segment");
+    if(!root) {
+        return nullptr;
+    }
+    auto segment = std::make_unique<Segment>();
+    if(auto ok = segment->bind(*root); !ok) {
+        LOG_DEBUG("Rejecting search segment: {}", std::string_view(ok.error()));
+        return nullptr;
+    }
+    segment->buffer = std::move(bytes);
+    return segment;
+}
+
+std::expected<void, llvm::StringRef> SearchIndex::Segment::bind(const Root& root) {
     if(root.search_version != search_format_version) {
         return std::unexpected("written by another search format version");
     }
-    view.columns = &root;
-    auto& columns = view.columns;
+    columns = &root;
     llvm::ArrayRef<std::uint64_t> hashes = columns->hashes;
     llvm::ArrayRef<std::uint32_t> by_hash = columns->by_hash;
 
-    auto count = hashes.size();
-    if(columns->name_ends.size() != count || columns->args_ends.size() != count ||
-       columns->parents.size() != count || columns->qualities.size() != count ||
-       columns->by_lower_name.size() != count || by_hash.size() != count) {
+    auto total = hashes.size();
+    auto count = columns->qualities.size();
+    if(count > total || columns->name_ends.size() != total || columns->args_ends.size() != total ||
+       columns->parents.size() != total || columns->by_lower_name.size() != total ||
+       by_hash.size() != count) {
         return std::unexpected("entry columns do not line up");
     }
     if(!monotone_ends(columns->name_ends, columns->names.size()) ||
@@ -705,7 +852,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
         return std::unexpected("name arenas do not line up");
     }
     for(auto parent: columns->parents) {
-        if(parent != no_entry && parent >= count) {
+        if(parent != no_entry && parent >= total) {
             return std::unexpected("parent outside the entries");
         }
     }
@@ -713,7 +860,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
     // blob out of lowercase-name order loads, and lower_range's binary search
     // misses entries silently.
     for(auto entry: columns->by_lower_name) {
-        if(entry >= count) {
+        if(entry >= total) {
             return std::unexpected("name order outside the entries");
         }
     }
@@ -735,25 +882,27 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
        !strictly_ascending(columns->token_keys)) {
         return std::unexpected("token columns do not line up");
     }
-    if(!sparse_ok(columns->container_entries, columns->children_ends.size(), count) ||
+    if(!sparse_ok(columns->container_entries, columns->children_ends.size(), total) ||
        !monotone_ends(columns->children_ends, columns->children_postings.size())) {
         return std::unexpected("container columns do not line up");
     }
-    if(!sparse_ok(columns->subtree_entries, columns->subtree_ends.size(), count) ||
+    if(!sparse_ok(columns->subtree_entries, columns->subtree_ends.size(), total) ||
        !monotone_ends(columns->subtree_ends, columns->subtree_postings.size())) {
         return std::unexpected("subtree columns do not line up");
     }
     if(!monotone_ends(columns->kind_ends, columns->kind_postings.size())) {
         return std::unexpected("kind columns do not line up");
     }
-    if(columns->paths.size() != columns->file_ends.size() ||
+    if(columns->paths.size() != columns->file_ends.size() || !strictly_ascending(columns->paths) ||
        !monotone_ends(columns->file_ends, columns->file_postings.size())) {
         return std::unexpected("file columns do not line up");
     }
     if(!sparse_ok(columns->local_entries, columns->local_paths.size(), count) ||
-       ranges::any_of(columns->local_paths,
-                      [&](std::uint32_t path) { return path >= columns->paths.size(); })) {
+       ranges::contains(columns->local_paths, no_file)) {
         return std::unexpected("local columns do not line up");
+    }
+    if(!strictly_ascending(columns->covered)) {
+        return std::unexpected("covered files are not ascending");
     }
     return {};
 }
@@ -763,189 +912,319 @@ SearchIndex::~SearchIndex() = default;
 SearchIndex::SearchIndex(SearchIndex&&) noexcept = default;
 SearchIndex& SearchIndex::operator=(SearchIndex&&) noexcept = default;
 
-bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    view.reset();
-    if(!blob) {
-        return false;
+bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> segment) {
+    clear();
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> run;
+    run.push_back(std::move(segment));
+    return replace(0, std::move(run));
+}
+
+bool SearchIndex::replace(std::uint32_t runs,
+                          std::vector<std::unique_ptr<llvm::MemoryBuffer>> bytes) {
+    assert(runs <= run_ends.size() && !bytes.empty() && "a run replaces runs the index holds");
+    std::vector<std::unique_ptr<Segment>> opened;
+    for(auto& segment: bytes) {
+        auto bound = Segment::open(std::move(segment));
+        if(!bound) {
+            return false;
+        }
+        opened.push_back(std::move(bound));
     }
-    blob = in_place_buffer(std::move(blob));
-    auto root = verify_root<SearchIndexBlob>(blob->getBuffer(), "search blob");
-    if(!root) {
-        return false;
+    auto kept = static_cast<std::uint32_t>(run_ends.size()) - runs;
+    segments.resize(kept == 0 ? 0 : run_ends[kept - 1]);
+    run_ends.resize(kept);
+    for(auto& segment: opened) {
+        segment->run = kept;
+        segments.push_back(std::move(segment));
     }
-    auto bound = std::make_unique<View>();
-    if(auto ok = bound->bind(*root); !ok) {
-        LOG_DEBUG("Rejecting search blob: {}", std::string_view(ok.error()));
-        return false;
-    }
-    bound->buffer = std::move(blob);
-    view = std::move(bound);
+    run_ends.push_back(static_cast<std::uint32_t>(segments.size()));
+    index_runs();
     return true;
 }
 
+bool SearchIndex::rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes) {
+    auto& held = *segments[segment];
+    if(!rebind_buffer(held.buffer, std::move(bytes))) {
+        return false;
+    }
+    held.columns = &codec::blob::view_verified<SearchIndexBlob>(as_bytes(held.buffer->getBuffer()));
+    return true;
+}
+
+void SearchIndex::clear() {
+    segments.clear();
+    run_ends.clear();
+    newest_symbols.clear();
+    newest_files.clear();
+}
+
+void SearchIndex::index_runs() {
+    newest_symbols.clear();
+    newest_files.clear();
+    for(auto& segment: views::drop(segments, run_ends.front())) {
+        for(std::uint32_t entry = 0; entry < segment->count(); entry += 1) {
+            newest_symbols[segment->columns->hashes[entry]] = segment->run;
+        }
+        for(auto file: segment->columns->covered) {
+            newest_files[file] = segment->run;
+        }
+    }
+}
+
+bool SearchIndex::hidden(const Segment& segment, std::uint32_t entry) const {
+    if(segment.run + 1 == run_ends.size()) {
+        return false;
+    }
+    if(auto it = newest_symbols.find(segment.columns->hashes[entry]);
+       it != newest_symbols.end() && it->second > segment.run) {
+        return true;
+    }
+    if(auto file = segment.local_file(entry); file != no_file) {
+        if(auto it = newest_files.find(file);
+           it != newest_files.end() && it->second > segment.run) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::pair<const SearchIndex::Segment*, std::uint32_t>
+    SearchIndex::newest(const Segment& segment, std::uint32_t entry) const {
+    auto hash = segment.columns->hashes[entry];
+    auto it = newest_symbols.find(hash);
+    if(it == newest_symbols.end() || it->second <= segment.run) {
+        return {&segment, entry};
+    }
+    auto run = it->second;
+    for(auto i = run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        if(auto found = segments[i]->offered(hash)) {
+            return {segments[i].get(), *found};
+        }
+    }
+    std::unreachable();
+}
+
+llvm::SmallVector<ScopeEntry, 8> SearchIndex::scope_chain(const Segment& segment,
+                                                          std::uint32_t entry) const {
+    llvm::SmallVector<ScopeEntry, 8> entries;
+    auto [at, current] = newest(segment, entry);
+    auto parent = at->columns->parents[current];
+    for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
+        std::tie(at, current) = newest(*at, parent);
+        entries.push_back({.name = at->name(current), .args = at->arguments(current)});
+        parent = at->columns->parents[current];
+    }
+    ranges::reverse(entries);
+    return entries;
+}
+
 bool SearchIndex::loaded() const {
-    return view != nullptr;
+    return !segments.empty();
+}
+
+std::uint32_t SearchIndex::run_count() const {
+    return static_cast<std::uint32_t>(run_ends.size());
+}
+
+std::uint32_t SearchIndex::run_size(std::uint32_t run) const {
+    std::uint32_t size = 0;
+    for(auto i = run == 0 ? 0 : run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        size +=
+            segments[i]->count() + static_cast<std::uint32_t>(segments[i]->columns->covered.size());
+    }
+    return size;
 }
 
 std::uint32_t SearchIndex::size() const {
-    return view ? view->count() : 0;
+    std::uint32_t size = 0;
+    for(auto& segment: segments) {
+        size += segment->count();
+    }
+    return size;
 }
 
-std::uint64_t SearchIndex::generation() const {
-    return view ? view->columns->generation : 0;
+void SearchIndex::for_each_source(std::uint32_t run,
+                                  llvm::function_ref<void(SymbolHash)> symbol,
+                                  llvm::function_ref<void(std::uint32_t)> file) const {
+    for(auto i = run == 0 ? 0 : run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        auto& columns = *segments[i]->columns;
+        llvm::ArrayRef<std::uint32_t> locals = columns.local_entries;
+        for(std::uint32_t entry = 0; entry < segments[i]->count(); entry += 1) {
+            if(!locals.empty() && locals.front() == entry) {
+                locals = locals.drop_front();
+                continue;
+            }
+            symbol(columns.hashes[entry]);
+        }
+        for(auto covered: columns.covered) {
+            file(covered);
+        }
+    }
 }
 
 bool SearchIndex::damaged() const {
-    return view && view->damaged;
-}
-
-bool SearchIndex::contains(SymbolHash hash) const {
-    if(!view) {
-        return false;
-    }
-    return ranges::binary_search(view->columns->by_hash, hash, {}, [&](std::uint32_t entry) {
-        return view->columns->hashes[entry];
-    });
+    return ranges::any_of(segments, [](auto& segment) { return segment->damaged; });
 }
 
 SearchOutcome SearchIndex::search(const SymbolQuery& query,
                                   std::uint32_t limit,
-                                  CanonicalRef workspace) const {
-    if(!view || limit == 0 || !query.by_pattern()) {
+                                  llvm::function_ref<bool(std::uint32_t)> wanted_file) const {
+    if(segments.empty() || limit == 0 || !query.by_pattern()) {
         return {};
     }
-    auto& index = *view;
 
-    // Everything a hit must satisfy besides its name: the kinds, the
-    // files and the scope, as one bitmap; none when nothing narrows.
-    std::optional<Bitmap> filter;
-    auto narrow = [&](Bitmap allowed) {
-        if(filter) {
-            *filter &= allowed;
-        } else {
-            filter = std::move(allowed);
+    // Whether each file is among the query's paths, judged once a file.
+    llvm::DenseMap<std::uint32_t, bool> wanted;
+    auto is_wanted = [&](std::uint32_t file) {
+        auto [it, inserted] = wanted.try_emplace(file);
+        if(inserted) {
+            it->second = wanted_file(file);
         }
+        return it->second;
     };
-    if(!query.kinds.empty()) {
-        Bitmap allowed;
-        for(auto kind: query.kinds) {
-            allowed |= index.kind(kind);
-        }
-        narrow(std::move(allowed));
-    }
-    if(!query.paths.empty()) {
-        Bitmap allowed;
-        for(std::uint32_t i = 0; i < index.columns->paths.size(); i += 1) {
-            llvm::SmallString<256> buffer;
-            auto file = path::local(llvm::StringRef(index.columns->paths[i]), workspace, buffer);
-            if(ranges::any_of(query.paths, [&](const std::string& wanted) {
-                   return path_matches(wanted, file);
-               })) {
-                allowed |= index.file(i);
+
+    // Per segment, everything a hit must satisfy besides its name — the
+    // kinds, the files and the scope — as one bitmap, none when nothing
+    // narrows; and the entries already ranked: one the clean pass rejected
+    // is judged again by the typo pass, which may accept it.
+    std::vector<std::optional<Bitmap>> filters(segments.size());
+    std::vector<Bitmap> ranked(segments.size());
+    for(std::uint32_t at = 0; at < segments.size(); at += 1) {
+        auto& segment = *segments[at];
+        auto& filter = filters[at];
+        auto narrow = [&](Bitmap allowed) {
+            if(filter) {
+                *filter &= allowed;
+            } else {
+                filter = std::move(allowed);
             }
+        };
+        if(!query.kinds.empty()) {
+            Bitmap allowed;
+            for(auto kind: query.kinds) {
+                allowed |= segment.kind(kind);
+            }
+            narrow(std::move(allowed));
         }
-        narrow(std::move(allowed));
-    }
-    if(query.external_only && !index.columns->local_entries.empty()) {
-        Bitmap allowed;
-        allowed.addRange(0, index.count());
-        for(auto entry: index.columns->local_entries) {
-            allowed.remove(entry);
-        }
-        narrow(std::move(allowed));
-    }
-    if(query.absolute || !query.scope.empty()) {
-        // The containers the scope leads to: the top level for an empty
-        // absolute scope, else every container named like the last
-        // segment whose own chain the earlier segments describe.
-        llvm::SmallVector<std::uint32_t, 4> containers;
-        if(query.scope.empty()) {
-            containers.push_back(no_entry);
-        } else {
-            auto& last = query.scope.back();
-            llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
-            above = above.drop_back();
-            for(auto entry: index.lower_range(llvm::StringRef(last.name).lower())) {
-                if(index.is_container(entry) && args_match(last.args, index.arguments(entry)) &&
-                   segments_match(above, index.chain(entry), query.absolute)) {
-                    containers.push_back(entry);
+        if(!query.paths.empty()) {
+            Bitmap allowed;
+            for(std::uint32_t i = 0; i < segment.columns->paths.size(); i += 1) {
+                if(is_wanted(segment.columns->paths[i])) {
+                    allowed |= segment.file(i);
                 }
             }
+            narrow(std::move(allowed));
         }
-        Bitmap allowed;
-        for(auto container: containers) {
-            allowed |= query.direct() ? index.children(container) : index.subtree(container);
+        if(query.external_only && !segment.columns->local_entries.empty()) {
+            Bitmap allowed;
+            allowed.addRange(0, segment.count());
+            for(auto entry: segment.columns->local_entries) {
+                allowed.remove(entry);
+            }
+            narrow(std::move(allowed));
         }
-        narrow(std::move(allowed));
+        if(query.absolute || !query.scope.empty()) {
+            // The containers the scope leads to: the top level for an empty
+            // absolute scope, else every container named like the scope's
+            // last name whose own chain the names before it describe.
+            llvm::SmallVector<std::uint32_t, 4> containers;
+            if(query.scope.empty()) {
+                containers.push_back(no_entry);
+            } else {
+                auto& last = query.scope.back();
+                llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
+                above = above.drop_back();
+                for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
+                    auto [spelled, current] = newest(segment, entry);
+                    if(segment.is_container(entry) &&
+                       args_match(last.args, spelled->arguments(current)) &&
+                       segments_match(above, scope_chain(segment, entry), query.absolute)) {
+                        containers.push_back(entry);
+                    }
+                }
+            }
+            Bitmap allowed;
+            for(auto container: containers) {
+                allowed |=
+                    query.direct() ? segment.children(container) : segment.subtree(container);
+            }
+            narrow(std::move(allowed));
+        }
     }
-    if(filter && filter->isEmpty()) {
-        return {};
-    }
-    auto allowed = [&](std::uint32_t entry) {
-        return !filter || filter->contains(entry);
+    auto allowed = [&](std::uint32_t at, std::uint32_t entry) {
+        auto& filter = filters[at];
+        return entry < segments[at]->count() && (!filter || filter->contains(entry)) &&
+               !hidden(*segments[at], entry);
     };
+    // The segments some entry of which the filters allow.
+    llvm::SmallVector<std::uint32_t> open;
+    for(std::uint32_t at = 0; at < segments.size(); at += 1) {
+        if(!filters[at] || !filters[at]->isEmpty()) {
+            open.push_back(at);
+        }
+    }
 
     NameRanker ranker(query);
-    auto name_of = [&](std::uint32_t entry) {
-        return index.name(entry);
-    };
-    auto args_of = [&](std::uint32_t entry) {
-        return index.arguments(entry);
-    };
-    auto hash_of = [&](std::uint32_t entry) {
-        return index.columns->hashes[entry];
-    };
-    TopHits top{.limit = limit, .name_of = name_of, .args_of = args_of, .hash_of = hash_of};
-    // The entries already ranked; an entry the clean pass rejected is judged
-    // again by the typo pass, which may accept it.
-    Bitmap ranked;
-    auto consider = [&](std::uint32_t entry, bool lenient) {
-        if(auto rank = ranker.rank(index.name(entry),
-                                   index.arguments(entry),
-                                   index.columns->qualities[entry],
-                                   lenient)) {
-            ranked.add(entry);
-            top.push({.rank = *rank, .entry = entry});
+    TopHits top{.limit = limit};
+    auto consider = [&](std::uint32_t at, std::uint32_t entry, bool lenient) {
+        auto& segment = *segments[at];
+        auto name = segment.name(entry);
+        auto args = segment.arguments(entry);
+        if(auto rank = ranker.rank(name, args, segment.columns->qualities[entry], lenient)) {
+            ranked[at].add(entry);
+            top.push({.rank = *rank,
+                      .name = name,
+                      .args = args,
+                      .hash = segment.columns->hashes[entry],
+                      .file = segment.local_file(entry)});
         }
     };
-    // Entries come in quality order, and no name score exceeds 1 past the
-    // exact tier, so once an entry's quality cannot enter the held set, no
-    // later entry can either.
-    auto scan = [&](const Bitmap& candidates, bool lenient) {
+    // A segment's entries come in quality order, and no name score exceeds
+    // 1 past the exact tier, so once an entry's quality cannot enter the
+    // held set, no later entry of its segment can either.
+    auto scan = [&](std::uint32_t at, const Bitmap& candidates, bool lenient) {
+        auto& segment = *segments[at];
         for(auto entry: candidates) {
-            if(entry >= index.count()) {
+            if(entry >= segment.count()) {
                 break;
             }
-            if(!allowed(entry) || ranked.contains(entry)) {
+            if(!allowed(at, entry) || ranked[at].contains(entry)) {
                 continue;
             }
             if(!top.admits({.tier = static_cast<std::uint8_t>(lenient ? 3 : 2),
-                            .score = index.columns->qualities[entry]})) {
+                            .score = segment.columns->qualities[entry]})) {
                 top.overflowed = true;
                 break;
             }
-            consider(entry, lenient);
+            consider(at, entry, lenient);
         }
     };
-    auto everything = [&] {
-        if(filter) {
-            return *filter;
+    auto scan_everything = [&](bool lenient) {
+        for(auto at: open) {
+            if(auto& filter = filters[at]) {
+                scan(at, *filter, lenient);
+            } else {
+                Bitmap all;
+                all.addRange(0, segments[at]->count());
+                scan(at, all, lenient);
+            }
         }
-        Bitmap all;
-        all.addRange(0, index.count());
-        return all;
+    };
+    auto consider_named = [&](llvm::StringRef name) {
+        auto lower = name.lower();
+        for(auto at: open) {
+            for(auto entry: segments[at]->lower_range(lower)) {
+                if(allowed(at, entry)) {
+                    consider(at, entry, false);
+                }
+            }
+        }
     };
 
     switch(query.mode) {
         case Mode::Members:
-        case Mode::Subtree: scan(everything(), false); break;
-        case Mode::Exact:
-            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
-                if(allowed(entry)) {
-                    consider(entry, false);
-                }
-            }
-            break;
+        case Mode::Subtree: scan_everything(false); break;
+        case Mode::Exact: consider_named(query.pattern); break;
         case Mode::Glob: {
             llvm::SmallVector<NameToken, 16> tokens;
             for(auto literal: glob_literals(query.pattern)) {
@@ -958,52 +1237,59 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
                 }
             }
             if(tokens.empty()) {
-                scan(everything(), false);
+                scan_everything(false);
                 break;
             }
             ranges::sort(tokens);
             tokens.erase(ranges::unique(tokens).begin(), tokens.end());
-            scan(index.intersection(tokens).value_or(Bitmap{}) | index.long_names(), false);
+            for(auto at: open) {
+                auto& segment = *segments[at];
+                scan(at,
+                     segment.intersection(tokens).value_or(Bitmap{}) | segment.long_names(),
+                     false);
+            }
             break;
         }
         case Mode::Fuzzy: {
             if(query.pattern.empty()) {
-                scan(everything(), false);
+                scan_everything(false);
                 break;
             }
-            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
-                if(allowed(entry)) {
-                    consider(entry, false);
-                }
-            }
+            consider_named(query.pattern);
             llvm::SmallVector<NameToken, 16> tokens;
             query_tokens(query.pattern, tokens);
             if(tokens.empty()) {
-                scan(everything(), false);
+                scan_everything(false);
                 break;
             }
-            scan(index.intersection(tokens).value_or(Bitmap{}) | index.long_names(), false);
+            for(auto at: open) {
+                auto& segment = *segments[at];
+                scan(at,
+                     segment.intersection(tokens).value_or(Bitmap{}) | segment.long_names(),
+                     false);
+            }
             if(top.full() || !ranker.has_typo_matches()) {
                 break;
             }
             llvm::SmallVector<TypoAlternative> alternatives;
             typo_tokens(query.pattern, alternatives);
-            Bitmap candidates = index.long_names();
-            for(auto& alternative: alternatives) {
-                if(auto some = index.intersection(alternative.tokens)) {
-                    candidates |= *some;
+            for(auto at: open) {
+                auto& segment = *segments[at];
+                Bitmap candidates = segment.long_names();
+                for(auto& alternative: alternatives) {
+                    if(auto some = segment.intersection(alternative.tokens)) {
+                        candidates |= *some;
+                    }
                 }
+                scan(at, candidates, true);
             }
-            scan(candidates, true);
             break;
         }
     }
 
     SearchOutcome outcome{.exhausted = !top.overflowed};
-    for(auto& ranked: std::move(top).sorted()) {
-        outcome.hits.push_back({.hash = index.columns->hashes[ranked.entry],
-                                .rank = ranked.rank,
-                                .file = index.local_file(ranked.entry)});
+    for(auto& hit: std::move(top).sorted()) {
+        outcome.hits.push_back({.hash = hit.hash, .rank = hit.rank, .file = hit.file});
     }
     return outcome;
 }

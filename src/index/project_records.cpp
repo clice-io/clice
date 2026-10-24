@@ -141,7 +141,9 @@ std::vector<std::byte> encode_record(const Header& header) {
     blob.next_path = header.next_path;
     blob.next_version = header.next_version;
     blob.unit_count = header.unit_count;
-    blob.search_generation = header.search_generation;
+    blob.search_segments = header.search_segments;
+    blob.search_run_ends = header.search_run_ends;
+    blob.next_segment = header.next_segment;
     blob.search_pending = header.search_pending;
     blob.search_pending_files = header.search_pending_files;
     blob.owed_units = header.owed_units;
@@ -154,7 +156,18 @@ std::optional<Header> decode_header(llvm::StringRef data) {
         return strictly_ascending(paths) &&
                ranges::all_of(paths, [&](std::uint32_t path) { return path < root->next_path; });
     };
-    if(!root || root->unit_count > root->next_path || !strictly_ascending(root->search_pending) ||
+    // Each run holds a segment at least, and the runs end at the last one.
+    auto runs_ok = [&] {
+        auto& segments = root->search_segments;
+        auto& ends = root->search_run_ends;
+        if(segments.empty() || ends.empty()) {
+            return segments.empty() && ends.empty();
+        }
+        return strictly_ascending(segments) && segments.back() < root->next_segment &&
+               strictly_ascending(ends) && ends.front() > 0 && ends.back() == segments.size();
+    };
+    if(!root || root->unit_count > root->next_path || !runs_ok() ||
+       !strictly_ascending(root->search_pending) ||
        ranges::any_of(root->search_pending, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !named(root->search_pending_files) || !named(root->owed_units)) {
         return std::nullopt;
@@ -163,11 +176,13 @@ std::optional<Header> decode_header(llvm::StringRef data) {
         .next_path = root->next_path,
         .next_version = root->next_version,
         .unit_count = root->unit_count,
-        .search_generation = root->search_generation,
-        .search_pending = {root->search_pending.begin(),       root->search_pending.end()},
+        .search_segments = {root->search_segments.begin(),      root->search_segments.end()},
+        .search_run_ends = {root->search_run_ends.begin(),      root->search_run_ends.end()},
+        .next_segment = root->next_segment,
+        .search_pending = {root->search_pending.begin(),       root->search_pending.end() },
         .search_pending_files = {root->search_pending_files.begin(),
-                           root->search_pending_files.end()                              },
-        .owed_units = {root->owed_units.begin(),           root->owed_units.end()    },
+                            root->search_pending_files.end()                               },
+        .owed_units = {root->owed_units.begin(),           root->owed_units.end()     },
     };
 }
 

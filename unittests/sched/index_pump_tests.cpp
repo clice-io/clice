@@ -462,7 +462,7 @@ ZEST_CASE(EmptyRoundDiscardsDamage) {
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
     f.save(index::SearchRebuild::Idle);
-    ZASSERT(!f.project.index.search_rebuild_due(index::SearchRebuild::Idle));
+    ZASSERT(!f.project.index.search_update_due(index::SearchRebuild::Idle));
     ZASSERT(!f.project.index.damaged());
 
     page.damaged = true;

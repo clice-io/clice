@@ -36,9 +36,9 @@ kota::task<> SchedulingStack::checkpoint() {
     if(project.store) {
         co_await kota::queue([this] { project.store->checkpoint(); });
     }
-    // A search rebuild here could still be running on the thread pool when
-    // a shutdown cancels the checkpoint, holding up the final save behind
-    // seconds of derived work: the round end rebuilds it.
+    // A full search build or a fold here could still be running on the
+    // thread pool when a shutdown cancels the checkpoint, holding up the
+    // final save behind seconds of derived work: the round end does them.
     co_await pump.persist(index::SearchRebuild::Never);
     // Repair debt the save's compaction discovered needs a round of its own
     // when none is running.
@@ -47,9 +47,10 @@ kota::task<> SchedulingStack::checkpoint() {
 
 kota::task<> SchedulingStack::shutdown() {
     co_await graph.shutdown();
-    // Editors kill a server that is slow to exit, and rebuilding the
-    // search index dominates a cold round's save: the index commits alone,
-    // and the next session's first idle save rebuilds the index.
+    // Editors kill a server that is slow to exit, and building the search
+    // index dominates a cold round's save: the index commits with no more
+    // than a run of the changes since the last save, and the next session's
+    // first idle save builds the rest.
     co_await pump.persist(index::SearchRebuild::Never);
 }
 

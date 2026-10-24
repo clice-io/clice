@@ -4,7 +4,7 @@ import { test, type TestContext } from "@clice/tools/testing";
 // A checkout moved to another directory, its cache with it and its
 // database regenerated: the index is still current, and a macro and a
 // file-local symbol keep their ids, though the latter's locator names its
-// file, which moved.
+// file, which moved, and a search filtering by path finds it there.
 function database(t: TestContext, checkout: string): void {
     const include = `-I${t.root}/${checkout}/inc`;
     t.disk.database(
@@ -15,7 +15,7 @@ function database(t: TestContext, checkout: string): void {
 
 async function ids(t: TestContext, checkout: string): Promise<string[]> {
     const found: string[] = [];
-    for (const text of ["UTIL_LIMIT", "src/a.cpp:2"]) {
+    for (const text of ["UTIL_LIMIT", "src/a.cpp:2", "helper path:src/a.cpp"]) {
         const search = await t.cli(["query", "symbol-search", text, "--workspace", checkout]);
         const { result } = search.json as { result: { symbols: { symbol: string }[] } };
         found.push(result.symbols[0]?.symbol.split(" ")[0] ?? "none");

@@ -2050,7 +2050,7 @@ public:
                     });
                 }
             }
-            blob.names = build_search_blob(names);
+            blob.names = std::move(build_search_segments(names, ~0u).front());
         }
 
         ScopedTimer pack_timer;

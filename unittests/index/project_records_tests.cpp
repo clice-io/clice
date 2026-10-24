@@ -69,7 +69,9 @@ ZEST_CASE(HeaderRoundTrip) {
         .next_path = 12,
         .next_version = 30,
         .unit_count = 7,
-        .search_generation = 3,
+        .search_segments = {3, 4, 9},
+        .search_run_ends = {2, 3},
+        .next_segment = 10,
         .search_pending = {5, 8},
         .search_pending_files = {2, 11},
         .owed_units = {4},
@@ -80,7 +82,9 @@ ZEST_CASE(HeaderRoundTrip) {
     ZEXPECT(read->next_path == 12);
     ZEXPECT(read->next_version == 30);
     ZEXPECT(read->unit_count == 7);
-    ZEXPECT(read->search_generation == 3);
+    ZEXPECT(read->search_segments == header.search_segments);
+    ZEXPECT(read->search_run_ends == header.search_run_ends);
+    ZEXPECT(read->next_segment == 10u);
     ZEXPECT(read->search_pending == header.search_pending);
     ZEXPECT(read->search_pending_files == header.search_pending_files);
     ZEXPECT(read->owed_units == header.owed_units);
@@ -98,6 +102,20 @@ ZEST_CASE(HeaderRoundTrip) {
     header.search_pending = {5, ~std::uint64_t(0)};
     auto reserved = aligned(index::encode_record(header));
     ZEXPECT(!index::decode_header(reserved->getBuffer()));
+
+    // A segment the next id has not passed, or runs that end before the
+    // last segment or hold none, are no header.
+    header.search_pending = {5, 8};
+    header.next_segment = 9;
+    auto unnumbered = aligned(index::encode_record(header));
+    ZEXPECT(!index::decode_header(unnumbered->getBuffer()));
+    header.next_segment = 10;
+    header.search_run_ends = {2};
+    auto short_runs = aligned(index::encode_record(header));
+    ZEXPECT(!index::decode_header(short_runs->getBuffer()));
+    header.search_run_ends = {2, 2, 3};
+    auto empty_run = aligned(index::encode_record(header));
+    ZEXPECT(!index::decode_header(empty_run->getBuffer()));
 }
 
 ZEST_CASE(FileRoundTrip) {

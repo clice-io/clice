@@ -74,7 +74,7 @@ char kind_prefix(BlobKind kind) {
         case BlobKind::CommandSnapshot: return 'C';
         case BlobKind::ArtifactRecords: return 'A';
         case BlobKind::ContextChoices: return 'X';
-        case BlobKind::SearchIndex: return 'N';
+        case BlobKind::SearchSegment: return 'N';
     }
     std::unreachable();
 }

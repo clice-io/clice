@@ -35,7 +35,11 @@ struct Header {
 
     std::uint32_t unit_count = 0;
 
-    std::uint64_t search_generation = 0;
+    std::vector<std::uint32_t> search_segments;
+
+    std::vector<std::uint32_t> search_run_ends;
+
+    std::uint32_t next_segment = 0;
 
     std::vector<SymbolHash> search_pending;
 

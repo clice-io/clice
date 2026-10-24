@@ -106,12 +106,13 @@ namespace clice::index {
 /// carries the search blob of its completable names, and neither an include
 /// guard nor a macro its own file undefines is completable; v49: the entity
 /// of a declaration spelled through macros hashes each level of its macro
-/// history with its parent's.
-constexpr inline std::uint32_t index_format_version = 49;
+/// history with its parent's; v50: the search index is runs of bounded
+/// segments the header lists, which name files by path id.
+constexpr inline std::uint32_t index_format_version = 50;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
-/// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
-/// largest, is about 75 MB), so one past it stops the process.
+/// than 4 GiB; index blobs stay far below it, so one past it stops the
+/// process.
 template <typename Blob>
 std::vector<std::byte> encode(const Blob& blob) {
     auto bytes = codec::blob::to_bytes(blob);
@@ -577,8 +578,8 @@ struct TUIndexBlobOf {
     /// consumes the PCH never raises them again.
     Seq<char> diagnostics;
 
-    /// Preamble ride-along: the search blob (build_search_blob) of the
-    /// names unqualified completion may offer from the preamble —
+    /// Preamble ride-along: one search segment (build_search_segments) of
+    /// the names unqualified completion may offer from the preamble —
     /// SymbolFlags::Completable, of external scope — looked up by name as
     /// the project's search index is.
     Seq<std::byte> names;
@@ -601,10 +602,14 @@ struct HeaderBlobOf {
     /// The units the database holds a manifest of.
     std::uint32_t unit_count = 0;
 
-    /// The generation of the search blob saved with this header, and the
-    /// symbols and the files (path ids) whose names of internal linkage
-    /// changed since that blob was built, ascending.
-    std::uint64_t search_generation = 0;
+    /// The search index's segments, ascending, oldest run first, and where
+    /// each run ends among them; the id the next segment receives.
+    Seq<std::uint32_t> search_segments;
+    Seq<std::uint32_t> search_run_ends;
+    std::uint32_t next_segment = 0;
+
+    /// The symbols and the files (path ids) whose names of internal linkage
+    /// changed since the newest run's snapshot, ascending.
     Seq<std::uint64_t> search_pending;
     Seq<std::uint32_t> search_pending_files;
 
@@ -717,45 +722,47 @@ struct SharedLocalBlobOf {
 
 using SharedLocalBlob = SharedLocalBlobOf<codec::blob::Owned>;
 
-/// Layout and scoring version of the search blob, apart from the index
-/// format it is derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 3;
+/// Layout and scoring version of the search segments, apart from the index
+/// format they are derived from: a bump rebuilds the search index alone.
+constexpr std::uint32_t search_format_version = 4;
 
-/// The persisted search index. Entries are in quality order (ties by hash),
-/// which is the entry id order every bitmap speaks; the arenas hold the
+/// One segment of the persisted search index. Its first entries, as many as
+/// it has qualities, are the symbols it offers, in quality order (ties by
+/// hash); the rest are the scopes above them it does not offer, so the
+/// qualified names of its symbols resolve within it. The arenas hold the
 /// names back to back with one end offset per entry; posting arenas hold
-/// posting lists over the entries (write_postings) the same way.
+/// posting lists over the entries (write_postings) the same way — over the
+/// offered entries, or over all of them for the scope structure.
 template <template <typename> typename Seq>
 struct SearchIndexBlobOf {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;
-    /// See SearchSnapshot::generation.
-    std::uint64_t generation = 0;
 
     Seq<std::uint64_t> hashes;
     Seq<char> names;
     Seq<std::uint32_t> name_ends;
     Seq<char> args;
     Seq<std::uint32_t> args_ends;
-    /// The entry of the nearest enclosing symbol that is not an inline
-    /// namespace, or no_entry at the translation unit or when that symbol
-    /// is not in the index.
+    /// The entry of the nearest enclosing symbol a qualified name spells,
+    /// or no_entry at the translation unit or when that symbol is not in
+    /// the index.
     Seq<std::uint32_t> parents;
     Seq<float> qualities;
-    /// Entries sorted by lowercase name, then name, then entry.
+    /// All entries sorted by lowercase name, then name, then entry.
     Seq<std::uint32_t> by_lower_name;
-    /// Entries sorted by hash.
+    /// The offered entries sorted by hash.
     Seq<std::uint32_t> by_hash;
 
     Seq<std::uint32_t> token_keys;
     Seq<std::uint32_t> token_ends;
     Seq<std::uint8_t> token_postings;
 
-    /// Entries with members, sorted; their members as bitmaps.
+    /// Entries with members, sorted; their members as bitmaps over all
+    /// entries.
     Seq<std::uint32_t> container_entries;
     Seq<std::uint32_t> children_ends;
     Seq<std::uint8_t> children_postings;
-    /// The entries with no parent in the index, one posting list.
+    /// The entries with no parent in the segment, over all entries.
     Seq<std::uint8_t> top_level;
 
     /// The entries whose name runs past the token bound (name_bound), one
@@ -763,7 +770,8 @@ struct SearchIndexBlobOf {
     /// them.
     Seq<std::uint8_t> long_names;
 
-    /// Namespace entries, sorted; everything below each as bitmaps.
+    /// Namespace entries, sorted; everything below each as bitmaps over all
+    /// entries.
     Seq<std::uint32_t> subtree_entries;
     Seq<std::uint32_t> subtree_ends;
     Seq<std::uint8_t> subtree_postings;
@@ -772,15 +780,20 @@ struct SearchIndexBlobOf {
     Seq<std::uint32_t> kind_ends;
     Seq<std::uint8_t> kind_postings;
 
-    /// The files of the entries, one bitmap each.
-    Seq<Seq<char>> paths;
+    /// The files of the entries (path ids), ascending, one bitmap each.
+    Seq<std::uint32_t> paths;
     Seq<std::uint32_t> file_ends;
     Seq<std::uint8_t> file_postings;
 
-    /// The entries of internal linkage, sorted, and the path each one's
-    /// entries live in.
+    /// The entries of internal linkage, sorted, and the path id of the file
+    /// each one's entries live in.
     Seq<std::uint32_t> local_entries;
     Seq<std::uint32_t> local_paths;
+
+    /// The files (path ids), ascending, whose names of internal linkage the
+    /// segment's run lists in full: the entries of internal linkage older
+    /// runs hold in them are gone. A run's first segment carries them.
+    Seq<std::uint32_t> covered;
 };
 
 using SearchIndexBlob = SearchIndexBlobOf<codec::blob::Owned>;

@@ -68,16 +68,19 @@ private:
     llvm::DenseSet<Fid> index_seen;
 };
 
-/// When a save rebuilds the derived search index before it commits.
+/// How much of the derived search index a save may rebuild before it
+/// commits. Whatever it is, a save adds the symbols and files changed since
+/// the newest run's snapshot as a run of their own.
 enum class SearchRebuild : std::uint8_t {
-    /// Only when the merges since its last build left it far behind,
-    /// or it is damaged.
+    /// Also fold the newest runs into it, and build the whole index from the
+    /// records when it is damaged or missing and far behind.
     Behind,
-    /// Also when it is missing or merely behind: no more indexing is
-    /// queued, so the persisted one is fresh for the next cold start.
+    /// Also build the whole index when it is missing or its newer runs
+    /// outgrew half the first: no more indexing is queued, so the persisted
+    /// one is compact for the next cold start.
     Idle,
-    /// Never: the index commits without waiting for it, and the next
-    /// session rebuilds it.
+    /// Nothing more: the index commits without waiting for a fold or a
+    /// build, which a later save does.
     Never,
 };
 
@@ -153,6 +156,9 @@ public:
 
     /// The path a name the database keeps names in this checkout.
     Spelling local(llvm::StringRef name) const;
+
+    /// The file table's id for a path id.
+    Fid fid_of(std::uint32_t path) const;
 
     /// The symbol's stored facts; the strings borrow the index and live
     /// until the next save or clear.
@@ -240,11 +246,11 @@ public:
     /// The distinct uses named in `file`, ascending — its live use set.
     llvm::SmallVector<std::uint64_t> live_uses(Fid file) const;
 
-    /// The name search index over the symbols as last built, and the
-    /// entries it does not describe — merged or changed since — which a
-    /// search reads from the records instead until the writer folds them
-    /// into a rebuilt index. Both persist with the header: it pins the
-    /// search blob's generation and carries the pending entries.
+    /// The name search index over the symbols as of its newest run's
+    /// snapshot, and the entries it does not describe — merged or changed
+    /// since — which a search reads from the records instead until a save
+    /// adds them as a run. Both persist with the header: it lists the
+    /// runs' segments and carries the pending entries.
     const SearchIndex& search_index() const {
         return search;
     }
@@ -254,7 +260,8 @@ public:
     }
 
     /// The files whose names of internal linkage, in no symbol record,
-    /// changed since the build: a search reads them from the files' shards.
+    /// changed since the newest run's snapshot: a search reads them from the
+    /// files' shards.
     const llvm::DenseSet<Fid>& search_pending_files() const {
         return pending_files;
     }
@@ -344,15 +351,16 @@ public:
     /// the results are cleared by begin_round(), never here.
     bool needs_reindex(Fid file);
 
-    /// Whether the search index is worth rebuilding now: the symbols
-    /// merged since its build outgrew what a direct scan should carry,
-    /// or indexing became idle after enough merges (or with no index at all).
-    bool search_rebuild_due(SearchRebuild search) const;
+    /// Whether a save that may rebuild as much as `search` says changes the
+    /// search index.
+    bool search_update_due(SearchRebuild search) const;
 
-    /// Rebuild the search index from the symbol and internals records when
-    /// `search` says it is due — the build runs on the thread pool over a
-    /// snapshot —, adopt it, and hold its blob for the next batch.
-    kota::task<> rebuild_search(SearchRebuild search);
+    /// Add the changes since the newest run's snapshot to the search index
+    /// as a run, folding into it as many of the newest runs as `search` and
+    /// their sizes call for, or build the whole index from the symbol and
+    /// internals records — the build runs on the thread pool over a
+    /// snapshot —, adopt the run, and hold its segments for the next batch.
+    kota::task<> update_search(SearchRebuild search);
 
     /// Compact the shards whose variant or use set shrank and retire the
     /// ones with no live variant left, then move the changes into `batch`.
@@ -401,8 +409,9 @@ public:
     /// `file_ids_map` maps the TU-local ids of `index`'s path table to pool
     /// ids. A symbol whose stored facts the TU changes nothing of is not
     /// touched. `added` receives the hashes of the symbols without a record yet
-    /// or whose name, arguments, parent, file or flags the merge changed —
-    /// what a name search keyed on the records must re-read.
+    /// or whose name, arguments, parent, file or flags the merge changed, or
+    /// whose reference count crossed a power of two — what a name search
+    /// keyed on the records must re-read.
     void merge_symbols(const TUIndex& index,
                        llvm::ArrayRef<Fid> file_ids_map,
                        llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
@@ -537,9 +546,6 @@ private:
     /// The path id of `file`, handed out when the database never named it.
     std::uint32_t path_id(Fid file);
 
-    /// The file table's id for a path id.
-    Fid fid_of(std::uint32_t path) const;
-
     /// The file table's version for a version id; none when the database
     /// holds no such version.
     VersionID version_of(std::uint32_t id) const;
@@ -570,6 +576,18 @@ private:
     /// The names of internal linkage the file's shard declares, ascending
     /// by hash.
     Internals internal_names(Fid file) const;
+
+    /// What a full build of the search index reads: every symbol record and
+    /// the names of internal linkage of every file.
+    SearchSnapshot full_search_snapshot();
+
+    /// What a run over `symbols` and the names of internal linkage of
+    /// `files` reads, with the scopes above them.
+    SearchSnapshot search_snapshot(llvm::ArrayRef<SymbolHash> symbols, llvm::ArrayRef<Fid> files);
+
+    /// Stop listing the segments of the newest `runs` of the header's runs:
+    /// the next save removes them.
+    void drop_search_runs(std::uint32_t runs);
 
     /// Retire a file's instantiation shard, now or at the next save.
     void retire_instantiations(Fid file);
@@ -681,9 +699,6 @@ private:
 
     llvm::DenseSet<Fid> owed;
 
-    /// Merges committed since the search index was built.
-    std::uint32_t merges_since_search_build = 0;
-
     /// While a search index is built, the symbols and the files merges
     /// change: they stay pending after the build, which read them before
     /// the change.
@@ -695,11 +710,11 @@ private:
 
     std::optional<SearchBuildChanges> changed_during_search_build;
 
-    /// A rebuilt search blob no batch has committed yet.
-    std::vector<std::byte> search_bytes;
+    /// The search segments built since the last save, which the next one
+    /// writes, and the ones the header stopped listing, which it removes.
+    std::vector<BlobDatabase::Blob> search_writes;
 
-    /// The search blob the running save writes, adopted once it commits.
-    bool writing_search = false;
+    llvm::SmallVector<std::uint32_t> search_drops;
 
     /// Units behind the disk (mark_behind), with when they fell behind in
     /// milliseconds since the epoch, the clock built_at uses.

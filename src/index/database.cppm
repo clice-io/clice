@@ -78,9 +78,10 @@ enum class BlobKind : std::uint8_t {
     /// artifact hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
     ContextChoices,
-    /// The single name search index (index/search_index.cppm) derived
-    /// from the symbol records, key "search"; rebuilt when missing.
-    SearchIndex,
+    /// The segments of the name search index (index/search_index.cppm)
+    /// derived from the symbol records, keyed by a number_key of the
+    /// segment id the header lists.
+    SearchSegment,
 };
 
 /// One blob read out of the database. `generation` says which lifetime

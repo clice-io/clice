@@ -78,6 +78,20 @@ kota::task<> async_save() {
     return fx.async_save();
 }
 
+/// How many hits the persisted search index alone gives `text`.
+std::size_t index_hits(llvm::StringRef text) {
+    return project.index.search_index()
+        .search(*index::SymbolQuery::parse(text), 10, {})
+        .hits.size();
+}
+
+std::uint32_t stored_segments() {
+    std::uint32_t segments = 0;
+    project.database->for_each_key(index::BlobKind::SearchSegment,
+                                   [&](llvm::StringRef) { segments += 1; });
+    return segments;
+}
+
 ZEST_CASE(SaveCommitsDirtyShard) {
     TempDir tmp;
     tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
@@ -336,6 +350,13 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
                                                 project.index.search_pending().end());
     ZASSERT(!merged.empty());
 
+    auto indexed = [&](index::SymbolHash hash) {
+        auto symbol = project.index.find_symbol(hash);
+        auto query = index::SymbolQuery::parse(std::format(R"("{}")", symbol->name.str()));
+        auto hits = project.index.search_index().search(*query, 10, {}).hits;
+        return ranges::any_of(hits, [&](auto& hit) { return hit.hash == hash; });
+    };
+
     // The probe runs while the save awaits the search build on the thread
     // pool: what was merged since the last build is in neither index yet,
     // so it must still be pending, where a search scans it.
@@ -344,10 +365,8 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     };
     bool findable = true;
     auto probe_body = [&]() -> kota::task<> {
-        auto& table = project.index;
         for(auto hash: merged) {
-            findable &=
-                table.search_index().contains(hash) || table.search_pending().contains(hash);
+            findable &= indexed(hash) || project.index.search_pending().contains(hash);
         }
         co_return;
     };
@@ -359,7 +378,7 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
 
     ZASSERT(findable);
     for(auto hash: merged) {
-        ZASSERT(project.index.search_index().contains(hash));
+        ZASSERT(indexed(hash));
         ZASSERT(!project.index.search_pending().contains(hash));
     }
 }
@@ -377,8 +396,7 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
     ZASSERT(search.loaded());
 
     auto hits = [&](llvm::StringRef text) {
-        return search.search(*index::SymbolQuery::parse(text), 10, project.index.workspace)
-            .hits.size();
+        return search.search(*index::SymbolQuery::parse(text), 10, {}).hits.size();
     };
     ZEXPECT(hits("ns::kSize") == 1u);
     ZEXPECT(hits("::kSize") == 0u);
@@ -425,6 +443,150 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     }
 }
 
+ZEST_CASE(SavesAddRuns) {
+    // Every save adds what changed as a run of its own; a save that may
+    // fold the newest runs, and an idle one the whole index, once they
+    // outgrow the runs they fold into.
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\nstatic int first_local = 1;\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\nstatic int second_local = 2;\n");
+    tmp.touch("c.cpp", "int third_value() { return 3; }\n");
+    open_store(tmp, project);
+    auto& search = project.index.search_index();
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(search.run_count() == 1u);
+
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZEXPECT(search.run_count() == 2u);
+    ZEXPECT(project.index.search_pending().empty());
+    ZEXPECT(index_hits("second_value") == 1u);
+
+    // The run of b.cpp folds into the one of c.cpp, which reads its
+    // symbols and names of internal linkage again.
+    ZASSERT(merge(index_file(tmp, tmp.path("c.cpp")).data));
+    fx.save(index::SearchRebuild::Behind);
+    ZEXPECT(search.run_count() == 2u);
+    ZEXPECT(stored_segments() == 2u);
+    for(auto name: {"second_value", "second_local", "third_value"}) {
+        ZEXPECT(index_hits(name) == 1u);
+    }
+
+    ZEXPECT(project.index.search_update_due(index::SearchRebuild::Idle));
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(search.run_count() == 1u);
+    ZEXPECT(stored_segments() == 1u);
+    for(auto name: {"first_value", "first_local", "second_value", "second_local", "third_value"}) {
+        ZEXPECT(index_hits(name) == 1u);
+    }
+}
+
+ZEST_CASE(NewestRunHidesOlder) {
+    // Checkpoints pile up runs unfolded: the newest one says what holds,
+    // and a fold of them all keeps that.
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\nstatic int old_name = 1;\n");
+    tmp.touch("c.cpp", "int third_value() { return 3; }\n");
+    open_store(tmp, project);
+    auto& search = project.index.search_index();
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    tmp.touch("b.cpp", "int second_value() { return 2; }\nstatic int new_name = 1;\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZASSERT(search.run_count() == 3u);
+    ZEXPECT(index_hits("old_name") == 0u);
+    ZEXPECT(index_hits("new_name") == 1u);
+
+    ZASSERT(merge(index_file(tmp, tmp.path("c.cpp")).data));
+    fx.save(index::SearchRebuild::Behind);
+    ZEXPECT(search.run_count() == 2u);
+    ZEXPECT(stored_segments() == 2u);
+    ZEXPECT(index_hits("old_name") == 0u);
+    for(auto name: {"first_value", "second_value", "new_name", "third_value"}) {
+        ZEXPECT(index_hits(name) == 1u);
+    }
+}
+
+ZEST_CASE(RunResolvesScopes) {
+    // A run of a few symbols carries the scopes above them, as a whole
+    // build does, without offering them twice.
+    TempDir tmp;
+    tmp.touch("a.cpp", "namespace ns { int first_value() { return 1; } }\n");
+    tmp.touch("b.cpp", "namespace ns { int second_value() { return 2; } }\n");
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZASSERT(project.index.search_index().run_count() == 2u);
+    ZEXPECT(index_hits("ns::second_value") == 1u);
+    ZEXPECT(index_hits("::ns::second_value") == 1u);
+    ZEXPECT(index_hits("::second_value") == 0u);
+    ZEXPECT(index_hits(R"("ns")") == 1u);
+    ZEXPECT(index_hits("ns::*") == 2u);
+}
+
+ZEST_CASE(CountBucketsRequalify) {
+    // A symbol whose reference count crosses a power of two is read again
+    // by the next run, its quality moved; one that only grows is not.
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    for(auto unit: {"a", "b", "c", "d", "e"}) {
+        tmp.touch(std::format("{}.cpp", unit),
+                  std::format("#include \"shared.h\"\nint {}() {{ return shared_fn(); }}\n", unit));
+    }
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    auto hits = project.index.search_index()
+                    .search(*index::SymbolQuery::parse(R"("shared_fn")"), 10, {})
+                    .hits;
+    ZASSERT(hits.size() == 1u);
+    auto shared = hits.front().hash;
+    std::uint32_t requalified = 0;
+    std::uint32_t kept = 0;
+    for(auto unit: {"b", "c", "d", "e"}) {
+        auto before = project.index.reference_count(shared);
+        ZASSERT(merge(index_file(tmp, tmp.path(std::format("{}.cpp", unit))).data));
+        auto after = project.index.reference_count(shared);
+        ZASSERT(after == before + 1);
+        bool pending = project.index.search_pending().contains(shared);
+        ZEXPECT(pending == (std::bit_width(before) != std::bit_width(after)));
+        if(pending) {
+            requalified += 1;
+        } else {
+            kept += 1;
+        }
+        fx.save(index::SearchRebuild::Never);
+    }
+    ZEXPECT(requalified > 0u);
+    ZEXPECT(kept > 0u);
+}
+
+ZEST_CASE(ReindexHidesOldNames) {
+    // A file indexed again replaces its names of internal linkage, and a
+    // symbol its old ones in the older runs.
+    TempDir tmp;
+    tmp.touch("a.cpp", "static int old_local = 1;\nint use() { return old_local; }\n");
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(index_hits("old_local") == 1u);
+
+    tmp.touch("a.cpp", "static int new_local = 1;\nint use() { return new_local; }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZASSERT(project.index.search_index().run_count() == 2u);
+    ZEXPECT(index_hits("old_local") == 0u);
+    ZEXPECT(index_hits("new_local") == 1u);
+    ZEXPECT(index_hits("use") == 1u);
+}
+
 ZEST_CASE(FailedSaveKeepsSearch) {
     // A write failing after the search index was rebuilt: the build stays
     // for the retry, and searches keep finding what it holds.
@@ -456,7 +618,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     project.database = std::move(flaky);
     auto hits = [&](llvm::StringRef name) {
         return project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, project.index.workspace)
+            .search(*index::SymbolQuery::parse(name), 10, {})
             .hits.size();
     };
 
@@ -475,7 +637,9 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     ZEXPECT(has_unsaved_state(project));
 
     // The retry commits the build but cannot move onto a fresh snapshot;
-    // the next batch carries no search index and fails.
+    // the next batch, with the run of what c.cpp added, fails, and the idle
+    // save after it builds the index again over that run, which no batch
+    // committed: the database keeps only the segment the header lists.
     probe->fail_write = false;
     probe->fail_advance = true;
     fx.save(index::SearchRebuild::Idle);
@@ -490,6 +654,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     ZEXPECT(!has_unsaved_state(project));
     ZEXPECT(hits("second_value") == 1u);
     ZEXPECT(hits("third_value") == 1u);
+    ZEXPECT(stored_segments() == 1u);
 }
 
 ZEST_CASE(SaveCompactsAndRetires) {
@@ -846,7 +1011,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
     ZASSERT(ranges::contains(log.writes[0], index::BlobKind::TUManifest));
-    ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchIndex));
+    ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchSegment));
     ZASSERT(!project.index.search_index().loaded());
 }
 
