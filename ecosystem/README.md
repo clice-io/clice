@@ -60,7 +60,8 @@ project.
   and needs Visual Studio's environment (the preparation and the compiler's
   checks get it, clice and clangd never: an editor is not started from it);
   `prepare`, its steps; `database`, the checkout-relative compilation database
-  they write; `parts`, below.
+  they write; `parts`, below; `keep`, a count of units a database too heavy
+  for one runner is thinned to, spread evenly over it in path order.
 - **Steps** run in the checkout, in order. An argv, in which `${JOBS}` reads
   the machine's core count, `${CHECKOUT}` the checkout's path with `/`, and an
   argument `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's usual
@@ -69,8 +70,7 @@ project.
   CMake build using Ninja, built without the order-only dependencies CMake
   adds (LLVM's TableGen outputs in 11 minutes on 4 cores, not an hour); or
   `{ "database": [entries] }`, a database written as given, for a project with
-  no build system to write one (`${CHECKOUT}` and `${CC}`, the C compiler on
-  the path, expanded).
+  no build system to write one (`${CHECKOUT}` expanded).
 - **Parts.** A configuration too large for one runner names parts, each the
   units under its checkout-relative prefixes; a unit belongs to the part with
   its longest matching prefix, and every unit to exactly one. A part's job
@@ -78,11 +78,13 @@ project.
   them, so clice reads that database and no other.
 - **Checkouts.** Each configuration prepares a checkout of its own,
   `<dir>/<project>/<configuration>`. A finished preparation leaves a marker
-  there; a job run again on the same directory goes straight to its steps. A
+  there; a job run again on the same directory skips the preparation. A
   checkout at another commit is an error, never reused.
-- **Jobs** are named `<project>[/<configuration>][/<part>]`, the configuration
-  left out when the project has only one: `linux`, `abseil/gcc`,
-  `llvm/all/flang`. A job runs on one platform, one CI runner each.
+- **Jobs**: a regression job is named `<project>[/<configuration>][/<part>]`,
+  the configuration left out when the project has only one (`linux`,
+  `abseil/gcc`, `llvm/all/flang`); a perf job `<project>/<name>`, by the name
+  its script gives it (`abseil/editing`). A job runs on one platform, one CI
+  runner each.
 
 A preparation that fails fails its job as the setup's failure, never clice's.
 
@@ -129,9 +131,11 @@ A script registers the jobs a round runs on the project:
   (default every one), `sample` source files a night (default 40), with the
   project's `known` issues.
 - **`perf(name, options, script)`**: one perf job per platform of its
-  `configuration` (`platforms` narrows them), running `script` (the
-  scenarios, below). A project splits its scenarios into several jobs when
-  one would not fit a runner's six hours.
+  `configuration` (the only one by default; `platforms` narrows them),
+  running `script` (the scenarios, below), with the project's `known` issues
+  and the `clangdArgs` clangd takes for what it does only on request (C++20
+  modules). A project splits its scenarios into several jobs when one would
+  not fit a runner's six hours.
 
 `ecosystem/test.ts` is `regression()`: every project is regression-tested on
 every configuration unless its own `test.ts` says otherwise. A project's
@@ -144,7 +148,7 @@ every configuration unless its own `test.ts` says otherwise. A project's
 pinned commit's bump must not move them, and third-party sources carry no
 markers. The text, indentation left out, names one line of the file; a line
 the file repeats takes `{ after, at }`, the first such line after the one
-`after` names. A position naming no line, or several, fails the job's setup.
+`after` names. A position naming no line, or several, fails the job.
 A file's positions are `symbol` (hover, definition, references, call
 hierarchy), `member`, `unqualified` and `template` (completion there) and
 `call` (signature help); a request whose position is absent is not asked.
@@ -205,22 +209,22 @@ machine compare. A run that wipes a cache wipes the server's own (clice's
 `.clice/`, clangd's `.cache/clangd`) and, on Linux and macOS, the OS file
 cache.
 
-| Scenario                          | What it measures                                                                                                                                                                                                                                                 |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `coldStart(file, { runs })`       | no cache: start to the file's first diagnostics, and to the first non-empty semantic tokens, hover and definition, asked at the open as an editor asks them                                                                                                      |
-| `index(file)`                     | no cache, the file open: until the background index is idle; files indexed, index and cache on disk                                                                                                                                                              |
-| `warmStart(file, { runs })`       | the index left: as `coldStart`, and the first references reaching a second file                                                                                                                                                                                  |
-| `editLoop(file, { edits })`       | an edit at the file's end, then semantic tokens: to the new diagnostics and tokens                                                                                                                                                                               |
-| `warmRequests(file, { repeats })` | the index loaded, each request once unmeasured, then `repeats` times: hover, definition, references, call hierarchy, workspace symbols, document symbols, semantic tokens, folding, inlay hints, completion, signature help                                      |
-| `session(files, { churn })`       | the files opened in turn and edited twice each, switched through twice; with `churn` a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
-| `sample(files)`                   | each file in a fresh server, clangd, clice without its PCHs and clice with them: open, semantic tokens, three edits, the whole-file requests                                                                                                                     |
-| `soak(file, { edits })`           | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                           |
-| `idle(file, { rounds, gap })`     | each request after the server sat idle for `gap`                                                                                                                                                                                                                 |
-| `duringIndex(file, { every })`    | edits and requests every `every` while the background index runs from scratch, then ten rounds once it is done                                                                                                                                                   |
-| `references(file, at)`            | references and rename of a symbol once the index is idle                                                                                                                                                                                                         |
-| `long(files, { minutes })`        | a session cycling through the files, opening, editing, asking and closing, for `minutes`                                                                                                                                                                         |
-| `limitedIndex(file, { mb })`      | (Linux) `index` inside a memory limit of `mb`                                                                                                                                                                                                                    |
-| `scan({ runs })`                  | (clice) the dependency scan of the whole database, cold and warm                                                                                                                                                                                                 |
+| Scenario                                | What it measures                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `coldStart(file, { runs })`             | no cache: start to the file's first diagnostics, and to the first non-empty semantic tokens, hover and definition, asked at the open as an editor asks them                                                                                                      |
+| `index(file, { hold })`                 | no cache, the file open: until the background index is idle; files indexed, index and cache on disk; with `hold`, what the tree holds that many seconds later                                                                                                    |
+| `warmStart(file, { runs })`             | the index left: as `coldStart`, and the first references reaching a second file                                                                                                                                                                                  |
+| `editLoop(file, { edits })`             | an edit at the file's end, then semantic tokens: to the new diagnostics and tokens                                                                                                                                                                               |
+| `warmRequests(file, { repeats })`       | the index loaded, each request once unmeasured, then `repeats` times: hover, definition, references, call hierarchy, workspace symbols, document symbols, semantic tokens, folding, inlay hints, completion, signature help                                      |
+| `session(files, { churn })`             | the files opened in turn and edited twice each, switched through twice; with `churn` a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
+| `sample(files, { wipe })`               | each file in a fresh server, clangd, clice without its PCHs and clice with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                     |
+| `soak(file, { edits })`                 | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                           |
+| `idle(file, { rounds, gap })`           | each request after the server sat idle for `gap`                                                                                                                                                                                                                 |
+| `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten rounds once it is done                                                                                                                               |
+| `references(file, at)`                  | references and rename of a symbol once the index is idle                                                                                                                                                                                                         |
+| `long(files, { minutes })`              | a session cycling through the files, opening, editing, asking and closing, for `minutes`                                                                                                                                                                         |
+| `limitedIndex(file, { mb, minutes })`   | (Linux) `index` inside a memory limit of `mb`, stalled when not done within `minutes`                                                                                                                                                                            |
+| `scan({ runs })`                        | (clice) the dependency scan of the whole database, cold and warm                                                                                                                                                                                                 |
 
 `p.pick({ seed, sources, headers, under })` lists the files a scenario takes:
 sources of the database and headers they include, under the given
@@ -247,12 +251,14 @@ share) count nowhere. The measures differ by platform: compare within one.
 
 ## Reports
 
-A regression job's summary lists its new failures first, each with what
-failed and the command reproducing it, then the known ones with their issue,
-then the known issues it did not see (fixed, or not sampled this round), then
-its numbers beside the previous round's. A perf job's summary is a table per
-scenario: each measure's median and p90 for clice and clangd and the ratio of
-the medians. Each job uploads its whole results as JSON.
+A regression job's summary gives its numbers beside the previous round's,
+then its new failures, each with what failed and the command reproducing it,
+then the known ones with their issue, then the known issues it did not see
+(fixed, or not sampled this round). A perf job's summary gives its failures
+the same way, then a table per scenario: each measure's median and p90 for
+every server and the ratio of clice's median to clangd's (for a scenario over
+many files, the median of the files' ratios). Each job uploads its whole
+results as JSON.
 
 A job is red when it has a new failure; known failures alone leave it green.
 **A round shows no new failure** when every job is green: that is what a
@@ -301,7 +307,7 @@ tools/ecosystem/
   memory.ts       a process tree's memory and CPU
   regression/     the index, the compiler's confirmation, the sweep, the job
   perf/           the servers, a timed session, the scenarios, results, [perf:*] lines
-  report.ts       the summaries
+  report.ts       the summaries; perf/compare.ts the perf tables
   run.ts          the command line
   **/*.test.ts    the framework's own tests, beside the code
 ```
