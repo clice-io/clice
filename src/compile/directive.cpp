@@ -166,7 +166,7 @@ public:
             return;
         }
         if(auto entry = unit.SM().getFileEntryRefForID(curr_fid)) {
-            unit.entered_files.try_emplace(&entry->getFileEntry(), curr_fid);
+            unit.file_ids.try_emplace(&entry->getFileEntry(), curr_fid);
         }
         if(prev_fid.isValid() && this->prev_fid.isValid() && prev_fid == this->prev_fid) {
             /// Once the file has changed, it means that the last include is not skipped.

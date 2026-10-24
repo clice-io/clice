@@ -630,10 +630,11 @@ private:
     /// use.
     std::optional<std::uint32_t> preamble_end;
 
-    /// The FileID each file was first entered as, kept by DirectiveRecorder:
-    /// SourceManager::translateFile scans every SLocEntry, and a guarded
+    /// The FileID of each file, as DirectiveRecorder saw the unit first
+    /// enter it or SourceManager::translateFile found it: translateFile
+    /// scans every SLocEntry, loading a precompiled header's, and a guarded
     /// header asks for it again on each include it skips.
-    llvm::DenseMap<const clang::FileEntry*, clang::FileID> entered_files;
+    llvm::DenseMap<const clang::FileEntry*, clang::FileID> file_ids;
 
     /// The buffers clang reads params.input.buffers through; clang leaves
     /// them to their owner (RetainRemappedFileBuffers).

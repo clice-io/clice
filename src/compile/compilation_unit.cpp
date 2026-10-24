@@ -23,10 +23,14 @@ bool CompilationUnit::has_output() {
 }
 
 auto CompilationUnit::file_id(clang::FileEntryRef entry) -> clang::FileID {
-    if(auto it = entered_files.find(&entry.getFileEntry()); it != entered_files.end()) {
+    if(auto it = file_ids.find(&entry.getFileEntry()); it != file_ids.end()) {
         return it->second;
     }
-    return SM().translateFile(entry);
+    auto fid = SM().translateFile(entry);
+    if(fid.isValid()) {
+        file_ids.try_emplace(&entry.getFileEntry(), fid);
+    }
+    return fid;
 }
 
 auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
