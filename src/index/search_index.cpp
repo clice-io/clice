@@ -598,8 +598,8 @@ std::optional<NameRank>
     return std::nullopt;
 }
 
-/// A mapped segment with its columns bound and its posting lists decoded
-/// on first use.
+/// A mapped segment, its columns checked and its posting lists decoded on
+/// first use: a segment no query reaches is never read past its header.
 struct SearchIndex::Segment {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
@@ -616,15 +616,34 @@ struct SearchIndex::Segment {
     mutable std::optional<Bitmap> top_level_cache;
     mutable std::optional<Bitmap> long_names_cache;
 
-    /// Whether a posting list failed to decode: the answers since are
-    /// incomplete, and the owner rebuilds the index.
+    /// Whether the columns line up, once checked.
+    mutable std::optional<bool> usable;
+
+    /// Whether the columns failed their checks or a posting list failed to
+    /// decode: the answers since are incomplete, and the owner rebuilds the
+    /// index.
     mutable bool damaged = false;
 
-    /// The segment the bytes hold; null when they do not hold one.
+    /// The segment the bytes hold; null when they do not hold one of this
+    /// build's formats.
     static std::unique_ptr<Segment> open(std::unique_ptr<llvm::MemoryBuffer> bytes);
 
-    /// Bind the columns of a verified blob, checking they line up.
-    std::expected<void, llvm::StringRef> bind(const Root& root);
+    /// Whether the columns line up, which the readers below rely on;
+    /// checked on first use. A segment whose columns do not reads as empty.
+    bool ready() const {
+        if(!usable) {
+            auto checked = check();
+            if(!checked) {
+                LOG_WARN("A search segment fails its checks ({}); the index is rebuilt",
+                         std::string_view(checked.error()));
+                damaged = true;
+            }
+            usable = checked.has_value();
+        }
+        return *usable;
+    }
+
+    std::expected<void, llvm::StringRef> check() const;
 
     /// The entries the segment offers.
     std::uint32_t count() const {
@@ -823,20 +842,17 @@ std::unique_ptr<SearchIndex::Segment>
     if(!root) {
         return nullptr;
     }
-    auto segment = std::make_unique<Segment>();
-    if(auto ok = segment->bind(*root); !ok) {
-        LOG_DEBUG("Rejecting search segment: {}", std::string_view(ok.error()));
+    if(root->search_version != search_format_version) {
+        LOG_DEBUG("Rejecting search segment: written by another search format version");
         return nullptr;
     }
+    auto segment = std::make_unique<Segment>();
+    segment->columns = root;
     segment->buffer = std::move(bytes);
     return segment;
 }
 
-std::expected<void, llvm::StringRef> SearchIndex::Segment::bind(const Root& root) {
-    if(root.search_version != search_format_version) {
-        return std::unexpected("written by another search format version");
-    }
-    columns = &root;
+std::expected<void, llvm::StringRef> SearchIndex::Segment::check() const {
     llvm::ArrayRef<std::uint64_t> hashes = columns->hashes;
     llvm::ArrayRef<std::uint32_t> by_hash = columns->by_hash;
 
@@ -962,6 +978,9 @@ void SearchIndex::index_runs() {
     newest_symbols.clear();
     newest_files.clear();
     for(auto& segment: views::drop(segments, run_ends.front())) {
+        if(!segment->ready()) {
+            continue;
+        }
         for(std::uint32_t entry = 0; entry < segment->count(); entry += 1) {
             newest_symbols[segment->columns->hashes[entry]] = segment->run;
         }
@@ -997,6 +1016,9 @@ std::pair<const SearchIndex::Segment*, std::uint32_t>
     }
     auto run = it->second;
     for(auto i = run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        if(!segments[i]->ready()) {
+            continue;
+        }
         if(auto found = segments[i]->offered(hash)) {
             return {segments[i].get(), *found};
         }
@@ -1047,6 +1069,9 @@ void SearchIndex::for_each_source(std::uint32_t run,
                                   llvm::function_ref<void(SymbolHash)> symbol,
                                   llvm::function_ref<void(std::uint32_t)> file) const {
     for(auto i = run == 0 ? 0 : run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        if(!segments[i]->ready()) {
+            continue;
+        }
         auto& columns = *segments[i]->columns;
         llvm::ArrayRef<std::uint32_t> locals = columns.local_entries;
         for(std::uint32_t entry = 0; entry < segments[i]->count(); entry += 1) {
@@ -1092,6 +1117,10 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     for(std::uint32_t at = 0; at < segments.size(); at += 1) {
         auto& segment = *segments[at];
         auto& filter = filters[at];
+        if(!segment.ready()) {
+            filter.emplace();
+            continue;
+        }
         auto narrow = [&](Bitmap allowed) {
             if(filter) {
                 *filter &= allowed;

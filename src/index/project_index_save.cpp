@@ -217,42 +217,48 @@ kota::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     ScopedTimer timer;
     auto runs = search.run_count();
     bool full = !search.loaded() || search.damaged();
-    // The newest runs fold into the one built now while it comes to half
-    // of the next older one at least, so run sizes halve from the first on
-    // and a symbol is rebuilt a logarithmic number of times; the first run
-    // folds only into a full build, once the runs after it come to half of
-    // it.
     std::uint32_t folded = 0;
-    if(!full && rebuild != SearchRebuild::Never) {
-        auto size = static_cast<std::uint32_t>(pending_symbols.size() + pending_files.size());
-        auto newer = size;
-        for(std::uint32_t run = 1; run < runs; run += 1) {
-            newer += search.run_size(run);
-        }
-        while(folded + 1 < runs && size * 2 >= search.run_size(runs - 1 - folded)) {
-            size += search.run_size(runs - 1 - folded);
-            folded += 1;
-        }
-        full = rebuild == SearchRebuild::Idle && newer * 2 >= search.run_size(0);
-    }
-
     SearchSnapshot snapshot;
-    if(full) {
-        snapshot = full_search_snapshot();
-    } else {
+    if(!full) {
         llvm::SetVector<SymbolHash> symbols(pending_symbols.begin(), pending_symbols.end());
         llvm::SetVector<Fid> files(pending_files.begin(), pending_files.end());
-        for(auto run = runs - folded; run < runs; run += 1) {
-            search.for_each_source(
-                run,
-                [&](SymbolHash hash) { symbols.insert(hash); },
-                [&](std::uint32_t path) {
-                    if(auto file = fid_of(path); file.valid()) {
-                        files.insert(file);
-                    }
-                });
-        }
         snapshot = search_snapshot(symbols.getArrayRef(), files.getArrayRef());
+        // The newest runs fold into the one built now while it comes to half
+        // of the next older one at least, so run sizes halve from the first
+        // on and a symbol is read again a logarithmic number of times; the
+        // first run folds only into a full build, once the runs after it come
+        // to half of it.
+        if(rebuild != SearchRebuild::Never) {
+            auto size = static_cast<std::uint32_t>(
+                snapshot.covered.size() + ranges::count_if(snapshot.entries, [](auto& entry) {
+                    return searchable(entry.kind, entry.name, entry.flags);
+                }));
+            auto newer = size;
+            for(std::uint32_t run = 1; run < runs; run += 1) {
+                newer += search.run_size(run);
+            }
+            while(folded + 1 < runs && size * 2 >= search.run_size(runs - 1 - folded)) {
+                size += search.run_size(runs - 1 - folded);
+                folded += 1;
+            }
+            full = rebuild == SearchRebuild::Idle && newer * 2 >= search.run_size(0);
+        }
+        if(!full && folded > 0) {
+            for(auto run = runs - folded; run < runs; run += 1) {
+                search.for_each_source(
+                    run,
+                    [&](SymbolHash hash) { symbols.insert(hash); },
+                    [&](std::uint32_t path) {
+                        if(auto file = fid_of(path); file.valid()) {
+                            files.insert(file);
+                        }
+                    });
+            }
+            snapshot = search_snapshot(symbols.getArrayRef(), files.getArrayRef());
+        }
+    }
+    if(full) {
+        snapshot = full_search_snapshot();
     }
     auto read_ms = timer.ms();
     // The entries pending now are in the snapshot; the ones a merge changes

@@ -482,6 +482,26 @@ ZEST_CASE(SavesAddRuns) {
     }
 }
 
+ZEST_CASE(FoldsKeepRunsFew) {
+    // Saves of like-sized changes fold as they go: the runs stay few, and
+    // every symbol stays found.
+    TempDir tmp;
+    tmp.touch("base.cpp", "int base_value() { return 0; }\n");
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("base.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    for(std::uint32_t i = 0; i < 8; i += 1) {
+        auto file = std::format("unit{}.cpp", i);
+        tmp.touch(file, std::format("int unit_value_{}() {{ return {}; }}\n", i, i));
+        ZASSERT(merge(index_file(tmp, tmp.path(file)).data));
+        fx.save(index::SearchRebuild::Behind);
+    }
+    ZEXPECT(project.index.search_index().run_count() <= 3u);
+    for(std::uint32_t i = 0; i < 8; i += 1) {
+        ZEXPECT(index_hits(std::format(R"("unit_value_{}")", i)) == 1u);
+    }
+}
+
 ZEST_CASE(NewestRunHidesOlder) {
     // Checkpoints pile up runs unfolded: the newest one says what holds,
     // and a fold of them all keeps that.

@@ -162,8 +162,9 @@ public:
 
     /// Adopt one segment as the only run (a TU's name table), copied when
     /// it is not readable_in_place. False — and the index stays empty —
-    /// when the bytes are not a search segment of this build's formats or
-    /// are inconsistent.
+    /// when the bytes are not a search segment of this build's formats; a
+    /// segment whose columns are inconsistent is found at its first search
+    /// and marks the index damaged.
     bool load(std::unique_ptr<llvm::MemoryBuffer> segment);
 
     /// Replace the newest `runs` runs by one made of `segments`, appending
@@ -194,9 +195,9 @@ public:
                          llvm::function_ref<void(SymbolHash)> symbol,
                          llvm::function_ref<void(std::uint32_t)> file) const;
 
-    /// Whether a posting list failed to decode since the load: the
-    /// answers are incomplete until the owner rebuilds the index, and a
-    /// reader scans the table instead.
+    /// Whether a segment failed its checks or a posting list failed to
+    /// decode since the load: the answers are incomplete until the owner
+    /// rebuilds the index, and a reader scans the table instead.
     bool damaged() const;
 
     /// At most `limit` hits, best first. Empty for a query by id or
