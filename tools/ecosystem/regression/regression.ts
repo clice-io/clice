@@ -4,11 +4,9 @@
 /// reproduce it, the failures the project knows apart. Counts, sizes,
 /// memory and times are recorded, never judged.
 
-import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
 import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
-import { REPO_ROOT } from "../../repo.ts";
 import { readLogs, undeclaredErrors } from "../../testing/logs/logs.ts";
 import { CRASHED_IN } from "../../testing/server/serve.ts";
 import {
@@ -23,7 +21,15 @@ import type { PeakMemory } from "../memory.ts";
 import { wipeCache } from "../perf/servers.ts";
 import { compilerEnvironment, prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
-import { sortKnown, type Failure, type Known, type RegressionJob } from "../script.ts";
+import {
+    cliceCommit,
+    projectCommit,
+    rerunCommand,
+    sortKnown,
+    type Failure,
+    type Known,
+    type RegressionJob,
+} from "../script.ts";
 import { confirm } from "./confirm.ts";
 import { runIndex } from "./index.ts";
 import { CONCURRENCY, sweep, type Request, type SweepRun } from "./sweep.ts";
@@ -118,11 +124,7 @@ interface Context {
 
 /// The command running one step of this job again.
 function rerun(options: RegressionOptions, extra: string): string {
-    return `CLICE_EXECUTABLE=${options.clice} pixi run node tools/ecosystem/run.ts regression ${options.job.name} --dir ${options.dir} ${extra}`.trimEnd();
-}
-
-function cliceCommit(): string {
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+    return rerunCommand(options.job, options.clice, options.dir, extra);
 }
 
 /// Crashes and anomalies in the logs of every clice process the job ran
@@ -378,7 +380,7 @@ export async function runRegression(options: RegressionOptions): Promise<Results
         job: job.name,
         platform: options.platform,
         about: `${job.project.about}; ${job.config.about}`,
-        commit: job.project.commit ?? job.project.archive?.url ?? cliceCommit(),
+        commit: projectCommit(job.project),
         clice: cliceCommit(),
         seed: options.seed,
         compilerRejects: [],

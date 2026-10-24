@@ -11,7 +11,7 @@ import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
 import { CRASHED_IN } from "../../testing/server/serve.ts";
 import { watchTree, type TreeWatch } from "../memory.ts";
-import { parsePerfLines, summarize } from "./logs.ts";
+import { computeStats, parsePerfLines, summarize } from "./logs.ts";
 import type { RunResult, ServerName } from "./results.ts";
 import { CAPABILITIES, indexToken, isClice } from "./servers.ts";
 
@@ -56,8 +56,7 @@ export function pause(ms: number): Promise<void> {
 }
 
 export function median(values: readonly number[]): number {
-    const sorted = [...values].sort((a, b) => a - b);
-    return sorted.length === 0 ? 0 : (sorted[Math.floor((sorted.length - 1) / 2)] ?? 0);
+    return computeStats([...values])?.p50 ?? 0;
 }
 
 /// How much an answer holds: the items of a list, the tokens of semantic

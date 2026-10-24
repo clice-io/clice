@@ -82,8 +82,9 @@ describe("projects", () => {
         expect(validated(project)).toBe(project);
         const broken = (change: Partial<Project>) => () => validated({ ...project, ...change });
         expect(broken({ commit: "main" })).toThrow(/pins main, not a full commit hash/);
-        const { commit: _, ...uncommitted } = project;
-        expect(() => validated(uncommitted)).toThrow(/a repository without a commit/);
+        expect(() => validated({ ...project, commit: undefined } as unknown as Project)).toThrow(
+            /a repository without a commit/,
+        );
         expect(broken({ archive: { url: "u", sha256: "0".repeat(64) } })).toThrow(
             /both a repository and an archive/,
         );
@@ -301,7 +302,7 @@ describe("database", () => {
         expect(inPart(config, "llvm", root, "build/include/b.inc")).toBe(true);
         expect(inPart(config, "llvm", root, "third/c.h")).toBe(false);
         expect(
-            inPart({ ...config, parts: undefined } as Configuration, undefined, root, "x.h"),
+            inPart({ about: "", prepare: [], database: "db.json" }, undefined, root, "x.h"),
         ).toBe(true);
     });
 

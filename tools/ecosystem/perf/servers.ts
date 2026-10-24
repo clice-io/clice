@@ -147,15 +147,15 @@ function diskBytes(file: string): number {
     }
 }
 
-/// Megabytes the server's cache holds on disk, clice's logs aside: all of
-/// it, and its index alone. clangd keeps nothing but the index there (its
+/// Bytes the server's cache holds on disk, clice's logs aside: all of it,
+/// and its index alone. clangd keeps nothing but the index there (its
 /// preambles live in memory or in temporary files); clice keeps its index
 /// beside the PCHs and PCMs of its store, under cache/<version>/index.
-export function cacheMB(
+export function cacheBytes(
     workspace: string,
     database: string,
     server: ServerName,
-): { diskMB: number; indexMB: number } {
+): { disk: number; index: number } {
     const logs = path.join(workspace, ".clice", "logs");
     let disk = 0;
     let index = 0;
@@ -176,6 +176,15 @@ export function cacheMB(
             }
         }
     }
+    return { disk, index };
+}
+
+export function cacheMB(
+    workspace: string,
+    database: string,
+    server: ServerName,
+): { diskMB: number; indexMB: number } {
+    const { disk, index } = cacheBytes(workspace, database, server);
     const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
     return { diskMB: mb(disk), indexMB: mb(index) };
 }

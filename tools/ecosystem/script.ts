@@ -1,9 +1,11 @@
 /// A project's test.ts (ecosystem/README.md): the jobs it registers, the
 /// places its perf scenarios ask at, and the failures it knows.
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import { REPO_ROOT } from "../repo.ts";
 import {
     resolveLocation,
     SourceText,
@@ -214,6 +216,21 @@ export async function findJob(kind: JobKind, name: string): Promise<Job> {
         );
     }
     return job;
+}
+
+export function cliceCommit(): string {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+}
+
+/// What a job tests the project at: its pin, or clice's own commit.
+export function projectCommit(project: Project): string {
+    return project.commit ?? project.archive?.url ?? cliceCommit();
+}
+
+/// The command running a job again from the repository root, `extra`
+/// narrowing it.
+export function rerunCommand(job: Job, clice: string, dir: string, extra: string): string {
+    return `CLICE_EXECUTABLE=${clice} pixi run node tools/ecosystem/run.ts ${job.kind} ${job.name} --dir ${dir} ${extra}`.trimEnd();
 }
 
 /// What failed in a job, and how to see it again.

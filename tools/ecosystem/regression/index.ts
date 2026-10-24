@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { cliceExecutable } from "../../client/session.ts";
 import { watchTree, type PeakMemory } from "../memory.ts";
+import { cacheBytes } from "../perf/servers.ts";
 
 /// `clice index --json`'s report, as far as the run reads it. A run handed
 /// to a running server reports only `failed`.
@@ -53,17 +54,6 @@ const HANG_MS = 30 * 60_000;
 /// How long a run may take at all, so that the job ends within the runner's
 /// six hours: the slowest part takes under two.
 const INDEX_MS = 3 * 60 * 60_000;
-
-function directoryBytes(dir: string): number {
-    if (!fs.existsSync(dir)) {
-        return 0;
-    }
-    return fs
-        .readdirSync(dir, { recursive: true, encoding: "utf8" })
-        .map((name) => fs.statSync(path.join(dir, name)))
-        .filter((stat) => stat.isFile())
-        .reduce((sum, stat) => sum + stat.size, 0);
-}
 
 /// How the session log ends a unit's attempt (src/sched/index/pump.cpp).
 const ENDED =
@@ -162,7 +152,7 @@ export function runIndex(checkout: string): Promise<IndexRun> {
                 signal,
                 ...(report === undefined ? {} : { report }),
                 ...(peak === undefined ? {} : { memory: peak }),
-                cacheBytes: directoryBytes(path.join(checkout, ".clice", "cache")),
+                cacheBytes: cacheBytes(checkout, checkout, "clice").disk,
                 ...(hung === undefined ? {} : { hung }),
                 ...(overTime === undefined ? {} : { overTime }),
                 stderr: stderr.split("\n").slice(-40).join("\n"),

@@ -4,15 +4,20 @@
 /// job unless the project knows it; a clangd run that fails is listed;
 /// numbers never fail.
 
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { REPO_ROOT } from "../../repo.ts";
 import { jobDatabase } from "../database.ts";
 import { prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
-import { sortKnown, type Failure, type PerfJob } from "../script.ts";
+import {
+    cliceCommit,
+    projectCommit,
+    rerunCommand,
+    sortKnown,
+    type Failure,
+    type PerfJob,
+} from "../script.ts";
 import type { PerfResults, RunResult, ServerName } from "./results.ts";
 import { Perf } from "./scenarios.ts";
 import { pinnedClangd } from "./servers.ts";
@@ -35,11 +40,7 @@ export interface PerfOptions {
 }
 
 function rerun(options: PerfOptions, extra: string): string {
-    return `CLICE_EXECUTABLE=${options.clice} pixi run node tools/ecosystem/run.ts perf ${options.job.name} --dir ${options.dir} ${extra}`.trimEnd();
-}
-
-function cliceCommit(): string {
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+    return rerunCommand(options.job, options.clice, options.dir, extra);
 }
 
 /// What a clice run's error says went wrong.
@@ -47,7 +48,7 @@ function failureOf(run: RunResult, options: PerfOptions): Failure {
     const error = run.error ?? "";
     const kind = /timed out after|not idle after|announced no/.test(error)
         ? "hang"
-        : /exited (with|while)|worker crashed/.test(error)
+        : /exited (with|while)|crashed/.test(error)
           ? "crash"
           : "server";
     return {
@@ -66,7 +67,7 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
         job: job.name,
         platform: options.platform,
         about: `${job.project.about}; ${job.config.about}`,
-        commit: job.project.commit ?? job.project.archive?.url ?? cliceCommit(),
+        commit: projectCommit(job.project),
         clice: cliceCommit(),
         env: {
             platform: process.platform,

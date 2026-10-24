@@ -23,7 +23,7 @@ import { block, type Shown } from "../../testing/render/shown.ts";
 import { writeToml } from "../../testing/render/value.ts";
 import { Serve } from "../../testing/server/serve.ts";
 import { StepRecord } from "../../testing/server/steps.ts";
-import { KEYWORDS, lex } from "../../lex.ts";
+import { KEYWORDS, lex } from "../lex.ts";
 import { spread } from "../database.ts";
 import {
     residentNow,

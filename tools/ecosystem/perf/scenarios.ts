@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as proto from "vscode-languageserver-protocol";
-import { runProcess } from "../../client/process.ts";
+import { ending, runProcess } from "../../client/process.ts";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
 import {
     includedHeaders,
@@ -24,7 +24,7 @@ import {
     type Place,
     type Probe,
 } from "../script.ts";
-import type { RunResult, ServerName } from "./results.ts";
+import { SERVERS, type RunResult, type ServerName } from "./results.ts";
 import { cacheMB, dropFileCache, indexToken, isClice, wipeCache } from "./servers.ts";
 import { bounded, median, nowMs, pause, Session, sizeOf, type PerfContext } from "./session.ts";
 
@@ -88,9 +88,7 @@ export class Perf {
     }
 
     private servers(): ServerName[] {
-        return (["clice", "clangd", "baseline"] as const).filter(
-            (server) => this.context.binaries[server] !== undefined,
-        );
+        return SERVERS.filter((server) => this.context.binaries[server] !== undefined);
     }
 
     private resolve(arg: FileArg): Opened {
@@ -426,8 +424,7 @@ export class Perf {
             // the wall clock leaves the warmups' last millisecond.
             const boundary = Date.now();
             while (Date.now() <= boundary) {
-                // Time is the feature: the wait is for the clock itself.
-                await new Promise((resolve) => setTimeout(resolve, 1));
+                await pause(1);
             }
             s.perfWindowStart = boundary + 1;
             for (const [name, request] of Object.entries(requests)) {
@@ -861,7 +858,7 @@ export class Perf {
                 { timeout: 60 * 60_000 },
             );
             if (ran.status !== 0) {
-                throw new Error(`clice scan exited ${String(ran.status)}:\n${ran.stderr}`);
+                throw new Error(`clice scan ${ending(ran)}:\n${ran.stderr}`);
             }
             for (const match of ran.stdout.matchAll(/^Run \d+: cold (\d+)ms, warm (\d+)ms$/gm)) {
                 s.record("scan_cold", Number(match[1]));
