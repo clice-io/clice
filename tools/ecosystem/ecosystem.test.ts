@@ -2,6 +2,7 @@
 /// and the jobs their scripts register, request positions, known issues,
 /// preparation, a job's database, process-tree memory and the reports.
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -15,7 +16,7 @@ import {
     warningIsError,
 } from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
-import { withoutOrderOnly } from "./prepare.ts";
+import { prepare, withoutOrderOnly } from "./prepare.ts";
 import { validated, type Configuration, type Project } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
@@ -222,6 +223,40 @@ describe("known issues", () => {
 });
 
 describe("prepare", () => {
+    test("a checkout prepared by another configuration is refused, not reused", async () => {
+        const upstream = scratch();
+        const dir = scratch();
+        const git = (...args: string[]) =>
+            execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+                cwd: upstream,
+                encoding: "utf8",
+            }).trim();
+        fs.writeFileSync(path.join(upstream, "a.c"), "int a;\n");
+        git("init", "-q");
+        git("add", ".");
+        git("commit", "-q", "-m", "a");
+        const write = (flag: string) => [
+            "node",
+            "-e",
+            `require("fs").writeFileSync("db.json", ${JSON.stringify(flag)})`,
+        ];
+        const project = (flag: string): Project => ({
+            name: "p",
+            about: "",
+            repository: upstream,
+            commit: git("rev-parse", "HEAD"),
+            configurations: { c: { about: "", prepare: [write(flag)], database: "db.json" } },
+        });
+        const target = await prepare(project("-DOLD"), "c", dir);
+        expect(await prepare(project("-DOLD"), "c", dir)).toBe(target);
+        await expect(prepare(project("-DNEW"), "c", dir)).rejects.toThrow(
+            "prepared by another configuration",
+        );
+        expect(fs.readFileSync(path.join(target, "db.json"), "utf8")).toBe("-DOLD");
+        fs.rmSync(upstream, { recursive: true, force: true });
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
     test("custom commands lose their order-only inputs, TableGen's .td outputs listed", () => {
         const { ninja, tablegenFiles } = withoutOrderOnly(
             [

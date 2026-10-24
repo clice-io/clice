@@ -279,7 +279,7 @@ async function run(
 }
 
 /// The marker a finished preparation leaves, so that running a job again
-/// on the same directory skips the preparation.
+/// on the same directory skips the preparation: the configuration it ran.
 const PREPARED = ".ecosystem/prepared";
 
 export async function prepare(
@@ -293,7 +293,12 @@ export async function prepare(
         project.archive === undefined
             ? await checkout(project, target)
             : await unpackArchive(project.archive.url, project.archive.sha256, target);
-    if (kept && fs.existsSync(path.join(target, PREPARED))) {
+    const marker = path.join(target, PREPARED);
+    const ran = JSON.stringify({ prepare: config.prepare, environment: config.environment });
+    if (kept && fs.existsSync(marker)) {
+        if (fs.readFileSync(marker, "utf8") !== ran) {
+            throw new Error(`${target} was prepared by another configuration: remove it first`);
+        }
         return target;
     }
     const env = await compilerEnvironment(config);
@@ -301,8 +306,8 @@ export async function prepare(
         await run(step, target, config.database, env);
     }
     if (target !== REPO_ROOT) {
-        fs.mkdirSync(path.join(target, path.dirname(PREPARED)), { recursive: true });
-        fs.writeFileSync(path.join(target, PREPARED), "");
+        fs.mkdirSync(path.dirname(marker), { recursive: true });
+        fs.writeFileSync(marker, ran);
     }
     return target;
 }

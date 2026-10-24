@@ -79,7 +79,8 @@ project.
 - **Checkouts.** Each configuration prepares a checkout of its own,
   `<dir>/<project>/<configuration>`. A finished preparation leaves a marker
   there; a job run again on the same directory skips the preparation. A
-  checkout at another commit is an error, never reused.
+  checkout at another commit, or prepared by other steps, is an error,
+  never reused.
 - **Jobs**: a regression job is named `<project>[/<configuration>][/<part>]`,
   the configuration left out when the project has only one (`linux`,
   `abseil/gcc`, `llvm/all/flang`); a perf job `<project>/<name>`, by the name
