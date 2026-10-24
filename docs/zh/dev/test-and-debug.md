@@ -2,7 +2,7 @@
 
 ## 运行测试
 
-clice 有两个在每次改动时运行的测试套件：单元测试和用例。兼容性测试需要真实的构建系统和编译器，与编辑器测试一样单独运行。
+clice 有两个在每次改动时运行的测试套件：单元测试和用例。兼容性测试需要真实的构建系统和编译器，与编辑器测试和真实项目一样单独运行。
 
 全部测试依赖（用例和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
@@ -68,6 +68,20 @@ pixi run compat-test          # default RelWithDebInfo
 ```
 
 每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang（以及 libc++），以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、musl-gcc、Android NDK、MinGW、RISC-V、AArch64 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc，以及 `toolchains` 环境中 conda 的 GCC 和 clang 与 xclang 的 Linux 和 MinGW 目标（`pixi install -e cuda -e toolchains`）；Windows 上是 Visual Studio、LLVM、MinGW 以及 MSYS2 的 UCRT GCC 和 clang；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
+
+## 真实项目
+
+每日构建版本发布后，它的 clice 都会在 `ecosystem/` 下的真实项目上运行一轮，每个项目一个目录：LLVM、Linux 内核、CPython、clice 自身、abseil（分别用 clang、GCC 和 MSVC 构建）、fmt、按 C++20 模块构建的 mp-units、curl、一个 Qt 6 应用程序、Eigen、CUDA samples，以及 SQLite 的 amalgamation；每个项目都固定在某个提交上，并按其构建流程准备好。每个项目运行两类作业，每个作业独占一台 CI 运行器，在 Linux、macOS 和 Windows 中项目能构建的平台上运行（`ecosystem.yml`，由 `nightly.yml` 在为每日构建的提交打上标签后启动）。回归（regression）作业从冷缓存开始为项目建立索引，对 clice 报告了错误的每个翻译单元用编译器检查一遍，然后在抽样文件的相同位置向 `clice inspect` 和服务器发出相同的请求，比较两边的回答。性能（perf）作业让 clice 和 clangd 在相同的文件上交替跑相同的场景（冷启动与热启动、完整索引、编辑、请求、多文件会话、长会话），并把两者的结果并排列成表。这一轮只报告结果；稳定版本的标签打在这一轮没有出现新失败的每日构建上。`ecosystem/README.md` 是这套测试的约定：一个项目包含什么、每个作业检查和记录什么、什么情况下判为失败。
+
+```bash
+pixi run node tools/ecosystem/run.ts --jobs                               # every job
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/ecosystem/run.ts regression abseil/clang --dir ~/eco  # one regression job
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/ecosystem/run.ts perf fmt/editing --dir ~/eco         # one perf job
+```
+
+准备 LLVM 或内核要经过一次漫长的构建，并占用数 GB 磁盘空间。
 
 ## 调试
 

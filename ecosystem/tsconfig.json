@@ -3,12 +3,8 @@
     "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": [
-      "ES2023"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["ES2023"],
+    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitReturns": true,
@@ -22,8 +18,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": [
-    "test.ts",
-    "*/test.ts"
-  ]
+  "include": ["test.ts", "*/test.ts"]
 }
