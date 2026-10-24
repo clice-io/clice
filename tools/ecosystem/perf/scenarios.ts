@@ -38,8 +38,10 @@ interface Opened {
     query?: string;
 }
 
-/// Hang detection: the bound on one settling of the servers after a churn,
-/// which on LLVM reindexes for over half an hour.
+/// Hang detection: the bound on one settling of the servers over an index
+/// already built, after a churn (which on LLVM reindexes for over half an
+/// hour) or at a warm start (where clangd on macOS has stayed busy for
+/// hours).
 const SETTLE_MS = 30 * 60_000;
 
 /// Document symbols counted through their children.
@@ -249,7 +251,10 @@ export class Perf {
         if (warm && symbol !== undefined) {
             const afterLoad = (): boolean => built && indexed;
             waits.push(
-                session.idle(false).then(() => {
+                session.idle(false, SETTLE_MS).then(({ idle }) => {
+                    if (!idle) {
+                        session.result.values["unsettled"] = 1;
+                    }
                     indexed = true;
                 }),
                 session.untilAnswered(
@@ -380,7 +385,7 @@ export class Perf {
         await this.each("warmRequests", opened.file, {}, async (s) => {
             const client = await s.start();
             const { uri } = await s.open(opened.file);
-            await s.idle(false);
+            await s.idle(false, SETTLE_MS);
             const requests: Record<string, () => Promise<unknown>> = {};
             const symbol = opened.at.symbol;
             if (symbol !== undefined) {
@@ -771,7 +776,7 @@ export class Perf {
         await this.each("references", file, {}, async (s) => {
             const client = await s.start();
             const { uri } = await s.open(file);
-            await s.idle(false);
+            await s.idle(false, SETTLE_MS);
             const { line, character } = position;
             let answer: unknown = null;
             for (let i = 0; i < 5; i += 1) {

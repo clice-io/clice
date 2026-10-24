@@ -16,11 +16,6 @@ on:
       run:
         description: "The CI run (main.yml) whose commit and build-* programs to test"
         required: true
-  # Until this workflow is on main, a push of it registers it, so that a round
-  # can be dispatched on the branch; the push itself runs nothing.
-  push:
-    branches: [test/ecosystem]
-    paths: [.github/workflows/ecosystem.yml]
 
 # A dispatch on a branch replaces the branch's round still going; main's
 # rounds, one per nightly, all run.
@@ -38,7 +33,6 @@ defaults:
 
 jobs:
   jobs:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     outputs:
       commit: ${{ steps.commit.outputs.commit }}
