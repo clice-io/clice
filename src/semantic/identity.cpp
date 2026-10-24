@@ -1025,7 +1025,9 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     auto [fid, offset] = unit.produced_at(location);
     add_file(hasher, fid);
     hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
-    add_macro_history(hasher, location);
+    if(location.isMacroID()) {
+        hasher.add(macro_history(location));
+    }
 }
 
 /// Under the expansion, each level of macro nesting adds where its token
@@ -1033,25 +1035,53 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
 /// invoked twice inside another macro's body spells the same tokens from
 /// two places, and so does an argument the body uses twice, which is why
 /// the walk follows expansions rather than macro callers. A pre-expanded
-/// argument is spelled inside its own expansion, whose history is walked
-/// in turn. A name pasted with `##` is spelled in the scratch buffer,
+/// argument is spelled inside its own expansion, whose history stands for
+/// that level. A name pasted with `##` is spelled in the scratch buffer,
 /// whose offsets depend on how many pastes the unit did before: that
 /// level is left out.
-void EntityTable::add_macro_history(Hasher& hasher, clang::SourceLocation location) {
+///
+/// A level's history is the hash of its spelling and its parent's history,
+/// each location hashed once: a macro that rescans its output pass after
+/// pass (a `MAP` under an `EVAL`) reaches the same levels along
+/// exponentially many paths, and its chains run as deep as its passes.
+std::uint64_t EntityTable::macro_history(clang::SourceLocation location) {
     auto& SM = unit.context().getSourceManager();
-    for(auto level = location; level.isMacroID();
-        level = SM.getImmediateExpansionRange(level).getBegin()) {
-        auto spelling = SM.getImmediateSpellingLoc(level);
-        if(spelling.isMacroID()) {
-            add_macro_history(hasher, spelling);
+    llvm::SmallVector<clang::SourceLocation> pending{location};
+    while(!pending.empty()) {
+        auto level = pending.back();
+        if(histories.contains(level)) {
+            pending.pop_back();
             continue;
         }
-        auto [spelling_fid, spelling_offset] = unit.written_at(spelling);
-        hasher.add(
-            static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid)
-                                           ? 0
-                                           : unit.source_offset(spelling_fid, spelling_offset)));
+        auto spelling = SM.getImmediateSpellingLoc(level);
+        auto parent = SM.getImmediateExpansionRange(level).getBegin();
+        auto waiting = pending.size();
+        for(auto next: {spelling, parent}) {
+            if(next.isMacroID() && !histories.contains(next)) {
+                pending.push_back(next);
+            }
+        }
+        if(pending.size() != waiting) {
+            continue;
+        }
+
+        Hasher hasher;
+        if(spelling.isMacroID()) {
+            hasher.add(histories.lookup(spelling));
+        } else {
+            auto [spelling_fid, spelling_offset] = unit.written_at(spelling);
+            hasher.add(static_cast<std::uint64_t>(
+                unit.is_builtin_file(spelling_fid)
+                    ? 0
+                    : unit.source_offset(spelling_fid, spelling_offset)));
+        }
+        if(parent.isMacroID()) {
+            hasher.add(histories.lookup(parent));
+        }
+        histories.try_emplace(level, hasher.finish());
+        pending.pop_back();
     }
+    return histories.lookup(location);
 }
 
 void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {

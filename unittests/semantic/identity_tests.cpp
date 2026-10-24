@@ -850,6 +850,78 @@ ID(TWO)
     ZEXPECT(entities.size() == 2U);
 }
 
+ZEST_CASE(RescannedMacroStructs) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+#define EVAL0(...) __VA_ARGS__
+#define EVAL1(...) EVAL0(EVAL0(__VA_ARGS__))
+#define EVAL2(...) EVAL1(EVAL1(__VA_ARGS__))
+#define EVAL3(...) EVAL2(EVAL2(__VA_ARGS__))
+#define EVAL4(...) EVAL3(EVAL3(__VA_ARGS__))
+#define EVAL5(...) EVAL4(EVAL4(__VA_ARGS__))
+#define EVAL(...) EVAL5(EVAL5(__VA_ARGS__))
+#define MAP_END(...)
+#define MAP_OUT
+#define MAP_GET_END2() 0, MAP_END
+#define MAP_GET_END1(...) MAP_GET_END2
+#define MAP_GET_END(...) MAP_GET_END1
+#define MAP_NEXT0(test, next, ...) next MAP_OUT
+#define MAP_NEXT1(test, next) MAP_NEXT0(test, next, 0)
+#define MAP_NEXT(test, next) MAP_NEXT1(MAP_GET_END test, next)
+#define MAP0(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP1)(f, peek, __VA_ARGS__)
+#define MAP1(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP0)(f, peek, __VA_ARGS__)
+#define MAP(f, ...) EVAL(MAP1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
+#define UNNAMED(x) struct { int v; } x;
+MAP(UNNAMED, §(first)a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, §(last)a23)
+)cpp";
+
+    add_file("unnamed.h", header);
+    add_focus("a.cpp", R"cpp(
+#define PASTE(a, b) a##b
+int PASTE(x, y);
+#include "unnamed.h"
+)cpp");
+    ZASSERT(compile());
+
+    Tester other;
+    other.add_file("unnamed.h", header);
+    other.add_focus("b.cpp", R"cpp(
+#include "unnamed.h"
+)cpp");
+    ZASSERT(other.compile());
+
+    auto unnamed = [](Tester& tester, const clang::NamedDecl* variable) {
+        return tester.unit->get<EntityTable>().entity(
+            llvm::cast<clang::VarDecl>(variable)->getType()->getAsRecordDecl());
+    };
+    std::set<std::uint64_t> entities;
+    for(auto* decl: unit->tu()->decls()) {
+        if(auto* variable = llvm::dyn_cast<clang::VarDecl>(decl);
+           variable && variable->getType()->getAsRecordDecl()) {
+            entities.insert(unnamed(*this, variable));
+        }
+    }
+    ZEXPECT(entities.size() == 24U);
+    for(auto marker: {"first", "last"}) {
+        ZEXPECT(unnamed(*this, find_decl(*this, "unnamed.h", marker)) ==
+                unnamed(other, find_decl(other, "unnamed.h", marker)));
+    }
+}
+
+ZEST_CASE(PreExpandedArgumentCopies) {
+    add_focus("main.cpp", R"cpp(
+#define ID(...) __VA_ARGS__
+#define TWICE(...) __VA_ARGS__ __VA_ARGS__
+void §(f)f(TWICE(ID(int,)) int);
+)cpp");
+    ZASSERT(compile());
+
+    auto* function = llvm::cast<clang::FunctionDecl>(find_decl(*this, "main.cpp", "f"));
+    ZASSERT(function->getNumParams() == 3U);
+    ZEXPECT(unit->get<EntityTable>().entity(function->getParamDecl(0)) !=
+            unit->get<EntityTable>().entity(function->getParamDecl(1)));
+}
+
 ZEST_CASE(CpuSpecificVersions) {
     triple = "x86_64-unknown-linux-gnu";
     add_focus("main.cpp", R"cpp(

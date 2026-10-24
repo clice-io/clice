@@ -162,8 +162,13 @@ public:
                           clang::SrcMgr::CharacteristicKind,
                           clang::FileID prev_fid,
                           clang::SourceLocation) override {
-        if(reason == LexedFileChangeReason::EnterFile && curr_fid.isValid() && prev_fid.isValid() &&
-           this->prev_fid.isValid() && prev_fid == this->prev_fid) {
+        if(reason != LexedFileChangeReason::EnterFile || curr_fid.isInvalid()) {
+            return;
+        }
+        if(auto entry = unit.SM().getFileEntryRefForID(curr_fid)) {
+            unit.entered_files.try_emplace(&entry->getFileEntry(), curr_fid);
+        }
+        if(prev_fid.isValid() && this->prev_fid.isValid() && prev_fid == this->prev_fid) {
             /// Once the file has changed, it means that the last include is not skipped.
             /// Therefore, we initialize its file id with the current file id.
             auto& include = unit.collected_directives[prev_fid].includes.back();
@@ -176,8 +181,7 @@ public:
                      const clang::Token&,
                      clang::SrcMgr::CharacteristicKind) override {
         if(prev_fid.isValid()) {
-            /// File with guard will have only one file id in `SourceManager`, use
-            /// `translateFile` to find it.
+            /// File with guard will have only one file id in `SourceManager`.
             auto& include = unit.collected_directives[prev_fid].includes.back();
             include.skipped = true;
 
