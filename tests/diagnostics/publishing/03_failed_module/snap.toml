@@ -1,0 +1,49 @@
+[test.opened]
+"deps.cppm" = [
+    [
+        {
+            at = '#include ⟦"missing/blob.h"⟧',
+            severity = "error",
+            message = "'missing/blob.h' file not found",
+            source = "clang",
+            code = "err_pp_file_not_found",
+        },
+    ],
+]
+"main.cpp" = [
+    [
+        {
+            at = "import ⟦deps;⟧",
+            severity = "error",
+            message = "could not build module 'deps': 'missing/blob.h' file not found",
+            source = "clang",
+            code = "err_module_not_built",
+        },
+    ],
+]
+
+[test.closed]
+"deps.cppm" = [
+    [
+        {
+            at = '#include ⟦"missing/blob.h"⟧',
+            severity = "error",
+            message = "'missing/blob.h' file not found",
+            source = "clang",
+            code = "err_pp_file_not_found",
+        },
+    ],
+    [],
+]
+"main.cpp" = [
+    [
+        {
+            at = "import ⟦deps;⟧",
+            severity = "error",
+            message = "could not build module 'deps': 'missing/blob.h' file not found",
+            source = "clang",
+            code = "err_module_not_built",
+        },
+    ],
+    [],
+]

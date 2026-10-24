@@ -138,11 +138,7 @@ auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
         auto range = map.range(link.range, PositionEncoding::UTF16);
         if(!range)
             continue;
-        protocol::DocumentLink out{.range = *range};
-        auto path = files.display_identity(link.target);
-        out.target = to_uri(path);
-        out.tooltip = std::move(path);
-        result.push_back(std::move(out));
+        result.push_back({.range = *range, .target = to_uri(files.display_identity(link.target))});
     }
     return result;
 }

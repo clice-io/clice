@@ -364,9 +364,42 @@ Features::RawResult Features::hover(Ticket ticket,
             feature::to_protocol(info, markup, session->positions(), PositionEncoding::UTF16));
     };
 
+    // A directive's card names its target, which the worker knows only by
+    // identity: this side answers it, from the links. Off a directive line
+    // there is none to look for.
+    auto offset = session->positions().offset(position, PositionEncoding::UTF16);
+    bool on_directive = false;
+    if(offset) {
+        llvm::StringRef text = session->text();
+        on_directive =
+            Lexer(text.substr(logical_line_begin(text, *offset)), contexts.dialect(path_id))
+                .advance()
+                .is_directive_hash();
+    }
+    auto directive_card =
+        [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<serde_raw> {
+        auto* link = link_at(links, *offset);
+        if(!link) {
+            return std::nullopt;
+        }
+        auto hover = feature::directive_hover(session->text(),
+                                              session->positions(),
+                                              project.file_table,
+                                              *link,
+                                              markup);
+        return hover ? to_raw(*hover) : serde_raw{"null"};
+    };
+
     switch(co_await pick_route(ticket, {})) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
+            if(on_directive) {
+                if(auto card = directive_card(
+                       feature::document_links(text_of(*session), query, path_id))) {
+                    session->index_served = true;
+                    co_return std::move(*card);
+                }
+            }
             auto info = index_hover_card(*session, position);
             if(!info) {
                 co_return serde_raw{"null"};
@@ -395,27 +428,10 @@ Features::RawResult Features::hover(Ticket ticket,
         }
     }
 
-    // A directive's card names its target, which the worker knows only by
-    // identity: this side answers it, from the links. Off a directive line
-    // there is none to look for.
-    auto offset = session->positions().offset(position, PositionEncoding::UTF16);
-    bool on_directive = false;
-    if(offset) {
-        llvm::StringRef text = session->text();
-        on_directive =
-            Lexer(text.substr(logical_line_begin(text, *offset)), contexts.dialect(path_id))
-                .advance()
-                .is_directive_hash();
-    }
     if(on_directive) {
         auto links = co_await directive_links(ticket, token).or_fail();
-        if(auto* link = link_at(links, *offset)) {
-            auto hover = feature::directive_hover(session->text(),
-                                                  session->positions(),
-                                                  project.file_table,
-                                                  *link,
-                                                  markup);
-            co_return hover ? to_raw(*hover) : serde_raw{"null"};
+        if(auto card = directive_card(links)) {
+            co_return std::move(*card);
         }
     }
 

@@ -1,0 +1,15 @@
+[test.index.hover]
+markdown = '''
+**header** `own_header.h`
+
+`${WS}/own_header.h`
+'''
+range = '#include ⟦"own_header.h"⟧'
+
+[test.ast.hover]
+markdown = '''
+**header** `own_header.h`
+
+`${WS}/own_header.h`
+'''
+range = '#include ⟦"own_header.h"⟧'

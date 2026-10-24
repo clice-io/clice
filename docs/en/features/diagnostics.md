@@ -8,6 +8,7 @@
 - [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
 - [x] File URI conversion for cross-file diagnostics
 - [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
+- [x] In VS Code, Problems lists a file's diagnostics while a tab shows the file, even when another extension keeps the file open after its tab closes
 - [x] Every missing `#include` is reported, not just the first, and the code after it is still checked
 - [x] A compile command clang rejects before parsing (an unknown target) shows clang's reason at the top of the file
 - [ ] Show the full include chain for diagnostics originating in header files ([clangd#1392](https://github.com/clangd/clangd/issues/1392))

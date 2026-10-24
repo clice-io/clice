@@ -698,18 +698,12 @@ export class Serve extends Client {
         return this.ask(`document links of ${file}`, async (client) => {
             const reply = await client.documentLinks(uri);
             const context = this.context();
-            // The tooltip repeats the target as a raw path, which inspect
-            // lacks: it is checked here instead of rendered.
+            // Editors show a tooltip beside the hover card, which already
+            // names the target.
             for (const link of reply ?? []) {
-                if (link.target === undefined || link.tooltip === undefined) {
+                if (link.target === undefined || link.tooltip !== undefined) {
                     throw new Error(
-                        `a link at ${JSON.stringify(link.range)} lacks a target or tooltip`,
-                    );
-                }
-                const target = context.pathOfFile(uriToPath(link.target));
-                if (context.pathOfFile(link.tooltip) !== target) {
-                    throw new Error(
-                        `tooltip ${link.tooltip} is not the link target ${link.target}`,
+                        `a link at ${JSON.stringify(link.range)} lacks a target or has a tooltip`,
                     );
                 }
             }
