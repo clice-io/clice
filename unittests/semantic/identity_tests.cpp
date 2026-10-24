@@ -850,6 +850,60 @@ ID(TWO)
     ZEXPECT(entities.size() == 2U);
 }
 
+ZEST_CASE(RescannedMacroLocals) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+#define EVAL0(...) __VA_ARGS__
+#define EVAL1(...) EVAL0(EVAL0(__VA_ARGS__))
+#define EVAL2(...) EVAL1(EVAL1(__VA_ARGS__))
+#define EVAL3(...) EVAL2(EVAL2(__VA_ARGS__))
+#define EVAL4(...) EVAL3(EVAL3(__VA_ARGS__))
+#define EVAL5(...) EVAL4(EVAL4(__VA_ARGS__))
+#define EVAL(...) EVAL5(EVAL5(__VA_ARGS__))
+#define MAP_END(...)
+#define MAP_OUT
+#define MAP_GET_END2() 0, MAP_END
+#define MAP_GET_END1(...) MAP_GET_END2
+#define MAP_GET_END(...) MAP_GET_END1
+#define MAP_NEXT0(test, next, ...) next MAP_OUT
+#define MAP_NEXT1(test, next) MAP_NEXT0(test, next, 0)
+#define MAP_NEXT(test, next) MAP_NEXT1(MAP_GET_END test, next)
+#define MAP0(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP1)(f, peek, __VA_ARGS__)
+#define MAP1(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP0)(f, peek, __VA_ARGS__)
+#define MAP(f, ...) EVAL(MAP1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
+#define LOCAL(x) int x = 0;
+void §(f)f() {
+    MAP(LOCAL, §(first)a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, §(last)a23)
+}
+)cpp";
+
+    add_file("locals.h", header);
+    add_focus("a.cpp", R"cpp(
+#define PASTE(a, b) a##b
+int PASTE(x, y);
+#include "locals.h"
+)cpp");
+    ZASSERT(compile());
+
+    Tester other;
+    other.add_file("locals.h", header);
+    other.add_focus("b.cpp", R"cpp(
+#include "locals.h"
+)cpp");
+    ZASSERT(other.compile());
+
+    std::set<std::uint64_t> entities;
+    auto* body = llvm::cast<clang::FunctionDecl>(find_decl(*this, "locals.h", "f"))->getBody();
+    for(auto* statement: llvm::cast<clang::CompoundStmt>(body)->body()) {
+        for(auto* decl: llvm::cast<clang::DeclStmt>(statement)->decls()) {
+            entities.insert(unit->get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl)));
+        }
+    }
+    ZEXPECT(entities.size() == 24U);
+    ZEXPECT(entity_at(*this, "locals.h", "first") == entity_at(other, "locals.h", "first"));
+    ZEXPECT(entity_at(*this, "locals.h", "last") == entity_at(other, "locals.h", "last"));
+}
+
 ZEST_CASE(CpuSpecificVersions) {
     triple = "x86_64-unknown-linux-gnu";
     add_focus("main.cpp", R"cpp(

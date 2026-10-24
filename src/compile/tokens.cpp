@@ -268,10 +268,8 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
             index = end;
         }
     }
-    for(auto [written, index]: arguments.first) {
-        if(!arguments.picked.contains(written)) {
-            origins[index - origins_begin] = written;
-        }
+    for(auto [written, copy]: arguments) {
+        origins[copy.index - origins_begin] = written;
     }
 
     expansions.reserve(invocations.size());
@@ -321,7 +319,6 @@ void TokenMap::set_macro_origins(clang::FileID fid,
     // macro it was passed down. Unwrapping the first level here spares a
     // FileID lookup.
     auto start = SM.getComposedLoc(fid, 0);
-    auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
     auto first = expanded_tokens[begin].location();
     auto caller = SM.getTopMacroCallerLoc(
         entry.getSpellingLoc().getLocWithOffset(first.getRawEncoding() - start.getRawEncoding()));
@@ -339,19 +336,17 @@ void TokenMap::set_macro_origins(clang::FileID fid,
         if(written == spelled_tokens.size() || spelled_tokens[written].range.begin != offset) {
             continue;
         }
-        // One the macro expands more than once stands for itself only at the
-        // expansion getMacroArgExpandedLocation picks, so a single node owns
-        // it. The pick is per token: a nested macro rereading part of a
-        // `__VA_ARGS__` copy takes that part over. A pick the stream never
-        // sees, the copy a nested macro stringizes (`__STRING(expr)` in an
-        // older glibc's `assert`), leaves the token to its first copy
-        // (finish).
-        auto picked = SM.getMacroArgExpandedLocation(at);
-        if(start <= picked && picked <= limit) {
-            origins[index - origins_begin] = written;
-            arguments.picked.insert(written);
-        } else {
-            arguments.first.try_emplace(written, index);
+        // One the macro expands more than once stands for itself at a single
+        // copy, so a single node owns it: the copy in the macro FileID made
+        // last. That is the expansion getMacroArgExpandedLocation picks
+        // whenever that one reaches the stream, but asking it walks the
+        // spelling chain of every argument expansion in the file, quadratic
+        // under a macro that rescans its output pass after pass (an `EVAL`).
+        // The pick is per token: a nested macro rereading part of a
+        // `__VA_ARGS__` copy takes that part over.
+        auto [copy, inserted] = arguments.try_emplace(written, ArgumentCopy{fid, index});
+        if(!inserted && copy->second.file < fid) {
+            copy->second = {fid, index};
         }
     }
 }

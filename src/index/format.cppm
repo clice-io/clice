@@ -104,8 +104,10 @@ namespace clice::index {
 /// file versions by the ids of the database's version records, and their
 /// imports and failed lookups as Elias–Fano sets; v48: a preamble's TU index
 /// carries the search blob of its completable names, and neither an include
-/// guard nor a macro its own file undefines is completable.
-constexpr inline std::uint32_t index_format_version = 48;
+/// guard nor a macro its own file undefines is completable; v49: the entity
+/// of a declaration spelled through macros hashes each level of its macro
+/// history with its parent's.
+constexpr inline std::uint32_t index_format_version = 49;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
