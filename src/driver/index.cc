@@ -516,9 +516,10 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     driver::println("Global symbols: {}, file versions: {}",
                     project_index.symbol_count(),
                     project.file_table.versions.size());
-    driver::println("Search index: {} symbols in {} runs ({}), {} merged since the newest",
+    driver::println("Search index: {} symbols in {} run{} ({}), {} merged since the newest run",
                     project.index.search_index().size(),
                     project.index.search_index().run_count(),
+                    plural_s(project.index.search_index().run_count()),
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
