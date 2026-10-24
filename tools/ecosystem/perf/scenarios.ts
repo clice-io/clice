@@ -639,8 +639,8 @@ export class Perf {
         }
     }
 
-    /// Long editing of one file: `edits` edits, a completion at its end and
-    /// a hover every tenth, what the tree holds every fiftieth.
+    /// Long editing of one file: `edits` edits, a completion and a hover
+    /// every tenth, what the tree holds every fiftieth.
     async soak(file: FileArg, options: { edits?: number } = {}): Promise<void> {
         const opened = this.resolve(file);
         const edits = options.edits ?? 300;
@@ -654,8 +654,9 @@ export class Perf {
                 s.record("edit", diagnostics);
                 if (i % 10 === 0) {
                     const end = s.end(uri);
+                    const place = s.completionPlace(uri);
                     await s.measure("completion", () =>
-                        client.completionAt(uri, end.line, end.character),
+                        client.completionAt(uri, place.line, place.character),
                     );
                     await s.measure("hover", () =>
                         client.hoverAt(uri, Math.floor(end.line / 2), 4),
@@ -699,8 +700,9 @@ export class Perf {
                     }),
                 );
                 await pause(gap);
+                const place = s.completionPlace(uri);
                 await s.measure("completion", () =>
-                    client.completionAt(uri, end.line, end.character),
+                    client.completionAt(uri, place.line, place.character),
                 );
             }
             s.snapshot("end");
@@ -741,8 +743,9 @@ export class Perf {
                 const phase = indexing && nowMs() - s.started < cap ? "during" : "after";
                 const end = s.end(uri);
                 s.record(`${phase}_edit`, (await s.edit(uri)).diagnostics);
+                const place = s.completionPlace(uri);
                 await s.measure(`${phase}_completion`, () =>
-                    client.completionAt(uri, end.line + 1, 0),
+                    client.completionAt(uri, place.line, place.character),
                 );
                 await s.measure(`${phase}_hover`, () =>
                     client.hoverAt(uri, Math.floor(end.line / 2), 4),
@@ -826,8 +829,9 @@ export class Perf {
                 }
                 const end = s.end(uri);
                 const current = uri;
+                const place = s.completionPlace(uri);
                 await s.measure("completion", () =>
-                    client.completionAt(current, end.line, end.character),
+                    client.completionAt(current, place.line, place.character),
                 );
                 await s.measure("hover", () =>
                     client.hoverAt(current, Math.floor(end.line / 2), 4),

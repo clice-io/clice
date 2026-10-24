@@ -169,7 +169,8 @@ export class CliceClient {
     publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
-    progressEvents: { token: string; value: unknown }[] = [];
+    /// Every progress notification, with when it arrived (`performance.now()`).
+    progressEvents: { token: string; value: unknown; at: number }[] = [];
     /// Methods of server→client requests the client answered with null.
     serverRequests: string[] = [];
     initResult: proto.InitializeResult | null = null;
@@ -267,7 +268,11 @@ export class CliceClient {
             onNotification(handler: (method: string, params: unknown) => void): void;
         };
         raw.onUnhandledProgress((p) => {
-            this.progressEvents.push({ token: String(p.token), value: p.value });
+            this.progressEvents.push({
+                token: String(p.token),
+                value: p.value,
+                at: performance.now(),
+            });
             const kind = (p.value as { kind?: unknown }).kind;
             const arrived = (waiter: { token: string; kind: string }): boolean =>
                 waiter.token === String(p.token) && waiter.kind === kind;

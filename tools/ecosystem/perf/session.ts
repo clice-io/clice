@@ -43,8 +43,9 @@ const QUIET_MS = 15_000;
 /// before the client acknowledged its token (a project of a few files).
 const ANNOUNCE_BOUND = 300_000;
 
+/// The client's clock, which stamps the progress it receives.
 export function nowMs(): number {
-    return Number(process.hrtime.bigint()) / 1e6;
+    return performance.now();
 }
 
 /// A request bounded like a compile: the client never settles the requests
@@ -224,6 +225,13 @@ export class Session {
         return this.ends.get(uri) ?? { line: 0, character: 0 };
     }
 
+    /// Where a completion after the edits asks: the start of the file's
+    /// last line, at file scope, every global name a candidate. The end is
+    /// inside the comment an edit writes, where nothing completes.
+    completionPlace(uri: string): proto.Position {
+        return { line: this.end(uri).line, character: 0 };
+    }
+
     /// Appends a line at the end of the file: every edit invalidates the
     /// opened file but not its preamble, the interactive path. Sent as a
     /// ranged insertion like a real editor, followed by the semantic tokens
@@ -307,7 +315,7 @@ export class Session {
                 }
                 const value = event.value as { kind?: string; message?: string };
                 announced = true;
-                changed = nowMs();
+                changed = event.at;
                 active = value.kind !== "end";
                 if (value.kind === "end") {
                     ended = changed;
