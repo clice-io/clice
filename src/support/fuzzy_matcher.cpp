@@ -87,6 +87,33 @@ void sort_unique(llvm::SmallVectorImpl<NameToken>& tokens) {
     tokens.erase(ranges::unique(tokens).begin(), tokens.end());
 }
 
+/// A set of a name's distinct letters, each by its rank among them; a
+/// name holds at most max_name of them.
+struct Letters {
+    std::array<std::uint64_t, 2> masks{};
+
+    void add(std::uint32_t rank) {
+        masks[rank / 64] |= std::uint64_t(1) << (rank % 64);
+    }
+
+    Letters& operator|=(const Letters& other) {
+        masks[0] |= other.masks[0];
+        masks[1] |= other.masks[1];
+        return *this;
+    }
+
+    /// Visit the ranks in ascending order.
+    void for_each(llvm::function_ref<void(std::uint32_t)> visit) const {
+        for(std::uint32_t half = 0; half < masks.size(); half += 1) {
+            for(auto bits = masks[half]; bits != 0; bits &= bits - 1) {
+                visit(half * 64 + std::countr_zero(bits));
+            }
+        }
+    }
+};
+
+static_assert(max_name <= 128, "a name's letters fit Letters");
+
 /// The lowercase letters of a pattern in order, separators dropped —
 /// the sequence a query's tokens are formed from.
 llvm::SmallVector<char, 32> pattern_letters(llvm::StringRef pattern) {
@@ -392,6 +419,26 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     segment(name, roles);
     bool has_lower = has_lowercase_letter(name);
 
+    std::array<std::uint64_t, 4> present{};
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        if(roles[i] != CharRole::Separator) {
+            auto byte = static_cast<unsigned char>(lower(name[i]));
+            present[byte / 64] |= std::uint64_t(1) << (byte % 64);
+        }
+    }
+    llvm::SmallVector<char, 64> alphabet;
+    std::array<std::uint8_t, 256> ranks{};
+    for(std::uint32_t quarter = 0; quarter < present.size(); quarter += 1) {
+        for(auto bits = present[quarter]; bits != 0; bits &= bits - 1) {
+            auto byte = quarter * 64 + std::countr_zero(bits);
+            ranks[byte] = static_cast<std::uint8_t>(alphabet.size());
+            alphabet.push_back(static_cast<char>(byte));
+        }
+    }
+    auto rank = [&](std::size_t i) -> std::uint32_t {
+        return ranks[static_cast<unsigned char>(lower(name[i]))];
+    };
+
     // The positions a match may jump to from anywhere before them.
     llvm::SmallVector<std::uint32_t, 32> anchors;
     for(std::size_t i = 0; i < name.size(); i += 1) {
@@ -401,41 +448,69 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     }
     // Where the matcher may go from position `i`: on to the next
     // character of the same word, or to any later anchor.
-    auto successors = [&](std::size_t i) {
-        llvm::SmallVector<std::uint32_t, 16> next;
-        if(i + 1 < name.size() && roles[i + 1] == CharRole::Tail) {
-            next.push_back(static_cast<std::uint32_t>(i + 1));
+    auto for_each_successor = [&](std::size_t i, auto visit) {
+        bool tail = i + 1 < name.size() && roles[i + 1] == CharRole::Tail;
+        if(tail) {
+            visit(i + 1);
         }
-        auto later = ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
-        for(auto it = later; it != anchors.end(); it += 1) {
-            if(next.empty() || next.front() != *it) {
-                next.push_back(*it);
+        for(auto it = ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
+            it != anchors.end();
+            it += 1) {
+            if(!tail || *it != i + 1) {
+                visit(*it);
             }
         }
-        return next;
     };
+
+    // The letters of the anchors past each position, and of every
+    // successor: a trigram's third letter is a successor of a successor of
+    // its first, so the third letters behind the same first two are
+    // gathered as one set rather than enumerated path by path.
+    llvm::SmallVector<Letters, 64> later(name.size());
+    Letters past;
+    auto anchor = anchors.rbegin();
+    for(auto i = name.size(); i > 0; i -= 1) {
+        later[i - 1] = past;
+        if(anchor != anchors.rend() && *anchor == i - 1) {
+            past.add(rank(i - 1));
+            anchor += 1;
+        }
+    }
+    llvm::SmallVector<Letters, 256> thirds(alphabet.size() * alphabet.size());
 
     std::size_t heads_seen = 0;
     for(std::size_t i = 0; i < name.size(); i += 1) {
         if(roles[i] == CharRole::Separator) {
             continue;
         }
-        auto first = successors(i);
         bool short_head = roles[i] == CharRole::Head && heads_seen < 2;
         if(short_head) {
             heads_seen += 1;
             out.push_back(unigram(lower(name[i])));
         }
-        for(auto j: first) {
+        auto* after = &thirds[rank(i) * alphabet.size()];
+        for_each_successor(i, [&](std::size_t j) {
             if(short_head) {
                 out.push_back(bigram(lower(name[i]), lower(name[j])));
             }
-            for(auto k: successors(j)) {
-                out.push_back(trigram(lower(name[i]), lower(name[j]), lower(name[k])));
+            auto& ends = after[rank(j)];
+            ends |= later[j];
+            if(j + 1 < name.size() && roles[j + 1] == CharRole::Tail) {
+                ends.add(rank(j + 1));
             }
-        }
+        });
     }
     sort_unique(out);
+
+    // Ranks ascend with the bytes and a trigram packs them big-endian, so
+    // the trigrams come out sorted, after every shorter token.
+    for(std::size_t a = 0; a < alphabet.size(); a += 1) {
+        for(std::size_t b = 0; b < alphabet.size(); b += 1) {
+            thirds[a * alphabet.size() + b].for_each([&](std::uint32_t c) {
+                out.push_back(trigram(alphabet[a], alphabet[b], alphabet[c]));
+            });
+        }
+    }
 }
 
 void query_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<NameToken>& out) {

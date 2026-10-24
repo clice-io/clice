@@ -117,26 +117,3 @@ tests/document_links/module_declarations/01_module_imports
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## Presentation
-
-Hovering a link shows the absolute path of its target.
-
-<!-- BEGIN GENERATED ITEMS: document_links/presentation -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Resolved-path tooltips**
-
-Every link carries its target's absolute path as the hover tooltip
-
-Editors show the tooltip next to the follow-link hint, for example
-`/usr/include/c++/14/vector (ctrl + click)`.
-
-```case
-tests/document_links/presentation/01_tooltips
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->

@@ -592,4 +592,34 @@ suite("clice E2E", function () {
             fs.rmSync(root, { recursive: true, force: true });
         }
     });
+
+    test("a closed tab leaves no problems", async function () {
+        this.timeout(90 * 1000);
+        if (path.basename(workspaceFolder().uri.fsPath) !== "hello_world") {
+            this.skip();
+        }
+
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-problems-"));
+        const uri = vscode.Uri.file(path.join(root, "broken.cpp"));
+        fs.writeFileSync(uri.fsPath, "int value = missing;\n");
+        const problems = () => vscode.languages.getDiagnostics(uri).length;
+        const listed = (ready: () => boolean, what: string) =>
+            until([vscode.languages.onDidChangeDiagnostics], ready, what);
+        try {
+            // Opened through the API, as GitHub Pull Requests has every file
+            // opened: VS Code keeps such a document open for a while after
+            // its tab closes.
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(document, { preview: false });
+            await listed(() => problems() > 0, "problems of the open tab");
+            await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+            assert.ok(!document.isClosed, "the document outlives its tab");
+            await listed(() => problems() === 0, "problems gone with the tab");
+            await vscode.window.showTextDocument(document, { preview: false });
+            await listed(() => problems() > 0, "problems back with the tab");
+        } finally {
+            await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
 });

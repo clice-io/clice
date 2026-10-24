@@ -126,7 +126,7 @@ ZEST_CASE(InvalidateKeepsResult) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
     stack.ast.compiles.entries[pid].current = true;
 
     stack.ast.invalidate(pid);
@@ -143,7 +143,7 @@ ZEST_CASE(DropErasesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
 
     stack.ast.drop(pid);
 
@@ -181,6 +181,7 @@ ZEST_CASE(SwitchIdentityResets) {
     auto& entry = stack.ast.compiles.entries[pid];
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
+    compiled->base_pch_key = "base";
     compiled->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
     entry.latest = std::move(compiled);
     entry.deps.emplace();
@@ -199,6 +200,7 @@ ZEST_CASE(SwitchIdentityResets) {
     ZASSERT(!stack.ast.compiles.entries[pid].deps.has_value());
     auto after = stack.ast.compiles.latest(pid);
     ZASSERT(!after->pch_key.has_value());
+    ZASSERT(!after->base_pch_key.has_value());
     ZASSERT(after->output);
 }
 
@@ -922,7 +924,7 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     auto pid = session->path_id;
     // No preamble directives: a current request would take the pch_key
     // reset branch; an invalidated continuation must not touch it.
-    stack.ast.compiles.set_pch_key(pid, "key");
+    stack.ast.compiles.set_pch_keys(pid, "key", std::nullopt);
 
     auto gen = session->generation;
     auto epoch = stack.ast.compiles.epoch(pid);

@@ -116,26 +116,3 @@ tests/document_links/module_declarations/01_module_imports
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## 呈现
-
-将鼠标悬停在链接上时，会显示目标文件的绝对路径。
-
-<!-- BEGIN GENERATED ITEMS: document_links/presentation -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**解析后路径的工具提示**
-
-每个链接都以目标文件的绝对路径作为悬停时的工具提示
-
-编辑器会在链接跳转提示旁显示工具提示，例如
-`/usr/include/c++/14/vector (ctrl + click)`。
-
-```case
-tests/document_links/presentation/01_tooltips
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->

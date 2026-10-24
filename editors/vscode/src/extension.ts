@@ -21,6 +21,7 @@ import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerCounterparts } from "./feature/counterparts";
 import { registerInactiveRegions } from "./feature/inactive";
+import { registerProblems } from "./feature/problems";
 import { registerRefactorCommands } from "./feature/refactor";
 
 let client: ClientHandle | undefined;
@@ -316,16 +317,18 @@ export async function activate(context: ExtensionContext) {
     const traceChannel = window.createOutputChannel("clice (LSP trace)");
     context.subscriptions.push(channel, traceChannel);
 
+    const documentSelector = [
+        { scheme: "file", language: "cpp" },
+        { scheme: "file", language: "c" },
+        { scheme: "file", language: "cuda-cpp" },
+    ];
     const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [
-            { scheme: "file", language: "cpp" },
-            { scheme: "file", language: "c" },
-            { scheme: "file", language: "cuda-cpp" },
-        ],
+        documentSelector,
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
+            handleDiagnostics: registerProblems(() => client, documentSelector, context),
             provideDocumentSemanticTokens: inactive.full,
             provideDocumentSemanticTokensEdits: inactive.edits,
             // Space triggers exist only for the module names after `import `

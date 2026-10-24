@@ -26,7 +26,7 @@ using Root = codec::blob::view_t<SearchIndexBlob>;
 
 void append_postings(std::vector<std::uint8_t>& arena,
                      std::vector<std::uint32_t>& ends,
-                     const Bitmap& entries,
+                     const auto& entries,
                      std::uint32_t count) {
     auto list = write_postings(entries, count);
     arena.insert(arena.end(), list.begin(), list.end());
@@ -279,21 +279,40 @@ std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
         return entry_of(lhs).hash < entry_of(rhs).hash;
     });
 
-    llvm::DenseMap<NameToken, Bitmap> postings;
+    // Every (token, id) pair, token-major, ordered by token with each
+    // token's ids left ascending as they arrive: an LSD radix sort over the
+    // token's three bytes, every pass stable.
+    std::vector<std::uint64_t> pairs;
     llvm::SmallVector<NameToken, 64> tokens;
     for(std::uint32_t id = 0; id < count; id += 1) {
         name_tokens(entry_of(id).name, tokens);
         for(auto token: tokens) {
-            postings[token].add(id);
+            pairs.push_back(std::uint64_t(token) << 32 | id);
         }
     }
-    blob.token_keys.reserve(postings.size());
-    for(auto token: views::transform(postings, [](auto& entry) -> auto& { return entry.first; })) {
-        blob.token_keys.push_back(token);
+    std::vector<std::uint64_t> sorted(pairs.size());
+    for(unsigned shift = 32; shift < 56; shift += 8) {
+        std::array<std::size_t, 257> starts{};
+        for(auto pair: pairs) {
+            starts[(pair >> shift & 0xff) + 1] += 1;
+        }
+        std::partial_sum(starts.begin(), starts.end(), starts.begin());
+        for(auto pair: pairs) {
+            auto& next = starts[pair >> shift & 0xff];
+            sorted[next] = pair;
+            next += 1;
+        }
+        std::swap(pairs, sorted);
     }
-    ranges::sort(blob.token_keys);
-    for(auto token: blob.token_keys) {
-        append_postings(blob.token_postings, blob.token_ends, postings.find(token)->second, count);
+    std::vector<std::uint32_t> ids;
+    for(std::size_t at = 0; at < pairs.size();) {
+        auto token = static_cast<NameToken>(pairs[at] >> 32);
+        ids.clear();
+        for(; at < pairs.size() && pairs[at] >> 32 == token; at += 1) {
+            ids.push_back(static_cast<std::uint32_t>(pairs[at]));
+        }
+        blob.token_keys.push_back(token);
+        append_postings(blob.token_postings, blob.token_ends, ids, count);
     }
 
     llvm::DenseMap<std::uint32_t, Bitmap> children;

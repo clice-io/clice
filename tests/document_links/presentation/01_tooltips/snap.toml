@@ -1,7 +1,0 @@
-[test."main.cpp"]
-document_links = [
-    { at = '#include ⟦"header_a.h"⟧', target = "header_a.h" },
-]
-
-[test.tooltips]
-value = ["${WS}/header_a.h"]

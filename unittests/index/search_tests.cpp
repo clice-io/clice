@@ -51,6 +51,8 @@ struct CountingSessions : index::LiveSources {
     std::shared_ptr<index::TUIndex> preamble_index(Fid) const override {
         return nullptr;
     }
+
+    void for_each_pch_index(Fid, llvm::function_ref<void(const index::TUIndex&)>) const override {}
 };
 
 ZEST_SUITE(IndexSearch, IndexQueryTester) {

@@ -271,21 +271,21 @@ Completables
     for(auto& hit: ranked.hits) {
         seen.insert(hit.symbol.hash);
     }
-    if(auto preamble = index.preamble_index(file)) {
-        auto found = preamble->names().search(query, limit, index.project().workspace);
+    index.for_each_pch_index(file, [&](const TUIndex& pch) {
+        auto found = pch.names().search(query, limit, index.project().workspace);
         for(auto& hit: found.hits) {
             if(!seen.insert(hit.hash).second) {
                 continue;
             }
-            if(auto identity = preamble->find_symbol(hit.hash)) {
+            if(auto identity = pch.find_symbol(hit.hash)) {
                 ranked.hits.push_back({.rank = hit.rank,
                                        .symbol = SymbolInfo::from(hit.hash, *identity),
                                        .anchor = {}});
             }
         }
         ranked.exhausted = ranked.exhausted && found.exhausted;
-        ranges::sort(ranked.hits, ranked_before);
-    }
+    });
+    ranges::sort(ranked.hits, ranked_before);
 
     Completables result{.exhausted = ranked.exhausted};
     for(auto& hit: ranked.hits) {
