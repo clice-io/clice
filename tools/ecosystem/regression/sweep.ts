@@ -316,9 +316,9 @@ export interface SweepFailure {
 
 export interface SweepRun {
     files: string[];
-    /// The files asked of the server only, each with the first error inspect
-    /// compiled it with.
-    serverOnly: { file: string; why: string }[];
+    /// The files asked of the server only, each with why: the first error
+    /// inspect compiled it with (`compiled`), or what inspect cannot answer.
+    serverOnly: { file: string; why: string; compiled: boolean }[];
     requests: number;
     inspectSeconds: number;
     serverSeconds: number;
@@ -378,13 +378,17 @@ async function sweepFile(
     const inspected = (async () => {
         const answers = new Map<string, Answer>();
         if (importsModule(file, text)) {
-            return { answers, errors: ["imports a module"] };
+            return { answers, errors: ["imports a module"], compiled: false };
         }
         if (options.headers.has(file)) {
-            return { answers, errors: ["a header, which the server compiles in a unit"] };
+            return {
+                answers,
+                errors: ["a header, which the server compiles in a unit"],
+                compiled: false,
+            };
         }
         if (compared.length === 0) {
-            return { answers, errors: [] };
+            return { answers, errors: [], compiled: false };
         }
         const started = Date.now();
         // Inspect asks a request at every place of its client in one run, a
@@ -432,7 +436,7 @@ async function sweepFile(
             }
             run.inspectSeconds += (Date.now() - started) / 1000;
         }
-        return { answers, errors };
+        return { answers, errors, compiled: true };
     })();
     // The file opens as in an editor, its first compile done before the
     // requests.
@@ -471,7 +475,10 @@ async function sweepFile(
         run.serverSeconds += (Date.now() - started) / 1000;
         return answers;
     })();
-    const [{ answers: fromInspect, errors }, fromServer] = await Promise.all([inspected, served]);
+    const [{ answers: fromInspect, errors, compiled }, fromServer] = await Promise.all([
+        inspected,
+        served,
+    ]);
     if (inspectFailed !== undefined) {
         fail("inspect", opened, inspectFailed);
     }
@@ -485,7 +492,7 @@ async function sweepFile(
     }
     const [why] = errors;
     if (why !== undefined) {
-        run.serverOnly.push({ file, why });
+        run.serverOnly.push({ file, why, compiled });
     }
     // A project's clang-tidy configuration may raise its findings to errors;
     // only the compile's own are the compiler's to judge.

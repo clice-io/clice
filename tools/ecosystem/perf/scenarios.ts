@@ -128,12 +128,14 @@ export class Perf {
         if (this.only !== undefined && !this.only.has(scenario)) {
             return;
         }
-        if (Date.now() > this.context.deadline) {
-            this.unrun.push(`${scenario} ${options.file ?? label}`);
-            return;
-        }
         for (let run = 1; run <= (options.runs ?? 1); run += 1) {
             for (const server of options.servers ?? this.servers()) {
+                if (Date.now() > this.context.deadline) {
+                    this.unrun.push(
+                        `${scenario} ${options.file ?? label}, ${server} run ${String(run)}`,
+                    );
+                    continue;
+                }
                 const result: RunResult = {
                     server,
                     ...(options.variant === undefined ? {} : { variant: options.variant }),
@@ -802,7 +804,11 @@ export class Perf {
             const times: Record<string, number[]> = { open: [], edit: [] };
             let turn = 0;
             let nextSnapshot = 0;
-            while (nowMs() - s.started < minutes * 60_000) {
+            const until = Math.min(
+                s.started + minutes * 60_000,
+                nowMs() + this.context.deadline - Date.now(),
+            );
+            while (nowMs() < until) {
                 const file = files[turn % files.length] ?? "";
                 turn += 1;
                 let uri = open.get(file);

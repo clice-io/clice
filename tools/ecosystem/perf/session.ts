@@ -210,11 +210,13 @@ export class Session {
         const lines = text.split("\n");
         this.versions.set(uri, 0);
         this.ends.set(uri, { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 });
-        const diagnostics = bounded(client.armDiagnostics(uri), `diagnostics of ${file}`).then(
-            () => nowMs() - opened,
-        );
-        await bounded(client.semanticTokensFull(uri), `semantic tokens of ${file}`);
-        return { uri, ms: await diagnostics };
+        const [ms] = await Promise.all([
+            bounded(client.armDiagnostics(uri), `diagnostics of ${file}`).then(
+                () => nowMs() - opened,
+            ),
+            bounded(client.semanticTokensFull(uri), `semantic tokens of ${file}`),
+        ]);
+        return { uri, ms };
     }
 
     /// Where an edit at the end of the file goes.
@@ -417,21 +419,26 @@ export class Session {
 /// behind a wrapper this process may not signal (sudo's memory scope) runs
 /// as this process's user itself.
 function killHard(client: CliceClient): void {
-    client.child.kill("SIGKILL");
     const { pid } = client.child;
-    if (process.platform !== "linux" || pid === undefined) {
-        return;
-    }
-    try {
-        const children = fs.readFileSync(
-            `/proc/${String(pid)}/task/${String(pid)}/children`,
-            "utf8",
-        );
-        for (const child of children.trim().split(/\s+/).filter(Boolean)) {
-            process.kill(Number(child), "SIGKILL");
+    let children: string[] = [];
+    if (process.platform === "linux" && pid !== undefined) {
+        try {
+            children = fs
+                .readFileSync(`/proc/${String(pid)}/task/${String(pid)}/children`, "utf8")
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean);
+        } catch {
+            // Gone already.
         }
-    } catch {
-        // Gone already.
+    }
+    client.child.kill("SIGKILL");
+    for (const child of children) {
+        try {
+            process.kill(Number(child), "SIGKILL");
+        } catch {
+            // Gone with its wrapper.
+        }
     }
 }
 
@@ -449,10 +456,14 @@ async function shutdown(client: CliceClient, server: ServerName): Promise<void> 
         client.disposed = true;
         // Hang detection: a server still running a minute after `exit` is
         // killed.
-        setTimeout(() => {
+        const hardKill = setTimeout(() => {
             killHard(client);
-        }, 60_000).unref();
-        await client.exited;
+        }, 60_000);
+        try {
+            await client.exited;
+        } finally {
+            clearTimeout(hardKill);
+        }
     }
     const { exitCode, signalCode } = client.child;
     if (exitCode !== 0) {

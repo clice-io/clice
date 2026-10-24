@@ -383,6 +383,31 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
             })),
         context,
     );
+    // A source inspect compiles with errors that the server opens clean is
+    // inspect's failure when the compiler compiles it too; one the compiler
+    // cannot check (the modules a header imports) stays the server's alone.
+    const opened = new Set(run.serverErrors.map(({ file }) => file));
+    const inspectOnly = run.serverOnly.filter(
+        ({ file, compiled }) => compiled && !opened.has(file) && !judged.has(file),
+    );
+    const checked = await confirm(
+        context.entries,
+        inspectOnly.map(({ file, why }) => ({ unit: path.join(checkout, file), file, why })),
+        context.env,
+    );
+    for (const { unit, file, why, outcome, output } of checked) {
+        if (outcome === "rejected") {
+            results.compilerRejects.push({ unit, output });
+        } else if (outcome === "accepted") {
+            results.failures.push({
+                kind: "inspect",
+                file,
+                request: "errors",
+                detail: `clice inspect compiles it with errors, the server and the compiler without:\n${why}`,
+                repro: `cd ${quote([checkout])} && ${quote([options.clice, "inspect", "folding-range", unit])}`,
+            });
+        }
+    }
 }
 
 export async function runRegression(options: RegressionOptions): Promise<Results> {
