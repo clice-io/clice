@@ -251,6 +251,13 @@ std::shared_ptr<TUIndex> IndexQuery::preamble_index(Fid file) const {
     return live ? live->preamble_index(file) : nullptr;
 }
 
+void IndexQuery::for_each_pch_index(Fid file,
+                                    llvm::function_ref<bool(const TUIndex&)> visit) const {
+    if(live) {
+        live->for_each_pch_index(file, visit);
+    }
+}
+
 bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                          SymbolHash hash,
                                          RelationKind kind,

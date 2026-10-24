@@ -170,4 +170,23 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_index(Fid file) cons
     return state;
 }
 
+void ServerLiveSources::for_each_pch_index(
+    Fid file,
+    llvm::function_ref<bool(const index::TUIndex&)> visit) const {
+    if(auto state = preamble_index(file); state && !visit(*state)) {
+        return;
+    }
+    auto compiled = compiles.latest(file);
+    if(!compiled || !compiled->pch_key) {
+        return;
+    }
+    auto it = project.pch_cache.find(*compiled->pch_key);
+    if(it == project.pch_cache.end() || it->second.base.empty()) {
+        return;
+    }
+    if(auto state = pch.preamble_state(std::string(it->second.base))) {
+        visit(*state);
+    }
+}
+
 }  // namespace clice
