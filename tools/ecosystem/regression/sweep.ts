@@ -404,9 +404,15 @@ async function sweepFile(
         const started = Date.now();
         // Inspect asks a request at every place of its client in one run, a
         // compile per place for completion and signature help: each gets a
-        // client of its own places only.
+        // client of its own places only. Its errors are the compile's own:
+        // a project's clang-tidy configuration may raise findings and
+        // warnings to errors.
         const inspect = (marks: MarkerAnchor[]) =>
-            new Inspect(options.root, marks, { sources: [file], timeout: REQUEST_MS });
+            new Inspect(options.root, marks, {
+                sources: [file],
+                timeout: REQUEST_MS,
+                config: { diagnostics: { clang_tidy: false } },
+            });
         const atPoints = inspect(places.points);
         const atMembers = inspect(places.members);
         const atCalls = inspect(places.calls);
