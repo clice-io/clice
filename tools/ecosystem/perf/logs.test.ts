@@ -1,8 +1,8 @@
-/// Tests for the perf-line parser (tools/bench/perf.ts) that turns
+/// Tests for the perf-line parser (tools/ecosystem/perf/logs.ts) that turns
 /// `[perf:<topic>] key=value` log lines into series and Chrome traces.
 
 import { expect, test } from "vitest";
-import { computeStats, parsePerfLines, summarize, toChromeTrace } from "./perf.ts";
+import { computeStats, parsePerfLines, summarize, toChromeTrace } from "./logs.ts";
 
 const LINE =
     "[2026-08-14 10:00:01.500] [info] [thread 7] [indexer.cpp:793] " +

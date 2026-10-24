@@ -1,0 +1,142 @@
+/// One perf job: prepare the configuration, then run the project's script
+/// over clice, clangd and a baseline clice when one is given. A clice run
+/// that fails (a crash, a hang, an error answer, an unclean exit) fails the
+/// job unless the project knows it; a clangd run that fails is listed;
+/// numbers never fail.
+
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { REPO_ROOT } from "../../repo.ts";
+import { jobDatabase } from "../database.ts";
+import { prepare } from "../prepare.ts";
+import type { Platform } from "../project.ts";
+import { sortKnown, type Failure, type PerfJob } from "../script.ts";
+import type { PerfResults, RunResult, ServerName } from "./results.ts";
+import { Perf } from "./scenarios.ts";
+import { pinnedClangd } from "./servers.ts";
+
+export interface PerfOptions {
+    job: PerfJob;
+    platform: Platform;
+    /// Where projects are checked out, and clangd downloaded.
+    dir: string;
+    /// The clice under test, a clangd other than the pinned one, a second
+    /// clice to compare with.
+    clice: string;
+    clangd?: string;
+    baseline?: string;
+    /// Only these scenarios of the script.
+    only?: ReadonlySet<string>;
+    dropCaches: boolean;
+    /// Where the results go as they come: a job cut short keeps its runs.
+    out?: string;
+}
+
+function rerun(options: PerfOptions, extra: string): string {
+    return `CLICE_EXECUTABLE=${options.clice} pixi run node tools/ecosystem/run.ts perf ${options.job.name} --dir ${options.dir} ${extra}`.trimEnd();
+}
+
+function cliceCommit(): string {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+}
+
+/// What a clice run's error says went wrong.
+function failureOf(run: RunResult, options: PerfOptions): Failure {
+    const error = run.error ?? "";
+    const kind = /timed out after|not idle after|announced no/.test(error)
+        ? "hang"
+        : /exited (with|while)/.test(error)
+          ? "crash"
+          : "server";
+    return {
+        kind,
+        file: run.file ?? run.label,
+        request: run.scenario,
+        detail: `${run.server}${run.variant === undefined ? "" : ` (${run.variant})`}, run ${String(run.run)}: ${error}`,
+        repro: rerun(options, `--scenario ${run.scenario}`),
+    };
+}
+
+export async function runPerf(options: PerfOptions): Promise<PerfResults> {
+    const { job } = options;
+    const cpus = os.cpus();
+    const results: PerfResults = {
+        job: job.name,
+        platform: options.platform,
+        about: `${job.project.about}; ${job.config.about}`,
+        commit: job.project.commit ?? job.project.archive?.url ?? cliceCommit(),
+        clice: cliceCommit(),
+        env: {
+            platform: process.platform,
+            release: os.release(),
+            arch: process.arch,
+            cpus: cpus.length,
+            cpuModel: cpus[0]?.model ?? "unknown",
+            memoryMB: Math.round(os.totalmem() / 1024 / 1024),
+            node: process.version,
+            date: new Date().toISOString(),
+        },
+        binaries: {},
+        clangdArgs: [...job.clangdArgs],
+        runs: [],
+        failures: [],
+        known: [],
+        unseen: [],
+    };
+    const save = () => {
+        if (options.out !== undefined) {
+            fs.mkdirSync(options.out, { recursive: true });
+            fs.writeFileSync(
+                path.join(options.out, "results.json"),
+                `${JSON.stringify(results, null, 1)}\n`,
+            );
+        }
+    };
+    let perf: Perf;
+    try {
+        const checkout = await prepare(job.project, job.configuration, options.dir);
+        const { entries, directory } = jobDatabase(job.config, undefined, checkout);
+        const binaries: Partial<Record<ServerName, string>> = {
+            clice: options.clice,
+            clangd: options.clangd ?? (await pinnedClangd(options.dir)),
+            ...(options.baseline === undefined ? {} : { baseline: options.baseline }),
+        };
+        results.binaries = binaries;
+        perf = new Perf(
+            {
+                workspace: checkout,
+                database: directory,
+                binaries,
+                clangdArgs: job.clangdArgs,
+                dropCaches: options.dropCaches,
+            },
+            entries,
+            results.runs,
+            { ...(options.only === undefined ? {} : { only: options.only }), save },
+        );
+    } catch (error) {
+        results.failures.push({ kind: "setup", detail: String(error), repro: rerun(options, "") });
+        sortKnown(options.job, options.platform, results);
+        save();
+        return results;
+    }
+    try {
+        await job.script(perf);
+    } catch (error) {
+        results.failures.push({
+            kind: "runner",
+            detail: error instanceof Error ? (error.stack ?? error.message) : String(error),
+            repro: rerun(options, ""),
+        });
+    }
+    results.failures.push(
+        ...results.runs
+            .filter((run) => run.error !== undefined && run.server === "clice")
+            .map((run) => failureOf(run, options)),
+    );
+    sortKnown(options.job, options.platform, results);
+    save();
+    return results;
+}

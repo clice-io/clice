@@ -1,0 +1,17 @@
+{
+  "about": "v3.15.0",
+  "repository": "https://github.com/python/cpython",
+  "commit": "d220409a13b77de7a6c30abe16ea90db01528edc",
+  "configurations": {
+    "make": {
+      "about": "built by its Makefile without the host's optional libraries, which the compiler's sysroot does not hold: the database comes from bear watching the build",
+      "platforms": ["linux"],
+      "packages": ["bear"],
+      "prepare": [
+        ["./configure", "CC=clang", "PKG_CONFIG_LIBDIR=/nonexistent"],
+        ["bear", "--", "make", "-j${JOBS}"]
+      ],
+      "database": "compile_commands.json"
+    }
+  }
+}

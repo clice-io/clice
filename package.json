@@ -4,6 +4,7 @@
   "workspaces": [
     "tools",
     "tests",
+    "ecosystem",
     "editors/vscode"
   ],
   "scripts": {

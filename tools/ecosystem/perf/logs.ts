@@ -1,7 +1,18 @@
 /// Parser and aggregator for clice's `[perf:<topic>] key=value` log lines
-/// (see src/support/logging.cppm). Consumed by bench.ts for the server-side
-/// breakdown of a benchmark run and by perf_report.ts for offline log
-/// analysis.
+/// (see src/support/logging.cppm): the server-side breakdown of a perf run,
+/// and, run as a command, a report over any session's logs (a user's
+/// included) with an optional Chrome trace for Perfetto.
+///
+/// Usage:
+///   node tools/ecosystem/perf/logs.ts <logfile>... [--trace out.json]
+///
+/// Log files live under the server's logging dir (master.log and the
+/// per-worker logs); any text with perf lines works, including captured
+/// stderr.
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
 
 /// One `[perf:topic]` line: string keys kept verbatim, numeric values
 /// parsed. `ts` is the log line's timestamp in epoch milliseconds when the
@@ -25,7 +36,7 @@ const THREAD_PATTERN = /\[thread (\d+)\]/;
 
 export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
     const events: PerfEvent[] = [];
-    for (const line of text.split("\n")) {
+    for (const line of text.split(/\r?\n/)) {
         const match = LINE_PATTERN.exec(line);
         if (match === null) {
             continue;
@@ -202,4 +213,61 @@ export function toChromeTrace(
         });
     }
     return JSON.stringify({ traceEvents, displayTimeUnit: "ms" });
+}
+
+function main(): void {
+    const { values, positionals } = parseArgs({
+        options: {
+            trace: { type: "string" },
+            help: { type: "boolean", default: false },
+        },
+        allowPositionals: true,
+    });
+
+    if (values.help || positionals.length === 0) {
+        console.log("Usage: node tools/ecosystem/perf/logs.ts <logfile>... [--trace out.json]");
+        process.exit(values.help ? 0 : 1);
+    }
+
+    // One trace pid per input log: master and workers are separate processes,
+    // and their concurrent activity must land on separate lanes.
+    const events: PerfEvent[] = [];
+    const processNames: Record<number, string> = {};
+    positionals.forEach((file, index) => {
+        const pid = index + 1;
+        processNames[pid] = path.basename(file);
+        // No spread into push: a long session yields enough events to blow
+        // the engine's argument-count limit.
+        for (const event of parsePerfLines(fs.readFileSync(file, "utf8"), pid)) {
+            events.push(event);
+        }
+    });
+
+    if (events.length === 0) {
+        console.log("no [perf:*] lines found");
+        return;
+    }
+
+    console.log(`${events.length} perf events`);
+    console.log(
+        `${"series".padEnd(44)} ${"count".padStart(6)} ${"p50".padStart(9)} ` +
+            `${"p90".padStart(9)} ${"max".padStart(9)} ${"sum".padStart(10)}`,
+    );
+    const summary = Object.entries(summarize(events)).sort((a, b) => b[1].sum - a[1].sum);
+    for (const [series, stats] of summary) {
+        console.log(
+            `${series.padEnd(44)} ${String(stats.count).padStart(6)} ` +
+                `${stats.p50.toFixed(2).padStart(9)} ${stats.p90.toFixed(2).padStart(9)} ` +
+                `${stats.max.toFixed(2).padStart(9)} ${stats.sum.toFixed(0).padStart(10)}`,
+        );
+    }
+
+    if (values.trace !== undefined) {
+        fs.writeFileSync(values.trace, toChromeTrace(events, processNames));
+        console.log(`\nChrome trace written to ${values.trace} (open in Perfetto)`);
+    }
+}
+
+if (import.meta.main) {
+    main();
 }

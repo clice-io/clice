@@ -22,7 +22,8 @@ export function canonicalUri(uri: string): string {
 
 export class Workspace {
     // Not a constructor parameter property: those don't survive Node's
-    // strip-only TS mode, and bench.ts runs this file under plain node.
+    // strip-only TS mode, and the ecosystem rounds run this file under plain
+    // node.
     readonly root: string;
 
     constructor(root: string) {

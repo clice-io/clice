@@ -1,0 +1,38 @@
+{
+  "about": "curl at 400fffa9 with its tests",
+  "repository": "https://github.com/curl/curl",
+  "commit": "400fffa90f30c7a2dc762fa33009d24851bd2016",
+  "configurations": {
+    "clang": {
+      "about": "C, built by clang without TLS or the optional libraries",
+      "platforms": ["linux"],
+      "prepare": [
+        [
+          "cmake",
+          "-S",
+          ".",
+          "-B",
+          "build",
+          "-G",
+          "Ninja",
+          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+          "${CMAKE_TOOLCHAIN}",
+          "-DCMAKE_C_COMPILER=clang",
+          "-DCURL_ENABLE_SSL=OFF",
+          "-DCURL_USE_LIBPSL=OFF",
+          "-DUSE_LIBIDN2=OFF",
+          "-DCURL_ZLIB=OFF",
+          "-DCURL_BROTLI=OFF",
+          "-DCURL_ZSTD=OFF",
+          "-DUSE_NGHTTP2=OFF",
+          "-DCURL_USE_LIBSSH2=OFF",
+          "-DBUILD_TESTING=ON"
+        ],
+        {
+          "generated": "build"
+        }
+      ],
+      "database": "build/compile_commands.json"
+    }
+  }
+}

@@ -9,6 +9,7 @@
     "./protocol": "./protocol/protocol.ts",
     "./compat/check": "./compat/check.ts",
     "./compat/scenario": "./compat/scenario.ts",
+    "./ecosystem": "./ecosystem/index.ts",
     "./lint": "./lint/rules.ts",
     "./testing/render/*": "./testing/render/*.ts",
     "./testing/server/*": "./testing/server/*.ts",

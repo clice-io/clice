@@ -18,10 +18,6 @@ import type { Table } from "../render/value.ts";
 
 const LOG_LINE = /^\[[^\]]+\] \[(\w+)\] \[thread \d+\] \[[^\]]+\] (.*)$/;
 
-function posixOf(rel: string): string {
-    return rel.split(path.sep).join("/");
-}
-
 function quote(word: string): string {
     return /^[\p{L}\p{N}_./:=@%+,-]+$/u.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
 }
@@ -40,31 +36,56 @@ function rootForms(root: string): string[] {
     return [...forms].sort((a, b) => b.length - a.length);
 }
 
-/// The copy's files and directories in their native spelling, longest
-/// first: on Windows a path under the root may hold spaces, which no
-/// pattern over the text can tell from the words around it.
-function nativePaths(root: string): string[] {
-    if (path.sep === "/") {
-        return [];
+/// How much of `text` from `at` names a path under `dir`, read one
+/// directory at a time: on Windows a path may hold spaces, which no pattern
+/// over the text can tell from the words around it.
+function pathLength(text: string, at: number, dir: string, sep: string): number {
+    let end = at;
+    let current = dir;
+    for (;;) {
+        let names: string[];
+        try {
+            names = fs.readdirSync(current);
+        } catch {
+            return end - at;
+        }
+        const name = names
+            .filter((each) => text.startsWith(each, end))
+            .reduce((longest, each) => (each.length > longest.length ? each : longest), "");
+        if (name === "") {
+            return end - at;
+        }
+        end += name.length;
+        current = path.join(current, name);
+        if (!text.startsWith(sep, end)) {
+            return end - at;
+        }
+        end += sep.length;
     }
-    return fs
-        .readdirSync(root, { recursive: true, encoding: "utf8" })
-        .filter((rel) => rel.includes(path.sep))
-        .sort((a, b) => b.length - a.length);
+}
+
+/// `text` with every path under `root` that it spells `form` and `sep`
+/// written `${WS}/` and forward slashes.
+export function rootRelative(text: string, form: string, sep: string, root: string): string {
+    const prefix = `${form}${sep}`;
+    let out = "";
+    let from = 0;
+    for (let at = text.indexOf(prefix); at !== -1; at = text.indexOf(prefix, from)) {
+        const start = at + prefix.length;
+        const end = start + pathLength(text, start, root, sep);
+        out += `${text.slice(from, at)}\${WS}/${text.slice(start, end).split(sep).join("/")}`;
+        from = end;
+    }
+    return out + text.slice(from);
 }
 
 /// `text` as it reads on every host: the copy `${WS}` with forward slashes,
 /// a worker's cause of death `${CRASH}`.
 export function portable(text: string, root: string): string {
     let out = text;
-    const rels = nativePaths(root);
     for (const form of rootForms(root)) {
-        const sep = form.includes("\\\\") ? "\\\\" : path.sep;
-        for (const rel of rels) {
-            out = out.replaceAll(
-                `${form}${sep}${rel.split(path.sep).join(sep)}`,
-                `\${WS}/${posixOf(rel)}`,
-            );
+        if (path.sep !== "/") {
+            out = rootRelative(out, form, form.includes("\\\\") ? "\\\\" : path.sep, root);
         }
         out = out.replaceAll(form, "${WS}");
     }

@@ -91,7 +91,7 @@ export function regionItems(cases: readonly Case[], topic: string, subtopic: str
 }
 
 /// A fence longer than any run of backticks in `text`.
-function fence(text: string, info: string): string[] {
+export function fence(text: string, info: string): string[] {
     const longest = Math.max(2, ...[...text.matchAll(/`+/g)].map((match) => match[0].length));
     const ticks = "`".repeat(longest + 1);
     return [`${ticks}${info}`, text, ticks];
