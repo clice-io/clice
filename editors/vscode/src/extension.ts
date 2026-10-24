@@ -21,7 +21,7 @@ import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerCounterparts } from "./feature/counterparts";
 import { registerInactiveRegions } from "./feature/inactive";
-import { registerProblemTabs } from "./feature/problems";
+import { registerProblems } from "./feature/problems";
 import { registerRefactorCommands } from "./feature/refactor";
 
 let client: ClientHandle | undefined;
@@ -328,7 +328,7 @@ export async function activate(context: ExtensionContext) {
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
-            handleDiagnostics: registerProblemTabs(() => client, documentSelector, context),
+            handleDiagnostics: registerProblems(() => client, documentSelector, context),
             provideDocumentSemanticTokens: inactive.full,
             provideDocumentSemanticTokensEdits: inactive.edits,
             // Space triggers exist only for the module names after `import `

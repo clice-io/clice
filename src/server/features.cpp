@@ -394,8 +394,8 @@ Features::RawResult Features::hover(Ticket ticket,
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             if(on_directive) {
-                if(auto card = directive_card(
-                       feature::document_links(text_of(*session), query, path_id))) {
+                if(auto card =
+                       directive_card(feature::document_links(text_of(*session), query, path_id))) {
                     session->index_served = true;
                     co_return std::move(*card);
                 }

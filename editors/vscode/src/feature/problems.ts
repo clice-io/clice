@@ -2,10 +2,13 @@ import * as vscode from "vscode";
 import type { HandleDiagnosticsSignature } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 
-/// The files a tab shows, as vscode-languageclient counts them for the
-/// diagnostics it pulls.
-function tabbed(): Set<string> {
-    const uris = new Set<string>();
+/// The files an editor or a tab shows. A tab counts as vscode-languageclient
+/// counts it for the diagnostics it pulls; the editors cover the tabs the API
+/// cannot read, the merge editor's and the multi-file diff's.
+function shownFiles(): Set<string> {
+    const uris = new Set(
+        vscode.window.visibleTextEditors.map((editor) => editor.document.uri.toString()),
+    );
     for (const group of vscode.window.tabGroups.all) {
         for (const tab of group.tabs) {
             const input = tab.input;
@@ -19,13 +22,13 @@ function tabbed(): Set<string> {
     return uris;
 }
 
-/// Problems lists what clice pushed for a source file while a tab shows it.
+/// Problems lists what clice pushed for a source file while it is shown.
 /// VS Code tells the server a file closed only once nothing holds its
 /// document, and it holds a document it opened for an extension for up to
 /// three minutes: GitHub Pull Requests has every file opened so, to ask
-/// where comments may go. The diagnostics of a file without a tab wait here
-/// for a tab to show it again.
-export function registerProblemTabs(
+/// where comments may go. The diagnostics of a file no longer shown wait
+/// here for it to be shown again.
+export function registerProblems(
     client: () => ClientHandle | undefined,
     selector: vscode.DocumentSelector,
     ext: vscode.ExtensionContext,
@@ -40,23 +43,25 @@ export function registerProblemTabs(
             collection: vscode.DiagnosticCollection | undefined;
         }
     >();
-    let shown = tabbed();
+    let shown = shownFiles();
 
-    ext.subscriptions.push(
-        vscode.window.tabGroups.onDidChangeTabs(() => {
-            const now = tabbed();
-            const collection = client()?.current.diagnostics;
-            for (const [key, entry] of pushed) {
-                if (entry.collection !== collection) {
-                    pushed.delete(key);
-                } else if (now.has(key) && !shown.has(key)) {
-                    collection?.set(entry.uri, entry.diagnostics);
-                } else if (!now.has(key) && shown.has(key)) {
-                    collection?.delete(entry.uri);
-                }
+    const update = () => {
+        const now = shownFiles();
+        const collection = client()?.current.diagnostics;
+        for (const [key, entry] of pushed) {
+            if (entry.collection !== collection) {
+                pushed.delete(key);
+            } else if (now.has(key) && !shown.has(key)) {
+                collection?.set(entry.uri, entry.diagnostics);
+            } else if (!now.has(key) && shown.has(key)) {
+                collection?.delete(entry.uri);
             }
-            shown = now;
-        }),
+        }
+        shown = now;
+    };
+    ext.subscriptions.push(
+        vscode.window.tabGroups.onDidChangeTabs(update),
+        vscode.window.onDidChangeVisibleTextEditors(update),
     );
 
     return (uri, diagnostics, next) => {
@@ -76,6 +81,6 @@ export function registerProblemTabs(
             return;
         }
         pushed.set(key, { uri, diagnostics, collection: client()?.current.diagnostics });
-        next(uri, tabbed().has(key) ? diagnostics : []);
+        next(uri, shownFiles().has(key) ? diagnostics : []);
     };
 }
