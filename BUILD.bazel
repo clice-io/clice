@@ -1,7 +1,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xclang//bazel:resource_dir.bzl", "xclang_resource_dir")
-load("//bazel:defs.bzl", "CLICE_COPTS", "COPTS", "LINKOPTS", "benchmark_programs", "release_packages")
+load("//bazel:defs.bzl", "CLICE_COPTS", "COPTS", "LINKOPTS", "release_packages")
 
 xclang_resource_dir(name = "resource_dir")
 
@@ -161,9 +161,3 @@ filegroup(
 )
 
 release_packages()
-
-# The component benchmarks (benchmarks/README.md), built on request.
-benchmark_programs([
-    "index_stats_benchmark",
-    "pipeline_benchmark",
-])

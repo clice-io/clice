@@ -24,6 +24,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       publish: ${{ steps.version.outputs.publish }}
+      run: ${{ steps.pick.outputs.run }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -86,6 +87,7 @@ jobs:
                 --jq '"\(.path) \(.event) \(.conclusion)"') || break
               if [ "$KIND" = ".github/workflows/main.yml push success" ]; then
                 COMMIT=$SHA
+                PICKED=$RUN
                 break
               fi
             done <<< "$LIVE"
@@ -113,6 +115,7 @@ jobs:
           fi
           echo "Promoting $COMMIT"
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "run=$PICKED" >> "$GITHUB_OUTPUT"
 
       - name: Compute nightly version
         id: version
@@ -226,6 +229,23 @@ jobs:
       release_tag: ${{ needs.prepare.outputs.tag }}
       prerelease: true
     secrets: inherit
+
+  # The ecosystem round over the nightly's commit, with the programs its
+  # main run built (ecosystem.yml): a stable release tags a nightly whose
+  # round shows no new failure. Dispatched, not called, so the round keeps a
+  # run history of its own, which each round compares its numbers with.
+  ecosystem:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the round
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN: ${{ needs.prepare.outputs.run }}
+        run: gh workflow run ecosystem.yml --repo "$GITHUB_REPOSITORY" --ref main -f run="$RUN"
 
   # Nightlies expire after 30 days, and only the newest 25 are kept: the Zed
   # extension reads only the first page (30) of the release list, which must

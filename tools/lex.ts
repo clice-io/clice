@@ -1,5 +1,5 @@
-/// A raw C/C++ lexer: where tokens begin and end, which the nightly sweep
-/// and the benchmark need to pick the places they ask at.
+/// A raw C/C++ lexer: where tokens begin and end, which the ecosystem
+/// regression's sweep needs to pick the places it asks at.
 
 export type TokenKind = "ident" | "number" | "string" | "char" | "comment" | "punct" | "header";
 

@@ -97,7 +97,7 @@ export interface StartOptions {
     /// the CLICE_TEST_* hooks.
     env?: Record<string, string> | undefined;
     /// Whether the server runs under the harness's checks (serverEnv); a
-    /// benchmark switches them off to time what users run.
+    /// perf run switches them off to time what users run.
     checked?: boolean | undefined;
 }
 
@@ -108,7 +108,7 @@ export interface InitializeOptions {
     /// Whether to overlay the test defaults — one worker of each kind,
     /// background polling off, no idle wait before background indexing, and
     /// the test hooks on — onto the initialization options.
-    /// A benchmark switches them off to run the server's real defaults,
+    /// A perf run switches them off to run the server's real defaults,
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; by default versioned edits,

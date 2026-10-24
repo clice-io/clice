@@ -1,0 +1,189 @@
+name: ecosystem
+
+# A round of the real projects (ecosystem/README.md): every regression and
+# perf job, each on a runner of its own, over the commit of a main CI run
+# with the programs that run built. nightly.yml dispatches a round with the
+# main CI run whose packages it promoted; a dispatch by hand names a CI run
+# that built them in the last three days, while its build-* artifacts live.
+# A job's summary lists its new failures, each with the command that
+# reproduces it, then the known ones; a regression job's numbers stand
+# beside the previous round's, a perf job's are clice's and clangd's side by
+# side. The round only reports: nothing waits on it but a stable release,
+# which tags a nightly whose round shows no new failure.
+on:
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "The CI run (main.yml) whose commit and build-* programs to test"
+        required: true
+
+# A dispatch on a branch replaces the branch's round still going; main's
+# rounds, one per nightly, all run.
+concurrency:
+  group: ecosystem-${{ github.ref == 'refs/heads/main' && inputs.run || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  jobs:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+      jobs: ${{ steps.list.outputs.jobs }}
+    steps:
+      - name: Find the run's commit
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.run }}
+        run: |
+          COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.commit.outputs.commit }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      - name: List the jobs
+        id: list
+        run: |
+          pixi run -e node install-tests
+          echo "jobs=$(pixi run -e node node tools/ecosystem/run.ts --jobs)" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: jobs
+    name: ${{ matrix.kind }} ${{ matrix.name }} (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.jobs.outputs.jobs) }}
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-24.04","macos":"macos-15","windows":"windows-2025"}')[matrix.platform] }}
+    # A job's own bounds stop it well before; this is the runner's six
+    # hours.
+    timeout-minutes: 350
+    env:
+      TARGET: ${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","macos":"aarch64-apple-darwin","windows":"x86_64-w64-mingw32"}')[matrix.platform] }}
+    steps:
+      # Spotlight indexes the checkout, the build and the servers' caches as
+      # the job writes them, and its CPU and memory make one index's time
+      # swing twofold between runners.
+      - name: Turn Spotlight off
+        if: matrix.platform == 'macos'
+        run: sudo mdutil -a -i off
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.jobs.outputs.commit }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ env.TARGET }}
+          build_type: RelWithDebInfo
+          environments: default
+          activate-environment: default
+          run-id: ${{ inputs.run }}
+
+      # clice's own project: its database comes from Bazel.
+      - name: Restore Bazel caches
+        if: startsWith(matrix.name, 'clice')
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            /var/tmp/xclang-thinlto
+          key: bazel-${{ env.TARGET }}-RelWithDebInfo-${{ needs.jobs.outputs.commit }}
+          restore-keys: |
+            bazel-${{ env.TARGET }}-RelWithDebInfo-
+
+      - name: Install the tools
+        run: |
+          {
+            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
+            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
+          } > user.bazelrc
+          pixi run install-tests
+
+      # Hang detection: an unreachable mirror stalls apt for the job's whole
+      # six hours.
+      - name: Install the project's packages
+        if: matrix.packages != ''
+        timeout-minutes: 15
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
+
+      # The newest finished round on main that holds this job's results:
+      # what a regression job's numbers stand beside. None for a job no
+      # round ran.
+      - name: Fetch the previous round's results
+        if: matrix.kind == 'regression'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow ecosystem.yml \
+            --branch main --status completed --limit 7 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "ecosystem-${{ matrix.artifact }}" \
+              -D "$RUNNER_TEMP/previous"; then
+              break
+            fi
+          done
+
+      # In a scope holding all but 2 GB of the machine: a clice that
+      # exhausts it is killed there (first, for a regression job: run.ts
+      # sees to that) and the job reports the crash, while the runner's
+      # agent keeps memory enough to stay up; on the whole machine the agent
+      # dies and nothing is reported. Linux alone has such scopes. A perf
+      # run drops the OS file cache before each cold start where it can.
+      - name: Run
+        env:
+          CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
+        run: >-
+          ${{ runner.os == 'Linux' && 'sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)" -p MemoryMax=14G -p MemorySwapMax=0 -p OOMPolicy=continue --' || '' }}
+          pixi run node tools/ecosystem/run.ts ${{ matrix.kind }} "${{ matrix.name }}"
+          --dir "$RUNNER_TEMP/projects"
+          --out "$RUNNER_TEMP/out"
+          ${{ matrix.kind == 'regression' && '--previous "$RUNNER_TEMP/previous/results.json"' || '' }}
+          ${{ matrix.kind == 'perf' && matrix.platform != 'windows' && '--drop-caches' || '' }}
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        # GitHub takes a summary up to 1 MiB; the artifact holds the whole.
+        run: head -c 1000000 "$RUNNER_TEMP/out/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ecosystem-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload clice's logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ecosystem-${{ matrix.artifact }}-logs
+          path: |
+            ${{ runner.temp }}/projects/*/*/.clice/logs/
+            ${{ github.workspace }}/.clice/logs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30

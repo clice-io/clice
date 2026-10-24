@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { KEYWORDS, lex } from "./lex.ts";
 
-/// The identifiers outside directives, as the sweep and the benchmark pick
-/// their places among them.
+/// The identifiers outside directives, as the sweep picks its places
+/// among them.
 function codeIdentifiers(text: string): string[] {
     return lex(text)
         .filter((token) => token.kind === "ident" && !token.directive)

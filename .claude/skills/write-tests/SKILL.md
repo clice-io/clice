@@ -156,7 +156,7 @@ and pin each difference that matters in a case.
 - Naming: no abbreviated file names, no decorative section comments. New
   modules join the subsystem directory they belong to (`tools/testing`,
   `tools/client`, `tools/docs`, `tools/protocol`, `tools/compat`,
-  `tools/bench`); a new directory needs a new subsystem, not a new file.
+  `tools/ecosystem`); a new directory needs a new subsystem, not a new file.
   Framework and domain logic live in `tools/`; test directories keep only
   what must be there (package.json, tsconfig, thin vitest glue).
 - The tools' own tests sit beside the code they test as `*.test.ts`;
