@@ -211,14 +211,19 @@ interface Ask {
     ask: (client: Client) => Shown;
 }
 
-/// A place as answers show one: its line, `⟦⟧` where it stands.
+/// A place as answers show one: its line, `⟦⟧` where it stands (its line
+/// and column, should that fail).
 export function shownPlace(place: MarkerAnchor): string {
     const source = new SourceText(place.path, place.text);
     const position = source.positionAt(place.begin);
-    return renderLocation(
-        { path: place.path, range: { start: position, end: position } },
-        { file: () => source, query: { path: place.path } },
-    );
+    try {
+        return renderLocation(
+            { path: place.path, range: { start: position, end: position } },
+            { file: () => source, query: { path: place.path } },
+        );
+    } catch {
+        return `${String(position.line + 1)}:${String(position.character + 1)}`;
+    }
 }
 
 function asksOf(
