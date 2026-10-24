@@ -194,9 +194,6 @@ public:
                          llvm::function_ref<void(SymbolHash)> symbol,
                          llvm::function_ref<void(std::uint32_t)> file) const;
 
-    /// Whether a segment offers the symbol.
-    bool contains(SymbolHash hash) const;
-
     /// Whether a posting list failed to decode since the load: the
     /// answers are incomplete until the owner rebuilds the index, and a
     /// reader scans the table instead.
@@ -214,6 +211,15 @@ private:
 
     /// Whether a newer run than the segment's hides its entry.
     bool hidden(const Segment& segment, std::uint32_t entry) const;
+
+    /// The segment and entry of the newest run offering an entry's symbol.
+    std::pair<const Segment*, std::uint32_t> newest(const Segment& segment,
+                                                    std::uint32_t entry) const;
+
+    /// The chain of containers above an entry, outermost first, as the
+    /// newest runs spell them: an older run keeps the spelling its scopes
+    /// had when it was built.
+    llvm::SmallVector<ScopeEntry, 8> scope_chain(const Segment& segment, std::uint32_t entry) const;
 
     /// Index the symbols and files the runs after the first offer and
     /// cover by the newest run doing so.

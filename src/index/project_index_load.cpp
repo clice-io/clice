@@ -41,7 +41,8 @@ LoadOutcome ProjectIndex::open(BlobDatabase& db) {
         }
     }
     // A segment that does not load leaves the index missing: searches scan
-    // the records until a full build replaces the segments the header lists.
+    // the records until a full build, and the header stops listing the runs,
+    // which no longer receive the changes saves record.
     std::uint32_t first = 0;
     for(auto end: header.search_run_ends) {
         std::vector<std::unique_ptr<llvm::MemoryBuffer>> run;
@@ -55,6 +56,7 @@ LoadOutcome ProjectIndex::open(BlobDatabase& db) {
         if(run.size() != end - first || !search.replace(0, std::move(run))) {
             LOG_INFO("The search index does not load; it is built again");
             search.clear();
+            drop_search_runs(static_cast<std::uint32_t>(header.search_run_ends.size()));
             break;
         }
         first = end;

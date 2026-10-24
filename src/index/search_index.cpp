@@ -767,16 +767,16 @@ struct SearchIndex::Segment {
         return cached(file_cache, columns->file_postings, columns->file_ends, index, count());
     }
 
-    /// The chain of containers above an entry, outermost first.
-    llvm::SmallVector<ScopeEntry, 8> chain(std::uint32_t entry) const {
-        llvm::SmallVector<ScopeEntry, 8> entries;
-        auto parent = columns->parents[entry];
-        for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
-            entries.push_back({.name = name(parent), .args = arguments(parent)});
-            parent = columns->parents[parent];
+    /// The entry offering a symbol, none when the segment offers none.
+    std::optional<std::uint32_t> offered(SymbolHash hash) const {
+        auto& by_hash = columns->by_hash;
+        auto it = ranges::lower_bound(by_hash, hash, {}, [&](std::uint32_t entry) {
+            return columns->hashes[entry];
+        });
+        if(it == by_hash.end() || columns->hashes[*it] != hash) {
+            return std::nullopt;
         }
-        ranges::reverse(entries);
-        return entries;
+        return *it;
     }
 
     /// The entries whose lowercase name is `lower`, in by_lower_name order.
@@ -818,9 +818,6 @@ struct SearchIndex::Segment {
 
 std::unique_ptr<SearchIndex::Segment>
     SearchIndex::Segment::open(std::unique_ptr<llvm::MemoryBuffer> bytes) {
-    if(!bytes) {
-        return nullptr;
-    }
     bytes = in_place_buffer(std::move(bytes));
     auto root = verify_root<SearchIndexBlob>(bytes->getBuffer(), "search segment");
     if(!root) {
@@ -991,6 +988,36 @@ bool SearchIndex::hidden(const Segment& segment, std::uint32_t entry) const {
     return false;
 }
 
+std::pair<const SearchIndex::Segment*, std::uint32_t>
+    SearchIndex::newest(const Segment& segment, std::uint32_t entry) const {
+    auto hash = segment.columns->hashes[entry];
+    auto it = newest_symbols.find(hash);
+    if(it == newest_symbols.end() || it->second <= segment.run) {
+        return {&segment, entry};
+    }
+    auto run = it->second;
+    for(auto i = run_ends[run - 1]; i < run_ends[run]; i += 1) {
+        if(auto found = segments[i]->offered(hash)) {
+            return {segments[i].get(), *found};
+        }
+    }
+    std::unreachable();
+}
+
+llvm::SmallVector<ScopeEntry, 8> SearchIndex::scope_chain(const Segment& segment,
+                                                          std::uint32_t entry) const {
+    llvm::SmallVector<ScopeEntry, 8> entries;
+    auto [at, current] = newest(segment, entry);
+    auto parent = at->columns->parents[current];
+    for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
+        std::tie(at, current) = newest(*at, parent);
+        entries.push_back({.name = at->name(current), .args = at->arguments(current)});
+        parent = at->columns->parents[current];
+    }
+    ranges::reverse(entries);
+    return entries;
+}
+
 bool SearchIndex::loaded() const {
     return !segments.empty();
 }
@@ -1039,14 +1066,6 @@ bool SearchIndex::damaged() const {
     return ranges::any_of(segments, [](auto& segment) { return segment->damaged; });
 }
 
-bool SearchIndex::contains(SymbolHash hash) const {
-    return ranges::any_of(segments, [&](auto& segment) {
-        return ranges::binary_search(segment->columns->by_hash, hash, {}, [&](std::uint32_t entry) {
-            return segment->columns->hashes[entry];
-        });
-    });
-}
-
 SearchOutcome SearchIndex::search(const SymbolQuery& query,
                                   std::uint32_t limit,
                                   llvm::function_ref<bool(std::uint32_t)> wanted_file) const {
@@ -1068,15 +1087,11 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     // kinds, the files and the scope — as one bitmap, none when nothing
     // narrows; and the entries already ranked: one the clean pass rejected
     // is judged again by the typo pass, which may accept it.
-    struct Pass {
-        std::optional<Bitmap> filter;
-        Bitmap ranked;
-    };
-
-    std::vector<Pass> passes(segments.size());
+    std::vector<std::optional<Bitmap>> filters(segments.size());
+    std::vector<Bitmap> ranked(segments.size());
     for(std::uint32_t at = 0; at < segments.size(); at += 1) {
         auto& segment = *segments[at];
-        auto& filter = passes[at].filter;
+        auto& filter = filters[at];
         auto narrow = [&](Bitmap allowed) {
             if(filter) {
                 *filter &= allowed;
@@ -1110,8 +1125,8 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         }
         if(query.absolute || !query.scope.empty()) {
             // The containers the scope leads to: the top level for an empty
-            // absolute scope, else every container named like the last
-            // segment whose own chain the earlier segments describe.
+            // absolute scope, else every container named like the scope's
+            // last name whose own chain the names before it describe.
             llvm::SmallVector<std::uint32_t, 4> containers;
             if(query.scope.empty()) {
                 containers.push_back(no_entry);
@@ -1120,9 +1135,10 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
                 llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
                 above = above.drop_back();
                 for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
+                    auto [spelled, current] = newest(segment, entry);
                     if(segment.is_container(entry) &&
-                       args_match(last.args, segment.arguments(entry)) &&
-                       segments_match(above, segment.chain(entry), query.absolute)) {
+                       args_match(last.args, spelled->arguments(current)) &&
+                       segments_match(above, scope_chain(segment, entry), query.absolute)) {
                         containers.push_back(entry);
                     }
                 }
@@ -1136,14 +1152,14 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         }
     }
     auto allowed = [&](std::uint32_t at, std::uint32_t entry) {
-        auto& filter = passes[at].filter;
+        auto& filter = filters[at];
         return entry < segments[at]->count() && (!filter || filter->contains(entry)) &&
                !hidden(*segments[at], entry);
     };
-    // The segments some entry of which may pass.
+    // The segments some entry of which the filters allow.
     llvm::SmallVector<std::uint32_t> open;
     for(std::uint32_t at = 0; at < segments.size(); at += 1) {
-        if(!passes[at].filter || !passes[at].filter->isEmpty()) {
+        if(!filters[at] || !filters[at]->isEmpty()) {
             open.push_back(at);
         }
     }
@@ -1155,7 +1171,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         auto name = segment.name(entry);
         auto args = segment.arguments(entry);
         if(auto rank = ranker.rank(name, args, segment.columns->qualities[entry], lenient)) {
-            passes[at].ranked.add(entry);
+            ranked[at].add(entry);
             top.push({.rank = *rank,
                       .name = name,
                       .args = args,
@@ -1172,7 +1188,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
             if(entry >= segment.count()) {
                 break;
             }
-            if(!allowed(at, entry) || passes[at].ranked.contains(entry)) {
+            if(!allowed(at, entry) || ranked[at].contains(entry)) {
                 continue;
             }
             if(!top.admits({.tier = static_cast<std::uint8_t>(lenient ? 3 : 2),
@@ -1185,7 +1201,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     };
     auto scan_everything = [&](bool lenient) {
         for(auto at: open) {
-            if(auto& filter = passes[at].filter) {
+            if(auto& filter = filters[at]) {
                 scan(at, *filter, lenient);
             } else {
                 Bitmap all;
@@ -1272,8 +1288,8 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     }
 
     SearchOutcome outcome{.exhausted = !top.overflowed};
-    for(auto& ranked: std::move(top).sorted()) {
-        outcome.hits.push_back({.hash = ranked.hash, .rank = ranked.rank, .file = ranked.file});
+    for(auto& hit: std::move(top).sorted()) {
+        outcome.hits.push_back({.hash = hit.hash, .rank = hit.rank, .file = hit.file});
     }
     return outcome;
 }

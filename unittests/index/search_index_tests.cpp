@@ -161,8 +161,6 @@ ZEST_CASE(Loads) {
     ZEXPECT(built.loaded());
     ZEXPECT(built.run_count() == 1u);
     ZEXPECT(built.size() == corpus.snapshot.entries.size());
-    ZEXPECT(built.contains(1));
-    ZEXPECT(!built.contains(999));
     SearchIndex empty;
     ZEXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
     ZEXPECT(!empty.loaded());
@@ -617,6 +615,36 @@ ZEST_CASE(NewerRunsHide) {
     junk.push_back(llvm::MemoryBuffer::getMemBufferCopy("junk"));
     ZEXPECT(!built.replace(1, std::move(junk)));
     ZEXPECT(built.run_count() == 2u);
+}
+
+ZEST_CASE(NewerRunsRespellScopes) {
+    // A newer run offering a container spelled anew renames it as the
+    // scope of the members older runs hold.
+    Corpus corpus;
+    auto ns = corpus.add("ns", SymbolKind::Namespace);
+    auto x = corpus.add("ns::X",
+                        SymbolKind::Struct,
+                        SymbolFlags::HasDefinition,
+                        1,
+                        "/w/src/a.cpp",
+                        "<LongName>");
+    corpus.add("ns::X<LongName>::member", SymbolKind::Method);
+    auto built = corpus.build();
+    ZASSERT(names(corpus, built, "X<LongName>::member") == (Names{"member"}));
+
+    SearchSnapshot respelled{
+        .entries = {{.hash = x,
+                     .name = "X",
+                     .args = "<int>",
+                     .parent = ns,
+                     .kind = SymbolKind::Struct,
+                     .flags = SymbolFlags::HasDefinition}},
+        .scopes = {corpus.snapshot.entries[ns - 1]},
+    };
+    ZASSERT(built.replace(0, Corpus::segments(respelled)));
+    ZEXPECT(names(corpus, built, "X<int>::member") == (Names{"member"}));
+    ZEXPECT(names(corpus, built, "::ns::X<int>::*") == (Names{"member"}));
+    ZEXPECT(names(corpus, built, "X<LongName>::member").empty());
 }
 
 };  // ZEST_SUITE(SearchIndex)

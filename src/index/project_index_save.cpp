@@ -422,19 +422,19 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         blobs.push_back({BlobKind::TUManifest, std::move(key), encode_manifest(*manifest)});
     }
     // The header names its files by path ids, handed out before the
-    // records are taken. Without a search index the pending entries mean
-    // nothing past this session: every search scans the records then, and
-    // the first full build leaves them behind.
+    // records are taken. Without a search index the pending symbols mean
+    // nothing past this session, every search scanning the records then;
+    // the pending files' names of internal linkage are in no record.
     header.search_pending.clear();
-    header.search_pending_files.clear();
     if(search.loaded()) {
         header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
         ranges::sort(header.search_pending);
-        for(auto file: pending_files) {
-            header.search_pending_files.push_back(path_id(file));
-        }
-        ranges::sort(header.search_pending_files);
     }
+    header.search_pending_files.clear();
+    for(auto file: pending_files) {
+        header.search_pending_files.push_back(path_id(file));
+    }
+    ranges::sort(header.search_pending_files);
     header.owed_units.clear();
     for(auto unit: owed) {
         header.owed_units.push_back(path_id(unit));

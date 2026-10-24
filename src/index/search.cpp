@@ -48,10 +48,10 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
     auto indexed = project.search_index().search(query, limit, [&](std::uint32_t path) {
-        llvm::StringRef file = files.resolve(project.fid_of(path));
-        return ranges::any_of(query.paths, [&](const std::string& wanted) {
-            return path_matches(wanted, file);
-        });
+        auto file = project.fid_of(path);
+        return file.valid() && ranges::any_of(query.paths, [&](const std::string& wanted) {
+                   return path_matches(wanted, files.resolve(file));
+               });
     });
     // A damaged index answers incompletely, a missing one not at all:
     // until a full build every symbol record is judged one by one instead.
