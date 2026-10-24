@@ -305,6 +305,7 @@ tools/ecosystem/
   database.ts     a job's database, the headers its units include, checking commands
   script.ts       test.ts: registrations, request positions, known issues
   memory.ts       a process tree's memory and CPU
+  lex.ts          a raw C/C++ lexer: where the sweep's places are
   regression/     the index, the compiler's confirmation, the sweep, the job
   perf/           the servers, a timed session, the scenarios, results and their tables, [perf:*] lines
   report.ts       the summaries
