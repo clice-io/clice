@@ -62,7 +62,7 @@ private:
     void add_self(Hasher& hasher, const clang::NamedDecl* decl);
     void add_function(Hasher& hasher, const clang::FunctionDecl* function);
     void add_location(Hasher& hasher, clang::SourceLocation location);
-    void add_macro_history(Hasher& hasher, clang::SourceLocation location);
+    std::uint64_t macro_history(clang::SourceLocation location);
     void add_path(Hasher& hasher, clang::SourceLocation location);
     void add_file(Hasher& hasher, clang::FileID fid);
     void add_declaration_name(Hasher& hasher, clang::DeclarationName name);
@@ -81,6 +81,7 @@ private:
     llvm::DenseSet<const clang::Decl*> in_progress;
     llvm::DenseMap<const void*, std::uint64_t> types;
     llvm::DenseMap<const clang::Expr*, std::uint64_t> exprs;
+    llvm::DenseMap<clang::SourceLocation, std::uint64_t> histories;
 };
 
 }  // namespace clice

@@ -284,12 +284,45 @@ ZEST_CASE(StringizedArguments) {
     add_focus("main.cpp", R"cpp(
 #define STR(x) #x
 #define CHECK(e) ((e) ? 0 : fail(STR(e)))
+#define EQUAL(e) ((e) == (e) ? 0 : fail(STR(e)))
 int fail(const char*);
-int n;
+int n, m;
 int v = CHECK(§(n)n);
+int w = §(equal)EQUAL(§(m)m);
 )cpp");
     ZASSERT(compile());
     ZEXPECT(origin_offset("n", 1) == std::optional(point("n")));
+    ZEXPECT(origin_offset("m", 1) == std::optional(point("equal")));
+    ZEXPECT(origin_offset("m", 2) == std::optional(point("m")));
+}
+
+ZEST_CASE(RescannedArguments) {
+    add_focus("main.cpp", R"cpp(
+#define EVAL0(...) __VA_ARGS__
+#define EVAL1(...) EVAL0(EVAL0(__VA_ARGS__))
+#define EVAL2(...) EVAL1(EVAL1(__VA_ARGS__))
+#define EVAL3(...) EVAL2(EVAL2(__VA_ARGS__))
+#define EVAL4(...) EVAL3(EVAL3(__VA_ARGS__))
+#define EVAL5(...) EVAL4(EVAL4(__VA_ARGS__))
+#define EVAL6(...) EVAL5(EVAL5(__VA_ARGS__))
+#define EVAL7(...) EVAL6(EVAL6(__VA_ARGS__))
+#define EVAL8(...) EVAL7(EVAL7(__VA_ARGS__))
+#define EVAL9(...) EVAL8(EVAL8(__VA_ARGS__))
+#define EVAL10(...) EVAL9(EVAL9(__VA_ARGS__))
+#define EVAL11(...) EVAL10(EVAL10(__VA_ARGS__))
+#define EVAL12(...) EVAL11(EVAL11(__VA_ARGS__))
+#define EVAL13(...) EVAL12(EVAL12(__VA_ARGS__))
+#define EVAL14(...) EVAL13(EVAL13(__VA_ARGS__))
+#define EVAL15(...) EVAL14(EVAL14(__VA_ARGS__))
+#define TWICE(x) x + x
+int a, b;
+int v = EVAL15(§(a)a + TWICE(§(b)b));
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() ==
+            "int:int a:a ,:, b:b ;:; int:int v:v =:= a:a +:+ b:EVAL15 +:EVAL15 b:b ;:;");
+    ZEXPECT(origin_offset("a", 1) == std::optional(point("a")));
+    ZEXPECT(origin_offset("b", 2) == std::optional(point("b")));
 }
 
 ZEST_CASE(HeaderOrigins) {
