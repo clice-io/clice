@@ -62,7 +62,7 @@ const ENDED =
 /// The units the session log shows begun and whose attempt has not ended.
 export function unitsInFlight(log: string): string[] {
     const started = new Set<string>();
-    for (const line of log.split("\n")) {
+    for (const line of log.split(/\r?\n/)) {
         const begun = /\] Indexing (\S+)$/.exec(line);
         const done = /progress=\d+\/\d+ file=(\S+)/.exec(line) ?? ENDED.exec(line);
         if (begun?.[1] !== undefined) {

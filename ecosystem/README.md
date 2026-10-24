@@ -171,8 +171,10 @@ A job, on a cold cache:
    only: a unit the compiler rejects too is the project's, listed, not
    failed.
 3. **Sweep** sampled files: the job's `sample` sources the seed picks (by
-   default the date; the same seed, the same files), and a quarter as many of
-   the headers they include. Each source is asked the same requests at the
+   default the date; the same seed, the same files) on a runner asking three
+   files at once, fewer on one with less memory that asks fewer (a sweep
+   takes the same time everywhere), and a quarter as many of the headers the
+   job's units include. Each source is asked the same requests at the
    same places by `clice inspect` and by a server over the indexed project,
    the two answers compared: semantic tokens, folding ranges, document
    symbols, document links and inlay hints of the file; hover, highlights and
@@ -209,22 +211,22 @@ machine compare. A run that wipes a cache wipes the server's own (clice's
 `.clice/`, clangd's `.cache/clangd`) and, on Linux and macOS, the OS file
 cache.
 
-| Scenario                                | What it measures                                                                                                                                                                                                                                                 |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `coldStart(file, { runs })`             | no cache: start to the file's first diagnostics, and to the first non-empty semantic tokens, hover and definition, asked at the open as an editor asks them                                                                                                      |
-| `index(file, { hold })`                 | no cache, the file open: until the background index is idle; files indexed, index and cache on disk; with `hold`, what the tree holds that many seconds later                                                                                                    |
-| `warmStart(file, { runs })`             | the index left: as `coldStart`, and the first references reaching a second file                                                                                                                                                                                  |
-| `editLoop(file, { edits })`             | an edit at the file's end, then semantic tokens: to the new diagnostics and tokens                                                                                                                                                                               |
-| `warmRequests(file, { repeats })`       | the index loaded, each request once unmeasured, then `repeats` times: hover, definition, references, call hierarchy, workspace symbols, document symbols, semantic tokens, folding, inlay hints, completion, signature help                                      |
-| `session(files, { churn })`             | the files opened in turn and edited twice each, switched through twice; with `churn` a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
-| `sample(files, { wipe })`               | each file in a fresh server, clangd, clice without its PCHs and clice with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                     |
-| `soak(file, { edits })`                 | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                           |
-| `idle(file, { rounds, gap })`           | each request after the server sat idle for `gap`                                                                                                                                                                                                                 |
-| `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten rounds once it is done                                                                                                                               |
-| `references(file, at)`                  | references and rename of a symbol once the index is idle                                                                                                                                                                                                         |
-| `long(files, { minutes })`              | a session cycling through the files, opening, editing, asking and closing, for `minutes`                                                                                                                                                                         |
-| `limitedIndex(file, { mb, minutes })`   | (Linux) `index` inside a memory limit of `mb`, stalled when not done within `minutes`                                                                                                                                                                            |
-| `scan({ runs })`                        | (clice) the dependency scan of the whole database, cold and warm                                                                                                                                                                                                 |
+| Scenario                                | What it measures                                                                                                                                                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `coldStart(file, { runs })`             | no cache: start to the file's first diagnostics, and to the first non-empty semantic tokens, hover and definition, asked at the open as an editor asks them                                                                                                                |
+| `index(file, { hold })`                 | no cache, the file open: until the background index is idle; files indexed, index and cache on disk; with `hold`, what the tree holds that many seconds later                                                                                                              |
+| `warmStart(file, { runs })`             | the index left: as `coldStart`, and the first references reaching a second file                                                                                                                                                                                            |
+| `editLoop(file, { edits })`             | an edit at the file's end, then semantic tokens: to the new diagnostics and tokens                                                                                                                                                                                         |
+| `warmRequests(file, { repeats })`       | the index loaded, each request once unmeasured, then `repeats` times: hover, definition, references, call hierarchy, workspace symbols, document symbols, semantic tokens, folding, inlay hints, completion, signature help                                                |
+| `session(files, { churn })`             | the files opened in turn and edited twice each, switched through twice; unless `churn: false`, a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
+| `sample(files, { wipe })`               | each file in a fresh server, clangd, clice without its PCHs and clice with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                               |
+| `soak(file, { edits })`                 | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                                     |
+| `idle(file, { rounds, gap })`           | each request after the server sat idle for `gap`                                                                                                                                                                                                                           |
+| `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten rounds once it is done                                                                                                                                         |
+| `references(file, at)`                  | references and rename of a symbol once the index is idle                                                                                                                                                                                                                   |
+| `long(files, { minutes })`              | a session cycling through the files, opening, editing, asking and closing, for `minutes`                                                                                                                                                                                   |
+| `limitedIndex(file, { mb, minutes })`   | (Linux) `index` inside a memory limit of `mb`, stalled when not done within `minutes`                                                                                                                                                                                      |
+| `scan({ runs })`                        | (clice) the dependency scan of the whole database, cold and warm                                                                                                                                                                                                           |
 
 `p.pick({ seed, sources, headers, under })` lists the files a scenario takes:
 sources of the database and headers they include, under the given
@@ -235,9 +237,12 @@ server's process tree (its peak, at the end, and at each stage of a session,
 each process by role: master, each worker, clangd), its CPU seconds, and for
 clice the server's own breakdown from its `[perf:*]` log lines. Answers' sizes
 are recorded beside their times (items, locations, tokens), so a time is read
-beside the work it bought. A perf job **fails** only when a clice run fails:
-a crash, a hang, an error answer, an unclean exit. A clangd run that fails is
-listed. Numbers never fail.
+beside the work it bought. A perf job **fails** only when a clice run fails
+(a crash, its workers' too, which its logs tell; a hang; an error answer; an
+unclean exit), or when its time runs out before a scenario begins: no
+scenario begins, and no wait goes on, past 320 minutes into the job. A
+clangd run that fails, or the baseline's, is listed. Numbers never fail. A
+baseline keeps its cache apart from clice's.
 
 ### Memory
 

@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import { quote } from "shell-quote";
 import { REPO_ROOT } from "../repo.ts";
 import {
     resolveLocation,
@@ -230,7 +231,7 @@ export function projectCommit(project: Project): string {
 /// The command running a job again from the repository root, `extra`
 /// narrowing it.
 export function rerunCommand(job: Job, clice: string, dir: string, extra: string): string {
-    return `CLICE_EXECUTABLE=${clice} pixi run node tools/ecosystem/run.ts ${job.kind} ${job.name} --dir ${dir} ${extra}`.trimEnd();
+    return `CLICE_EXECUTABLE=${quote([clice])} pixi run node tools/ecosystem/run.ts ${job.kind} ${job.name} --dir ${quote([dir])} ${extra}`.trimEnd();
 }
 
 /// What failed in a job, and how to see it again.
@@ -245,14 +246,21 @@ export interface Failure {
     repro: string;
 }
 
+/// Whether a known issue is one of this job on this platform.
+function applies(known: Known, job: Job, platform: Platform): boolean {
+    const part = job.kind === "regression" ? job.part : undefined;
+    return (
+        (known.configuration === undefined || known.configuration === job.configuration) &&
+        (known.part === undefined || known.part === part) &&
+        (known.platform === undefined || known.platform === platform)
+    );
+}
+
 /// The known issue a failure is, if any.
 export function knownIssue(job: Job, platform: Platform, failure: Failure): Known | undefined {
-    const part = job.kind === "regression" ? job.part : undefined;
     return job.known.find(
         (known) =>
-            (known.configuration === undefined || known.configuration === job.configuration) &&
-            (known.part === undefined || known.part === part) &&
-            (known.platform === undefined || known.platform === platform) &&
+            applies(known, job, platform) &&
             (known.kind === undefined || known.kind === failure.kind) &&
             (known.request === undefined || known.request === failure.request) &&
             (known.file === undefined ||
@@ -282,7 +290,7 @@ export function sortKnown(
         }
     }
     results.failures = fresh;
-    results.unseen = job.known.filter((known) => !seen.has(known));
+    results.unseen = job.known.filter((known) => applies(known, job, platform) && !seen.has(known));
 }
 
 /// A line of a file named by its code, the place in `⟦` `⟧`; a line the

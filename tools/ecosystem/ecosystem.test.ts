@@ -193,7 +193,11 @@ describe("known issues", () => {
                 issue: "10-22#6",
             },
         ]);
-        expect(results.unseen.map((known) => known.issue)).toEqual(["10-22#7", "10-22#8"]);
+        // 10-22#7 is macOS's, 10-22#8 another part's: neither is this job's.
+        expect(results.unseen).toEqual([]);
+        const onMac: Parameters<typeof sortKnown>[2] = { failures: [], known: [], unseen: [] };
+        sortKnown(job, "macos", onMac);
+        expect(onMac.unseen.map((known) => known.issue)).toEqual(["10-22#6", "10-22#7"]);
     });
 });
 

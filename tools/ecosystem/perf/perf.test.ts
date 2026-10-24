@@ -5,6 +5,7 @@
 import { expect, test } from "vitest";
 import { perfReport } from "../report.ts";
 import { tables } from "./compare.ts";
+import { failureOf, type PerfOptions } from "./perf.ts";
 import type { PerfResults, RunResult } from "./results.ts";
 
 function run(
@@ -201,4 +202,24 @@ test("a perf job's summary: its new failures, the known ones, then the tables", 
     expect(text).toContain("## Runs clice crashed in (1)\n\n### a.cpp, editLoop");
     expect(text).toContain("## Known failures (1)\n\n### 10-23#25: a.cpp, 1000 MB, limitedIndex");
     expect(text).toContain("| editLoop a.cpp | edit | 7.0 | 7.0 |");
+});
+
+test("a run's errors name its failure: a crash before the hang it caused", () => {
+    const options = {
+        job: { kind: "perf", name: "p/editing" },
+        clice: "/c",
+        dir: "/d",
+    } as unknown as PerfOptions;
+    const kind = (error: string) =>
+        failureOf(run("clice", "editLoop", {}, { error }), options).kind;
+    expect(kind("timed out after 600000ms: hover; clice exited with SIGSEGV")).toBe("crash");
+    expect(kind("clice logged: [error] clice worker crashed in: clice/worker/hover a.cpp")).toBe(
+        "crash",
+    );
+    expect(kind("timed out after 600000ms: hover; clice exited with SIGKILL")).toBe("hang");
+    expect(kind("clice: the background index is not idle after 30 minutes")).toBe("hang");
+    expect(kind("Request textDocument/hover failed with message: no")).toBe("server");
+    expect(failureOf(run("clice", "editLoop", {}, { error: "x" }), options).repro).toBe(
+        "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario editLoop",
+    );
 });

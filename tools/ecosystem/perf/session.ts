@@ -13,16 +13,20 @@ import { CRASHED_IN } from "../../testing/server/serve.ts";
 import { watchTree, type TreeWatch } from "../memory.ts";
 import { computeStats, parsePerfLines, summarize } from "./logs.ts";
 import type { RunResult, ServerName } from "./results.ts";
-import { CAPABILITIES, indexToken, isClice } from "./servers.ts";
+import { CAPABILITIES, cliceDir, indexToken, isClice } from "./servers.ts";
 
 /// What every run of a job shares: the checkout, the database's directory,
-/// the servers.
+/// the build directory whose generated files no scenario changes, the
+/// servers, and the time (epoch ms) past which no scenario begins and no
+/// wait goes on.
 export interface PerfContext {
     workspace: string;
     database: string;
+    build?: string;
     binaries: Partial<Record<ServerName, string>>;
     clangdArgs: readonly string[];
     dropCaches: boolean;
+    deadline: number;
 }
 
 /// Hang detection: a cold compile of a large project's largest file
@@ -117,6 +121,15 @@ export class Session {
         return this.connected;
     }
 
+    /// Another reason the run failed, after those before it: a request that
+    /// timed out under a server that then turns out to have crashed is told
+    /// as both.
+    fail(error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
+        this.result.error =
+            this.result.error === undefined ? message : `${this.result.error}; ${message}`;
+    }
+
     record(name: string, ms: number): void {
         (this.result.series[name] ??= []).push(Math.round(ms * 10) / 10);
     }
@@ -160,6 +173,9 @@ export class Session {
             checked: false,
         });
         this.connected = client;
+        // A wrapper this process may not signal (sudo's memory scope) fails a
+        // kill with an error event: the server's exit tells how it ended.
+        client.child.on("error", () => undefined);
         if (client.child.pid !== undefined) {
             this.watch = watchTree(client.child.pid, isClice(this.server) ? "master" : "clangd");
         }
@@ -175,6 +191,7 @@ export class Session {
                     logging_dir: path.join(workspace, ".clice", "logs"),
                 },
             },
+            cacheDir: cliceDir(workspace, this.server),
             testDefaults: false,
             capabilities: CAPABILITIES,
         });
@@ -269,13 +286,14 @@ export class Session {
         const client = this.client;
         const token = indexToken(this.server);
         const began = nowMs();
+        const bound = Math.min(limit, this.context.deadline - Date.now());
         let seen = 0;
         let changed = nowMs();
         let active = false;
         let ended: number | null = null;
         let announced = false;
         let files = 0;
-        while (nowMs() - began < limit) {
+        while (nowMs() - began < bound) {
             if (client.child.exitCode !== null || client.child.signalCode !== null) {
                 throw new Error(`${this.server} exited while it was awaited to go idle`);
             }
@@ -379,7 +397,7 @@ export class Session {
             .flatMap((text) => text.split(/\r?\n/))
             .find((line) => CRASHED_IN.test(line) || ANOMALY_PATTERN.test(line));
         if (failed !== undefined) {
-            this.result.error ??= `clice logged: ${failed}`;
+            this.fail(`clice logged: ${failed}`);
         }
         // One pid per log file: master and workers are separate processes
         // and keep separate trace lanes.
@@ -392,6 +410,28 @@ export class Session {
         if (Object.keys(perf).length > 0) {
             this.result.perf = perf;
         }
+    }
+}
+
+/// The server killed, and on Linux its wrapper's children too: a server
+/// behind a wrapper this process may not signal (sudo's memory scope) runs
+/// as this process's user itself.
+function killHard(client: CliceClient): void {
+    client.child.kill("SIGKILL");
+    const { pid } = client.child;
+    if (process.platform !== "linux" || pid === undefined) {
+        return;
+    }
+    try {
+        const children = fs.readFileSync(
+            `/proc/${String(pid)}/task/${String(pid)}/children`,
+            "utf8",
+        );
+        for (const child of children.trim().split(/\s+/).filter(Boolean)) {
+            process.kill(Number(child), "SIGKILL");
+        }
+    } catch {
+        // Gone already.
     }
 }
 
@@ -410,7 +450,7 @@ async function shutdown(client: CliceClient, server: ServerName): Promise<void> 
         // Hang detection: a server still running a minute after `exit` is
         // killed.
         setTimeout(() => {
-            client.child.kill("SIGKILL");
+            killHard(client);
         }, 60_000).unref();
         await client.exited;
     }

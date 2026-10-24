@@ -43,13 +43,15 @@ function rerun(options: PerfOptions, extra: string): string {
     return rerunCommand(options.job, options.clice, options.dir, extra);
 }
 
-/// What a clice run's error says went wrong.
-function failureOf(run: RunResult, options: PerfOptions): Failure {
+/// What a clice run's errors say went wrong: a crash first, which takes
+/// the requests it was asked down with it, then a hang (whose server the
+/// run killed), then an error answer.
+export function failureOf(run: RunResult, options: PerfOptions): Failure {
     const error = run.error ?? "";
-    const kind = /timed out after|not idle after|announced no/.test(error)
-        ? "hang"
-        : /exited (with|while)|crashed/.test(error)
-          ? "crash"
+    const kind = /crashed|exited while|exited with (?!SIGKILL)/.test(error)
+        ? "crash"
+        : /timed out after|not idle after|announced no|exited with SIGKILL/.test(error)
+          ? "hang"
           : "server";
     return {
         kind,
@@ -60,8 +62,14 @@ function failureOf(run: RunResult, options: PerfOptions): Failure {
     };
 }
 
+/// No scenario begins after this long into the job, and no wait goes past
+/// it: what runs finishes and the results upload within the runner's six
+/// hours.
+const JOB_MS = 320 * 60_000;
+
 export async function runPerf(options: PerfOptions): Promise<PerfResults> {
     const { job } = options;
+    const started = Date.now();
     const cpus = os.cpus();
     const results: PerfResults = {
         job: job.name,
@@ -99,6 +107,7 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
     try {
         const checkout = await prepare(job.project, job.configuration, options.dir);
         const { entries, directory } = jobDatabase(job.config, undefined, checkout);
+        const build = path.dirname(path.join(checkout, job.config.database));
         const binaries: Partial<Record<ServerName, string>> = {
             clice: options.clice,
             clangd: options.clangd ?? (await pinnedClangd(options.dir)),
@@ -109,9 +118,11 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
             {
                 workspace: checkout,
                 database: directory,
+                ...(build === checkout ? {} : { build }),
                 binaries,
                 clangdArgs: job.clangdArgs,
                 dropCaches: options.dropCaches,
+                deadline: started + JOB_MS,
             },
             entries,
             results.runs,
@@ -137,6 +148,13 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
             .filter((run) => run.error !== undefined && run.server === "clice")
             .map((run) => failureOf(run, options)),
     );
+    if (perf.unrun.length > 0) {
+        results.failures.push({
+            kind: "unfinished",
+            detail: `the job ran out of its time before:\n${perf.unrun.join("\n")}`,
+            repro: rerun(options, ""),
+        });
+    }
     sortKnown(options.job, options.platform, results);
     save();
     return results;

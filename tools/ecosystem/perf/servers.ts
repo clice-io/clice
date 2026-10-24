@@ -93,13 +93,20 @@ export function indexToken(server: ServerName): string {
     return isClice(server) ? "clice/backgroundIndex" : "backgroundIndexProgress";
 }
 
+/// Where a clice keeps its cache: the workspace's .clice (pinned by the
+/// client's initialize), the baseline's beside it, so that neither reads
+/// nor wipes what the other built.
+export function cliceDir(workspace: string, server: ServerName): string {
+    return path.join(workspace, server === "baseline" ? ".clice-baseline" : ".clice");
+}
+
 /// The directories each server keeps its cache in: clice everything in
-/// the workspace's .clice (pinned by the client's initialize); clangd its
-/// index under .cache/clangd next to the workspace root and the database's
-/// directory. The rest of a real project's .cache belongs to other tools.
+/// its cliceDir; clangd its index under .cache/clangd next to the workspace
+/// root and the database's directory. The rest of a real project's .cache
+/// belongs to other tools.
 function cacheDirs(workspace: string, database: string, server: ServerName): string[] {
     return isClice(server)
-        ? [path.join(workspace, ".clice")]
+        ? [cliceDir(workspace, server)]
         : [...new Set([workspace, database])].map((dir) => path.join(dir, ".cache", "clangd"));
 }
 
@@ -111,7 +118,7 @@ export function wipeCache(
     only?: "pch",
 ): void {
     if (only === "pch") {
-        const cache = path.join(workspace, ".clice", "cache");
+        const cache = path.join(cliceDir(workspace, server), "cache");
         for (const version of fs.existsSync(cache) ? fs.readdirSync(cache) : []) {
             fs.rmSync(path.join(cache, version, "pch"), { recursive: true, force: true });
         }

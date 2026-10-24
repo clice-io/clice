@@ -68,6 +68,8 @@ export class Perf {
     private readonly runs: RunResult[];
     private readonly only: ReadonlySet<string> | undefined;
     private readonly save: () => void;
+    /// The scenarios the job's time ran out before.
+    readonly unrun: string[] = [];
 
     constructor(
         context: PerfContext,
@@ -126,6 +128,10 @@ export class Perf {
         if (this.only !== undefined && !this.only.has(scenario)) {
             return;
         }
+        if (Date.now() > this.context.deadline) {
+            this.unrun.push(`${scenario} ${options.file ?? label}`);
+            return;
+        }
         for (let run = 1; run <= (options.runs ?? 1); run += 1) {
             for (const server of options.servers ?? this.servers()) {
                 const result: RunResult = {
@@ -155,12 +161,12 @@ export class Perf {
                     }
                     await body(session);
                 } catch (error) {
-                    result.error = error instanceof Error ? error.message : String(error);
+                    session.fail(error);
                 }
                 try {
                     await session.finish();
                 } catch (error) {
-                    result.error ??= error instanceof Error ? error.message : String(error);
+                    session.fail(error);
                 }
                 this.runs.push(result);
                 console.log(
@@ -495,9 +501,9 @@ export class Perf {
     /// build.
     private async churnFiles(open: readonly string[]): Promise<string[]> {
         const opened = new Set(open);
+        const { build } = this.context;
         const generated = (file: string) =>
-            path.resolve(this.root) !== path.resolve(this.context.database) &&
-            inside(this.context.database, path.join(this.root, file)) !== null;
+            build !== undefined && inside(build, path.join(this.root, file)) !== null;
         const units = this.entries
             .flatMap((entry) => inside(this.root, entrySource(entry)) ?? [])
             .filter((file) => !opened.has(file) && !generated(file));
@@ -814,7 +820,9 @@ export class Perf {
                 }
                 const end = s.end(uri);
                 const current = uri;
-                await s.measure("completion", () => client.completionAt(current, end.line + 1, 0));
+                await s.measure("completion", () =>
+                    client.completionAt(current, end.line, end.character),
+                );
                 await s.measure("hover", () =>
                     client.hoverAt(current, Math.floor(end.line / 2), 4),
                 );

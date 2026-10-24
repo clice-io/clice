@@ -5,6 +5,7 @@
 /// memory and times are recorded, never judged.
 
 import * as path from "node:path";
+import { quote } from "shell-quote";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
 import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
 import { readLogs, undeclaredErrors } from "../../testing/logs/logs.ts";
@@ -146,7 +147,9 @@ function scanLogs({ options, checkout, results }: Context, earlier: ReadonlySet<
                 detail: `${line.file}: ${line.text}`,
                 repro: rerun(
                     options,
-                    line.file === "index.log" ? "--steps index" : `--steps sweep --file ${file}`,
+                    line.file === "index.log"
+                        ? "--steps index"
+                        : `--steps sweep --file ${quote([file])}`,
                 ),
             });
         } else if (ANOMALY_PATTERN.test(line.text)) {
@@ -271,7 +274,7 @@ async function indexStep(context: Context): Promise<void> {
             ...report.compiledWithErrors.map(({ unit, errors }) => ({
                 unit,
                 errors: errors.slice(0, 5).map(located),
-                repro: `cd ${checkout} && ${options.clice} inspect folding-range ${unit}`,
+                repro: `cd ${quote([checkout])} && ${quote([options.clice, "inspect", "folding-range", unit])}`,
             })),
         ],
         context,
@@ -350,7 +353,10 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
             request: failure.request,
             ...(failure.at === undefined ? {} : { at: failure.at }),
             detail: failure.detail,
-            repro: rerun(options, `--steps sweep --file ${failure.file} --only ${failure.request}`),
+            repro: rerun(
+                options,
+                `--steps sweep --file ${quote([failure.file])} --only ${failure.request}`,
+            ),
         });
     }
     // A file the index step judged already is reported once.
@@ -368,7 +374,7 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
                 host: hosts.get(file),
                 errors,
                 request: "errors",
-                repro: rerun(options, `--steps sweep --file ${file} --only errors`),
+                repro: rerun(options, `--steps sweep --file ${quote([file])} --only errors`),
             })),
         context,
     );

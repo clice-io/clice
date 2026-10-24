@@ -99,10 +99,18 @@ export async function unpackArchive(url: string, sha256: string, target: string)
     fs.mkdirSync(target, { recursive: true });
     const file = path.join(os.tmpdir(), `${got}${path.extname(url)}`);
     fs.writeFileSync(file, bytes);
-    // GNU tar reads no zip; the bsdtar of macOS and Windows reads both.
+    // GNU tar reads no zip, and takes `C:` for a remote host: the bsdtar
+    // of macOS and of Windows' System32 (which Git Bash's own tar hides on
+    // the path) reads both.
     await (process.platform === "linux" && file.endsWith(".zip")
         ? stream("unzip", ["-q", file, "-d", target], target)
-        : stream("tar", ["-xf", file, "-C", target], target));
+        : stream(
+              process.platform === "win32"
+                  ? path.join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "tar.exe")
+                  : "tar",
+              ["-xf", file, "-C", target],
+              target,
+          ));
     fs.rmSync(file);
     const unpacked = fs.readdirSync(target, { withFileTypes: true });
     const [top] = unpacked;
