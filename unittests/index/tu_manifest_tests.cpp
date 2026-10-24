@@ -21,8 +21,8 @@ void give_versions(index::TUManifestBlob& layout, std::uint32_t count) {
     ids.addRange(0, count);
     layout.version_bound = count;
     layout.versions = index::write_postings(ids, count);
-    layout.absent = index::write_postings({}, count);
-    layout.imports = index::write_postings({}, count);
+    layout.absent = index::write_postings(Bitmap(), count);
+    layout.imports = index::write_postings(Bitmap(), count);
 }
 
 ZEST_SUITE(TUManifest) {

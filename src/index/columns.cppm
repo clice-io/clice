@@ -51,6 +51,8 @@ std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std
 /// bit vector holding, for the i-th id, a one at its remaining high bits
 /// plus i. Every bit past the last of each part is zero, and the vector
 /// ends with the byte holding its last one.
+std::vector<std::uint8_t> write_postings(llvm::ArrayRef<std::uint32_t> ids, std::uint32_t universe);
+
 std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe);
 
 /// The ids of a list write_postings wrote for `universe`; nullopt for

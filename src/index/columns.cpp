@@ -149,9 +149,10 @@ std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std
     return std::nullopt;
 }
 
-std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe) {
+std::vector<std::uint8_t> write_postings(llvm::ArrayRef<std::uint32_t> ids,
+                                         std::uint32_t universe) {
     std::vector<std::uint8_t> out;
-    auto count = ids.cardinality();
+    auto count = ids.size();
     write_varint(out, count);
     auto low = low_bits(count, universe);
     BitWriter lows{.out = out};
@@ -175,6 +176,12 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
     }
     highs.flush();
     return out;
+}
+
+std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe) {
+    std::vector<std::uint32_t> listed(ids.cardinality());
+    ids.toUint32Array(listed.data());
+    return write_postings(listed, universe);
 }
 
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe) {

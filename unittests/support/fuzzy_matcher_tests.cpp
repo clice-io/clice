@@ -141,6 +141,63 @@ constexpr llvm::StringRef corpus[] = {
     "convertModelPosition",
 };
 
+/// The tokens of name_tokens's definition, walked one matcher path at a
+/// time: from each letter on to the next of its word or to any later
+/// anchor, twice.
+llvm::SmallVector<NameToken> path_tokens(llvm::StringRef name) {
+    name = name.take_front(name_bound);
+    llvm::SmallVector<CharRole> roles(name.size());
+    segment(name, roles);
+    auto lower = [](char c) {
+        return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    bool has_lower = ranges::any_of(name, [](char c) { return c >= 'a' && c <= 'z'; });
+    llvm::SmallVector<std::size_t> anchors;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        bool upper = name[i] >= 'A' && name[i] <= 'Z';
+        if(roles[i] != CharRole::Separator &&
+           (roles[i] != CharRole::Tail || (upper && has_lower))) {
+            anchors.push_back(i);
+        }
+    }
+    auto successors = [&](std::size_t i) {
+        llvm::SmallVector<std::size_t> next;
+        if(i + 1 < name.size() && roles[i + 1] == CharRole::Tail) {
+            next.push_back(i + 1);
+        }
+        for(auto anchor: anchors) {
+            if(anchor > i) {
+                next.push_back(anchor);
+            }
+        }
+        return next;
+    };
+    llvm::SmallVector<NameToken> tokens;
+    std::size_t heads = 0;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        if(roles[i] == CharRole::Separator) {
+            continue;
+        }
+        bool head = roles[i] == CharRole::Head && heads < 2;
+        heads += head ? 1 : 0;
+        if(head) {
+            tokens.push_back(token(std::string(1, lower(name[i]))));
+        }
+        for(auto j: successors(i)) {
+            if(head) {
+                tokens.push_back(token(std::string{lower(name[i]), lower(name[j])}));
+            }
+            for(auto k: successors(j)) {
+                tokens.push_back(
+                    token(std::string{lower(name[i]), lower(name[j]), lower(name[k])}));
+            }
+        }
+    }
+    ranges::sort(tokens);
+    tokens.erase(ranges::unique(tokens).begin(), tokens.end());
+    return tokens;
+}
+
 ZEST_SUITE(FuzzyMatcher) {
 
 ZEST_CASE(Segmentation) {
@@ -351,6 +408,53 @@ ZEST_CASE(NameTokens) {
     ZEXPECT(ranges::contains(three, token("b")));
     ZEXPECT(ranges::contains(three, token("bb")));
     ZEXPECT(!ranges::contains(three, token("bz")));
+}
+
+ZEST_CASE(NameTokensFollowEveryPath) {
+    for(auto name: corpus) {
+        ZEXPECT(tokens_of(name) == path_tokens(name));
+    }
+    // Long names past the bound, initialisms, digits, separators and the
+    // bytes of UTF-8 identifiers, more distinct letters than a word holds.
+    constexpr llvm::StringRef pieces[] = {
+        "get",
+        "AST",
+        "Context",
+        "_",
+        "::",
+        "CXX",
+        "Record",
+        "decl",
+        "2",
+        "x86",
+        "\xC3\xA9",
+        "\xF0\x9F\x99\x82",
+        "Z",
+        "q",
+        "__",
+        "~",
+        "operator<=>",
+    };
+    std::mt19937 random(7);
+    for(std::size_t round = 0; round < 500; round += 1) {
+        std::string name;
+        auto parts = 1 + random() % 16;
+        for(std::size_t part = 0; part < parts; part += 1) {
+            name += pieces[random() % std::size(pieces)];
+        }
+        if(tokens_of(name) != path_tokens(name)) {
+            ZEXPECT(tokens_of(name) == path_tokens(name));
+            break;
+        }
+    }
+    std::string distinct;
+    for(unsigned byte = 128; byte < 255; byte += 1) {
+        distinct += static_cast<char>(byte);
+        if(byte % 8 == 0) {
+            distinct += static_cast<char>('A' + byte / 8 % 26);
+        }
+    }
+    ZEXPECT(tokens_of(distinct) == path_tokens(distinct));
 }
 
 ZEST_CASE(QueryTokens) {
