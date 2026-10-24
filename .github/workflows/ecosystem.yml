@@ -44,6 +44,9 @@ jobs:
       commit: ${{ steps.commit.outputs.commit }}
       jobs: ${{ steps.list.outputs.jobs }}
     steps:
+      # A pull request's run builds the branch merged into main, while the
+      # jobs check out the branch itself: a branch behind main runs main's
+      # programs under its own framework.
       - name: Find the run's commit
         id: commit
         env:
