@@ -198,17 +198,18 @@ export async function includedHeaders(
 }
 
 /// The entry's command checking the code only: what the build ran, without
-/// the files it writes, and `-fsyntax-only` (`/Zs` for cl; nvcc has no such
-/// mode, and compiles into the null device). A CMake precompiled header is
-/// read from its source instead (the forced include beside it stays): the
-/// preparation builds no `.pch`.
+/// the files it writes, and `-fsyntax-only` (`/Zs` for cl, without the
+/// debug information whose shared `.pdb` two parallel cl runs fight over;
+/// nvcc has no such mode, and compiles into the null device). A CMake
+/// precompiled header is read from its source instead (the forced include
+/// beside it stays): the preparation builds no `.pch`.
 export function syntaxOnly(entry: DatabaseEntry): string[] {
     const args = withoutOutputs(entryArguments(entry));
     if (isNvcc(args[0] ?? "")) {
         return [...args, "-c", "-o", os.devNull];
     }
     if (isMsvc(args[0] ?? "")) {
-        const kept = args.filter((arg) => !/^[/-](Yu|Yc|Fp)/.test(arg));
+        const kept = args.filter((arg) => !/^[/-](Yu|Yc|Fp|Fd|Zi$|ZI$|Z7$)/.test(arg));
         // Options stay before a `--` that ends them (CMake writes one before
         // the source for clang-cl).
         const end = kept.indexOf("--");

@@ -318,7 +318,7 @@ describe("database", () => {
         ).toEqual(["clang", "-Iinc", "a.c", "-fsyntax-only"]);
     });
 
-    test("cl checks the code by /Zs, its precompiled header read from its source", () => {
+    test("cl checks the code by /Zs, its precompiled header read from its source, no .pdb", () => {
         expect(
             syntaxOnly({
                 directory: "/b",
@@ -326,6 +326,9 @@ describe("database", () => {
                 arguments: [
                     "cl.exe",
                     "/nologo",
+                    "/Zc:__cplusplus",
+                    "/Zi",
+                    "/Fdvc140.pdb",
                     "/Yucmake_pch.hxx",
                     "/Fpa.pch",
                     "/FIcmake_pch.hxx",
@@ -335,7 +338,15 @@ describe("database", () => {
                     "a.cpp",
                 ],
             }),
-        ).toEqual(["cl.exe", "/nologo", "/FIcmake_pch.hxx", "/Zs", "--", "a.cpp"]);
+        ).toEqual([
+            "cl.exe",
+            "/nologo",
+            "/Zc:__cplusplus",
+            "/FIcmake_pch.hxx",
+            "/Zs",
+            "--",
+            "a.cpp",
+        ]);
     });
 
     test("nvcc checks the code by compiling it into the null device", () => {

@@ -21,7 +21,7 @@ regression({
             why: "googletest builds with -WX, which makes clang's -Wcharacter-conversion (a warning cl does not have) an error",
             configuration: "msvc",
             kind: "compile",
-            file: "build/googletest-src/googletest/src/gtest-all.cc",
+            detail: /may change the meaning of the represented code unit/,
         },
     ],
 });
