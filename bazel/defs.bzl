@@ -1,7 +1,6 @@
 """What the root BUILD.bazel builds with: the flags of clice's own sources
-and programs, the release packages of its clice, and the benchmarks."""
+and programs, and the release packages of its clice."""
 
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefix")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
@@ -144,30 +143,4 @@ def release_packages():
             "@platforms//os:windows": ":symbols_zip",
             "//conditions:default": ":symbols_tar",
         }),
-    )
-
-def benchmark_programs(benchmarks):
-    """bin/<benchmark> of benchmarks/<benchmark>.cpp each, and //:benchmarks."""
-    for benchmark in benchmarks:
-        cc_binary(
-            name = "bin/" + benchmark,
-            srcs = [
-                "benchmarks/%s.cpp" % benchmark,
-                "benchmarks/stats.h",
-            ],
-            copts = CLICE_COPTS,
-            data = [":resource_dir"],
-            features = ["cpp_modules"],
-            linkopts = LINKOPTS,
-            tags = ["manual"],
-            deps = [
-                ":server",
-                "//bazel:llvm",
-            ],
-        )
-
-    native.filegroup(
-        name = "benchmarks",
-        srcs = ["bin/" + benchmark for benchmark in benchmarks],
-        tags = ["manual"],
     )

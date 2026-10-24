@@ -1,0 +1,46 @@
+{
+  "about": "NVIDIA's cuda-samples at db3eea23, its 0_Introduction samples",
+  "repository": "https://github.com/NVIDIA/cuda-samples",
+  "commit": "db3eea23946bca2e90a75eca2b5b3e07158a9e11",
+  "configurations": {
+    "nvcc": {
+      "about": "built by nvcc 12.8 from conda-forge, for sm_80",
+      "platforms": ["linux"],
+      "prepare": [
+        [
+          "pixi",
+          "exec",
+          "-s",
+          "cuda-nvcc",
+          "-s",
+          "cuda-cudart-dev",
+          "-s",
+          "libcublas-dev",
+          "-s",
+          "cuda-nvrtc-dev",
+          "-s",
+          "libcurand-dev",
+          "-s",
+          "cuda-profiler-api",
+          "-s",
+          "cuda-version=12.8",
+          "-s",
+          "cmake",
+          "-s",
+          "ninja",
+          "--",
+          "cmake",
+          "-S",
+          "Samples/0_Introduction",
+          "-B",
+          "build",
+          "-G",
+          "Ninja",
+          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+          "-DCMAKE_CUDA_ARCHITECTURES=80"
+        ]
+      ],
+      "database": "build/compile_commands.json"
+    }
+  }
+}

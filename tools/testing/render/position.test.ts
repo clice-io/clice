@@ -109,6 +109,14 @@ describe("positions", () => {
         expect(source.positionAtByte(bytes)).toEqual({ line: 1, character: 19 });
     });
 
+    test("every byte offset reads as the text before it", () => {
+        const encoded = Buffer.from(text, "utf8");
+        for (let byte = 0; byte <= encoded.length + 1; byte += 1) {
+            const before = encoded.subarray(0, byte).toString("utf8");
+            expect(source.positionAtByte(byte)).toEqual(source.positionAt(before.length));
+        }
+    });
+
     test("non-ASCII round trip", () => {
         const scope: RenderScope = { file: () => source, query: { path: "u.cpp", line: 0 } };
         const name = {
@@ -130,6 +138,24 @@ describe("positions", () => {
         expect(renderLocation(second, { ...scope, query: { path: "o.cpp", line: 0 } })).toBe(
             "t.cpp │ void ⟦f⟧(); @3",
         );
+    });
+
+    test("a line holding the marks itself", () => {
+        const marked = new SourceText(
+            "m.cpp",
+            'auto open = "⟦"; auto close = "⟧";\nint x =\n    1;\n',
+        );
+        const scope: RenderScope = { file: () => marked, query: { path: "m.cpp", line: 0 } };
+        const ranges: Range[] = [
+            { start: { line: 0, character: 5 }, end: { line: 0, character: 9 } },
+            { start: { line: 0, character: 22 }, end: { line: 0, character: 27 } },
+            { start: { line: 0, character: 12 }, end: { line: 0, character: 15 } },
+            { start: { line: 0, character: 22 }, end: { line: 2, character: 6 } },
+        ];
+        for (const range of ranges) {
+            const location = { path: "m.cpp", range };
+            expect(resolveLocation(renderLocation(location, scope), scope)).toEqual(location);
+        }
     });
 
     test("ambiguous text is refused", () => {

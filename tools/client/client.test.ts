@@ -24,7 +24,7 @@ test("defaults overlay the caller's options", () => {
 });
 
 test("without test defaults only the cache is pinned", () => {
-    // A benchmark runs the server's real defaults: nothing but the cache
+    // A perf run takes the server's real defaults: nothing but the cache
     // location is added, so the defaults stay spelled in the C++ config.
     const options = initializationOptionsFor(ws, {
         initializationOptions: { rules: [{ compile_commands: ["/cdb"] }] },

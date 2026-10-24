@@ -36,9 +36,6 @@
 temp/
 .cache/
 
-# Materialized benchmark workloads (fetch_workload.py)
-benchmarks/workloads/
-
 .clice/
 !/tests/**/.clice/
 compile_commands.json

@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
-import { runProcess } from "../../client/process.ts";
+import { ending, runProcess } from "../../client/process.ts";
 import { cliceExecutable } from "../../client/session.ts";
 import { serverEnv } from "../../process_gate.ts";
 import { locate, type Anchor, type MarkerAnchor } from "../cases/anchors.ts";
@@ -202,6 +202,13 @@ function byteOf(text: string, offset: number): number {
 /// inactive branch counts too.
 const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+\w|[ \t]*(?:[<"]|:(?!:)))/m;
 
+/// Whether a source imports a module: inspect has no answer for it. A C
+/// source imports none: an `import` line there is prose in a comment
+/// (CPython's Argument Clinic blocks).
+export function importsModule(file: string, text: string): boolean {
+    return !file.endsWith(".c") && MODULE_IMPORT.test(text);
+}
+
 function rangeKey({ begin, end }: RawRange): string {
     return `${String(begin)}-${String(end)}`;
 }
@@ -211,6 +218,7 @@ export class Inspect extends Client {
     private readonly sources: readonly string[];
     private readonly importers: ReadonlySet<string>;
     private readonly config: Record<string, unknown> | undefined;
+    private readonly timeout: number;
     private readonly scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-markers-"));
     private readonly batches = new Map<string, Promise<Entry>>();
     private readonly documents = new Map<string, Promise<Entry>>();
@@ -223,15 +231,22 @@ export class Inspect extends Client {
     constructor(
         root: string,
         marks: readonly MarkerAnchor[],
-        options: { sources: readonly string[]; config?: Record<string, unknown> | undefined },
+        options: {
+            sources: readonly string[];
+            config?: Record<string, unknown> | undefined;
+            /// The bound on one run, which only a hang reaches: a case's unit
+            /// compiles in seconds, a real project's can take minutes.
+            timeout?: number;
+        },
     ) {
         super(marks);
         this.root = root;
         this.importers = new Set(
-            options.sources.filter((file) => MODULE_IMPORT.test(this.text(file))),
+            options.sources.filter((file) => importsModule(file, this.text(file))),
         );
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
+        this.timeout = options.timeout ?? 300_000;
         if (options.config !== undefined) {
             recordConfig(options.config);
         }
@@ -265,7 +280,10 @@ export class Inspect extends Client {
         return {
             kind: raw.kind,
             text: raw.contents,
-            range: raw.range === null ? undefined : this.location(at.path, raw.range),
+            range:
+                raw.range === null
+                    ? undefined
+                    : this.location(this.context().file(at.path), raw.range),
         };
     }
 
@@ -340,15 +358,17 @@ export class Inspect extends Client {
 
     protected async fetchHighlights(at: Anchor): Promise<Highlight[]> {
         const raws = ((await this.atPoint("document-highlight", at)) ?? []) as RawHighlight[];
+        const source = this.context().file(at.path);
         return raws.map((raw) => ({
-            location: this.location(at.path, raw.range),
+            location: this.location(source, raw.range),
             kind: raw.kind === "Read" ? "read" : raw.kind === "Write" ? "write" : "text",
         }));
     }
 
     protected async fetchSelectionRange(at: Anchor): Promise<Range[]> {
         const raws = ((await this.atPoint("selection-range", at)) ?? []) as RawRange[];
-        return raws.map((raw) => this.range(at.path, raw));
+        const source = this.context().file(at.path);
+        return raws.map((raw) => this.range(source, raw));
     }
 
     protected async fetchCodeActions(
@@ -361,9 +381,10 @@ export class Inspect extends Client {
         }
         const raws = ((await this.overRange("code-action", file, selection)) ??
             []) as RawCodeAction[];
+        const source = this.context().file(file);
         return raws.map((raw) => {
             const edits = raw.edits.map((edit) => ({
-                range: this.range(file, edit.range),
+                range: this.range(source, edit.range),
                 newText: edit.text,
             }));
             return {
@@ -450,30 +471,36 @@ export class Inspect extends Client {
     }
 
     protected async fetchFolds(file: string): Promise<Fold[]> {
-        return ((await this.document("folding-range", file)) as RawFold[]).map((raw) => ({
-            range: this.range(file, raw.range),
+        const folds = (await this.document("folding-range", file)) as RawFold[];
+        const source = this.context().file(file);
+        return folds.map((raw) => ({
+            range: this.range(source, raw.range),
             kind: raw.kind ?? undefined,
             collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
         }));
     }
 
     protected async fetchSymbols(file: string): Promise<OutlineSymbol[]> {
+        const symbols = (await this.document("document-symbols", file)) as RawSymbol[];
+        const source = this.context().file(file);
         const convert = (raw: RawSymbol): OutlineSymbol => ({
             name: raw.name,
             kind: LSP_SYMBOL_KIND[raw.kind] ?? "Variable",
-            selection: this.location(file, raw.selection_range),
+            selection: this.location(source, raw.selection_range),
             detail: raw.detail,
-            range: this.location(file, raw.range),
+            range: this.location(source, raw.range),
             tags: raw.deprecated ? ["Deprecated"] : [],
             children: raw.children.map(convert),
         });
-        return ((await this.document("document-symbols", file)) as RawSymbol[]).map(convert);
+        return symbols.map(convert);
     }
 
     protected async fetchLinks(file: string): Promise<Link[]> {
         const context = this.context();
-        return ((await this.document("document-links", file)) as RawLink[]).map((raw) => ({
-            location: this.location(file, raw.range),
+        const links = (await this.document("document-links", file)) as RawLink[];
+        const source = context.file(file);
+        return links.map((raw) => ({
+            location: this.location(source, raw.range),
             target: context.pathOfFile(raw.target),
         }));
     }
@@ -510,13 +537,12 @@ export class Inspect extends Client {
         return withoutBom(fs.readFileSync(path.join(this.root, file), "utf8"));
     }
 
-    private range(file: string, raw: RawRange): Range {
-        const source = this.context().file(file);
+    private range(source: SourceText, raw: RawRange): Range {
         return { start: source.positionAtByte(raw.begin), end: source.positionAtByte(raw.end) };
     }
 
-    private location(file: string, raw: RawRange): Location {
-        return { path: file, range: this.range(file, raw) };
+    private location(source: SourceText, raw: RawRange): Location {
+        return { path: source.path, range: this.range(source, raw) };
     }
 
     /// A token split at its line ends, a line's "\r" left out and an empty
@@ -643,10 +669,10 @@ export class Inspect extends Client {
         recordInvocation(args);
         const result = await runProcess(cliceExecutable(), args, {
             env: serverEnv(),
-            timeout: 300_000,
+            timeout: this.timeout,
         });
         if (result.status !== 0) {
-            throw new Error(`clice inspect exited ${String(result.status)}:\n${result.stderr}`);
+            throw new Error(`clice inspect ${ending(result)}:\n${result.stderr}`);
         }
         const entry = Object.values((JSON.parse(result.stdout) as Output).files)[0];
         if (entry === undefined) {

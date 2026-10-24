@@ -1,4 +1,4 @@
-/// CliceClient — LSP client for the case framework, the benchmarks and
+/// CliceClient — LSP client for the case framework, the ecosystem rounds and
 /// the Zed suite, on vscode-languageserver-protocol.
 ///
 /// The client owns its whole lifecycle: spawn, typed requests including
@@ -96,6 +96,9 @@ export interface StartOptions {
     /// Extra environment for the server process, which its workers inherit:
     /// the CLICE_TEST_* hooks.
     env?: Record<string, string> | undefined;
+    /// Whether the server runs under the harness's checks (serverEnv); a
+    /// perf run switches them off to time what users run.
+    checked?: boolean | undefined;
 }
 
 export interface InitializeOptions {
@@ -105,7 +108,7 @@ export interface InitializeOptions {
     /// Whether to overlay the test defaults — one worker of each kind,
     /// background polling off, no idle wait before background indexing, and
     /// the test hooks on — onto the initialization options.
-    /// A benchmark switches them off to run the server's real defaults,
+    /// A perf run switches them off to run the server's real defaults,
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; by default versioned edits,
@@ -166,7 +169,8 @@ export class CliceClient {
     publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
-    progressEvents: { token: string; value: unknown }[] = [];
+    /// Every progress notification, with when it arrived (`performance.now()`).
+    progressEvents: { token: string; value: unknown; at: number }[] = [];
     /// Methods of server→client requests the client answered with null.
     serverRequests: string[] = [];
     initResult: proto.InitializeResult | null = null;
@@ -264,7 +268,11 @@ export class CliceClient {
             onNotification(handler: (method: string, params: unknown) => void): void;
         };
         raw.onUnhandledProgress((p) => {
-            this.progressEvents.push({ token: String(p.token), value: p.value });
+            this.progressEvents.push({
+                token: String(p.token),
+                value: p.value,
+                at: performance.now(),
+            });
             const kind = (p.value as { kind?: unknown }).kind;
             const arrived = (waiter: { token: string; kind: string }): boolean =>
                 waiter.token === String(p.token) && waiter.kind === kind;
@@ -292,7 +300,7 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
-            env: { ...serverEnv(), ...options.env },
+            env: { ...(options.checked === false ? process.env : serverEnv()), ...options.env },
         });
         const client = new CliceClient(child);
         client.stderrDrainedFromStart = options.drainStderr !== false;

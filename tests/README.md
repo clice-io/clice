@@ -63,10 +63,12 @@ never the topic again or the way a case tests it. A feature topic's own
 `test.ts` asks its feature the usual way, at every marker or of the entry
 file, so most of its cases bring code and nothing else.
 
-Outside the topics: `editors/`, `nightly/` and `compat/`, each below
-(`nightly/` is yet to come); `tools/testing/cases/topics.ts` lists every
-directory `tests/` may hold, and any other is an error. C++ unit tests are not
-cases: they live in `unittests/` at the repository root.
+Outside the topics: `editors/` and `compat/`, each below;
+`tools/testing/cases/topics.ts` lists every directory `tests/` may hold, and
+any other is an error. C++ unit tests are not cases: they live in
+`unittests/` at the repository root. Real projects are not cases either: no
+push runs them, `ecosystem/` at the repository root does
+(`ecosystem/README.md`).
 
 ## Inputs
 
@@ -451,10 +453,6 @@ an exemption naming nothing uncovered fails too.
   (`tools/testing/cases/copy.ts`), each harness naming the file and symbol
   in a scenario table of its own: changing one of these cases changes those
   tests.
-- **`nightly/projects.json`**: pinned real projects, indexed in full on the free
-  runners; a crash, a hang, a unit clice fails that the compiler accepts, or a
-  file where inspect and server disagree fails it. Counts, sizes, memory and
-  time are recorded, never gated.
 - **`compat/`**: real build systems and compilers build a small project; clice
   must read their databases and agree with the compiler.
 
@@ -478,11 +476,10 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 - Pull-request CI under 20 minutes wall clock; no job over 10 minutes on the
   slowest leg.
 - A test under 30 seconds in Debug on four cores.
-- The nightly run fits the free runners.
 
 ## Never
 
-- Pin every feature on every construct: breadth is the nightly run's.
+- Pin every feature on every construct: breadth is the ecosystem round's.
 - Write product output by hand, or match it partially.
 - Wait on, or assert about, wall-clock time.
 - Retry, skip or weaken a failing test.

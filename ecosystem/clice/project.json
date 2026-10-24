@@ -1,0 +1,21 @@
+{
+  "about": "clice itself at the commit under test",
+  "configurations": {
+    "bazel": {
+      "about": "one C++23 module, its database from Bazel",
+      "platforms": ["linux", "macos"],
+      "prepare": [
+        [
+          "npx",
+          "bazel",
+          "run",
+          "@compdb//:refresh",
+          "--",
+          "--output_groups=+compilation_prerequisites_INTERNAL_"
+        ],
+        ["npx", "bazel", "shutdown"]
+      ],
+      "database": "compile_commands.json"
+    }
+  }
+}

@@ -61,7 +61,7 @@ jobs:
               - 'docs/en/features/**'
               - 'src/**'
               - 'modules/**'
-              - 'benchmarks/**'
+              - 'ecosystem/**'
               - 'include/**'
               - 'tests/**'
               - 'unittests/**'

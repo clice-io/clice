@@ -2,7 +2,7 @@
 
 ## Run Tests
 
-clice has two test suites that run on every change: the unit tests and the cases. Compatibility tests, which need real build systems and compilers, and the editor tests run separately.
+clice has two test suites that run on every change: the unit tests and the cases. Compatibility tests, which need real build systems and compilers, the editor tests and the real projects run separately.
 
 All test dependencies (node/npm for the cases and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
@@ -68,6 +68,20 @@ pixi run compat-test          # default RelWithDebInfo
 ```
 
 Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang (and libc++) plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, musl-gcc, the Android NDK, the MinGW, RISC-V, AArch64 and Arm cross compilers, nvcc from the pixi `cuda` environment and conda's GCC and clang and xclang's Linux and MinGW targets from the `toolchains` one (`pixi install -e cuda -e toolchains`); on Windows Visual Studio, LLVM, MinGW and MSYS2's UCRT GCC and clang; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite with every build, and weekly against the newest release.
+
+## Real Projects
+
+Every nightly release's clice runs over the real projects of `ecosystem/`, one directory each: LLVM, the Linux kernel, CPython, clice itself, abseil (by clang, GCC and MSVC), fmt, mp-units built as C++20 modules, curl, a Qt 6 application, Eigen, CUDA samples and SQLite's amalgamation, each pinned to a commit and prepared as its build would be. Each project runs two kinds of job, each on a CI runner of its own, on Linux, macOS and Windows where it builds (`ecosystem.yml`, which `nightly.yml` starts once it has tagged the nightly's commit). The regression indexes the project from a cold cache, checks with the compiler every unit clice reports errors on, then asks `clice inspect` and a server the same requests at the same places of sampled files and compares the answers. The perf jobs run clice and clangd alternately through the same scenarios on the same files (cold and warm starts, the full index, edits, requests, multi-file sessions, long sessions) and tabulate the two side by side. The round only reports; a stable release tags a nightly whose round shows no new failure. `ecosystem/README.md` is the contract: what a project holds, what each job checks and records, and what fails it.
+
+```bash
+pixi run node tools/ecosystem/run.ts --jobs                               # every job
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/ecosystem/run.ts regression abseil/clang --dir ~/eco  # one regression job
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/ecosystem/run.ts perf fmt/editing --dir ~/eco         # one perf job
+```
+
+Preparing LLVM or the kernel takes a long build and several gigabytes of disk.
 
 ## Debug
 

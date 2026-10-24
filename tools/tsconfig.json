@@ -19,10 +19,10 @@
     "skipLibCheck": true
   },
   "include": [
-    "bench/**/*.ts",
     "client/**/*.ts",
     "compat/**/*.ts",
     "docs/**/*.ts",
+    "ecosystem/**/*.ts",
     "lint/**/*.ts",
     "protocol/**/*.ts",
     "testing/**/*.ts",

@@ -1,0 +1,273 @@
+/// Parser and aggregator for clice's `[perf:<topic>] key=value` log lines
+/// (see src/support/logging.cppm): the server-side breakdown of a perf run,
+/// and, run as a command, a report over any session's logs (a user's
+/// included) with an optional Chrome trace for Perfetto.
+///
+/// Usage:
+///   node tools/ecosystem/perf/logs.ts <logfile>... [--trace out.json]
+///
+/// Log files live under the server's logging dir (master.log and the
+/// per-worker logs); any text with perf lines works, including captured
+/// stderr.
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
+
+/// One `[perf:topic]` line: string keys kept verbatim, numeric values
+/// parsed. `ts` is the log line's timestamp in epoch milliseconds when the
+/// line carried one (stderr mirrors and log files do). `pid`/`tid` are the
+/// trace lanes: the caller assigns one `pid` per source log (master and
+/// each worker are separate processes), `tid` is the line's `[thread N]`
+/// value; both default to 1 for stderr-only sources.
+export interface PerfEvent {
+    topic: string;
+    ts: number | null;
+    pid: number;
+    tid: number;
+    values: Record<string, string | number>;
+}
+
+/// `[2026-08-14 12:34:56.789] [info] [thread 1] [file.cpp:42] [perf:x] k=v`
+const LINE_PATTERN =
+    /^(?:\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] )?.*?\[perf:([\w-]+)\] (.*)$/;
+
+const THREAD_PATTERN = /\[thread (\d+)\]/;
+
+export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
+    const events: PerfEvent[] = [];
+    for (const line of text.split(/\r?\n/)) {
+        const match = LINE_PATTERN.exec(line);
+        if (match === null) {
+            continue;
+        }
+        const [, timestamp, topic, rest] = match;
+        if (topic === undefined || rest === undefined) {
+            continue;
+        }
+        const values: Record<string, string | number> = {};
+        // A value runs until the next ` key=` boundary, not the next space:
+        // paths may contain spaces. This boundary is the format's contract —
+        // producers must not put arbitrary user text into perf lines (the
+        // workspace-symbol query is logged as query_len for this reason);
+        // the remaining values are filesystem paths and enum names.
+        for (const pair of rest.matchAll(/(\w+)=((?:(?!\s\w+=).)*)/g)) {
+            const [, key, raw] = pair;
+            if (key === undefined || raw === undefined) {
+                continue;
+            }
+            const num = Number(raw);
+            values[key] = raw !== "" && Number.isFinite(num) ? num : raw;
+        }
+        const thread = THREAD_PATTERN.exec(line);
+        events.push({
+            topic,
+            // The log timestamp has no timezone; Date.parse reads it as local
+            // time, which is what the producing process used.
+            ts: timestamp !== undefined ? Date.parse(timestamp.replace(" ", "T")) : null,
+            pid,
+            tid: thread?.[1] !== undefined ? Number(thread[1]) : 1,
+            values,
+        });
+    }
+    return events;
+}
+
+export interface Stats {
+    count: number;
+    min: number;
+    p50: number;
+    p90: number;
+    p99: number;
+    max: number;
+    mean: number;
+    sum: number;
+}
+
+export function computeStats(values: number[]): Stats | null {
+    if (values.length === 0) {
+        return null;
+    }
+    const sorted = [...values].sort((a, b) => a - b);
+    const at = (p: number): number => sorted[Math.floor(p * (sorted.length - 1))] ?? 0;
+    const sum = sorted.reduce((a, b) => a + b, 0);
+    return {
+        count: sorted.length,
+        min: sorted[0] ?? 0,
+        p50: at(0.5),
+        p90: at(0.9),
+        p99: at(0.99),
+        max: sorted[sorted.length - 1] ?? 0,
+        mean: sum / sorted.length,
+        sum,
+    };
+}
+
+/// Discriminated name for an event: `<topic>[.<kind>][.<detail>]`. The kind
+/// is the event's `kind`, `phase`, or `op` value; the detail is its `scope`
+/// or `rel` value — mirroring how the topics in logging.cppm use those fields
+/// to distinguish materially different operations (`index_detail op=build
+/// scope=full` vs `scope=interested`, `index_query kind=relations
+/// rel=Definition` vs `rel=Reference`).
+function eventName(event: PerfEvent): string {
+    const parts = [event.topic];
+    const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
+    if (kind !== undefined) {
+        parts.push(String(kind));
+    }
+    const detail = event.values["scope"] ?? event.values["rel"];
+    if (detail !== undefined) {
+        parts.push(String(detail));
+    }
+    return parts.join(".");
+}
+
+/// Group events into duration series. Every numeric `*_ms` key becomes a
+/// series named `<eventName>.<key>`.
+function aggregate(events: PerfEvent[]): Map<string, number[]> {
+    const series = new Map<string, number[]>();
+    for (const event of events) {
+        const prefix = eventName(event);
+        for (const [key, value] of Object.entries(event.values)) {
+            if (typeof value !== "number" || !key.endsWith("_ms")) {
+                continue;
+            }
+            const name = `${prefix}.${key}`;
+            const list = series.get(name) ?? [];
+            list.push(value);
+            series.set(name, list);
+        }
+    }
+    return series;
+}
+
+export function summarize(events: PerfEvent[]): Record<string, Stats> {
+    const summary: Record<string, Stats> = {};
+    for (const [name, values] of aggregate(events)) {
+        const stats = computeStats(values);
+        if (stats !== null) {
+            summary[name] = stats;
+        }
+    }
+    return summary;
+}
+
+interface TraceEvent {
+    name: string;
+    cat: string;
+    ph: "X";
+    ts: number;
+    dur: number;
+    pid: number;
+    tid: number;
+    args: Record<string, string | number>;
+}
+
+interface TraceMetadataEvent {
+    name: "process_name";
+    ph: "M";
+    pid: number;
+    args: { name: string };
+}
+
+/// Convert perf events to Chrome "Trace Event" JSON (load in Perfetto or
+/// chrome://tracing). A perf line is emitted when its span ends and carries
+/// the duration, so the span is reconstructed as [ts - dur, ts]. Lines
+/// without a timestamp are skipped. `processNames` labels the pid lanes
+/// (typically the source log file names).
+export function toChromeTrace(
+    events: PerfEvent[],
+    processNames: Record<number, string> = {},
+): string {
+    const traceEvents: (TraceEvent | TraceMetadataEvent)[] = [];
+    for (const [pid, name] of Object.entries(processNames)) {
+        traceEvents.push({ name: "process_name", ph: "M", pid: Number(pid), args: { name } });
+    }
+    // Events concatenate from multiple log files in file order, so the
+    // first timestamped event is not necessarily the earliest. No spread into
+    // Math.min: a long session's event count exceeds the engine's
+    // argument-count limit.
+    let base = Infinity;
+    for (const event of events) {
+        if (event.ts !== null && event.ts < base) {
+            base = event.ts;
+        }
+    }
+    for (const event of events) {
+        if (event.ts === null) {
+            continue;
+        }
+        const duration = event.values["total_ms"] ?? event.values["elapsed_ms"];
+        if (typeof duration !== "number") {
+            continue;
+        }
+        traceEvents.push({
+            name: eventName(event),
+            cat: event.topic,
+            ph: "X",
+            ts: (event.ts - base - duration) * 1000,
+            dur: duration * 1000,
+            pid: event.pid,
+            tid: event.tid,
+            args: event.values,
+        });
+    }
+    return JSON.stringify({ traceEvents, displayTimeUnit: "ms" });
+}
+
+function main(): void {
+    const { values, positionals } = parseArgs({
+        options: {
+            trace: { type: "string" },
+            help: { type: "boolean", default: false },
+        },
+        allowPositionals: true,
+    });
+
+    if (values.help || positionals.length === 0) {
+        console.log("Usage: node tools/ecosystem/perf/logs.ts <logfile>... [--trace out.json]");
+        process.exit(values.help ? 0 : 1);
+    }
+
+    // One trace pid per input log: master and workers are separate processes,
+    // and their concurrent activity must land on separate lanes.
+    const events: PerfEvent[] = [];
+    const processNames: Record<number, string> = {};
+    positionals.forEach((file, index) => {
+        const pid = index + 1;
+        processNames[pid] = path.basename(file);
+        // No spread into push: a long session yields enough events to blow
+        // the engine's argument-count limit.
+        for (const event of parsePerfLines(fs.readFileSync(file, "utf8"), pid)) {
+            events.push(event);
+        }
+    });
+
+    if (events.length === 0) {
+        console.log("no [perf:*] lines found");
+        return;
+    }
+
+    console.log(`${events.length} perf events`);
+    console.log(
+        `${"series".padEnd(44)} ${"count".padStart(6)} ${"p50".padStart(9)} ` +
+            `${"p90".padStart(9)} ${"max".padStart(9)} ${"sum".padStart(10)}`,
+    );
+    const summary = Object.entries(summarize(events)).sort((a, b) => b[1].sum - a[1].sum);
+    for (const [series, stats] of summary) {
+        console.log(
+            `${series.padEnd(44)} ${String(stats.count).padStart(6)} ` +
+                `${stats.p50.toFixed(2).padStart(9)} ${stats.p90.toFixed(2).padStart(9)} ` +
+                `${stats.max.toFixed(2).padStart(9)} ${stats.sum.toFixed(0).padStart(10)}`,
+        );
+    }
+
+    if (values.trace !== undefined) {
+        fs.writeFileSync(values.trace, toChromeTrace(events, processNames));
+        console.log(`\nChrome trace written to ${values.trace} (open in Perfetto)`);
+    }
+}
+
+if (import.meta.main) {
+    main();
+}

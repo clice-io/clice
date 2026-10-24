@@ -82,6 +82,26 @@ export function runProcess(
     });
 }
 
+/// Whether a run crashed: a signal ended it, or on Windows an unhandled
+/// exception, whose status is 0xC0000000 or above.
+export function crashed(result: ProcessResult): boolean {
+    return (
+        result.signal !== null ||
+        (process.platform === "win32" && (result.status ?? 0) >= 0xc0000000)
+    );
+}
+
+/// How a run that did not exit 0 ended, as a message names it.
+export function ending(result: ProcessResult): string {
+    if (result.error !== undefined) {
+        return result.error.message;
+    }
+    if (crashed(result)) {
+        return `crashed (${result.signal ?? `0x${(result.status ?? 0).toString(16).toUpperCase()}`})`;
+    }
+    return `exited ${String(result.status)}`;
+}
+
 /// Whether a process has the pid: signal 0 checks without sending, and
 /// ESRCH says none has.
 export function running(pid: number): boolean {

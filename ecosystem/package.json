@@ -1,0 +1,17 @@
+{
+  "name": "clice-ecosystem",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint"
+  },
+  "devDependencies": {
+    "@clice/tools": "*",
+    "@types/node": "~25.0.3",
+    "eslint": "^10.8.0",
+    "typescript": "~5.5.4",
+    "typescript-eslint": "^8.65.0"
+  }
+}

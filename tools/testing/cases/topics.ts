@@ -42,4 +42,4 @@ export const TOPICS: Readonly<Record<string, "feature" | "engine" | "command">> 
 };
 
 /// Suites that are not cases.
-export const SUITES = new Set(["editors", "nightly", "compat", "node_modules"]);
+export const SUITES = new Set(["editors", "compat", "node_modules"]);

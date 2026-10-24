@@ -12,6 +12,9 @@ inputs:
   activate-environment:
     description: "Which environment to activate (set to env name, or 'true' for single-env installs)"
     default: "true"
+  run-id:
+    description: "The workflow run that uploaded the artifact; this run when empty"
+    default: ""
 
 runs:
   using: "composite"
@@ -26,6 +29,8 @@ runs:
       with:
         name: build-${{ inputs.target }}-${{ inputs.build_type }}
         path: build/${{ inputs.build_type }}/bin/
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.run-id != '' && github.token || '' }}
 
     - name: Make binaries executable
       if: runner.os != 'Windows'

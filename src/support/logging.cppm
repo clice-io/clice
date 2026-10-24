@@ -72,7 +72,7 @@ import :support.format;
 /// the shards and the TU index, op=preamble the document links and the
 /// pch.idx index). Use stable key=value pairs and
 /// `_ms` suffixes for durations — scripts aggregate these lines
-/// (tools/bench/perf_report.ts).
+/// (tools/ecosystem/perf/logs.ts).
 ///
 /// ## Process ownership
 /// The master logs to <logging_dir>/<session>/master.log and mirrors to

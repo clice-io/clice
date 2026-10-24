@@ -34,6 +34,7 @@ import {
     entrySource,
     readDatabase,
     samePath,
+    withoutOutputs,
     type DatabaseEntry,
 } from "./database.ts";
 import { run, systemEnv } from "./scenario.ts";
@@ -139,19 +140,12 @@ function severity(level: string): Finding["severity"] {
 /// The arguments that make the compiler only check the file: no object,
 /// no dependency file.
 function checkArguments(args: string[]): string[] {
-    const out: string[] = [];
-    for (let i = 1; i < args.length; i += 1) {
-        const arg = args[i] ?? "";
-        if (["-o", "-MF", "-MT", "-MQ"].includes(arg)) {
-            i += 1;
-            continue;
-        }
-        if (["-c", "-MD", "-MMD"].includes(arg) || arg.startsWith("-o")) {
-            continue;
-        }
-        out.push(arg);
-    }
-    return [...out, "-fsyntax-only", "-fno-color-diagnostics", "-fno-caret-diagnostics"];
+    return [
+        ...withoutOutputs(args).slice(1),
+        "-fsyntax-only",
+        "-fno-color-diagnostics",
+        "-fno-caret-diagnostics",
+    ];
 }
 
 const COMPILER_LINE =
