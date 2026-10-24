@@ -181,6 +181,7 @@ ZEST_CASE(SwitchIdentityResets) {
     auto& entry = stack.ast.compiles.entries[pid];
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
+    compiled->base_pch_key = "base";
     compiled->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
     entry.latest = std::move(compiled);
     entry.deps.emplace();
@@ -199,6 +200,7 @@ ZEST_CASE(SwitchIdentityResets) {
     ZASSERT(!stack.ast.compiles.entries[pid].deps.has_value());
     auto after = stack.ast.compiles.latest(pid);
     ZASSERT(!after->pch_key.has_value());
+    ZASSERT(!after->base_pch_key.has_value());
     ZASSERT(after->output);
 }
 

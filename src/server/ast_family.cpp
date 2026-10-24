@@ -651,6 +651,7 @@ void ASTFamily::switch_identity(Session& session) {
         // it compiled the same bytes.
         auto next = DocumentCompile(*entry.latest);
         next.pch_key.reset();
+        next.base_pch_key.reset();
         next.index.reset();
         entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
     }
