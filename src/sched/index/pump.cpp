@@ -94,11 +94,15 @@ kota::task<> IndexPump::persist(index::SearchRebuild search) {
         auto report = co_await save_project(project, commands, loop, save_debt(), search);
         retry = report.owes_retry;
         apply_report(report);
-    }
-    // No more indexing is queued, so no save is due for a while: the file
-    // may shrink — unless a file was queued while the save ran.
-    if(search == index::SearchRebuild::Idle && index_queue_pos >= index_queue.size()) {
-        apply_report(co_await shrink_database(project, loop));
+        // No more indexing is queued, so no save is due for a while: the
+        // file may shrink — unless a file was queued while the save ran. A
+        // shrink that discarded the database owes the fresh one a save.
+        if(!retry && search == index::SearchRebuild::Idle &&
+           index_queue_pos >= index_queue.size()) {
+            report = co_await shrink_database(project, loop);
+            retry = report.owes_retry;
+            apply_report(report);
+        }
     }
 }
 

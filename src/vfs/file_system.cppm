@@ -193,6 +193,9 @@ std::error_code write_atomic(llvm::StringRef path, llvm::StringRef content);
 
 std::error_code rename(llvm::StringRef from, llvm::StringRef to);
 
+/// Flush a file's data to stable storage, before a rename publishes it.
+std::error_code sync(llvm::StringRef path);
+
 /// Remove a file or an empty directory; a missing one is no error. Unlike
 /// llvm::sys::fs::remove, a file another process still maps goes on
 /// Windows as well: its name disappears at once and its content once the

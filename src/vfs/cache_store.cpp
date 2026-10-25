@@ -2,17 +2,6 @@ module;
 
 #include "support/prelude.h"
 
-#ifdef _WIN32
-// The defines keep windows.h from spilling the min/max macros (and other
-// clutter) that break LLVM and standard headers; any direct include of
-// windows.h (here and log_sinks.cpp) needs the same guards.
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "support/logging.macros.h"
 
 module clice;
@@ -46,32 +35,6 @@ struct ManifestEntry {
 struct ManifestData {
     std::vector<ManifestEntry> entries;
 };
-
-/// Flush a file's data to stable storage before the commit rename, so a
-/// crash cannot leave a blob whose name promises content it doesn't have.
-/// Opened via LLVM so UTF-8 paths work on Windows.
-std::error_code sync_file(llvm::StringRef path) {
-    auto file = llvm::sys::fs::openNativeFile(path,
-                                              llvm::sys::fs::CD_OpenExisting,
-                                              llvm::sys::fs::FA_Write,
-                                              llvm::sys::fs::OF_None);
-    if(!file) {
-        return llvm::errorToErrorCode(file.takeError());
-    }
-
-    std::error_code ec;
-#ifdef _WIN32
-    if(!FlushFileBuffers(*file)) {
-        ec = std::error_code(GetLastError(), std::system_category());
-    }
-#else
-    if(::fsync(*file) != 0) {
-        ec = std::error_code(errno, std::generic_category());
-    }
-#endif
-    llvm::sys::fs::closeFile(*file);
-    return ec;
-}
 
 /// On a rename collision, check whether the existing destination blob is
 /// byte-identical to the one we tried to publish.  This path is rare even
@@ -578,7 +541,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
 
     // The destination was removed for a retry that failed too.
     bool removed = false;
-    auto failure = sync_file(pending.tmp_path);
+    // A crash cannot leave a blob whose name promises content it doesn't
+    // have.
+    auto failure = vfs::sync(pending.tmp_path);
     if(failure) {
         vfs::remove(pending.tmp_path);
     } else {

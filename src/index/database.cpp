@@ -552,6 +552,13 @@ public:
             vfs::remove(copy);
             return Copy::Failed;
         }
+        // LMDB writes the copy without syncing it, while the swap renames
+        // it over the file whose commits it syncs.
+        if(auto error = vfs::sync(copy)) {
+            LOG_WARN("Cannot sync the compact copy of the index database: {}", error.message());
+            vfs::remove(copy);
+            return Copy::Failed;
+        }
         return Copy::Written;
     }
 

@@ -6,6 +6,7 @@ module;
 #include "vfs/win32.h"
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 #include "support/logging.macros.h"
 
@@ -954,6 +955,30 @@ std::error_code write_atomic(llvm::StringRef path, llvm::StringRef content) {
 
 std::error_code rename(llvm::StringRef from, llvm::StringRef to) {
     return llvm::sys::fs::rename(from, to);
+}
+
+std::error_code sync(llvm::StringRef path) {
+    // Opened via LLVM so UTF-8 paths work on Windows.
+    auto file = llvm::sys::fs::openNativeFile(path,
+                                              llvm::sys::fs::CD_OpenExisting,
+                                              llvm::sys::fs::FA_Write,
+                                              llvm::sys::fs::OF_None);
+    if(!file) {
+        return llvm::errorToErrorCode(file.takeError());
+    }
+
+    std::error_code ec;
+#ifdef _WIN32
+    if(!FlushFileBuffers(*file)) {
+        ec = std::error_code(GetLastError(), std::system_category());
+    }
+#else
+    if(::fsync(*file) != 0) {
+        ec = std::error_code(errno, std::generic_category());
+    }
+#endif
+    llvm::sys::fs::closeFile(*file);
+    return ec;
 }
 
 std::error_code remove(llvm::StringRef path) {

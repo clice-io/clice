@@ -386,6 +386,23 @@ ZEST_CASE(IdleSaveShrinks) {
     ZEXPECT(space.copies == 1u);
 }
 
+ZEST_CASE(LostShrinkSavesAgain) {
+    // The database opened in place of a lost one takes the context
+    // choices at once: no indexing need follow to save them.
+    ShrinkProject p;
+    auto& space = p.spy();
+    space.forced_swap = index::BlobDatabase::Swap::Lost;
+    p.f.project.contexts.bytes = "choices";
+    p.f.project.contexts.dirty = true;
+    auto task = p.f.pump.persist(index::SearchRebuild::Idle);
+    p.f.loop.schedule(task);
+    p.f.loop.run();
+    ZEXPECT(!p.f.project.contexts.dirty);
+    auto kept = p.f.project.database->read(index::BlobKind::ContextChoices, "contexts");
+    ZASSERT(bool(kept));
+    ZEXPECT(kept.buffer->getBuffer() == "choices");
+}
+
 };  // ZEST_SUITE(ShrinkDatabase)
 
 }  // namespace
