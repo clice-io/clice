@@ -77,6 +77,14 @@ function readUnits(where: string, units: unknown): Record<string, UnitArgs> {
 
 /// The project.toml in `dir`, empty when there is none.
 export function readProject(dir: string): Project {
+    for (const json of ["project.jsonc", "project.json"]) {
+        if (fs.existsSync(path.join(dir, json))) {
+            fail(
+                posix(path.relative(REPO_ROOT, path.join(dir, json))),
+                "a project is project.toml now: `node tools/testing/cases/convert.ts` converts the branch's",
+            );
+        }
+    }
     const file = path.join(dir, "project.toml");
     if (!fs.existsSync(file)) {
         return {};

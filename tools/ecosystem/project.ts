@@ -125,6 +125,11 @@ export function validated(project: Project): Project {
 
 export function loadProject(name: string): Project {
     const file = path.join(ECOSYSTEM, name, "project.toml");
+    if (fs.existsSync(path.join(ECOSYSTEM, name, "project.json"))) {
+        throw new Error(
+            `ecosystem/${name}/project.json: a project is project.toml now: \`node tools/testing/cases/convert.ts\` converts the branch's`,
+        );
+    }
     if (!fs.existsSync(file)) {
         throw new Error(`no project ${name}: ${file} is missing`);
     }

@@ -89,6 +89,11 @@ describe("readProject", () => {
             expect(() => readProject(dir)).toThrow(/project\.toml: unknown key 'flag'/);
             fs.writeFileSync(file, "flags = [\n");
             expect(() => readProject(dir)).toThrow(/project\.toml: Invalid TOML document/);
+            fs.rmSync(file);
+            fs.writeFileSync(path.join(dir, "project.jsonc"), '{ "flags": [] }\n');
+            expect(() => readProject(dir)).toThrow(
+                /project\.jsonc: a project is project\.toml now: `node tools\/testing\/cases\/convert\.ts`/,
+            );
         } finally {
             fs.rmSync(dir, { recursive: true });
         }
