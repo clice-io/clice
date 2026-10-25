@@ -107,7 +107,7 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     kota::process::options opts;
     // Asked at every spawn: on macOS it fails once an update has replaced
     // the file this program runs from.
-    opts.program = options.self_path;
+    opts.program = options.program;
     if(opts.program.empty()) {
         if(auto error = sys::self_executable(opts.program)) {
             LOG_ANOMALY(WorkerSpawnFail,

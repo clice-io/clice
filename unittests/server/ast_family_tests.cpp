@@ -269,7 +269,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -327,7 +327,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -392,7 +392,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -470,7 +470,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -534,7 +534,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     bool ok = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -598,7 +598,7 @@ ZEST_CASE(ImportScanPerUnit) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -650,7 +650,7 @@ ZEST_CASE(BufferImportRecorded) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -699,7 +699,7 @@ ZEST_CASE(IncludeImportRecorded) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -745,7 +745,7 @@ ZEST_CASE(HostImportRecorded) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -793,7 +793,7 @@ ZEST_CASE(SuffixImportRecorded) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -843,7 +843,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -975,7 +975,7 @@ ZEST_CASE(PCHCrashBarsDocument) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
@@ -1022,7 +1022,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
@@ -1069,7 +1069,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -1135,7 +1135,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -1191,7 +1191,7 @@ ZEST_CASE(HarmlessKindKeepsBar) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -1250,7 +1250,7 @@ ZEST_CASE(PoisonPreambleShared) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
@@ -1309,7 +1309,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
@@ -1404,7 +1404,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
@@ -1462,7 +1462,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         opts.max_documents = 1;
@@ -1510,7 +1510,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -1551,7 +1551,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
@@ -1590,7 +1590,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));

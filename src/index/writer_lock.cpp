@@ -109,6 +109,7 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
         // Removed under the lock: a server acquiring it right after the
         // release publishes a record this removal must not take.
         remove_endpoint(cache_dir);
+        opened->unlock();
         return probe;
     }
     probe.state = WriterProbe::State::Held;

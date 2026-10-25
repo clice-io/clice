@@ -62,7 +62,7 @@ ZEST_CASE(ModuleLintScanParity) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
@@ -120,7 +120,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
@@ -179,7 +179,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));

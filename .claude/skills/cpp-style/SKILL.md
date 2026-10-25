@@ -52,7 +52,7 @@ defending against ghosts.
   third-party module (`modules/`) and `std.compat` and replays their
   macros, and gives the namespaces clice uses everywhere their short names
   in `clice` — `ranges`, `views`, `ipc`, `lsp`, `protocol`, `codec`,
-  `json`. Code inside `clice` writes those names (`ranges::sort`,
+  `json`, `fs`, `sys`. Code inside `clice` writes those names (`ranges::sort`,
   `protocol::Range`), never `std::ranges::` or `kota::ipc::protocol::`, and
   no file declares them again. Then come the macro headers the unit uses,
   the module declaration, and one `import :<partition>;` per partition it
@@ -229,7 +229,7 @@ Domain words with one meaning each — use them only in that meaning:
 - Prefer `ranges` / `views` APIs over raw loops and traditional `<algorithm>` calls.
 - Range helpers come from the standard library, never LLVM's `STLExtras`: `ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
 - Prefer LLVM's efficient data structures (e.g., `llvm::SmallVector`, `llvm::DenseMap`, `llvm::StringMap`, `llvm::StringRef`) over their `std` counterparts when appropriate.
-- The operating system is reached through kotatsu: paths, files and directories through `fs` (`kota::fs`), the environment, programs and processes through `sys` (`kota::sys`), never `llvm::sys` or `std::filesystem`. LLVM stays only where clang's interfaces take its types: `llvm::vfs` for clang's file manager, a `llvm::MemoryBuffer` clang reads.
+- The operating system is reached through kotatsu: paths, files and directories through `fs` (`kota::fs`), the environment, programs and processes through `sys` (`kota::sys`), never `llvm::sys` or `std::filesystem`. LLVM stays where an interface takes its types — `llvm::vfs` for clang's file manager, a `llvm::MemoryBuffer` clang or the index adopts, filled from an `fs::File` — and for what kotatsu does not do: crash stack traces, `~user` expansion.
 
 ## Parameter Passing Preferences
 

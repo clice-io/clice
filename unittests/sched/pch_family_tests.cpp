@@ -58,7 +58,7 @@ template <typename F>
 void execute(F&& fn) {
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         ZASSERT(pool.start(opts));

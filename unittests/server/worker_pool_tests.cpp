@@ -264,7 +264,7 @@ struct WorkerPoolFixture {
                std::uint32_t stateful = 0,
                std::uint32_t min_stateless = 0) {
         WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
+        opts.program = clice_binary();
         opts.stateless_count = stateless;
         opts.stateful_count = stateful;
         opts.min_stateless = min_stateless;
@@ -907,7 +907,7 @@ ZEST_CASE(SpawnFailReportsAnomaly) {
     logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
 
     WorkerPoolOptions opts;
-    opts.self_path = "/nonexistent/clice-binary";
+    opts.program = "/nonexistent/clice-binary";
     opts.stateless_count = 1;
     opts.stateful_count = 0;
     ZEXPECT(!f.pool.start(opts));

@@ -293,7 +293,7 @@ echo '{2}' >&2
                                           tmp.path("counts"),
                                           clang_job));
 
-    auto cores = kota::sys::parallelism();
+    auto cores = sys::parallelism();
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 2 * cores; i += 1) {
         auto depth = std::format("-ftemplate-depth={}", 100 + i);

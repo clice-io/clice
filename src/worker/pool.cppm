@@ -113,8 +113,8 @@ struct StderrTail {
 
 struct WorkerPoolOptions {
     /// The program workers run as `<program> worker`: this program itself
-    /// when empty. Tests, being another program, name clice.
-    std::string self_path;
+    /// when empty.
+    std::string program;
 
     /// Stateless workers started, and the most that background (Low) work
     /// keeps busy; only interactive work that finds no idle slot grows the

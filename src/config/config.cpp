@@ -54,7 +54,7 @@ static std::optional<Spelling> setting_path(std::string value,
 /// hyper-thread adds little to a compile, while every worker costs a TU's
 /// memory.
 static std::uint32_t physical_parallelism() {
-    auto logical = kota::sys::parallelism();
+    auto logical = sys::parallelism();
     auto physical = llvm::get_physical_cores();
     return physical > 0 ? std::min(static_cast<std::uint32_t>(physical), logical) : logical;
 }

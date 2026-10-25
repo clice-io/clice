@@ -9,7 +9,7 @@ import :support.format;
 namespace clice {
 namespace path {
 
-using namespace kota::fs::path;
+using namespace fs::path;
 
 /// `base` with each of `parts` pushed onto it in turn: a part that is
 /// absolute takes the place of the path before it.
@@ -291,7 +291,7 @@ llvm::StringRef local(llvm::StringRef name,
                       llvm::StringRef workspace,
                       llvm::SmallVectorImpl<char>& storage);
 
-using kota::fs::path::is_within;
+using fs::path::is_within;
 
 /// Whether the identity `p` is `ancestor` or lies under it.
 template <Canonical P, Canonical A>
@@ -322,7 +322,7 @@ namespace path {
 inline void walk_ancestors(CanonicalRef start, llvm::function_ref<bool(CanonicalRef)> visit) {
     for(CanonicalPath dir = start; visit(dir);) {
         auto parent = CanonicalRef(dir).parent();
-        if(parent.empty() || parent.size() == dir.size()) {
+        if(parent.empty()) {
             return;
         }
         dir = std::move(parent);

@@ -8,17 +8,13 @@ import :vfs.path;
 
 namespace clice {
 
-namespace {
-
 /// `.` segments, duplicate and trailing separators dropped, canonically
 /// spelled; `..` kept.
-std::string normalized(std::string text) {
+static std::string normalized(std::string text) {
     path::normalize(text, path::DotDot::Keep);
     path::canonicalize(text);
     return text;
 }
-
-}  // namespace
 
 llvm::StringRef path::portable(llvm::StringRef p,
                                llvm::StringRef workspace,

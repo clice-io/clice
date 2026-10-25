@@ -218,6 +218,11 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     } else if(auto error = lock->lock()) {
         LOG_WARN("CacheStore: cannot lock {}: {}", lock_path, error.message());
     }
+    auto unlock = llvm::make_scope_exit([&] {
+        if(lock) {
+            lock->unlock();
+        }
+    });
 
     if(auto made = fs::create_directories(state->base); !made) {
         return std::unexpected(made.error());

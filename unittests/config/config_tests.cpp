@@ -638,7 +638,7 @@ ZEST_CASE(HomeExpanded) {
     config.project.cache_dir = "~/clice-cache";
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     llvm::SmallString<256> home;
-    ZASSERT(!sys::home_dir(home));
+    ZASSERT(llvm::sys::path::home_directory(home));
     ZEXPECT(std::string_view(config.project.cache_dir) ==
             CanonicalPath(Spelling("clice-cache", Spelling::absolute(home))).str());
 }
