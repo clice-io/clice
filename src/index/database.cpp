@@ -523,14 +523,38 @@ public:
         return Growth::Grown;
     }
 
-    bool write_compact_copy() override {
+    Copy write_compact_copy() override {
+        if(!OpenLock::acquire(path, OpenLock::Kind::Exclusive, std::chrono::milliseconds(0))) {
+            return Copy::Busy;
+        }
+        // The copy holds the live pages; a volume it would fill fails every
+        // other write on it until the copy fails. Off the event loop, the
+        // resident snapshot is the loop's to read.
+        MDB_txn* own = nullptr;
+        if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &own)) {
+            note_error(rc);
+            return Copy::Failed;
+        }
+        auto live = usage_of(own);
+        mdb_txn_abort(own);
+        auto space = llvm::sys::fs::disk_space(llvm::sys::path::parent_path(path));
+        if(live && space) {
+            auto needed = (live->pages - live->free_pages) * live->page_size;
+            if(space->available < needed + needed / 4) {
+                LOG_INFO("{} free beside the index database, too little for a compact copy of {}",
+                         format_bytes(space->available),
+                         format_bytes(needed));
+                return Copy::Failed;
+            }
+        }
         auto copy = path + "-compact";
         if(int rc = mdb_env_copy2(env, copy.c_str(), MDB_CP_COMPACT)) {
+            note_error(rc);
             LOG_WARN("Cannot write a compact copy of the index database: {}", mdb_strerror(rc));
             vfs::remove(copy);
-            return false;
+            return Copy::Failed;
         }
-        return true;
+        return Copy::Written;
     }
 
     Swap swap_compact_copy() override {
@@ -548,14 +572,16 @@ public:
         txn = nullptr;
         mdb_env_close(env);
         env = nullptr;
-        if(auto ec = llvm::sys::fs::rename(copy, path)) {
-            LOG_WARN("Cannot replace the index database by its compact copy: {}", ec.message());
+        auto renamed = llvm::sys::fs::rename(copy, path);
+        if(renamed) {
+            LOG_WARN("Cannot replace the index database by its compact copy: {}",
+                     renamed.message());
             vfs::remove(copy);
         }
         if(!reopen(info.me_mapsize)) {
             return Swap::Lost;
         }
-        return Swap::Reopened;
+        return renamed ? Swap::Kept : Swap::Replaced;
     }
 
     bool corrupted() const override {
@@ -567,10 +593,16 @@ public:
     }
 
     std::optional<PageUsage> usage() override {
+        return usage_of(txn);
+    }
+
+private:
+    /// How the file's pages are used as of `snapshot`.
+    std::optional<PageUsage> usage_of(MDB_txn* snapshot) const {
         MDB_envinfo info;
         mdb_env_info(env, &info);
         MDB_stat tree;
-        if(mdb_stat(txn, dbi, &tree)) {
+        if(mdb_stat(snapshot, dbi, &tree)) {
             return std::nullopt;
         }
         PageUsage usage{
@@ -582,7 +614,7 @@ public:
         // LMDB keeps its free list in database 0, one record per write
         // transaction that freed pages: their count, then their numbers.
         MDB_cursor* cursor = nullptr;
-        if(mdb_cursor_open(txn, 0, &cursor)) {
+        if(mdb_cursor_open(snapshot, 0, &cursor)) {
             return std::nullopt;
         }
         MDB_val key;
@@ -596,7 +628,6 @@ public:
         return usage;
     }
 
-private:
     /// Open the environment again after swap_compact_copy() closed it; false,
     /// the handle unusable, when that fails (logged).
     bool reopen(std::size_t mapsize) {

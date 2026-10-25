@@ -204,21 +204,34 @@ public:
     /// fails despite the headroom check ends the process with an error.
     virtual Growth grow() = 0;
 
+    /// What write_compact_copy() did.
+    enum class Copy : std::uint8_t {
+        Written,
+        /// Another process has the database open, so no copy could replace
+        /// the file: none was written.
+        Busy,
+        /// Writing it failed (logged): too little free disk, a damaged page
+        /// (which corrupted() reports from now on), an IO error.
+        Failed,
+    };
+
     /// Write a copy of the read snapshot without the free pages beside the
     /// file, for swap_compact_copy(). Heavy IO, off the event loop; no write
-    /// may commit until the swap. False when the copy failed (logged).
-    virtual bool write_compact_copy() = 0;
+    /// may commit until the swap.
+    virtual Copy write_compact_copy() = 0;
 
     /// What swap_compact_copy() did.
     enum class Swap : std::uint8_t {
-        /// Another process has the database open: the file stays, and the
-        /// copy is gone.
+        /// Another process opened the database meanwhile: the file stays,
+        /// and the copy is gone.
         Busy,
-        /// The handle was closed and opened again — on the copy, unless
-        /// replacing the file failed (logged) — after retiring EVERY read
-        /// snapshot: all borrowed buffers died, and the caller rebinds every
-        /// borrower before yielding the event loop.
-        Reopened,
+        /// The handle was closed and opened again on the copy, after
+        /// retiring EVERY read snapshot: all borrowed buffers died, and the
+        /// caller rebinds every borrower before yielding the event loop.
+        Replaced,
+        /// Replacing the file failed (logged): the handle was reopened on it
+        /// as for Replaced, and the copy is gone.
+        Kept,
         /// The handle could not be opened again and is unusable: the caller
         /// discards the database at once.
         Lost,

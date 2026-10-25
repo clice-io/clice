@@ -145,9 +145,10 @@ ZEST_CASE(NoContextsNoRewrite) {
 };  // ZEST_SUITE(ContextChoices)
 
 /// A database reporting its pages as `pages`, `free` of them free, and
-/// recording the compact copies written and what their swaps did; `forced`
-/// stands in for the swap's result, and `lose_reads` fails every read once
-/// a swap reopened the database, as views diverging from it would.
+/// recording the compact copies written and what their swaps did;
+/// `forced_copy` and `forced_swap` stand in for their results, and
+/// `lose_reads` fails every read once a swap replaced the file, as views
+/// diverging from it would.
 struct FreeSpace final : ForwardingDatabase {
     using ForwardingDatabase::ForwardingDatabase;
 
@@ -159,7 +160,9 @@ struct FreeSpace final : ForwardingDatabase {
 
     std::optional<Swap> swapped;
 
-    std::optional<Swap> forced;
+    std::optional<Copy> forced_copy;
+
+    std::optional<Swap> forced_swap;
 
     bool lose_reads = false;
 
@@ -172,18 +175,18 @@ struct FreeSpace final : ForwardingDatabase {
         return usage;
     }
 
-    bool write_compact_copy() override {
+    Copy write_compact_copy() override {
         copies += 1;
-        return real->write_compact_copy();
+        return forced_copy ? *forced_copy : real->write_compact_copy();
     }
 
     Swap swap_compact_copy() override {
-        swapped = forced ? *forced : real->swap_compact_copy();
+        swapped = forced_swap ? *forced_swap : real->swap_compact_copy();
         return *swapped;
     }
 
     index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-        if(lose_reads && swapped == Swap::Reopened) {
+        if(lose_reads && swapped == Swap::Replaced) {
             return {};
         }
         return real->read(kind, key);
@@ -261,7 +264,7 @@ ZEST_CASE(ShrinkKeepsIndex) {
     auto& space = p.spy();
     auto report = p.shrink();
     ZEXPECT(space.copies == 1u);
-    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Reopened);
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Replaced);
     ZEXPECT(report.reindex().empty());
     ZEXPECT(!p.f.project.index.damaged());
     ZEXPECT(p.hits("first_local") == 1u);
@@ -292,13 +295,38 @@ ZEST_CASE(LostDatabaseStartsOver) {
         if(reopened) {
             space.lose_reads = true;
         } else {
-            space.forced = index::BlobDatabase::Swap::Lost;
+            space.forced_swap = index::BlobDatabase::Swap::Lost;
         }
         auto report = p.shrink();
         ZEXPECT(ranges::contains(report.reindex(), p.unit("a.cpp")));
         ZEXPECT(!p.f.project.index.search_index().loaded());
         ZEXPECT(p.f.project.database != nullptr);
     }
+}
+
+ZEST_CASE(FailedShrinkStops) {
+    // A copy that failed, or could not replace the file, is not tried again
+    // in the session; another process holding the database open only
+    // defers it.
+    using Database = index::BlobDatabase;
+    for(auto failure: {Database::Copy::Failed, Database::Copy::Busy}) {
+        ShrinkProject p;
+        auto& space = p.spy();
+        space.forced_copy = failure;
+        p.shrink();
+        space.forced_copy.reset();
+        p.shrink();
+        bool failed = failure == Database::Copy::Failed;
+        ZEXPECT(space.copies == (failed ? 1u : 2u));
+        ZEXPECT(p.f.project.shrink_failed == failed);
+    }
+    ShrinkProject p;
+    auto& space = p.spy();
+    space.forced_swap = Database::Swap::Kept;
+    p.shrink();
+    p.shrink();
+    ZEXPECT(space.copies == 1u);
+    ZEXPECT(p.hits("first_local") == 1u);
 }
 
 ZEST_CASE(SaveWaitsForShrink) {
@@ -315,7 +343,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     p.f.loop.schedule(shrink_task);
     p.f.loop.schedule(save_task);
     p.f.loop.run();
-    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Reopened);
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Replaced);
     ZEXPECT(!p.f.project.index.has_unsaved_state());
     // One process opens a database once at a time.
     p.f.project.database.reset();

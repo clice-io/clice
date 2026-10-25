@@ -240,7 +240,8 @@ kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loo
     auto gate = llvm::make_scope_exit([&] { project.save_gate.release(); });
     // Re-checked: the gate holder we waited out may have failed to reopen
     // the database. A damaged one is the next save's to discard.
-    if(!project.database || project.database->corrupted() || project.index.damaged()) {
+    if(!project.database || project.database->corrupted() || project.index.damaged() ||
+       project.shrink_failed) {
         co_return report;
     }
     auto& db = *project.database;
@@ -249,19 +250,21 @@ kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loo
         co_return report;
     }
     ScopedTimer timer;
-    bool copied = false;
-    co_await kota::queue([&] { copied = db.write_compact_copy(); });
-    if(!copied) {
-        co_return report;
+    using Database = index::BlobDatabase;
+    auto copy = Database::Copy::Failed;
+    co_await kota::queue([&] { copy = db.write_compact_copy(); });
+    switch(copy) {
+        case Database::Copy::Written: break;
+        case Database::Copy::Busy: co_return report;
+        case Database::Copy::Failed: project.shrink_failed = true; co_return report;
     }
     switch(db.swap_compact_copy()) {
-        case index::BlobDatabase::Swap::Busy:
-            LOG_INFO("Another process has the index database open; its file shrinks later");
+        case Database::Swap::Busy:
+            LOG_INFO("Another process opened the index database; its file shrinks later");
             co_return report;
-        case index::BlobDatabase::Swap::Lost:
-            recover_corrupt_database(project, report);
-            co_return report;
-        case index::BlobDatabase::Swap::Reopened: break;
+        case Database::Swap::Lost: recover_corrupt_database(project, report); co_return report;
+        case Database::Swap::Kept: project.shrink_failed = true; break;
+        case Database::Swap::Replaced: break;
     }
     if(!co_await project.index.rebind_views(db, loop, /*at_once=*/true)) {
         recover_corrupt_database(project, report);

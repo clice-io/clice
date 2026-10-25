@@ -667,8 +667,8 @@ ZEST_CASE(CompactCopyShrinksFile) {
     ZASSERT(before);
     ZASSERT(before->free_pages > before->pages / 2);
 
-    ZASSERT(db->write_compact_copy());
-    ZASSERT(db->swap_compact_copy() == index::BlobDatabase::Swap::Reopened);
+    ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
+    ZASSERT(db->swap_compact_copy() == index::BlobDatabase::Swap::Replaced);
     auto after = db->usage();
     ZASSERT(after);
     ZEXPECT(after->pages * 2 < before->pages);
@@ -691,8 +691,9 @@ ZEST_CASE(CompactCopyShrinksFile) {
 }
 
 ZEST_CASE(ReaderKeepsFile) {
-    // Another process holding the database open keeps its file: the copy
-    // goes, and the handle serves on as before.
+    // Another process holding the database open keeps its file, whether it
+    // was there before the copy or opened the database while it was written:
+    // the handle serves on as before.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto file = path::join(index::database_directory(store, ""), "index.mdb");
@@ -702,14 +703,19 @@ ZEST_CASE(ReaderKeepsFile) {
     ZASSERT(bool(value));
     {
         ForeignReader reader(file);
-        ZASSERT(db->write_compact_copy());
+        ZEXPECT(db->write_compact_copy() == index::BlobDatabase::Copy::Busy);
+        ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    }
+    ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
+    {
+        ForeignReader reader(file);
         ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Busy);
         ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
         ZEXPECT(db->usage()->pages == pages);
         ZEXPECT(value.buffer->getBuffer() == std::string(1 << 16, 'a' + 60 % 26));
     }
-    ZASSERT(db->write_compact_copy());
-    ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Reopened);
+    ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
+    ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Replaced);
     ZEXPECT(db->usage()->pages < pages);
 }
 

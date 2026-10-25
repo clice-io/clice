@@ -51,7 +51,7 @@ struct ForwardingDatabase : index::BlobDatabase {
         return real->grow();
     }
 
-    bool write_compact_copy() override {
+    Copy write_compact_copy() override {
         return real->write_compact_copy();
     }
 

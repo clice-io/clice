@@ -310,6 +310,10 @@ struct Project {
     /// assuming one save at a time.
     kota::semaphore save_gate{1};
 
+    /// A compact copy of the database failed this session, or could not
+    /// replace the file: the file shrinks no more until the next session.
+    bool shrink_failed = false;
+
     /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
     /// tags its results with it and clice/switchContext rejects requests
