@@ -96,8 +96,8 @@ kota::task<> IndexPump::persist(index::SearchRebuild search) {
         apply_report(report);
     }
     // No more indexing is queued, so no save is due for a while: the file
-    // may shrink.
-    if(search == index::SearchRebuild::Idle) {
+    // may shrink — unless a file was queued while the save ran.
+    if(search == index::SearchRebuild::Idle && index_queue_pos >= index_queue.size()) {
         apply_report(co_await shrink_database(project, loop));
     }
 }

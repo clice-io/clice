@@ -9,6 +9,7 @@ import :index.project_index;
 import :index.symbol_query;
 import :project.project;
 import :project.save;
+import :sched.index.pending_table;
 import :server.editor_context;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -146,9 +147,9 @@ ZEST_CASE(NoContextsNoRewrite) {
 
 /// A database reporting its pages as `pages`, `free` of them free, and
 /// recording the compact copies written and what their swaps did;
-/// `forced_copy` and `forced_swap` stand in for their results, and
-/// `lose_reads` fails every read once a swap replaced the file, as views
-/// diverging from it would.
+/// `forced_copy` and `forced_swap` stand in for their results. A lost
+/// handle reads nothing, nor does a replaced file under `lose_reads`, as
+/// views diverging from it would.
 struct FreeSpace final : ForwardingDatabase {
     using ForwardingDatabase::ForwardingDatabase;
 
@@ -186,10 +187,21 @@ struct FreeSpace final : ForwardingDatabase {
     }
 
     index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-        if(lose_reads && swapped == Swap::Replaced) {
+        if(lost()) {
             return {};
         }
         return real->read(kind, key);
+    }
+
+    void for_each(index::BlobKind kind,
+                  llvm::function_ref<bool(llvm::StringRef, index::ReadBlob)> fn) override {
+        if(!lost()) {
+            real->for_each(kind, fn);
+        }
+    }
+
+    bool lost() const {
+        return swapped == Swap::Lost || (lose_reads && swapped == Swap::Replaced);
     }
 };
 
@@ -367,6 +379,9 @@ ZEST_CASE(IdleSaveShrinks) {
     persist(index::SearchRebuild::Never);
     persist(index::SearchRebuild::Behind);
     ZEXPECT(space.copies == 0u);
+    persist(index::SearchRebuild::Idle);
+    ZEXPECT(space.copies == 1u);
+    p.f.pump.enqueue(p.unit("b.cpp"), ReindexReason::ContentChanged);
     persist(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
 }

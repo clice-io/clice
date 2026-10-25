@@ -256,13 +256,28 @@ kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loo
     switch(copy) {
         case Database::Copy::Written: break;
         case Database::Copy::Busy: co_return report;
-        case Database::Copy::Failed: project.shrink_failed = true; co_return report;
+        case Database::Copy::Failed:
+            project.shrink_failed = true;
+            // The copy read every page: a damaged one it met is discarded
+            // now, as a save meeting it would.
+            if(db.corrupted()) {
+                recover_corrupt_database(project, report);
+            }
+            co_return report;
     }
+    // A handle lost in the swap lists no unit any more.
+    llvm::SmallVector<Fid> units;
+    project.index.for_each_unit([&](Fid unit) { units.push_back(unit); });
     switch(db.swap_compact_copy()) {
         case Database::Swap::Busy:
             LOG_INFO("Another process opened the index database; its file shrinks later");
             co_return report;
-        case Database::Swap::Lost: recover_corrupt_database(project, report); co_return report;
+        case Database::Swap::Lost:
+            recover_corrupt_database(project, report);
+            for(auto unit: units) {
+                report.add_reindex(unit);
+            }
+            co_return report;
         case Database::Swap::Kept: project.shrink_failed = true; break;
         case Database::Swap::Replaced: break;
     }

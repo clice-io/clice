@@ -157,11 +157,15 @@ public:
     /// conflicting lock to go, else fail at once. None when the lock is
     /// held elsewhere or the file cannot be opened.
     static std::optional<OpenLock> acquire(llvm::StringRef path, Kind kind, bool wait) {
+        auto file = path.str() + "-open";
         int fd = -1;
-        if(llvm::sys::fs::openFileForReadWrite(path.str() + "-open",
+        // A reader may not write the directory of a database it can read;
+        // the writer created the file then.
+        if(llvm::sys::fs::openFileForReadWrite(file,
                                                fd,
                                                llvm::sys::fs::CD_OpenAlways,
-                                               llvm::sys::fs::OF_None)) {
+                                               llvm::sys::fs::OF_None) &&
+           llvm::sys::fs::openFileForRead(file, fd)) {
             return std::nullopt;
         }
         OpenLock lock(fd);
@@ -822,10 +826,24 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     }
 
     // The writer swaps in a compact copy while no reader has the file open,
-    // for milliseconds, which a reader arriving meanwhile waits out.
+    // for milliseconds, which a reader arriving meanwhile waits out. The
+    // writer itself only makes sure the lock file exists for readers that
+    // may not create it.
     std::optional<OpenLock> open_lock;
     if(read_only) {
         open_lock = OpenLock::acquire(path, OpenLock::Kind::Shared, /*wait=*/true);
+        if(!open_lock) {
+            LOG_WARN("Cannot lock the index database at {} for reading ({}-open)", path, path);
+            return nullptr;
+        }
+    } else {
+        int fd = -1;
+        if(!llvm::sys::fs::openFileForReadWrite(path + "-open",
+                                                fd,
+                                                llvm::sys::fs::CD_OpenAlways,
+                                                llvm::sys::fs::OF_None)) {
+            llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        }
     }
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
