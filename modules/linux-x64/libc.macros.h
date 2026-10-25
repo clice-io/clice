@@ -33,6 +33,7 @@
 #define	SIGCONT		18	/* Continue (POSIX).  */
 #define	SIGSTOP		19	/* Stop, unblockable (POSIX).  */
 #define	SIGXFSZ		25	/* File size limit exceeded (4.2 BSD).  */
+# define __WCHAR_MAX	(2147483647)
 # define bswap_64(x) __bswap_64 (x)
 #define	__GLIBC__	2
 #define	__GLIBC_MINOR__	17
@@ -61,6 +62,7 @@
 # define UINT32_MAX		(4294967295U)
 # define UINT64_MAX		(__UINT64_C(18446744073709551615))
 #  define SIZE_MAX		(18446744073709551615UL)
+#  define WCHAR_MAX		__WCHAR_MAX
 #  define INT64_C(c)	c ## L
 # define UINT8_C(c)	c
 #  define UINT64_C(c)	c ## UL

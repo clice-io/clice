@@ -24,6 +24,7 @@
 #define UINT32_MAX 0xffffffffU  /* 4294967295U */
 #define UINT64_MAX 0xffffffffffffffffULL /* 18446744073709551615ULL */
 #define SIZE_MAX UINT64_MAX
+#define WCHAR_MAX 0xffffU
 #define INT64_C(val) val##LL
 #define UINT8_C(val) (val)
 #define UINT64_C(val) val##ULL

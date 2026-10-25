@@ -32,6 +32,7 @@
 #define UINT64_MAX        18446744073709551615ULL
 #define UINTPTR_MAX       18446744073709551615UL
 #define SIZE_MAX          UINTPTR_MAX
+#    define WCHAR_MAX     __WCHAR_MAX__
 #define __DARWIN_LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
 #define __DARWIN_BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
 #define BIG_ENDIAN      __DARWIN_BIG_ENDIAN

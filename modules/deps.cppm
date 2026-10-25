@@ -5066,8 +5066,10 @@ using ::kota::any_word;
 using ::kota::async_node;
 using ::kota::async_visitor;
 using ::kota::bad_outcome_access;
+using ::kota::basic_buffer_ref;
 using ::kota::bind;
 using ::kota::bind_ref;
+using ::kota::buffer_ref;
 using ::kota::bytes_below;
 using ::kota::bytes_equal;
 using ::kota::callable_args_count_v;
@@ -5096,6 +5098,7 @@ using ::kota::event_loop;
 using ::kota::fail;
 using ::kota::first_byte_index;
 using ::kota::format_kind;
+using ::kota::from_utf16;
 using ::kota::function;
 using ::kota::function_args_count_v;
 using ::kota::function_args_t;
@@ -5158,8 +5161,12 @@ using ::kota::sequence_range;
 using ::kota::set_range;
 using ::kota::signal;
 using ::kota::sleep;
+using ::kota::small_string;
 using ::kota::small_vector;
+using ::kota::small_wstring;
 using ::kota::stream;
+using ::kota::string_buffer;
+using ::kota::string_list_ref;
 using ::kota::string_ref;
 using ::kota::sync_primitive;
 using ::kota::task;
@@ -5167,6 +5174,7 @@ using ::kota::task_frame;
 using ::kota::task_group;
 using ::kota::tcp;
 using ::kota::timer;
+using ::kota::to_utf16;
 using ::kota::tuple_any_of_v;
 using ::kota::tuple_count_of_v;
 using ::kota::tuple_find;
@@ -5737,11 +5745,13 @@ using ::kota::detail::awaiter;
 using ::kota::detail::awaiter_t;
 using ::kota::detail::call_result_t;
 using ::kota::detail::cancel_await;
+using ::kota::detail::decode_sequence;
 using ::kota::detail::default_buffer_size;
 using ::kota::detail::destroy_handle;
 using ::kota::detail::expire;
 using ::kota::detail::fail_await;
 using ::kota::detail::failing;
+using ::kota::detail::from_utf16;
 using ::kota::detail::get_awaiter;
 using ::kota::detail::group_error;
 using ::kota::detail::inline_buffer;
@@ -5782,62 +5792,133 @@ using ::kota::detail::synth_three_way;
 using ::kota::detail::task_access;
 using ::kota::detail::task_promise;
 using ::kota::detail::task_return_object;
+using ::kota::detail::to_utf16;
 using ::kota::detail::unique_handle;
 using ::kota::detail::when_children;
 using ::kota::detail::when_op;
 }
 
 export namespace kota::fs {
-using ::kota::fs::access;
-using ::kota::fs::chmod;
-using ::kota::fs::chown;
-using ::kota::fs::close;
-using ::kota::fs::copyfile;
-using ::kota::fs::copyfile_options;
-using ::kota::fs::dir_handle;
-using ::kota::fs::dirent;
-using ::kota::fs::fchmod;
-using ::kota::fs::fchown;
-using ::kota::fs::fdatasync;
-using ::kota::fs::file_stats;
-using ::kota::fs::file_time;
-using ::kota::fs::fs_stats;
-using ::kota::fs::fstat;
-using ::kota::fs::fsync;
-using ::kota::fs::ftruncate;
-using ::kota::fs::futime;
-using ::kota::fs::lchown;
-using ::kota::fs::link;
-using ::kota::fs::lstat;
-using ::kota::fs::lutime;
-using ::kota::fs::mkdir;
-using ::kota::fs::mkdtemp;
-using ::kota::fs::mkstemp;
-using ::kota::fs::mkstemp_result;
-using ::kota::fs::open;
-using ::kota::fs::opendir;
-using ::kota::fs::read;
-using ::kota::fs::readdir;
-using ::kota::fs::readlink;
-using ::kota::fs::realpath;
+using ::kota::fs::DirEntry;
+using ::kota::fs::File;
+using ::kota::fs::FileID;
+using ::kota::fs::FileType;
+using ::kota::fs::Mapping;
+using ::kota::fs::OpenOptions;
+using ::kota::fs::SeekFrom;
+using ::kota::fs::Status;
+using ::kota::fs::StatusEntry;
+using ::kota::fs::Volume;
+using ::kota::fs::absolute;
+using ::kota::fs::canonical;
+using ::kota::fs::create_directories;
+using ::kota::fs::create_directory;
+using ::kota::fs::create_directory_symlink;
+using ::kota::fs::create_hard_link;
+using ::kota::fs::create_symlink;
+using ::kota::fs::create_temp_directory;
+using ::kota::fs::create_temp_file;
+using ::kota::fs::current_dir;
+using ::kota::fs::equivalent;
+using ::kota::fs::exists;
+using ::kota::fs::is_directory;
+using ::kota::fs::is_file;
+using ::kota::fs::is_symlink;
+using ::kota::fs::read_dir;
+using ::kota::fs::read_dir_status;
+using ::kota::fs::read_file;
+using ::kota::fs::read_symlink;
+using ::kota::fs::remove;
+using ::kota::fs::remove_all;
 using ::kota::fs::rename;
-using ::kota::fs::rmdir;
-using ::kota::fs::scandir;
-using ::kota::fs::sendfile;
-using ::kota::fs::stat;
-using ::kota::fs::statfs;
-using ::kota::fs::symlink;
-using ::kota::fs::unlink;
-using ::kota::fs::utime;
-using ::kota::fs::write;
+using ::kota::fs::status;
+using ::kota::fs::symlink_status;
+using ::kota::fs::volume;
+using ::kota::fs::weakly_canonical;
+using ::kota::fs::write_file;
+using ::kota::fs::write_file_atomic;
 }
 
-export namespace kota::fs::sync {
-using ::kota::fs::sync::close;
-using ::kota::fs::sync::open;
-using ::kota::fs::sync::read;
-using ::kota::fs::sync::read_to_string;
-using ::kota::fs::sync::write;
+export namespace kota::fs::async {
+using ::kota::fs::async::access;
+using ::kota::fs::async::chmod;
+using ::kota::fs::async::chown;
+using ::kota::fs::async::close;
+using ::kota::fs::async::copyfile;
+using ::kota::fs::async::copyfile_options;
+using ::kota::fs::async::dir_handle;
+using ::kota::fs::async::dirent;
+using ::kota::fs::async::fchmod;
+using ::kota::fs::async::fchown;
+using ::kota::fs::async::fdatasync;
+using ::kota::fs::async::file_stats;
+using ::kota::fs::async::file_time;
+using ::kota::fs::async::fs_stats;
+using ::kota::fs::async::fstat;
+using ::kota::fs::async::fsync;
+using ::kota::fs::async::ftruncate;
+using ::kota::fs::async::futime;
+using ::kota::fs::async::lchown;
+using ::kota::fs::async::link;
+using ::kota::fs::async::lstat;
+using ::kota::fs::async::lutime;
+using ::kota::fs::async::mkdir;
+using ::kota::fs::async::mkdtemp;
+using ::kota::fs::async::mkstemp;
+using ::kota::fs::async::mkstemp_result;
+using ::kota::fs::async::open;
+using ::kota::fs::async::opendir;
+using ::kota::fs::async::read;
+using ::kota::fs::async::readdir;
+using ::kota::fs::async::readlink;
+using ::kota::fs::async::realpath;
+using ::kota::fs::async::rename;
+using ::kota::fs::async::rmdir;
+using ::kota::fs::async::scandir;
+using ::kota::fs::async::sendfile;
+using ::kota::fs::async::stat;
+using ::kota::fs::async::statfs;
+using ::kota::fs::async::symlink;
+using ::kota::fs::async::unlink;
+using ::kota::fs::async::utime;
+using ::kota::fs::async::write;
+}
+
+export namespace kota::fs::cygwin {
+using ::kota::fs::cygwin::MountTable;
+using ::kota::fs::cygwin::is_posix_path;
+using ::kota::fs::cygwin::read_symlink;
+using ::kota::fs::cygwin::runtime_dirs;
+}
+
+export namespace kota::fs::path {
+using ::kota::fs::path::DotDot;
+using ::kota::fs::path::Prefix;
+using ::kota::fs::path::Root;
+using ::kota::fs::path::Style;
+using ::kota::fs::path::ancestors;
+using ::kota::fs::path::ancestors_view;
+using ::kota::fs::path::components;
+using ::kota::fs::path::components_view;
+using ::kota::fs::path::extension;
+using ::kota::fs::path::filename;
+using ::kota::fs::path::has_root;
+using ::kota::fs::path::is_absolute;
+using ::kota::fs::path::is_separator;
+using ::kota::fs::path::is_within;
+using ::kota::fs::path::native_style;
+using ::kota::fs::path::normalize;
+using ::kota::fs::path::parent;
+using ::kota::fs::path::pop;
+using ::kota::fs::path::push;
+using ::kota::fs::path::relative;
+using ::kota::fs::path::root;
+using ::kota::fs::path::set_extension;
+using ::kota::fs::path::set_file_name;
+using ::kota::fs::path::stem;
+using ::kota::fs::path::strip_prefix;
+using ::kota::fs::path::to_backslash;
+using ::kota::fs::path::to_slash;
 }
 
 export namespace kota::ipc {
@@ -5872,7 +5953,7 @@ using ::kota::ipc::request_options;
 }
 
 export namespace kota::ipc::detail {
-using ::kota::ipc::detail::LoggedId;
+using ::kota::ipc::detail::LoggedID;
 using ::kota::ipc::detail::callback_args_t;
 using ::kota::ipc::detail::callback_param_t;
 using ::kota::ipc::detail::callback_return_t;
@@ -6784,25 +6865,65 @@ using ::kota::option::detail::slash_dash_prefixes;
 }
 
 export namespace kota::sys {
-using ::kota::sys::cpu_core;
+using ::kota::sys::CPUCore;
+using ::kota::sys::CPUTimes;
+using ::kota::sys::Child;
+using ::kota::sys::CreationOptions;
+using ::kota::sys::EnvChange;
+using ::kota::sys::EnvVar;
+using ::kota::sys::ExitStatus;
+using ::kota::sys::Memory;
+using ::kota::sys::OS;
+using ::kota::sys::Priority;
+using ::kota::sys::ProcessStats;
+using ::kota::sys::ProgramSearch;
+using ::kota::sys::SpawnOptions;
+using ::kota::sys::Stdio;
+using ::kota::sys::arguments;
+using ::kota::sys::cache_dir;
+using ::kota::sys::capture;
+using ::kota::sys::config_dir;
 using ::kota::sys::cpu_cores;
-using ::kota::sys::cpu_times;
+using ::kota::sys::data_dir;
+using ::kota::sys::env_name_equal;
+using ::kota::sys::environment;
 using ::kota::sys::executable_path;
-using ::kota::sys::home_directory;
+using ::kota::sys::find_program;
+using ::kota::sys::get_env;
+using ::kota::sys::home_dir;
 using ::kota::sys::hostname;
+using ::kota::sys::join_paths;
 using ::kota::sys::memory;
-using ::kota::sys::memory_info;
+using ::kota::sys::oom_score_adjustment;
+using ::kota::sys::os;
+using ::kota::sys::page_size;
 using ::kota::sys::parallelism;
+using ::kota::sys::parent_pid;
 using ::kota::sys::pid;
 using ::kota::sys::priority;
-using ::kota::sys::process;
-using ::kota::sys::process_stat;
+using ::kota::sys::process_stats;
 using ::kota::sys::resident_memory;
+using ::kota::sys::self_executable;
+using ::kota::sys::set_env;
+using ::kota::sys::set_oom_score_adjustment;
 using ::kota::sys::set_priority;
-using ::kota::sys::temp_directory;
-using ::kota::sys::uname;
-using ::kota::sys::uname_info;
+using ::kota::sys::set_process_title;
+using ::kota::sys::signal_name;
+using ::kota::sys::spawn;
+using ::kota::sys::split_paths;
+using ::kota::sys::split_paths_view;
+using ::kota::sys::temp_dir;
+using ::kota::sys::unset_env;
 using ::kota::sys::uptime;
+using ::kota::sys::write_console;
+}
+
+export namespace kota::sys::windows {
+using ::kota::sys::windows::join_command_line;
+using ::kota::sys::windows::ntstatus_name;
+using ::kota::sys::windows::quote_argument;
+using ::kota::sys::windows::split_command_line;
+using ::kota::sys::windows::split_command_line_view;
 }
 
 export namespace kota::zest {
@@ -10161,6 +10282,18 @@ export using ::HANDLE;
 export using ::MultiByteToWideChar;
 export using ::PVOID;
 export using ::WideCharToMultiByte;
+
+export namespace kota::fs::windows {
+using ::kota::fs::windows::from_native;
+using ::kota::fs::windows::last_error;
+using ::kota::fs::windows::to_error_code;
+using ::kota::fs::windows::to_native;
+}
+
+export namespace kota::sys::windows {
+using ::kota::sys::windows::create_process_directories;
+using ::kota::sys::windows::find_create_process_program;
+}
 
 export namespace llvm {
 using ::llvm::InitStatus;
