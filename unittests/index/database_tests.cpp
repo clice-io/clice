@@ -115,6 +115,10 @@ struct OlderOpener {
         child = ::fork();
         require(child >= 0, "fork");
         if(child == 0) {
+            // The parent's close of `done` reaches no reader while this
+            // process holds its write end too.
+            ::close(done[1]);
+            ::close(ready[0]);
             int lock_fd = ::open(lock_file.c_str(), O_RDWR);
             struct flock lock{};
             lock.l_type = F_RDLCK;
