@@ -21,14 +21,11 @@ public:
     /// holder's pid when it recorded one).
     static std::optional<WriterLock> acquire(llvm::StringRef cache_dir);
 
-    WriterLock(WriterLock&& other) noexcept : fd(other.fd) {
-        other.fd = -1;
-    }
+    WriterLock(WriterLock&& other) noexcept = default;
 
     WriterLock& operator=(WriterLock&& other) noexcept {
         release();
-        fd = other.fd;
-        other.fd = -1;
+        file = std::move(other.file);
         return *this;
     }
 
@@ -37,12 +34,12 @@ public:
     }
 
 private:
-    explicit WriterLock(int fd) : fd(fd) {}
+    explicit WriterLock(fs::File file) : file(std::move(file)) {}
 
     void release();
 
 private:
-    int fd;
+    fs::File file;
 };
 
 /// What a serving writer records next to the lock, for the commands that

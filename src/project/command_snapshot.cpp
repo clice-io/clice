@@ -13,7 +13,6 @@ import :project.hosting;
 import :project.project;
 import :support.json;
 import :support.logging;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -431,7 +430,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         }
         auto server_id = file_of(old.file);
         if(retired.contains(server_id) || project_index.indexed(server_id) ||
-           !vfs::exists(project.file_table.resolve(server_id))) {
+           !fs::exists(project.file_table.resolve(server_id)).value_or(false)) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}",

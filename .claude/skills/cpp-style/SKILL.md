@@ -58,8 +58,8 @@ defending against ghosts.
   the module declaration, and one `import :<partition>;` per partition it
   names.
 - `.h` is left for what a module cannot carry — the prelude, macros
-  (`*.macros.h`) and platform headers (`vfs/win32.h`) — with `#pragma
-once`, never include guards.
+  (`*.macros.h`) and platform headers — with `#pragma once`, never
+  include guards.
 - File names are `snake_case`.
 - Every file sees the names of all it imports: a file-local helper can
   clash with a name of another partition or lose overload resolution and
@@ -229,6 +229,7 @@ Domain words with one meaning each — use them only in that meaning:
 - Prefer `ranges` / `views` APIs over raw loops and traditional `<algorithm>` calls.
 - Range helpers come from the standard library, never LLVM's `STLExtras`: `ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
 - Prefer LLVM's efficient data structures (e.g., `llvm::SmallVector`, `llvm::DenseMap`, `llvm::StringMap`, `llvm::StringRef`) over their `std` counterparts when appropriate.
+- The operating system is reached through kotatsu: paths, files and directories through `fs` (`kota::fs`), the environment, programs and processes through `sys` (`kota::sys`), never `llvm::sys` or `std::filesystem`. LLVM stays only where clang's interfaces take its types: `llvm::vfs` for clang's file manager, a `llvm::MemoryBuffer` clang reads.
 
 ## Parameter Passing Preferences
 

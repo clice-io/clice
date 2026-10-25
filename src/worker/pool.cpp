@@ -12,7 +12,7 @@ module clice;
 import :config.config;
 import :support.anomaly;
 import :support.logging;
-import :vfs.file_system;
+import :support.process;
 import :vfs.path;
 import :worker.pool;
 import :worker.resources;
@@ -49,8 +49,8 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
 }
 
 /// How a worker died, worded for the user.
-std::string describe_exit(int exit_code, int exit_signal) {
-    kota::process::exit_status exit{.status = exit_code, .term_signal = exit_signal};
+std::string describe_exit(std::int64_t exit_code, int exit_signal) {
+    kota::process::exit_status exit{.code = exit_code, .term_signal = exit_signal};
     if(exit_signal != 0) {
         return "killed by " + exit.to_string();
     }
@@ -105,8 +105,23 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
                                                                     unsigned generation) {
     auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
     kota::process::options opts;
-    opts.file = options.self_path;
-    opts.args = {options.self_path, "worker"};
+    // Asked at every spawn: on macOS it fails once an update has replaced
+    // the file this program runs from.
+    opts.program = options.self_path;
+    if(opts.program.empty()) {
+        if(auto error = sys::self_executable(opts.program)) {
+            LOG_ANOMALY(WorkerSpawnFail,
+                        "Failed to spawn worker {}: cannot find this program: {}",
+                        name,
+                        error.message());
+            return std::nullopt;
+        }
+    }
+    // On Linux the program is /proc/self/exe, which ps would show.
+    if(auto& arguments = sys::arguments(); !arguments.empty()) {
+        opts.arg0 = arguments.front();
+    }
+    opts.args = {"worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
         if(options.max_documents) {
@@ -116,17 +131,20 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);
-    opts.args.push_back("--master-pid");
-    opts.args.push_back(std::to_string(llvm::sys::Process::getProcessId()));
     if(!log_dir.empty()) {
         opts.args.push_back("--log-dir");
         opts.args.push_back(log_dir);
     }
-
+    // A worker lives and dies with its master: an orphan answers no one and
+    // nothing stops it when it hangs. Its own group keeps a terminal's
+    // Ctrl-C and SIGHUP for the master, which stops it. macOS has no way to
+    // tie a child to its parent's exit: the worker watches the master there.
+    opts.creation.process_group = true;
+    opts.creation.exit_with_parent = can_exit_with_parent;
     opts.streams = {
-        kota::process::stdio::pipe(true, false),  // stdin: child reads
-        kota::process::stdio::pipe(false, true),  // stdout: child writes
-        kota::process::stdio::pipe(false, true),  // stderr: child writes
+        kota::process::stdio::pipe(),
+        kota::process::stdio::pipe(),
+        kota::process::stdio::pipe(),
     };
 
     auto result = kota::process::spawn(opts, loop);
@@ -281,14 +299,9 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
         .stall_deadline = options.stall_deadline,
     });
 
-#ifdef __linux__
-    if(auto adj = llvm::MemoryBuffer::getFileAsStream("/proc/self/oom_score_adj")) {
-        int value = 0;
-        if(!(*adj)->getBuffer().trim().getAsInteger(10, value)) {
-            oom_base = value;
-        }
+    if(auto adj = sys::oom_score_adjustment()) {
+        oom_base = *adj;
     }
-#endif
 
     // The scheduler admits background work by memory from the first
     // sample on.
@@ -492,9 +505,10 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         co_return;
     }
 
-    int exit_code = 0, exit_signal = 0;
+    std::int64_t exit_code = 0;
+    int exit_signal = 0;
     if(result.has_value()) {
-        exit_code = result.value().status;
+        exit_code = result.value().code;
         exit_signal = result.value().term_signal;
     } else {
         LOG_ERROR("Worker {} lost: {}", workers[index].name, result.error().message());
@@ -545,7 +559,10 @@ void WorkerPool::reset_streak_if_healthy(WorkerProcess& w) {
     }
 }
 
-bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal) {
+bool WorkerPool::process_crash(std::size_t index,
+                               bool stateful,
+                               std::int64_t exit_code,
+                               int exit_signal) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto& w = workers[index];
     mark_worker_dead(index, stateful, false);
@@ -596,9 +613,9 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // "Stack dump" marker so the master log carries the diagnosis, not the
     // (noisy, non-portable) stack frames.
     if(!log_dir.empty()) {
-        auto log_path = path::join(log_dir, w.name + ".log");
-        if(auto content = vfs::read(log_path, vfs::Read::Bytes)) {
-            llvm::StringRef tail = (*content)->getBuffer();
+        std::string content;
+        if(!fs::read_file(content, path::join(log_dir, w.name + ".log"))) {
+            llvm::StringRef tail = content;
             for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
                 if(auto pos = tail.find(marker); pos != llvm::StringRef::npos)
                     tail = tail.substr(0, pos);
@@ -934,7 +951,7 @@ kota::task<> WorkerPool::monitor_loop() {
 void WorkerPool::sample() {
     SchedulerSample sample;
     sample.stateless_processes = stateless_footprint();
-    std::vector<ProcessUsage> usage;
+    std::vector<sys::ProcessStats> usage;
     std::uint64_t swapped = 0;
     for(bool stateful: {false, true}) {
         auto& workers = stateful ? stateful_workers : stateless_workers;
@@ -943,7 +960,7 @@ void WorkerPool::sample() {
             if(w.state != SlotState::Alive) {
                 continue;
             }
-            auto read = process_usage(static_cast<std::uint32_t>(w.proc.pid()));
+            auto read = sys::process_stats(w.proc.pid());
             if(!read) {
                 continue;
             }
@@ -952,7 +969,9 @@ void WorkerPool::sample() {
             w.swapped = read->swapped;
             usage.push_back(*read);
             if(!stateful) {
-                sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = read->cpu});
+                auto cpu = std::chrono::duration_cast<std::chrono::milliseconds>(read->user_time +
+                                                                                 read->system_time);
+                sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = cpu});
             }
         }
     }
@@ -979,7 +998,7 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
     if(!oom_base) {
         return;
     }
-    if(auto master = kota::sys::resident_memory()) {
+    if(auto master = sys::resident_memory()) {
         // The kernel ranks rss + adj * pages / 1000 over at least
         // `memory_limit` worth of pages, so this much adj outweighs the
         // master's whole RSS without lifting the worker over anything bigger.
@@ -998,18 +1017,9 @@ void WorkerPool::set_oom_score(const WorkerProcess& w, bool holds) {
     if(!oom_base || w.state != SlotState::Alive) {
         return;
     }
-    std::error_code ec;
-    llvm::raw_fd_ostream adj(std::format("/proc/{}/oom_score_adj", w.proc.pid()),
-                             ec,
-                             llvm::sys::fs::OF_None);
-    if(ec) {
-        return;
-    }
-    adj << (holds ? oom_holding : *oom_base);
-    adj.close();
-    // An exited worker awaiting its reaping refuses the write; the monitor
-    // is about to replace it.
-    adj.clear_error();
+    // An exited worker awaiting its reaping refuses it; the monitor is
+    // about to replace it.
+    sys::set_oom_score_adjustment(holds ? oom_holding : *oom_base, w.proc.pid());
 }
 
 bool WorkerPool::scale_up_worker() {

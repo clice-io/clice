@@ -13,24 +13,24 @@ namespace clice {
 /// The git directory of the checkout `root` lies in, if any: `.git`
 /// itself, or the directory a linked worktree's `.git` file names.
 static std::optional<std::string> git_dir(llvm::StringRef root) {
-    std::optional<std::string> found;
-    path::walk_ancestors(root, "", [&](llvm::StringRef dir) {
+    for(auto dir: path::ancestors(root)) {
         auto git = path::join(dir, ".git");
-        auto status = vfs::status(git);
+        auto status = fs::status(git);
         if(!status) {
-            return true;
+            continue;
         }
-        if(status->type == llvm::sys::fs::file_type::directory_file) {
-            found = git;
-        } else if(auto text = vfs::read(git)) {
-            llvm::StringRef target = (*text)->getBuffer();
+        if(status->type == fs::FileType::Directory) {
+            return git;
+        }
+        if(auto text = vfs::read_text(git)) {
+            llvm::StringRef target = *text;
             if(target.consume_front("gitdir:")) {
-                found = Spelling(target.trim(), Spelling::absolute(dir)).str();
+                return Spelling(target.trim(), Spelling::absolute(dir)).str();
             }
         }
-        return false;
-    });
-    return found;
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 FileTracker::FileTracker(Project& project, const SessionStore& store, CanonicalPath root) :

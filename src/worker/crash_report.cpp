@@ -79,7 +79,11 @@ CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
 
     // Tests crash the request whose tag contains CLICE_TEST_CRASH_REQUEST
     // right here — any kind of request, attributed like a real crash.
-    static auto crash_request = llvm::sys::Process::GetEnv("CLICE_TEST_CRASH_REQUEST");
+    const static auto crash_request = [] {
+        std::string value;
+        return sys::get_env(value, "CLICE_TEST_CRASH_REQUEST") ? std::optional(value)
+                                                               : std::nullopt;
+    }();
     if(crash_request && llvm::StringRef(this->tag).contains(*crash_request)) {
         LLVM_BUILTIN_TRAP;
     }
@@ -89,11 +93,14 @@ CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     // outside would: unannounced, the death names no request. Taking the
     // file away makes it the first — one rename of it succeeds, and a
     // respawned worker finds none.
-    static auto kill_request = llvm::sys::Process::GetEnv("CLICE_TEST_KILL_REQUEST");
+    const static auto kill_request = [] {
+        std::string value;
+        return sys::get_env(value, "CLICE_TEST_KILL_REQUEST") ? std::optional(value) : std::nullopt;
+    }();
     if(kill_request) {
-        auto wanted = vfs::read(*kill_request);
-        if(wanted && llvm::StringRef(this->tag).contains((*wanted)->getBuffer().trim()) &&
-           !vfs::rename(*kill_request, *kill_request + ".taken")) {
+        auto wanted = vfs::read_text(*kill_request);
+        if(wanted && llvm::StringRef(this->tag).contains(llvm::StringRef(*wanted).trim()) &&
+           !fs::rename(*kill_request, *kill_request + ".taken")) {
 #ifdef _WIN32
             std::_Exit(1);
 #else

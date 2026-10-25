@@ -20,6 +20,7 @@ import :server.session_store;
 import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
+import :vfs.path;
 import :worker.pool;
 
 namespace clice::testing {
@@ -68,7 +69,7 @@ index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
     for(auto& site: disk_query.sites(hash, Fid{}, RelationKind::Reference)) {
-        files.push_back(llvm::sys::path::filename(site.path).str());
+        files.push_back(std::string(path::filename(site.path)));
     }
     return files;
 }

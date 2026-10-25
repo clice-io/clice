@@ -228,7 +228,6 @@ Options:
   --max-documents <value>         Max compiled documents kept before LRU eviction (stateful worker only)
   --worker-name <value>           Name the worker logs under (default: worker)
   --log-dir <value>               Directory of the worker's log file (default: no log file)
-  --master-pid <value>            Process id of the master: the worker exits with it
 '''
 exit = 0
 

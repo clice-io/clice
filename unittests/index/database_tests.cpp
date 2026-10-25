@@ -2,11 +2,8 @@ module;
 
 #include "support/prelude.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <fcntl.h>
-#include <sys/file.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -55,35 +52,19 @@ std::string large_value(char fill) {
 /// reading the database holds it.
 struct ForeignReader {
     explicit ForeignReader(const std::string& database) {
-        require(!llvm::sys::fs::openFileForReadWrite(database + "-open",
-                                                     fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None),
-                "open the -open file");
-#ifdef _WIN32
-        OVERLAPPED at = {};
-        require(::LockFileEx(llvm::sys::fs::convertFDToNativeFile(fd),
-                             LOCKFILE_FAIL_IMMEDIATELY,
-                             0,
-                             1,
-                             0,
-                             &at),
-                "lock the -open file");
-#else
-        require(::flock(fd, LOCK_SH | LOCK_NB) == 0, "lock the -open file");
-#endif
+        auto opened =
+            fs::File::open(database + "-open", {.read = true, .write = true, .create = true});
+        require(opened.has_value(), "open the -open file");
+        file = std::move(*opened);
+        require(file.try_lock_shared().value_or(false), "lock the -open file");
     }
 
     // Windows frees a lock its handle's close leaves at some later time.
     ~ForeignReader() {
-#ifdef _WIN32
-        OVERLAPPED at = {};
-        ::UnlockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), 0, 1, 0, &at);
-#endif
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        file.unlock();
     }
 
-    int fd = -1;
+    fs::File file;
 };
 
 /// The database open in a process outside the `-open` file's protocol, as
@@ -313,12 +294,11 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     auto store = open_store(tmp, "lmdb");
     {
         auto directory = index::database_directory(store, "");
-        require(!llvm::sys::fs::create_directories(directory),
+        require(fs::create_directories(directory).has_value(),
                 "creating the database directory failed");
-        std::error_code ec;
-        llvm::raw_fd_ostream os(path::join(directory, "index.mdb"), ec);
-        require(!ec, "writing garbage failed");
-        os << "this is not an lmdb file, not even close, but long enough to map";
+        require(!fs::write_file(path::join(directory, "index.mdb"),
+                                "this is not an lmdb file, not even close, but long enough to map"),
+                "writing garbage failed");
     }
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
@@ -340,15 +320,9 @@ std::string populated_database(CacheStore& store, int count) {
 
 /// Cuts the file down to its two meta pages: the tree they point at is gone.
 void truncate_to_meta(llvm::StringRef file) {
-    int fd = -1;
-    require(!llvm::sys::fs::openFileForReadWrite(file,
-                                                 fd,
-                                                 llvm::sys::fs::CD_OpenExisting,
-                                                 llvm::sys::fs::OF_None),
-            "opening index.mdb failed");
-    require(!llvm::sys::fs::resize_file(fd, 2 * llvm::sys::Process::getPageSizeEstimate()),
-            "truncating index.mdb failed");
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    auto opened = fs::File::open(file, {.read = true, .write = true});
+    require(opened.has_value(), "opening index.mdb failed");
+    require(!opened->resize(2 * sys::page_size()), "truncating index.mdb failed");
 }
 
 /// Rewrite the record describing the database, keyed "\xffmeta", with
@@ -427,10 +401,9 @@ std::string small_records_database(CacheStore& store, int count) {
 /// pointers follow it, and a node is four 16-bit fields, the last its key
 /// size, then the key.
 void swap_page_keys(llvm::StringRef file, char prefix) {
-    auto buffer = llvm::MemoryBuffer::getFile(file);
-    require(static_cast<bool>(buffer), "reading index.mdb failed");
-    std::string bytes = (*buffer)->getBuffer().str();
-    auto page_size = static_cast<std::uint32_t>(llvm::sys::Process::getPageSizeEstimate());
+    std::string bytes;
+    require(!fs::read_file(bytes, file), "reading index.mdb failed");
+    auto page_size = static_cast<std::uint32_t>(sys::page_size());
     auto u16 = [&](std::size_t at) {
         std::uint16_t value = 0;
         std::memcpy(&value, bytes.data() + at, sizeof(value));
@@ -457,10 +430,7 @@ void swap_page_keys(llvm::StringRef file, char prefix) {
     auto pointers = pages[1].second + 16;
     auto first = bytes.begin() + static_cast<std::ptrdiff_t>(pointers);
     ranges::swap_ranges(first, first + 2, first + 2, first + 4);
-    std::error_code ec;
-    llvm::raw_fd_ostream os(file, ec);
-    require(!ec, "rewriting index.mdb failed");
-    os << bytes;
+    require(!fs::write_file(file, bytes), "rewriting index.mdb failed");
 }
 
 ZEST_CASE(ScanMeetsDamage) {
@@ -497,17 +467,13 @@ ZEST_CASE(ReadOnlyRefusesEmpty) {
         auto store = open_store(tmp, "ws");
         file = populated_database(store, 1);
     }
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream os(file, ec);
-        require(!ec, "emptying index.mdb failed");
-    }
+    require(!fs::write_file(file, ""), "emptying index.mdb failed");
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     ZASSERT(index::database_exists(store, ""));
     ZASSERT(index::open_database(store, "") == nullptr);
-    std::uint64_t size = 1;
-    ZASSERT(!llvm::sys::fs::file_size(file, size));
-    ZASSERT(size == 0U);
+    auto status = fs::status(file);
+    ZASSERT(status);
+    ZASSERT(status->size == 0U);
 }
 
 ZEST_CASE(WritesCoverFreedTail) {
@@ -549,9 +515,9 @@ ZEST_CASE(WritesCoverFreedTail) {
     MDB_stat db_stat;
     mdb_env_stat(env, &db_stat);
     mdb_env_close(env);
-    std::uint64_t size = 0;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::file_size(file, size)));
-    ZEXPECT(size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
+    auto status = fs::status(file);
+    ZASSERT(status);
+    ZEXPECT(status->size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
 
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
     auto db = index::open_database(store, "");
@@ -570,10 +536,9 @@ ZEST_CASE(DefaultOpenFileBounded) {
     // this pins the small default (a 64 GiB logical file is the bug the
     // default exists to avoid); POSIX file sizes track the data
     // high-water mark and pass trivially.
-    std::uint64_t size = 0;
-    ZASSERT(!llvm::sys::fs::file_size(path::join(index::database_directory(store, ""), "index.mdb"),
-                                      size));
-    ZASSERT((size <= 256ull << 20));
+    auto status = fs::status(path::join(index::database_directory(store, ""), "index.mdb"));
+    ZASSERT(status);
+    ZASSERT((status->size <= 256ull << 20));
 }
 
 ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
@@ -613,7 +578,7 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     // not leave behind.
     auto db = index::open_database(store, "", /*read_only=*/true);
     ZASSERT(db == nullptr);
-    ZASSERT(!llvm::sys::fs::exists(index::database_directory(store, "")));
+    ZASSERT(!fs::exists(index::database_directory(store, "")).value_or(false));
 }
 
 ZEST_CASE(ReadOnlyServesExistingDatabase) {
@@ -640,7 +605,8 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
         ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "bytes")}, {}));
         db->condemn();
     }
-    ZASSERT(!llvm::sys::fs::exists(path::join(index::database_directory(store, ""), "index.mdb")));
+    ZASSERT(
+        !fs::exists(path::join(index::database_directory(store, ""), "index.mdb")).value_or(false));
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::CommandSnapshot, "cdb"));
@@ -654,7 +620,7 @@ ZEST_CASE(DatabasePerConfiguration) {
     ZEXPECT(index::database_directory(store, "") ==
             path::join(store.base_dir(), "index", "default"));
     auto directory = index::database_directory(store, "release");
-    ZEXPECT(path::parent_path(directory) == path::join(store.base_dir(), "index"));
+    ZEXPECT(path::parent(directory) == path::join(store.base_dir(), "index"));
     ZEXPECT(path::filename(directory).starts_with("release~"));
 
     auto debug = index::open_database(store, "debug");
@@ -664,10 +630,10 @@ ZEST_CASE(DatabasePerConfiguration) {
     ZASSERT(debug->write({blob(index::BlobKind::Header, "header", "d")}, {}));
     ZASSERT(release->advance_read_snapshot());
     ZASSERT(!release->contains(index::BlobKind::Header, "header"));
-    ZASSERT(
-        llvm::sys::fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb")));
-    ZASSERT(llvm::sys::fs::exists(
-        path::join(index::database_directory(store, "release"), "index.mdb")));
+    ZASSERT(fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb"))
+                .value_or(false));
+    ZASSERT(fs::exists(path::join(index::database_directory(store, "release"), "index.mdb"))
+                .value_or(false));
 }
 
 ZEST_CASE(DatabaseNameSanitized) {
@@ -677,7 +643,7 @@ ZEST_CASE(DatabaseNameSanitized) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto name = [&](llvm::StringRef configuration) {
-        return path::filename(index::database_directory(store, configuration)).str();
+        return std::string(path::filename(index::database_directory(store, configuration)));
     };
     auto prefix = [&](llvm::StringRef configuration) {
         auto full = name(configuration);
@@ -699,9 +665,8 @@ ZEST_CASE(DatabaseBlockedByFile) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto directory = index::database_directory(store, "x");
-    auto ec = llvm::sys::fs::create_directories(path::parent_path(directory));
-    ZASSERT(!ec);
-    ZASSERT(!vfs::write(directory, "x"));
+    ZASSERT(fs::create_directories(path::parent(directory)));
+    ZASSERT(!fs::write_file(directory, "x"));
     ZASSERT(index::open_database(store, "x") == nullptr);
 }
 
@@ -745,7 +710,7 @@ ZEST_CASE(CompactCopyShrinksFile) {
     ZASSERT(after);
     ZEXPECT(after->pages * 2 < before->pages);
     ZEXPECT(after->free_pages == 0u);
-    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
     for(std::uint32_t i = 56; i < 64; i += 1) {
         auto value = db->read(index::BlobKind::Shard, std::to_string(i));
         ZASSERT(bool(value));
@@ -776,13 +741,13 @@ ZEST_CASE(ReaderKeepsFile) {
     {
         ForeignReader reader(file);
         ZEXPECT(db->write_compact_copy() == index::BlobDatabase::Copy::Busy);
-        ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+        ZEXPECT(!fs::exists(file + "-compact").value_or(false));
     }
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
     {
         ForeignReader reader(file);
         ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Busy);
-        ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+        ZEXPECT(!fs::exists(file + "-compact").value_or(false));
         ZEXPECT(db->usage()->pages == pages);
         ZEXPECT(value.buffer->getBuffer() == std::string(1 << 16, 'a' + 60 % 26));
     }
@@ -802,7 +767,7 @@ ZEST_CASE(OlderOpenerKeepsFile) {
     OlderOpener opener(file);
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
     ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Kept);
-    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
     ZEXPECT(db->usage()->pages == pages);
     auto value = db->read(index::BlobKind::Shard, "60");
     ZASSERT(bool(value));
@@ -816,9 +781,9 @@ ZEST_CASE(ClosingRemovesCopy) {
     auto file = path::join(index::database_directory(store, ""), "index.mdb");
     auto db = sparse_database(store);
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
-    ZEXPECT(llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(fs::exists(file + "-compact").value_or(false));
     db.reset();
-    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
 }
 
 ZEST_CASE(ReaderHoldsOpenLock) {
@@ -834,24 +799,12 @@ ZEST_CASE(ReaderHoldsOpenLock) {
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
     auto exclusive_free = [&] {
-        int fd = -1;
-        require(!llvm::sys::fs::openFileForReadWrite(file + "-open",
-                                                     fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None),
-                "open the -open file");
-#ifdef _WIN32
-        OVERLAPPED at = {};
-        auto handle = llvm::sys::fs::convertFDToNativeFile(fd);
-        bool free =
-            ::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at);
+        auto opened = fs::File::open(file + "-open", {.read = true, .write = true, .create = true});
+        require(opened.has_value(), "open the -open file");
+        bool free = opened->try_lock().value_or(false);
         if(free) {
-            ::UnlockFileEx(handle, 0, 1, 0, &at);
+            opened->unlock();
         }
-#else
-        bool free = ::flock(fd, LOCK_EX | LOCK_NB) == 0;
-#endif
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
         return free;
     };
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
@@ -873,20 +826,15 @@ ZEST_CASE(OpenRemovesStaleCopy) {
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream out(file + "-compact", ec);
-        require(!ec, "write a stale copy");
-        out << "partial";
-    }
+    require(!fs::write_file(file + "-compact", "partial"), "write a stale copy");
     {
         auto store = open_store(tmp, "lmdb", /*read_only=*/true);
         ZASSERT(index::open_database(store, "") != nullptr);
-        ZEXPECT(llvm::sys::fs::exists(file + "-compact"));
+        ZEXPECT(fs::exists(file + "-compact").value_or(false));
     }
     auto store = open_store(tmp, "lmdb");
     ZASSERT(index::open_database(store, "") != nullptr);
-    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
 }
 
 };  // ZEST_SUITE(IndexDatabase)

@@ -15,11 +15,17 @@ namespace vfs {
 struct Stamp {
     std::uint64_t size = 0;
     std::int64_t mtime_ns = 0;
-    /// The inode change time; ChangeTime on Windows.
     std::int64_t ctime_ns = 0;
-    /// The file's ID: the device, and the file on it.
-    std::uint64_t device = 0;
-    std::uint64_t file = 0;
+    fs::FileID id;
+
+    static Stamp of(const fs::Status& status) {
+        return {
+            .size = status.size,
+            .mtime_ns = status.mtime.time_since_epoch().count(),
+            .ctime_ns = status.ctime.time_since_epoch().count(),
+            .id = status.id,
+        };
+    }
 
     friend bool operator==(const Stamp&, const Stamp&) = default;
 };
@@ -44,19 +50,8 @@ constexpr std::int64_t stat_baseline_before_ns(std::int64_t at_ms) {
 /// describes beyond this moment.
 bool stable_mtime(std::int64_t mtime_ns);
 
-/// A file's status, symlinks followed.
-struct Status {
-    llvm::sys::fs::file_type type = llvm::sys::fs::file_type::status_error;
-    Stamp stamp;
-    std::uint32_t links = 0;
-
-    bool is_file() const {
-        return type == llvm::sys::fs::file_type::regular_file;
-    }
-
-    /// As clang's file system interface reports it.
-    llvm::vfs::Status to_llvm(llvm::StringRef name) const;
-};
+/// A status as clang's file system interface reports it, under `name`.
+llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name);
 
 }  // namespace vfs
 
@@ -92,22 +87,9 @@ inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     return text;
 }
 
-/// How a read serves a file.
-enum class Read : std::uint8_t {
-    /// Its text (see without_bom), copied into memory: sources, commands
-    /// and configuration. Never mapped — Windows refuses an editor's save
-    /// over a mapped file.
-    Text,
-    /// Its bytes as they are, copied into memory.
-    Bytes,
-    /// Its bytes as they are, mapped when large: build artifacts clice
-    /// reads but never edits.
-    Mapped,
-};
-
-/// A file, read whole.
-std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code> read(llvm::StringRef path,
-                                                                         Read as = Read::Text);
+/// A file's text (see without_bom). Read, never mapped: Windows refuses an
+/// editor's save over a mapped file.
+std::expected<std::string, std::error_code> read_text(llvm::StringRef path);
 
 /// A file's text read and hashed under the pairing discipline: open a
 /// handle, fstat it, read through it, fstat again. Equal fstats prove
@@ -119,26 +101,15 @@ std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code> read(llvm::S
 /// suppress future reads. Safe to call from any thread.
 std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path);
 
-/// A file's status, symlinks followed.
-///
-/// Windows makes a status expensive by opening the file (every filter
-/// driver sees the open), so there it is taken by name without an open
-/// where the system can (Windows 11 24H2 on). A file's ID then comes from
-/// the volume's file ID instead of LLVM's hash of the file's final path,
-/// and View reports the same IDs for the files it opens: clang tells files
-/// apart by ID, and one scheme per process keeps one file one file. Network
-/// volumes keep LLVM's scheme, their file IDs can be reused.
-std::expected<Status, std::error_code> status(llvm::StringRef path);
-
 /// The file statuses of one operation (a dependency check, a compile). On
 /// Windows a directory asked about often enough within the operation is
 /// listed once, and its entries answer the rest: one listing costs about
-/// what a few statuses by name do. A name the listing lacks, a reparse
-/// point, a remote or oversized directory and a directory seen to hold
-/// hard links take vfs::status. Elsewhere every status is vfs::status.
+/// what a few statuses by name do. A name the listing lacks, a link, an
+/// oversized directory and a directory seen to hold hard links take
+/// fs::status. Elsewhere every status is fs::status.
 class StatusBatch {
 public:
-    std::expected<Status, std::error_code> status(llvm::StringRef path);
+    std::expected<fs::Status, std::error_code> status(llvm::StringRef path);
 
 #ifdef _WIN32
 
@@ -147,73 +118,19 @@ private:
         unsigned asked = 0;
         bool listed = false;
         /// Empty when the directory could not be listed.
-        llvm::StringMap<Status> entries;
+        llvm::StringMap<fs::Status> entries;
     };
 
     llvm::StringMap<Directory> directories;
 #endif
 };
 
-/// Whether a path names anything, symlinks followed.
-bool exists(llvm::StringRef path);
-
-/// Whether a path names a regular file, symlinks followed.
-bool is_file(llvm::StringRef path);
-
-/// Whether a path names a directory, symlinks followed.
-bool is_directory(llvm::StringRef path);
-
-/// Whether a path is itself a symlink, or on Windows a junction.
-bool is_symlink(llvm::StringRef path);
-
-/// An entry of a directory: its path, the directory's spelling joined with
-/// its name, and its type, a link (see is_symlink) not followed.
-struct Entry {
-    std::string path;
-    llvm::sys::fs::file_type type;
-};
-
-/// The entries of a directory, in the order the system lists them.
-std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir);
-
 /// Walk the tree under `root` depth first, links not followed: `visit`
-/// sees every entry and answers, for a directory, whether to walk into it.
-/// A directory that cannot be read is skipped, with a warning unless it is
-/// missing.
-void walk(llvm::StringRef root, llvm::function_ref<bool(const Entry&)> visit);
-
-std::error_code create_directories(llvm::StringRef path);
-
-/// Write a file whole, replacing what it held.
-std::error_code write(llvm::StringRef path, llvm::StringRef content);
-
-/// Write a file whole through a sibling renamed over it: a reader sees the
-/// old bytes or the new, never a part, and concurrent writers never mix.
-std::error_code write_atomic(llvm::StringRef path, llvm::StringRef content);
-
-std::error_code rename(llvm::StringRef from, llvm::StringRef to);
-
-/// Flush a file's data to stable storage, before a rename publishes it.
-std::error_code sync(llvm::StringRef path);
-
-/// Remove a file or an empty directory; a missing one is no error. Unlike
-/// llvm::sys::fs::remove, a file another process still maps goes on
-/// Windows as well: its name disappears at once and its content once the
-/// last mapping is gone, as on POSIX. Workers keep PCH blobs mapped across
-/// compiles, and the store retracts and replaces those blobs under them.
-std::error_code remove(llvm::StringRef path);
-
-/// Remove a tree; a missing one is no error. Links (see is_symlink) — a
-/// linked root included — are removed without following them, so the
-/// recursion never escapes into a link's target. Not llvm::sys::fs::remove_directories: on
-/// Windows that runs shell COM, which initializes an apartment on the
-/// calling thread and silently does nothing when that fails.
-std::error_code remove_all(llvm::StringRef path);
-
-/// Create a new empty file in the system's temporary directory, named
-/// `prefix`-<random>.`suffix`.
-std::expected<std::string, std::error_code> temp_file(llvm::StringRef prefix,
-                                                      llvm::StringRef suffix);
+/// sees the path and type of every entry and answers, for a directory,
+/// whether to walk into it. A directory that cannot be read is skipped,
+/// with a warning unless it is missing.
+void walk(llvm::StringRef root,
+          llvm::function_ref<bool(llvm::StringRef path, fs::FileType type)> visit);
 
 /// Keep the mapping of a PCH from clice's store for the process's later
 /// compiles: Windows pages every fresh mapping in fault by fault, on every
@@ -240,9 +157,9 @@ struct HiddenFiles {
     bool hides(llvm::StringRef path) const;
 };
 
-/// The file system one compile sees: the disk, each file served the way
-/// read() serves it — sources as text, `#embed` data, PCH and PCM files
-/// as bytes — less the files its command hides. Clang sets its working
+/// The file system one compile sees: the disk — sources as their text (see
+/// without_bom), `#embed` data, PCH and PCM files as bytes — less the files
+/// its command hides. Clang sets its working
 /// directory, so every compile gets its own; an overlay wraps a fresh one.
 class View : public llvm::vfs::ProxyFileSystem {
 public:

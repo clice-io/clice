@@ -19,4 +19,7 @@ namespace protocol = kota::ipc::protocol;
 namespace codec = kota::codec;
 namespace json = kota::codec::json;
 
+namespace fs = kota::fs;
+namespace sys = kota::sys;
+
 }  // namespace clice

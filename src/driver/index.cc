@@ -121,11 +121,7 @@ int run_indexing_via_server(const index::ServerEndpoint& endpoint,
     return 0;
 }
 
-int run_indexing(Spelling root,
-                 std::string configuration,
-                 std::uint32_t workers,
-                 bool json,
-                 const char* self_path) {
+int run_indexing(Spelling root, std::string configuration, std::uint32_t workers, bool json) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
         LOG_ERROR("{}", checked.error());
@@ -165,7 +161,6 @@ int run_indexing(Spelling root,
         .config = std::move(config),
         .configuration = std::move(configuration),
         .workers = workers,
-        .self_path = self_path,
         .on_progress = report_progress,
     });
     if(json) {
@@ -976,7 +971,7 @@ CommandHandler show_file(std::string_view usage, Show show) {
     });
 }
 
-CommandHandler build(const char* self_path) {
+CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "stats",
@@ -1022,20 +1017,17 @@ CommandHandler build(const char* self_path) {
         .description = "A translation unit's persisted manifest: include tree and contributions",
         .run = show_file("clice index unit <PATH> [OPTIONS]", run_show_tu),
     });
-    auto index = operation<Options>("clice index [OPTIONS]",
-                                    "index",
-                                    Errors::Text,
-                                    [self_path](const Options& opts) {
-                                        auto spelling = opts.where.root();
-                                        if(!workspace_exists(spelling)) {
-                                            return 1;
-                                        }
-                                        return run_indexing(std::move(spelling),
-                                                            opts.where.configuration.tag(),
-                                                            opts.jobs.jobs.value_or(0),
-                                                            static_cast<bool>(opts.report.json),
-                                                            self_path);
-                                    });
+    auto index =
+        operation<Options>("clice index [OPTIONS]", "index", Errors::Text, [](const Options& opts) {
+            auto spelling = opts.where.root();
+            if(!workspace_exists(spelling)) {
+                return 1;
+            }
+            return run_indexing(std::move(spelling),
+                                opts.where.configuration.tag(),
+                                opts.jobs.jobs.value_or(0),
+                                static_cast<bool>(opts.report.json));
+        });
     return with_operations("", std::move(operations), Errors::Text, std::move(index));
 }
 

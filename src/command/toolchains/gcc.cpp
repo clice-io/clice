@@ -22,10 +22,10 @@ namespace {
 
 /// A path compared lexically: forward slashes, `.` and `..` folded.
 std::string lexical(llvm::StringRef path) {
-    llvm::SmallString<256> folded(path);
+    std::string folded(path);
     ranges::replace(folded, '\\', '/');
-    llvm::sys::path::remove_dots(folded, /*remove_dot_dot=*/true, llvm::sys::path::Style::posix);
-    return folded.str().str();
+    path::normalize(folded, path::DotDot::Fold, path::Style::Posix);
+    return folded;
 }
 
 /// The program and the options of `line` when it runs GCC's compiler
@@ -35,7 +35,7 @@ std::optional<std::pair<llvm::StringRef, llvm::StringRef>> gcc_job_line(llvm::St
     line = line.ltrim();
     auto end = line.find(" -");
     auto program = line.take_front(end);
-    auto name = llvm::sys::path::stem(program, llvm::sys::path::Style::windows_slash);
+    auto name = path::stem(program, path::Style::Windows);
     if(end == llvm::StringRef::npos || !name.starts_with("cc1")) {
         return std::nullopt;
     }
@@ -50,7 +50,7 @@ std::optional<std::pair<llvm::StringRef, llvm::StringRef>> gcc_job_line(llvm::St
 kota::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCCStyleOutput output,
                                                                              std::string driver) {
     auto program = output.clang_job.empty() ? output.gcc_job : output.clang_job.front();
-    if(!is_posix_path(program)) {
+    if(!fs::cygwin::is_posix_path(program)) {
         co_return output;
     }
     auto table = co_await find_mount_table(driver, {program});
@@ -58,15 +58,18 @@ kota::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCC
         co_return std::unexpected(
             std::format("{} reports POSIX paths ({}): {}", driver, program, table.error()));
     }
-    for(auto& dir: output.search_dirs) {
-        if(is_posix_path(dir.path)) {
-            dir.path = table->to_windows(dir.path);
+    auto translate = [&](std::string& path) {
+        if(fs::cygwin::is_posix_path(path)) {
+            std::string windows;
+            table->to_windows(windows, path);
+            path = std::move(windows);
         }
+    };
+    for(auto& dir: output.search_dirs) {
+        translate(dir.path);
     }
     for(auto& token: output.clang_job) {
-        if(is_posix_path(token)) {
-            token = table->to_windows(token);
-        }
+        translate(token);
     }
     co_return output;
 }
@@ -234,11 +237,11 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
             output.target = line.trim().str();
         } else if(line.consume_front("LIBRARY_PATH=")) {
             // A Cygwin or MSYS2 GCC lists POSIX paths, separated POSIX-style.
-            char separator = is_posix_path(line) ? ':' : path::list_separator;
-            llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, separator, -1, false);
-            for(auto dir: dirs) {
-                library_path.push_back(lexical((dir + "/include").str()));
+            auto style = fs::cygwin::is_posix_path(line) ? path::Style::Posix : path::native_style;
+            for(auto dir: sys::split_paths(line, style)) {
+                if(!dir.empty()) {
+                    library_path.push_back(lexical(std::string(dir) + "/include"));
+                }
             }
         } else if(auto job = gcc_job_line(line); job && output.clang_job.empty()) {
             output.gcc_job = job->first.str();
@@ -337,7 +340,7 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
         // Windows looks for a program's DLLs on PATH: without its runtime's
         // directory there, a Cygwin or MSYS2 driver cannot start (exception
         // 0xC0000135), or cannot start its compiler proper.
-        if(output->failure.ends_with("0xC0000135") ||
+        if(output->failure.contains("0xC0000135") ||
            output->err.contains("error while loading shared libraries")) {
             error +=
                 " (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or "

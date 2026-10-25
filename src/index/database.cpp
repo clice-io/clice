@@ -2,20 +2,14 @@ module;
 
 #include "support/prelude.h"
 
-#ifdef __linux__
-#include <sys/vfs.h>
-#endif
-
 #ifndef _WIN32
 #include <fcntl.h>
-#include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 #ifdef _WIN32
-#include <io.h>
 #include <windows.h>
 #endif
 #include "support/logging.macros.h"
@@ -127,8 +121,8 @@ bool is_corruption(int rc) {
 }
 
 void remove_database_files(llvm::StringRef path) {
-    vfs::remove(path);
-    vfs::remove(path.str() + "-lock");
+    fs::remove(path);
+    fs::remove(path.str() + "-lock");
 }
 
 /// The environment settings every open of the file uses.
@@ -158,82 +152,45 @@ public:
     /// conflicting lock to go, else fail at once. None when the lock is
     /// held elsewhere or the file cannot be opened.
     static std::optional<OpenLock> acquire(llvm::StringRef path, Kind kind, bool wait) {
-        auto file = path.str() + "-open";
-        int fd = -1;
+        auto name = path.str() + "-open";
+        auto file = fs::File::open(name, {.read = true, .write = true, .create = true});
         // A reader may not write the directory of a database it can read;
         // the writer created the file then.
-        if(llvm::sys::fs::openFileForReadWrite(file,
-                                               fd,
-                                               llvm::sys::fs::CD_OpenAlways,
-                                               llvm::sys::fs::OF_None) &&
-           llvm::sys::fs::openFileForRead(file, fd)) {
+        if(!file) {
+            file = fs::File::open(name);
+        }
+        if(!file) {
             return std::nullopt;
         }
-        OpenLock lock(fd);
-        if(!lock.lock(kind, wait)) {
+        bool exclusive = kind == Kind::Exclusive;
+        if(wait) {
+            if(exclusive ? file->lock() : file->lock_shared()) {
+                return std::nullopt;
+            }
+        } else if(auto taken = exclusive ? file->try_lock() : file->try_lock_shared();
+                  !taken || !*taken) {
             return std::nullopt;
         }
-        lock.locked = true;
-        return lock;
+        return OpenLock(std::move(*file));
     }
 
-    OpenLock(OpenLock&& other) noexcept :
-        fd(std::exchange(other.fd, -1)), locked(std::exchange(other.locked, false)) {}
+    OpenLock(OpenLock&& other) noexcept = default;
 
     OpenLock& operator=(OpenLock&& other) noexcept {
-        release();
-        fd = std::exchange(other.fd, -1);
-        locked = std::exchange(other.locked, false);
+        file.unlock();
+        file = std::move(other.file);
         return *this;
     }
 
+    /// Windows releases the lock of a closed handle only some time later.
     ~OpenLock() {
-        release();
+        file.unlock();
     }
 
 private:
-    explicit OpenLock(int fd) : fd(fd) {}
+    explicit OpenLock(fs::File file) : file(std::move(file)) {}
 
-    bool lock(Kind kind, bool wait) {
-#ifdef _WIN32
-        OVERLAPPED at = {};
-        DWORD flags = wait ? 0 : LOCKFILE_FAIL_IMMEDIATELY;
-        if(kind == Kind::Exclusive) {
-            flags |= LOCKFILE_EXCLUSIVE_LOCK;
-        }
-        return ::LockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), flags, 0, 1, 0, &at);
-#else
-        int operation = (kind == Kind::Exclusive ? LOCK_EX : LOCK_SH) | (wait ? 0 : LOCK_NB);
-        while(::flock(fd, operation) != 0) {
-            if(errno != EINTR) {
-                return false;
-            }
-        }
-        return true;
-#endif
-    }
-
-    void release() {
-        if(fd == -1) {
-            return;
-        }
-        if(locked) {
-#ifdef _WIN32
-            OVERLAPPED at = {};
-            ::UnlockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), 0, 1, 0, &at);
-#else
-            ::flock(fd, LOCK_UN);
-#endif
-        }
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-        fd = -1;
-        locked = false;
-    }
-
-private:
-    int fd = -1;
-
-    bool locked = false;
+    fs::File file;
 };
 
 /// Whether a process outside the `-open` file's protocol (an older clice)
@@ -243,16 +200,13 @@ private:
 /// closed, as closing any descriptor of a file drops the process's record
 /// locks on it.
 bool opened_elsewhere(llvm::StringRef path) {
-    int fd = -1;
-    if(llvm::sys::fs::openFileForReadWrite(path + "-lock",
-                                           fd,
-                                           llvm::sys::fs::CD_OpenExisting,
-                                           llvm::sys::fs::OF_None)) {
+    auto file = fs::File::open(path.str() + "-lock", {.read = true, .write = true});
+    if(!file) {
         return false;
     }
 #ifdef _WIN32
     OVERLAPPED at = {};
-    auto handle = llvm::sys::fs::convertFDToNativeFile(fd);
+    auto handle = file->native_handle();
     bool held =
         !::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at);
     if(!held) {
@@ -263,9 +217,8 @@ bool opened_elsewhere(llvm::StringRef path) {
     lock.l_type = F_WRLCK;
     lock.l_whence = SEEK_SET;
     lock.l_len = 1;
-    bool held = ::fcntl(fd, F_GETLK, &lock) == 0 && lock.l_type != F_UNLCK;
+    bool held = ::fcntl(file->native_handle(), F_GETLK, &lock) == 0 && lock.l_type != F_UNLCK;
 #endif
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
     return held;
 }
 
@@ -343,7 +296,7 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
     }
     const char* path = nullptr;
     mdb_env_get_path(env, &path);
-    auto space = llvm::sys::fs::disk_space(llvm::sys::path::parent_path(path));
+    auto space = fs::volume(path::parent(path));
     if(space && space->available < extra) {
         return std::format("{} free on its volume, which does not support sparse files",
                            format_bytes(space->available));
@@ -356,10 +309,9 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
     }
     std::uint64_t used = 0;
 #ifdef __linux__
-    if(auto status = llvm::MemoryBuffer::getFileAsStream("/proc/self/statm")) {
-        llvm::StringRef pages = (*status)->getBuffer().split(' ').first;
-        pages.getAsInteger(10, used);
-        used *= static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE));
+    if(std::string status; !fs::read_file(status, "/proc/self/statm")) {
+        llvm::StringRef(status).split(' ').first.getAsInteger(10, used);
+        used *= sys::page_size();
     }
 #endif
     if(used + extra > limit.rlim_cur) {
@@ -377,17 +329,9 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
 /// sparse support each mapsize is simply committed up front, which the
 /// small default keeps tolerable.
 void make_sparse(llvm::StringRef path) {
-    int fd = -1;
-    if(llvm::sys::fs::openFileForReadWrite(path,
-                                           fd,
-                                           llvm::sys::fs::CD_OpenAlways,
-                                           llvm::sys::fs::OF_None)) {
-        return;
+    if(auto file = fs::File::open(path, {.read = true, .write = true, .create = true})) {
+        file->set_sparse();
     }
-    auto handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
-    DWORD returned = 0;
-    DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr);
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 }
 #endif
 
@@ -417,7 +361,7 @@ public:
         }
         // A shrink cancelled between the copy and the swap leaves its copy.
         if(!read_only_) {
-            vfs::remove(path + "-compact");
+            fs::remove(path + "-compact");
         }
     }
 
@@ -573,7 +517,7 @@ public:
         }
         auto live = usage_of(own);
         mdb_txn_abort(own);
-        auto space = llvm::sys::fs::disk_space(llvm::sys::path::parent_path(path));
+        auto space = fs::volume(path::parent(path));
         if(live && space) {
             auto needed = (live->pages - live->free_pages) * live->page_size;
             if(space->available < needed + needed / 4) {
@@ -587,14 +531,15 @@ public:
         if(int rc = mdb_env_copy2(env, copy.c_str(), MDB_CP_COMPACT)) {
             note_error(rc);
             LOG_WARN("Cannot write a compact copy of the index database: {}", mdb_strerror(rc));
-            vfs::remove(copy);
+            fs::remove(copy);
             return Copy::Failed;
         }
         // LMDB writes the copy without syncing it, while the swap renames
         // it over the file whose commits it syncs.
-        if(auto error = vfs::sync(copy)) {
+        auto written = fs::File::open(copy, {.write = true});
+        if(auto error = written ? written->sync() : written.error()) {
             LOG_WARN("Cannot sync the compact copy of the index database: {}", error.message());
-            vfs::remove(copy);
+            fs::remove(copy);
             return Copy::Failed;
         }
         return Copy::Written;
@@ -604,7 +549,7 @@ public:
         auto copy = path + "-compact";
         auto exclusive = OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false);
         if(!exclusive) {
-            vfs::remove(copy);
+            fs::remove(copy);
             return Swap::Busy;
         }
         MDB_envinfo info;
@@ -617,13 +562,13 @@ public:
         bool replaced = false;
         if(opened_elsewhere(path)) {
             LOG_INFO("A process of an older clice has the index database open; its file is kept");
-        } else if(auto error = llvm::sys::fs::rename(copy, path)) {
+        } else if(auto error = fs::rename(copy, path)) {
             LOG_WARN("Cannot replace the index database by its compact copy: {}", error.message());
         } else {
             replaced = true;
         }
         if(!replaced) {
-            vfs::remove(copy);
+            fs::remove(copy);
         }
         if(!reopen(info.me_mapsize)) {
             return Swap::Lost;
@@ -861,7 +806,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // LMDB takes an empty file for a new database and writes its first
     // pages, which a read-only open cannot.
     if(read_only) {
-        if(auto status = vfs::status(path); status && status->stamp.size == 0) {
+        if(auto status = fs::status(path); status && status->size == 0) {
             LOG_WARN("Index database at {} is empty; run `clice index` to repair it", path);
             return nullptr;
         }
@@ -872,7 +817,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // A writer killed while writing a compact copy left it behind; only a
     // writer writes one.
     if(!read_only) {
-        vfs::remove(path + "-compact");
+        fs::remove(path + "-compact");
     }
 
     // The writer swaps in a compact copy while no reader has the file open,
@@ -887,13 +832,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             return nullptr;
         }
     } else {
-        int fd = -1;
-        if(!llvm::sys::fs::openFileForReadWrite(path + "-open",
-                                                fd,
-                                                llvm::sys::fs::CD_OpenAlways,
-                                                llvm::sys::fs::OF_None)) {
-            llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-        }
+        fs::File::open(path + "-open", {.write = true, .create = true});
     }
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
@@ -909,7 +848,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         // (make_sparse and mdb_env_open both create on demand): a later
         // session would misread the abandoned uninitialized placeholder as
         // corruption and log a spurious rebuild.
-        bool created = !read_only && !vfs::exists(path);
+        bool created = !read_only && !fs::exists(path).value_or(false);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
@@ -1084,37 +1023,19 @@ enum class FsLocality : std::uint8_t {
 };
 
 FsLocality filesystem_locality(llvm::StringRef dir) {
-#ifdef __linux__
-    // llvm's is_local only knows NFS/SMB/CIFS on Linux; 9p (WSL drvfs
-    // mounts) and FUSE pass as local, and those are exactly the mounts
-    // LMDB is documented to break on.
-    struct statfs sfs;
-    if(statfs(std::string(dir).c_str(), &sfs) == 0) {
-        // Through uint32 first: f_type is a signed word, and the SMB2/CIFS
-        // magics have the top bit set.
-        switch(static_cast<std::uint32_t>(sfs.f_type)) {
-            case 0x6969:      // NFS
-            case 0x517B:      // SMB
-            case 0xFE534D42:  // SMB2
-            case 0xFF534D42:  // CIFS
-            case 0x01021997:  // 9p
-                return FsLocality::Remote;
-            case 0x65735546:  // FUSE
-                return FsLocality::Unknown;
-            default: break;
-        }
-    }
-#endif
-    bool local = true;
-    if(auto ec = llvm::sys::fs::is_local(dir, local)) {
+    auto volume = fs::volume(dir);
+    if(!volume) {
         // Undetermined counts as local: an over-eager fallback would
         // silently fork the index lineage.
         LOG_WARN("Cannot determine whether {} is a local filesystem ({}); assuming local",
                  dir,
-                 ec.message());
+                 volume.error().message());
         return FsLocality::Local;
     }
-    return local ? FsLocality::Local : FsLocality::Remote;
+    if(volume->remote) {
+        return FsLocality::Remote;
+    }
+    return volume->type == "fuse" ? FsLocality::Unknown : FsLocality::Local;
 }
 
 }  // namespace
@@ -1134,7 +1055,8 @@ std::string database_directory(const CacheStore& store, llvm::StringRef configur
 }
 
 bool database_exists(const CacheStore& store, llvm::StringRef configuration) {
-    return vfs::exists(path::join(database_directory(store, configuration), lmdb_file_name));
+    return fs::exists(path::join(database_directory(store, configuration), lmdb_file_name))
+        .value_or(false);
 }
 
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
@@ -1147,8 +1069,10 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
         if(!database_exists(store, configuration)) {
             return nullptr;
         }
-    } else if(auto ec = vfs::create_directories(directory)) {
-        LOG_WARN("Cannot create the index database directory {}: {}", directory, ec.message());
+    } else if(auto made = fs::create_directories(directory); !made) {
+        LOG_WARN("Cannot create the index database directory {}: {}",
+                 directory,
+                 made.error().message());
         return nullptr;
     }
     auto db = open_lmdb_env(directory, initial_mapsize, read_only);

@@ -10,6 +10,7 @@ import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.scan;
+import :vfs.path;
 
 namespace clice {
 
@@ -27,7 +28,7 @@ bool looks_like_header(llvm::StringRef name,
                        llvm::StringRef dir,
                        llvm::StringRef search_dir,
                        bool system) {
-    auto extension = llvm::sys::path::extension(name).lower();
+    auto extension = llvm::StringRef(path::extension(name)).lower();
     if(ranges::contains(std::array{".h",
                                    ".hh",
                                    ".hpp",
@@ -47,10 +48,9 @@ bool looks_like_header(llvm::StringRef name,
     if(name.contains('.')) {
         return false;
     }
-    auto dir_name = llvm::sys::path::filename(dir);
+    auto dir_name = path::filename(dir);
     return system || dir_name.starts_with("Qt") || dir_name == "ActiveQt" ||
-           dir.ends_with(".framework/Headers") ||
-           llvm::sys::path::filename(search_dir) == "include";
+           dir.ends_with(".framework/Headers") || path::filename(search_dir) == "include";
 }
 
 }  // namespace
@@ -402,7 +402,7 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
         [&](llvm::StringRef search_dir, bool system, std::uint32_t tier, std::uint32_t position) {
             llvm::SmallString<256> dir(search_dir);
             if(!dir_prefix.empty()) {
-                llvm::sys::path::append(dir, dir_prefix);
+                path::push(dir, dir_prefix);
             }
             for(auto& entry: scope.list(dir).entries) {
                 auto name = entry.getKey();

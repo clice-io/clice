@@ -118,7 +118,7 @@ struct TypeHierarchyQuestion {
 /// not index, whose shards are as absent as a withheld file's, and the
 /// units the load found unservable.
 template <typename Ask>
-int run_query(const Options& opts, bool with_build, const char* self_path, Ask ask) {
+int run_query(const Options& opts, bool with_build, Ask ask) {
     auto spelling = opts.where.root();
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.where.configuration.tag();
@@ -127,7 +127,7 @@ int run_query(const Options& opts, bool with_build, const char* self_path, Ask a
     }
     std::vector<std::string> failed;
     if(opts.fresh.fresh) {
-        auto refreshed = refresh(spelling, config, configuration, self_path);
+        auto refreshed = refresh(spelling, config, configuration);
         if(!refreshed) {
             return fail(refreshed.error());
         }
@@ -190,14 +190,13 @@ int run_query(const Options& opts, bool with_build, const char* self_path, Ask a
 
 /// A question about the file `ask` takes, after the query context.
 template <typename Question, typename Ask>
-CommandHandler
-    file_question(std::string_view usage, bool with_build, const char* self_path, Ask ask) {
+CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
     return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
         auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());
         }
-        return run_query(opts.query, with_build, self_path, [&](query::Context& ctx) {
+        return run_query(opts.query, with_build, [&](query::Context& ctx) {
             return ask(ctx, inspected_path(ctx.project, args->front()), opts);
         });
     });
@@ -205,13 +204,13 @@ CommandHandler
 
 /// A question about the symbol `ask` takes, after the query context.
 template <typename Question, typename Ask>
-CommandHandler symbol_question(std::string_view usage, const char* self_path, Ask ask) {
+CommandHandler symbol_question(std::string_view usage, Ask ask) {
     return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
         auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());
         }
-        return run_query(opts.query, /*with_build=*/false, self_path, [&](query::Context& ctx) {
+        return run_query(opts.query, /*with_build=*/false, [&](query::Context& ctx) {
             return index::SymbolQuery::parse(args->front()).and_then([&](auto locator) {
                 return ask(ctx, std::move(locator), opts);
             });
@@ -219,13 +218,7 @@ CommandHandler symbol_question(std::string_view usage, const char* self_path, As
     });
 }
 
-CommandHandler build(const char* self_path) {
-    auto file = [self_path](std::string_view usage, bool with_build, auto ask) {
-        return file_question<FileQuestion>(usage, with_build, self_path, ask);
-    };
-    auto symbol = [self_path](std::string_view usage, auto ask) {
-        return symbol_question<SymbolQuestion>(usage, self_path, ask);
-    };
+CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "project-files",
@@ -234,13 +227,10 @@ CommandHandler build(const char* self_path) {
             "clice query project-files [OPTIONS]",
             "query",
             Errors::JSON,
-            [self_path](const ProjectFilesQuestion& opts) {
-                return run_query(opts.query,
-                                 /*with_build=*/true,
-                                 self_path,
-                                 [&](query::Context& ctx) {
-                                     return query::project_files(ctx, opts.filter.value_or("all"));
-                                 });
+            [](const ProjectFilesQuestion& opts) {
+                return run_query(opts.query, /*with_build=*/true, [&](query::Context& ctx) {
+                    return query::project_files(ctx, opts.filter.value_or("all"));
+                });
             }),
     });
     operations.push_back({
@@ -249,7 +239,6 @@ CommandHandler build(const char* self_path) {
         .run = file_question<FileDepsQuestion>(
             "clice query file-deps <PATH> [OPTIONS]",
             /*with_build=*/true,
-            self_path,
             [](query::Context& ctx, const Spelling& path, const FileDepsQuestion& opts) {
                 return query::file_deps(ctx,
                                         path,
@@ -260,20 +249,22 @@ CommandHandler build(const char* self_path) {
     operations.push_back({
         .name = "impact-analysis",
         .description = "What a change to a file reaches: its includers and the modules among them",
-        .run = file("clice query impact-analysis <PATH> [OPTIONS]",
-                    /*with_build=*/true,
-                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
-                        return query::impact_analysis(ctx, path);
-                    }),
+        .run = file_question<FileQuestion>(
+            "clice query impact-analysis <PATH> [OPTIONS]",
+            /*with_build=*/true,
+            [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                return query::impact_analysis(ctx, path);
+            }),
     });
     operations.push_back({
         .name = "counterparts",
         .description = "The files a file pairs with: a header's sources, a source's headers",
-        .run = file("clice query counterparts <PATH> [OPTIONS]",
-                    /*with_build=*/true,
-                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
-                        return query::counterparts(ctx, path);
-                    }),
+        .run = file_question<FileQuestion>(
+            "clice query counterparts <PATH> [OPTIONS]",
+            /*with_build=*/true,
+            [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                return query::counterparts(ctx, path);
+            }),
     });
     operations.push_back({
         .name = "symbol-search",
@@ -282,51 +273,51 @@ CommandHandler build(const char* self_path) {
             "clice query symbol-search [<LOCATOR>] [OPTIONS]",
             "query",
             Errors::JSON,
-            [self_path](const SearchQuestion& opts) {
+            [](const SearchQuestion& opts) {
                 auto args = positional(opts.locator.as_optional(), {"<LOCATOR>"}, 1);
                 if(!args) {
                     return usage_error(Errors::JSON, args.error());
                 }
                 auto text = args->empty() ? std::string() : args->front();
                 auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
-                return run_query(
-                    opts.query,
-                    /*with_build=*/false,
-                    self_path,
-                    [&](query::Context& ctx) { return query::symbol_search(ctx, text, limit); });
+                return run_query(opts.query, /*with_build=*/false, [&](query::Context& ctx) {
+                    return query::symbol_search(ctx, text, limit);
+                });
             }),
     });
     operations.push_back({
         .name = "read-symbol",
         .description = "A symbol's definition as text, with its documentation",
-        .run = symbol("clice query read-symbol <LOCATOR> [OPTIONS]",
-                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                          return query::read_symbol(ctx, std::move(locator));
-                      }),
+        .run = symbol_question<SymbolQuestion>(
+            "clice query read-symbol <LOCATOR> [OPTIONS]",
+            [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                return query::read_symbol(ctx, std::move(locator));
+            }),
     });
     operations.push_back({
         .name = "document-symbols",
         .description = "A file's outline",
-        .run = file("clice query document-symbols <PATH> [OPTIONS]",
-                    /*with_build=*/false,
-                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
-                        return query::document_symbols(ctx, path);
-                    }),
+        .run = file_question<FileQuestion>(
+            "clice query document-symbols <PATH> [OPTIONS]",
+            /*with_build=*/false,
+            [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                return query::document_symbols(ctx, path);
+            }),
     });
     operations.push_back({
         .name = "definition",
         .description = "Where a symbol is defined, with its documentation",
-        .run = symbol("clice query definition <LOCATOR> [OPTIONS]",
-                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                          return query::definition(ctx, std::move(locator));
-                      }),
+        .run = symbol_question<SymbolQuestion>(
+            "clice query definition <LOCATOR> [OPTIONS]",
+            [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                return query::definition(ctx, std::move(locator));
+            }),
     });
     operations.push_back({
         .name = "references",
         .description = "Every place naming a symbol",
         .run = symbol_question<ReferencesQuestion>(
             "clice query references <LOCATOR> [OPTIONS]",
-            self_path,
             [](query::Context& ctx, index::SymbolQuery locator, const ReferencesQuestion& opts) {
                 return query::references(ctx,
                                          std::move(locator),
@@ -338,7 +329,6 @@ CommandHandler build(const char* self_path) {
         .description = "A function's callers and callees",
         .run = symbol_question<CallGraphQuestion>(
             "clice query call-graph <LOCATOR> [OPTIONS]",
-            self_path,
             [](query::Context& ctx, index::SymbolQuery locator, const CallGraphQuestion& opts) {
                 return query::call_graph(ctx, std::move(locator), opts.direction.value_or("both"));
             }),
@@ -346,17 +336,17 @@ CommandHandler build(const char* self_path) {
     operations.push_back({
         .name = "implementation",
         .description = "The classes deriving from a class, the overrides of a function",
-        .run = symbol("clice query implementation <LOCATOR> [OPTIONS]",
-                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                          return query::implementation(ctx, std::move(locator));
-                      }),
+        .run = symbol_question<SymbolQuestion>(
+            "clice query implementation <LOCATOR> [OPTIONS]",
+            [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                return query::implementation(ctx, std::move(locator));
+            }),
     });
     operations.push_back({
         .name = "type-hierarchy",
         .description = "A type's supertypes and subtypes",
         .run = symbol_question<TypeHierarchyQuestion>(
             "clice query type-hierarchy <LOCATOR> [OPTIONS]",
-            self_path,
             [](query::Context& ctx, index::SymbolQuery locator, const TypeHierarchyQuestion& opts) {
                 return query::type_hierarchy(ctx,
                                              std::move(locator),

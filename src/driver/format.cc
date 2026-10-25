@@ -64,7 +64,7 @@ int run_format(BatchFormatOptions options) {
     return result.exit_code;
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     return operation<Options>("clice format [<PATH>...] [OPTIONS]",
                               "format",
                               Errors::Text,

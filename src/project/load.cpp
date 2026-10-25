@@ -21,7 +21,6 @@ import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -202,8 +201,9 @@ std::string deeper_databases_hint(const Project& project) {
             root,
             cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir)))) {
         auto directory = database.parent();
-        auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)");
-        names.push_back(std::format(R"("{}")", llvm::sys::path::convert_to_slash(name)));
+        auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
+        path::to_slash(name);
+        names.push_back(std::format(R"("{}")", name));
     }
     if(names.empty()) {
         return {};
@@ -216,11 +216,12 @@ std::string deeper_databases_hint(const Project& project) {
 }
 
 bool found_unreadable_database(const Project& project) {
-    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
-                          [&](std::size_t i) {
-                              return !project.cdb.loaded(SourceID(i)) &&
-                                     vfs::exists(project.cdb.source_path(SourceID(i)));
-                          });
+    return ranges::any_of(
+        views::iota(std::size_t(0), project.cdb.source_count()),
+        [&](std::size_t i) {
+            return !project.cdb.loaded(SourceID(i)) &&
+                   fs::exists(project.cdb.source_path(SourceID(i))).value_or(false);
+        });
 }
 
 std::string why_no_members(const Project& project, llvm::StringRef root) {
@@ -229,7 +230,7 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
         auto path = project.cdb.source_path(SourceID(i));
         if(project.cdb.loaded(SourceID(i))) {
             empty.push_back(path.str());
-        } else if(vfs::exists(path)) {
+        } else if(fs::exists(path).value_or(false)) {
             return std::format("{} cannot be read; the error above says why.", path.str());
         } else {
             return std::format("{} does not exist yet; the build writes it.", path.str());
@@ -271,7 +272,7 @@ void load_sources(Project& project,
                 // it, not what it links to: a compile_commands.json or a build
                 // directory symlinked to a tree outside still belongs to the
                 // root.
-                return path::under(llvm::StringRef(source), llvm::StringRef(root));
+                return path::is_within(llvm::StringRef(source), llvm::StringRef(root));
             }));
         ranges::sort(stable, {}, [](const Spelling& source) {
             return discovery_rank(llvm::StringRef(source));
@@ -306,7 +307,7 @@ void load_sources(Project& project,
         if(auto loaded = project.cdb.load_source(id)) {
             LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
             entries += *loaded;
-        } else if(!vfs::exists(project.cdb.source_path(id))) {
+        } else if(!fs::exists(project.cdb.source_path(id)).value_or(false)) {
             LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));
         }
     }
@@ -325,7 +326,7 @@ BuildLoad load_build(Project& project,
     // session a deleted provisional member keeps it, as a vanished unit
     // keeps its entry, and is back the moment the file is.
     for(auto& path: provisional) {
-        if(vfs::is_file(path)) {
+        if(fs::is_file(path)) {
             project.build.record(project.file_table.intern(path));
         }
     }

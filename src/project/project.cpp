@@ -106,7 +106,7 @@ constexpr llvm::StringLiteral database_name = "compile_commands.json";
 
 std::optional<Spelling> database_in(const Spelling& dir) {
     Spelling candidate(database_name, dir);
-    if(!vfs::exists(candidate)) {
+    if(!fs::exists(candidate).value_or(false)) {
         return std::nullopt;
     }
     return candidate;
@@ -115,15 +115,17 @@ std::optional<Spelling> database_in(const Spelling& dir) {
 /// The places that hold a database.
 llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
     places.erase(
-        ranges::remove_if(places, [](const Spelling& place) { return !vfs::exists(place); })
+        ranges::remove_if(places,
+                          [](const Spelling& place) { return !fs::exists(place).value_or(false); })
             .begin(),
         places.end());
     return places;
 }
 
 bool configured(const Spelling& dir) {
-    return ranges::any_of(config_file_names,
-                          [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
+    return ranges::any_of(config_file_names, [&](llvm::StringRef name) {
+        return fs::exists(Spelling(name, dir)).value_or(false);
+    });
 }
 
 }  // namespace
@@ -138,12 +140,11 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    for(auto& entry: vfs::read_dir(workspace_root).value_or(std::vector<vfs::Entry>())) {
+    for(auto& entry: fs::read_dir(workspace_root).value_or(std::vector<fs::DirEntry>())) {
         // A symlinked build directory is a build directory too, even
         // before its target exists.
-        if(entry.type == llvm::sys::fs::file_type::symlink_file ||
-           entry.type == llvm::sys::fs::file_type::directory_file) {
-            subdirectories.push_back(Spelling::absolute(entry.path));
+        if(entry.type == fs::FileType::Symlink || entry.type == fs::FileType::Directory) {
+            subdirectories.push_back(Spelling::absolute(path::join(workspace_root, entry.name)));
         }
     }
     ranges::sort(subdirectories, {}, &Spelling::str);
@@ -169,20 +170,20 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
                              [](char c) { return path::is_separator(c); }));
     };
     llvm::SmallVector<Spelling> found;
-    vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
-        auto spelled = Spelling::absolute(entry.path);
-        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+    vfs::walk(workspace_root, [&](llvm::StringRef path, fs::FileType type) {
+        auto spelled = Spelling::absolute(path);
+        if(type == fs::FileType::Directory) {
             auto name = path::filename(spelled.str());
             return !name.starts_with(".") && name != "node_modules" &&
                    workspace_root.entry(spelled) != cache_dir && depth(spelled) <= deepest;
         }
         // The root and its direct subdirectories are where discovery looks.
-        if(path::filename(spelled.str()) == database_name) {
+        if(llvm::StringRef(path::filename(spelled.str())) == database_name) {
             if(depth(spelled.parent()) >= 2) {
                 found.push_back(std::move(spelled));
             }
-        } else if(entry.type == llvm::sys::fs::file_type::symlink_file &&
-                  vfs::is_directory(spelled) && depth(spelled) >= 2) {
+        } else if(type == fs::FileType::Symlink && fs::is_directory(spelled) &&
+                  depth(spelled) >= 2) {
             // Not walked into (links may cycle), but a build directory
             // symlinked elsewhere keeps its database.
             if(auto database = database_in(spelled)) {
@@ -214,10 +215,12 @@ CanonicalPath project_root_above(CanonicalRef start) {
 
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
     llvm::SmallVector<Spelling> places;
-    path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
+    for(auto dir: path::ancestors(start)) {
         places.emplace_back(database_name, Spelling::absolute(dir));
-        return true;
-    });
+        if(dir == std::string_view(workspace_root)) {
+            break;
+        }
+    }
     return places;
 }
 
@@ -318,7 +321,15 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
 }
 
 std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
-    auto buffer = vfs::read(path, vfs::Read::Mapped);
+    auto file = fs::File::open(path);
+    if(!file) {
+        return nullptr;
+    }
+    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                  path,
+                                                  /*FileSize=*/-1,
+                                                  /*RequiresNullTerminator=*/false,
+                                                  /*IsVolatile=*/false);
     if(!buffer) {
         return nullptr;
     }

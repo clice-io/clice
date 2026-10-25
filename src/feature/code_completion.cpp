@@ -2736,7 +2736,7 @@ auto include_completion(const CompletionName& completing,
                         std::uint32_t limit) -> protocol::CompletionList {
     bool angled = (completing.kind == CompletionName::Kind::IncludeAngled);
     auto candidates =
-        complete_include_path(search, path::parent_path(path), completing.prefix, angled, scope);
+        complete_include_path(search, path::parent(path), completing.prefix, angled, scope);
 
     // A directory leaves the path open: the `/` typed after it asks
     // again, for the directory's own entries. A header ends the path
@@ -2898,14 +2898,16 @@ auto module_completion(const CompletionName& completing,
         // module fragment, where none may go, is offered names too.
         module_names = complete_module_import(graph, completing.prefix, scan_quick(declared));
     }
-    auto directory = path::parent_path(path);
+    auto directory = path::parent(path);
     auto up_to = [&](Fid provider) {
         std::uint32_t up = 0;
         auto interface = llvm::StringRef(files.resolve(provider));
-        path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
+        for(auto dir: path::ancestors(directory)) {
             up += 1;
-            return !path::under(interface, dir);
-        });
+            if(path::is_within(interface, dir)) {
+                break;
+            }
+        }
         return up;
     };
     auto distance = [&](llvm::StringRef name) {

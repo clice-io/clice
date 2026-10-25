@@ -33,7 +33,7 @@ std::optional<DeclaredText>
                                 if(!extent) {
                                     return true;
                                 }
-                                std::unique_ptr<llvm::MemoryBuffer> kept;
+                                std::string kept;
                                 auto text = index.source_text(source, kept);
                                 if(!text) {
                                     return true;
@@ -64,7 +64,7 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
     auto text_of = [&](const IndexSource& source) -> SourceText* {
         auto& text = texts[{source.shard, source.file}];
         if(!text) {
-            std::unique_ptr<llvm::MemoryBuffer> kept;
+            std::string kept;
             auto read = index.source_text(source, kept);
             if(!read) {
                 return nullptr;
@@ -123,7 +123,7 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
     }
     auto declares = [&](const IndexQuery::Located& candidate) {
         auto source = index.serving(candidate.site.file);
-        std::unique_ptr<llvm::MemoryBuffer> kept;
+        std::string kept;
         auto text = source ? index.source_text(*source, kept) : std::nullopt;
         return text && declares_parameters(*text, candidate.site.range.end, *copied->parameters);
     };
@@ -155,7 +155,7 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
 
 std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
     struct Text {
-        std::unique_ptr<llvm::MemoryBuffer> kept;
+        std::string kept;
         std::optional<SourceText> source;
     };
 

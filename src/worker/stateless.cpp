@@ -67,7 +67,7 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
 /// on failure so the master's anomaly carries the cause.
 static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
                                                        llvm::StringRef output_path) {
-    if(auto error = vfs::write(output_path, blob)) {
+    if(auto error = fs::write_file(output_path, blob)) {
         auto message =
             std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
         LOG_ERROR("BuildPCH: {}", message);
@@ -87,12 +87,14 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
     if(!output_path.empty()) {
         return output_path.str();
     }
-    auto tmp = vfs::temp_file(prefix, extension);
-    if(!tmp) {
+    std::string dir;
+    sys::temp_dir(dir);
+    std::string path;
+    if(!fs::create_temp_file(path, dir, prefix.str() + "-", "." + extension.str())) {
         LOG_ERROR("Build{}: failed to create temp file", label);
         return std::unexpected(std::format("Failed to create temporary {} file", label));
     }
-    return *tmp;
+    return path;
 }
 
 /// The reply of a finished artifact build. Success hands the master the
@@ -115,7 +117,7 @@ static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
         result.output_path = tmp_path;
         return result;
     }
-    vfs::remove(tmp_path);
+    fs::remove(tmp_path);
     result.success = false;
     // FIXME: clang failing to open its output (the cache directory turned
     // unwritable or full mid-session) counts as the user's error: the master keeps

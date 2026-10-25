@@ -34,9 +34,6 @@ struct BatchOptions {
     /// Stateless worker count override; 0 runs one per logical core.
     std::uint32_t workers = 0;
 
-    /// Path of the clice binary, for spawning workers.
-    std::string self_path;
-
     /// Called on the event loop when a round begins or ends and every ten
     /// seconds in between; null for no progress reporting.
     llvm::function_ref<void(const BatchProgress&)> on_progress;
@@ -126,9 +123,6 @@ struct BatchLintOptions {
 
     /// Stateless worker count override; 0 keeps the config's values.
     std::uint32_t workers = 0;
-
-    /// Path of the clice binary, for spawning workers.
-    std::string self_path;
 
     /// Also produce and persist the project index from the same parses.
     bool with_index = false;

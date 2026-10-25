@@ -39,12 +39,10 @@ public:
     /// file that must live outside the root, e.g. inside a cache store's
     /// directory).
     static std::string path(llvm::StringRef relative) {
-        if(llvm::sys::path::is_absolute(relative)) {
+        if(path::is_absolute(relative)) {
             return relative.str();
         }
-        llvm::SmallString<128> joined;
-        llvm::sys::path::append(joined, root(), relative);
-        std::string result(joined);
+        auto result = path::join(root(), relative);
         path::canonicalize(result);
         return result;
     }

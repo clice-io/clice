@@ -51,7 +51,7 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
 std::string
     put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store_aux(ns, key);
-    require(!vfs::write(pending.tmp_path, content), "tmp write failed");
+    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "aux commit failed");
     return *committed;
@@ -61,7 +61,7 @@ std::string
 std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store(ns, key);
-    require(!vfs::write(pending.tmp_path, content), "tmp write failed");
+    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "commit failed");
     return *committed;
@@ -94,7 +94,7 @@ ZEST_CASE(RootIgnoreMarkers) {
 
     // Opening alone marks nothing: the root may be a user-configured,
     // shared directory.
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/.gitignore")));
+    ZASSERT(!fs::exists(tmp.path("root/.gitignore")).value_or(false));
 
     CacheStore::write_ignore_markers(tmp.path("root"));
 
@@ -111,17 +111,17 @@ ZEST_CASE(MarkersCreateRoot) {
     CacheStore::write_ignore_markers(tmp.path("fresh"));
 
     ZASSERT(read_file(tmp.path("fresh/.gitignore")).value_or("") == "*\n!config.toml\n");
-    ZASSERT(llvm::sys::fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
+    ZASSERT(fs::exists(tmp.path("fresh/CACHEDIR.TAG")).value_or(false));
 }
 
 ZEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }
-    require(!vfs::write(tmp.path("root/.gitignore"), "custom\n"), "rewrite failed");
+    require(!fs::write_file(tmp.path("root/.gitignore"), "custom\n"), "rewrite failed");
 
     CacheStore::write_ignore_markers(tmp.path("root"));
     ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
-    ZASSERT(llvm::sys::fs::exists(tmp.path("root/CACHEDIR.TAG")));
+    ZASSERT(fs::exists(tmp.path("root/CACHEDIR.TAG")).value_or(false));
 }
 
 ZEST_CASE(DropRemovesTmp) {
@@ -135,33 +135,33 @@ ZEST_CASE(DropRemovesTmp) {
     std::string tmp_path;
     {
         auto pending = store.begin_store("pch", "k1");
-        ZASSERT(!vfs::write(pending.tmp_path, "junk"));
+        ZASSERT(!fs::write_file(pending.tmp_path, "junk"));
         tmp_path = pending.tmp_path;
     }
 
-    ZASSERT(!llvm::sys::fs::exists(tmp_path));
+    ZASSERT(!fs::exists(tmp_path).value_or(false));
     ZASSERT(!store.lookup("pch", "k1").has_value());
 
     // A moved-from entry no longer owns the tmp file.
     auto pending = store.begin_store("pch", "k2");
-    ZASSERT(!vfs::write(pending.tmp_path, "junk"));
+    ZASSERT(!fs::write_file(pending.tmp_path, "junk"));
     auto second = pending.tmp_path;
     {
         auto moved = std::move(pending);
-        ZASSERT(llvm::sys::fs::exists(second));
+        ZASSERT(fs::exists(second).value_or(false));
     }
-    ZASSERT(!llvm::sys::fs::exists(second));
+    ZASSERT(!fs::exists(second).value_or(false));
 
     // Move assignment cleans the destination's own tmp before adopting.
     auto lhs = store.begin_store("pch", "k3");
     auto rhs = store.begin_store("pch", "k4");
-    ZASSERT(!vfs::write(lhs.tmp_path, "junk"));
-    ZASSERT(!vfs::write(rhs.tmp_path, "junk"));
+    ZASSERT(!fs::write_file(lhs.tmp_path, "junk"));
+    ZASSERT(!fs::write_file(rhs.tmp_path, "junk"));
     auto third = lhs.tmp_path;
     auto fourth = rhs.tmp_path;
     lhs = std::move(rhs);
-    ZASSERT(!llvm::sys::fs::exists(third));
-    ZASSERT(llvm::sys::fs::exists(fourth));
+    ZASSERT(!fs::exists(third).value_or(false));
+    ZASSERT(fs::exists(fourth).value_or(false));
 }
 
 ZEST_CASE(TransferRemovedOnDrop) {
@@ -173,11 +173,11 @@ ZEST_CASE(TransferRemovedOnDrop) {
         auto transfer = store.begin_transfer();
         auto other = store.begin_transfer();
         ZEXPECT(transfer.tmp_path != other.tmp_path);
-        ZASSERT(!vfs::write(transfer.tmp_path, "index"));
+        ZASSERT(!fs::write_file(transfer.tmp_path, "index"));
         ZEXPECT(store.pending_tmp_files() == 1);
         tmp_path = transfer.tmp_path;
     }
-    ZEXPECT(!llvm::sys::fs::exists(tmp_path));
+    ZEXPECT(!fs::exists(tmp_path).value_or(false));
     ZEXPECT(store.pending_tmp_files() == 0);
 }
 
@@ -218,7 +218,7 @@ ZEST_CASE(VersionBumpDiscards) {
     auto store = open_store(tmp, version + 1);
     register_lru(store);
     ZASSERT(!store.lookup("pch", "k1").has_value());
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v1")).value_or(false));
 }
 
 ZEST_CASE(LiveLayoutKept) {
@@ -226,12 +226,12 @@ ZEST_CASE(LiveLayoutKept) {
     // A clice of another version is live inside v1 (our own pid stands in
     // for its `tmp/{pid}` marker): the removal pass must not delete the cache out
     // from under it.
-    auto self = std::to_string(llvm::sys::Process::getProcessId());
+    auto self = std::to_string(sys::pid());
     tmp.touch("root/cache/v1/tmp/" + self + "/0.pch");
     tmp.touch("root/cache/v1/pch/k1.pch", "live");
 
     auto store = open_store(tmp, version + 1);
-    ZASSERT(llvm::sys::fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+    ZASSERT(fs::exists(tmp.path("root/cache/v1/pch/k1.pch")).value_or(false));
 }
 
 ZEST_CASE(CrashedLayoutDiscarded) {
@@ -241,7 +241,7 @@ ZEST_CASE(CrashedLayoutDiscarded) {
     tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch");
 
     auto store = open_store(tmp, version + 1);
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v1")).value_or(false));
 }
 
 ZEST_CASE(LegacyLayoutDiscarded) {
@@ -251,8 +251,8 @@ ZEST_CASE(LegacyLayoutDiscarded) {
     tmp.touch("root/cache/pch/deadbeef.pch", "old");
 
     auto store = open_store(tmp);
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/cache.json")));
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/pch")));
+    ZASSERT(!fs::exists(tmp.path("root/cache/cache.json")).value_or(false));
+    ZASSERT(!fs::exists(tmp.path("root/cache/pch")).value_or(false));
 }
 
 #ifndef _WIN32
@@ -266,8 +266,8 @@ ZEST_CASE(SymlinkNotFollowed) {
         ::symlink(tmp.path("outside").c_str(), tmp.path("root/cache/v0").c_str());
 
     auto store = open_store(tmp);
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v0")));
-    ZASSERT(llvm::sys::fs::exists(tmp.path("outside/keep.txt")));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v0")).value_or(false));
+    ZASSERT(fs::exists(tmp.path("outside/keep.txt")).value_or(false));
 }
 #endif
 
@@ -304,7 +304,7 @@ ZEST_CASE(FreshCommitNotEvicted) {
     register_lru(store, 5);  // smaller than a single blob
 
     auto path = put(store, "pch", "big", "0123456789");
-    ZASSERT(llvm::sys::fs::exists(path));
+    ZASSERT(fs::exists(path).value_or(false));
     ZASSERT(store.lookup("pch", "big"));
 }
 
@@ -344,7 +344,7 @@ ZEST_CASE(CommitFailureReported) {
     // commit must report the failure, not silently report the data is stored.
     tmp.touch("root/cache/v1/pch/k1.pch/squatter", "x");
     auto pending = store.begin_store("pch", "k1");
-    ZASSERT(!vfs::write(pending.tmp_path, "dropped"));
+    ZASSERT(!fs::write_file(pending.tmp_path, "dropped"));
     ZASSERT(!store.commit(std::move(pending)).has_value());
     ZASSERT(!store.lookup("pch", "k1").has_value());
 }
@@ -358,7 +358,7 @@ ZEST_CASE(InvalidateRemovesBlob) {
     store.invalidate("pch", "k1");
 
     ZASSERT(!store.lookup("pch", "k1").has_value());
-    ZASSERT(!llvm::sys::fs::exists(path));
+    ZASSERT(!fs::exists(path).value_or(false));
 }
 
 ZEST_CASE(InvalidateMappedBlob) {
@@ -367,16 +367,13 @@ ZEST_CASE(InvalidateMappedBlob) {
     register_lru(store);
 
     auto path = put(store, "pch", "k1", std::string(64 * 1024, 'x'));
-    auto mapped = llvm::MemoryBuffer::getFile(path,
-                                              /*IsText=*/false,
-                                              /*RequiresNullTerminator=*/false);
-    ZASSERT(bool(mapped));
-    ZASSERT((*mapped)->getBufferKind() == llvm::MemoryBuffer::MemoryBuffer_MMap);
+    auto mapped = fs::File::open(path).and_then(fs::Mapping::map);
+    ZASSERT(mapped);
 
     store.invalidate("pch", "k1");
 
-    ZASSERT(!llvm::sys::fs::exists(path));
-    ZASSERT((*mapped)->getBuffer().back() == 'x');
+    ZASSERT(!fs::exists(path).value_or(false));
+    ZASSERT(mapped->bytes().back() == 'x');
 }
 
 ZEST_CASE(MissingManifestRescans) {
@@ -388,8 +385,8 @@ ZEST_CASE(MissingManifestRescans) {
         store.shutdown();
     }
 
-    [[maybe_unused]] auto removed = llvm::sys::fs::remove(tmp.path("root/cache/v1/manifest.json"));
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/manifest.json")));
+    fs::remove(tmp.path("root/cache/v1/manifest.json"));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v1/manifest.json")).value_or(false));
 
     auto store = open_store(tmp);
     register_lru(store);
@@ -438,19 +435,19 @@ ZEST_CASE(DeadInstanceTmpRemoved) {
     tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch", "leftover");
 
     auto store = open_store(tmp);
-    ZASSERT(!llvm::sys::fs::exists(tmp.path(std::string("root/cache/v1/tmp/") + dead_pid)));
+    ZASSERT(!fs::exists(tmp.path(std::string("root/cache/v1/tmp/") + dead_pid)).value_or(false));
 }
 
 ZEST_CASE(ShutdownRemovesOwnTmp) {
     TempDir tmp;
-    auto pid = std::to_string(llvm::sys::Process::getProcessId());
+    auto pid = std::to_string(sys::pid());
     {
         auto store = open_store(tmp);
         register_lru(store);
-        ZASSERT(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+        ZASSERT(fs::exists(tmp.path("root/cache/v1/tmp/" + pid)).value_or(false));
         store.shutdown();
     }
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v1/tmp/" + pid)).value_or(false));
 }
 
 ZEST_CASE(CommitOverwriteSameKey) {
@@ -530,7 +527,7 @@ ZEST_CASE(AuxWithoutPrimaryFails) {
     register_paired(store);
 
     auto pending = store.begin_store_aux("pch", "ghost");
-    require(!vfs::write(pending.tmp_path, "orphan"), "tmp write failed");
+    require(!fs::write_file(pending.tmp_path, "orphan"), "tmp write failed");
     ZASSERT(!store.commit(std::move(pending)).has_value());
     ZASSERT(!store.lookup_aux("pch", "ghost").has_value());
 }
@@ -605,17 +602,8 @@ ZEST_CASE(StaleAuxDropped) {
     // (see reset_aux_locked): the primary was republished, the old aux
     // stayed behind. Pairs commit primary-first, so a legitimate aux is
     // never older than its primary — registration must not adopt this one.
-    // int-FD variant: setLastAccessAndModificationTime has no overload for
-    // the native handle type on Windows.
     auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
-    int fd = 0;
-    ZASSERT(!bool(llvm::sys::fs::openFileForWrite(aux_path,
-                                                  fd,
-                                                  llvm::sys::fs::CD_OpenExisting,
-                                                  llvm::sys::fs::OF_None)));
-    auto old_time = std::chrono::system_clock::now() - std::chrono::hours(1);
-    ZASSERT(!bool(llvm::sys::fs::setLastAccessAndModificationTime(fd, old_time, old_time)));
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    ZASSERT(set_file_mtime(aux_path, file_mtime_ns(aux_path) - 3'600'000'000'000));
 
     auto store = open_store(tmp);
     register_paired(store);
@@ -679,14 +667,14 @@ ZEST_CASE(ReadOnlyOpenTouchesNothing) {
     // remove the older version a live server may still be using.
     auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
     ZASSERT(!store.has_value());
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v2")));
+    ZASSERT(!fs::exists(tmp.path("root/cache/v2")).value_or(false));
 
     auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
     ZASSERT(reader);
     register_lru(*reader);
     ZASSERT(reader->lookup("pch", "k1"));
-    auto pid = std::to_string(llvm::sys::Process::getProcessId());
-    ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+    auto pid = std::to_string(sys::pid());
+    ZASSERT(!fs::exists(tmp.path("root/cache/v1/tmp/" + pid)).value_or(false));
 }
 
 ZEST_CASE(ReadOnlyNeverWrites) {

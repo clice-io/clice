@@ -6,6 +6,7 @@ module clice;
 
 import :feature.diagnostics;
 import :feature.protocol;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -438,7 +439,7 @@ protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_
     } else {
         for(const auto& note: diagnostic.notes) {
             message += std::format("\n\n{}:{}:{}: {}",
-                                   llvm::sys::path::filename(note.path),
+                                   path::filename(note.path),
                                    note.range.start.line + 1,
                                    note.range.start.character + 1,
                                    note.message);

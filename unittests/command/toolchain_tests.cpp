@@ -158,7 +158,7 @@ ZEST_CASE(FailedQueryCooldown, skip = Windows) {
     auto first = f.failure(ref);
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 
-    ZASSERT(!vfs::remove(driver));
+    ZASSERT(fs::remove(driver));
     ZEXPECT(f.failure(ref) == first);
 }
 
@@ -274,7 +274,7 @@ ZEST_CASE(WarmDedupesQueries, skip = Windows) {
     ZEXPECT(f.toolchain.query_count() == std::size_t(2));
 
     // With the driver gone, only the query cache can still resolve.
-    ZASSERT(!vfs::remove(driver));
+    ZASSERT(fs::remove(driver));
     ZEXPECT(f.toolchain.resolve(a.command, a.input).has_value());
 }
 
@@ -302,10 +302,10 @@ echo '{2}' >&2
     f.toolchain.warm(refs);
     ZEXPECT(f.toolchain.query_count() == std::size_t(2 * cores));
 
-    auto counts = vfs::read(tmp.path("counts"));
+    auto counts = vfs::read_text(tmp.path("counts"));
     ZASSERT(counts);
     llvm::SmallVector<llvm::StringRef> lines;
-    (*counts)->getBuffer().split(lines, '\n', -1, false);
+    llvm::StringRef(*counts).split(lines, '\n', -1, false);
     ZEXPECT(lines.size() == std::size_t(2 * cores));
     for(auto line: lines) {
         unsigned running = 0;
@@ -429,8 +429,8 @@ ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {
     auto theirs = tmp.path("clang-22/include");
     auto own = tmp.path("own");
     auto alias = tmp.path("alias");
-    ZASSERT(!llvm::sys::fs::create_link(resource_dir(), own));
-    ZASSERT(!llvm::sys::fs::create_link(theirs, alias));
+    ZASSERT(!fs::create_directory_symlink(resource_dir(), own));
+    ZASSERT(!fs::create_directory_symlink(theirs, alias));
     auto driver = fake_clang(std::format(
         R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include" "-I" "{1}" "-internal-isystem" "{2}")",
         own,
@@ -463,7 +463,7 @@ echo '{}' >&2
     auto ref = add("a.cpp", {mingw.c_str()});
     llvm::SmallVector<CommandRef> refs = {ref};
     f.toolchain.warm(refs);
-    ZASSERT(!vfs::remove(mingw));
+    ZASSERT(fs::remove(mingw));
     auto argv = f.resolve(ref);
     ZEXPECT(adjacent(argv, "-resource-dir", external));
     ZEXPECT(!contains(argv, resource_dir()));

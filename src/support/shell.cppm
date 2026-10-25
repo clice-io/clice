@@ -57,7 +57,9 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
                                                            llvm::StringSaver& saver) {
 #ifdef _WIN32
     llvm::SmallVector<const char*, 32> arguments;
-    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
+    for(auto argument: sys::windows::split_command_line(command)) {
+        arguments.push_back(saver.save(llvm::StringRef(argument)).data());
+    }
     return arguments;
 #else
     return tokenize_sh_command(command, saver);
@@ -68,29 +70,13 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
 /// tokenize_command read it back: what a person copies to run the command.
 inline std::string join_command(llvm::ArrayRef<std::string> arguments) {
     std::string line;
+#ifdef _WIN32
+    sys::windows::join_command_line(line, arguments);
+#else
     for(llvm::StringRef argument: arguments) {
         if(!line.empty()) {
             line += ' ';
         }
-#ifdef _WIN32
-        // The rules of CommandLineToArgvW: backslashes are literal but
-        // before a quote, where each one is escaped, as the quote is.
-        if(!argument.empty() && argument.find_first_of(" \t\"") == llvm::StringRef::npos) {
-            line += argument;
-            continue;
-        }
-        line += '"';
-        std::size_t backslashes = 0;
-        for(char c: argument) {
-            if(c == '"') {
-                line.append(backslashes + 1, '\\');
-            }
-            backslashes = c == '\\' ? backslashes + 1 : 0;
-            line += c;
-        }
-        line.append(backslashes, '\\');
-        line += '"';
-#else
         // A backslash escapes the character after it, outside quotes and
         // in LLVM's reading inside them too, so it alone quotes for both.
         // Bytes past ASCII are UTF-8, which neither reads specially.
@@ -105,8 +91,8 @@ inline std::string join_command(llvm::ArrayRef<std::string> arguments) {
             }
             line += c;
         }
-#endif
     }
+#endif
     return line;
 }
 

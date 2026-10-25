@@ -30,26 +30,11 @@ extern "C++" int main(int argc, const char** argv) {
                             sizeof(throttling));
 
     // The CRT's argv is in the ANSI code page, which holds few characters
-    // past ASCII: the arguments are read from the UTF-16 command line, by
-    // the CRT's rules, as LLVM's tools read them. Its conversion is lenient
-    // as theirs: an unpaired surrogate, which a Windows name may hold,
-    // becomes U+FFFD instead of emptying the command line.
-    const wchar_t* wide = ::GetCommandLineW();
-    std::string line(::WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr),
-                     '\0');
-    ::WideCharToMultiByte(CP_UTF8,
-                          0,
-                          wide,
-                          -1,
-                          line.data(),
-                          static_cast<int>(line.size()),
-                          nullptr,
-                          nullptr);
-    line.pop_back();
-    llvm::BumpPtrAllocator allocator;
-    llvm::StringSaver saver(allocator);
-    llvm::SmallVector<const char*, 16> arguments;
-    llvm::cl::TokenizeWindowsCommandLineFull(line, saver, arguments);
+    // past ASCII: the arguments are read from the UTF-16 command line.
+    std::vector<const char*> arguments;
+    for(auto& argument: kota::sys::arguments()) {
+        arguments.push_back(argument.c_str());
+    }
     argc = static_cast<int>(arguments.size());
     argv = arguments.data();
 #else
@@ -64,7 +49,7 @@ extern "C++" int main(int argc, const char** argv) {
     deco::cli::SubCommander clice("clice <command> [<args>]",
                                   "A C++ development toolkit built on LLVM/Clang");
 
-    driver::add_commands(clice, argv[0]);
+    driver::add_commands(clice);
 
     clice.enable_help().when_err(driver::subcommand_error_handler(clice));
 

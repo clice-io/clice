@@ -27,10 +27,10 @@ double Annotations::value(llvm::StringRef name, llvm::StringRef path, double fal
 }
 
 std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
-    auto buffer = vfs::read(path);
-    if(!buffer) {
+    auto text = vfs::read_text(path);
+    if(!text) {
         return std::unexpected(
-            std::format("cannot read {}: {}", std::string_view(path), buffer.error().message()));
+            std::format("cannot read {}: {}", std::string_view(path), text.error().message()));
     }
 
     struct File {
@@ -40,7 +40,7 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
     };
 
     File file;
-    if(auto result = json::from_string((*buffer)->getBuffer(), file); !result) {
+    if(auto result = json::from_string(*text, file); !result) {
         return std::unexpected(std::format("{} is not an annotation file: {}",
                                            std::string_view(path),
                                            result.error().message));

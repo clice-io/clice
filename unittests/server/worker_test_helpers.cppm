@@ -10,7 +10,9 @@ module;
 module clice:unittests.server.worker_test_helpers;
 
 import :command.table;
+import :support.process;
 import :unittests.utils.temp_dir;
+import :vfs.path;
 import :worker.probe;
 import :worker.protocol;
 
@@ -21,11 +23,12 @@ inline std::string clice_binary() {
     auto res_dir = resource_dir();
     // res_dir is <build>/lib/clang/...
     // clice binary is at <build>/bin/clice
-    auto build_dir = llvm::sys::path::parent_path(
-        llvm::sys::path::parent_path(llvm::sys::path::parent_path(res_dir)));
-    llvm::SmallString<256> path(build_dir);
-    llvm::sys::path::append(path, "bin", "clice");
-    return std::string(path);
+    auto build_dir = path::parent(path::parent(path::parent(res_dir)));
+    auto binary = path::join(build_dir, "bin", "clice");
+#ifdef _WIN32
+    binary += ".exe";
+#endif
+    return binary;
 }
 
 /// Build compile arguments for a source file, including -resource-dir.
@@ -85,8 +88,8 @@ struct WorkerHandle : kota::zest::LoopFixture {
 #endif
 
         kota::process::options opts;
-        opts.file = binary;
-        opts.args = {binary, "worker"};
+        opts.program = binary;
+        opts.args = {"worker"};
         if(stateful) {
             opts.args.push_back("--stateful");
         }
@@ -95,9 +98,11 @@ struct WorkerHandle : kota::zest::LoopFixture {
             opts.args.push_back(std::to_string(max_documents));
         }
         opts.env_changes = env;
+        opts.creation.process_group = true;
+        opts.creation.exit_with_parent = can_exit_with_parent;
         opts.streams = {
-            kota::process::stdio::pipe(true, false),  // stdin: child reads
-            kota::process::stdio::pipe(false, true),  // stdout: child writes
+            kota::process::stdio::pipe(),
+            kota::process::stdio::pipe(),
             stderr_fd >= 0 ? kota::process::stdio::from_fd(stderr_fd)
                            : kota::process::stdio::ignore(),
         };

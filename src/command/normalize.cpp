@@ -13,7 +13,6 @@ import :command.toolchains.nvcc;
 import :command.table;
 import :support.logging;
 import :support.shell;
-import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -43,9 +42,11 @@ bool is_assignment_token(llvm::StringRef token) {
 
 }  // namespace
 
-Spelling spelled(llvm::StringRef text, const Spelling& base, const MountTable* mounts) {
-    if(mounts && is_posix_path(text)) {
-        return Spelling::absolute(mounts->to_windows(text));
+Spelling spelled(llvm::StringRef text, const Spelling& base, const fs::cygwin::MountTable* mounts) {
+    if(mounts && fs::cygwin::is_posix_path(text)) {
+        std::string windows;
+        mounts->to_windows(windows, text);
+        return Spelling::absolute(windows);
     }
     return Spelling(text, base);
 }
@@ -54,11 +55,14 @@ llvm::StringRef anchored(CommandTable& commands,
                          unsigned id,
                          llvm::StringRef value,
                          const Spelling& anchor,
-                         const MountTable* mounts) {
+                         const fs::cygwin::MountTable* mounts) {
     // A forced include names a file too, which clang looks for rather than
     // anchors when relative.
-    if(mounts && is_posix_path(value) && (id == option::OPT_include || id == option::OPT_imacros)) {
-        return commands.intern(mounts->to_windows(value));
+    if(mounts && fs::cygwin::is_posix_path(value) &&
+       (id == option::OPT_include || id == option::OPT_imacros)) {
+        std::string windows;
+        mounts->to_windows(windows, value);
+        return commands.intern(windows);
     }
     if(!names_path(id, value)) {
         return value;
@@ -99,9 +103,12 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     Command command;
     command.directory = commands.intern(directory.str()).data();
     llvm::StringRef driver = arguments[0];
-    command.driver =
-        commands.intern(mounts && is_posix_path(driver) ? mounts->to_windows(driver) : driver.str())
-            .data();
+    std::string windows;
+    if(mounts && fs::cygwin::is_posix_path(driver)) {
+        mounts->to_windows(windows, driver);
+        driver = windows;
+    }
+    command.driver = commands.intern(driver).data();
     arguments = arguments.drop_front();
 
     command.family = driver_family(command.driver);

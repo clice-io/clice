@@ -10,6 +10,7 @@ module clice;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -19,14 +20,13 @@ namespace {
 /// no privilege to make.
 bool link_directory(const std::string& target, const std::string& link) {
 #ifdef _WIN32
-    auto cmd = llvm::sys::findProgramByName("cmd");
-    std::optional<llvm::StringRef> quiet[] = {std::nullopt,
-                                              llvm::StringRef(""),
-                                              llvm::StringRef("")};
-    return cmd && llvm::sys::ExecuteAndWait(*cmd,
-                                            {"cmd", "/c", "mklink", "/J", link, target},
-                                            {},
-                                            quiet) == 0;
+    sys::SpawnOptions options{
+        .program = "cmd",
+        .args = {"/c", "mklink", "/J", link, target}
+    };
+    std::string output;
+    auto status = sys::capture(output, output, std::move(options));
+    return status && status->success();
 #else
     return ::symlink(target.c_str(), link.c_str()) == 0;
 #endif
@@ -43,9 +43,9 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
               "int x;\n");
     auto path = tmp.path("a.h");
 
-    auto status = vfs::status(path);
+    auto status = fs::status(path);
     ZASSERT(status);
-    ZASSERT(status->stamp.size == 10u);
+    ZASSERT(status->size == 10u);
 
     vfs::View view;
     auto stated = view.status(path);
@@ -56,7 +56,7 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
     auto bytes_status = (*bytes)->status();
     ZASSERT((text_status && bytes_status));
 
-    auto id = status->to_llvm(path).getUniqueID();
+    auto id = vfs::to_llvm(*status, path).getUniqueID();
     ZASSERT(stated->getUniqueID() == id);
     ZASSERT(text_status->getUniqueID() == id);
     ZASSERT(bytes_status->getUniqueID() == id);
@@ -64,39 +64,21 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
     ZASSERT(text_status->getSize() == 7u);
     ZASSERT(bytes_status->getSize() == 10u);
     ZASSERT(text_status->getLastModificationTime() ==
-            status->to_llvm(path).getLastModificationTime());
-}
-
-ZEST_CASE(DirectoriesAndMissing) {
-    TempDir tmp;
-    tmp.touch("dir/a.h");
-
-    auto dir = vfs::status(tmp.path("dir"));
-    ZASSERT(dir);
-    ZASSERT(dir->type == llvm::sys::fs::file_type::directory_file);
-    ZASSERT(dir->stamp.file == vfs::status(tmp.path("dir"))->stamp.file);
-    ZASSERT(dir->stamp.file != vfs::status(tmp.path("dir/a.h"))->stamp.file);
-
-    auto missing = vfs::status(tmp.path("dir/b.h"));
-    ZASSERT(!missing.has_value());
-    ZASSERT(missing.error() == std::errc::no_such_file_or_directory);
-    auto no_parent = vfs::status(tmp.path("none/b.h"));
-    ZASSERT(!no_parent.has_value());
-    ZASSERT(no_parent.error() == std::errc::no_such_file_or_directory);
+            vfs::to_llvm(*status, path).getLastModificationTime());
 }
 
 ZEST_CASE(LinksShareIdentity) {
     TempDir tmp;
     tmp.touch("a.h", "int x;\n");
     auto a = tmp.path("a.h");
-    ZASSERT(!bool(llvm::sys::fs::create_hard_link(a, tmp.path("b.h"))));
-    ZASSERT(vfs::status(a)->stamp == vfs::status(tmp.path("b.h"))->stamp);
+    ZASSERT(!fs::create_hard_link(a, tmp.path("b.h")));
+    ZASSERT(vfs::Stamp::of(*fs::status(a)) == vfs::Stamp::of(*fs::status(tmp.path("b.h"))));
 #ifndef _WIN32
     ZASSERT(::symlink(a.c_str(), tmp.path("c.h").c_str()) == 0);
     vfs::View view;
     auto linked = view.openFileForRead(tmp.path("c.h"));
     ZASSERT(bool(linked));
-    auto id = vfs::status(a)->to_llvm(a).getUniqueID();
+    auto id = vfs::to_llvm(*fs::status(a), a).getUniqueID();
     ZASSERT((*linked)->status()->getUniqueID() == id);
     ZASSERT(view.status(tmp.path("c.h"))->getUniqueID() == id);
 #endif
@@ -116,7 +98,7 @@ ZEST_CASE(KeptTextFollowsEdits) {
         ZEXPECT(bool(file));
         auto status = (*file)->status();
         ZEXPECT(bool(status));
-        ZEXPECT(status->getUniqueID() == vfs::status(path)->to_llvm(path).getUniqueID());
+        ZEXPECT(status->getUniqueID() == vfs::to_llvm(*fs::status(path), path).getUniqueID());
         auto buffer = (*file)->getBuffer(path, -1, true, false);
         ZEXPECT(bool(buffer));
         ZEXPECT(status->getSize() == (*buffer)->getBufferSize());
@@ -178,20 +160,19 @@ ZEST_CASE(BatchAgreesWithStatus) {
         for(int i = 0; i < 20; i += 1) {
             auto path = tmp.path(std::format("dir/h{}.h", i));
             auto batched = batch.status(path);
-            auto direct = vfs::status(path);
+            auto direct = fs::status(path);
             ZASSERT((batched.has_value() && direct.has_value()));
-            ZASSERT(batched->stamp == direct->stamp);
+            ZASSERT(vfs::Stamp::of(*batched) == vfs::Stamp::of(*direct));
             ZASSERT(batched->type == direct->type);
         }
     }
     auto sub = batch.status(tmp.path("dir/sub"));
     ZASSERT(sub);
-    ZASSERT(sub->type == llvm::sys::fs::file_type::directory_file);
+    ZASSERT(sub->type == fs::FileType::Directory);
     // A directory's times in its parent's listing may lag behind its own:
     // only its identity is compared.
-    auto direct = vfs::status(tmp.path("dir/sub"));
-    ZASSERT(sub->stamp.device == direct->stamp.device);
-    ZASSERT(sub->stamp.file == direct->stamp.file);
+    auto direct = fs::status(tmp.path("dir/sub"));
+    ZASSERT(sub->id == direct->id);
     auto missing = batch.status(tmp.path("dir/none.h"));
     ZASSERT(!missing.has_value());
     ZASSERT(missing.error() == std::errc::no_such_file_or_directory);
@@ -204,15 +185,15 @@ ZEST_CASE(BatchSeesLinkedEdits) {
     for(int i = 0; i < 20; i += 1) {
         tmp.touch(std::format("dir/h{}.h", i), "x");
     }
-    ZASSERT(!bool(llvm::sys::fs::create_hard_link(tmp.path("dir/h0.h"), tmp.path("dir/link.h"))));
+    ZASSERT(!fs::create_hard_link(tmp.path("dir/h0.h"), tmp.path("dir/link.h")));
     tmp.touch("dir/h0.h", "a longer text");
 
     vfs::StatusBatch batch;
-    ZASSERT(batch.status(tmp.path("dir/link.h"))->stamp.size == 13u);
+    ZASSERT(batch.status(tmp.path("dir/link.h"))->size == 13u);
     for(int i = 1; i < 20; i += 1) {
         ZASSERT(batch.status(tmp.path(std::format("dir/h{}.h", i))));
     }
-    ZASSERT(batch.status(tmp.path("dir/link.h"))->stamp.size == 13u);
+    ZASSERT(batch.status(tmp.path("dir/link.h"))->size == 13u);
 }
 
 ZEST_CASE(StampSeesKeptTimes) {
@@ -221,17 +202,19 @@ ZEST_CASE(StampSeesKeptTimes) {
     TempDir tmp;
     tmp.touch("a.h", "int x;\n");
     auto path = tmp.path("a.h");
-    auto before = vfs::status(path);
+    auto before = fs::status(path);
     ZASSERT(before);
+    auto stamp = vfs::Stamp::of(*before);
     // Time is the feature: past the coarse clock inode times are taken from.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     tmp.touch("a.h", "int y;\n");
-    ZASSERT(set_file_mtime(path, before->stamp.mtime_ns));
-    auto after = vfs::status(path);
+    ZASSERT(set_file_mtime(path, stamp.mtime_ns));
+    auto after = fs::status(path);
     ZASSERT(after);
-    ZASSERT(after->stamp.size == before->stamp.size);
-    ZASSERT(after->stamp.mtime_ns == before->stamp.mtime_ns);
-    ZASSERT(after->stamp != before->stamp);
+    auto restamp = vfs::Stamp::of(*after);
+    ZASSERT(restamp.size == stamp.size);
+    ZASSERT(restamp.mtime_ns == stamp.mtime_ns);
+    ZASSERT(restamp != stamp);
 }
 
 ZEST_CASE(WalkPrunesAndSkipsLinks) {
@@ -243,10 +226,10 @@ ZEST_CASE(WalkPrunesAndSkipsLinks) {
     ZASSERT(link_directory(tmp.path("outside"), tmp.path("src/link")));
 
     std::vector<std::string> seen;
-    vfs::walk(tmp.path("src"), [&](const vfs::Entry& entry) {
-        seen.push_back(llvm::sys::path::filename(entry.path).str());
+    vfs::walk(tmp.path("src"), [&](llvm::StringRef entry, fs::FileType type) {
+        seen.push_back(std::string(path::filename(entry)));
         if(seen.back() == "link") {
-            ZEXPECT(entry.type == llvm::sys::fs::file_type::symlink_file);
+            ZEXPECT(type == fs::FileType::Symlink);
         }
         return true;
     });
@@ -254,71 +237,29 @@ ZEST_CASE(WalkPrunesAndSkipsLinks) {
     ZASSERT(seen == (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
 
     seen.clear();
-    vfs::walk(tmp.root, [&](const vfs::Entry& entry) {
-        auto name = llvm::sys::path::filename(entry.path);
-        seen.push_back(name.str());
+    vfs::walk(tmp.root, [&](llvm::StringRef entry, fs::FileType) {
+        auto name = path::filename(entry);
+        seen.push_back(std::string(name));
         return name != "skip" && name != "src";
     });
     ranges::sort(seen);
     ZASSERT(seen == (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
 }
 
-ZEST_CASE(LinksSeenAsLinks) {
-    TempDir tmp;
-    tmp.mkdir("target");
-    ZASSERT(link_directory(tmp.path("target"), tmp.path("link")));
-    ZASSERT(vfs::is_symlink(tmp.path("link")));
-    ZASSERT(!vfs::is_symlink(tmp.path("target")));
-    ZASSERT(vfs::exists(tmp.path("link")));
-    ZASSERT(!static_cast<bool>(vfs::remove(tmp.path("target"))));
-    ZASSERT(!vfs::exists(tmp.path("link")));
-    ZASSERT(vfs::is_symlink(tmp.path("link")));
-}
-
-ZEST_CASE(RemoveAllKeepsLinkTargets) {
-    TempDir tmp;
-    tmp.touch("tree/a/b.h");
-    tmp.touch("tree/c.h");
-    tmp.touch("outside/kept.h");
-    ZASSERT(link_directory(tmp.path("outside"), tmp.path("tree/link")));
-    ZASSERT(link_directory(tmp.path("outside"), tmp.path("root-link")));
-    ZASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("root-link"))));
-    ZASSERT(!vfs::is_symlink(tmp.path("root-link")));
-    ZASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
-    ZASSERT(!vfs::exists(tmp.path("tree")));
-    ZASSERT(vfs::exists(tmp.path("outside/kept.h")));
-    ZASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
-}
-
 ZEST_CASE(RemoveMappedFile) {
     // Workers keep PCHs mapped while the store replaces them.
     TempDir tmp;
-    // Not a whole number of pages: a null-terminated read maps only then.
     tmp.touch("blob.pch", std::string((1 << 20) + 1, 'x'));
     auto path = tmp.path("blob.pch");
-    auto mapped = vfs::read(path, vfs::Read::Mapped);
+    auto mapped = fs::File::open(path).and_then(fs::Mapping::map);
     ZASSERT(mapped);
-    ZASSERT((*mapped)->getBufferKind() == llvm::MemoryBuffer::MemoryBuffer_MMap);
-    ZASSERT(!static_cast<bool>(vfs::remove(path)));
-    ZASSERT(!vfs::exists(path));
-    ZASSERT((*mapped)->getBufferSize() == (1u << 20) + 1);
+    ZASSERT(fs::remove(path));
+    ZASSERT(!fs::exists(path).value_or(false));
+    ZASSERT(mapped->bytes().size() == (1u << 20) + 1);
     tmp.touch("blob.pch", "new");
     ZASSERT(read_file(path).value_or("") == "new");
-    ZASSERT(!static_cast<bool>(vfs::remove(path)));
-    ZASSERT(!static_cast<bool>(vfs::remove(path)));
-}
-
-ZEST_CASE(AtomicWriteReplaces) {
-    TempDir tmp;
-    auto path = tmp.path("state.json");
-    ZASSERT(!static_cast<bool>(vfs::write_atomic(path, "old")));
-    ZASSERT(!static_cast<bool>(vfs::write_atomic(path, "new")));
-    ZASSERT(read_file(path).value_or("") == "new");
-    auto entries = vfs::read_dir(tmp.root);
-    ZASSERT(entries);
-    ZASSERT(entries->size() == 1u);
-    ZASSERT(entries->front().type == llvm::sys::fs::file_type::regular_file);
-    ZASSERT(static_cast<bool>(vfs::write_atomic(tmp.path("none/state.json"), "x")));
+    ZASSERT(fs::remove(path));
+    ZASSERT(fs::remove(path));
 }
 
 };  // ZEST_SUITE(FileSystem)

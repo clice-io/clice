@@ -122,7 +122,7 @@ public:
     /// status's, else a real read (whose observation may describe a newer
     /// stamp than the caller's, which is then simply newer truth). nullopt
     /// = unreadable right now.
-    std::optional<DiskObservation> observe_for(Fid fid, const Status& status);
+    std::optional<DiskObservation> observe_for(Fid fid, const fs::Status& status);
 
     /// The hash of the bytes a build that could not hash them consumed
     /// from the file, for a status taken after the build: an mtime no newer
@@ -131,7 +131,9 @@ public:
     /// last reliable read's — or one read's, unless the file moved between
     /// the stat and the read, which voids the proof. 0 when nothing names
     /// them.
-    std::uint64_t unchanged_hash(Fid fid, const Status& status, std::int64_t baseline_before_ns);
+    std::uint64_t unchanged_hash(Fid fid,
+                                 const fs::Status& status,
+                                 std::int64_t baseline_before_ns);
 
     /// The hash the last reliable read through this fid guarantees at
     /// exactly this stamp, recorded as a look; nullopt when someone must

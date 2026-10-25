@@ -6,6 +6,7 @@ module clice;
 
 import :syntax.header_context;
 import :unittests.utils;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -770,11 +771,11 @@ ZEST_CASE(FragmentsBesideFiles) {
                                      std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
-    ZEXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
-    ZEXPECT(llvm::sys::path::parent_path(suffix_path(result->files)) == "/proj/lib");
+    ZEXPECT(path::parent(result->prefix) == "/proj");
+    ZEXPECT(path::parent(suffix_path(result->files)) == "/proj/lib");
     ZASSERT(result->files.size() == 5u);
     auto& snapshot = result->files.front();
-    ZEXPECT(llvm::sys::path::parent_path(snapshot.path) == "/proj/lib");
+    ZEXPECT(path::parent(snapshot.path) == "/proj/lib");
     ZEXPECT(snapshot.content == "int t;\n");
     ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/lib/mid.h"

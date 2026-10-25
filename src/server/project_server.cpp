@@ -601,12 +601,11 @@ void ProjectServer::start_control_listener() {
         return;
     }
     auto& cache_dir = project.config.project.cache_dir;
-    if(!index::write_endpoint(
-           cache_dir,
-           {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
-            .version = std::string(clice::version),
-            .host = host.str(),
-            .port = *port})) {
+    if(!index::write_endpoint(cache_dir,
+                              {.pid = static_cast<std::uint32_t>(sys::pid()),
+                               .version = std::string(clice::version),
+                               .host = host.str(),
+                               .port = *port})) {
         return;
     }
     endpoint_recorded = true;

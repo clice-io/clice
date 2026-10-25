@@ -49,8 +49,7 @@ int run_lint(Spelling root,
              std::string configuration,
              std::uint32_t jobs,
              bool with_index,
-             bool json,
-             const char* self_path) {
+             bool json) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
         LOG_ERROR("{}", checked.error());
@@ -61,7 +60,6 @@ int run_lint(Spelling root,
         .config = std::move(config),
         .configuration = std::move(configuration),
         .workers = jobs,
-        .self_path = self_path,
         .with_index = with_index,
     });
     if(json) {
@@ -93,11 +91,11 @@ int run_lint(Spelling root,
     return result.exit_code;
 }
 
-CommandHandler build(const char* self_path) {
+CommandHandler build() {
     return operation<Options>("clice lint [OPTIONS]",
                               "lint",
                               Errors::Text,
-                              [self_path](const Options& opts) {
+                              [](const Options& opts) {
                                   auto workspace = opts.where.root();
                                   if(!workspace_exists(workspace)) {
                                       return 2;
@@ -106,8 +104,7 @@ CommandHandler build(const char* self_path) {
                                                   opts.where.configuration.tag(),
                                                   opts.jobs.jobs.value_or(0),
                                                   static_cast<bool>(opts.index),
-                                                  static_cast<bool>(opts.report.json),
-                                                  self_path);
+                                                  static_cast<bool>(opts.report.json));
                               });
 }
 

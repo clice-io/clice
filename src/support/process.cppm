@@ -17,6 +17,14 @@ struct ProgramOutput {
     std::string failure;
 };
 
+/// Whether a child can be made to die with this process
+/// (CreationOptions::exit_with_parent): macOS has nothing to do it with.
+#ifdef __APPLE__
+constexpr inline bool can_exit_with_parent = false;
+#else
+constexpr inline bool can_exit_with_parent = true;
+#endif
+
 /// Run `arguments[0]` to completion and hand back what it wrote, however it
 /// ended. Fails only when the program cannot start.
 kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
@@ -50,16 +58,19 @@ kota::task<> watch_termination(int signum, bool& requested, std::function<void()
 /// Whether a process with this id exists.
 bool process_alive(std::uint32_t pid);
 
-/// End this process the moment `parent` exits, or now when it already has.
-void exit_with_parent(std::uint32_t parent);
+#ifdef __APPLE__
+/// End this process the moment its parent exits, or now when it already
+/// has: a child started with CreationOptions::exit_with_parent elsewhere.
+void exit_with_parent();
+#endif
 
 /// Whether `fd` is a pipe or a socket, which Windows reports as a pipe too.
 bool is_pipe_or_socket(int fd);
 
 /// Write UTF-8 `text` to `fd` when it is a Windows console, as the UTF-16 a
 /// console takes: bytes would show in its code page. False when `fd` is no
-/// console, as everywhere else, `text` is no UTF-8 or the console refuses
-/// it: the caller writes the bytes, and their write reports a failure.
+/// console, as everywhere else, or the console refuses it: the caller writes
+/// the bytes, and their write reports a failure.
 bool write_console(int fd, llvm::StringRef text);
 
 }  // namespace clice

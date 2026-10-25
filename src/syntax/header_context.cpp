@@ -10,6 +10,7 @@ import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.preamble;
 import :syntax.scan;
+import :vfs.path;
 
 namespace clice {
 
@@ -344,11 +345,7 @@ bool emit_fragment(std::string& out,
 /// the content, the dot-prefixed name cannot collide with a real header
 /// anyone includes.
 std::string synthesized_path(llvm::StringRef directory, llvm::StringRef content) {
-    llvm::SmallString<256> path(directory);
-    llvm::sys::path::append(path,
-                            llvm::sys::path::Style::posix,
-                            std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
-    return std::string(path);
+    return path::join(directory, std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
 }
 
 /// A fragment of a chain file being emitted: its text, and the runs of
@@ -363,7 +360,7 @@ std::string add_file(SynthesizedContext& context,
                      llvm::StringRef source,
                      Fragment fragment,
                      SynthesizedFile::Entry entry = SynthesizedFile::Entry::Included) {
-    auto path = synthesized_path(llvm::sys::path::parent_path(source), fragment.text);
+    auto path = synthesized_path(path::parent(source), fragment.text);
     context.files.push_back({
         .path = path,
         .content = std::move(fragment.text),
@@ -402,8 +399,7 @@ std::optional<SynthesizedContext>
     SynthesizedContext context;
     std::string snapshot_path;
     if(target_content && !has_pragma_once(*target_content, target_content->size())) {
-        snapshot_path =
-            synthesized_path(llvm::sys::path::parent_path(target_path), *target_content);
+        snapshot_path = synthesized_path(path::parent(target_path), *target_content);
     }
 
     // Each chain file cut at its include of the next one: the text before
@@ -421,7 +417,7 @@ std::optional<SynthesizedContext>
         auto& entry = chain[i];
         bool is_last = i + 1 == chain.size();
         auto next_path = is_last ? target_path : chain[i + 1].path;
-        auto includer_dir = llvm::sys::path::parent_path(entry.path);
+        auto includer_dir = path::parent(entry.path);
 
         auto lexical = lexical_scan(entry.content, dialect);
         auto includes = includes_of(lexical, entry.content);

@@ -288,10 +288,10 @@ ZEST_CASE(FailedWritesDropLines) {
     ZASSERT(sink);
     (*sink)->log(info_msg("before the disk filled"));
 
-    std::uint64_t size = 0;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::file_size(log, size)));
+    auto status = fs::status(log);
+    ZASSERT(status);
     {
-        FileSizeCap cap(size);
+        FileSizeCap cap(status->size);
         (*sink)->log(info_msg("lost one"));
         (*sink)->log(info_msg("lost two"));
     }

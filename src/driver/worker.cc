@@ -2,10 +2,6 @@ module;
 
 #include "support/prelude.h"
 
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
 module clice;
 
 import :driver.driver;
@@ -35,9 +31,6 @@ struct Options {
 
     DecoKV(help = "Directory of the worker's log file (default: no log file)", required = false)
     <std::string> log_dir;
-
-    DecoKV(help = "Process id of the master: the worker exits with it", required = false)
-    <std::uint32_t> master_pid;
 };
 
 }  // namespace
@@ -45,14 +38,9 @@ struct Options {
 int run_worker(std::span<std::string> args) {
     auto cmd = kota::deco::cli::command<Options>("clice worker [OPTIONS]");
     cmd.match_all([](Options opts) {
-        // A worker lives and dies with its master: an orphan answers no one
-        // and nothing stops it when it hangs. Its own process group keeps a
-        // terminal's Ctrl-C and SIGHUP for the master, which stops it.
-        if(opts.master_pid) {
-            exit_with_parent(*opts.master_pid);
-        }
-#ifndef _WIN32
-        ::setpgid(0, 0);
+#ifdef __APPLE__
+        // See WorkerPool::spawn_process.
+        exit_with_parent();
 #endif
         // The pool relays each line of a worker's stderr as a warning: one
         // with no log file to write keeps its lower levels out of it.

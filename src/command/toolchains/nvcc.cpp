@@ -10,7 +10,6 @@ import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :support.process;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -95,7 +94,7 @@ std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
 /// directory — not against ours. A leading slash is absolute on POSIX and
 /// root-relative on Windows: never compile-directory-relative.
 std::string absolutize(llvm::StringRef value, llvm::StringRef directory) {
-    if(value.empty() || directory.empty() || path::is_absolute(value) || value.front() == '/')
+    if(value.empty() || value.front() == '/')
         return value.str();
     return path::join(directory, value);
 }
@@ -130,25 +129,18 @@ void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) 
 /// own augmented PATH: that PATH, then next to the nvcc binary, then ours.
 std::expected<std::string, std::string> find_nvcc_host(const NVCCDryrun& info,
                                                        llvm::StringRef nvcc) {
-    auto executable = [](llvm::StringRef file) {
-        return vfs::exists(file) && llvm::sys::fs::can_execute(file);
-    };
     llvm::StringRef host = info.host_compiler;
     if(path::is_absolute(host)) {
         return host.str();
     }
-    for(auto& dir: info.search_path) {
-        if(auto candidate = path::join(dir, host); executable(candidate)) {
-            return candidate;
-        }
+    auto directories = info.search_path;
+    directories.emplace_back(path::parent(nvcc));
+    std::string found;
+    if(sys::find_program(found, host, {.directories = std::move(directories)}) &&
+       sys::find_program(found, host)) {
+        return std::unexpected(std::format("Cannot find nvcc host compiler: {}", host));
     }
-    if(auto sibling = path::join(path::parent_path(nvcc), host); executable(sibling)) {
-        return sibling;
-    }
-    if(auto program = llvm::sys::findProgramByName(host)) {
-        return std::move(*program);
-    }
-    return std::unexpected(std::format("Cannot find nvcc host compiler: {}", host));
+    return found;
 }
 
 }  // namespace
@@ -704,10 +696,11 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         }
 
         if(line.consume_front("PATH=")) {
-            llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, path::list_separator, -1, false);
-            for(auto dir: dirs)
-                info.search_path.emplace_back(dir);
+            for(auto dir: sys::split_paths(line)) {
+                if(!dir.empty()) {
+                    info.search_path.emplace_back(dir);
+                }
+            }
             continue;
         }
 
@@ -768,7 +761,7 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
     /// A dryrun without `TOP=` still names the toolkit root indirectly:
     /// `NVVMIR_LIBRARY_DIR=` is `<root>/nvvm/libdevice`.
     if(info.cuda_path.empty() && !nvvm_dir.empty())
-        info.cuda_path = path::parent_path(path::parent_path(nvvm_dir));
+        info.cuda_path = path::parent(path::parent(nvvm_dir));
 
     if(!cicc_archs.empty())
         info.default_arch = select_gpu_arch(cicc_archs);

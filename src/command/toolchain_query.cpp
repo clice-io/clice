@@ -13,8 +13,6 @@ import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :support.logging;
-import :vfs.cygwin;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -40,51 +38,24 @@ std::string temp_suffix_for(llvm::StringRef kind) {
 /// The driver as a path. The name used to invoke it matters: `clang++` is
 /// often a symlink to `clang`, and the name decides C++ mode. So it is
 /// never realpath'd, only found: a bare name on PATH, a relative one in the
-/// query working directory. Only a Cygwin symlink is followed, which
-/// Windows cannot start.
+/// query working directory. Only a Cygwin symlink, which Windows cannot
+/// start, is followed to the program it names.
 std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm::StringRef cwd) {
-    llvm::SmallString<128> found(driver);
-    if(!path::is_absolute(driver)) {
-        if(driver.contains('/') || driver.contains('\\')) {
-            if(!cwd.empty()) {
-                found = cwd;
-                path::append(found, driver);
-            }
-        } else if(auto program = llvm::sys::findProgramByName(driver)) {
-            found = *program;
-        } else {
+    bool bare = !driver.contains('/') && !driver.contains('\\');
+    auto name = bare || cwd.empty() ? driver.str() : path::join(cwd, driver);
+    // Cygwin and MSYS2 programs, and a Cygwin symlink's target, are named
+    // without the `.exe` Windows adds when it starts one (`gcc-12.2.0`).
+    sys::ProgramSearch search{
+        .extensions = {"", ".exe"}
+    };
+    std::string found;
+    if(sys::find_program(found, name, search)) {
+        if(bare) {
             return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         }
+        return std::unexpected(std::format("Driver {} not found or not executable", name));
     }
-#ifdef _WIN32
-    // Cygwin and MSYS2 tools, and a Cygwin symlink's target, name programs
-    // without the `.exe` Windows adds when it starts one (`gcc-12.2.0`).
-    auto with_exe = [](llvm::SmallString<128>& program) {
-        if(!vfs::exists(program) && !program.str().ends_with_insensitive(".exe") &&
-           vfs::exists(program.str().str() + ".exe")) {
-            program += ".exe";
-        }
-    };
-    with_exe(found);
-    // A link may name another (clang++ -> clang -> clang-15), and a chain
-    // that loops ends at the bound.
-    int links = 0;
-    while(auto target = read_cygwin_symlink(found)) {
-        links += 1;
-        if(is_posix_path(*target) || links > 16) {
-            return std::unexpected(
-                std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",
-                            found.str(),
-                            *target));
-        }
-        found = (path::parent_path(found) + "/" + *target).str();
-        with_exe(found);
-    }
-#endif
-    if(!vfs::exists(found) || !llvm::sys::fs::can_execute(found)) {
-        return std::unexpected(std::format("Driver {} not found or not executable", found.str()));
-    }
-    return found.str().str();
+    return found;
 }
 
 /// The names a cc1 job gives that clang's target does not know, each with
@@ -151,14 +122,18 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     /// A file of the kind's suffix stands in for the real input, which may
     /// not exist on disk (and a borrowed header must query as the host's
     /// language, not as its own extension).
-    auto input = vfs::temp_file("query-toolchain", temp_suffix_for(spec.kind));
-    if(!input) {
+    std::string dir;
+    sys::temp_dir(dir);
+    std::string input;
+    if(auto file =
+           fs::create_temp_file(input, dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
+       !file) {
         co_return std::unexpected(
-            std::format("Failed to create temp file: {}", input.error().message()));
+            std::format("Failed to create temp file: {}", file.error().message()));
     }
     auto cleanup = llvm::make_scope_exit([&] {
-        if(auto e = vfs::remove(*input)) {
-            LOG_ERROR("Fail to remove temporary file: {}", e);
+        if(auto removed = fs::remove(input); !removed) {
+            LOG_ERROR("Fail to remove temporary file: {}", removed.error());
         }
     });
 
@@ -169,7 +144,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     if(driver) {
         args[0] = std::move(*driver);
     }
-    args.insert(args.begin() + spec.slot, *input);
+    args.insert(args.begin() + spec.slot, input);
 
     std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
@@ -177,9 +152,9 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     if(!spec.query_toolchain) {
         job = std::move(read_as_clang(std::move(args), spec.family, spec.cwd).job);
     } else if(cl) {
-        job = co_await ask_cl(args, spec.family, *input, spec.cwd);
+        job = co_await ask_cl(args, spec.family, input, spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {
-        job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
+        job = co_await ask_nvcc(args, input, spec.kind, spec.cwd);
     } else {
         job = co_await ask_gcc_style(std::move(args), driver_tokens, spec.cwd);
     }

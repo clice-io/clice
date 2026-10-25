@@ -16,17 +16,17 @@ namespace {
 
 constexpr std::uint32_t none = ~0u;
 
-constexpr auto posix = llvm::sys::path::Style::posix;
+constexpr auto posix = path::Style::Posix;
 
 /// A partition name for the file at `path`: its path under `base` when it is
 /// there, else its whole path, without the extension, each segment made an
 /// identifier.
 std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
     llvm::StringRef relative = path;
-    if(!base.empty() && path.size() > base.size() && path::under(path, base)) {
+    if(!base.empty() && path.size() > base.size() && path::is_within(path, base)) {
         relative = path.drop_front(base.size() + 1);
     }
-    auto extension = llvm::sys::path::extension(relative, posix);
+    auto extension = path::extension(relative, posix);
     relative = relative.drop_back(extension.size());
     llvm::SmallVector<llvm::StringRef> segments;
     relative.split(segments, '/');
@@ -48,9 +48,9 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
 }
 
 std::string with_extension(llvm::StringRef path, llvm::StringRef extension) {
-    llvm::SmallString<256> result(path);
-    llvm::sys::path::replace_extension(result, extension, posix);
-    return result.str().str();
+    std::string result(path);
+    path::set_extension(result, extension, posix);
+    return result;
 }
 
 /// The text of `lines` joined, ending in a single newline, runs of blank
@@ -132,7 +132,7 @@ struct Rewriter {
 
     std::string partition_of(std::uint32_t file) const {
         auto& primary = partition.primaries[partition.module_of[file]];
-        return partition_name(facts.files[file].path, llvm::sys::path::parent_path(primary, posix));
+        return partition_name(facts.files[file].path, path::parent(primary, posix));
     }
 
     /// How `user` names the file: the most common spelling of its includers
@@ -144,10 +144,10 @@ struct Rewriter {
     std::string spelling(std::uint32_t file, std::uint32_t user) const {
         auto& info = facts.files[file];
         auto beside = [&](llvm::StringRef from, llvm::StringRef spelled) {
-            llvm::SmallString<256> path(llvm::sys::path::parent_path(from, posix));
-            llvm::sys::path::append(path, posix, spelled.drop_front().drop_back());
-            llvm::sys::path::remove_dots(path, true, posix);
-            return path.str() == info.path;
+            std::string resolved(path::parent(from, posix));
+            path::push(resolved, spelled.drop_front().drop_back(), posix);
+            path::normalize(resolved, path::DotDot::Fold, posix);
+            return resolved == info.path;
         };
         std::map<llvm::StringRef, std::uint32_t> counts;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
@@ -164,7 +164,7 @@ struct Rewriter {
         }
         const llvm::StringMapEntry<char>* deepest = nullptr;
         for(auto& root: roots) {
-            if(path::under(info.path, root.first()) &&
+            if(path::is_within(info.path, root.first()) &&
                (!deepest || root.first().size() > deepest->first().size())) {
                 deepest = &root;
             }
@@ -186,9 +186,9 @@ struct Rewriter {
                                                 {},
                                                 &std::pair<std::uint32_t, std::uint32_t>::first);
         if(end - begin > 1 && operand.size() > 2) {
-            auto name = llvm::sys::path::filename(operand.drop_front().drop_back(), posix);
+            auto name = path::filename(operand.drop_front().drop_back(), posix);
             for(auto it = begin; it != end; ++it) {
-                if(llvm::sys::path::filename(facts.files[it->second].path, posix) == name) {
+                if(path::filename(facts.files[it->second].path, posix) == name) {
                     return it->second;
                 }
             }
@@ -322,7 +322,8 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             auto base = path.drop_back(relative.size() + 1);
             if(base.empty() ||
                (spelled.front() == '"' &&
-                base == llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix))) {
+                base ==
+                    llvm::StringRef(path::parent(facts.files[info.includers[i]].path, posix)))) {
                 continue;
             }
             auto& delimiter = rewriter.roots[base];
@@ -352,19 +353,18 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         files.push_back(file);
     }
 
-    llvm::DenseMap<std::uint32_t, std::unique_ptr<llvm::MemoryBuffer>> buffers;
+    std::map<std::uint32_t, std::string> contents;
     std::map<std::uint32_t, Draft> drafts;
     for(auto file: files) {
         auto& info = facts.files[file];
         auto path = path::join(root, info.path);
-        auto buffer = vfs::read(path);
-        if(!buffer) {
+        auto content = vfs::read_text(path);
+        if(!content) {
             return std::unexpected(
-                std::format("cannot read {}: {}", path, buffer.error().message()));
+                std::format("cannot read {}: {}", path, content.error().message()));
         }
         auto& draft = drafts[file];
-        Text text((*buffer)->getBuffer());
-        buffers[file] = std::move(*buffer);
+        Text text(contents[file] = std::move(*content));
         auto module_unit = rewriter.rewritten(file);
 
         // Declarations of other modules' entities: in a module unit they
@@ -548,7 +548,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(!inserted) {
             return std::format("{} and {} both become {}", it->second, from.str(), path.str());
         }
-        if(vfs::exists(path::join(root, path))) {
+        if(fs::exists(path::join(root, path)).value_or(false)) {
             return std::format("{} would overwrite {}", from.str(), path.str());
         }
         return std::nullopt;
@@ -663,8 +663,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         std::vector<std::string> lines{std::format("export module {};", entry.name), ""};
         for(auto* group: {&entry.interfaces, &entry.partitions}) {
             for(auto& path: *group) {
-                auto name =
-                    partition_name(path, llvm::sys::path::parent_path(entry.primary, posix));
+                auto name = partition_name(path, path::parent(entry.primary, posix));
                 if(auto [it, inserted] = names.try_emplace(name, path); !inserted) {
                     return std::unexpected(std::format("{} and {} are both partition {} of {}",
                                                        it->second,
@@ -690,7 +689,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     // restoring a macro, after the macro headers of the rewritten headers
     // whose macros it uses: its conditions may test them.
     for(auto defining: macro_headers) {
-        Text text(buffers[defining]->getBuffer());
+        Text text(contents[defining]);
         auto& draft = drafts.at(defining);
         auto& textual_lines = draft.textual_lines;
         std::vector<std::string> lines{"#pragma once", ""};

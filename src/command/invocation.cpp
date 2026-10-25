@@ -44,11 +44,7 @@ std::unique_ptr<clang::CompilerInvocation>
 
     if(!directory.empty()) {
         auto& working_dir = invocation->getFileSystemOpts().WorkingDir;
-        if(working_dir.empty()) {
-            working_dir = directory.str();
-        } else if(!path::is_absolute(working_dir)) {
-            working_dir = path::join(directory, working_dir);
-        }
+        working_dir = path::join(directory, working_dir);
     }
     invocation->getFrontendOpts().DisableFree = false;
     return invocation;

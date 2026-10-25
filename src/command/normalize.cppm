@@ -6,7 +6,6 @@ module clice:command.normalize;
 
 import :command.argument;
 import :command.table;
-import :vfs.cygwin;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -24,7 +23,7 @@ struct LoadInput {
 
 /// `text` spelled against `base`, a POSIX path naming what `mounts` maps
 /// it to.
-Spelling spelled(llvm::StringRef text, const Spelling& base, const MountTable* mounts);
+Spelling spelled(llvm::StringRef text, const Spelling& base, const fs::cygwin::MountTable* mounts);
 
 /// `value` spelled against `anchor` when it names a path (names_path),
 /// else `value` itself.
@@ -32,7 +31,7 @@ llvm::StringRef anchored(CommandTable& commands,
                          unsigned id,
                          llvm::StringRef value,
                          const Spelling& anchor,
-                         const MountTable* mounts = nullptr);
+                         const fs::cygwin::MountTable* mounts = nullptr);
 
 /// Leading tokens forming a compiler-launcher prefix (ccache, distcc, ...,
 /// possibly chained), including the wrapper's own leading options. Zero when
@@ -50,7 +49,7 @@ struct Normalizer {
     /// The mount table mapping the POSIX paths of the command, one written
     /// inside Cygwin or MSYS2 (CMake run from their shell); null for every
     /// other.
-    const MountTable* mounts = nullptr;
+    const fs::cygwin::MountTable* mounts = nullptr;
 
     /// Where the response files the commands name are recorded, readable
     /// or not; null outside a database load.

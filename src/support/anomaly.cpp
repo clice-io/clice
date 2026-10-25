@@ -30,7 +30,10 @@ std::function<void(NotifyLevel, std::string_view)> current_notify_hook() {
 }
 
 [[maybe_unused]] bool trap_disabled_by_env() {
-    static bool disabled = llvm::sys::Process::GetEnv("CLICE_ANOMALY_NO_TRAP").has_value();
+    static bool disabled = [] {
+        std::string unused;
+        return sys::get_env(unused, "CLICE_ANOMALY_NO_TRAP");
+    }();
     return disabled;
 }
 

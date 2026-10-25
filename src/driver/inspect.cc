@@ -485,10 +485,10 @@ struct SourceFile {
 /// places in it.
 auto read_source(const Spelling& path, const std::optional<std::string>& markers)
     -> std::expected<SourceFile, std::string> {
-    if(!vfs::exists(path)) {
+    if(!fs::exists(path).value_or(false)) {
         return std::unexpected(std::format("no such file or directory: {}", path));
     }
-    if(vfs::is_directory(path)) {
+    if(fs::is_directory(path)) {
         return std::unexpected(std::format("{} is a directory, not a source file", path));
     }
     SourceFile file{.path = path.str()};
@@ -496,22 +496,22 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     if(is_other_language_path(file.path)) {
         return std::unexpected(std::format("{}: not a C-family source file", name));
     }
-    auto buffer = vfs::read(file.path);
-    if(!buffer) {
-        return std::unexpected(std::format("cannot read {}: {}", path, buffer.error().message()));
+    auto content = vfs::read_text(file.path);
+    if(!content) {
+        return std::unexpected(std::format("cannot read {}: {}", path, content.error().message()));
     }
-    file.content = (*buffer)->getBuffer().str();
+    file.content = std::move(*content);
     if(!markers) {
         return file;
     }
 
-    auto text = vfs::read(*markers);
+    auto text = vfs::read_text(*markers);
     if(!text) {
         return std::unexpected(
             std::format("cannot read --markers {}: {}", *markers, text.error().message()));
     }
     auto& [points, ranges] = file.markers;
-    if(auto result = json::from_string<StrictJson>((*text)->getBuffer(), file.markers); !result) {
+    if(auto result = json::from_string<StrictJson>(*text, file.markers); !result) {
         return std::unexpected(std::format("invalid --markers: {}", result.error().message));
     }
     if(points.contains("") || ranges.contains("")) {
@@ -546,9 +546,9 @@ CanonicalPath workspace_of(CanonicalRef start) {
     path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = ranges::any_of(config_file_names,
                                      [&](llvm::StringRef marker) {
-                                         return vfs::exists(path::join(dir, marker));
+                                         return fs::exists(path::join(dir, marker)).value_or(false);
                                      }) ||
-                      vfs::exists(path::join(dir, "compile_commands.json"));
+                      fs::exists(path::join(dir, "compile_commands.json")).value_or(false);
         if(marked) {
             workspace = dir;
         }
@@ -597,9 +597,11 @@ std::string build_pch(Project& project,
                       const CommandRef& writer,
                       llvm::StringRef file,
                       llvm::StringRef workspace) {
-    auto output = vfs::temp_file("clice-inspect", "pch");
-    if(!output) {
-        LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
+    std::string dir;
+    sys::temp_dir(dir);
+    std::string output;
+    if(auto created = fs::create_temp_file(output, dir, "clice-inspect-", ".pch"); !created) {
+        LOG_WARN("cannot create a temporary PCH: {}", created.error().message());
         return {};
     }
     auto rendered = project.toolchain.render(writer, project.cdb.spelling(writer.file));
@@ -609,7 +611,7 @@ std::string build_pch(Project& project,
                   .directory = project.commands.get(writer.command).directory,
                   .workspace = workspace.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
-        .output_file = *output,
+        .output_file = output,
         .skip_bodies = project.config.project.skip_header_bodies,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
@@ -622,10 +624,10 @@ std::string build_pch(Project& project,
     // Destroying the unit writes the PCH to disk.
     unit.reset();
     if(!built) {
-        vfs::remove(*output);
+        fs::remove(output);
         return {};
     }
-    return *output;
+    return output;
 }
 
 /// What the file compiles with in its project: the resolution the server
@@ -754,11 +756,11 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     }
 
     Output output{.feature = spec.name.str()};
-    auto& entry = output.files[path::filename(file->path).str()];
+    auto& entry = output.files[std::string(path::filename(file->path))];
     auto input = project_input(*file, project, commands);
     run_feature(entry, spec, *file, input, project.config);
     if(!input.pch.first.empty()) {
-        vfs::remove(input.pch.first);
+        fs::remove(input.pch.first);
     }
 
     auto json = json::to_string<JsonConfig>(output);
@@ -770,7 +772,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     return 0;
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     std::vector<Operation> operations;
     for(const auto& spec: features) {
         auto usage = std::format("clice inspect {} <PATH> [OPTIONS]", spec.name);

@@ -9,6 +9,7 @@ module clice;
 import :feature.formatting;
 import :support.logging;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -23,7 +24,7 @@ struct StyleSearch : llvm::vfs::ProxyFileSystem {
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
         auto status = ProxyFileSystem::status(path);
         llvm::SmallString<256> buffer;
-        auto name = llvm::sys::path::filename(path.toStringRef(buffer));
+        auto name = path::filename(path.toStringRef(buffer));
         found |= status && status->isRegularFile() &&
                  (name == ".clang-format" || name == "_clang-format");
         return status;

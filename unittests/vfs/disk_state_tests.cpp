@@ -121,7 +121,7 @@ ZEST_CASE(TrustOnlyConfirms) {
     // there, is still filled.
     auto gone = f.file("pkg/gone.h", "int c;\n");
     f.hash_of(gone);
-    vfs::remove_all(f.tmp.path("pkg/gone.h"));
+    fs::remove_all(f.tmp.path("pkg/gone.h"));
     ZASSERT(!f.disk.present(gone));
 }
 
@@ -174,9 +174,9 @@ ZEST_CASE(MissingDropsPair) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     f.hash_of(fid);
-    auto stamp = vfs::status(f.tmp.path("src/a.h"))->stamp;
+    auto stamp = vfs::Stamp::of(*fs::status(f.tmp.path("src/a.h")));
     ZASSERT(f.disk.cached_hash(fid, stamp));
-    vfs::remove_all(f.tmp.path("src/a.h"));
+    fs::remove_all(f.tmp.path("src/a.h"));
     f.disk.look(llvm::ArrayRef<Fid>{fid});
     ZASSERT(!f.disk.cached_hash(fid, stamp).has_value());
 }

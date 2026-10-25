@@ -39,10 +39,10 @@ ZEST_CASE(StaleFormatDropsPch) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pch", "k");
-        ZASSERT(!vfs::write(pending.tmp_path, "pch-bytes"));
+        ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
         auto aux = f.project.store->begin_store_aux("pch", "k");
-        ZASSERT(!vfs::write(aux.tmp_path, "idx-bytes"));
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
         ZASSERT(f.project.store->commit(std::move(aux)));
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
@@ -101,7 +101,7 @@ ZEST_CASE(DeplessPcmDropped) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pcm", "k");
-        ZASSERT(!vfs::write(pending.tmp_path, "pcm-bytes"));
+        ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
 
         auto& st = f.project.pcm_builds[f.project.file_table.intern(Spelling::absolute(src))];

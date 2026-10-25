@@ -631,7 +631,7 @@ ZEST_CASE(MissingFileFails) {
                    {tmp.root.str(), "a.cpp", {}}
     });
     cdb.load(cdb_path);
-    vfs::remove_all(cdb_path);
+    fs::remove_all(cdb_path);
 
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 

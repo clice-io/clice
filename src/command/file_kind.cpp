@@ -11,7 +11,7 @@ namespace clice {
 
 clang::driver::types::ID suffix_type(llvm::StringRef path) {
     namespace types = clang::driver::types;
-    auto ext = path::extension(path);
+    llvm::StringRef ext = path::extension(path);
     ext.consume_front(".");
     return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
 }
@@ -20,7 +20,7 @@ llvm::StringRef extension_language(llvm::StringRef path, bool cxx) {
     namespace types = clang::driver::types;
     auto type = suffix_type(path);
     if(type == types::TY_INVALID) {
-        auto ext = path::extension(path);
+        llvm::StringRef ext = path::extension(path);
         ext.consume_front(".");
         return ext == "cuh" ? "cuda" : ext;
     }
@@ -58,7 +58,7 @@ bool is_c_family_type(clang::driver::types::ID type) {
 
 bool is_c_family_file(llvm::StringRef filename) {
     namespace types = clang::driver::types;
-    auto ext = llvm::sys::path::extension(filename);
+    llvm::StringRef ext = path::extension(filename);
     if(ext.empty()) {
         return false;
     }

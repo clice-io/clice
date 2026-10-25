@@ -56,7 +56,7 @@ std::optional<DiskObservation> DiskState::read(Fid fid) {
 }
 
 std::optional<DiskObservation> DiskState::current(Fid fid) {
-    auto status = vfs::status(path(fid));
+    auto status = fs::status(path(fid));
     if(!status) {
         saw_missing(fid);
         return std::nullopt;
@@ -64,24 +64,23 @@ std::optional<DiskObservation> DiskState::current(Fid fid) {
     return observe_for(fid, *status);
 }
 
-std::optional<DiskObservation> DiskState::observe_for(Fid fid, const Status& status) {
-    if(auto hash = cached_hash(fid, status.stamp)) {
-        return DiskObservation{.stamp = status.stamp,
-                               .hash = *hash,
-                               .paired = true,
-                               .reliable = true};
+std::optional<DiskObservation> DiskState::observe_for(Fid fid, const fs::Status& status) {
+    auto stamp = Stamp::of(status);
+    if(auto hash = cached_hash(fid, stamp)) {
+        return DiskObservation{.stamp = stamp, .hash = *hash, .paired = true, .reliable = true};
     }
     return read(fid);
 }
 
 std::uint64_t DiskState::unchanged_hash(Fid fid,
-                                        const Status& status,
+                                        const fs::Status& status,
                                         std::int64_t baseline_before_ns) {
-    if(status.stamp.mtime_ns > baseline_before_ns) {
+    auto stamp = Stamp::of(status);
+    if(stamp.mtime_ns > baseline_before_ns) {
         return 0;
     }
     auto observed = observe_for(fid, status);
-    return observed && observed->stamp == status.stamp ? observed->hash : 0;
+    return observed && observed->stamp == stamp ? observed->hash : 0;
 }
 
 std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp) {
@@ -136,7 +135,7 @@ void DiskState::add_root(llvm::StringRef dir, Policy rule) {
         roots.push_back({.dir = dir.str(), .policy = rule});
     }
     for(auto& [fid, file]: files) {
-        if(path::under(path(fid), dir)) {
+        if(path::is_within(path(fid), dir)) {
             // Under another policy the backoff starts over.
             file.root = root_of(path(fid));
             file.interval = policy(file).min;
@@ -154,7 +153,7 @@ void DiskState::consumed(Fid fid, std::uint64_t hash) {
 void DiskState::expire_under(llvm::StringRef dir) {
     auto at = now();
     for(auto& [fid, file]: files) {
-        if(path::under(path(fid), dir)) {
+        if(path::is_within(path(fid), dir)) {
             schedule(fid, file, at);
         }
     }
@@ -165,17 +164,18 @@ void DiskState::add_package(llvm::StringRef dir) {
         return;
     }
     add_root(dir, package_policy);
-    path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
+    for(auto ancestor: path::ancestors(dir)) {
         auto history = path::join(ancestor, "conda-meta", "history");
-        if(!vfs::status(history)) {
-            return true;
+        if(!fs::status(history)) {
+            continue;
         }
         if(!environments.contains(ancestor)) {
-            environments[ancestor] =
-                watch(history, [this, environment = ancestor.str()] { expire_under(environment); });
+            environments[ancestor] = watch(history, [this, environment = std::string(ancestor)] {
+                expire_under(environment);
+            });
         }
-        return false;
-    });
+        break;
+    }
 }
 
 std::size_t DiskState::tick(Clock::duration budget) {
@@ -352,9 +352,9 @@ std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
 
 void DiskState::verify(Fid fid, const Look& found) {
     Look truth{.found = Look::Found::Missing};
-    if(auto status = vfs::status(path(fid))) {
+    if(auto status = fs::status(path(fid))) {
         auto& pair = files.find(fid)->second.pair;
-        if(pair && pair->stamp == status->stamp) {
+        if(pair && pair->stamp == Stamp::of(*status)) {
             truth = {.found = Look::Found::Read, .hash = pair->hash};
         } else if(auto observed = read_observed(path(fid))) {
             truth = {.found = Look::Found::Read, .hash = observed->obs.hash};
@@ -378,7 +378,7 @@ void DiskState::verify(Fid fid, const Look& found) {
 std::uint32_t DiskState::root_of(llvm::StringRef path) const {
     auto found = no_root;
     for(auto [index, root]: views::enumerate(roots)) {
-        if(path::under(path, root.dir) &&
+        if(path::is_within(path, root.dir) &&
            (found == no_root || root.dir.size() > roots[found].dir.size())) {
             found = static_cast<std::uint32_t>(index);
         }
@@ -427,13 +427,14 @@ void DiskState::look_at(Fid fid, StatusBatch& statuses) {
 }
 
 bool Flag::look() {
-    auto status = vfs::status(path);
+    auto status = fs::status(path);
+    auto now = status ? std::optional(Stamp::of(*status)) : std::nullopt;
     std::optional<std::uint64_t> found;
-    if(status && hashed == status->stamp) {
+    if(now && hashed == now) {
         found = hash;
     } else {
         hashed.reset();
-        if(status && status->type != llvm::sys::fs::file_type::directory_file) {
+        if(status && status->type != fs::FileType::Directory) {
             if(auto observed = read_observed(path)) {
                 found = observed->obs.hash;
                 if(observed->obs.reliable) {
@@ -442,7 +443,6 @@ bool Flag::look() {
             }
         }
     }
-    auto now = status ? std::optional(status->stamp) : std::nullopt;
     bool moved = std::exchange(stamp, now) != now;
     return std::exchange(hash, found) != found || moved;
 }

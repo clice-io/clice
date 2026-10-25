@@ -278,7 +278,7 @@ ZEST_CASE(StaleUnitsFollowDisk) {
     f.load();
     std::vector<std::string> stale;
     for(auto unit: f.project.index.stale_units()) {
-        stale.push_back(llvm::sys::path::filename(f.project.file_table.resolve(unit)).str());
+        stale.push_back(std::string(path::filename(f.project.file_table.resolve(unit))));
     }
     ranges::sort(stale);
     ZEXPECT(stale == std::vector<std::string>{"late.cpp", "main.cpp"});

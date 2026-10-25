@@ -283,7 +283,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // shard recorded one.
         if(hash != 0) {
             files.disk.consumed(file_ids_map[i], hash);
-        } else if(auto status = vfs::status(path)) {
+        } else if(auto status = fs::status(path)) {
             hash = files.disk.unchanged_hash(file_ids_map[i], *status, baseline_before_ns);
         }
 

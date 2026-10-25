@@ -9,55 +9,15 @@ import :support.format;
 namespace clice {
 namespace path {
 
-using namespace llvm::sys::path;
+using namespace kota::fs::path;
 
-/// What separates the directories of a search-path list (PATH,
-/// LIBRARY_PATH). LLVM's EnvPathSeparator has internal linkage, which no
-/// module can export.
-#ifdef _WIN32
-constexpr inline char list_separator = ';';
-#else
-constexpr inline char list_separator = ':';
-#endif
-
-/// Whether `p` is spelled from a root, so no anchor may be prepended:
-/// absolute in the native style, or rooted without a drive (`/x`), which
-/// Windows resolves against the current drive and `is_absolute` rejects.
-inline bool is_rooted(llvm::StringRef p) {
-    return is_absolute(p) || has_root_directory(p);
-}
-
-/// Whether `p` is `root` or lies under it.
-inline bool under(llvm::StringRef p, llvm::StringRef root) {
-    return p == root ||
-           (p.starts_with(root) && (root.ends_with("/") || is_separator(p[root.size()])));
-}
-
-/// Visit `start` and its ancestors, nearest first, until `visit` returns
-/// false or `stop` has been visited (the filesystem root when empty).
-inline void walk_ancestors(llvm::StringRef start,
-                           llvm::StringRef stop,
-                           llvm::function_ref<bool(llvm::StringRef)> visit) {
-    while(stop.size() > 1 && is_separator(stop.back())) {
-        stop = stop.drop_back();
-    }
-    for(llvm::StringRef dir = start; !dir.empty();) {
-        if(!visit(dir) || dir == stop) {
-            return;
-        }
-        auto parent = parent_path(dir);
-        if(parent.size() == dir.size()) {
-            return;
-        }
-        dir = parent;
-    }
-}
-
-template <typename... Args>
-std::string join(Args&&... args) {
-    llvm::SmallString<128> path;
-    ((path::append(path, std::forward<Args>(args))), ...);
-    return path.str().str();
+/// `base` with each of `parts` pushed onto it in turn: a part that is
+/// absolute takes the place of the path before it.
+template <typename... Parts>
+std::string join(llvm::StringRef base, const Parts&... parts) {
+    std::string joined(base);
+    (path::push(joined, llvm::StringRef(parts)), ...);
+    return joined;
 }
 
 /// Windows accepts either separator and either drive case; LSP clients
@@ -142,6 +102,10 @@ public:
         return text;
     }
 
+    operator std::string_view() const {
+        return text;
+    }
+
     /// For LLVM's file APIs; points into this object, so it lives for the
     /// call it is passed to.
     operator llvm::Twine() const {
@@ -183,6 +147,10 @@ public:
     CanonicalRef() = default;
 
     operator llvm::StringRef() const {
+        return text;
+    }
+
+    operator std::string_view() const {
         return text;
     }
 
@@ -244,6 +212,10 @@ public:
     }
 
     operator llvm::StringRef() const {
+        return text;
+    }
+
+    operator std::string_view() const {
         return text;
     }
 
@@ -319,25 +291,27 @@ llvm::StringRef local(llvm::StringRef name,
                       llvm::StringRef workspace,
                       llvm::SmallVectorImpl<char>& storage);
 
-/// Whether the identity `p` is `root` or lies under it.
-template <Canonical P, Canonical R>
-bool under(const P& p, const R& root) {
-    return under(llvm::StringRef(p), llvm::StringRef(root));
+using kota::fs::path::is_within;
+
+/// Whether the identity `p` is `ancestor` or lies under it.
+template <Canonical P, Canonical A>
+bool is_within(const P& p, const A& ancestor) {
+    return is_within(llvm::StringRef(p), llvm::StringRef(ancestor));
 }
 
 /// An identity lies under an identity only.
-template <typename P, typename R>
-    requires (Canonical<P> != Canonical<R>)
-bool under(const P& p, const R& root) = delete;
+template <typename P, typename A>
+    requires (Canonical<P> != Canonical<A>)
+bool is_within(const P& p, const A& ancestor) = delete;
 
 }  // namespace path
 
 inline CanonicalPath CanonicalRef::parent() const {
-    return CanonicalPath(CanonicalPath::Resolved{}, path::parent_path(text));
+    return CanonicalPath(CanonicalPath::Resolved{}, path::parent(text));
 }
 
 inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
-    assert(path::under(path, text));
+    assert(path::is_within(path, text));
     return CanonicalPath(CanonicalPath::Resolved{}, path);
 }
 

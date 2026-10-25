@@ -107,7 +107,7 @@ public:
         auto& files = unit.instance->getFileManager();
         auto add = [&](llvm::StringRef directory) {
             llvm::SmallString<256> candidate(directory);
-            path::append(candidate, name);
+            path::push(candidate, name);
             files.makeAbsolutePath(candidate);
             absent.insert(Spelling::absolute(candidate).str());
         };

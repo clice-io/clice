@@ -5,6 +5,7 @@ module;
 module clice:unittests.utils.temp_dir;
 
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -21,33 +22,37 @@ struct TempDir {
     llvm::SmallString<128> root;
 
     TempDir(llvm::StringRef prefix = "clice-test") {
-        llvm::sys::fs::createUniqueDirectory(prefix, root);
+        std::string temp;
+        sys::temp_dir(temp);
+        fs::create_temp_directory(root, temp, prefix.str() + "-");
         // Canonicalize the root so path() spellings match what the compiler
         // reports (CompilationUnit::file_path realpaths every file): the
         // macOS temp dir lives behind the /var -> /private/var symlink and
         // Windows runners hand out 8.3 short names — either would make
         // every path-keyed index lookup in tests miss.
         llvm::SmallString<128> real;
-        if(!llvm::sys::fs::real_path(root, real)) {
+        if(!fs::canonical(real, root.str())) {
             root = real;
         }
     }
 
     ~TempDir() {
-        vfs::remove_all(root.str());
+        fs::remove_all(root.str());
     }
 
-    kota::zest::FatalHook cleanup{[this] { vfs::remove_all(root.str()); }};
+    kota::zest::FatalHook cleanup{[this] { fs::remove_all(root.str()); }};
 
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;
 
     /// Build an absolute path under this temporary root.
     std::string path(llvm::StringRef relative) const {
-        llvm::SmallString<256> result(root);
-        llvm::sys::path::append(result, relative);
-        llvm::sys::path::native(result);
-        return std::string(result);
+        std::string result(root.str());
+        path::push(result, relative);
+#ifdef _WIN32
+        path::to_backslash(result);
+#endif
+        return result;
     }
 
     /// Like path(), but returns a `const char*` whose lifetime is tied to
@@ -60,18 +65,14 @@ struct TempDir {
 
     /// Create a sub-directory (and any parents).
     void mkdir(llvm::StringRef relative) {
-        llvm::sys::fs::create_directories(path(relative));
+        fs::create_directories(path(relative));
     }
 
     /// Create a file with optional content (parent dirs created automatically).
     void touch(llvm::StringRef relative, llvm::StringRef content = "") {
         auto p = path(relative);
-        llvm::sys::fs::create_directories(llvm::sys::path::parent_path(p));
-        std::error_code ec;
-        llvm::raw_fd_ostream out(p, ec);
-        if(!ec) {
-            out << content;
-        }
+        fs::create_directories(path::parent(p));
+        fs::write_file(p, content);
     }
 
 private:
@@ -88,17 +89,17 @@ bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns);
 
 /// A file's current mtime in nanoseconds, or -1 when it cannot be stat'ed.
 inline std::int64_t file_mtime_ns(llvm::StringRef path) {
-    auto status = vfs::status(path);
-    return status ? status->stamp.mtime_ns : -1;
+    auto status = fs::status(path);
+    return status ? vfs::Stamp::of(*status).mtime_ns : -1;
 }
 
 /// A file's bytes, or nullopt when it cannot be read.
 inline std::optional<std::string> read_file(llvm::StringRef path) {
-    auto buffer = vfs::read(path, vfs::Read::Bytes);
-    if(!buffer) {
+    std::string bytes;
+    if(fs::read_file(bytes, path)) {
         return std::nullopt;
     }
-    return (*buffer)->getBuffer().str();
+    return bytes;
 }
 
 }  // namespace clice::testing

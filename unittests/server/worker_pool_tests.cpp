@@ -1546,8 +1546,11 @@ ZEST_CASE(FloorAboveStartupKept) {
 #ifdef __linux__
 ZEST_CASE(IdleKeepsSessionScore) {
     auto score = [](llvm::StringRef pid) {
-        auto file = llvm::MemoryBuffer::getFileAsStream("/proc/" + pid + "/oom_score_adj");
-        return file ? (*file)->getBuffer().trim().str() : std::string();
+        std::string text;
+        if(fs::read_file(text, "/proc/" + pid.str() + "/oom_score_adj")) {
+            return std::string();
+        }
+        return llvm::StringRef(text).trim().str();
     };
     WorkerPoolFixture f;
     bool done = false;
@@ -1567,9 +1570,10 @@ ZEST_CASE(IdleKeepsSessionScore) {
 
 ZEST_CASE(BusyRanksAboveMaster) {
     auto score = [](const std::string& pid) {
-        auto file = llvm::MemoryBuffer::getFileAsStream("/proc/" + pid + "/oom_score_adj");
+        std::string text;
         int value = -2000;
-        if(file && (*file)->getBuffer().trim().getAsInteger(10, value)) {
+        if(fs::read_file(text, "/proc/" + pid + "/oom_score_adj") ||
+           llvm::StringRef(text).trim().getAsInteger(10, value)) {
             value = -2000;
         }
         return value;

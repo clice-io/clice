@@ -214,7 +214,7 @@ int run_scan(const Options& opts) {
     return 0;
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     return operation<Options>("clice scan [OPTIONS]", "scan", Errors::Text, run_scan);
 }
 

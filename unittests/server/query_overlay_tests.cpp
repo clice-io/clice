@@ -84,7 +84,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto path_id = project.file_table.intern(Spelling::absolute(focus_path));
     session = session_store.open(path_id);
 
-    auto it = sources.all_files.find(llvm::sys::path::filename(focus_path));
+    auto it = sources.all_files.find(path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
     session->set_text(it->second.content);
 
@@ -116,7 +116,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
 
 std::string header_path(llvm::StringRef basename) {
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        if(llvm::sys::path::filename(full_index.path(i)) == basename)
+        if(llvm::StringRef(path::filename(full_index.path(i))) == basename)
             return std::string(full_index.path(i));
     }
     return {};
@@ -502,7 +502,7 @@ int main() { return 0; }
     // key excludes the source path), but the preamble entry carries
     // file-local macro identities — its entries must stay scoped to the
     // file that built the blob.
-    auto other_path = std::string(llvm::sys::path::parent_path(focus_path)) + "/other.cpp";
+    auto other_path = std::string(path::parent(focus_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
     other->set_text(session->text().str());
     auto& other_entry = compiles.entries[other->path_id];

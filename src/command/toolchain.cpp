@@ -26,7 +26,7 @@ namespace {
 /// (a stale CDB directory, or a foreign-platform path): querying from the
 /// process cwd degrades the answer instead of failing the spawn.
 std::string query_cwd(llvm::StringRef wanted) {
-    if(wanted.empty() || !vfs::is_directory(wanted)) {
+    if(wanted.empty() || !fs::is_directory(wanted)) {
         return {};
     }
     return wanted.str();
@@ -35,9 +35,7 @@ std::string query_cwd(llvm::StringRef wanted) {
 /// Every component of a search-path-style environment value is absolute and
 /// non-empty (an empty component means the cwd).
 bool components_all_absolute(llvm::StringRef value) {
-    llvm::SmallVector<llvm::StringRef, 16> parts;
-    value.split(parts, path::list_separator, -1, /*KeepEmpty=*/true);
-    return ranges::all_of(parts, [](llvm::StringRef part) {
+    return ranges::all_of(sys::split_paths(value), [](std::string_view part) {
         return !part.empty() && path::is_absolute(part);
     });
 }
@@ -49,8 +47,8 @@ bool search_env_all_absolute() {
     const static bool result = [] {
 #ifdef _WIN32
         for(const char* name: {"INCLUDE", "LIB", "PATH"}) {
-            if(auto value = llvm::sys::Process::GetEnv(name)) {
-                if(!components_all_absolute(*value))
+            if(std::string value; sys::get_env(value, name)) {
+                if(!components_all_absolute(value))
                     return false;
             }
         }
@@ -62,14 +60,14 @@ bool search_env_all_absolute() {
                                "OBJC_INCLUDE_PATH",
                                "COMPILER_PATH",
                                "LIBRARY_PATH"}) {
-            if(auto value = llvm::sys::Process::GetEnv(name)) {
-                if(!components_all_absolute(*value))
+            if(std::string value; sys::get_env(value, name)) {
+                if(!components_all_absolute(value))
                     return false;
             }
         }
         /// A single path, not a list.
-        if(auto prefix = llvm::sys::Process::GetEnv("GCC_EXEC_PREFIX")) {
-            if(!path::is_absolute(*prefix))
+        if(std::string prefix; sys::get_env(prefix, "GCC_EXEC_PREFIX")) {
+            if(!path::is_absolute(prefix))
                 return false;
         }
 #endif
@@ -118,7 +116,7 @@ std::optional<std::string> ours_for(unsigned id,
     }
     auto builtin_headers = path::join(resource_dir(), "include");
     if(names_search_dir(id) && value.rtrim("/\\") != builtin_headers &&
-       vfs::exists(path::join(value, "__stddef_max_align_t.h"))) {
+       fs::exists(path::join(value, "__stddef_max_align_t.h")).value_or(false)) {
         return builtin_headers;
     }
     return std::nullopt;
@@ -127,11 +125,11 @@ std::optional<std::string> ours_for(unsigned id,
 /// The files under `dir`, by their paths relative to it, `/`-separated.
 std::vector<std::string> files_under(const Spelling& dir) {
     std::vector<std::string> names;
-    vfs::walk(dir, [&](const vfs::Entry& entry) {
-        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+    vfs::walk(dir, [&](llvm::StringRef path, fs::FileType type) {
+        if(type == fs::FileType::Directory) {
             return true;
         }
-        names.push_back(Spelling::absolute(entry.path).str().substr(dir.str().size() + 1));
+        names.push_back(Spelling::absolute(path).str().substr(dir.str().size() + 1));
         return false;
     });
     return names;
@@ -178,12 +176,12 @@ std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
             }
             std::optional<bool> defers;
             for(auto& later: llvm::make_range(std::next(found), search.dirs.end())) {
-                if(!vfs::is_file(path::join(later.path, name))) {
+                if(!fs::is_file(path::join(later.path, name))) {
                     continue;
                 }
                 if(!defers) {
-                    auto text = vfs::read(path::join(dir, name));
-                    defers = !text || (*text)->getBuffer().contains("include_next");
+                    auto text = vfs::read_text(path::join(dir, name));
+                    defers = !text || text->contains("include_next");
                 }
                 if(!*defers) {
                     hidden[later.path].insert(name);
@@ -391,7 +389,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job) {
     Frontend result{.driver = commands.intern(job.args[0]).data(),
                     .job_resource_dir = commands.intern(job_resource_dir)};
     result.own_resource_dir =
-        llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
+        llvm::Triple(triple).isWindowsGNUEnvironment() && fs::is_directory(job_resource_dir);
     auto builtin_headers = path::join(resource_dir(), "include");
     std::vector<std::string> shadowed = job.shadowed;
     std::vector<LocalArg> staged;
@@ -418,7 +416,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job) {
         if(names_search_dir(theirs.opt_id) &&
            llvm::StringRef(staged.back().values[0]) == builtin_headers &&
            llvm::StringRef(theirs.values[0]) != builtin_headers &&
-           vfs::is_directory(theirs.values[0])) {
+           fs::is_directory(theirs.values[0])) {
             shadowed.push_back(theirs.values[0]);
             staged.push_back(std::move(theirs));
         }

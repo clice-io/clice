@@ -56,7 +56,7 @@ bool cxx_driver(const Command& command) {
             return llvm::StringRef(arg.values[0]) == "g++";
         }
     }
-    std::string lowered = path::filename(command.driver).lower();
+    std::string lowered = llvm::StringRef(path::filename(command.driver)).lower();
     llvm::StringRef name = lowered;
     name.consume_back(".exe");
     return name.rtrim("0123456789.-").ends_with("++");
@@ -66,9 +66,8 @@ bool cxx_driver(const Command& command) {
 
 llvm::StringRef resource_dir() {
     static std::string dir = [] {
-        static int anchor;
-        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
-        if(exe.empty()) {
+        std::string exe;
+        if(sys::executable_path(exe)) {
             return std::string{};
         }
         return clang::GetResourcesPath(exe);

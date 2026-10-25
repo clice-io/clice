@@ -32,15 +32,13 @@ namespace clice {
 /// working-set size.
 constexpr static std::size_t notify_log_limit = 128;
 
-MasterServer::MasterServer(kota::event_loop& loop,
-                           std::string self_path,
-                           std::string requested_configuration) :
-    loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
-    self_path(std::move(self_path)) {
+MasterServer::MasterServer(kota::event_loop& loop, std::string requested_configuration) :
+    loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)) {
     // Documents opened before initialize end up in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
-    files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
+    std::string unused;
+    files.disk.shadow = sys::get_env(unused, "CLICE_SHADOW_FRESHNESS");
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on the next loop
     // turn, outside it, before any compile that read the change can
@@ -88,10 +86,8 @@ static void log_configuration(const ProjectServer& project,
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
-        auto text = vfs::read(project.config_path);
-        LOG_INFO("Configuration file {}:\n{}",
-                 project.config_path,
-                 text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));
+        auto text = vfs::read_text(project.config_path);
+        LOG_INFO("Configuration file {}:\n{}", project.config_path, text.value_or("<unreadable>"));
     }
     if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
@@ -122,7 +118,6 @@ void MasterServer::initialize() {
     // One pool serves every project, sized for the most demanding one;
     // the first project names the log directory.
     WorkerPoolOptions pool_opts;
-    pool_opts.self_path = self_path;
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = 0;
     pool_opts.min_stateless = 0;
@@ -245,7 +240,7 @@ static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServ
                                       llvm::function_ref<bool(ProjectServer&)> accept) {
     ProjectServer* deepest = nullptr;
     for(auto& project: projects) {
-        if(!project->root.empty() && path::under(path, project->root) && accept(*project) &&
+        if(!project->root.empty() && path::is_within(path, project->root) && accept(*project) &&
            (!deepest || project->root.size() > deepest->root.size())) {
             deepest = project.get();
         }
@@ -376,8 +371,8 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
         auto path = files.resolve(path_id);
         auto root = project_root_above(path.parent());
         auto covered = [&](auto& project) {
-            if(!project->root.empty() && path::under(path, project->root) &&
-               path::under(project->root, root)) {
+            if(!project->root.empty() && path::is_within(path, project->root) &&
+               path::is_within(project->root, root)) {
                 return true;
             }
             auto& cdb = project->project.cdb;
@@ -412,7 +407,7 @@ void MasterServer::close_session(Fid path_id) {
 void MasterServer::discover_around(Fid path_id) {
     auto path = files.resolve(path_id);
     for(auto& project: projects) {
-        if(!project->root.empty() && path::under(path, project->root)) {
+        if(!project->root.empty() && path::is_within(path, project->root)) {
             project->discover_around(path_id);
         }
     }
@@ -489,7 +484,7 @@ CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
     CanonicalRef enclosing;
     for(auto& other: workspace_roots) {
         if(other.size() < folder.size() && other.size() > enclosing.size() &&
-           path::under(folder, other)) {
+           path::is_within(folder, other)) {
             enclosing = other;
         }
     }
@@ -1153,9 +1148,7 @@ static kota::task<> accept_connections(MasterServer& server,
     co_await group.join();
 }
 
-int run_serve_mode(const ServerOptions& opts,
-                   llvm::StringRef configuration,
-                   const char* self_path) {
+int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
     logging::options.never_block_stderr = true;
     logging::stderr_logger("master", logging::options);
 
@@ -1168,7 +1161,7 @@ int run_serve_mode(const ServerOptions& opts,
     LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
              clice::version,
              clice::target,
-             llvm::sys::Process::getProcessId(),
+             sys::pid(),
              mode == ServerMode::Pipe ? "pipe" : "socket",
              ws.empty() ? "<from LSP initialize>" : ws);
 
@@ -1178,7 +1171,7 @@ int run_serve_mode(const ServerOptions& opts,
     }
 
     kota::event_loop loop;
-    MasterServer server(loop, self_path, configuration.str());
+    MasterServer server(loop, configuration.str());
 
     if(mode == ServerMode::Pipe) {
         auto transport = ipc::StreamTransport::open_stdio(loop);

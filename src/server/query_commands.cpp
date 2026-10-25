@@ -45,7 +45,7 @@ Lines lines_of(const index::Site& site) {
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no shard for.
 Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
-    if(!vfs::is_file(path)) {
+    if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     // Interning only names the file; whether the index holds a shard for
@@ -389,7 +389,7 @@ Outcome<FileDepsResult>
     if(depth < 0) {
         return std::unexpected("depth must not be negative");
     }
-    if(!vfs::is_file(path)) {
+    if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
@@ -413,7 +413,7 @@ Outcome<FileDepsResult>
 }
 
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
-    if(!vfs::is_file(path)) {
+    if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
@@ -523,7 +523,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
         return result;
     }
     auto file_path = ctx.project.file_table.resolve(**file);
-    auto text = vfs::read(file_path);
+    auto text = vfs::read_text(file_path);
     if(!text) {
         return result;
     }
@@ -533,7 +533,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     auto resolve = [&](index::SymbolHash hash) {
         return ctx.query.symbol_info(hash, **file);
     };
-    SourceText buffer((*text)->getBuffer(), ctx.contexts.dialect(**file));
+    SourceText buffer(*text, ctx.contexts.dialect(**file));
     auto outline = feature::document_symbols(buffer, entries, resolve, {.locals = false});
     // The entry of a `#define` or a module declaration is where its symbol
     // is declared.
@@ -683,11 +683,11 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     llvm::StringMap<feature::ScannedText> scanned;
     auto scan = [&](llvm::StringRef path) -> const feature::ScannedText* {
         walked.insert(path);
-        auto text = vfs::read(path);
+        auto text = vfs::read_text(path);
         if(!text) {
             return nullptr;
         }
-        auto spelled = feature::scan_text((*text)->getBuffer().str(), names);
+        auto spelled = feature::scan_text(std::move(*text), names);
         return spelled ? &scanned.try_emplace(path, std::move(*spelled)).first->second : nullptr;
     };
     for(auto& source: workspace_sources(root, cache_dir)) {

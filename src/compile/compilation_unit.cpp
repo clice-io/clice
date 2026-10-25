@@ -615,7 +615,7 @@ std::vector<std::string> CompilationUnit::absent() {
         // nothing is absent.
         // FIXME: a header generated here while the compile ran, after its lookup
         // failed, is filtered out too, and its creation is never seen.
-        if(!vfs::exists(entry.getKey())) {
+        if(!fs::exists(entry.getKey()).value_or(false)) {
             result.emplace_back(entry.getKey());
         }
     }

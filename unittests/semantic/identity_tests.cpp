@@ -11,6 +11,7 @@ import :semantic.identity;
 import :support.logging;
 import :unittests.utils.tester;
 import :unittests.utils;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -21,12 +22,14 @@ namespace {
 /// and the template wins, matching what an occurrence resolves to.
 /// Whether the file is the fixture, by the path both sides spell natively.
 bool is_fixture(Tester& tester, clang::FileID fid, llvm::StringRef file) {
-    llvm::SmallString<128> expected(TestVFS::path(file));
-    llvm::sys::path::native(expected);
-    llvm::sys::path::remove_dots(expected, true);
-    llvm::SmallString<128> actual(tester.unit->file_path(fid));
-    llvm::sys::path::native(actual);
-    llvm::sys::path::remove_dots(actual, true);
+    auto expected = TestVFS::path(file);
+    std::string actual(tester.unit->file_path(fid));
+#ifdef _WIN32
+    path::to_backslash(expected);
+    path::to_backslash(actual);
+#endif
+    path::normalize(expected);
+    path::normalize(actual);
     return actual == expected;
 }
 

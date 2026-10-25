@@ -11,7 +11,6 @@ import :config.config;
 import :project.configuration;
 import :support.anomaly;
 import :support.logging;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -45,15 +44,15 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     auto path = state_path(cache_dir);
-    auto content = vfs::read(path, vfs::Read::Bytes);
-    if(!content) {
-        if(content.error() != std::errc::no_such_file_or_directory) {
-            LOG_WARN("Cannot read {}: {}", path, content.error().message());
+    std::string content;
+    if(auto error = fs::read_file(content, path)) {
+        if(error != std::errc::no_such_file_or_directory) {
+            LOG_WARN("Cannot read {}: {}", path, error.message());
         }
         return {};
     }
     PersistedState state;
-    if(auto parsed = json::from_string((*content)->getBuffer(), state); !parsed) {
+    if(auto parsed = json::from_string(content, state); !parsed) {
         LOG_WARN("Ignoring malformed {}: {}", path, parsed.error().message);
         return {};
     }
@@ -65,14 +64,14 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
     if(cache_dir.empty()) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
-    if(auto ec = vfs::create_directories(cache_dir)) {
-        return std::unexpected(ec);
+    if(auto made = fs::create_directories(cache_dir); !made) {
+        return std::unexpected(made.error());
     }
     auto json = json::to_string(PersistedState{.configuration = configuration.str()});
     if(!json) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
-    if(auto ec = vfs::write_atomic(state_path(cache_dir), *json + '\n')) {
+    if(auto ec = fs::write_file_atomic(state_path(cache_dir), *json + '\n')) {
         return std::unexpected(ec);
     }
     return {};

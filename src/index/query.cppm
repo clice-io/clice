@@ -187,7 +187,7 @@ void add_resolved(const InstantiationShard& shard,
 /// degrades to no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
-                                         std::unique_ptr<llvm::MemoryBuffer>& kept);
+                                         std::string& kept);
 
 /// The whole declaration a declaring relation names, when the relation carries its
 /// extent in this source's text.
@@ -465,8 +465,7 @@ public:
     /// The text a source's offsets index: the buffer, or the file read from
     /// disk (alive as long as `kept`) and verified against the index's
     /// content hash.
-    std::optional<llvm::StringRef> source_text(const IndexSource& source,
-                                               std::unique_ptr<llvm::MemoryBuffer>& kept) const;
+    std::optional<llvm::StringRef> source_text(const IndexSource& source, std::string& kept) const;
 
     const ProjectIndex& project() const {
         return index;

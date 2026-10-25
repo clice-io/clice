@@ -33,7 +33,7 @@ Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
     auto directory = file.parent();
-    if(vfs::is_symlink(directory.str())) {
+    if(fs::is_symlink(directory.str())) {
         return Spelling(
             path::filename(file.str()),
             Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
@@ -217,7 +217,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
     // found at the first such entry, maps the entries so spelled.
-    std::optional<MountTable> table;
+    std::optional<fs::cygwin::MountTable> table;
 
     llvm::StringMap<Spelling> working_dirs;
     std::uint32_t index = 0;
@@ -298,7 +298,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         normalizer.mounts = nullptr;
-        if(is_posix_path(dir_ref)) {
+        if(fs::cygwin::is_posix_path(dir_ref)) {
             if(!table) {
                 // Another runtime's table maps the directory under its own
                 // root; another of one kind, Git for Windows' MSYS2 beside
@@ -306,7 +306,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                 std::vector<std::string> written = {dir_ref.str()};
                 auto tokens = command ? tokenize_sh_command(*command, saver) : args;
                 auto compiler = wrapper_prefix_len(tokens);
-                if(compiler < tokens.size() && is_posix_path(tokens[compiler])) {
+                if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
                     written.emplace_back(tokens[compiler]);
                 }
                 auto [found] = kota::run(find_mount_table({}, std::move(written)));

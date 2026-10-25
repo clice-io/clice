@@ -16,7 +16,6 @@ import :support.bytes;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
-import :vfs.file_system;
 import :vfs.file_table;
 import :worker.protocol;
 
@@ -232,9 +231,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         llvm::StringRef index_bytes = as_chars(value.tu_index_data);
         // Declared after `transfer`: the mapping must close before the
         // entry removes the file, which Windows refuses while it is mapped.
-        std::unique_ptr<llvm::MemoryBuffer> transferred;
+        fs::Mapping transferred;
         if(value.index_in_file) {
-            auto read = vfs::read(transfer->tmp_path, vfs::Read::Mapped);
+            auto read = fs::File::open(transfer->tmp_path).and_then(fs::Mapping::map);
             if(!read) {
                 finished[path_id] = {.result = Result::Failed,
                                      .error = std::format("reading the index from {} failed: {}",
@@ -243,7 +242,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Failed;
             }
             transferred = std::move(*read);
-            index_bytes = transferred->getBuffer();
+            index_bytes = transferred.bytes();
         }
         if(plan.index && index_bytes.empty()) {
             finished[path_id] = {.result = Result::Failed,

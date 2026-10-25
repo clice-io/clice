@@ -219,7 +219,7 @@ ZEST_CASE(KnownVariantByHash) {
     auto header_section = [&](const index::TUIndex& view) {
         std::uint32_t found = view.section_count();
         for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-            if(llvm::sys::path::filename(view.path(view.section_path(i))) == "shared.h") {
+            if(path::filename(view.path(view.section_path(i))) == "shared.h") {
                 found = i;
             }
         }
@@ -456,8 +456,7 @@ ZEST_CASE(IncludeResolutionsPerUnit) {
         for(auto& edge: edges) {
             // One directive, resolved two ways.
             ZEXPECT(edge.line == edges.front().line);
-            found.push_back(
-                llvm::sys::path::filename(llvm::sys::path::parent_path(edge.target)).str());
+            found.push_back(std::string(path::filename(path::parent(edge.target))));
         }
         ranges::sort(found);
         return found;

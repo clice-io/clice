@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :command.argument;
+import :vfs.path;
 
 namespace clice {
 
@@ -139,7 +140,7 @@ CompilerFamily driver_family(llvm::StringRef driver) {
 
     /// Windows resolves executable names case-insensitively, and CDBs record
     /// spellings like CL.exe or Clang-Cl.EXE — match lowercased.
-    std::string lowered = llvm::sys::path::filename(driver).lower();
+    std::string lowered = llvm::StringRef(path::filename(driver)).lower();
     llvm::StringRef name = lowered;
     if(auto f = try_get(name); f != CompilerFamily::Unknown)
         return f;

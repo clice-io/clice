@@ -174,7 +174,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // A path relative to the workspace, empty for one outside it.
     auto relative_of = [&](Fid fid) {
         llvm::StringRef identity(table.resolve(fid));
-        if(identity.size() <= root.size() || !path::under(identity, root)) {
+        if(identity.size() <= root.size() || !path::is_within(identity, root)) {
             return std::string();
         }
         return identity.drop_front(root.size()).ltrim('/').str();
@@ -327,8 +327,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         auto& source = sources[file];
         if(!source) {
             source = std::make_unique<Source>();
-            if(auto buffer = vfs::read(table.resolve(fids[file]))) {
-                source->content = (*buffer)->getBuffer().str();
+            if(auto content = vfs::read_text(table.resolve(fids[file]))) {
+                source->content = std::move(*content);
             }
             source->text.emplace(source->content);
         }
@@ -360,11 +360,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 spelled =
                     spelled.drop_front(std::min(spelled.find_first_of("<\""), spelled.size()));
             }
-            auto names_file =
-                !spelled.empty() &&
-                llvm::sys::path::filename(spelled.drop_front().drop_back(),
-                                          llvm::sys::path::Style::posix) ==
-                    llvm::sys::path::filename(file.path, llvm::sys::path::Style::posix);
+            auto names_file = !spelled.empty() && path::filename(spelled.drop_front().drop_back(),
+                                                                 path::Style::Posix) ==
+                                                      path::filename(file.path, path::Style::Posix);
             file.spellings.push_back(names_file ? spelled.str() : std::string());
         }
     }
@@ -1406,8 +1404,7 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         if(!globs.empty()) {
             return ranges::any_of(globs, [&](auto& glob) { return glob.match(path); });
         }
-        return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
-               !path.contains("/.");
+        return !path::is_absolute(path) && !path.starts_with(".") && !path.contains("/.");
     });
     if(project.index.damaged()) {
         return std::unexpected(LoadError{.message = damaged_index_error(project)});
@@ -1587,7 +1584,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     }
 
     auto directory = [&](llvm::StringRef path) {
-        auto dir = llvm::sys::path::parent_path(path, llvm::sys::path::Style::posix);
+        llvm::StringRef dir(path::parent(path, path::Style::Posix));
         if(dir.empty()) {
             return std::string(".");
         }
@@ -1724,21 +1721,20 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
                 if(result.module_of[file] != module || (headers && info.source)) {
                     continue;
                 }
-                auto dir = llvm::sys::path::parent_path(info.path, llvm::sys::path::Style::posix);
+                auto dir = path::parent(info.path, path::Style::Posix);
                 if(!common) {
                     common = dir;
                 }
-                while(!common->empty() && !path::under(dir, *common)) {
-                    common = llvm::sys::path::parent_path(*common, llvm::sys::path::Style::posix);
+                while(!common->empty() && !path::is_within(dir, *common)) {
+                    common = path::parent(*common, path::Style::Posix);
                 }
             }
             if(common) {
                 break;
             }
         }
-        llvm::SmallString<256> path(common.value_or(""));
-        llvm::sys::path::append(path, llvm::sys::path::Style::posix, "module.cppm");
-        primary = path.str().str();
+        primary = common.value_or("").str();
+        path::push(primary, "module.cppm", path::Style::Posix);
     }
 
     // A rewritten module writes its files in place and declares its name.
@@ -1764,7 +1760,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         auto module = result.module_of[file];
         if(!result.primaries[module].empty() &&
-           llvm::sys::path::is_absolute(facts.files[file].path, llvm::sys::path::Style::posix)) {
+           path::is_absolute(facts.files[file].path, path::Style::Posix)) {
             return std::unexpected(std::format("module {} would rewrite {}, outside the workspace",
                                                result.modules[module],
                                                facts.files[file].path));
@@ -3420,11 +3416,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             }
             auto name = spelled.drop_front().drop_back();
             if(spelled.starts_with("\"")) {
-                llvm::SmallString<256> beside(
-                    llvm::sys::path::parent_path(facts.files[includer].path,
-                                                 llvm::sys::path::Style::posix));
-                llvm::sys::path::append(beside, llvm::sys::path::Style::posix, name);
-                llvm::sys::path::remove_dots(beside, true, llvm::sys::path::Style::posix);
+                std::string beside(path::parent(facts.files[includer].path, path::Style::Posix));
+                path::push(beside, name, path::Style::Posix);
+                path::normalize(beside, path::DotDot::Fold, path::Style::Posix);
                 if(beside == info.path) {
                     continue;
                 }

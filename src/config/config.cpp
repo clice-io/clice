@@ -179,7 +179,7 @@ void Config::finalize(CanonicalRef workspace_root) {
             // The directory form is told from the file form by extension
             // everywhere else; only the filesystem knows a directory
             // spelled with a .json suffix.
-            if(vfs::is_directory(full.str())) {
+            if(fs::is_directory(full.str())) {
                 full = Spelling("compile_commands.json", full);
             }
             compiled.compile_commands.push_back(std::move(full));
@@ -332,11 +332,11 @@ std::optional<Config> Config::load(llvm::StringRef path,
                                    CanonicalRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    bool finalized) {
-    auto content = vfs::read(path);
+    auto content = vfs::read_text(path);
     if(!content)
         return std::nullopt;
 
-    auto parsed = codec::toml::parse_table((*content)->getBuffer());
+    auto parsed = codec::toml::parse_table(*content);
     auto* table = parsed ? &*parsed : nullptr;
     Config config;
     codec::UnknownFields unknown;
@@ -401,7 +401,7 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
         if(!workspace_root.empty()) {
             for(auto name: config_file_names) {
                 auto config_path = path::join(llvm::StringRef(workspace_root), name);
-                if(!vfs::exists(config_path))
+                if(!fs::exists(config_path).value_or(false))
                     continue;
                 found = true;
                 if(loaded_path)
@@ -431,18 +431,21 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
 constexpr static llvm::StringRef cache_owner_file = "owner";
 
 std::string cache_dir_owner(llvm::StringRef cache_dir) {
-    auto owner = vfs::read(path::join(cache_dir, cache_owner_file), vfs::Read::Bytes);
-    return owner ? (*owner)->getBuffer().trim().str() : std::string();
+    std::string owner;
+    if(fs::read_file(owner, path::join(cache_dir, cache_owner_file))) {
+        return {};
+    }
+    return llvm::StringRef(owner).trim().str();
 }
 
 /// A recorded owner that no longer exists (a moved or deleted checkout)
 /// owns nothing.
 static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
-    return !owner.empty() && owner != root && vfs::is_directory(owner);
+    return !owner.empty() && owner != root && fs::is_directory(owner);
 }
 
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
-    return !path::under(CanonicalPath(Spelling::absolute(cache_dir)), workspace_root) &&
+    return !path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), workspace_root) &&
            live_owner(cache_dir_owner(cache_dir), workspace_root);
 }
 
@@ -450,11 +453,12 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
     auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.
-    if(owner == root.str() || (!path::under(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
-                               live_owner(owner, root))) {
+    if(owner == root.str() ||
+       (!path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
+        live_owner(owner, root))) {
         return;
     }
-    if(auto error = vfs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n")) {
+    if(auto error = fs::write_file(path::join(cache_dir, cache_owner_file), root.str() + "\n")) {
         LOG_WARN("Cannot record the owner of cache directory {}: {}", cache_dir, error.message());
     }
 }
@@ -471,7 +475,7 @@ void Config::keep_own_cache_dir() {
                  cache_dir_owner(p.cache_dir),
                  workspace_root,
                  own);
-    if(path::under(p.logging_dir, p.cache_dir)) {
+    if(path::is_within(p.logging_dir, p.cache_dir)) {
         p.logging_dir = path::join(own, "logs");
     }
     p.cache_dir = std::move(own);

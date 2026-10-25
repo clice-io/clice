@@ -204,6 +204,10 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
     TempDir tmp;
     tmp.touch("real/config.h", "#define FROM_REAL 1\n");
     tmp.touch("main.cpp", "#include <config.h>\nint x = FROM_REAL;\n");
+    auto virtual_dir = tmp.path("virtual");
+    auto real_header = tmp.path("real/config.h");
+    path::to_slash(virtual_dir);
+    path::to_slash(real_header);
     auto overlay = std::format(R"({{
   "version": 0,
   "use-external-names": false,
@@ -213,8 +217,8 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
     "contents": [{{ "name": "config.h", "type": "file", "external-contents": "{}" }}]
   }}]
 }})",
-                               path::convert_to_slash(tmp.path("virtual")),
-                               path::convert_to_slash(tmp.path("real/config.h")));
+                               virtual_dir,
+                               real_header);
     tmp.touch("overlay.yaml", overlay);
 
     params.kind = CompilationKind::Content;
@@ -480,7 +484,7 @@ int main() { return preamble_func(); }
 
         auto blob = read_file(pch_path);
         ZASSERT(blob.operator bool());
-        ZASSERT(!vfs::write(pch_path, corrupt(std::move(*blob), shape)));
+        ZASSERT(!fs::write_file(pch_path, corrupt(std::move(*blob), shape)));
 
         CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
         reuse.input.pch = {pch_path, bound};
@@ -890,7 +894,7 @@ int main() { return scale(); }
     // Bytes clang cannot read are the PCH's fault: the failure stays.
     auto blob = read_file(pch_path);
     ZASSERT(blob.operator bool());
-    ZASSERT(!vfs::write(pch_path, std::string(blob->size(), '\x5A')));
+    ZASSERT(!fs::write_file(pch_path, std::string(blob->size(), '\x5A')));
     auto corrupt = compile_with("-DSCALE=1");
     ZEXPECT((corrupt->setup_fail() || corrupt->fatal_error()));
 }

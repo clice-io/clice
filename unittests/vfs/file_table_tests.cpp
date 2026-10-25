@@ -28,9 +28,9 @@ void age(llvm::StringRef path) {
 }
 
 vfs::Stamp stamp_of(llvm::StringRef path) {
-    auto status = vfs::status(path);
+    auto status = fs::status(path);
     ZEXPECT(status);
-    return status ? status->stamp : vfs::Stamp{};
+    return status ? vfs::Stamp::of(*status) : vfs::Stamp{};
 }
 
 ZEST_SUITE(FileTable) {
@@ -42,7 +42,7 @@ ZEST_CASE(HardlinksReadApart) {
     tmp.touch("a.h", "int shared();\n");
     auto a = tmp.path("a.h");
     auto b = tmp.path("b.h");
-    ZASSERT(!bool(llvm::sys::fs::create_hard_link(a, b)));
+    ZASSERT(!fs::create_hard_link(a, b));
     age(a);
 
     FileTable pool;
@@ -73,7 +73,7 @@ ZEST_CASE(RenameSaveReads) {
     ZASSERT(first);
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
+    ZASSERT(!fs::rename(tmp.path("f.h.tmp"), f));
     ZEXPECT(set_file_mtime(f, first->stamp.mtime_ns));
 
     auto stamp = stamp_of(f);
@@ -104,7 +104,7 @@ ZEST_CASE(FastPathChecksIdentity) {
     ZASSERT(pool.disk.cached_hash(fid, read->stamp));
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
+    ZASSERT(!fs::rename(tmp.path("f.h.tmp"), f));
     ZEXPECT(set_file_mtime(f, read->stamp.mtime_ns));
 
     ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Stale);
@@ -124,8 +124,8 @@ ZEST_CASE(PairNeedsSameFile) {
     auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto other = read->stamp;
-    other.device += 1;
-    other.file += 1;
+    other.id.device += 1;
+    other.id.file += 1;
     ZASSERT(!pool.disk.cached_hash(fid, other).has_value());
 }
 
@@ -253,11 +253,13 @@ ZEST_CASE(ReadModesServeBom) {
               "\xEF\xBB\xBF"
               "AB");
     auto path = tmp.path("bom.txt");
-    ZASSERT((*vfs::read(path))->getBuffer() == "AB");
-    ZASSERT((*vfs::read(path, vfs::Read::Bytes))->getBuffer() ==
+    ZASSERT(vfs::read_text(path).value_or("") == "AB");
+    ZASSERT(read_file(path).value_or("") ==
             "\xEF\xBB\xBF"
             "AB");
-    ZASSERT((*vfs::read(path, vfs::Read::Mapped))->getBuffer() ==
+    auto mapped = fs::File::open(path).and_then(fs::Mapping::map);
+    ZASSERT(mapped);
+    ZASSERT(mapped->bytes() ==
             "\xEF\xBB\xBF"
             "AB");
 }

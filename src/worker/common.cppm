@@ -51,7 +51,7 @@ std::optional<std::string> hand_over_index(std::vector<std::byte> blob,
         return std::format("the index ({} MiB) is too large to send between clice processes",
                            blob.size() / (1024 * 1024));
     }
-    if(auto error = vfs::write(output_path, as_chars(blob))) {
+    if(auto error = fs::write_file(output_path, as_chars(blob))) {
         return std::format("writing the index to {} failed: {}", output_path, error.message());
     }
     result.index_in_file = true;

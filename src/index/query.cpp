@@ -11,17 +11,13 @@ namespace clice::index {
 
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
-                                         std::unique_ptr<llvm::MemoryBuffer>& kept) {
-    auto buffer = vfs::read(path);
-    if(!buffer) {
+                                         std::string& kept) {
+    auto text = vfs::read_text(path);
+    if(!text || llvm::xxh3_64bits(*text) != shard.content_hash()) {
         return std::nullopt;
     }
-    auto text = (*buffer)->getBuffer();
-    if(llvm::xxh3_64bits(text) != shard.content_hash()) {
-        return std::nullopt;
-    }
-    kept = std::move(*buffer);
-    return text;
+    kept = std::move(*text);
+    return llvm::StringRef(kept);
 }
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
@@ -502,7 +498,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     // spell (a range-for's `begin`, a copy's constructor) gives way to the
     // name it follows: `for(auto& x: xs)` with the cursor right after `x`
     // stands on `x`.
-    std::unique_ptr<llvm::MemoryBuffer> kept;
+    std::string kept;
     auto separates = [&](const Named& named) {
         if(named.range.begin != offset || named.range.length() > 2 ||
            ranges::any_of(named.symbols, [&](SymbolHash hash) {
@@ -789,9 +785,8 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::transitive_targets(SymbolHash 
     return result;
 }
 
-std::optional<llvm::StringRef>
-    IndexQuery::source_text(const IndexSource& source,
-                            std::unique_ptr<llvm::MemoryBuffer>& kept) const {
+std::optional<llvm::StringRef> IndexQuery::source_text(const IndexSource& source,
+                                                       std::string& kept) const {
     // Buffer-backed sources carry their text; an open session served by
     // its shard reads in buffer coordinates, so it ends up here too.
     if(source.kind == IndexSource::Kind::SessionShard ||
@@ -806,7 +801,7 @@ std::optional<std::string> IndexQuery::serving_text(Fid file) const {
     if(!source) {
         return std::nullopt;
     }
-    std::unique_ptr<llvm::MemoryBuffer> kept;
+    std::string kept;
     auto text = source_text(*source, kept);
     return text ? std::optional(text->str()) : std::nullopt;
 }

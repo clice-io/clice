@@ -350,8 +350,8 @@ echo '#define __STDC_VERSION__ 201710L'
     ZEXPECT(vendor->path.str() == tmp.path("gcc/13/include/vendor_intrinsics.h"));
     auto atomic = resolve_include("stdatomic.h", true, "", false, {}, search, scope);
     ZASSERT(atomic);
-    ZEXPECT(llvm::sys::fs::equivalent(atomic->path,
-                                      path::join(resource_dir(), "include", "stdatomic.h")));
+    ZEXPECT(fs::equivalent(atomic->path.str(), path::join(resource_dir(), "include", "stdatomic.h"))
+                .value_or(false));
     ZEXPECT(!resolve_include("stdatomic.h", true, "", true, atomic->found_dir_idx, search, scope));
     auto limits = resolve_include("limits.h", true, "", false, {}, search, scope);
     ZASSERT(limits);
@@ -430,10 +430,10 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     auto ref = add("a.c", command);
     ZEXPECT(f.toolchain.resolve(ref.command, ref.input).has_value());
 
-    auto passed = vfs::read(args);
+    auto passed = vfs::read_text(args);
     ZASSERT(passed);
     llvm::SmallVector<llvm::StringRef> lines;
-    (*passed)->getBuffer().split(lines, '\n', -1, false);
+    llvm::StringRef(*passed).split(lines, '\n', -1, false);
     for(llvm::StringRef arg: written) {
         ZEXPECT(contains(lines, arg));
     }
@@ -446,9 +446,9 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
     ZEXPECT(f.toolchain.resolve(edited.command, edited.input).has_value());
-    passed = vfs::read(args);
+    passed = vfs::read_text(args);
     ZASSERT(passed);
-    ZEXPECT((*passed)->getBuffer().contains("-msmall-data-limit=8\n"));
+    ZEXPECT(llvm::StringRef(*passed).contains("-msmall-data-limit=8\n"));
 
     /// Two names of one option are two queries: GCC may take one alone.
     auto clang_name = add("b.c", {driver.c_str(), "-G", "8", "-c"});

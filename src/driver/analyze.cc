@@ -150,12 +150,12 @@ struct PlainViewOptions {
 /// A file as the facts name it: one under the workspace by its path from
 /// the root, which `<PATH>` may also give absolute.
 std::string fact_path(const WorkspaceOptions& where, const std::string& argument) {
-    if(!path::is_rooted(argument)) {
+    if(!path::has_root(argument)) {
         return argument;
     }
     CanonicalPath root(where.root());
     CanonicalPath file(Spelling(argument, where.root()));
-    if(!path::under(file, root)) {
+    if(!path::is_within(file, root)) {
         return argument;
     }
     return llvm::StringRef(file).drop_front(llvm::StringRef(root).size()).ltrim('/').str();
@@ -299,7 +299,7 @@ CommandHandler module_view(std::string_view usage,
         });
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     std::vector<Operation> views;
     views.push_back({
         .name = "edge",

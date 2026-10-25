@@ -36,7 +36,7 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
         std::uint32_t up = 0;
         path::walk_ancestors(files.resolve(importer).parent(), [&](CanonicalRef dir) {
             up += 1;
-            return !path::under(files.resolve(provider), dir);
+            return !path::is_within(files.resolve(provider), dir);
         });
         return up;
     };
@@ -485,7 +485,7 @@ const ipc::Error* PCMFamily::crashed(Fid module) {
 }
 
 bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
-    if(build.path.empty() || vfs::exists(build.path)) {
+    if(build.path.empty() || fs::exists(build.path).value_or(false)) {
         return false;
     }
     // Artifact tier only: the blob vanished, its content did not, so

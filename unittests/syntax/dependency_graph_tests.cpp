@@ -663,7 +663,7 @@ export int foo() { return 42; }
     ZASSERT(result.size() == 1u);
 
     auto path = file_table.resolve(result[0]);
-    ZEXPECT(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
+    ZEXPECT(fs::equivalent(path, tmp.path("src/mymod.cpp")).value_or(false));
 }
 
 ZEST_CASE(ModulePartition) {
@@ -717,9 +717,9 @@ module lib:guarded;
         auto ids = graph.lookup_module(name);
         return ids.size() == 1 ? file_table.resolve(ids[0]).str() : "";
     };
-    ZEXPECT(llvm::sys::fs::equivalent(provider("lib"), tmp.path("src/lib.cppm")));
-    ZEXPECT(llvm::sys::fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")));
-    ZEXPECT(llvm::sys::fs::equivalent(provider("lib:guarded"), tmp.path("src/guarded.cppm")));
+    ZEXPECT(fs::equivalent(provider("lib"), tmp.path("src/lib.cppm")).value_or(false));
+    ZEXPECT(fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")).value_or(false));
+    ZEXPECT(fs::equivalent(provider("lib:guarded"), tmp.path("src/guarded.cppm")).value_or(false));
     ZEXPECT(graph.modules().size() == 3u);
     ZEXPECT(!graph.internal_partition(graph.lookup_module("lib").front()));
     ZEXPECT(graph.internal_partition(graph.lookup_module("lib:detail").front()));

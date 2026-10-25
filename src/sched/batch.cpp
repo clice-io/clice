@@ -30,7 +30,6 @@ import :support.process;
 import :support.signal;
 import :support.timer;
 import :vfs.cache_store;
-import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
@@ -104,14 +103,14 @@ struct TestPause {
 };
 
 std::optional<TestPause> test_pause() {
-    auto value = llvm::sys::Process::GetEnv("CLICE_TEST_PAUSE");
-    if(!value) {
+    std::string value;
+    if(!sys::get_env(value, "CLICE_TEST_PAUSE")) {
         return std::nullopt;
     }
-    auto [count, file] = llvm::StringRef(*value).split(' ');
+    auto [count, file] = llvm::StringRef(value).split(' ');
     TestPause pause;
     if(count.getAsInteger(10, pause.units) || pause.units == 0 || file.empty()) {
-        LOG_WARN("CLICE_TEST_PAUSE is '<units> <file>', not '{}'", *value);
+        LOG_WARN("CLICE_TEST_PAUSE is '<units> <file>', not '{}'", value);
         return std::nullopt;
     }
     pause.file = file.str();
@@ -174,7 +173,6 @@ bool start_batch(Stack& stack,
                  Config config,
                  const Spelling& root,
                  std::uint32_t workers,
-                 llvm::StringRef self_path,
                  llvm::StringRef log_tag) {
     auto& project = stack.project;
     stack.files.spell_root(root);
@@ -201,7 +199,6 @@ bool start_batch(Stack& stack,
     }
 
     WorkerPoolOptions pool_opts;
-    pool_opts.self_path = std::string(self_path);
     // Stateful workers host open documents; a batch run has none.
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = cfg.stateless_worker_count;
@@ -224,8 +221,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
     bool started = start_batch(stack,
                                options.config,
                                options.root,
-                               options.workers != 0 ? options.workers : kota::sys::parallelism(),
-                               options.self_path,
+                               options.workers != 0 ? options.workers : sys::parallelism(),
                                "index");
     result.log_dir = stack.log_dir;
     if(!started) {
@@ -275,7 +271,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
         parked = stack.sched.pump.on_progress_changed.connect([&stack, pause = *pause]() mutable {
             if(!pause.reached && stack.sched.pump.progress().completed >= pause.units) {
                 pause.reached = true;
-                if(auto error = vfs::write(pause.file, "")) {
+                if(auto error = fs::write_file(pause.file, "")) {
                     LOG_WARN("CLICE_TEST_PAUSE cannot create {}: {}", pause.file, error.message());
                 }
             }
@@ -506,12 +502,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     ScopedTimer timer;
     auto& project = stack.project;
 
-    if(!start_batch(stack,
-                    options.config,
-                    options.root,
-                    options.workers,
-                    options.self_path,
-                    "lint")) {
+    if(!start_batch(stack, options.config, options.root, options.workers, "lint")) {
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
@@ -649,7 +640,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
         CanonicalPath database(Spelling::absolute(project.cdb.source_path(SourceID(i))));
         auto directory = CanonicalRef(database).parent();
-        if(directory != root && path::under(directory, root)) {
+        if(directory != root && path::is_within(directory, root)) {
             skip(std::move(directory));
         }
     }
@@ -678,7 +669,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
            (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
                                      ranges::any_of(skipped_dirs, [&](auto& dir) {
-                                         return path::under(path, dir);
+                                         return path::is_within(path, dir);
                                      }))) {
             continue;
         }
@@ -716,11 +707,11 @@ std::string violations(const FormatFile& file,
 }
 
 FileFormat format_file(const FormatFile& file, bool check) {
-    auto content = vfs::read(file.path, vfs::Read::Bytes);
-    if(!content) {
-        return {.error = std::format("cannot read {}: {}", file.path, content.error().message())};
+    std::string content;
+    if(auto error = fs::read_file(content, file.path)) {
+        return {.error = std::format("cannot read {}: {}", file.path, error.message())};
     }
-    llvm::StringRef text = (*content)->getBuffer();
+    llvm::StringRef text = content;
     auto edits = feature::document_format(file.name, text);
     if(!edits) {
         return {.error = std::move(edits.error())};
@@ -739,7 +730,7 @@ FileFormat format_file(const FormatFile& file, bool check) {
         offset = edit.range.end;
     }
     formatted += text.substr(offset);
-    if(auto error = vfs::write(file.path, formatted)) {
+    if(auto error = fs::write_file(file.path, formatted)) {
         return {.error = std::format("cannot write {}: {}", file.path, error.message())};
     }
     return {};
@@ -751,7 +742,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     ScopedTimer timer;
     BatchFormatResult result;
 
-    if(!vfs::is_directory(options.root)) {
+    if(!fs::is_directory(options.root)) {
         result.exit_code = 2;
         result.error = std::format("{}: not a directory", options.root);
         return result;
@@ -784,9 +775,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.workspace_root;
     for(auto& path: options.paths) {
-        if(vfs::is_directory(path)) {
+        if(fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
-        } else if(!vfs::exists(path)) {
+        } else if(!fs::exists(path).value_or(false)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;
@@ -798,8 +789,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             // Rewritten where its bytes are, which have to be the
             // workspace's too.
             auto target = CanonicalPath(path);
-            if(!path::under(target, root)) {
-                if(path::under(CanonicalPath(path.parent()), root)) {
+            if(!path::is_within(target, root)) {
+                if(path::is_within(CanonicalPath(path.parent()), root)) {
                     result.exit_code = 2;
                     result.error = std::format("{}: links outside the workspace", path);
                     return result;
@@ -828,13 +819,13 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         }
         for(auto& file: project_files(project, load.members)) {
             if(!directories.empty() && ranges::none_of(directories, [&](auto& directory) {
-                   return path::under(file.path, directory);
+                   return path::is_within(file.path, directory);
                })) {
                 continue;
             }
             // A symlink into the workspace is the workspace's; one pointing
             // out of it is not.
-            if(path::under(file.path, root)) {
+            if(path::is_within(file.path, root)) {
                 files.push_back(std::move(file));
             }
         }

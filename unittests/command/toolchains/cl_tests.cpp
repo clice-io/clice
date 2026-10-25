@@ -113,7 +113,7 @@ ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
     auto cl = fake_driver("cl", std::format("touch '{}'\n", ran));
     auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/std:c++17"})));
     ZEXPECT(contains(argv, "-std=c++17"));
-    ZEXPECT(!vfs::exists(ran));
+    ZEXPECT(!fs::exists(ran).value_or(false));
 }
 
 ZEST_CASE(UnqueriedCLTargetFromName) {

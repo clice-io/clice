@@ -373,10 +373,10 @@ void SymbolQuery::resolve_paths(const Spelling& root) {
 }
 
 bool path_matches(llvm::StringRef wanted, llvm::StringRef file) {
-    if(path::is_rooted(wanted)) {
-        return path::under(file, wanted);
+    if(path::has_root(wanted)) {
+        return path::is_within(file, wanted);
     }
-    return path::filename(file) == wanted;
+    return llvm::StringRef(path::filename(file)) == wanted;
 }
 
 bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,

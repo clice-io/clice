@@ -74,7 +74,7 @@ struct ToolchainFixture {
     /// for a compiler driver.
     std::string fake_driver(llvm::StringRef name, llvm::StringRef script) {
         auto driver = tmp.path(name);
-        ZASSERT(!vfs::write(driver, "#!/bin/sh\n" + script.str()));
+        ZASSERT(!fs::write_file(driver, "#!/bin/sh\n" + script.str()));
         ZASSERT(!llvm::sys::fs::setPermissions(driver,
                                                llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
         return driver;

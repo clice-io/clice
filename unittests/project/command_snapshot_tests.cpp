@@ -212,7 +212,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
     // Discovery found the database elsewhere this session and loaded it:
     // shards only the vanished one guaranteed retire, like a dropped
     // declaration's.
-    llvm::sys::fs::remove(tmp.path("compile_commands.json"));
+    fs::remove(tmp.path("compile_commands.json"));
     tmp.touch("build/compile_commands.json", listing("other.cpp"));
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -703,7 +703,7 @@ ZEST_CASE(VanishedHeaderDebtDies) {
     // The header was deleted while its debt entry sat in the snapshot: a
     // retry could never succeed, so the debt dies instead of keeping every
     // later run partial forever.
-    ZASSERT(!llvm::sys::fs::remove(header));
+    ZASSERT(fs::remove(header));
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));

@@ -12,6 +12,7 @@ import :server.features;
 import :syntax.include_resolver;
 import :syntax.source_text;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -81,14 +82,14 @@ kota::task<std::vector<protocol::CodeAction>, ipc::Error>
                 if(auto* open = host_session ? host_session->source.get() : nullptr) {
                     return open;
                 }
-                auto read = vfs::read(host_path);
-                return read ? &disk.emplace((*read)->getBuffer().str()) : nullptr;
+                auto read = vfs::read_text(host_path);
+                return read ? &disk.emplace(std::move(*read)) : nullptr;
             });
         if(!edit) {
             return;
         }
         out.push_back(feature::to_protocol(
-            std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
+            std::format("{} in {}", action.title, path::filename(host_path)),
             std::move(action.kind),
             {
                 .uri = feature::to_uri(host_path),

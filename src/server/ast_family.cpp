@@ -26,7 +26,6 @@ import :support.text;
 import :support.timer;
 import :syntax.dependency_graph;
 import :syntax.preamble;
-import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.common;
@@ -330,7 +329,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               pch_build_rule(skip_bodies),
                               project.build.active_configuration(),
                               directory,
-                              path::parent_path(path),
+                              path::parent(path),
                               own_path,
                               preamble_text,
                               canonicalize(arguments),
@@ -1427,14 +1426,21 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // posing as current: an honest gap over yesterday's offsets.
         if(result.value().index_in_file) {
             // Copied, not mapped: the index outlives the transfer file.
-            if(auto read = vfs::read(transfer->tmp_path, vfs::Read::Bytes)) {
+            auto file = fs::File::open(transfer->tmp_path);
+            auto read = file ? llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                               transfer->tmp_path,
+                                                               /*FileSize=*/-1,
+                                                               /*RequiresNullTerminator=*/false,
+                                                               /*IsVolatile=*/true)
+                             : file.error();
+            if(read) {
                 next->index =
                     std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
             } else {
                 diagnostics.push_back(
                     index_unavailable(std::format("reading this file's index from {} failed: {}",
                                                   transfer->tmp_path,
-                                                  read.error().message())));
+                                                  read.getError().message())));
             }
         } else if(!index_data.empty()) {
             next->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(

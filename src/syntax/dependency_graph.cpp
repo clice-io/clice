@@ -736,7 +736,8 @@ struct FullScan {
         if(!status) {
             return std::nullopt;
         }
-        auto hash = files.disk.cached_hash(fid, status->stamp);
+        auto stamp = vfs::Stamp::of(*status);
+        auto hash = files.disk.cached_hash(fid, stamp);
         if(!hash) {
             return std::nullopt;
         }
@@ -745,7 +746,7 @@ struct FullScan {
             return std::nullopt;
         }
         return ScannedText{
-            .obs = {.stamp = status->stamp, .hash = *hash, .paired = true, .reliable = true},
+            .obs = {.stamp = stamp, .hash = *hash, .paired = true, .reliable = true},
             .result = it->second,
         };
     }

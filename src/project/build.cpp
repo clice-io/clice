@@ -328,7 +328,7 @@ bool Build::indexed(CanonicalRef path) const {
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
-    if(!path::under(path, config.workspace_root)) {
+    if(!path::is_within(path, config.workspace_root)) {
         return false;
     }
     return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
@@ -555,7 +555,7 @@ Build::SourceWalk Build::source_walk() const {
         ranges::remove_if(walk.roots,
                           [&](const CanonicalPath& root) {
                               return ranges::any_of(walk.roots, [&](const CanonicalPath& other) {
-                                  return other != root && path::under(root, other);
+                                  return other != root && path::is_within(root, other);
                               });
                           })
             .begin(),
@@ -589,22 +589,21 @@ void Build::collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::v
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     std::vector<CanonicalPath> walked;
     for(auto& root: walk.roots) {
-        vfs::walk(root, [&](const vfs::Entry& entry) {
+        vfs::walk(root, [&](llvm::StringRef entry, fs::FileType type) {
             // The walk spells paths natively, under the root; only an
             // entry that is itself a symlink names a file elsewhere.
             llvm::SmallString<256> storage;
-            auto spelled = path::canonical(entry.path, storage);
-            if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            auto spelled = path::canonical(entry, storage);
+            if(type == fs::FileType::Directory) {
                 auto name = path::filename(spelled);
                 return name != ".git" && (name != path::filename(walk.cache_dir) ||
                                           CanonicalRef(root).entry(spelled) != walk.cache_dir);
             }
-            auto path = entry.type == llvm::sys::fs::file_type::regular_file
-                            ? CanonicalRef(root).entry(spelled)
-                            : CanonicalPath(Spelling::absolute(spelled));
+            auto path = type == fs::FileType::Regular ? CanonicalRef(root).entry(spelled)
+                                                      : CanonicalPath(Spelling::absolute(spelled));
             if(suffix_type(path) != clang::driver::types::TY_INVALID ||
                ranges::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
-                   return path::under(path, patterned);
+                   return path::is_within(path, patterned);
                })) {
                 walked.push_back(std::move(path));
             }
@@ -619,19 +618,19 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
 static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
     auto name = path::filename(dir);
     return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
-           vfs::exists(path::join(dir, "CMakeCache.txt")) ||
-           vfs::exists(path::join(dir, "build.ninja"));
+           fs::exists(path::join(dir, "CMakeCache.txt")).value_or(false) ||
+           fs::exists(path::join(dir, "build.ninja")).value_or(false);
 }
 
 std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
     std::vector<CanonicalPath> found;
-    vfs::walk(root, [&](const vfs::Entry& entry) {
+    vfs::walk(root, [&](llvm::StringRef entry, fs::FileType type) {
         llvm::SmallString<256> storage;
-        auto spelled = path::canonical(entry.path, storage);
-        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+        auto spelled = path::canonical(entry, storage);
+        if(type == fs::FileType::Directory) {
             return !outside_sources(root.entry(spelled), cache_dir);
         }
-        if(entry.type != llvm::sys::fs::file_type::regular_file) {
+        if(type != fs::FileType::Regular) {
             return false;
         }
         auto path = root.entry(spelled);
@@ -645,7 +644,7 @@ std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cac
 }
 
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
-    if(!path::under(file, root) || file == root) {
+    if(!path::is_within(file, root) || file == root) {
         return false;
     }
     bool inside = true;

@@ -56,9 +56,9 @@ bool check_in_dir(llvm::StringRef dir_path,
     // First component matched — construct full path, resolve actual subdirectory.
     llvm::SmallString<256> full;
     full = dir_path;
-    llvm::sys::path::append(full, filename);
-    auto parent = llvm::sys::path::parent_path(full);
-    auto name = llvm::sys::path::filename(full);
+    path::push(full, filename);
+    auto parent = path::parent(full.str());
+    auto name = path::filename(full.str());
     return scope.list(parent).contains_file(name) && shown();
 }
 
@@ -73,8 +73,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              const ResolvedSearchConfig& config,
                                              vfs::Scope& scope) {
     // 1. Absolute path: check directly via stat().
-    if(llvm::sys::path::is_absolute(filename)) {
-        if(vfs::exists(filename)) {
+    if(path::is_absolute(filename)) {
+        if(fs::exists(filename).value_or(false)) {
             return ResolveResult{.path = llvm::SmallString<256>(filename)};
         }
         return std::nullopt;
@@ -89,7 +89,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     llvm::SmallString<256> candidate;
     auto make_candidate = [&](llvm::StringRef dir, llvm::StringRef fname) {
         candidate = dir;
-        llvm::sys::path::append(candidate, fname);
+        path::push(candidate, fname);
     };
 
     // 2. For #include_next, start from found_dir_idx + 1.
@@ -177,11 +177,9 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
 /// Whether an include's path names a library's internal header (see
 /// include_argument).
 static bool internal_header(bool angled, llvm::StringRef name) {
-    return angled && std::any_of(llvm::sys::path::begin(name),
-                                 llvm::sys::path::end(name),
-                                 [](llvm::StringRef part) {
-                                     return part == "bits" || part.starts_with("__");
-                                 });
+    return angled && ranges::any_of(path::components(name), [](std::string_view part) {
+               return part == "bits" || part.starts_with("__");
+           });
 }
 
 std::optional<std::string> include_argument(CanonicalRef header,
@@ -189,7 +187,7 @@ std::optional<std::string> include_argument(CanonicalRef header,
                                             const Spelling& file,
                                             vfs::Scope& scope) {
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
-        if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
+        if(root.empty() || !path::is_within(header, root) || header.size() <= root.size()) {
             return std::nullopt;
         }
         return llvm::StringRef(header).drop_front(root.size()).ltrim("/\\");

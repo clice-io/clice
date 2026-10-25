@@ -694,7 +694,7 @@ ZEST_CASE(RefreshDefaultSources) {
     ZEXPECT(refresh().empty());
     ZEXPECT(build.members().size() == 2u);
 
-    vfs::remove_all(tmp.path("src/later.cpp"));
+    fs::remove_all(tmp.path("src/later.cpp"));
     ZEXPECT(refresh().empty());
     ZEXPECT(build.members().size() == 1u);
 };

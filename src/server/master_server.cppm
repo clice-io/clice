@@ -63,9 +63,7 @@ struct NotifyMessage {
 /// public members.
 class MasterServer {
 public:
-    MasterServer(kota::event_loop& loop,
-                 std::string self_path,
-                 std::string requested_configuration);
+    MasterServer(kota::event_loop& loop, std::string requested_configuration);
     ~MasterServer();
 
     /// Start serving the projects of `workspace_roots` (see
@@ -396,10 +394,9 @@ private:
     /// still running in them.
     std::vector<std::weak_ptr<ProjectServer>> retired;
 
-    std::string self_path;
     std::string session_log_dir;
 };
 
-int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration, const char* self_path);
+int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);
 
 }  // namespace clice

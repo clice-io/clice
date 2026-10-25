@@ -6,16 +6,11 @@ module clice;
 
 import :analysis.wrapping;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::analysis {
 
 namespace {
-
-std::string join_path(llvm::StringRef directory, llvm::StringRef name) {
-    llvm::SmallString<256> path(directory);
-    llvm::sys::path::append(path, llvm::sys::path::Style::posix, name);
-    return path.str().str();
-}
 
 struct PartitionFile {
     struct Module {
@@ -41,13 +36,13 @@ struct PartitionFile {
 };
 
 std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::StringRef path) {
-    auto buffer = vfs::read(path);
-    if(!buffer) {
+    auto text = vfs::read_text(path);
+    if(!text) {
         return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), buffer.error().message()));
+            std::format("cannot read {}: {}", path.str(), text.error().message()));
     }
     llvm::SmallVector<llvm::StringRef> lines;
-    (*buffer)->getBuffer().split(lines, '\n');
+    llvm::StringRef(*text).split(lines, '\n');
     llvm::SmallVector<std::string> result;
     for(auto line: lines) {
         result.push_back(line.trim().str());
@@ -202,7 +197,7 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
         return std::nullopt;
     }
     StdModules result{
-        .sources = {join_path(directory, "std.cppm"), join_path(directory, "std.compat.cppm")},
+        .sources = {path::join(directory, "std.cppm"), path::join(directory, "std.compat.cppm")},
     };
     auto lines = read_lines(result.sources.front());
     if(!lines) {
@@ -223,17 +218,17 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
         }
     }
 
-    auto entries = vfs::read_dir(join_path(directory, "std.compat"));
+    auto compat = path::join(directory, "std.compat");
+    auto entries = fs::read_dir(compat);
     if(!entries) {
-        return std::unexpected(std::format("cannot list {}/std.compat: {}",
-                                           directory.str(),
-                                           entries.error().message()));
+        return std::unexpected(
+            std::format("cannot list {}: {}", compat, entries.error().message()));
     }
     for(auto& entry: *entries) {
-        if(!llvm::StringRef(entry.path).ends_with(".inc")) {
+        if(!entry.name.ends_with(".inc")) {
             continue;
         }
-        auto exported = read_lines(entry.path);
+        auto exported = read_lines(path::join(compat, entry.name));
         if(!exported) {
             return std::unexpected(exported.error());
         }
@@ -243,7 +238,7 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
             }
         }
     }
-    if(result.headers.empty() || result.compat.empty() || !vfs::is_file(result.sources.back())) {
+    if(result.headers.empty() || result.compat.empty() || !fs::is_file(result.sources.back())) {
         return std::unexpected(
             std::format("{} holds no libc++ std and std.compat modules", directory.str()));
     }
@@ -256,13 +251,13 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
     if(path.empty()) {
         return spec;
     }
-    auto buffer = vfs::read(path);
-    if(!buffer) {
+    auto text = vfs::read_text(path);
+    if(!text) {
         return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), buffer.error().message()));
+            std::format("cannot read {}: {}", path.str(), text.error().message()));
     }
     PartitionFile file;
-    if(auto result = json::from_string((*buffer)->getBuffer(), file); !result) {
+    if(auto result = json::from_string(*text, file); !result) {
         return std::unexpected(
             std::format("{} is not a partition file: {}", path.str(), result.error().message));
     }
@@ -285,10 +280,8 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
             declared.rewrite = true;
             declared.primary = module.primary.value_or("");
             llvm::StringRef primary = declared.primary;
-            if(llvm::sys::path::is_absolute(primary) ||
-               llvm::sys::path::is_absolute(primary, llvm::sys::path::Style::posix) ||
-               std::find(llvm::sys::path::begin(primary), llvm::sys::path::end(primary), "..") !=
-                   llvm::sys::path::end(primary)) {
+            if(path::is_absolute(primary) || path::is_absolute(primary, path::Style::Posix) ||
+               ranges::contains(path::components(primary), std::string_view(".."))) {
                 return std::unexpected(
                     std::format("module {}: primary {} lies outside the workspace",
                                 declared.name,
@@ -326,13 +319,10 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           const std::optional<StdModules>& libcxx,
                                           llvm::StringRef root,
                                           bool mirrors) {
-    auto absolute = [&](llvm::StringRef path) {
-        return llvm::sys::path::is_absolute(path) ? path.str() : join_path(root, path);
-    };
     // By its name where programs include it by one, else by its path.
     auto operand = [&](const InterfaceHeader& header) {
         return header.include == std::format("\"{}\"", header.file)
-                   ? std::format("\"{}\"", absolute(header.file))
+                   ? std::format("\"{}\"", path::join(root, header.file))
                    : header.include;
     };
 
@@ -478,17 +468,17 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         auto mirrorable = [&](const InterfaceHeader& header) {
             llvm::SmallVector<std::string> names;
             for(auto& name: header.names) {
-                llvm::SmallString<128> spelled(name);
-                llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
+                std::string spelled(name);
+                path::normalize(spelled, path::DotDot::Fold, path::Style::Posix);
                 if(spelled.empty() || spelled.starts_with("../") || spelled.contains('\\') ||
-                   llvm::sys::path::is_absolute(spelled)) {
+                   path::is_absolute(spelled)) {
                     continue;
                 }
-                auto file = absolute(header.file);
-                if(llvm::StringRef(file).ends_with(("/" + spelled).str())) {
+                auto file = path::join(root, header.file);
+                if(file.ends_with("/" + spelled)) {
                     roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
                 }
-                names.push_back(spelled.str().str());
+                names.push_back(std::move(spelled));
             }
             return names;
         };
@@ -508,9 +498,10 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
         for(auto& entry: interface.entries) {
             auto include = operand(entry);
-            unit += std::format(
-                "#include {}\n",
-                spelled_by[include] > 1 ? std::format("\"{}\"", absolute(entry.file)) : include);
+            unit += std::format("#include {}\n",
+                                spelled_by[include] > 1
+                                    ? std::format("\"{}\"", path::join(root, entry.file))
+                                    : include);
             auto names = mirrorable(entry);
             if(names.empty() && mirrors) {
                 result.plan.warnings.push_back(

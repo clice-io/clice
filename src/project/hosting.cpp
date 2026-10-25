@@ -240,7 +240,7 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
     auto& files = project.file_table;
     auto path = files.resolve(file);
     bool header = is_header_path(path);
-    auto dir = path::parent_path(path);
+    auto dir = path::parent(path);
     auto stem = path::stem(path);
     auto& index = lender_index(project);
     auto fits = [&](const LenderIndex::Command& command) {
@@ -263,7 +263,7 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 
     auto siblings =
         ranges::to<llvm::SmallVector<Lender>>(views::filter(units, [&](const Lender& lender) {
-            return path::parent_path(unit_path(lender)) == dir;
+            return path::parent(unit_path(lender)) == dir;
         }));
     if(!siblings.empty()) {
         return *ranges::min_element(siblings, {}, [&](const Lender& lender) {
@@ -275,20 +275,16 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
     // finds it by that path, so the command is the one the header is
     // written for. Nearest directory first, by path and command within.
     if(header) {
-        std::optional<Lender> found;
-        path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
-            if(auto it = index.search_dirs.find(ancestor); it != index.search_dirs.end()) {
-                for(auto position: it->second) {
-                    if(fits(index.commands[position])) {
-                        found = index.commands[position].lender;
-                        return false;
-                    }
+        for(auto ancestor: path::ancestors(dir)) {
+            auto it = index.search_dirs.find(ancestor);
+            if(it == index.search_dirs.end()) {
+                continue;
+            }
+            for(auto position: it->second) {
+                if(fits(index.commands[position])) {
+                    return index.commands[position].lender;
                 }
             }
-            return true;
-        });
-        if(found) {
-            return found;
         }
     }
 
@@ -358,8 +354,8 @@ llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid 
 llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     auto& files = project.file_table;
     auto header_path = files.resolve(header);
-    auto header_stem = llvm::sys::path::stem(header_path);
-    auto header_dir = llvm::sys::path::parent_path(header_path);
+    auto header_stem = path::stem(header_path);
+    auto header_dir = path::parent(header_path);
     auto sources = project.build.source_order(header_path);
 
     // The lexical scan follows each header's includes under the first
@@ -390,8 +386,8 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         if(auto entries = project.build.entries(host); !entries.empty()) {
             source_rank = ranges::find(sources, entries.front().source) - sources.begin();
         }
-        int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
-        int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
+        int stem_match = path::stem(host_path) == header_stem ? 0 : 1;
+        int same_dir = path::parent(host_path) == header_dir ? 0 : 1;
         return {source_rank, stem_match, same_dir, tree_distance(header_path, host_path)};
     };
     ranges::sort(hosts, [&](Fid a, Fid b) {

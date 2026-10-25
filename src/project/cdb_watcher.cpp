@@ -174,7 +174,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     want(listed);
     for(auto path_id: open_files) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.entries(path_id).empty() && path::under(path, root)) {
+        if(project.build.entries(path_id).empty() && path::is_within(path, root)) {
             want(database_places_above(path.parent(), root));
         }
     }
@@ -241,7 +241,7 @@ CDBDiff CDBWatcher::discover_around(Fid path_id) {
         return found;
     }
     auto path = project.file_table.resolve(path_id);
-    if(!path::under(path, root)) {
+    if(!path::is_within(path, root)) {
         return found;
     }
     // A registered database whose load failed so far (absent at startup,

@@ -16,16 +16,6 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-/// Pin a file's modification time, as a rewrite falling within one mtime
-/// tick of the previous stat leaves it.
-void set_mtime(llvm::StringRef path, llvm::sys::TimePoint<> time) {
-    int fd = 0;
-    ZASSERT(!static_cast<bool>(
-        llvm::sys::fs::openFileForWrite(path, fd, llvm::sys::fs::CD_OpenExisting)));
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::setLastAccessAndModificationTime(fd, time, time)));
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-}
-
 /// A master tick as the tracker sees it: the file table looks at the
 /// flags, then the tracker weighs what the looks found.
 llvm::SmallVector<FileEvent> tick(FileTracker& tracker, FileTable& files, bool force = false) {
@@ -224,7 +214,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
-    vfs::remove_all(tmp.path("compile_commands.json"));
+    fs::remove_all(tmp.path("compile_commands.json"));
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
     // The rewrite arrives as a normal change once the file is back.
@@ -248,20 +238,11 @@ ZEST_CASE(CDBTickRetriesFailedLoad) {
     SessionStore store;
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(!project.cdb.load_source(id).has_value());
-    llvm::sys::fs::file_status before;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    auto before = file_mtime_ns(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     tmp.touch("compile_commands.json", "[]");
-    int fd = 0;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("compile_commands.json"),
-                                                               fd,
-                                                               llvm::sys::fs::CD_OpenExisting)));
-    ZASSERT(!static_cast<bool>(
-        llvm::sys::fs::setLastAccessAndModificationTime(fd,
-                                                        before.getLastAccessedTime(),
-                                                        before.getLastModificationTime())));
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    ZASSERT(set_file_mtime(tmp.path("compile_commands.json"), before));
 
     ZASSERT(tick(tracker, files).empty());
     ZASSERT(tick(tracker, files).empty());
@@ -291,7 +272,7 @@ ZEST_CASE(CDBTickRelocates) {
     auto only_id = project.file_table.intern(Spelling::absolute(tmp.path("only.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
-    vfs::remove_all(tmp.path("compile_commands.json"));
+    fs::remove_all(tmp.path("compile_commands.json"));
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
     ZEXPECT(!project.cdb.present(root));
     ZEXPECT(!project.cdb.candidate_entries(only_id).empty());
@@ -331,7 +312,7 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
     }));
     auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(project.cdb.present(id));
-    vfs::remove_all(tmp.path("compile_commands.json"));
+    fs::remove_all(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(tick(tracker, files).empty());
     ZEXPECT(tick(tracker, files).empty());
@@ -405,23 +386,14 @@ ZEST_CASE(CDBTickRenameOver) {
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    llvm::sys::fs::file_status before;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    auto before = file_mtime_ns(tmp.path("compile_commands.json"));
 
     tmp.touch("replacement.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    int fd = 0;
-    ZASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
-                                                               fd,
-                                                               llvm::sys::fs::CD_OpenExisting)));
-    ZASSERT(!static_cast<bool>(
-        llvm::sys::fs::setLastAccessAndModificationTime(fd,
-                                                        before.getLastAccessedTime(),
-                                                        before.getLastModificationTime())));
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    ZASSERT(!vfs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
+    ZASSERT(set_file_mtime(tmp.path("replacement.json"), before));
+    ZASSERT(!fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
 
     ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -480,7 +452,7 @@ ZEST_CASE(CDBTickFollowsRetarget) {
     ZASSERT(project.cdb.load_source(id));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-    vfs::remove(database);
+    fs::remove(database);
     ZASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
     ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -517,7 +489,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     ZEXPECT(tracker.discover_around(main_id).empty());
     ZEXPECT(tracker.discover_around(other_id).empty());
     auto outside = project.file_table.intern(
-        Spelling::absolute(path::join(path::parent_path(tmp.root), "x.cpp")));
+        Spelling::absolute(path::join(path::parent(tmp.root.str()), "x.cpp")));
     ZEXPECT(tracker.discover_around(outside).empty());
 
     store.open(other_id);
@@ -550,7 +522,7 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
-    vfs::remove_all(tmp.path("compile_commands.json"));
+    fs::remove_all(tmp.path("compile_commands.json"));
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
     tmp.touch("build/compile_commands.json", "not a database");
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
@@ -642,8 +614,8 @@ ZEST_CASE(CDBSameStampRewrite) {
     }));
     // An mtime not yet safely in the past, however long the load takes.
     auto database = tmp.path("compile_commands.json");
-    auto mtime = std::chrono::system_clock::now() + std::chrono::hours(1);
-    set_mtime(database, mtime);
+    auto mtime = file_mtime_ns(database) + 3'600'000'000'000;
+    ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZASSERT(tick(tracker, files).empty());
@@ -652,7 +624,7 @@ ZEST_CASE(CDBSameStampRewrite) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    set_mtime(database, mtime);
+    ZASSERT(set_file_mtime(database, mtime));
 
     ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -676,8 +648,8 @@ ZEST_CASE(CDBForgedStampSeen) {
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
     auto database = tmp.path("compile_commands.json");
-    auto mtime = std::chrono::system_clock::now() - std::chrono::hours(1);
-    set_mtime(database, mtime);
+    auto mtime = file_mtime_ns(database) - 3'600'000'000'000;
+    ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZASSERT(tick(tracker, files).empty());
@@ -689,7 +661,7 @@ ZEST_CASE(CDBForgedStampSeen) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    set_mtime(database, mtime);
+    ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(tick(tracker, files).empty());
     ZASSERT(tick(tracker, files).size() == 1u);
 }
@@ -735,7 +707,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     ZASSERT(workspace_tick(tracker, files).empty());
 
     // Removal reported once, then quiet while missing.
-    vfs::remove_all(tmp.path("header.h"));
+    fs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
     ZASSERT(removed.size() == 1u);
     ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
@@ -772,7 +744,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     project.file_table.disk.current(both);
     ZASSERT(workspace_tick(tracker, files).empty());
 
-    vfs::remove_all(tmp.path("src/both.cpp"));
+    fs::remove_all(tmp.path("src/both.cpp"));
     auto removed = workspace_tick(tracker, files);
     ZASSERT(removed.size() == 1u);
     ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
@@ -802,7 +774,7 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     ZASSERT(changed[0].path_id == header);
     ZASSERT(workspace_tick(tracker, files).empty());
 
-    vfs::remove_all(tmp.path("header.h"));
+    fs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
     ZASSERT(removed.size() == 1u);
     ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);

@@ -9,6 +9,7 @@ import :analysis.rewriting;
 import :analysis.wrapping;
 import :driver.driver;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::driver {
 
@@ -89,10 +90,10 @@ struct MergeFile {
     std::vector<Configuration> configurations;
 };
 
-llvm::SmallString<256> join_path(llvm::StringRef base, llvm::StringRef relative) {
-    llvm::SmallString<256> path(base);
-    llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
-    return path;
+std::string join_path(llvm::StringRef base, llvm::StringRef relative) {
+    std::string joined(base);
+    path::push(joined, relative, path::Style::Posix);
+    return joined;
 }
 
 /// The paths a run's manifest lists. A hand-edited one reaches nothing
@@ -125,34 +126,31 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
         written.insert(file.path);
         manifest += file.path + "\n";
         auto path = at(file.path);
-        if(auto existing = vfs::read(path);
-           existing && (*existing)->getBuffer() == llvm::StringRef(file.content)) {
+        if(auto existing = vfs::read_text(path); existing && *existing == file.content) {
             continue;
         }
-        if(auto error = vfs::create_directories(llvm::sys::path::parent_path(path))) {
-            return std::unexpected(std::format("cannot create the directory of {}: {}",
-                                               path.str().str(),
-                                               error.message()));
-        }
-        if(auto error = vfs::write(path, file.content)) {
+        if(auto made = fs::create_directories(path::parent(path)); !made) {
             return std::unexpected(
-                std::format("cannot write {}: {}", path.str().str(), error.message()));
+                std::format("cannot create the directory of {}: {}", path, made.error().message()));
+        }
+        if(auto error = fs::write_file(path, file.content)) {
+            return std::unexpected(std::format("cannot write {}: {}", path, error.message()));
         }
     }
-    if(auto previous = vfs::read(at(".modularize"))) {
-        for(auto relative: manifest_paths((*previous)->getBuffer())) {
+    if(auto previous = vfs::read_text(at(".modularize"))) {
+        for(auto relative: manifest_paths(*previous)) {
             if(written.contains(relative)) {
                 continue;
             }
-            if(auto error = vfs::remove(at(relative))) {
+            if(auto removed = fs::remove(at(relative)); !removed) {
                 return std::unexpected(std::format("cannot remove {}/{}: {}",
                                                    out.str(),
                                                    relative.str(),
-                                                   error.message()));
+                                                   removed.error().message()));
             }
         }
     }
-    if(auto error = vfs::write(at(".modularize"), manifest)) {
+    if(auto error = fs::write_file(at(".modularize"), manifest)) {
         return std::unexpected(
             std::format("cannot write {}/.modularize: {}", out.str(), error.message()));
     }
@@ -161,22 +159,20 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
 
 std::expected<std::vector<analysis::Configuration>, std::string>
     read_configurations(llvm::StringRef path) {
-    auto buffer = vfs::read(path);
-    if(!buffer) {
+    auto text = vfs::read_text(path);
+    if(!text) {
         return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), buffer.error().message()));
+            std::format("cannot read {}: {}", path.str(), text.error().message()));
     }
     MergeFile file;
-    if(auto result = json::from_string((*buffer)->getBuffer(), file); !result) {
+    if(auto result = json::from_string(*text, file); !result) {
         return std::unexpected(
             std::format("{} is not a merge file: {}", path.str(), result.error().message));
     }
     std::vector<analysis::Configuration> configurations;
     for(auto& entry: file.configurations) {
-        auto out = llvm::sys::path::is_absolute(entry.out)
-                       ? entry.out
-                       : join_path(llvm::sys::path::parent_path(path), entry.out).str().str();
-        auto manifest = vfs::read(join_path(out, ".modularize"));
+        auto out = path::join(path::parent(path), entry.out);
+        auto manifest = vfs::read_text(join_path(out, ".modularize"));
         if(!manifest) {
             return std::unexpected(
                 std::format("configuration {}: {} holds no modularize output", entry.name, out));
@@ -185,15 +181,15 @@ std::expected<std::vector<analysis::Configuration>, std::string>
             .name = std::move(entry.name),
             .condition = std::move(entry.condition),
         });
-        for(auto relative: manifest_paths((*manifest)->getBuffer())) {
-            auto content = vfs::read(join_path(out, relative));
+        for(auto relative: manifest_paths(*manifest)) {
+            auto content = vfs::read_text(join_path(out, relative));
             if(!content) {
                 return std::unexpected(std::format("cannot read {}/{}: {}",
                                                    out,
                                                    relative.str(),
                                                    content.error().message()));
             }
-            configuration.files.push_back({relative.str(), (*content)->getBuffer().str()});
+            configuration.files.push_back({relative.str(), std::move(*content)});
         }
     }
     return configurations;
@@ -270,8 +266,8 @@ int run_modularize(const Options& opts) {
         CanonicalPath canonical_out(out_spelling);
         llvm::StringRef prelude_dir = canonical_out;
         auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
-        llvm::SmallString<256> prelude(inside ? prelude_dir : llvm::StringRef(out));
-        llvm::sys::path::append(prelude, llvm::sys::path::Style::posix, wrapping->plan.prelude);
+        auto prelude =
+            join_path(inside ? prelude_dir : llvm::StringRef(out), wrapping->plan.prelude);
         auto rewritten =
             analysis::rewrite(loaded->facts, *partition, *interfaces, prelude, loaded->root);
         if(!rewritten) {
@@ -287,19 +283,19 @@ int run_modularize(const Options& opts) {
     if(rewriting) {
         for(auto& file: rewriting->files) {
             auto path = join_path(loaded->root, file.path);
-            if(auto error = vfs::create_directories(llvm::sys::path::parent_path(path))) {
+            if(auto made = fs::create_directories(path::parent(path)); !made) {
                 return fail(std::format("cannot create the directory of {}: {}",
-                                        path.str().str(),
-                                        error.message()));
+                                        path,
+                                        made.error().message()));
             }
-            if(auto error = vfs::write(path, file.content)) {
-                return fail(std::format("cannot write {}: {}", path.str().str(), error.message()));
+            if(auto error = fs::write_file(path, file.content)) {
+                return fail(std::format("cannot write {}: {}", path, error.message()));
             }
         }
         for(auto& removed: rewriting->plan.removed) {
             auto path = join_path(loaded->root, removed);
-            if(auto error = vfs::remove(path)) {
-                return fail(std::format("cannot remove {}: {}", path.str().str(), error.message()));
+            if(auto result = fs::remove(path); !result) {
+                return fail(std::format("cannot remove {}: {}", path, result.error().message()));
             }
         }
         plan.rewriting = std::move(rewriting->plan);
@@ -308,7 +304,7 @@ int run_modularize(const Options& opts) {
     return 0;
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "merge",

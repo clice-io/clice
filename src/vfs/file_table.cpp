@@ -11,7 +11,7 @@ namespace clice {
 /// `path` with its `..` segments resolved as text.
 static Spelling fold(const Spelling& path) {
     llvm::SmallString<256> text(path.str());
-    path::remove_dots(text, /*remove_dot_dot=*/true);
+    path::normalize(text);
     return Spelling::absolute(text);
 }
 
@@ -81,7 +81,7 @@ std::string FileTable::display(Fid fid) const {
 
 std::string FileTable::display(CanonicalRef identity) const {
     for(auto& [real, root]: spelled_roots) {
-        if(path::under(identity, real)) {
+        if(path::is_within(identity, real)) {
             auto rest = llvm::StringRef(identity).drop_front(real.size()).ltrim('/');
             return Spelling(rest, root).str();
         }

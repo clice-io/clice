@@ -14,7 +14,6 @@ import :semantic.symbol;
 import :server.counterparts;
 import :syntax.dependency_graph;
 import :syntax.scan;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice::query {
@@ -57,9 +56,11 @@ bool separable(SymbolKind kind) {
 
 /// Directory steps from one directory to another.
 std::uint32_t steps(llvm::StringRef from, llvm::StringRef to) {
-    auto [a, b] = std::mismatch(path::begin(from), path::end(from), path::begin(to), path::end(to));
-    return static_cast<std::uint32_t>(std::distance(a, path::end(from)) +
-                                      std::distance(b, path::end(to)));
+    auto from_parts = path::components(from);
+    auto to_parts = path::components(to);
+    auto [a, b] = ranges::mismatch(from_parts, to_parts);
+    return static_cast<std::uint32_t>(ranges::distance(a, from_parts.end()) +
+                                      ranges::distance(b, to_parts.end()));
 }
 
 constexpr unsigned shared_bit = 4;
@@ -115,7 +116,7 @@ struct Pairing {
     }
 
     std::uint32_t distance_to(CanonicalRef other) const {
-        return steps(path::parent_path(self), path::parent_path(other));
+        return steps(path::parent(self), path::parent(other));
     }
 
     /// The files on the other side sharing the file's declarations and
@@ -217,13 +218,13 @@ struct Pairing {
     void pair_by_name() {
         auto& graph = ctx.project.dep_graph;
         auto stem = path::stem(self);
-        auto directory = path::parent_path(self);
+        auto directory = path::parent(self);
         CanonicalRef root = ctx.project.config.workspace_root;
-        bool rooted = !root.empty() && path::under(self, root);
+        bool rooted = !root.empty() && path::is_within(self, root);
         llvm::SmallVector<std::pair<Fid, std::uint32_t>> named;
         for(auto other: graph.all_files()) {
             auto other_path = ctx.project.file_table.resolve(other);
-            if(other == file || !path::stem(other_path).equals_insensitive(stem)) {
+            if(other == file || !llvm::StringRef(path::stem(other_path)).equals_insensitive(stem)) {
                 continue;
             }
             auto other_side = side_of(other);
@@ -232,12 +233,12 @@ struct Pairing {
             }
             bool linked =
                 graph.count_includes(file, other) > 0 || graph.count_includes(other, file) > 0;
-            if(path::parent_path(other_path) != directory &&
-               !(rooted && path::under(other_path, root) && linked)) {
+            if(path::parent(other_path) != directory &&
+               !(rooted && path::is_within(other_path, root) && linked)) {
                 continue;
             }
             // Includers keep naming a header deleted from disk.
-            if(!vfs::is_file(other_path)) {
+            if(!fs::is_file(other_path)) {
                 continue;
             }
             named.emplace_back(other, distance_to(other_path));
@@ -291,7 +292,7 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
 }
 
 Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
-    if(!vfs::is_file(path)) {
+    if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& files = ctx.project.file_table;
@@ -316,7 +317,7 @@ Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
     std::vector<Evidence> candidates;
     for(auto& [other, evidence]: pairing.found) {
         auto other_path = files.resolve(other);
-        if(!vfs::is_file(other_path)) {
+        if(!fs::is_file(other_path)) {
             continue;
         }
         evidence.path = files.display(other);

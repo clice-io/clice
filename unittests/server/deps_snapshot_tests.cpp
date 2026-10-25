@@ -25,8 +25,8 @@ std::int64_t generous_build_at() {
 /// The consumed hash a worker would report for the file's current bytes
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
-    auto text = vfs::read(path);
-    return text ? llvm::xxh3_64bits((*text)->getBuffer()) : 0;
+    auto text = vfs::read_text(path);
+    return text ? llvm::xxh3_64bits(*text) : 0;
 }
 
 /// Rewind a file's mtime out of the mtime-granularity guard window, the
@@ -39,8 +39,9 @@ void age_file(llvm::StringRef path) {
 
 /// Whether the file table answers the file's current stat without a read.
 bool confirmed(FileTable& pool, llvm::StringRef path) {
-    auto status = vfs::status(path);
-    return status && pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
+    auto status = fs::status(path);
+    return status &&
+           pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
 }
 
 ZEST_SUITE(DepsSnapshot) {
@@ -281,7 +282,7 @@ ZEST_CASE(RemovedAfterBuild) {
     },
                                       generous_build_at());
 
-    vfs::remove(dep);
+    fs::remove(dep);
     ZASSERT(deps_changed(pool, snap));
 }
 

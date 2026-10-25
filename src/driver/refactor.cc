@@ -81,23 +81,20 @@ std::expected<std::vector<query::RenameRequest>, std::string> parse_renames(llvm
 
 /// The renames a --spec list asks for.
 std::expected<std::vector<query::RenameRequest>, std::string> read_renames(llvm::StringRef spec) {
-    std::unique_ptr<llvm::MemoryBuffer> list;
     if(spec == "-") {
         auto input = llvm::MemoryBuffer::getSTDIN();
         if(!input) {
             return std::unexpected(
                 std::format("cannot read the renames from stdin: {}", input.getError().message()));
         }
-        list = std::move(*input);
-    } else {
-        auto file = vfs::read(spec);
-        if(!file) {
-            return std::unexpected(
-                std::format("cannot read {}: {}", spec.str(), file.error().message()));
-        }
-        list = std::move(*file);
+        return parse_renames((*input)->getBuffer());
     }
-    return parse_renames(list->getBuffer());
+    auto text = vfs::read_text(spec);
+    if(!text) {
+        return std::unexpected(
+            std::format("cannot read {}: {}", spec.str(), text.error().message()));
+    }
+    return parse_renames(*text);
 }
 
 /// The rename `<LOCATOR> <NEW-NAME>` asks for.
@@ -134,13 +131,11 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
             continue;
         }
         auto path = files.resolve(file).str();
-        auto status = vfs::status(path);
-        auto bytes = vfs::read(path, vfs::Read::Bytes);
-        if(!status || !bytes) {
-            auto error = status ? bytes.error() : status.error();
+        auto status = fs::status(path);
+        std::string content;
+        if(auto error = status ? fs::read_file(content, path) : status.error()) {
             return std::unexpected(std::format("cannot read {}: {}", site.path, error.message()));
         }
-        auto content = (*bytes)->getBuffer();
         auto text = vfs::without_bom(content);
         auto renamed = feature::apply_renames(text, plan, file);
         if(!renamed) {
@@ -149,17 +144,17 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         }
         rewrites.push_back({
             .path = std::move(path),
-            .stamp = status->stamp,
-            .text = content.take_front(content.size() - text.size()).str() + *renamed,
+            .stamp = vfs::Stamp::of(*status),
+            .text = content.substr(0, content.size() - text.size()) + *renamed,
         });
     }
     for(std::size_t i = 0; i < rewrites.size(); i += 1) {
         auto& rewrite = rewrites[i];
-        auto status = vfs::status(rewrite.path);
+        auto status = fs::status(rewrite.path);
         std::string failure;
-        if(!status || status->stamp != rewrite.stamp) {
+        if(!status || vfs::Stamp::of(*status) != rewrite.stamp) {
             failure = std::format("{} changed while the rename was being written", rewrite.path);
-        } else if(auto error = vfs::write(rewrite.path, rewrite.text)) {
+        } else if(auto error = fs::write_file(rewrite.path, rewrite.text)) {
             failure = std::format("cannot write {}: {}", rewrite.path, error.message());
         } else {
             continue;
@@ -177,7 +172,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
     return {};
 }
 
-int run_rename(const RenameOptions& opts, const char* self_path) {
+int run_rename(const RenameOptions& opts) {
     std::expected<std::vector<query::RenameRequest>, std::string> requests;
     if(opts.spec) {
         if(opts.inputs) {
@@ -203,7 +198,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     }
     std::vector<std::string> failed;
     if(opts.fresh.fresh) {
-        auto refreshed = refresh(spelling, config, configuration, self_path);
+        auto refreshed = refresh(spelling, config, configuration);
         if(!refreshed) {
             return fail(refreshed.error());
         }
@@ -264,7 +259,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     return blocked ? 1 : 0;
 }
 
-CommandHandler build(const char* self_path) {
+CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "rename",
@@ -273,7 +268,7 @@ CommandHandler build(const char* self_path) {
             "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]",
             "refactor",
             Errors::JSON,
-            [self_path](const RenameOptions& opts) { return run_rename(opts, self_path); }),
+            run_rename),
     });
     return with_operations("Rewrite the workspace's sources through the persisted index",
                            std::move(operations),

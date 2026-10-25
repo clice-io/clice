@@ -78,7 +78,9 @@ inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef js
 /// for a `/`-spelled path.
 inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
     return ranges::any_of(argv, [&](const char* arg) {
-        return llvm::StringRef(path::convert_to_slash(arg)).contains(needle);
+        std::string slashed(arg);
+        path::to_slash(slashed);
+        return llvm::StringRef(slashed).contains(needle);
     });
 }
 

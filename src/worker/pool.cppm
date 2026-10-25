@@ -26,7 +26,7 @@ using ipc::RequestResult;
 struct WorkerCrashInfo {
     std::size_t worker_index;
     bool stateful;
-    int exit_code = 0;
+    std::int64_t exit_code = 0;
 
     /// Non-zero when the worker was killed by a signal (e.g. 9 = SIGKILL).
     int exit_signal = 0;
@@ -112,6 +112,8 @@ struct StderrTail {
 };
 
 struct WorkerPoolOptions {
+    /// The program workers run as `<program> worker`: this program itself
+    /// when empty. Tests, being another program, name clice.
     std::string self_path;
 
     /// Stateless workers started, and the most that background (Low) work
@@ -524,7 +526,7 @@ private:
     /// Handle a crash result: log/relay, update crash accounting, fire
     /// on_crash. Returns true if the worker should be respawned; on false the
     /// slot has been given up.
-    bool process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal);
+    bool process_crash(std::size_t index, bool stateful, std::int64_t exit_code, int exit_signal);
 
     /// Respawn a slot after `delay`, retrying with growing backoff if the
     /// spawn itself fails; gives the slot up once the streak is exhausted.

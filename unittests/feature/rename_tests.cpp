@@ -15,6 +15,7 @@ import :unittests.utils;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -54,7 +55,7 @@ void merge() {
     merge_unit(project, *unit, focus_id);
     for(auto& entry: sources.all_files) {
         auto path = entry.getKey().str();
-        ZASSERT(!static_cast<bool>(vfs::write(path, entry.second.content)));
+        ZASSERT(!static_cast<bool>(fs::write_file(path, entry.second.content)));
         marked[path] = entry.second.nameless_offsets;
         if(!ranges::contains(scope, path)) {
             scope.push_back(path);
@@ -68,7 +69,7 @@ void merge() {
 /// A workspace file no unit compiles.
 void write(llvm::StringRef name, llvm::StringRef content) {
     auto path = file(name);
-    ZASSERT(!static_cast<bool>(vfs::write(path, content)));
+    ZASSERT(!static_cast<bool>(fs::write_file(path, content)));
     scope.push_back(path);
 }
 
@@ -80,8 +81,8 @@ llvm::StringMap<std::optional<feature::ScannedText>> scanned;
 const feature::ScannedText* read(llvm::StringRef path) {
     auto [it, inserted] = scanned.try_emplace(path);
     if(inserted) {
-        if(auto text = vfs::read(path)) {
-            it->second = feature::scan_text((*text)->getBuffer().str(), names);
+        if(auto text = vfs::read_text(path)) {
+            it->second = feature::scan_text(std::move(*text), names);
         }
     }
     return it->second ? &*it->second : nullptr;
@@ -132,11 +133,11 @@ feature::BatchPlan batch(std::vector<feature::Renaming> renamings) {
 
 /// The text of `path` with the batch's edits applied.
 std::string applied(const feature::BatchPlan& plan, llvm::StringRef path) {
-    auto text = vfs::read(path);
+    auto text = vfs::read_text(path);
     ZASSERT(text);
     auto file = project.file_table.find(Spelling::absolute(path));
     ZASSERT(file);
-    auto renamed = feature::apply_renames((*text)->getBuffer(), plan, *file);
+    auto renamed = feature::apply_renames(*text, plan, *file);
     ZASSERT(renamed);
     return std::move(*renamed);
 }
@@ -173,7 +174,7 @@ std::expected<RenamePlan, std::string> rename_at(llvm::StringRef at, llvm::Strin
 }
 
 static std::string listed(llvm::StringRef path, std::uint32_t offset) {
-    return std::format("{}@{}\n", llvm::sys::path::filename(path).str(), offset);
+    return std::format("{}@{}\n", path::filename(path), offset);
 }
 
 /// The plan's edits, a `file@offset` line each.
@@ -731,7 +732,7 @@ ZEST_CASE(ChangedFileBlocks) {
         int use() { return compute(1); }
     )");
     merge();
-    ZASSERT(!static_cast<bool>(vfs::write(file("a.cpp"), R"(int compute(int x) { return x; }
+    ZASSERT(!static_cast<bool>(fs::write_file(file("a.cpp"), R"(int compute(int x) { return x; }
 int later() { return 2; }
 )")));
 
@@ -749,7 +750,7 @@ ZEST_CASE(EditedFileMovedOn) {
         int compute(int x) { return x; }
     )");
     merge();
-    ZASSERT(!static_cast<bool>(vfs::write(file("a.cpp"), R"(// café
+    ZASSERT(!static_cast<bool>(fs::write_file(file("a.cpp"), R"(// café
 int renamed(int x) { return x; }
 )")));
 
@@ -771,7 +772,7 @@ ZEST_CASE(NewNameInChangedFile) {
     )");
     merge();
     // A declaration of the new name the index has not seen yet.
-    ZASSERT(!static_cast<bool>(vfs::write(file("b.cpp"), R"(int other() { return 0; }
+    ZASSERT(!static_cast<bool>(fs::write_file(file("b.cpp"), R"(int other() { return 0; }
 int evaluate;
 )")));
 
@@ -847,7 +848,8 @@ ZEST_CASE(LocalsStayHome) {
     ZEXPECT(renamed->unconfirmed.front().reason.contains("preprocessor directive"));
 
     // One changed since it was indexed may define the new name by now.
-    ZASSERT(!static_cast<bool>(vfs::write(file("b.h"), "#define entries 1\n#define ROWS rows\n")));
+    ZASSERT(
+        !static_cast<bool>(fs::write_file(file("b.h"), "#define entries 1\n#define ROWS rows\n")));
     renamed = rename_at("cursor", "entries");
     ZASSERT(renamed);
     ZEXPECT(renamed->blocked());

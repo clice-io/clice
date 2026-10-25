@@ -13,6 +13,7 @@ import :compile.tidy;
 import :support.logging;
 import :syntax.lexical_scan;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::tidy {
 
@@ -207,8 +208,8 @@ public:
         // directory's path on that drive: it is the drive's root.
         llvm::SmallString<256> storage;
         auto spelled = path.toStringRef(storage);
-        if(!spelled.empty() && llvm::sys::path::root_name(spelled) == spelled) {
-            return ProxyFileSystem::status(spelled + llvm::sys::path::get_separator());
+        if(!spelled.empty() && llvm::StringRef(path::root(spelled).name) == spelled) {
+            return ProxyFileSystem::status(spelled + "/");
         }
         auto status = ProxyFileSystem::status(path);
         if(!status && is_config(path)) {
@@ -260,7 +261,7 @@ private:
 
     static bool is_config(const llvm::Twine& path) {
         llvm::SmallString<256> storage;
-        return llvm::sys::path::filename(path.toStringRef(storage)) == ".clang-tidy";
+        return path::filename(path.toStringRef(storage)) == ".clang-tidy";
     }
 };
 
@@ -377,8 +378,8 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     tidy::ClangTidyOptions opts = default_options();
 
     // clang::clangd::provideEnvironment
-    if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
-        opts.User = user;
+    if(std::string user; sys::get_env(user, "USER")) {
+        opts.User = std::move(user);
     }
     // A batch run is clang-tidy's: its default list, the compiler's
     // warnings, which a configuration's Checks extend, so they stay

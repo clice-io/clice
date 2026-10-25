@@ -115,8 +115,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         if(file == src_path) {
             params.input.add_focus(file, source.content);
         } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.input.add_remapped_file(path, source.content);
+            params.input.add_remapped_file(path::join(".", file), source.content);
         }
     }
 

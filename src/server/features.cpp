@@ -937,8 +937,8 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
         Scanned result;
         for(auto& source: workspace_sources(root, cache_dir)) {
             auto path = source.str();
-            if(auto text = vfs::read(path)) {
-                if(auto spelled = feature::scan_text((*text)->getBuffer().str(), names)) {
+            if(auto text = vfs::read_text(path)) {
+                if(auto spelled = feature::scan_text(std::move(*text), names)) {
                     result.texts.try_emplace(path, std::move(*spelled));
                 }
             }
@@ -990,8 +990,8 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
         if(inserted) {
             if(document) {
                 it->second = feature::scan_text(document->text().str(), names);
-            } else if(auto text = vfs::read(path)) {
-                it->second = feature::scan_text((*text)->getBuffer().str(), names);
+            } else if(auto text = vfs::read_text(path)) {
+                it->second = feature::scan_text(std::move(*text), names);
             }
         }
         return it->second ? &*it->second : nullptr;

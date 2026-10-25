@@ -17,7 +17,6 @@ import :support.shell;
 import :syntax.header_context;
 import :syntax.position;
 import :syntax.preamble;
-import :vfs.file_system;
 
 namespace clice {
 
@@ -103,10 +102,12 @@ std::unique_ptr<clang::CompilerInvocation>
     auto& [pch, bound] = input.pch;
     // Tests stand in for a PCH damaged past clang's checks, which crashes
     // the parse reading it, by writing CLICE_TEST_DAMAGE into it.
-    const static auto damage = llvm::sys::Process::GetEnv("CLICE_TEST_DAMAGE");
+    const static auto damage = [] {
+        std::string value;
+        return sys::get_env(value, "CLICE_TEST_DAMAGE") ? std::optional(value) : std::nullopt;
+    }();
     if(damage && !pch.empty()) {
-        if(auto file = vfs::read(pch, vfs::Read::Bytes);
-           file && (*file)->getBuffer().contains(*damage)) {
+        if(std::string bytes; !fs::read_file(bytes, pch) && bytes.contains(*damage)) {
             LLVM_BUILTIN_TRAP;
         }
     }
@@ -121,8 +122,10 @@ std::unique_ptr<clang::CompilerInvocation>
 
     // `#pragma clang __debug crash` and its kin crash the compiler on
     // purpose. Tests keep them as a crash a file's content decides.
-    const static bool pragma_crash =
-        llvm::sys::Process::GetEnv("CLICE_TEST_PRAGMA_CRASH").has_value();
+    const static bool pragma_crash = [] {
+        std::string unused;
+        return sys::get_env(unused, "CLICE_TEST_PRAGMA_CRASH");
+    }();
     pp_opts.DisablePragmaDebugCrash = !pragma_crash;
 
     auto& header_search_opts = invocation->getHeaderSearchOpts();
@@ -250,7 +253,10 @@ void CompilationUnit::run_tidy() {
     auto collected = std::move(collected_directives);
 
     // Tests crash the pass over a focus file holding CLICE_TEST_TIDY_CRASH.
-    const static auto crash = llvm::sys::Process::GetEnv("CLICE_TEST_TIDY_CRASH");
+    const static auto crash = [] {
+        std::string value;
+        return sys::get_env(value, "CLICE_TEST_TIDY_CRASH") ? std::optional(value) : std::nullopt;
+    }();
     if(crash && SM().getBufferData(SM().getMainFileID()).contains(*crash)) {
         LLVM_BUILTIN_TRAP;
     }

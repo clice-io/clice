@@ -8,7 +8,6 @@ import :command.argument;
 import :command.toolchains.cl;
 import :command.toolchains.clang;
 import :support.process;
-import :vfs.file_system;
 
 namespace clice {
 
@@ -39,7 +38,7 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
                                                    CompilerFamily family,
                                                    llvm::StringRef input,
                                                    std::string cwd) {
-    if(auto error = vfs::write(input, cl_query_source)) {
+    if(auto error = fs::write_file(input, cl_query_source)) {
         co_return std::unexpected(
             std::format("Failed to write {}: {}", input.str(), error.message()));
     }

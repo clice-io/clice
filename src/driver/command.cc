@@ -19,7 +19,6 @@ import :project.open_index;
 import :project.project;
 import :support.json;
 import :support.shell;
-import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -82,8 +81,8 @@ struct WrittenEntry {
         }
         llvm::BumpPtrAllocator allocator;
         llvm::StringSaver saver(allocator);
-        auto tokens = is_posix_path(directory) ? tokenize_sh_command(text, saver)
-                                               : tokenize_command(text, saver);
+        auto tokens = fs::cygwin::is_posix_path(directory) ? tokenize_sh_command(text, saver)
+                                                           : tokenize_command(text, saver);
         return {tokens.begin(), tokens.end()};
     }
 };
@@ -141,7 +140,7 @@ struct Workspace {
 
 std::expected<Workspace, std::string> open_workspace(const WorkspaceOptions& where) {
     Workspace workspace{.root = where.root()};
-    if(!vfs::is_directory(workspace.root)) {
+    if(!fs::is_directory(workspace.root)) {
         return std::unexpected(std::format("{}: not a directory", workspace.root));
     }
     workspace.files->spell_root(workspace.root);
@@ -268,7 +267,7 @@ int run_file(const FileOptions& opts) {
     }
     auto& project = *workspace->project;
     auto path = inspected_path(project, args->front());
-    if(!vfs::is_file(path)) {
+    if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
         return 1;
     }
@@ -425,7 +424,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
 /// directory holding a compile_commands.json, printing the database of
 /// converted entries.
 int convert_database(Workspace& workspace, const Spelling& path) {
-    if(path::extension(path.str()) != ".json" && !vfs::is_directory(path)) {
+    if(path::extension(path.str()) != ".json" && !fs::is_directory(path)) {
         LOG_ERROR(
             "{}: a compilation database is a .json file, or a directory holding a "
             "compile_commands.json",
@@ -482,7 +481,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
             continue;
         }
         auto ref = refs.find(index);
-        if(!is_posix_path(entry.directory)) {
+        if(!fs::cygwin::is_posix_path(entry.directory)) {
             entry.directory = Spelling(entry.directory, base).str();
         } else if(ref != refs.end()) {
             // A database written inside Cygwin or MSYS2 converts to the
@@ -550,7 +549,7 @@ CommandHandler convert_operation() {
     };
 }
 
-CommandHandler build(const char*) {
+CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "convert",

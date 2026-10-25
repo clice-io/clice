@@ -18,11 +18,11 @@ struct Options {
     LogLevelOption log{.log_level = LogLevel::Info};
 };
 
-CommandHandler build(const char* self_path) {
+CommandHandler build() {
     auto cmd = kota::deco::cli::command<Options>("clice serve [OPTIONS]");
-    cmd.match_all([self_path](Options opts) {
+    cmd.match_all([](Options opts) {
         opts.log.apply();
-        return run_serve_mode(opts.server, opts.configuration.tag(), self_path);
+        return run_serve_mode(opts.server, opts.configuration.tag());
     });
     return cmd;
 }

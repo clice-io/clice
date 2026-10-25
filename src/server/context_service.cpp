@@ -16,6 +16,7 @@ import :server.ast_family;
 import :server.context_service;
 import :server.session_store;
 import :support.logging;
+import :vfs.path;
 
 namespace clice {
 
@@ -125,7 +126,7 @@ static ext::ContextItem host_item(Project& ws,
                                   std::optional<std::uint32_t> occurrence) {
     auto shown = ws.file_table.display(host);
     ext::ContextItem item;
-    item.label = llvm::sys::path::filename(shown).str();
+    item.label = path::filename(shown);
     if(lent.size() > 1) {
         if(auto desc = flags_label(ws, applied, lent); !desc.empty()) {
             item.label = std::format("{} [{}]", item.label, desc);

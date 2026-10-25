@@ -7,7 +7,6 @@ module clice;
 import :support.bytes;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
-import :vfs.file_system;
 import :worker.common;
 
 namespace clice::testing {
@@ -36,9 +35,9 @@ ZEST_CASE(LargeIndexToFile) {
     ZEXPECT(!hand_over_index(blob, path, reply));
     ZEXPECT(reply.index_in_file);
     ZEXPECT(reply.tu_index_data.empty());
-    auto written = vfs::read(path, vfs::Read::Bytes);
+    auto written = read_file(path);
     ZASSERT(written);
-    ZEXPECT((*written)->getBuffer() == as_chars(blob));
+    ZEXPECT(*written == as_chars(blob));
 }
 
 ZEST_CASE(LargeIndexWithoutPath) {
