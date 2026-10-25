@@ -797,6 +797,12 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : default_mapsize();
 
+    // A writer killed while writing a compact copy left it behind; only a
+    // writer writes one.
+    if(!read_only) {
+        vfs::remove(path + "-compact");
+    }
+
     // The writer swaps in a compact copy while no reader has the file open,
     // for milliseconds, which a reader arriving meanwhile waits out.
     std::optional<OpenLock> open_lock;

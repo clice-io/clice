@@ -286,6 +286,8 @@ using ::ssize_t;
 #endif
 #ifdef MDB_CORRUPTED
 #endif
+#ifdef MDB_CP_COMPACT
+#endif
 #ifdef MDB_INVALID
 #endif
 #ifdef MDB_MAP_FULL
