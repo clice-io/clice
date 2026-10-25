@@ -46,7 +46,8 @@ stable releases. Promotion fails loudly
 if no packaged green run exists. Once tagged, it dispatches the ecosystem
 round (`ecosystem.yml`, `ecosystem/README.md`) on that commit with the
 packages' CI run: every real project's regression and perf jobs, report
-only. A failed nightly just means no nightly
+only; perf measures clice against the nightly before (what clice spends a
+tenth more of is listed), on Sundays against clangd. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
 
@@ -79,7 +80,10 @@ Every step that tags or publishes needs the maintainer's explicit approval first
 1. Freeze: stop merging features; the last nightlies of the freeze are the RCs.
 2. When a nightly is judged good — its ecosystem round shows no new
    failure: every job green, a job whose failures the project already knows
-   (its `known` issues) green too — tag its commit:
+   (its `known` issues) green too — dispatch its round against clangd and
+   read its perf tables:
+   `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`.
+   Then tag its commit:
    `git tag v0.2.0 <commit> && git push origin v0.2.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the

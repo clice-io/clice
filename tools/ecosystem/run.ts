@@ -21,6 +21,7 @@
 ///   perf:
 ///   --scenario <name>    run only these scenarios of the job (repeatable)
 ///   --clangd <path>      a clangd instead of the pinned release
+///   --no-clangd          no clangd: clice against the baseline alone
 ///   --baseline <path>    a second clice to compare with
 ///   --drop-caches        drop the OS file cache before every cold run
 ///                        (Linux and macOS, through sudo)
@@ -53,6 +54,7 @@ const { values, positionals } = parseArgs({
         previous: { type: "string" },
         scenario: { type: "string", multiple: true },
         clangd: { type: "string" },
+        "no-clangd": { type: "boolean", default: false },
         baseline: { type: "string" },
         "drop-caches": { type: "boolean", default: false },
     },
@@ -176,7 +178,11 @@ if (job.kind === "regression") {
         platform,
         dir,
         clice,
-        ...(values.clangd === undefined ? {} : { clangd: path.resolve(values.clangd) }),
+        ...(values["no-clangd"]
+            ? { clangd: false }
+            : values.clangd === undefined
+              ? {}
+              : { clangd: path.resolve(values.clangd) }),
         ...(values.baseline === undefined ? {} : { baseline: path.resolve(values.baseline) }),
         ...(values.scenario === undefined ? {} : { only: new Set(values.scenario) }),
         dropCaches: values["drop-caches"],

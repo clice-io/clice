@@ -1,12 +1,14 @@
 /// One perf job: prepare the configuration, then run the project's script
-/// over clice, clangd and a baseline clice when one is given. A clice run
-/// that fails (a crash, a hang, an error answer, an unclean exit) fails the
-/// job unless the project knows it; a clangd run that fails is listed;
-/// numbers never fail.
+/// over clice, clangd unless left out, and a baseline clice when one is
+/// given. A clice run that fails (a crash, a hang, an error answer, an
+/// unclean exit) fails the job unless the project knows it; a clangd run
+/// that fails is listed; numbers never fail, and where clice costs a tenth
+/// more than the baseline the summary lists it.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { quote } from "shell-quote";
 import { jobDatabase } from "../database.ts";
 import { prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
@@ -19,6 +21,7 @@ import {
     type PerfJob,
 } from "../script.ts";
 import type { PerfResults, RunResult, ServerName } from "./results.ts";
+import { slower } from "./compare.ts";
 import { Perf } from "./scenarios.ts";
 import { pinnedClangd } from "./servers.ts";
 
@@ -27,10 +30,10 @@ export interface PerfOptions {
     platform: Platform;
     /// Where projects are checked out, and clangd downloaded.
     dir: string;
-    /// The clice under test, a clangd other than the pinned one, a second
-    /// clice to compare with.
+    /// The clice under test, a clangd other than the pinned one (`false`:
+    /// none), a second clice to compare with.
     clice: string;
-    clangd?: string;
+    clangd?: string | false;
     baseline?: string;
     /// Only these scenarios of the script.
     only?: ReadonlySet<string>;
@@ -39,8 +42,19 @@ export interface PerfOptions {
     out?: string;
 }
 
+/// The command running the job again with the same servers.
 function rerun(options: PerfOptions, extra: string): string {
-    return rerunCommand(options.job, options.clice, options.dir, extra);
+    const servers = [
+        ...(options.baseline === undefined ? [] : ["--baseline", options.baseline]),
+        ...(typeof options.clangd === "string" ? ["--clangd", options.clangd] : []),
+        ...(options.clangd === false ? ["--no-clangd"] : []),
+    ];
+    return rerunCommand(
+        options.job,
+        options.clice,
+        options.dir,
+        `${extra} ${quote(servers)}`.trim(),
+    );
 }
 
 /// What a clice run's errors say went wrong: a crash first, which takes
@@ -93,6 +107,7 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
         failures: [],
         known: [],
         unseen: [],
+        slower: [],
     };
     const save = () => {
         if (options.out !== undefined) {
@@ -110,7 +125,9 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
         const build = path.dirname(path.join(checkout, job.config.database));
         const binaries: Partial<Record<ServerName, string>> = {
             clice: options.clice,
-            clangd: options.clangd ?? (await pinnedClangd(options.dir)),
+            ...(options.clangd === false
+                ? {}
+                : { clangd: options.clangd ?? (await pinnedClangd(options.dir)) }),
             ...(options.baseline === undefined ? {} : { baseline: options.baseline }),
         };
         results.binaries = binaries;
@@ -155,6 +172,10 @@ export async function runPerf(options: PerfOptions): Promise<PerfResults> {
             repro: rerun(options, ""),
         });
     }
+    results.slower = slower(results).map((each) => ({
+        ...each,
+        repro: rerun(options, `--scenario ${each.scenario}`),
+    }));
     sortKnown(options.job, options.platform, results);
     save();
     return results;

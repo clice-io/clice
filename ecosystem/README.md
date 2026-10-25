@@ -3,8 +3,8 @@
 clice over real projects, in two kinds of job: the **regression**, which
 checks that clice handles a project (no crash, no hang, no error the compiler does not
 report, the same answers from `clice inspect` and from a server), and
-**perf**, which measures clice against clangd on the same project, the
-same files and the same machine. Neither runs on a push: that is `tests/`.
+**perf**, which measures clice against the previous nightly's clice or
+against clangd on the same project, the same files and the same machine. Neither runs on a push: that is `tests/`.
 
 A round runs both over every project. This file is the contract: what a
 project directory holds, what each kind of job does and records, what fails
@@ -202,15 +202,18 @@ Every failure names the command that reproduces it from the repository root.
 
 ## Perf
 
-clice under test against **clangd**, the official release of the version the
-framework pins (the LLVM major xclang tracks), each in its default
-configuration: clangd started from the database's directory with
+clice under test against a **baseline**: by default the previous nightly's
+clice, from its release package (which lives 30 days), so that a round shows
+what the day's commits changed; or against **clangd**, the official release
+of the version the framework pins (the LLVM major xclang tracks), in the
+round of every Sunday, before a stable release and on request. Each runs in
+its default configuration: clangd started from the database's directory with
 `--enable-config=0`, clice with the same database named and no `clice.toml`
 rule of the project's. The two servers alternate run by run on the same
 machine, so a drift of the machine reaches both alike; only numbers of one
 machine compare. A run that wipes a cache wipes the server's own (clice's
-`.clice/`, clangd's `.cache/clangd`) and, on Linux and macOS, the OS file
-cache.
+`.clice/`, the baseline's `.clice-baseline/`, clangd's `.cache/clangd`) and,
+on Linux and macOS, the OS file cache.
 
 | Scenario                                | What it measures                                                                                                                                                                                                                                                           |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -220,7 +223,7 @@ cache.
 | `editLoop(file, { edits })`             | an edit at the file's end, then semantic tokens: to the new diagnostics and tokens                                                                                                                                                                                         |
 | `warmRequests(file, { repeats })`       | the index loaded, each request once unmeasured, then `repeats` times: hover, definition, references, call hierarchy, workspace symbols, document symbols, semantic tokens, folding, inlay hints, completion, signature help                                                |
 | `session(files, { churn })`             | the files opened in turn and edited twice each, switched through twice; unless `churn: false`, a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
-| `sample(files, { wipe })`               | each file in a fresh server, clangd, clice without its PCHs and clice with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                               |
+| `sample(files, { wipe })`               | each file in a fresh server, clangd, each clice without its PCHs and with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                                |
 | `soak(file, { edits })`                 | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                                     |
 | `idle(file, { rounds, gap })`           | each request after the server sat idle for `gap`                                                                                                                                                                                                                           |
 | `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten rounds once it is done                                                                                                                                         |
@@ -242,8 +245,12 @@ beside the work it bought. A perf job **fails** only when a clice run fails
 (a crash, its workers' too, which its logs tell; a hang; an error answer; an
 unclean exit), or when its time runs out before a scenario begins: no
 scenario begins, and no wait goes on, past 320 minutes into the job. A
-clangd run that fails, or the baseline's, is listed. Numbers never fail. A
-baseline keeps its cache apart from clice's.
+clangd run that fails, or the baseline's, is listed. Numbers never fail:
+where clice spends a tenth more than the baseline (a time, memory, disk or
+CPU; a count or an answer's size is no cost), the summary lists it, with the
+command running its scenario again. A measure under 10 of its unit
+(milliseconds, seconds, megabytes) on the baseline is left out of that list:
+its noise between two runs is more than a tenth.
 
 ### Memory
 
@@ -261,10 +268,10 @@ A regression job's summary gives its numbers beside the previous round's,
 then its new failures, each with what failed and the command reproducing it,
 then the known ones with their issue, then the known issues it did not see
 (fixed, or not sampled this round). A perf job's summary gives its failures
-the same way, then a table per scenario: each measure's median and p90 for
-every server and the ratio of clice's median to clangd's (for a scenario over
-many files, the median of the files' ratios). Each job uploads its whole
-results as JSON.
+the same way, then what clice spends more of than the baseline, then a table
+per scenario: each measure's median and p90 for every server and the ratio of
+clice's median to the other server's (for a scenario over many files, the
+median of the files' ratios). Each job uploads its whole results as JSON.
 
 A job is red when it has a new failure; known failures alone leave it green.
 **A round shows no new failure** when every job is green: that is what a
@@ -275,9 +282,11 @@ stable release requires of the nightly it tags.
 `.github/workflows/ecosystem.yml` runs a round: every regression and perf job
 of every project, each on a free runner of its platform, all at once, on the
 commit of a main CI run with the `build-*` programs that run built. Once
-`nightly.yml` has tagged a nightly, it dispatches the round on that commit; a
+`nightly.yml` has tagged a nightly, it dispatches the round on that commit,
+its perf jobs against the nightly before (`clangd: true` on Sundays, UTC); a
 day without a new nightly has no round. A dispatch by hand names a CI run
-whose artifacts still live (three days). Each job is bounded well within the
+whose artifacts still live (three days), and `clangd: true` for a round
+against clangd. Each job is bounded well within the
 runner's six hours; on Linux it runs inside a memory scope a little smaller
 than the machine, so that a clice exhausting it is killed (first) and
 reported, not the runner's agent.
@@ -299,8 +308,8 @@ checked out and prepared (clice's own is the repository). The regression's
 `--steps index|sweep`, `--file` and `--only` narrow a job (the sweep asks a
 server of the index the index step built there); `--seed` picks other
 files. Perf's `--clangd` names a clangd instead of the pinned one,
-`--baseline <clice>` adds a second clice (an A/B of two commits), `--scenario`
-runs some of a job's. Preparing LLVM or the kernel takes a long build and
+`--baseline <clice>` adds a second clice (an A/B of two commits) and
+`--no-clangd` leaves clangd out, `--scenario` runs some of a job's. Preparing LLVM or the kernel takes a long build and
 several gigabytes of disk: a box, never this machine.
 
 ## Framework

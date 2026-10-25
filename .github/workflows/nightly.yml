@@ -233,7 +233,9 @@ jobs:
   # The ecosystem round over the nightly's commit, with the programs its
   # main run built (ecosystem.yml): a stable release tags a nightly whose
   # round shows no new failure. Dispatched, not called, so the round keeps a
-  # run history of its own, which each round compares its numbers with.
+  # run history of its own, which each round compares its numbers with. Its
+  # perf jobs measure clice against the nightly before, and on Sundays
+  # against clangd.
   ecosystem:
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'
@@ -245,7 +247,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN: ${{ needs.prepare.outputs.run }}
-        run: gh workflow run ecosystem.yml --repo "$GITHUB_REPOSITORY" --ref main -f run="$RUN"
+        run: |
+          gh workflow run ecosystem.yml --repo "$GITHUB_REPOSITORY" --ref main -f run="$RUN" \
+            -f clangd="$([ "$(date -u +%u)" = 7 ] && echo true || echo false)"
 
   # Nightlies expire after 30 days, and only the newest 25 are kept: the Zed
   # extension reads only the first page (30) of the release list, which must
