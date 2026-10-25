@@ -525,8 +525,6 @@ public:
 
     bool write_compact_copy() override {
         auto copy = path + "-compact";
-        // LMDB creates the copy exclusively: a crash may have left one.
-        vfs::remove(copy);
         if(int rc = mdb_env_copy2(env, copy.c_str(), MDB_CP_COMPACT)) {
             LOG_WARN("Cannot write a compact copy of the index database: {}", mdb_strerror(rc));
             vfs::remove(copy);
@@ -550,13 +548,9 @@ public:
         txn = nullptr;
         mdb_env_close(env);
         env = nullptr;
-        // No process has the file open, so its transaction numbering, which
-        // the copy restarts, lives on in no `-lock` file.
         if(auto ec = llvm::sys::fs::rename(copy, path)) {
             LOG_WARN("Cannot replace the index database by its compact copy: {}", ec.message());
             vfs::remove(copy);
-        } else {
-            vfs::remove(path + "-lock");
         }
         if(!reopen(info.me_mapsize)) {
             return Swap::Lost;

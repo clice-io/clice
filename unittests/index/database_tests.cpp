@@ -71,7 +71,12 @@ struct ForeignReader {
 #endif
     }
 
+    // Windows frees a lock its handle's close leaves at some later time.
     ~ForeignReader() {
+#ifdef _WIN32
+        OVERLAPPED at = {};
+        ::UnlockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), 0, 1, 0, &at);
+#endif
         llvm::sys::Process::SafelyCloseFileDescriptor(fd);
     }
 
@@ -706,6 +711,74 @@ ZEST_CASE(ReaderKeepsFile) {
     ZASSERT(db->write_compact_copy());
     ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Reopened);
     ZEXPECT(db->usage()->pages < pages);
+}
+
+ZEST_CASE(ReaderHoldsOpenLock) {
+    // A read-only open holds the `-open` file shared until it closes, which
+    // keeps the writer from swapping the file under it.
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = path::join(index::database_directory(store, ""), "index.mdb");
+        auto db = index::open_database(store, "");
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
+    }
+    auto exclusive_free = [&] {
+        int fd = -1;
+        require(!llvm::sys::fs::openFileForReadWrite(file + "-open",
+                                                     fd,
+                                                     llvm::sys::fs::CD_OpenAlways,
+                                                     llvm::sys::fs::OF_None),
+                "open the -open file");
+#ifdef _WIN32
+        OVERLAPPED at = {};
+        auto handle = llvm::sys::fs::convertFDToNativeFile(fd);
+        bool free =
+            ::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at);
+        if(free) {
+            ::UnlockFileEx(handle, 0, 1, 0, &at);
+        }
+#else
+        bool free = ::flock(fd, LOCK_EX | LOCK_NB) == 0;
+#endif
+        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        return free;
+    };
+    auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+    auto reader = index::open_database(store, "");
+    ZASSERT(reader != nullptr);
+    ZEXPECT(!exclusive_free());
+    reader.reset();
+    ZEXPECT(exclusive_free());
+}
+
+ZEST_CASE(OpenRemovesStaleCopy) {
+    // A copy a killed writer left behind goes at the next writable open.
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = path::join(index::database_directory(store, ""), "index.mdb");
+        auto db = index::open_database(store, "");
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
+    }
+    {
+        std::error_code ec;
+        llvm::raw_fd_ostream out(file + "-compact", ec);
+        require(!ec, "write a stale copy");
+        out << "partial";
+    }
+    {
+        auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+        ZASSERT(index::open_database(store, "") != nullptr);
+        ZEXPECT(llvm::sys::fs::exists(file + "-compact"));
+    }
+    auto store = open_store(tmp, "lmdb");
+    ZASSERT(index::open_database(store, "") != nullptr);
+    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
 }
 
 };  // ZEST_SUITE(IndexDatabase)

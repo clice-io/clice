@@ -91,7 +91,8 @@ enum class BlobKind : std::uint8_t {
 ///   alignment) — valid for the buffer's lifetime.
 /// - nonzero: the bytes are borrowed from the backend's read snapshot of
 ///   that generation and die when it is retired (advance_read_snapshot()
-///   followed by retire_old_snapshot(), or a grow()). A caller keeping such
+///   followed by retire_old_snapshot(), a grow(), or a swap_compact_copy()
+///   that reopened the database). A caller keeping such
 ///   bytes across a save must re-read them after every snapshot advance.
 struct ReadBlob {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
@@ -112,7 +113,7 @@ struct BlobKey {
 struct PageUsage {
     std::uint64_t page_size = 0;
     /// Pages up to the last one the file has used: the file's size, which
-    /// never shrinks.
+    /// writes never shrink.
     std::uint64_t pages = 0;
     /// B-tree pages: the keys, and the values small enough to sit beside them.
     std::uint64_t tree_pages = 0;
@@ -205,11 +206,8 @@ public:
 
     /// Write a copy of the read snapshot without the free pages beside the
     /// file, for swap_compact_copy(). Heavy IO, off the event loop; no write
-    /// may commit until the swap. False when the copy failed (logged) or the
-    /// backend has no file.
-    virtual bool write_compact_copy() {
-        return false;
-    }
+    /// may commit until the swap. False when the copy failed (logged).
+    virtual bool write_compact_copy() = 0;
 
     /// What swap_compact_copy() did.
     enum class Swap : std::uint8_t {
@@ -230,9 +228,7 @@ public:
     /// process has the database open. Swapping a file another process maps
     /// would mislead it: the copy restarts LMDB's transaction numbering,
     /// which the `-lock` file every opener shares records.
-    virtual Swap swap_compact_copy() {
-        return Swap::Busy;
-    }
+    virtual Swap swap_compact_copy() = 0;
 
     /// Whether the backend observed page-level corruption after open
     /// (reads failing with LMDB's corruption family). The loader uses it
@@ -276,8 +272,9 @@ std::string database_directory(const CacheStore& store, llvm::StringRef configur
 bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 
 /// The configuration's database: a single `index.mdb` (plus its `-lock`
-/// file, and the `-open` file every process holding the database open
-/// locks, which the writer locks exclusively to swap in a compact copy) in its
+/// file, and the `-open` file every reader holds locked while it has the
+/// database open, which the writer locks exclusively to swap in a compact
+/// copy) in its
 /// database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.cppm) — the records form one mutable lineage that

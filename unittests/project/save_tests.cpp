@@ -145,15 +145,23 @@ ZEST_CASE(NoContextsNoRewrite) {
 };  // ZEST_SUITE(ContextChoices)
 
 /// A database reporting its pages as `pages`, `free` of them free, and
-/// counting the compact copies written.
+/// recording the compact copies written and what their swaps did; `forced`
+/// stands in for the swap's result, and `lose_reads` fails every read once
+/// a swap reopened the database, as views diverging from it would.
 struct FreeSpace final : ForwardingDatabase {
     using ForwardingDatabase::ForwardingDatabase;
 
-    std::uint64_t pages = 0;
+    std::uint64_t pages = 1 << 15;
 
-    std::uint64_t free = 0;
+    std::uint64_t free = 1 << 14;
 
     std::uint32_t copies = 0;
+
+    std::optional<Swap> swapped;
+
+    std::optional<Swap> forced;
+
+    bool lose_reads = false;
 
     std::optional<index::PageUsage> usage() override {
         auto usage = real->usage();
@@ -167,6 +175,68 @@ struct FreeSpace final : ForwardingDatabase {
     bool write_compact_copy() override {
         copies += 1;
         return real->write_compact_copy();
+    }
+
+    Swap swap_compact_copy() override {
+        swapped = forced ? *forced : real->swap_compact_copy();
+        return *swapped;
+    }
+
+    index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+        if(lose_reads && swapped == Swap::Reopened) {
+            return {};
+        }
+        return real->read(kind, key);
+    }
+};
+
+/// A project of a header large enough for its shard to be read in place
+/// from the database, a unit including it, and a second unit.
+struct ShrinkProject {
+    TempDir tmp;
+    IndexerFixture f;
+
+    ShrinkProject() {
+        std::string header = "#pragma once\n";
+        for(int i = 0; i < 2000; i += 1) {
+            header += std::format("inline int function_{0}(int x) {{ return x + {0}; }}\n", i);
+        }
+        tmp.touch("big.h", header);
+        tmp.touch("a.cpp",
+                  "#include \"big.h\"\nstatic int first_local = 1;\n"
+                  "int first_value() { return function_1(first_local); }\n");
+        tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+        open_store(tmp, f.project);
+        ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+        f.save(index::SearchRebuild::Idle);
+    }
+
+    FreeSpace& spy() {
+        auto spy = std::make_unique<FreeSpace>(std::move(f.project.database));
+        auto& space = *spy;
+        f.project.database = std::move(spy);
+        return space;
+    }
+
+    index::IndexReport shrink() {
+        index::IndexReport report;
+        auto run = [&]() -> kota::task<> {
+            report = co_await shrink_database(f.project, f.loop);
+        };
+        auto task = run();
+        f.loop.schedule(task);
+        f.loop.run();
+        return report;
+    }
+
+    std::size_t hits(llvm::StringRef name) {
+        return f.project.index.search_index()
+            .search(*index::SymbolQuery::parse(name), 10, {})
+            .hits.size();
+    }
+
+    Fid unit(llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     }
 };
 
@@ -185,66 +255,92 @@ ZEST_CASE(ShrinkThresholds) {
 }
 
 ZEST_CASE(ShrinkKeepsIndex) {
-    // The index reads on from the compact copy, and saves commit into it.
-    TempDir tmp;
-    tmp.touch("a.cpp", "int first_value() { return 1; }\nstatic int first_local = 1;\n");
-    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
-    f.save(index::SearchRebuild::Idle);
-    auto spy = std::make_unique<FreeSpace>(std::move(f.project.database));
-    auto& space = *spy;
-    space.pages = 1 << 15;
-    space.free = 1 << 14;
-    f.project.database = std::move(spy);
-
-    auto shrink = [&]() -> kota::task<> {
-        auto report = co_await shrink_database(f.project, f.loop);
-        ZEXPECT(report.reindex().empty());
-    };
-    auto task = shrink();
-    f.loop.schedule(task);
-    f.loop.run();
+    // The index reads on from the compact copy, its shards and search
+    // segments in place, and saves commit into it.
+    ShrinkProject p;
+    auto& space = p.spy();
+    auto report = p.shrink();
     ZEXPECT(space.copies == 1u);
-    ZEXPECT(!f.project.index.damaged());
-    auto hits = [&](llvm::StringRef name) {
-        return f.project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, {})
-            .hits.size();
-    };
-    ZEXPECT(hits("first_local") == 1u);
-    auto a = f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
-    auto* shard = f.project.index.shard(a);
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Reopened);
+    ZEXPECT(report.reindex().empty());
+    ZEXPECT(!p.f.project.index.damaged());
+    ZEXPECT(p.hits("first_local") == 1u);
+    auto* shard = p.f.project.index.shard(p.unit("big.h"));
     ZASSERT(shard != nullptr);
     ZEXPECT(shard->content_hash() != 0u);
 
-    ZASSERT(f.merge(index_file(tmp, tmp.path("b.cpp")).data));
-    f.save(index::SearchRebuild::Idle);
-    ZEXPECT(hits("second_value") == 1u);
-    ZEXPECT(!f.project.index.has_unsaved_state());
+    ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
+    p.f.save(index::SearchRebuild::Idle);
+    ZEXPECT(p.hits("second_value") == 1u);
+    ZEXPECT(!p.f.project.index.has_unsaved_state());
 }
 
 ZEST_CASE(LittleFreeKeepsFile) {
-    TempDir tmp;
-    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
-    f.save(index::SearchRebuild::Idle);
-    auto spy = std::make_unique<FreeSpace>(std::move(f.project.database));
-    auto& space = *spy;
-    space.pages = 1 << 15;
+    ShrinkProject p;
+    auto& space = p.spy();
     space.free = 1 << 10;
-    f.project.database = std::move(spy);
-
-    auto shrink = [&]() -> kota::task<> {
-        co_await shrink_database(f.project, f.loop);
-    };
-    auto task = shrink();
-    f.loop.schedule(task);
-    f.loop.run();
+    p.shrink();
     ZEXPECT(space.copies == 0u);
+}
+
+ZEST_CASE(LostDatabaseStartsOver) {
+    // A database that does not open again after the swap, or a view that no
+    // longer matches it, is discarded: every unit is indexed again.
+    for(bool reopened: {false, true}) {
+        ShrinkProject p;
+        auto& space = p.spy();
+        if(reopened) {
+            space.lose_reads = true;
+        } else {
+            space.forced = index::BlobDatabase::Swap::Lost;
+        }
+        auto report = p.shrink();
+        ZEXPECT(ranges::contains(report.reindex(), p.unit("a.cpp")));
+        ZEXPECT(!p.f.project.index.search_index().loaded());
+        ZEXPECT(p.f.project.database != nullptr);
+    }
+}
+
+ZEST_CASE(SaveWaitsForShrink) {
+    // A save arriving while the copy is written waits for the swap, and
+    // commits into the compact copy.
+    ShrinkProject p;
+    auto& space = p.spy();
+    ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
+    auto shrink = [&]() -> kota::task<> {
+        co_await shrink_database(p.f.project, p.f.loop);
+    };
+    auto shrink_task = shrink();
+    auto save_task = p.f.async_save(index::SearchRebuild::Idle);
+    p.f.loop.schedule(shrink_task);
+    p.f.loop.schedule(save_task);
+    p.f.loop.run();
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Reopened);
+    ZEXPECT(!p.f.project.index.has_unsaved_state());
+    // One process opens a database once at a time.
+    p.f.project.database.reset();
+    IndexerFixture again;
+    open_store(p.tmp, again.project);
+    again.load();
+    ZEXPECT(again.project.index.search_index()
+                .search(*index::SymbolQuery::parse("second_value"), 10, {})
+                .hits.size() == 1u);
+}
+
+ZEST_CASE(IdleSaveShrinks) {
+    // Only a save after which no indexing is queued shrinks the file.
+    ShrinkProject p;
+    auto& space = p.spy();
+    auto persist = [&](index::SearchRebuild search) {
+        auto task = p.f.pump.persist(search);
+        p.f.loop.schedule(task);
+        p.f.loop.run();
+    };
+    persist(index::SearchRebuild::Never);
+    persist(index::SearchRebuild::Behind);
+    ZEXPECT(space.copies == 0u);
+    persist(index::SearchRebuild::Idle);
+    ZEXPECT(space.copies == 1u);
 }
 
 };  // ZEST_SUITE(ShrinkDatabase)

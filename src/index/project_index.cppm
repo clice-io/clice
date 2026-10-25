@@ -382,8 +382,8 @@ public:
     /// Move the views borrowing an earlier read snapshot — resident shards
     /// and search segments — onto the database's current one, then retire
     /// the earlier ones: in batches with yields between them, or `at_once`
-    /// when the earlier snapshots died already (a grown map, a compacted
-    /// file). False when the database turned out corrupt or a view diverged
+    /// when the earlier snapshots died already (a grown map, a file
+    /// replaced by its compact copy). False when the database turned out corrupt or a view diverged
     /// from its blob: the caller discards it.
     kota::task<bool> rebind_views(BlobDatabase& db, kota::event_loop& loop, bool at_once);
 
