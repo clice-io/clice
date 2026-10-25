@@ -398,6 +398,11 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     if(!batch) {
         opts.Checks->append(bad_checks);
     }
+    // performance-use-std-move looks for a record's move assignment among
+    // the methods it has, and ends in llvm_unreachable when it is not
+    // there, which a release LLVM compiles into running past the last one:
+    // a record from a PCH or a module crashes the worker that way.
+    opts.Checks->append(",-performance-use-std-move");
     for(auto& [key, value]: params.options) {
         opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));
     }

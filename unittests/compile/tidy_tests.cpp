@@ -160,6 +160,25 @@ ZEST_CASE(EditorDropsUnusableChecks) {
             std::vector<std::string>{"bugprone-integer-division", "bugprone-use-after-move"});
 }
 
+ZEST_CASE(UseStdMoveStaysOff) {
+    Sources sources = {
+        {"main.cpp",
+         "struct S {\n"
+         "    S& operator=(const S&);\n"
+         "    S& operator=(S&&);\n"
+         "};\n"
+         "void assign(S& out) { S s; out = s; }\n"},
+    };
+    std::string checks = "-*,performance-use-std-move";
+    auto editor = compile_main(sources, {.checks = checks});
+    ZASSERT(editor->completed());
+    ZEXPECT(findings(*editor).empty());
+
+    auto batch = compile_main(sources, {.checks = checks}, {}, CompilationKind::Whole);
+    ZASSERT(batch->completed());
+    ZEXPECT(findings(*batch).empty());
+}
+
 ZEST_CASE(EditorSkipsSlowChecks) {
     Sources sources = {
         {"main.cpp", "int one() { int x = 1; return x; }\n"},
