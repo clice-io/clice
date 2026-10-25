@@ -225,4 +225,55 @@ kota::task<index::IndexReport> save_project(Project& project,
     co_return report;
 }
 
+bool shrink_due(const index::PageUsage& usage) {
+    constexpr std::uint64_t worth = 64ull << 20;
+    auto free = usage.free_pages * usage.page_size;
+    return free >= worth && free * 4 >= usage.pages * usage.page_size;
+}
+
+kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loop& loop) {
+    index::IndexReport report;
+    if(!project.database || project.database->read_only()) {
+        co_return report;
+    }
+    co_await project.save_gate.acquire();
+    auto gate = llvm::make_scope_exit([&] { project.save_gate.release(); });
+    // Re-checked: the gate holder we waited out may have failed to reopen
+    // the database. A damaged one is the next save's to discard.
+    if(!project.database || project.database->corrupted() || project.index.damaged()) {
+        co_return report;
+    }
+    auto& db = *project.database;
+    auto before = db.usage();
+    if(!before || !shrink_due(*before)) {
+        co_return report;
+    }
+    ScopedTimer timer;
+    bool copied = false;
+    co_await kota::queue([&] { copied = db.write_compact_copy(); });
+    if(!copied) {
+        co_return report;
+    }
+    switch(db.swap_compact_copy()) {
+        case index::BlobDatabase::Swap::Busy:
+            LOG_INFO("Another process has the index database open; its file shrinks later");
+            co_return report;
+        case index::BlobDatabase::Swap::Lost:
+            recover_corrupt_database(project, report);
+            co_return report;
+        case index::BlobDatabase::Swap::Reopened: break;
+    }
+    if(!co_await project.index.rebind_views(db, loop, /*at_once=*/true)) {
+        recover_corrupt_database(project, report);
+        co_return report;
+    }
+    auto after = db.usage();
+    LOG_PERF("index",
+             "phase=shrink before_mb={} after_mb={} elapsed_ms={}",
+             before->pages * before->page_size >> 20,
+             after ? after->pages * after->page_size >> 20 : 0,
+             timer.ms());
+    co_return report;
+}
+
 }  // namespace clice

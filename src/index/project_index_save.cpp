@@ -620,6 +620,14 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     saved_shards = writing_shards;
     writing_shards = 0;
 
+    written_shards.clear();
+    written_instantiations.clear();
+    co_return co_await rebind_views(db, loop, grew);
+}
+
+kota::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
+                                            kota::event_loop& loop,
+                                            bool at_once) {
     // The resident shards borrow the previous snapshot, or own the bytes
     // the batch just wrote: both move onto the new snapshot, whose bytes are
     // identical — the writer lock keeps every key the batch left alone
@@ -636,7 +644,7 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
             }
         }
         for(std::uint32_t i = 0; i < resident.size() && !db.corrupted(); i += 1) {
-            if(!grew && i != 0 && i % rebind_batch == 0) {
+            if(!at_once && i != 0 && i % rebind_batch == 0) {
                 co_await kota::yield(loop);
             }
             // A merge between the batches may have replaced or retired it.
@@ -655,8 +663,6 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     };
     co_await rebind(shards, changed_shards, BlobKind::Shard);
     co_await rebind(instantiations, changed_instantiations, BlobKind::InstantiationShard);
-    written_shards.clear();
-    written_instantiations.clear();
     // The search index borrows the snapshot, but for the segments no batch
     // committed yet, which own their bytes.
     if(search.loaded()) {

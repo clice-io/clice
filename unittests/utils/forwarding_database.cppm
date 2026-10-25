@@ -51,6 +51,18 @@ struct ForwardingDatabase : index::BlobDatabase {
         return real->grow();
     }
 
+    bool write_compact_copy() override {
+        return real->write_compact_copy();
+    }
+
+    Swap swap_compact_copy() override {
+        return real->swap_compact_copy();
+    }
+
+    std::optional<index::PageUsage> usage() override {
+        return real->usage();
+    }
+
     bool corrupted() const override {
         return real->corrupted();
     }

@@ -95,6 +95,11 @@ kota::task<> IndexPump::persist(index::SearchRebuild search) {
         retry = report.owes_retry;
         apply_report(report);
     }
+    // No more indexing is queued, so no save is due for a while: the file
+    // may shrink.
+    if(search == index::SearchRebuild::Idle) {
+        apply_report(co_await shrink_database(project, loop));
+    }
 }
 
 kota::task<> IndexPump::await_attempt(Fid server_path_id) {

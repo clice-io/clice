@@ -4,6 +4,7 @@ module;
 
 module clice:project.save;
 
+import :index.database;
 import :index.project_index;
 import :project.command_resolver;
 import :project.project;
@@ -39,6 +40,17 @@ bool has_unsaved_state(const Project& project);
 /// so the project starts over as a first run, every unit of the build and
 /// every unit of its own the index held owed a reindex.
 void recover_corrupt_database(Project& project, index::IndexReport& report);
+
+/// Whether a database file's free pages are worth a compact copy: a quarter
+/// of the file, and 64 MB at least.
+bool shrink_due(const index::PageUsage& usage);
+
+/// Replace the database file by a compact copy when shrink_due, no save
+/// running meanwhile, and move the index's views onto it. Meant for when
+/// indexing is idle: the copy takes seconds on a large project, and it
+/// replaces the file only while no other process has the database open —
+/// else the file shrinks at a later call.
+kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loop& loop);
 
 /// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty

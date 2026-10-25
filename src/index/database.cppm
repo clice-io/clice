@@ -203,6 +203,37 @@ public:
     /// fails despite the headroom check ends the process with an error.
     virtual Growth grow() = 0;
 
+    /// Write a copy of the read snapshot without the free pages beside the
+    /// file, for swap_compact_copy(). Heavy IO, off the event loop; no write
+    /// may commit until the swap. False when the copy failed (logged) or the
+    /// backend has no file.
+    virtual bool write_compact_copy() {
+        return false;
+    }
+
+    /// What swap_compact_copy() did.
+    enum class Swap : std::uint8_t {
+        /// Another process has the database open: the file stays, and the
+        /// copy is gone.
+        Busy,
+        /// The handle was closed and opened again — on the copy, unless
+        /// replacing the file failed (logged) — after retiring EVERY read
+        /// snapshot: all borrowed buffers died, and the caller rebinds every
+        /// borrower before yielding the event loop.
+        Reopened,
+        /// The handle could not be opened again and is unusable: the caller
+        /// discards the database at once.
+        Lost,
+    };
+
+    /// Replace the file by the copy write_compact_copy() wrote, when no other
+    /// process has the database open. Swapping a file another process maps
+    /// would mislead it: the copy restarts LMDB's transaction numbering,
+    /// which the `-lock` file every opener shares records.
+    virtual Swap swap_compact_copy() {
+        return Swap::Busy;
+    }
+
     /// Whether the backend observed page-level corruption after open
     /// (reads failing with LMDB's corruption family). The loader uses it
     /// to tell "rebuild me" apart from a transient failure; backends
@@ -245,7 +276,9 @@ std::string database_directory(const CacheStore& store, llvm::StringRef configur
 bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 
 /// The configuration's database: a single `index.mdb` (plus its `-lock`
-/// file) in its database directory, created on demand. A writable open
+/// file, and the `-open` file every process holding the database open
+/// locks, which the writer locks exclusively to swap in a compact copy) in its
+/// database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.cppm) — the records form one mutable lineage that
 /// tolerates no second writer. Nullptr when the

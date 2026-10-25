@@ -5,7 +5,10 @@ module;
 module clice;
 
 import :index.database;
+import :index.project_index;
+import :index.symbol_query;
 import :project.project;
+import :project.save;
 import :server.editor_context;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -140,6 +143,111 @@ ZEST_CASE(NoContextsNoRewrite) {
 }
 
 };  // ZEST_SUITE(ContextChoices)
+
+/// A database reporting its pages as `pages`, `free` of them free, and
+/// counting the compact copies written.
+struct FreeSpace final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
+    std::uint64_t pages = 0;
+
+    std::uint64_t free = 0;
+
+    std::uint32_t copies = 0;
+
+    std::optional<index::PageUsage> usage() override {
+        auto usage = real->usage();
+        if(usage) {
+            usage->pages = pages;
+            usage->free_pages = free;
+        }
+        return usage;
+    }
+
+    bool write_compact_copy() override {
+        copies += 1;
+        return real->write_compact_copy();
+    }
+};
+
+ZEST_SUITE(ShrinkDatabase) {
+
+ZEST_CASE(ShrinkThresholds) {
+    // A quarter of the file free, and 64 MB at least.
+    auto due = [](std::uint64_t pages, std::uint64_t free) {
+        return shrink_due({.page_size = 4096, .pages = pages, .free_pages = free});
+    };
+    ZEXPECT(due(1 << 16, 1 << 14));
+    ZEXPECT(!due(1 << 16, (1 << 14) - 1));
+    ZEXPECT(!due(1 << 15, (1 << 14) - 1));
+    ZEXPECT(due(1 << 20, 1 << 18));
+    ZEXPECT(!due(1 << 20, (1 << 18) - 1));
+}
+
+ZEST_CASE(ShrinkKeepsIndex) {
+    // The index reads on from the compact copy, and saves commit into it.
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\nstatic int first_local = 1;\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+    f.save(index::SearchRebuild::Idle);
+    auto spy = std::make_unique<FreeSpace>(std::move(f.project.database));
+    auto& space = *spy;
+    space.pages = 1 << 15;
+    space.free = 1 << 14;
+    f.project.database = std::move(spy);
+
+    auto shrink = [&]() -> kota::task<> {
+        auto report = co_await shrink_database(f.project, f.loop);
+        ZEXPECT(report.reindex().empty());
+    };
+    auto task = shrink();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(space.copies == 1u);
+    ZEXPECT(!f.project.index.damaged());
+    auto hits = [&](llvm::StringRef name) {
+        return f.project.index.search_index()
+            .search(*index::SymbolQuery::parse(name), 10, {})
+            .hits.size();
+    };
+    ZEXPECT(hits("first_local") == 1u);
+    auto a = f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto* shard = f.project.index.shard(a);
+    ZASSERT(shard != nullptr);
+    ZEXPECT(shard->content_hash() != 0u);
+
+    ZASSERT(f.merge(index_file(tmp, tmp.path("b.cpp")).data));
+    f.save(index::SearchRebuild::Idle);
+    ZEXPECT(hits("second_value") == 1u);
+    ZEXPECT(!f.project.index.has_unsaved_state());
+}
+
+ZEST_CASE(LittleFreeKeepsFile) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+    f.save(index::SearchRebuild::Idle);
+    auto spy = std::make_unique<FreeSpace>(std::move(f.project.database));
+    auto& space = *spy;
+    space.pages = 1 << 15;
+    space.free = 1 << 10;
+    f.project.database = std::move(spy);
+
+    auto shrink = [&]() -> kota::task<> {
+        co_await shrink_database(f.project, f.loop);
+    };
+    auto task = shrink();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(space.copies == 0u);
+}
+
+};  // ZEST_SUITE(ShrinkDatabase)
 
 }  // namespace
 }  // namespace clice::testing

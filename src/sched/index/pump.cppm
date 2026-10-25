@@ -179,7 +179,9 @@ public:
     llvm::SmallVector<Fid> save_debt() const;
 
     /// Save the index with this pump's debt and take the report, again
-    /// while a save owes a retry (a grown map can still be too small).
+    /// while a save owes a retry (a grown map can still be too small); an
+    /// idle save then shrinks the database file when that is worth it
+    /// (shrink_database).
     kota::task<> persist(index::SearchRebuild search = index::SearchRebuild::Behind);
 
     /// Cancel background indexing and wait for all tasks to finish.

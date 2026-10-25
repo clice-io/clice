@@ -379,6 +379,14 @@ public:
     /// caller discards it.
     kota::task<bool> migrate_views(BlobDatabase& db, kota::event_loop& loop, IndexReport& report);
 
+    /// Move the views borrowing an earlier read snapshot — resident shards
+    /// and search segments — onto the database's current one, then retire
+    /// the earlier ones: in batches with yields between them, or `at_once`
+    /// when the earlier snapshots died already (a grown map, a compacted
+    /// file). False when the database turned out corrupt or a view diverged
+    /// from its blob: the caller discards it.
+    kota::task<bool> rebind_views(BlobDatabase& db, kota::event_loop& loop, bool at_once);
+
     /// Whether a record read since open failed its checks, or the database
     /// met a damaged page: the database is to be discarded.
     bool damaged() const {
