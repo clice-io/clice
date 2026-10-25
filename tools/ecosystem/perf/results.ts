@@ -85,4 +85,19 @@ export interface PerfResults {
     failures: Failure[];
     known: (Failure & { issue: string })[];
     unseen: Known[];
+    /// The measures clice spends a tenth more of than the baseline.
+    slower: Slower[];
+}
+
+/// A measure clice spends more of than the baseline: time, memory, disk or
+/// CPU.
+export interface Slower {
+    scenario: string;
+    /// The scenario and its label, as the tables name it.
+    name: string;
+    measure: string;
+    clice: string;
+    baseline: string;
+    clicePerBaseline: number;
+    repro: string;
 }

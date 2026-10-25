@@ -235,13 +235,39 @@ const PERF_KINDS: Record<string, string> = {
     runner: "Errors of the runner itself",
 };
 
+/// The measures clice spends a tenth more of than the baseline, and per
+/// scenario the command running it again.
+function slowerSection(slower: PerfResults["slower"]): string[] {
+    if (slower.length === 0) {
+        return [];
+    }
+    const repros = new Map(slower.map(({ scenario, repro }) => [scenario, repro]));
+    return [
+        "",
+        `## Slower or heavier than the baseline (${String(slower.length)})`,
+        "",
+        "| scenario | measure | clice p50 | baseline p50 | clice/baseline |",
+        "|---|---|---:|---:|---:|",
+        ...slower.map(
+            (each) =>
+                `| ${each.name} | ${each.measure} | ${each.clice} | ${each.baseline} | ${each.clicePerBaseline.toFixed(2)}× |`,
+        ),
+        "",
+        "Reproduce:",
+        "",
+        ...[...repros].map(([scenario, repro]) => `- ${scenario}: \`${repro}\``),
+    ];
+}
+
 export function perfReport(now: PerfResults): string {
+    const slower = now.slower.length === 0 ? "" : `, ${String(now.slower.length)} slower`;
     const lines = [
-        `# perf ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}`,
+        `# perf ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}${slower}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`.`,
         ...failureSections(now.failures, PERF_KINDS),
         ...knownSections(now.known, now.unseen),
+        ...slowerSection(now.slower),
         "",
         ...tables([now]),
     ];

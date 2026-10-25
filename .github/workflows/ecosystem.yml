@@ -7,15 +7,20 @@ name: ecosystem
 # that built them in the last three days, while its build-* artifacts live.
 # A job's summary lists its new failures, each with the command that
 # reproduces it, then the known ones; a regression job's numbers stand
-# beside the previous round's, a perf job's are clice's and clangd's side by
-# side. The round only reports: nothing waits on it but a stable release,
-# which tags a nightly whose round shows no new failure.
+# beside the previous round's, a perf job's are clice's and the previous
+# nightly's side by side (clangd's instead with `clangd`), what clice spends
+# a tenth more of listed. The round only reports: nothing waits on it but a
+# stable release, which tags a nightly whose round shows no new failure.
 on:
   workflow_dispatch:
     inputs:
       run:
         description: "The CI run (main.yml) whose commit and build-* programs to test"
         required: true
+      clangd:
+        description: "Measure clice against the pinned clangd instead of the previous nightly"
+        type: boolean
+        default: false
 
 # A dispatch on a branch replaces the branch's round still going; main's
 # rounds, one per nightly, all run.
@@ -36,6 +41,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       commit: ${{ steps.commit.outputs.commit }}
+      baseline: ${{ steps.baseline.outputs.tag }}
       jobs: ${{ steps.list.outputs.jobs }}
     steps:
       # A pull request's run builds the branch merged into main, while the
@@ -49,6 +55,27 @@ jobs:
         run: |
           COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
+      # The perf jobs' baseline: the newest nightly this commit descends
+      # from, the one before the nightly this round tests; never a newer one,
+      # which a round run again days later would otherwise pick.
+      - name: Find the baseline nightly
+        id: baseline
+        if: ${{ !inputs.clangd }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: |
+          for TAG in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 40 \
+            --json tagName,isPrerelease,isDraft \
+            --jq '.[] | select(.isPrerelease and (.isDraft | not)) | .tagName'); do
+            if [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$TAG...$COMMIT" --jq .status)" = ahead ]; then
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::no published nightly that $COMMIT descends from to measure against"
+          exit 1
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -148,6 +175,25 @@ jobs:
             fi
           done
 
+      # The baseline nightly's release package, unpacked under its tag.
+      - name: Fetch the baseline clice
+        if: matrix.kind == 'perf' && needs.jobs.outputs.baseline != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.jobs.outputs.baseline }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/baseline/$TAG"
+          cd "$RUNNER_TEMP/baseline/$TAG"
+          if [ "$RUNNER_OS" = Windows ]; then
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "clice-*.$TARGET.zip"
+            # Git Bash's GNU tar reads no zip; Windows' own bsdtar does.
+            /c/Windows/System32/tar.exe -xf clice-*.zip
+          else
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "clice-*.$TARGET.tar.gz"
+            tar -xzf clice-*.tar.gz
+          fi
+          ls clice/bin
+
       # In a scope holding all but 2 GB of the machine: a clice that
       # exhausts it is killed there (first, for a regression job: run.ts
       # sees to that) and the job reports the crash, while the runner's
@@ -164,6 +210,7 @@ jobs:
           --out "$RUNNER_TEMP/out"
           ${{ matrix.kind == 'regression' && '--previous "$RUNNER_TEMP/previous/results.json"' || '' }}
           ${{ matrix.kind == 'perf' && matrix.platform != 'windows' && '--drop-caches' || '' }}
+          ${{ matrix.kind == 'perf' && needs.jobs.outputs.baseline != '' && format('--baseline "$RUNNER_TEMP/baseline/{0}/clice/bin/clice{1}" --no-clangd', needs.jobs.outputs.baseline, matrix.platform == 'windows' && '.exe' || '') || '' }}
 
       - name: Summary
         if: ${{ !cancelled() }}

@@ -1,10 +1,11 @@
 /// Tests for the perf tables: medians per server, ratios of the medians,
-/// a scenario over many files pooled by its files' ratios, and a variant
-/// compared with the same variant of the other server.
+/// a scenario over many files pooled by its files' ratios, a variant
+/// compared with the same variant of the other server, and what clice
+/// spends more of than a baseline.
 
 import { expect, test } from "vitest";
 import { perfReport } from "../report.ts";
-import { tables } from "./compare.ts";
+import { slower, tables } from "./compare.ts";
 import { failureOf, type PerfOptions } from "./perf.ts";
 import type { PerfResults, RunResult } from "./results.ts";
 
@@ -50,6 +51,7 @@ function results(runs: RunResult[]): PerfResults {
         failures: [],
         known: [],
         unseen: [],
+        slower: [],
     };
 }
 
@@ -221,5 +223,91 @@ test("a run's errors name its failure: a crash before the hang it caused", () =>
     expect(kind("Request textDocument/hover failed with message: no")).toBe("server");
     expect(failureOf(run("clice", "editLoop", {}, { error: "x" }), options).repro).toBe(
         "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario editLoop",
+    );
+});
+
+test("what clice spends a tenth more of than the baseline, above the noise", () => {
+    const index = (server: RunResult["server"], ms: number, hover: number, variant?: string) =>
+        run(
+            server,
+            "index",
+            { index: [ms], hover: [hover] },
+            {
+                sizes: { hover: server === "clice" ? 900 : 100 },
+                values: {
+                    "indexed files": server === "clice" ? 30 : 20,
+                    "index MB on disk": server === "clice" && variant === undefined ? 80 : 50,
+                },
+                ...(variant === undefined ? {} : { variant }),
+            },
+        );
+    const found = slower(
+        results([
+            index("clice", 120, 5),
+            index("baseline", 100, 4),
+            index("clice", 320, 50, "no PCH"),
+            index("baseline", 300, 50, "no PCH"),
+        ]),
+    );
+    expect(found).toEqual([
+        {
+            scenario: "index",
+            name: "index a.cpp",
+            measure: "index",
+            clice: "120",
+            baseline: "100",
+            clicePerBaseline: 1.2,
+        },
+        {
+            scenario: "index",
+            name: "index a.cpp",
+            measure: "index MB on disk",
+            clice: "80.0",
+            baseline: "50.0",
+            clicePerBaseline: 1.6,
+        },
+    ]);
+    const more = slower(
+        results([index("clice", 120, 50, "no PCH"), index("baseline", 100, 40, "no PCH")]),
+    );
+    expect(more.map(({ measure }) => measure)).toEqual(["index (no PCH)", "hover (no PCH)"]);
+    expect(slower(results([index("clice", 500, 50), index("clangd", 100, 40)]))).toEqual([]);
+});
+
+test("a perf job's summary lists what clice spends more of, with the command per scenario", () => {
+    const text = perfReport({
+        ...results([
+            run("clice", "index", { index: [120] }),
+            run("baseline", "index", { index: [100] }),
+        ]),
+        slower: [
+            {
+                scenario: "index",
+                name: "index a.cpp",
+                measure: "index",
+                clice: "120",
+                baseline: "100",
+                clicePerBaseline: 1.2,
+                repro: "run index",
+            },
+        ],
+    });
+    expect(text).toContain("# perf p/editing on linux: green, 1 slower");
+    expect(text).toContain(
+        "## Slower or heavier than the baseline (1)\n\n| scenario | measure | clice p50 | baseline p50 | clice/baseline |\n|---|---|---:|---:|---:|\n| index a.cpp | index | 120 | 100 | 1.20× |\n\nReproduce:\n\n- index: `run index`",
+    );
+});
+
+test("a run against the baseline alone is run again so", () => {
+    const options = {
+        job: { kind: "perf", name: "p/editing" },
+        clice: "/c",
+        dir: "/d",
+        baseline: "/b/clice",
+        clangd: false,
+        dropCaches: true,
+    } as unknown as PerfOptions;
+    expect(failureOf(run("clice", "index", {}, { error: "x" }), options).repro).toBe(
+        "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario index --baseline /b/clice --no-clangd --drop-caches",
     );
 });
