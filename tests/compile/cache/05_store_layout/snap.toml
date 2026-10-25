@@ -6,6 +6,7 @@ value = [
     "v#/index/default/",
     "v#/index/default/index.mdb",
     "v#/index/default/index.mdb-lock",
+    "v#/index/default/index.mdb-open",
     "v#/manifest.json",
     "v#/pch/",
     "v#/pch/<key>-<nonce>.pch",
