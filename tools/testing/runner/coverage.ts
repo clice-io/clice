@@ -10,6 +10,6 @@ import { check } from "@clice/tools/testing/coverage/check";
 test("surface covered", async () => {
     const dir = process.env["CLICE_COVERAGE_DIR"];
     expect(dir, "CLICE_COVERAGE_DIR names the records of the suite runs").toBeTruthy();
-    const gaps = await check(cliceExecutable(), dir ?? "", path.join(CASES_DIR, "coverage.json"));
+    const gaps = await check(cliceExecutable(), dir ?? "", path.join(CASES_DIR, "coverage.toml"));
     expect(gaps).toEqual([]);
 });

@@ -1,0 +1,4 @@
+# Without the standard library and system directories, the only directory
+# the driver adds is clang's own, which also has a stdalign.h. a/ is named
+# by both -I and -isystem.
+flags = ["-nostdinc++", "-nostdlibinc", "-Ia", "-Ib", "-isystem", "a", "-isystem", "vendored"]

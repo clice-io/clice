@@ -1,0 +1,2 @@
+# Console is abstract until the overrides are declared.
+compiles = false

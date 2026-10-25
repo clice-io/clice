@@ -1,7 +1,0 @@
-{
-  // The standard library, the C library and the libraries alpha and beta
-  // are stand-ins in the workspace: no host header is involved, and
-  // stdmod/ stands for libc++'s module sources.
-  "flags": ["-Ithird/std", "-Ithird/libc", "-Ithird/alpha", "-Ithird/beta"],
-  "units": { "app/main.cpp": [], "app/direct.cpp": [], "app/third.cpp": [] }
-}

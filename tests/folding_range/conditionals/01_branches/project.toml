@@ -1,0 +1,2 @@
+# `#elifdef` is C++23.
+flags = ["-std=c++23"]

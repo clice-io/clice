@@ -1,0 +1,11 @@
+flags = ["-Iinclude"]
+
+[units]
+"ok.cpp" = []
+"broken.cpp" = []
+"many_errors.cpp" = []
+"uses_header.cpp" = []
+# The error is in the compiler's built-in buffer, which no file holds.
+"forced_include.cpp" = ["-include", "missing.h"]
+# GCC's warning, unknown to clang, is an error of the command line.
+"flagged.cpp" = ["-Werror", "-Wlogical-op"]

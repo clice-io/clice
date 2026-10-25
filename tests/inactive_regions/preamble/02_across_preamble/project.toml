@@ -1,0 +1,2 @@
+[units]
+"render_vk.cpp" = ["-DUSE_VULKAN"]

@@ -1,4 +1,0 @@
-{
-  // The build finds system.h in a system include directory.
-  "flags": ["-isystem", "sys"]
-}

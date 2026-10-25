@@ -1,0 +1,3 @@
+# The folder the editor opens is ws, a link to real made by the test; the
+# database spells paths through it.
+databases = {}

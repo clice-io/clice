@@ -1,4 +1,4 @@
-/// How a case's inputs compile (project.jsonc, merged from the topic, the
+/// How a case's inputs compile (project.toml, merged from the topic, the
 /// subtopic and the case) and the copy a test runs on: the inputs with
 /// their markers stripped, `*.in` files with `${WS}` replaced, and the
 /// databases the project describes.
@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
+import { parse } from "smol-toml";
 import { REPO_ROOT } from "../../repo.ts";
 import { parseAnnotations } from "./annotation.ts";
 
@@ -28,7 +28,7 @@ export interface Project {
 
 /// Files of a case directory that are not its inputs.
 export const RESERVED = new Set([
-    "project.jsonc",
+    "project.toml",
     "test.ts",
     "README.md",
     "snap.toml",
@@ -48,6 +48,11 @@ function fail(where: string, message: string): never {
     throw new Error(`${where}: ${message}`);
 }
 
+/// `key` under `table`, spelled as a TOML dotted key.
+function dotted(table: string, key: string): string {
+    return `${table}.${/^[\w-]+$/.test(key) ? key : JSON.stringify(key)}`;
+}
+
 function strings(where: string, key: string, value: unknown): string[] {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
         fail(where, `${key} is a list of strings`);
@@ -64,24 +69,24 @@ function readUnits(where: string, units: unknown): Record<string, UnitArgs> {
         const lists = Array.isArray(args) ? (args as unknown[]) : [];
         parsed[unit] =
             lists.length > 0 && lists.every((item) => Array.isArray(item))
-                ? lists.map((list) => strings(where, `units.${unit}`, list))
-                : strings(where, `units.${unit}`, args);
+                ? lists.map((list) => strings(where, dotted("units", unit), list))
+                : strings(where, dotted("units", unit), args);
     }
     return parsed;
 }
 
-/// The project.jsonc in `dir` (comments allowed), empty when there is none.
+/// The project.toml in `dir`, empty when there is none.
 export function readProject(dir: string): Project {
-    const file = path.join(dir, "project.jsonc");
+    const file = path.join(dir, "project.toml");
     if (!fs.existsSync(file)) {
         return {};
     }
     const where = posix(path.relative(REPO_ROOT, file));
-    const errors: ParseError[] = [];
-    const raw = parse(fs.readFileSync(file, "utf8"), errors) as Record<string, unknown>;
-    const error = errors[0];
-    if (error !== undefined) {
-        fail(where, `${printParseErrorCode(error.error)} at offset ${error.offset}`);
+    let raw: Record<string, unknown>;
+    try {
+        raw = parse(fs.readFileSync(file, "utf8"));
+    } catch (error) {
+        fail(where, (error as Error).message);
     }
     for (const key of Object.keys(raw)) {
         if (!KEYS.includes(key)) {
@@ -103,7 +108,7 @@ export function readProject(dir: string): Project {
         project.databases = Object.fromEntries(
             Object.entries(databases).map(([dir, units]) => [
                 dir,
-                strings(where, `databases.${dir}`, units),
+                strings(where, dotted("databases", dir), units),
             ]),
         );
     }
@@ -203,7 +208,7 @@ export function writeDatabases(project: Project, files: readonly string[], root:
         const own = listed.map((unit): [string, UnitArgs] => {
             const args = units[unit];
             if (args === undefined) {
-                throw new Error(`databases.${dir} lists ${unit}, which is not a unit`);
+                throw new Error(`${dotted("databases", dir)} lists ${unit}, which is not a unit`);
             }
             return [unit, args];
         });

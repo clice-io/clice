@@ -1,7 +1,0 @@
-{
-  // No database, and a rule giving the guessed command a flag no compiler
-  // takes: the query of its clang++ fails, on a machine with one or not,
-  // and clang's own driver reads the command in its place. No build chose
-  // that compiler, so the file says nothing of it.
-  "databases": {}
-}

@@ -1,4 +1,0 @@
-{
-  // The build names the link; the database is written once it exists.
-  "units": { "src/lib.cpp": [] }
-}

@@ -1,4 +1,0 @@
-{
-  // Every case includes by paths from its root: core/str.h, util/clock.h.
-  "flags": ["-std=c++20", "-I."]
-}

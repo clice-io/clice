@@ -1,0 +1,3 @@
+# The command asks for deferred template bodies, as code written for
+# MSVC's lookup rules does.
+flags = ["-fdelayed-template-parsing"]

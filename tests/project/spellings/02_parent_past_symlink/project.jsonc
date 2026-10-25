@@ -1,4 +1,0 @@
-{
-  // inc links to vendor/real, made by the test.
-  "units": { "main.cpp": ["-Iinc"] }
-}

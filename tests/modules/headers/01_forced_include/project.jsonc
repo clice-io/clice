@@ -1,3 +1,0 @@
-{
-  "units": { "a.cppm": [], "main.cpp": ["-include", "deps.h"] }
-}

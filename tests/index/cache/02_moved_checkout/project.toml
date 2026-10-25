@@ -1,0 +1,3 @@
+# The test writes each checkout's database, every path absolute as a
+# build generator writes it.
+databases = {}

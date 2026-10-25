@@ -1,0 +1,4 @@
+flags = ["-Iproject", "-Iexternal"]
+
+[databases]
+project = ["project/app/name.cpp"]

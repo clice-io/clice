@@ -1,5 +1,0 @@
-{
-  // Under an MSVC target clang attaches an implicit inheritance model to the
-  // records; this target comes after the topic's and wins.
-  "flags": ["--target=x86_64-pc-windows-msvc"]
-}

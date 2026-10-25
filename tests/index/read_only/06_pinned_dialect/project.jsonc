@@ -1,9 +1,0 @@
-{
-  // One file, two commands: C++, and C in which `class` is no keyword.
-  "units": {
-    "dual.c": [
-      ["-x", "c++"],
-      ["-x", "c", "-DDIALECT_C"]
-    ]
-  }
-}

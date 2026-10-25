@@ -1,0 +1,3 @@
+# MAX_SIZE comes from the command line, so the block's #define never runs.
+flags = ["-DMAX_SIZE=32"]
+compiles = false

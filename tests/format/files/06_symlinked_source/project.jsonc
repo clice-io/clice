@@ -1,4 +1,0 @@
-{
-  // The build names the link, made by the test.
-  "units": { "link.cpp": [] }
-}

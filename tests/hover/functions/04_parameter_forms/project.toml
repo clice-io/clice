@@ -1,0 +1,3 @@
+# Explicit object parameters are C++23; this flag comes after the topic's
+# and wins.
+flags = ["-std=c++23"]

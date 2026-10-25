@@ -1,5 +1,0 @@
-{
-  // `sys` is a system directory, `inc` the project's own.
-  "flags": ["-isystem", "sys", "-Iinc"],
-  "units": { "main.cpp": [] }
-}

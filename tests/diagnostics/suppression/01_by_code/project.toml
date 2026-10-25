@@ -1,0 +1,2 @@
+flags = ["-Wunused-variable"]
+compiles = false

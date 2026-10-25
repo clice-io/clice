@@ -33,7 +33,7 @@ jobs:
         with:
           filters: |
             format:
-              - '**/*.{h,c,cc,cpp,cppm,hpp,py,ts,js,mjs,css,lua,md,yml,yaml,json,jsonc,toml}'
+              - '**/*.{h,c,cc,cpp,cppm,hpp,py,ts,js,mjs,css,lua,md,yml,yaml,json,toml}'
               - '**/.clang-{format,tidy}'
             docs:
               - 'docs/**'

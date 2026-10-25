@@ -1,4 +1,0 @@
-{
-  // Structured binding packs are C++26.
-  "flags": ["-std=c++2c"]
-}

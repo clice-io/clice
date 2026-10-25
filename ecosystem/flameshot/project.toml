@@ -1,0 +1,35 @@
+about = "flameshot at 88c951e7"
+repository = "https://github.com/flameshot-org/flameshot"
+commit = "88c951e771fd57bccf6d8f1539a03df47316368d"
+
+[configurations.qt6]
+about = "Qt 6 from conda-forge (pixi's qt6-main), its moc, uic and rcc outputs generated"
+platforms = ["linux"]
+database = "build/compile_commands.json"
+
+[[configurations.qt6.prepare]]
+run = [
+    "pixi",
+    "exec",
+    "-s",
+    "qt6-main",
+    "-s",
+    "cmake",
+    "-s",
+    "ninja",
+    "--",
+    "cmake",
+    "-S",
+    ".",
+    "-B",
+    "build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCMAKE_C_COMPILER=clang",
+    "-DCMAKE_CXX_COMPILER=clang++",
+    "-DUSE_WAYLAND_CLIPBOARD=OFF"
+]
+
+[[configurations.qt6.prepare]]
+generated = "build"

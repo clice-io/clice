@@ -1,0 +1,5 @@
+flags = ["-Iinc", "-Iinclude", "-isystem", "sys"]
+compiles = false
+
+[units]
+"main.cpp" = []

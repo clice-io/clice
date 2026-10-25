@@ -1,0 +1,2 @@
+[units]
+"main.cpp" = ["-Wsign-compare"]

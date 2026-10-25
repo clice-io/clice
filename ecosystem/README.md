@@ -17,7 +17,7 @@ one, and when CI runs a round. The framework is
 ecosystem/
   test.ts            the default script: a project without a test.ts runs it
   <project>/
-    project.json     where the project comes from and how it is prepared
+    project.toml     where the project comes from and how it is prepared
     test.ts          optional: what a round does on it
     README.md        why the project is here: what it covers that no other does
 ```
@@ -27,50 +27,53 @@ One directory per project, named as the project names itself (`llvm`,
 build option set) is one directory with several configurations, never a second
 project.
 
-### project.json
+### project.toml
 
-```jsonc
-{
-  "about": "20260817.0 with its tests",
-  "repository": "https://github.com/abseil/abseil-cpp",
-  "commit": "2065f4ded0558c6f89fee67c8e5228feb4eb960e",
-  "configurations": {
-    "clang": {
-      "about": "C++20, built by clang",
-      "prepare": [["cmake", "-S", ".", "-B", "build", "-G", "Ninja", "${CMAKE_TOOLCHAIN}", "…"]],
-      "database": "build/compile_commands.json",
-    },
-    "gcc": {
-      "about": "C++20, built by Ubuntu's GCC 13: libstdc++ and GCC's driver defaults",
-      "platforms": ["linux"],
-      "packages": ["g++-13"],
-      "prepare": [["cmake", "…", "-DCMAKE_CXX_COMPILER=g++-13"]],
-      "database": "build/compile_commands.json",
-    },
-  },
-}
+```toml
+about = "20260817.0 with its tests"
+repository = "https://github.com/abseil/abseil-cpp"
+commit = "2065f4ded0558c6f89fee67c8e5228feb4eb960e"
+
+[configurations.clang]
+about = "C++20, built by clang"
+database = "build/compile_commands.json"
+
+[[configurations.clang.prepare]]
+run = ["cmake", "-S", ".", "-B", "build", "-G", "Ninja", "${CMAKE_TOOLCHAIN}", "…"]
+
+[configurations.gcc]
+about = "C++20, built by Ubuntu's GCC 13: libstdc++ and GCC's driver defaults"
+platforms = ["linux"]
+packages = ["g++-13"]
+database = "build/compile_commands.json"
+
+[[configurations.gcc.prepare]]
+run = ["cmake", "…", "-DCMAKE_CXX_COMPILER=g++-13"]
 ```
 
 - **Source.** `repository` and `commit` (a full hash) fetch that commit alone;
-  `archive` (`{ "url", "sha256" }`) downloads and unpacks one; neither is clice
-  itself, at the commit under test, in the repository's own checkout.
+  an `[archive]` table (`url`, `sha256`) downloads and unpacks one; neither is
+  clice itself, at the commit under test, in the repository's own checkout.
 - **Configuration.** `about` for a reader; `platforms` of `linux`, `macos`,
   `windows` (all when absent); `packages`, the Debian packages its preparation
-  needs on Linux; `environment: "vcvars"`, when its compiler is MSVC's `cl`
+  needs on Linux; `environment = "vcvars"`, when its compiler is MSVC's `cl`
   and needs Visual Studio's environment (the preparation and the compiler's
   checks get it, clice and clangd never: an editor is not started from it);
-  `prepare`, its steps; `database`, the checkout-relative compilation database
-  they write; `parts`, below; `keep`, a count of units a database too heavy
-  for one runner is thinned to, spread evenly over it in path order.
-- **Steps** run in the checkout, in order. An argv, in which `${JOBS}` reads
-  the machine's core count, `${CHECKOUT}` the checkout's path with `/`, and an
-  argument `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's usual
-  target (MSVC's on Windows, where xclang's default is MinGW); or
-  `{ "generated": "<build dir>" }`, the generated sources and headers of a
-  CMake build using Ninja, built without the order-only dependencies CMake
-  adds (LLVM's TableGen outputs in 11 minutes on 4 cores, not an hour); or
-  `{ "database": [entries] }`, a database written as given, for a project with
-  no build system to write one (`${CHECKOUT}` expanded).
+  `database`, the checkout-relative compilation database its steps write;
+  `keep`, a count of units a database too heavy for one runner is thinned to,
+  spread evenly over it in path order; its `[[prepare]]` steps; its `[parts]`,
+  below.
+- **Steps** run in the checkout, in order, each a `[[prepare]]` table holding
+  one key. `run`, an argv, in which `${JOBS}` reads the machine's core count,
+  `${CHECKOUT}` the checkout's path with `/`, and an argument
+  `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's usual target
+  (MSVC's on Windows, where xclang's default is MinGW); or
+  `generated = "<build dir>"`, the generated sources and headers of a CMake
+  build using Ninja, built without the order-only dependencies CMake adds
+  (LLVM's TableGen outputs in 11 minutes on 4 cores, not an hour); or
+  `[[configurations.<name>.prepare.database]]` entries, a database written as
+  given, for a project with no build system to write one (`${CHECKOUT}`
+  expanded).
 - **Parts.** A configuration too large for one runner names parts, each the
   units under its checkout-relative prefixes; a unit belongs to the part with
   its longest matching prefix, and every unit to exactly one. A part's job
@@ -307,7 +310,7 @@ several gigabytes of disk: a box, never this machine.
 
 ```
 tools/ecosystem/
-  project.ts      project.json: configurations, parts, jobs
+  project.ts      project.toml: configurations, parts, jobs
   prepare.ts      checkouts, steps, generated sources
   database.ts     a job's database, the headers its units include, checking commands
   script.ts       test.ts: registrations, request positions, known issues

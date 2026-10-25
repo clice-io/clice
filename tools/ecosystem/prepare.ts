@@ -271,7 +271,7 @@ async function run(
         fs.writeFileSync(path.join(target, database), JSON.stringify(entries, null, 1));
         return;
     }
-    const [command, ...args] = step.flatMap((arg) => expand(arg, target));
+    const [command, ...args] = step.run.flatMap((arg) => expand(arg, target));
     if (command === undefined) {
         throw new Error("an empty preparation step");
     }

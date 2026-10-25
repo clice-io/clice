@@ -1,4 +1,0 @@
-{
-  // extra.cpp, build/ and .hidden/ spell the name outside the build.
-  "units": { "main.cpp": [] }
-}

@@ -1,0 +1,2 @@
+# clice.toml names the two databases under out/.
+databases = {}

@@ -1,4 +1,0 @@
-{
-  // No database: a guessed command that works raises no note.
-  "databases": {}
-}

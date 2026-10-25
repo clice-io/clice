@@ -1,0 +1,3 @@
+# Fails before parsing on every attempt, and never settles.
+[units]
+"main.cpp" = ["--target=bogus-unknown-none"]

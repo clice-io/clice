@@ -1,0 +1,2 @@
+# No database yet: the test writes it while the server runs.
+databases = {}

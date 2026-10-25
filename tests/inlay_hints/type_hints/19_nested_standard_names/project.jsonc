@@ -1,5 +1,0 @@
-{
-  // The standard library is the case's own header: a host's names its
-  // durations its own way.
-  "flags": ["-I.", "-nostdinc"]
-}

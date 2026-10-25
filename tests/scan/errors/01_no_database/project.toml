@@ -1,0 +1,2 @@
+# No database: the scan has no unit to start from.
+databases = {}

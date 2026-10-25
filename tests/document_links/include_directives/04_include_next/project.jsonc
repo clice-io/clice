@@ -1,4 +1,0 @@
-{
-  // first/wrap.h shadows second/wrap.h on the search path.
-  "flags": ["-Ifirst", "-Isecond"]
-}

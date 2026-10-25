@@ -1,0 +1,2 @@
+# No database: each board's rule supplies the command.
+databases = {}

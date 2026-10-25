@@ -1,0 +1,5 @@
+flags = ["-std=c++20"]
+
+[units]
+"src/main.cpp" = []
+"mods/m.cppm" = ["-DFROM_MODS"]

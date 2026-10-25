@@ -1,0 +1,2 @@
+# The editor opens first; the build writes its database later.
+databases = {}

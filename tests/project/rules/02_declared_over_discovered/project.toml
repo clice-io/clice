@@ -1,0 +1,2 @@
+[units]
+"main.cpp" = ["-DFROM_CDB"]

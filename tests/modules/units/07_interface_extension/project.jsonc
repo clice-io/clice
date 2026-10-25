@@ -1,5 +1,0 @@
-{
-  // An interface named the way MSVC projects name them: its command says
-  // what it is, clang knows no .ixx.
-  "units": { "a.ixx": ["-x", "c++-module"], "main.cpp": [] }
-}

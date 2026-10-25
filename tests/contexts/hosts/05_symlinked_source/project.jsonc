@@ -1,3 +1,0 @@
-{
-  "units": { "real/main.cpp": [["-DFIRST"], ["-DSECOND"]] }
-}

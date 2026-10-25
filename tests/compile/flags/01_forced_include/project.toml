@@ -1,0 +1,3 @@
+[units]
+"main.cpp" = ["-include", "force.h"]
+"other.cpp" = ["-include", "force.h"]

@@ -1,5 +1,0 @@
-{
-  // The build's own commands: the ignore list resolves in the entry's
-  // directory, as for clang.
-  "databases": {}
-}

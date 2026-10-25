@@ -1,0 +1,6 @@
+# A CMake preset's build directory, two levels below the root.
+[units]
+"main.cpp" = ["-DFROM_BUILD"]
+
+[databases]
+"build/debug" = ["main.cpp"]

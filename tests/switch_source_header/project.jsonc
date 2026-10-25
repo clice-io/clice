@@ -1,5 +1,0 @@
-{
-  // Freestanding, -undef and -nostdinc keep host headers out of the build, so
-  // the files a reply names are the case's own on every host.
-  "flags": ["-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
-}

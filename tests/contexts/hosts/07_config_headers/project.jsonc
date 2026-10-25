@@ -1,7 +1,0 @@
-{
-  // Both include config.h through shared.h, each from its own directory.
-  "units": {
-    "b.cpp": ["-Iconfig_b", "-Icommon"],
-    "a.cpp": ["-Iconfig_a", "-Icommon"]
-  }
-}

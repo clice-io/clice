@@ -1,5 +1,0 @@
-{
-  // Both directories hold a util.h; -Ifirst comes first.
-  "flags": ["-Ifirst", "-Isecond"],
-  "compiles": false
-}

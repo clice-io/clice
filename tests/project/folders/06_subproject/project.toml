@@ -1,0 +1,8 @@
+# mono/sub holds a clice.toml and a build of its own.
+[units]
+"mono/sub/vendored.cpp" = ["-DIN_MONO"]
+"mono/sub/tool.cpp" = ["-DIN_SUB"]
+
+[databases]
+mono = ["mono/sub/vendored.cpp"]
+"mono/sub/build" = ["mono/sub/tool.cpp"]

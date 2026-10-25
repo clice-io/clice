@@ -1,0 +1,2 @@
+# Clang defers template bodies on MSVC targets before C++20 by default.
+flags = ["--target=x86_64-pc-windows-msvc", "-std=c++17"]

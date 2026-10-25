@@ -1,0 +1,2 @@
+# No database: the build was never configured.
+databases = {}

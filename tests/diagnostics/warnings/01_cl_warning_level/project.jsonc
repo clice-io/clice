@@ -1,6 +1,0 @@
-{
-  // A cl-mode database: /W3 is -Wall, which a cl-mode driver reading it back
-  // must not take for /Wall, every warning there is (C++98 compatibility for
-  // each `auto`).
-  "databases": {}
-}

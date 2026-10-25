@@ -1,7 +1,0 @@
-{
-  // Every name past ASCII: the database sits in 构建, runs there, reads its
-  // include directory from a response file and defines a string beyond
-  // ASCII. The empty clice.toml marks the root, which clice inspect looks
-  // for from the file up.
-  "databases": {}
-}

@@ -1,7 +1,0 @@
-{
-  "units": {
-    "zsrc/lib.cpp": ["-DFEATURE", "-Iinclude"],
-    "include/near.cpp": [],
-    "tools/tool.c": ["-std=c17", "-DTOOL"]
-  }
-}

@@ -5,17 +5,21 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parse } from "smol-toml";
 import type { DatabaseEntry } from "../compat/database.ts";
 import { REPO_ROOT } from "../repo.ts";
 
 export const ECOSYSTEM = path.join(REPO_ROOT, "ecosystem");
 
-/// A command run in the checkout, an argv in which `${JOBS}` reads the
-/// machine's core count, `${CHECKOUT}` the checkout's path (with `/`) and an
-/// argument `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's
-/// target (prepare.ts); the generated sources of a CMake build directory
-/// using Ninja; or a database written as given.
-export type Step = string[] | { generated: string } | { database: DatabaseEntry[] };
+/// A step of the preparation: `run`, a command run in the checkout, an argv
+/// in which `${JOBS}` reads the machine's core count, `${CHECKOUT}` the
+/// checkout's path (with `/`) and an argument `${CMAKE_TOOLCHAIN}` the CMake
+/// arguments of the platform's target (prepare.ts); `generated`, the
+/// generated sources of a CMake build directory using Ninja; or `database`,
+/// a database written as given.
+export type Step = { run: string[] } | { generated: string } | { database: DatabaseEntry[] };
+
+const STEPS = ["run", "generated", "database"];
 
 export const PLATFORMS = ["linux", "macos", "windows"] as const;
 export type Platform = (typeof PLATFORMS)[number];
@@ -69,7 +73,7 @@ export interface Project {
 }
 
 function fail(name: string, message: string): never {
-    throw new Error(`ecosystem/${name}/project.json: ${message}`);
+    throw new Error(`ecosystem/${name}/project.toml: ${message}`);
 }
 
 export function validated(project: Project): Project {
@@ -90,24 +94,39 @@ export function validated(project: Project): Project {
     if (configurations.length === 0) {
         fail(name, "has no configuration");
     }
-    for (const [configuration, { platforms, parts, keep }] of configurations) {
+    for (const [configuration, { platforms, prepare, parts, keep }] of configurations) {
+        const where = `configurations.${configuration}`;
         const unknown = (platforms ?? []).filter((each) => !PLATFORMS.includes(each));
         if (unknown.length > 0) {
-            fail(name, `${configuration} names unknown platforms: ${unknown.join(", ")}`);
+            fail(name, `${where}.platforms names unknown platforms: ${unknown.join(", ")}`);
+        }
+        for (const [index, step] of prepare.entries()) {
+            const kinds = STEPS.filter((kind) => Object.hasOwn(step, kind));
+            if (kinds.length !== 1) {
+                fail(
+                    name,
+                    `${where}.prepare[${String(index)}] needs exactly one of run, generated and database, not ${kinds.join(" and ") || "none"}`,
+                );
+            }
         }
         if (parts !== undefined && keep !== undefined) {
-            fail(name, `${configuration} both splits its database and thins it`);
+            fail(name, `${where} both splits its database (parts) and thins it (keep)`);
         }
     }
     return project;
 }
 
 export function loadProject(name: string): Project {
-    const file = path.join(ECOSYSTEM, name, "project.json");
+    const file = path.join(ECOSYSTEM, name, "project.toml");
     if (!fs.existsSync(file)) {
         throw new Error(`no project ${name}: ${file} is missing`);
     }
-    const project = JSON.parse(fs.readFileSync(file, "utf8")) as Omit<Project, "name">;
+    let project: Omit<Project, "name">;
+    try {
+        project = parse(fs.readFileSync(file, "utf8")) as unknown as Omit<Project, "name">;
+    } catch (error) {
+        fail(name, (error as Error).message);
+    }
     return validated({ name, ...project });
 }
 

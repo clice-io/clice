@@ -1,0 +1,2 @@
+# No database: both files take the builtin command.
+databases = {}

@@ -1,0 +1,2 @@
+# Unused variables warn: diagnostic.cpp silences them before its includes.
+flags = ["-Wall"]

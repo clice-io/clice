@@ -1,0 +1,3 @@
+[units]
+"lib.c" = [["-std=c17"]]
+"main.cpp" = []

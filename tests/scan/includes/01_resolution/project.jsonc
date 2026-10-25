@@ -1,5 +1,0 @@
-{
-  // <config.h> is found through the search path, "missing.h" nowhere.
-  "flags": ["-Iinclude"],
-  "compiles": false
-}

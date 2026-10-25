@@ -1,4 +1,0 @@
-{
-  "units": { "lib/src/lib.cpp": ["-Ilib/include"], "app/main.cpp": ["-Ilib/include"] },
-  "databases": { "lib": ["lib/src/lib.cpp"], "app": ["app/main.cpp"] }
-}

@@ -1,0 +1,4 @@
+[units]
+"a.cpp" = ["-include", "force.h"]
+"b.cpp" = ["-Iinc"]
+"c.cpp" = ["-Wall"]

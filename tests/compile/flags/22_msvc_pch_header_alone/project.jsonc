@@ -1,6 +1,0 @@
-{
-  // CMake's database for a target with precompiled headers, as it writes
-  // them for clang-cl, spelled `clang++ --driver-mode=cl` so that every
-  // platform has the driver.
-  "databases": {}
-}

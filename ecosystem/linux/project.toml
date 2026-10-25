@@ -1,0 +1,18 @@
+about = "v7.2"
+repository = "https://github.com/torvalds/linux"
+commit = "8d3ae59288f1e7d58d76558a6ee96d533bc5019f"
+
+[configurations.defconfig]
+about = "x86_64 defconfig, built in full: the database comes from the build's command files"
+platforms = ["linux"]
+packages = ["libelf-dev"]
+database = "compile_commands.json"
+
+[[configurations.defconfig.prepare]]
+run = ["make", "LLVM=1", "HOSTCC=gcc", "HOSTCXX=g++", "defconfig"]
+
+[[configurations.defconfig.prepare]]
+run = ["make", "LLVM=1", "HOSTCC=gcc", "HOSTCXX=g++", "-j${JOBS}"]
+
+[[configurations.defconfig.prepare]]
+run = ["make", "LLVM=1", "HOSTCC=gcc", "HOSTCXX=g++", "compile_commands.json"]

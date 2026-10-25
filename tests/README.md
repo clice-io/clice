@@ -16,7 +16,7 @@ plus the files that say what to check.
 ```
 tests/<topic>/<subtopic>/NN_name/
   inputs…         any files: sources, headers, clice.toml, .clang-tidy, data
-  project.jsonc    optional: how the inputs compile
+  project.toml    optional: how the inputs compile
   test.ts         optional: what to check
   README.md       optional: the case's page in the docs
   snap.toml       every product output the case pins
@@ -27,7 +27,7 @@ tests/<topic>/<subtopic>/NN_name/
   digits, lowercase, `_` between words); the number orders the cases, gaps are
   fine.
 - **Self-contained.** A case reads nothing outside its directory but the
-  `project.jsonc` and `test.ts` of its subtopic and topic. Nothing is shared
+  `project.toml` and `test.ts` of its subtopic and topic. Nothing is shared
   between cases; a structure two cases need is in both.
 - **The entry is `main.*`** (`main.cpp`, `main.c`, `main.cppm`) when a case has
   one file the check is about; other files keep the names their content needs.
@@ -72,24 +72,21 @@ push runs them, `ecosystem/` at the repository root does
 
 ## Inputs
 
-- **`project.jsonc`** says how the inputs compile; one may sit in the topic, the
+- **`project.toml`** says how the inputs compile; one may sit in the topic, the
   subtopic and the case, merged in that order (the case's last): lists add up,
   the rest is replaced. Comments say why the flags are what they are.
 
-  ```jsonc
-  {
-    // The target is pinned: hover shows sizes, which differ on LLP64 hosts.
-    "flags": ["-std=c++23", "-Iinclude", "--target=x86_64-unknown-linux-gnu"],
-    "units": {
-      "main.cpp": ["-DHOST"],
-      "dual.c": [
-        ["-x", "c++", "-std=c++23"],
-        ["-x", "c", "-std=c17"],
-      ],
-    },
-    "databases": { "build": ["main.cpp"] },
-    "compiles": false,
-  }
+  ```toml
+  # The target is pinned: hover shows sizes, which differ on LLP64 hosts.
+  flags = ["-std=c++23", "-Iinclude", "--target=x86_64-unknown-linux-gnu"]
+  compiles = false
+
+  [units]
+  "main.cpp" = ["-DHOST"]
+  "dual.c" = [["-x", "c++", "-std=c++23"], ["-x", "c", "-std=c17"]]
+
+  [databases]
+  build = ["main.cpp"]
   ```
 
   - A command is `clang++` (`clang` for a `.c` unit), `flags`, the unit's own
@@ -101,9 +98,10 @@ push runs them, `ecosystem/` at the repository root does
   - Every database's `directory` is the copy's root: relative paths in flags
     resolve there.
   - `databases` writes a `compile_commands.json` into each named directory for
-    the units it lists; `{}` writes none (the case ships its own, or none is
-    the point). Without it, one database at the root holds every unit.
-  - `compiles: false` says the code does not compile on purpose. An answers
+    the units it lists; `databases = {}` writes none (the case ships its own,
+    or none is the point). Without it, one database at the root holds every
+    unit.
+  - `compiles = false` says the code does not compile on purpose. An answers
     test checks it both ways: errors fail it without the key, a clean compile
     fails it with.
 
@@ -436,8 +434,8 @@ surface nothing exercised and fails. The surface comes from the product: the
 configuration schema, each command's `--help`, the server's capabilities, the
 public `clice/*` requests. An item is `method <name>`, `command <words>`,
 `flag <command> --<name>` (`flag * --<name>` for one every command takes) or
-`config <key>`; it is exempted only with a reason in `tests/coverage.json`, and
-an exemption naming nothing uncovered fails too.
+`config <key>`; it is exempted only with a reason in `tests/coverage.toml`
+(`"<item>" = "<reason>"`), and an exemption naming nothing uncovered fails too.
 
 ## Outside the topics
 
@@ -511,7 +509,7 @@ case needs them, and `snap.toml` the way the framework writes it.
 
 ```
 tools/testing/
-  cases/          discovery, project.jsonc, copies, scripts, answers tests, snap.toml
+  cases/          discovery, project.toml, copies, scripts, answers tests, snap.toml
   render/         the requests both clients answer, answers to text and back to ranges
   server/         the server client and its actions over the test hooks
   inspect/        the clice inspect client

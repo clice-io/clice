@@ -1,5 +1,0 @@
-{
-  // The standard library is the case's own headers, written the way the
-  // real ones forward their arguments.
-  "flags": ["-I.", "-nostdinc"]
-}

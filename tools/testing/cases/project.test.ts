@@ -51,8 +51,8 @@ describe("readProject", () => {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-case-copy-")));
         try {
             fs.writeFileSync(
-                path.join(dir, "project.jsonc"),
-                '{\n  // Why the units are split.\n  "units": { "a.cpp": ["-DA"], "b.cpp": [] },\n  "databases": { "build": ["a.cpp"] }\n}\n',
+                path.join(dir, "project.toml"),
+                '# Why the units are split.\n[units]\n"a.cpp" = ["-DA"]\n"b.cpp" = []\n\n[databases]\nbuild = ["a.cpp"]\n',
             );
             const project = readProject(dir);
             expect(project.databases).toEqual({ build: ["a.cpp"] });
@@ -70,6 +70,23 @@ describe("readProject", () => {
         } finally {
             fs.rmSync(dir, { recursive: true });
             fs.rmSync(root, { recursive: true });
+        }
+    });
+
+    test("an error names the file and the key", () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-case-src-"));
+        const file = path.join(dir, "project.toml");
+        try {
+            fs.writeFileSync(file, '[units]\n"a.cpp" = "-DA"\n');
+            expect(() => readProject(dir)).toThrow(
+                /project\.toml: units\."a\.cpp" is a list of strings/,
+            );
+            fs.writeFileSync(file, "flag = []\n");
+            expect(() => readProject(dir)).toThrow(/project\.toml: unknown key 'flag'/);
+            fs.writeFileSync(file, "flags = [\n");
+            expect(() => readProject(dir)).toThrow(/project\.toml: Invalid TOML document/);
+        } finally {
+            fs.rmSync(dir, { recursive: true });
         }
     });
 });

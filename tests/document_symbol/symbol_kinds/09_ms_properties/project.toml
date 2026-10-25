@@ -1,0 +1,2 @@
+# The target is pinned: MinGW predefines `__declspec` as a macro.
+flags = ["-fms-extensions", "--target=x86_64-unknown-linux-gnu"]

@@ -1,6 +1,0 @@
-{
-  // Built in two phases, as --precompile does: a full BMI keeps the
-  // specializations the global module fragment declares, which nothing in
-  // the purview names.
-  "units": { "pairs.cppm": ["--precompile"], "main.cpp": [] }
-}

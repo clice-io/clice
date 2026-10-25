@@ -1,5 +1,0 @@
-{
-  // Each project ships its own database, two levels below the root, where
-  // startup does not look.
-  "databases": {}
-}

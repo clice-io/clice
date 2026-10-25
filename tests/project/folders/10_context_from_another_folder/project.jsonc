@@ -1,5 +1,0 @@
-{
-  // Only the application defines IN_APP.
-  "units": { "lib/src/lib.cpp": ["-Ilib/include"], "app/main.cpp": ["-Ilib/include", "-DIN_APP"] },
-  "databases": { "lib": ["lib/src/lib.cpp"], "app": ["app/main.cpp"] }
-}

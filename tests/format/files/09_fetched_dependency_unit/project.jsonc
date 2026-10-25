@@ -1,5 +1,0 @@
-{
-  // A CMake build tree: FetchContent put foo's sources under build/_deps.
-  "flags": ["-Ibuild/_deps/foo-src/include"],
-  "databases": { "build": ["src/main.cpp", "build/_deps/foo-src/foo.cpp"] }
-}

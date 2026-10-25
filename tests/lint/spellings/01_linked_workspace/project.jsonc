@@ -1,5 +1,0 @@
-{
-  // The workspace is ws, a link to real/; its database names the files
-  // through the link, as a build run there does.
-  "databases": {}
-}

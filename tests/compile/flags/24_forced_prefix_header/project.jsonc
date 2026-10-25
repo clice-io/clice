@@ -1,5 +1,0 @@
-{
-  "units": {
-    "main.cpp": ["-include", "prefix.h"]
-  }
-}

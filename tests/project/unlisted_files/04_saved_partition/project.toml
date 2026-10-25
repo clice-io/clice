@@ -1,0 +1,2 @@
+# No file provides a:part until the test saves one.
+flags = ["-std=c++20"]

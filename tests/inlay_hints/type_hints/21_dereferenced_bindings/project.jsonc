@@ -1,5 +1,0 @@
-{
-  // The standard library is the case's own headers: a host's prints its
-  // strings its own way.
-  "flags": ["-I.", "-nostdinc"]
-}

@@ -4,6 +4,7 @@
 /// takes) or `config <key path>`; an exemption names an item and says why.
 
 import * as fs from "node:fs";
+import { parse } from "smol-toml";
 import type * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../../client/client.ts";
 import { Workspace } from "../../client/workspace.ts";
@@ -110,7 +111,7 @@ export async function check(
     recordsDir: string,
     exemptFile: string,
 ): Promise<string[]> {
-    const exempt = JSON.parse(fs.readFileSync(exemptFile, "utf8")) as Record<string, string>;
+    const exempt = parse(fs.readFileSync(exemptFile, "utf8")) as Record<string, string>;
     const records = readRecords(recordsDir);
     const items = await surface(clice);
     const out: string[] = [];

@@ -1,0 +1,6 @@
+# The workspace is ws/; the build names ws/link.cpp, a link out of it.
+[units]
+"ws/link.cpp" = []
+
+[databases]
+ws = ["ws/link.cpp"]

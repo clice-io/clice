@@ -1,3 +1,0 @@
-{
-  "units": { "render_vk.cpp": ["-DUSE_VULKAN"], "render_mt.cpp": ["-DUSE_METAL"] }
-}

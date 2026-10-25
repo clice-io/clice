@@ -1,4 +1,0 @@
-{
-  "units": { "outer/inner/main.cpp": ["-DIN_OUTER"] },
-  "databases": { "outer": ["outer/inner/main.cpp"] }
-}

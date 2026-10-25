@@ -1,0 +1,2 @@
+# sys/ stands in for a system header, so the modifier is the same on every host.
+flags = ["-isystem", "sys"]

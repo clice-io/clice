@@ -1,5 +1,0 @@
-{
-  // flags.rsp is UTF-16 with a byte order mark, as MSVC's tools write
-  // response files; it names an include directory past ASCII.
-  "units": { "main.cpp": ["@flags.rsp"] }
-}

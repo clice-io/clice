@@ -1,0 +1,2 @@
+# __has_embed comes with C++26.
+flags = ["-std=c++26"]

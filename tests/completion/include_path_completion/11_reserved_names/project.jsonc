@@ -1,4 +1,0 @@
-{
-  "flags": ["-Iinc", "-isystem", "sys"],
-  "compiles": false
-}

@@ -1,0 +1,2 @@
+# The database spells every path relative to build/.
+databases = {}

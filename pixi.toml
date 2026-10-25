@@ -322,7 +322,7 @@ format-python = "ruff format ."
 format-lua = "stylua ."
 format-web = "fd -H -e js -e mjs -e ts -e css -X prettier --write"
 format-markdown = "fd -H -e md -X prettier --write"
-format-json = "fd -H -e json -e jsonc -E package-lock.json -E clice-config.schema.json -X prettier --write"
+format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier --write"
 format-toml = "fd -H -e toml -X tombi format"
 format-yaml = """
 fd -H -e yaml -e yml -E '*.snap.yml' -X prettier --write && \

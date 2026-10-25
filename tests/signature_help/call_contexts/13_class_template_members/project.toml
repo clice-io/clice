@@ -1,0 +1,3 @@
+# The standard library is the case's own header: a host's names its
+# strings its own way.
+flags = ["-I.", "-nostdinc"]

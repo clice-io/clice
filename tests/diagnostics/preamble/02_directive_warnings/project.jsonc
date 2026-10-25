@@ -1,4 +1,0 @@
-{
-  // An unknown warning option: every build warns about the command line.
-  "flags": ["-Wlogical-op"]
-}

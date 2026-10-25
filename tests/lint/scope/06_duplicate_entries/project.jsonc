@@ -1,4 +1,0 @@
-{
-  // The build compiles main.cpp twice, with and without FAST.
-  "units": { "main.cpp": [["-DFAST"], []] }
-}

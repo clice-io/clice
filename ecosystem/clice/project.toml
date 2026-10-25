@@ -1,0 +1,12 @@
+about = "clice itself at the commit under test"
+
+[configurations.bazel]
+about = "one C++23 module, its database from Bazel"
+platforms = ["linux", "macos"]
+database = "compile_commands.json"
+
+[[configurations.bazel.prepare]]
+run = ["npx", "bazel", "run", "@compdb//:refresh", "--", "--output_groups=+compilation_prerequisites_INTERNAL_"]
+
+[[configurations.bazel.prepare]]
+run = ["npx", "bazel", "shutdown"]

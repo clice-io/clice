@@ -1,4 +1,0 @@
-{
-  // scratch.cpp is no unit of the build.
-  "units": { "src/engine.cpp": [], "tools/tool.cpp": [] }
-}

@@ -130,7 +130,7 @@ function gateCompile(c: Case, client: string, errors: readonly string[]): void {
     }
     if (errors.length === 0 && c.project.compiles === false) {
         throw new Error(
-            `${c.id}: project.jsonc says compiles: false, but the code compiles cleanly on ${client}`,
+            `${c.id}: project.toml says compiles = false, but the code compiles cleanly on ${client}`,
         );
     }
 }

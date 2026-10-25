@@ -1,3 +1,0 @@
-{
-  "databases": { "alpha": ["alpha/main.cpp"], "beta": ["beta/main.cpp"] }
-}

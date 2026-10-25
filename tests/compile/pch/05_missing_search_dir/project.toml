@@ -1,0 +1,2 @@
+# The search directory does not exist until the generator runs.
+flags = ["-Igen"]

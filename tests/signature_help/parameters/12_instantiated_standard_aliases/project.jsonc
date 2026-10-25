@@ -1,5 +1,0 @@
-{
-  // The standard library is the case's own header: std::string and
-  // std::pmr::string name two specializations of one template.
-  "flags": ["-I.", "-nostdinc"]
-}

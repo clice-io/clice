@@ -1,3 +1,0 @@
-{
-  "units": { "fast.cppm": [], "slow.cppm": [], "main.cpp": ["-DUSE_FAST"] }
-}

@@ -1,4 +1,0 @@
-{
-  // Without a step limit the constant evaluation runs for hours.
-  "flags": ["-std=c++23", "-fconstexpr-steps=2147483647"]
-}

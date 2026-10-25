@@ -1,0 +1,3 @@
+[databases]
+a = ["a/main.cpp"]
+b = ["b/main.cpp"]

@@ -1,0 +1,5 @@
+# Headers the command line includes have no #include line: what they
+# report lands at the top of the file.
+[units]
+"missing.cpp" = ["-include", "missing.h"]
+"forced.cpp" = ["-include", "forced.h"]

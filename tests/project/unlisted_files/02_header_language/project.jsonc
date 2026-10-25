@@ -1,4 +1,0 @@
-{
-  // types.hpp fails to compile as C on purpose: no C++ unit includes it.
-  "units": { "c/impl.c": ["-std=c17", "-DFROM_C"] }
-}

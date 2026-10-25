@@ -1,0 +1,5 @@
+# gen/ does not exist until the test writes the header there.
+[units]
+"b.cppm" = ["-Igen"]
+"a.cppm" = []
+"main.cpp" = []

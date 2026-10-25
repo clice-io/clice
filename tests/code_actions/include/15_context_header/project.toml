@@ -1,0 +1,2 @@
+# utils.h compiles only in main.cpp's context, and helper is undeclared.
+compiles = false

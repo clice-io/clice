@@ -1,4 +1,0 @@
-{
-  // console.h stands in for a system header.
-  "flags": ["-isystem", "sys"]
-}

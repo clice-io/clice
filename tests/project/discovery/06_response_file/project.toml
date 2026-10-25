@@ -1,0 +1,3 @@
+[units]
+"main.cpp" = ["@flags.rsp"]
+"other.cpp" = ["-DOTHER"]

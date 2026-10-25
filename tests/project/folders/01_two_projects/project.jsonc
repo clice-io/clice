@@ -1,4 +1,0 @@
-{
-  "units": { "alpha/main.cpp": ["-DIN_ALPHA"], "beta/main.cpp": ["-DIN_BETA"] },
-  "databases": { "alpha": ["alpha/main.cpp"], "beta": ["beta/main.cpp"] }
-}

@@ -17,7 +17,7 @@ import {
 } from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
 import { prepare, withoutOrderOnly } from "./prepare.ts";
-import { validated, type Configuration, type Project } from "./project.ts";
+import { validated, type Configuration, type Project, type Step } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
 import { allJobs, findJob, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
@@ -78,7 +78,7 @@ describe("projects", () => {
         expect(gcc?.config.packages).toEqual(["g++-13"]);
     });
 
-    test("a project.json that cannot be what it says is an error", () => {
+    test("a project.toml that cannot be what it says is an error", () => {
         const project: Project = {
             name: "p",
             about: "",
@@ -99,10 +99,14 @@ describe("projects", () => {
         const config = { about: "", prepare: [], database: "db.json" };
         expect(
             broken({ configurations: { c: { ...config, platforms: ["mac" as "macos"] } } }),
-        ).toThrow(/c names unknown platforms: mac/);
+        ).toThrow(/project\.toml: configurations\.c\.platforms names unknown platforms: mac/);
         expect(
             broken({ configurations: { c: { ...config, parts: { a: ["a/"] }, keep: 1 } } }),
-        ).toThrow(/c both splits its database and thins it/);
+        ).toThrow(/configurations\.c both splits its database \(parts\) and thins it \(keep\)/);
+        const step = { run: ["make"], generated: "build" } as unknown as Step;
+        expect(broken({ configurations: { c: { ...config, prepare: [step] } } })).toThrow(
+            /configurations\.c\.prepare\[0\] needs exactly one of run, generated and database, not run and generated/,
+        );
     });
 });
 
@@ -245,7 +249,9 @@ describe("prepare", () => {
             about: "",
             repository: upstream,
             commit: git("rev-parse", "HEAD"),
-            configurations: { c: { about: "", prepare: [write(flag)], database: "db.json" } },
+            configurations: {
+                c: { about: "", prepare: [{ run: write(flag) }], database: "db.json" },
+            },
         });
         const target = await prepare(project("-DOLD"), "c", dir);
         expect(await prepare(project("-DOLD"), "c", dir)).toBe(target);
