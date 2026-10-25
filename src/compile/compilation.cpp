@@ -530,31 +530,75 @@ template struct PragmaHandlersOf<&clang::Preprocessor::PragmaHandlers>;
 
 clang::PragmaNamespace& pragma_handlers(clang::Preprocessor& pp);
 
-/// Where the headers a SystemHeaderPragma silenced end, their warnings come
-/// back.
-struct SilencedHeaders : clang::PPCallbacks {
+/// The headers a SystemHeaderPragma silenced. Where one ends, its warnings
+/// come back, along with the diagnostic pushes left open in it.
+class SilencedHeaders : public clang::PPCallbacks {
+public:
     explicit SilencedHeaders(clang::DiagnosticsEngine& diagnostics) : diagnostics(diagnostics) {}
+
+    void silence(clang::FileID header, clang::SourceLocation loc) {
+        diagnostics.pushMappings(loc);
+        diagnostics.setSeverityForAll(clang::diag::Flavor::WarningOrError,
+                                      clang::diag::Severity::Ignored,
+                                      loc);
+        headers.push_back({.fid = header});
+    }
+
+    void PragmaDiagnosticPush(clang::SourceLocation, llvm::StringRef) override {
+        count_pushes(1);
+    }
+
+    void PragmaDiagnosticPop(clang::SourceLocation, llvm::StringRef) override {
+        count_pushes(-1);
+    }
+
+    void PragmaWarningPush(clang::SourceLocation, int) override {
+        count_pushes(1);
+    }
+
+    void PragmaWarningPop(clang::SourceLocation) override {
+        count_pushes(-1);
+    }
 
     void FileChanged(clang::SourceLocation loc,
                      FileChangeReason reason,
                      clang::SrcMgr::CharacteristicKind,
                      clang::FileID prev) override {
-        while(reason == ExitFile && !headers.empty() && headers.back() == prev) {
-            diagnostics.popMappings(loc);
+        while(reason == ExitFile && !headers.empty() && headers.back().fid == prev) {
+            for(int pops = headers.back().pushes + 1; pops > 0; pops -= 1) {
+                diagnostics.popMappings(loc);
+            }
             headers.pop_back();
         }
     }
 
+private:
+    void count_pushes(int count) {
+        if(!headers.empty()) {
+            headers.back().pushes += count;
+        }
+    }
+
+private:
+    struct Header {
+        clang::FileID fid;
+
+        /// The pushes since it was silenced, less the pops: a pop past them
+        /// took the silencing's own.
+        int pushes = 0;
+    };
+
     clang::DiagnosticsEngine& diagnostics;
 
-    llvm::SmallVector<clang::FileID, 1> headers;
+    llvm::SmallVector<Header, 1> headers;
 };
 
-/// `#pragma clang system_header`, and GCC's. CMake opens the cmake_pch.hxx
-/// it forces into the units of a target with precompiled headers with one,
-/// to silence the warnings of the headers it includes, and clang makes them
-/// all system headers, the project's own among them. In a header a command
-/// forces in, the pragma only silences warnings, up to the end of it.
+/// `#pragma clang system_header`, GCC's and Microsoft's. CMake opens the
+/// cmake_pch.hxx it forces into the units of a target with precompiled
+/// headers with one, to silence the warnings of the headers it includes, and
+/// clang makes them all system headers, the project's own among them. In a
+/// header a command forces in, the pragma only silences warnings, up to the
+/// end of it.
 struct SystemHeaderPragma : clang::PragmaHandler {
     SystemHeaderPragma(clang::PragmaHandler* builtin, SilencedHeaders& silenced) :
         PragmaHandler(builtin->getName()), builtin(builtin), silenced(silenced) {}
@@ -568,12 +612,7 @@ struct SystemHeaderPragma : clang::PragmaHandler {
             builtin->HandlePragma(pp, introducer, token);
             return;
         }
-        auto& diagnostics = pp.getDiagnostics();
-        diagnostics.pushMappings(token.getLocation());
-        diagnostics.setSeverityForAll(clang::diag::Flavor::WarningOrError,
-                                      clang::diag::Severity::Ignored,
-                                      token.getLocation());
-        silenced.headers.push_back(header);
+        silenced.silence(header, token.getLocation());
         pp.CheckEndOfDirective("pragma");
     }
 
@@ -586,11 +625,15 @@ struct SystemHeaderPragma : clang::PragmaHandler {
 
 static void handle_system_header_pragmas(clang::Preprocessor& pp) {
     auto silenced = std::make_unique<SilencedHeaders>(pp.getDiagnostics());
-    for(llvm::StringRef space: {"clang", "GCC"}) {
-        auto* handlers = pragma_handlers(pp).FindHandler(space)->getIfNamespace();
-        auto* builtin = handlers->FindHandler("system_header");
-        handlers->RemovePragmaHandler(builtin);
-        handlers->AddPragma(new SystemHeaderPragma(builtin, *silenced));
+    auto& root = pragma_handlers(pp);
+    for(auto* handlers: {&root,
+                         root.FindHandler("clang")->getIfNamespace(),
+                         root.FindHandler("GCC")->getIfNamespace()}) {
+        // Microsoft's, at the root, exists only under -fms-extensions.
+        if(auto* builtin = handlers->FindHandler("system_header")) {
+            handlers->RemovePragmaHandler(builtin);
+            handlers->AddPragma(new SystemHeaderPragma(builtin, *silenced));
+        }
     }
     pp.addPPCallbacks(std::move(silenced));
 }

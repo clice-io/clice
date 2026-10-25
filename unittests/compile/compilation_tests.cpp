@@ -116,12 +116,17 @@ int x = FROM_GEN;
 }
 
 ZEST_CASE(ForcedSystemHeaderPragma) {
-    /// A header the command forces in declares itself a system header, as
-    /// CMake's cmake_pch.hxx does: the headers it includes stay the
-    /// project's, their warnings silenced up to its end.
+    /// Headers the command forces in declare themselves system headers, as
+    /// CMake's cmake_pch.hxx does: the headers they include stay the
+    /// project's, their warnings silenced up to the end of each, along with
+    /// the diagnostic pushes left open in them.
     TempDir tmp;
     tmp.touch("prefix.h", R"(
 #pragma GCC system_header
+#include "wrapper.h"
+)");
+    tmp.touch("wrapper.h", R"(
+#pragma clang diagnostic push
 #include "shape.h"
 )");
     tmp.touch("shape.h", R"(
@@ -129,16 +134,26 @@ ZEST_CASE(ForcedSystemHeaderPragma) {
 struct Shape {};
 inline int ratio() { return 1 / 0; }
 )");
+    tmp.touch("microsoft.h", R"(
+#pragma system_header
+#include "panel.h"
+)");
+    tmp.touch("panel.h", R"(
+#pragma once
+struct Panel {};
+inline int share() { return 2 / 0; }
+)");
     tmp.touch("library.h", R"(
 #pragma clang system_header
 struct Library {};
 )");
     // A diagnostic pragma starts from the state the last one left, which the
-    // end of prefix.h must have restored.
+    // ends of the forced headers must have restored.
     tmp.touch("main.cpp", R"(
 #include "library.h"
 #pragma clang diagnostic ignored "-Wunused-variable"
 Shape shape;
+Panel panel;
 Library library;
 int quotient = 1 / 0;
 )");
@@ -146,8 +161,11 @@ int quotient = 1 / 0;
     params.kind = CompilationKind::Content;
     params.input.arguments = {"clang++",
                               "-std=c++20",
+                              "-fms-extensions",
                               "-include",
                               tmp.path("prefix.h"),
+                              "-include",
+                              tmp.path("microsoft.h"),
                               tmp.path("main.cpp")};
     params.input.directory = tmp.root.str().str();
 
@@ -159,6 +177,7 @@ int quotient = 1 / 0;
         return built->context().getSourceManager().isInSystemHeader(found.front()->getLocation());
     };
     ZEXPECT(!system("Shape"));
+    ZEXPECT(!system("Panel"));
     ZEXPECT(system("Library"));
     auto warnings = ranges::to<std::vector>(
         built->diagnostics() | views::filter([](const Diagnostic& diag) {
