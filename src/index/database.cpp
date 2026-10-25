@@ -7,6 +7,7 @@ module;
 #endif
 
 #ifndef _WIN32
+#include <fcntl.h>
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -235,6 +236,39 @@ private:
     bool locked = false;
 };
 
+/// Whether a process outside the `-open` file's protocol (an older clice)
+/// has the database at `path` open: every LMDB opener holds a lock on the
+/// first byte of the `-lock` file. On POSIX it is a record lock, which
+/// belongs to the process: asked only while this process has the database
+/// closed, as closing any descriptor of a file drops the process's record
+/// locks on it.
+bool opened_elsewhere(llvm::StringRef path) {
+    int fd = -1;
+    if(llvm::sys::fs::openFileForReadWrite(path + "-lock",
+                                           fd,
+                                           llvm::sys::fs::CD_OpenExisting,
+                                           llvm::sys::fs::OF_None)) {
+        return false;
+    }
+#ifdef _WIN32
+    OVERLAPPED at = {};
+    auto handle = llvm::sys::fs::convertFDToNativeFile(fd);
+    bool held =
+        !::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at);
+    if(!held) {
+        ::UnlockFileEx(handle, 0, 1, 0, &at);
+    }
+#else
+    struct flock lock{};
+    lock.l_type = F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_len = 1;
+    bool held = ::fcntl(fd, F_GETLK, &lock) == 0 && lock.l_type != F_UNLCK;
+#endif
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    return held;
+}
+
 /// The file's length against the length its newest meta page guarantees:
 /// every page up to the last one it declares.
 struct Coverage {
@@ -380,6 +414,10 @@ public:
         // writer lock lets the next open start from an empty database.
         if(condemned) {
             remove_database_files(path);
+        }
+        // A shrink cancelled between the copy and the swap leaves its copy.
+        if(!read_only_) {
+            vfs::remove(path + "-compact");
         }
     }
 
@@ -576,16 +614,21 @@ public:
         txn = nullptr;
         mdb_env_close(env);
         env = nullptr;
-        auto renamed = llvm::sys::fs::rename(copy, path);
-        if(renamed) {
-            LOG_WARN("Cannot replace the index database by its compact copy: {}",
-                     renamed.message());
+        bool replaced = false;
+        if(opened_elsewhere(path)) {
+            LOG_INFO("A process of an older clice has the index database open; its file is kept");
+        } else if(auto error = llvm::sys::fs::rename(copy, path)) {
+            LOG_WARN("Cannot replace the index database by its compact copy: {}", error.message());
+        } else {
+            replaced = true;
+        }
+        if(!replaced) {
             vfs::remove(copy);
         }
         if(!reopen(info.me_mapsize)) {
             return Swap::Lost;
         }
-        return renamed ? Swap::Kept : Swap::Replaced;
+        return replaced ? Swap::Replaced : Swap::Kept;
     }
 
     bool corrupted() const override {

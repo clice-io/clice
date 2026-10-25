@@ -5,7 +5,10 @@ module;
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <sys/file.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 module clice;
@@ -81,6 +84,74 @@ struct ForeignReader {
     }
 
     int fd = -1;
+};
+
+/// The database open in a process outside the `-open` file's protocol, as
+/// an older clice holds it: LMDB's lock on its `-lock` file. On POSIX a
+/// child process takes the record lock, which never conflicts with its own
+/// process.
+struct OlderOpener {
+    explicit OlderOpener(const std::string& database) {
+#ifdef _WIN32
+        require(!llvm::sys::fs::openFileForReadWrite(database + "-lock",
+                                                     fd,
+                                                     llvm::sys::fs::CD_OpenExisting,
+                                                     llvm::sys::fs::OF_None),
+                "open the -lock file");
+        OVERLAPPED at = {};
+        require(::LockFileEx(llvm::sys::fs::convertFDToNativeFile(fd),
+                             LOCKFILE_FAIL_IMMEDIATELY,
+                             0,
+                             1,
+                             0,
+                             &at),
+                "lock the -lock file");
+#else
+        auto lock_file = database + "-lock";
+        int ready[2];
+        int done[2];
+        require(::pipe(ready) == 0, "make a pipe");
+        require(::pipe(done) == 0, "make a pipe");
+        child = ::fork();
+        require(child >= 0, "fork");
+        if(child == 0) {
+            int lock_fd = ::open(lock_file.c_str(), O_RDWR);
+            struct flock lock{};
+            lock.l_type = F_RDLCK;
+            lock.l_whence = SEEK_SET;
+            lock.l_len = 1;
+            char locked = lock_fd >= 0 && ::fcntl(lock_fd, F_SETLK, &lock) == 0;
+            [[maybe_unused]] auto written = ::write(ready[1], &locked, 1);
+            [[maybe_unused]] auto read = ::read(done[0], &locked, 1);
+            ::_exit(0);
+        }
+        ::close(ready[1]);
+        ::close(done[0]);
+        char locked = 0;
+        require(::read(ready[0], &locked, 1) == 1 && locked, "lock the -lock file");
+        ::close(ready[0]);
+        fd = done[1];
+#endif
+    }
+
+    ~OlderOpener() {
+#ifdef _WIN32
+        OVERLAPPED at = {};
+        ::UnlockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), 0, 1, 0, &at);
+        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+#else
+        ::close(fd);
+        ::waitpid(child, nullptr, 0);
+#endif
+    }
+
+    /// The locked `-lock` file; on POSIX the pipe whose close lets the
+    /// child exit.
+    int fd = -1;
+
+#ifndef _WIN32
+    pid_t child = -1;
+#endif
 };
 
 /// A database of 64 values on overflow pages, 56 of them removed again, so
@@ -717,6 +788,36 @@ ZEST_CASE(ReaderKeepsFile) {
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
     ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Replaced);
     ZEXPECT(db->usage()->pages < pages);
+}
+
+ZEST_CASE(OlderOpenerKeepsFile) {
+    // An older clice reads the transaction numbering the copy restarts from
+    // the `-lock` file it shares: the file stays while it has it open.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto file = path::join(index::database_directory(store, ""), "index.mdb");
+    auto db = sparse_database(store);
+    auto pages = db->usage()->pages;
+    OlderOpener opener(file);
+    ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
+    ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Kept);
+    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
+    ZEXPECT(db->usage()->pages == pages);
+    auto value = db->read(index::BlobKind::Shard, "60");
+    ZASSERT(bool(value));
+    ZEXPECT(value.buffer->getBuffer() == std::string(1 << 16, 'a' + 60 % 26));
+}
+
+ZEST_CASE(ClosingRemovesCopy) {
+    // A shrink cancelled between the copy and the swap leaves no copy.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto file = path::join(index::database_directory(store, ""), "index.mdb");
+    auto db = sparse_database(store);
+    ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
+    ZEXPECT(llvm::sys::fs::exists(file + "-compact"));
+    db.reset();
+    ZEXPECT(!llvm::sys::fs::exists(file + "-compact"));
 }
 
 ZEST_CASE(ReaderHoldsOpenLock) {

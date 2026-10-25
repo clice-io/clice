@@ -229,8 +229,9 @@ public:
         /// retiring EVERY read snapshot: all borrowed buffers died, and the
         /// caller rebinds every borrower before yielding the event loop.
         Replaced,
-        /// Replacing the file failed (logged): the handle was reopened on it
-        /// as for Replaced, and the copy is gone.
+        /// The file could not be replaced (logged): a process of an older
+        /// clice has it open, or the rename failed. The handle was reopened
+        /// on it as for Replaced, and the copy is gone.
         Kept,
         /// The handle could not be opened again and is unusable: the caller
         /// discards the database at once.
