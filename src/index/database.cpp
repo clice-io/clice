@@ -153,32 +153,20 @@ public:
         Exclusive,
     };
 
-    enum class Failure : std::uint8_t {
-        /// Another open file holds a conflicting lock.
-        Held,
-        /// The file cannot be opened.
-        Unopenable,
-    };
-
-    /// Lock the file of the database at `path`, creating it, trying for
-    /// `patience` at most.
-    static std::expected<OpenLock, Failure> acquire(llvm::StringRef path,
-                                                    Kind kind,
-                                                    std::chrono::milliseconds patience) {
+    /// Lock the file of the database at `path`, creating it; `wait` for a
+    /// conflicting lock to go, else fail at once. None when the lock is
+    /// held elsewhere or the file cannot be opened.
+    static std::optional<OpenLock> acquire(llvm::StringRef path, Kind kind, bool wait) {
         int fd = -1;
         if(llvm::sys::fs::openFileForReadWrite(path.str() + "-open",
                                                fd,
                                                llvm::sys::fs::CD_OpenAlways,
                                                llvm::sys::fs::OF_None)) {
-            return std::unexpected(Failure::Unopenable);
+            return std::nullopt;
         }
         OpenLock lock(fd);
-        auto deadline = std::chrono::steady_clock::now() + patience;
-        while(!lock.try_lock(kind)) {
-            if(std::chrono::steady_clock::now() >= deadline) {
-                return std::unexpected(Failure::Held);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if(!lock.lock(kind, wait)) {
+            return std::nullopt;
         }
         lock.locked = true;
         return lock;
@@ -201,16 +189,22 @@ public:
 private:
     explicit OpenLock(int fd) : fd(fd) {}
 
-    bool try_lock(Kind kind) {
+    bool lock(Kind kind, bool wait) {
 #ifdef _WIN32
         OVERLAPPED at = {};
-        DWORD flags = LOCKFILE_FAIL_IMMEDIATELY;
+        DWORD flags = wait ? 0 : LOCKFILE_FAIL_IMMEDIATELY;
         if(kind == Kind::Exclusive) {
             flags |= LOCKFILE_EXCLUSIVE_LOCK;
         }
         return ::LockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), flags, 0, 1, 0, &at);
 #else
-        return ::flock(fd, (kind == Kind::Exclusive ? LOCK_EX : LOCK_SH) | LOCK_NB) == 0;
+        int operation = (kind == Kind::Exclusive ? LOCK_EX : LOCK_SH) | (wait ? 0 : LOCK_NB);
+        while(::flock(fd, operation) != 0) {
+            if(errno != EINTR) {
+                return false;
+            }
+        }
+        return true;
 #endif
     }
 
@@ -524,7 +518,7 @@ public:
     }
 
     Copy write_compact_copy() override {
-        if(!OpenLock::acquire(path, OpenLock::Kind::Exclusive, std::chrono::milliseconds(0))) {
+        if(!OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false)) {
             return Copy::Busy;
         }
         // The copy holds the live pages; a volume it would fill fails every
@@ -559,8 +553,7 @@ public:
 
     Swap swap_compact_copy() override {
         auto copy = path + "-compact";
-        auto exclusive =
-            OpenLock::acquire(path, OpenLock::Kind::Exclusive, std::chrono::milliseconds(0));
+        auto exclusive = OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false);
         if(!exclusive) {
             vfs::remove(copy);
             return Swap::Busy;
@@ -832,13 +825,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // for milliseconds, which a reader arriving meanwhile waits out.
     std::optional<OpenLock> open_lock;
     if(read_only) {
-        auto locked = OpenLock::acquire(path, OpenLock::Kind::Shared, std::chrono::seconds(10));
-        if(locked) {
-            open_lock = std::move(*locked);
-        } else if(locked.error() == OpenLock::Failure::Held) {
-            LOG_WARN("Index database at {} stays locked while its file is replaced; retry", path);
-            return nullptr;
-        }
+        open_lock = OpenLock::acquire(path, OpenLock::Kind::Shared, /*wait=*/true);
     }
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
