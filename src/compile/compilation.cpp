@@ -515,6 +515,86 @@ static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind ki
     std::unreachable();
 }
 
+namespace {
+
+/// clang keeps a preprocessor's pragma handlers to itself; an explicit
+/// instantiation may name a private member.
+template <auto Handlers>
+struct PragmaHandlersOf {
+    friend clang::PragmaNamespace& pragma_handlers(clang::Preprocessor& pp) {
+        return *(pp.*Handlers);
+    }
+};
+
+template struct PragmaHandlersOf<&clang::Preprocessor::PragmaHandlers>;
+
+clang::PragmaNamespace& pragma_handlers(clang::Preprocessor& pp);
+
+/// Where the headers a SystemHeaderPragma silenced end, their warnings come
+/// back.
+struct SilencedHeaders : clang::PPCallbacks {
+    explicit SilencedHeaders(clang::DiagnosticsEngine& diagnostics) : diagnostics(diagnostics) {}
+
+    void FileChanged(clang::SourceLocation loc,
+                     FileChangeReason reason,
+                     clang::SrcMgr::CharacteristicKind,
+                     clang::FileID prev) override {
+        while(reason == ExitFile && !headers.empty() && headers.back() == prev) {
+            diagnostics.popMappings(loc);
+            headers.pop_back();
+        }
+    }
+
+    clang::DiagnosticsEngine& diagnostics;
+
+    llvm::SmallVector<clang::FileID, 1> headers;
+};
+
+/// `#pragma clang system_header`, and GCC's. CMake opens the cmake_pch.hxx
+/// it forces into the units of a target with precompiled headers with one,
+/// to silence the warnings of the headers it includes, and clang makes them
+/// all system headers, the project's own among them. In a header a command
+/// forces in, the pragma only silences warnings, up to the end of it.
+struct SystemHeaderPragma : clang::PragmaHandler {
+    SystemHeaderPragma(clang::PragmaHandler* builtin, SilencedHeaders& silenced) :
+        PragmaHandler(builtin->getName()), builtin(builtin), silenced(silenced) {}
+
+    void HandlePragma(clang::Preprocessor& pp,
+                      clang::PragmaIntroducer introducer,
+                      clang::Token& token) override {
+        auto& sm = pp.getSourceManager();
+        auto header = pp.getCurrentFileLexer()->getFileID();
+        if(sm.getFileID(sm.getIncludeLoc(header)) != pp.getPredefinesFileID()) {
+            builtin->HandlePragma(pp, introducer, token);
+            return;
+        }
+        auto& diagnostics = pp.getDiagnostics();
+        diagnostics.pushMappings(token.getLocation());
+        diagnostics.setSeverityForAll(clang::diag::Flavor::WarningOrError,
+                                      clang::diag::Severity::Ignored,
+                                      token.getLocation());
+        silenced.headers.push_back(header);
+        pp.CheckEndOfDirective("pragma");
+    }
+
+    std::unique_ptr<clang::PragmaHandler> builtin;
+
+    SilencedHeaders& silenced;
+};
+
+}  // namespace
+
+static void handle_system_header_pragmas(clang::Preprocessor& pp) {
+    auto silenced = std::make_unique<SilencedHeaders>(pp.getDiagnostics());
+    for(llvm::StringRef space: {"clang", "GCC"}) {
+        auto* handlers = pragma_handlers(pp).FindHandler(space)->getIfNamespace();
+        auto* builtin = handlers->FindHandler("system_header");
+        handlers->RemovePragmaHandler(builtin);
+        handlers->AddPragma(new SystemHeaderPragma(builtin, *silenced));
+    }
+    pp.addPPCallbacks(std::move(silenced));
+}
+
 CompilationStatus CompilationUnit::run() {
     auto diagnostic_consumer = diagnostic_recorder();
     auto invocation = create_invocation(diagnostic_consumer.get());
@@ -586,6 +666,7 @@ CompilationStatus CompilationUnit::run() {
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
+    handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the
     // preamble uses, and checks little else: the end of the last

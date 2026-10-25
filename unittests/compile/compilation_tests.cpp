@@ -115,6 +115,51 @@ int x = FROM_GEN;
     ZASSERT(built->diagnostics().empty());
 }
 
+ZEST_CASE(ForcedSystemHeaderPragma) {
+    /// A header the command forces in declares itself a system header, as
+    /// CMake's cmake_pch.hxx does: the headers it includes stay the
+    /// project's, their warnings silenced up to its end.
+    TempDir tmp;
+    tmp.touch("prefix.h", "#pragma GCC system_header\n#include \"shape.h\"\n");
+    tmp.touch("shape.h", R"(
+#pragma once
+struct Shape {};
+inline int ratio() { return 1 / 0; }
+)");
+    tmp.touch("library.h", "#pragma clang system_header\nstruct Library {};\n");
+    tmp.touch("main.cpp", R"(
+#include "library.h"
+#pragma clang diagnostic ignored "-Wunused-variable"
+Shape shape;
+Library library;
+int quotient = 1 / 0;
+)");
+
+    params.kind = CompilationKind::Content;
+    params.input.arguments = {"clang++",
+                              "-std=c++20",
+                              "-include",
+                              tmp.path("prefix.h"),
+                              tmp.path("main.cpp")};
+    params.input.directory = tmp.root.str().str();
+
+    auto built = clice::compile(std::move(params));
+    ZASSERT(built->completed());
+    auto system = [&](llvm::StringRef name) {
+        auto found = built->tu()->lookup(&built->context().Idents.get(name));
+        ZASSERT(found.isSingleResult());
+        return built->context().getSourceManager().isInSystemHeader(found.front()->getLocation());
+    };
+    ZEXPECT(!system("Shape"));
+    ZEXPECT(system("Library"));
+    auto warnings = ranges::to<std::vector>(
+        built->diagnostics() | std::views::filter([](const Diagnostic& diag) {
+            return diag.id.value == clang::diag::warn_remainder_division_by_zero;
+        }));
+    ZASSERT(warnings.size() == 1U);
+    ZEXPECT(warnings[0].fid == built->focus_file().file());
+}
+
 ZEST_CASE(OverlayNamesRedirectedFile) {
     /// A header an -ivfsoverlay maps under a virtual name is a dependency
     /// under the name of the file actually read.
