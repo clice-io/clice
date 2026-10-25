@@ -57,9 +57,7 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
                                                            llvm::StringSaver& saver) {
 #ifdef _WIN32
     llvm::SmallVector<const char*, 32> arguments;
-    for(auto argument: sys::windows::split_command_line(command)) {
-        arguments.push_back(saver.save(llvm::StringRef(argument)).data());
-    }
+    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
     return arguments;
 #else
     return tokenize_sh_command(command, saver);
