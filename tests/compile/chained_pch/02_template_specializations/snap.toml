@@ -144,7 +144,6 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -186,14 +185,14 @@ semantic_tokens = [
     { at = "static_assert(weight<Widget> == ⟦9⟧);", type = "number" },
     { at = "⟦int⟧ run() {", type = "primitive" },
     { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
-    { at = "⟦Box⟧<Widget> box{};", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "⟦Box⟧<Widget> box{};", type = "struct", modifiers = ["global", "template"] },
     { at = "Box⟦<⟧Widget> box{};", type = "bracket" },
     { at = "Box<⟦Widget⟧> box{};", type = "struct", modifiers = ["global"] },
     { at = "Box<Widget⟦>⟧ box{};", type = "bracket" },
     { at = "Box<Widget> ⟦box⟧{};", type = "variable", modifiers = ["definition", "local"] },
-    { at = "⟦Box⟧<Inbase> other{};", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "⟦Box⟧<Inbase> other{};", type = "struct", modifiers = ["global", "template"] },
     { at = "Box⟦<⟧Inbase> other{};", type = "bracket" },
-    { at = "Box<⟦Inbase⟧> other{};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Box<⟦Inbase⟧> other{};", type = "struct", modifiers = ["global"] },
     { at = "Box<Inbase⟦>⟧ other{};", type = "bracket" },
     { at = "Box<Inbase> ⟦other⟧{};", type = "variable", modifiers = ["definition", "local"] },
     { at = "⟦int⟧* pointer = nullptr;", type = "primitive" },
@@ -201,7 +200,7 @@ semantic_tokens = [
     { at = "int* ⟦pointer⟧ = nullptr;", type = "variable", modifiers = ["definition", "local"] },
     { at = "int* pointer ⟦=⟧ nullptr;", type = "operator" },
     { at = "int* pointer = ⟦nullptr⟧;", type = "keyword", modifiers = ["literal"] },
-    { at = "⟦Holder⟧<Widget> holder;", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "⟦Holder⟧<Widget> holder;", type = "struct", modifiers = ["global", "template"] },
     { at = "Holder⟦<⟧Widget> holder;", type = "bracket" },
     { at = "Holder<⟦Widget⟧> holder;", type = "struct", modifiers = ["global"] },
     { at = "Holder<Widget⟦>⟧ holder;", type = "bracket" },
@@ -217,20 +216,20 @@ semantic_tokens = [
     {
         at = "int total = box.⟦get⟧() + other.get() + twice(pointer);",
         type = "method",
-        modifiers = ["readonly", "defaultLibrary", "member"],
+        modifiers = ["readonly", "member"],
     },
     { at = "int total = box.get() ⟦+⟧ other.get() + twice(pointer);", type = "operator" },
     { at = "int total = box.get() + ⟦other⟧.get() + twice(pointer);", type = "variable", modifiers = ["local"] },
     {
         at = "int total = box.get() + other.⟦get⟧() + twice(pointer);",
         type = "method",
-        modifiers = ["readonly", "defaultLibrary", "member"],
+        modifiers = ["readonly", "member"],
     },
     { at = "int total = box.get() + other.get() ⟦+⟧ twice(pointer);", type = "operator" },
     {
         at = "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     { at = "int total = box.get() + other.get() + twice(⟦pointer⟧);", type = "variable", modifiers = ["local"] },
     {
@@ -300,7 +299,7 @@ semantic_tokens = [
     {
         at = "total += weight<Widget> + ⟦base_use⟧() + top_use() + twice(Inbase{});",
         type = "function",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     { at = "total += weight<Widget> + base_use() ⟦+⟧ top_use() + twice(Inbase{});", type = "operator" },
     {
@@ -312,12 +311,12 @@ semantic_tokens = [
     {
         at = "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "total += weight<Widget> + base_use() + top_use() + twice(⟦Inbase⟧{});",
         type = "struct",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     { at = "⟦return⟧ total + Traits<int*>::value;", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦total⟧ + Traits<int*>::value;", type = "variable", modifiers = ["local"] },

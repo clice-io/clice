@@ -9,17 +9,9 @@ semantic_tokens = [
     { at = "Point point{⟦1⟧, 2};", type = "number" },
     { at = "Point point{1, ⟦2⟧};", type = "number" },
     { at = "⟦return⟧ measure(point) + point.norm();", type = "keyword", modifiers = ["controlFlow"] },
-    {
-        at = "return ⟦measure⟧(point) + point.norm();",
-        type = "function",
-        modifiers = ["global", "template"],
-    },
+    { at = "return ⟦measure⟧(point) + point.norm();", type = "function", modifiers = ["global", "template"] },
     { at = "return measure(⟦point⟧) + point.norm();", type = "variable", modifiers = ["local"] },
     { at = "return measure(point) ⟦+⟧ point.norm();", type = "operator" },
     { at = "return measure(point) + ⟦point⟧.norm();", type = "variable", modifiers = ["local"] },
-    {
-        at = "return measure(point) + point.⟦norm⟧();",
-        type = "method",
-        modifiers = ["readonly", "member"],
-    },
+    { at = "return measure(point) + point.⟦norm⟧();", type = "method", modifiers = ["readonly", "member"] },
 ]

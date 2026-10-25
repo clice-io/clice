@@ -173,7 +173,6 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -201,7 +200,7 @@ semantic_tokens = [
     {
         at = "double total = ⟦twice⟧(Local{1.0}) + twice(Scoped{}) + make().value;",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "double total = twice(⟦Local⟧{1.0}) + twice(Scoped{}) + make().value;",
@@ -213,7 +212,7 @@ semantic_tokens = [
     {
         at = "double total = twice(Local{1.0}) + ⟦twice⟧(Scoped{}) + make().value;",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "double total = twice(Local{1.0}) + twice(⟦Scoped⟧{}) + make().value;",
@@ -224,12 +223,12 @@ semantic_tokens = [
     {
         at = "double total = twice(Local{1.0}) + twice(Scoped{}) + ⟦make⟧().value;",
         type = "function",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     {
         at = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;",
         type = "field",
-        modifiers = ["defaultLibrary", "member"],
+        modifiers = ["member"],
     },
     {
         at = "⟦total⟧ += helper(scale) + ring_twice() + hidden_twice();",
@@ -237,15 +236,11 @@ semantic_tokens = [
         modifiers = ["modification", "local"],
     },
     { at = "total ⟦+=⟧ helper(scale) + ring_twice() + hidden_twice();", type = "operator" },
-    {
-        at = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();",
-        type = "function",
-        modifiers = ["defaultLibrary", "internal"],
-    },
+    { at = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();", type = "function", modifiers = ["internal"] },
     {
         at = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
         type = "variable",
-        modifiers = ["readonly", "defaultLibrary", "internal"],
+        modifiers = ["readonly", "internal"],
     },
     { at = "total += helper(scale) ⟦+⟧ ring_twice() + hidden_twice();", type = "operator" },
     { at = "total += helper(scale) + ⟦ring_twice⟧() + hidden_twice();", type = "function", modifiers = ["internal"] },
@@ -265,13 +260,13 @@ semantic_tokens = [
     {
         at = "return total + ⟦Hidden⟧{2.0}.radius + Ring{3.0}.radius + ring_twice();",
         type = "struct",
-        modifiers = ["defaultLibrary", "internal"],
+        modifiers = ["internal"],
     },
     { at = "return total + Hidden{⟦2.0⟧}.radius + Ring{3.0}.radius + ring_twice();", type = "number" },
     {
         at = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();",
         type = "field",
-        modifiers = ["defaultLibrary", "member"],
+        modifiers = ["member"],
     },
     { at = "return total + Hidden{2.0}.radius ⟦+⟧ Ring{3.0}.radius + ring_twice();", type = "operator" },
     {

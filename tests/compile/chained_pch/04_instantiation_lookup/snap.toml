@@ -121,7 +121,6 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -138,19 +137,11 @@ semantic_tokens = [
     { at = "⟦int⟧ run() {", type = "primitive" },
     { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
     { at = "⟦decltype⟧(make(2)) made = make(3);", type = "keyword" },
-    {
-        at = "decltype(⟦make⟧(2)) made = make(3);",
-        type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
-    },
+    { at = "decltype(⟦make⟧(2)) made = make(3);", type = "function", modifiers = ["global", "template"] },
     { at = "decltype(make(⟦2⟧)) made = make(3);", type = "number" },
     { at = "decltype(make(2)) ⟦made⟧ = make(3);", type = "variable", modifiers = ["definition", "local"] },
     { at = "decltype(make(2)) made ⟦=⟧ make(3);", type = "operator" },
-    {
-        at = "decltype(make(2)) made = ⟦make⟧(3);",
-        type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
-    },
+    { at = "decltype(make(2)) made = ⟦make⟧(3);", type = "function", modifiers = ["global", "template"] },
     { at = "decltype(make(2)) made = make(⟦3⟧);", type = "number" },
     { at = "⟦int⟧ total = made + wrapped->size() + apply(Local{});", type = "primitive" },
     {
@@ -161,21 +152,17 @@ semantic_tokens = [
     { at = "int total ⟦=⟧ made + wrapped->size() + apply(Local{});", type = "operator" },
     { at = "int total = ⟦made⟧ + wrapped->size() + apply(Local{});", type = "variable", modifiers = ["local"] },
     { at = "int total = made ⟦+⟧ wrapped->size() + apply(Local{});", type = "operator" },
-    {
-        at = "int total = made + ⟦wrapped⟧->size() + apply(Local{});",
-        type = "variable",
-        modifiers = ["defaultLibrary", "global"],
-    },
+    { at = "int total = made + ⟦wrapped⟧->size() + apply(Local{});", type = "variable", modifiers = ["global"] },
     {
         at = "int total = made + wrapped->⟦size⟧() + apply(Local{});",
         type = "method",
-        modifiers = ["readonly", "defaultLibrary", "member"],
+        modifiers = ["readonly", "member"],
     },
     { at = "int total = made + wrapped->size() ⟦+⟧ apply(Local{});", type = "operator" },
     {
         at = "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     { at = "int total = made + wrapped->size() + apply(⟦Local⟧{});", type = "struct", modifiers = ["global"] },
     {
@@ -195,7 +182,7 @@ semantic_tokens = [
     {
         at = "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "return total + apply(⟦Gadget⟧{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
@@ -209,7 +196,7 @@ semantic_tokens = [
     {
         at = "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "return total + apply(Gadget{}) + apply(⟦Later⟧{}) + apply(Early{}) + base_use() + top_use();",
@@ -223,12 +210,12 @@ semantic_tokens = [
     {
         at = "return total + apply(Gadget{}) + apply(Later{}) + ⟦apply⟧(Early{}) + base_use() + top_use();",
         type = "function",
-        modifiers = ["defaultLibrary", "global", "template"],
+        modifiers = ["global", "template"],
     },
     {
         at = "return total + apply(Gadget{}) + apply(Later{}) + apply(⟦Early⟧{}) + base_use() + top_use();",
         type = "struct",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     {
         at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) ⟦+⟧ base_use() + top_use();",
@@ -237,7 +224,7 @@ semantic_tokens = [
     {
         at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + ⟦base_use⟧() + top_use();",
         type = "function",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     {
         at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() ⟦+⟧ top_use();",
@@ -254,11 +241,7 @@ semantic_tokens = [
         type = "function",
         modifiers = ["definition", "global"],
     },
-    {
-        at = "int probe(⟦Early⟧ early, Gadget gadget, Later later) {",
-        type = "struct",
-        modifiers = ["defaultLibrary", "global"],
-    },
+    { at = "int probe(⟦Early⟧ early, Gadget gadget, Later later) {", type = "struct", modifiers = ["global"] },
     {
         at = "int probe(Early ⟦early⟧, Gadget gadget, Later later) {",
         type = "parameter",
@@ -277,11 +260,7 @@ semantic_tokens = [
         modifiers = ["definition", "local"],
     },
     { at = "⟦return⟧ helper(early) + helper(gadget) + helper(later);", type = "keyword", modifiers = ["controlFlow"] },
-    {
-        at = "return ⟦helper⟧(early) + helper(gadget) + helper(later);",
-        type = "function",
-        modifiers = ["defaultLibrary", "global"],
-    },
+    { at = "return ⟦helper⟧(early) + helper(gadget) + helper(later);", type = "function", modifiers = ["global"] },
     { at = "return helper(⟦early⟧) + helper(gadget) + helper(later);", type = "parameter", modifiers = ["local"] },
     { at = "return helper(early) ⟦+⟧ helper(gadget) + helper(later);", type = "operator" },
     { at = "return helper(early) + ⟦helper⟧(gadget) + helper(later);", type = "function", modifiers = ["global"] },

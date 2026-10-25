@@ -120,13 +120,21 @@ ZEST_CASE(ForcedSystemHeaderPragma) {
     /// CMake's cmake_pch.hxx does: the headers it includes stay the
     /// project's, their warnings silenced up to its end.
     TempDir tmp;
-    tmp.touch("prefix.h", "#pragma GCC system_header\n#include \"shape.h\"\n");
+    tmp.touch("prefix.h", R"(
+#pragma GCC system_header
+#include "shape.h"
+)");
     tmp.touch("shape.h", R"(
 #pragma once
 struct Shape {};
 inline int ratio() { return 1 / 0; }
 )");
-    tmp.touch("library.h", "#pragma clang system_header\nstruct Library {};\n");
+    tmp.touch("library.h", R"(
+#pragma clang system_header
+struct Library {};
+)");
+    // A diagnostic pragma starts from the state the last one left, which the
+    // end of prefix.h must have restored.
     tmp.touch("main.cpp", R"(
 #include "library.h"
 #pragma clang diagnostic ignored "-Wunused-variable"
@@ -153,7 +161,7 @@ int quotient = 1 / 0;
     ZEXPECT(!system("Shape"));
     ZEXPECT(system("Library"));
     auto warnings = ranges::to<std::vector>(
-        built->diagnostics() | std::views::filter([](const Diagnostic& diag) {
+        built->diagnostics() | views::filter([](const Diagnostic& diag) {
             return diag.id.value == clang::diag::warn_remainder_division_by_zero;
         }));
     ZASSERT(warnings.size() == 1U);

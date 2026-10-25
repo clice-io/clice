@@ -12,17 +12,17 @@ items = [
 [answers.other_namespaces.completion]
 items = [
     {
-        label = "shapes::area_of_square(double side)",
-        kind = "Function",
-        detail = "double",
-        insert = "shapes::area_of_square(${1:double side})",
-        snippet = true,
-    },
-    {
         label = "geometry::area_of_circle(double radius)",
         kind = "Function",
         detail = "double",
         insert = "geometry::area_of_circle(${1:double radius})",
+        snippet = true,
+    },
+    {
+        label = "shapes::area_of_square(double side)",
+        kind = "Function",
+        detail = "double",
+        insert = "shapes::area_of_square(${1:double side})",
         snippet = true,
     },
 ]

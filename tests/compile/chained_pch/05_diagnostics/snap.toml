@@ -78,7 +78,6 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -87,20 +86,20 @@ semantic_tokens = [
     { at = "⟦int⟧ a = stale();", type = "primitive" },
     { at = "int ⟦a⟧ = stale();", type = "variable", modifiers = ["definition", "local"] },
     { at = "int a ⟦=⟧ stale();", type = "operator" },
-    { at = "int a = ⟦stale⟧();", type = "function", modifiers = ["deprecated", "defaultLibrary", "global"] },
-    { at = "⟦take⟧(1);", type = "function", modifiers = ["defaultLibrary", "global", "dependent"] },
+    { at = "int a = ⟦stale⟧();", type = "function", modifiers = ["deprecated", "global"] },
+    { at = "⟦take⟧(1);", type = "function", modifiers = ["global", "dependent"] },
     { at = "take(⟦1⟧);", type = "number" },
-    { at = "⟦Closed⟧ closed;", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "⟦Closed⟧ closed;", type = "struct", modifiers = ["global"] },
     { at = "Closed ⟦closed⟧;", type = "variable", modifiers = ["definition", "local"] },
     { at = "⟦int⟧ b = closed.secret;", type = "primitive" },
     { at = "int ⟦b⟧ = closed.secret;", type = "variable", modifiers = ["definition", "local"] },
     { at = "int b ⟦=⟧ closed.secret;", type = "operator" },
     { at = "int b = ⟦closed⟧.secret;", type = "variable", modifiers = ["local"] },
-    { at = "int b = closed.⟦secret⟧;", type = "field", modifiers = ["defaultLibrary", "member"] },
+    { at = "int b = closed.⟦secret⟧;", type = "field", modifiers = ["member"] },
     { at = "⟦int⟧ c = needs_size(1);", type = "primitive" },
     { at = "int ⟦c⟧ = needs_size(1);", type = "variable", modifiers = ["definition", "local"] },
     { at = "int c ⟦=⟧ needs_size(1);", type = "operator" },
-    { at = "int c = ⟦needs_size⟧(1);", type = "function", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "int c = ⟦needs_size⟧(1);", type = "function", modifiers = ["global", "template"] },
     { at = "int c = needs_size(⟦1⟧);", type = "number" },
     { at = "⟦return⟧ a + b + c + old_extra();", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦a⟧ + b + c + old_extra();", type = "variable", modifiers = ["local"] },

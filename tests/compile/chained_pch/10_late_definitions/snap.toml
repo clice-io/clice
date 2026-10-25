@@ -77,13 +77,12 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
     { at = "⟦int⟧ run() {", type = "primitive" },
     { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
-    { at = "⟦Lazy⟧<int> lazy;", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "⟦Lazy⟧<int> lazy;", type = "struct", modifiers = ["global", "template"] },
     { at = "Lazy⟦<⟧int> lazy;", type = "bracket" },
     { at = "Lazy<⟦int⟧> lazy;", type = "primitive" },
     { at = "Lazy<int⟦>⟧ lazy;", type = "bracket" },
@@ -99,30 +98,30 @@ semantic_tokens = [
     {
         at = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();",
         type = "method",
-        modifiers = ["readonly", "defaultLibrary", "member"],
+        modifiers = ["readonly", "member"],
     },
     { at = "int total = lazy.run() ⟦+⟧ square(2) + base_run() + top_run();", type = "operator" },
     {
         at = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();",
         type = "variable",
-        modifiers = ["defaultLibrary", "global", "callable"],
+        modifiers = ["global", "callable"],
     },
     {
         at = "int total = lazy.run() + square⟦(⟧2) + base_run() + top_run();",
         type = "operator",
-        modifiers = ["readonly", "defaultLibrary", "member", "constexpr", "userDefined"],
+        modifiers = ["readonly", "member", "constexpr", "userDefined"],
     },
     { at = "int total = lazy.run() + square(⟦2⟧) + base_run() + top_run();", type = "number" },
     {
         at = "int total = lazy.run() + square(2⟦)⟧ + base_run() + top_run();",
         type = "operator",
-        modifiers = ["readonly", "defaultLibrary", "member", "constexpr", "userDefined"],
+        modifiers = ["readonly", "member", "constexpr", "userDefined"],
     },
     { at = "int total = lazy.run() + square(2) ⟦+⟧ base_run() + top_run();", type = "operator" },
     {
         at = "int total = lazy.run() + square(2) + ⟦base_run⟧() + top_run();",
         type = "function",
-        modifiers = ["defaultLibrary", "global"],
+        modifiers = ["global"],
     },
     { at = "int total = lazy.run() + square(2) + base_run() ⟦+⟧ top_run();", type = "operator" },
     {
@@ -136,11 +135,7 @@ semantic_tokens = [
     { at = "return total + ⟦IntTraits⟧::get() + Probe{}.later();", type = "struct", modifiers = ["global"] },
     { at = "return total + IntTraits::⟦get⟧() + Probe{}.later();", type = "method", modifiers = ["static", "member"] },
     { at = "return total + IntTraits::get() ⟦+⟧ Probe{}.later();", type = "operator" },
-    {
-        at = "return total + IntTraits::get() + ⟦Probe⟧{}.later();",
-        type = "struct",
-        modifiers = ["defaultLibrary", "global"],
-    },
+    { at = "return total + IntTraits::get() + ⟦Probe⟧{}.later();", type = "struct", modifiers = ["global"] },
     {
         at = "return total + IntTraits::get() + Probe{}.⟦later⟧();",
         type = "method",

@@ -121,7 +121,6 @@ document_symbols = [
 ]
 
 [features.tokens]
-wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -132,15 +131,11 @@ semantic_tokens = [
         modifiers = ["definition", "global"],
     },
     { at = "int value ⟦=⟧ LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;", type = "operator" },
-    { at = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;", type = "macro" },
     { at = "int value = LIMIT ⟦+⟧ MODE + SQUARE(2) + EXTRA_ONLY;", type = "operator" },
     { at = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;", type = "macro" },
     { at = "int value = LIMIT + MODE ⟦+⟧ SQUARE(2) + EXTRA_ONLY;", type = "operator" },
-    {
-        at = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;",
-        type = "macro",
-        modifiers = ["defaultLibrary", "callable"],
-    },
+    { at = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;", type = "macro", modifiers = ["callable"] },
     { at = "int value = LIMIT + MODE + SQUARE(⟦2⟧) + EXTRA_ONLY;", type = "number" },
     { at = "int value = LIMIT + MODE + SQUARE(2) ⟦+⟧ EXTRA_ONLY;", type = "operator" },
     { at = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;", type = "macro" },
@@ -149,7 +144,7 @@ semantic_tokens = [
     { at = '⟦#include⟧ "once.h"', type = "directive" },
     { at = '#include ⟦"once.h"⟧', type = "header" },
     { at = "⟦static_assert⟧(LIMIT == 10);", type = "keyword" },
-    { at = "static_assert(⟦LIMIT⟧ == 10);", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "static_assert(⟦LIMIT⟧ == 10);", type = "macro" },
     { at = "static_assert(LIMIT ⟦==⟧ 10);", type = "operator" },
     { at = "static_assert(LIMIT == ⟦10⟧);", type = "number" },
     { at = "⟦static_assert⟧(MODE == 2);", type = "keyword" },
@@ -157,7 +152,7 @@ semantic_tokens = [
     { at = "static_assert(MODE ⟦==⟧ 2);", type = "operator" },
     { at = "static_assert(MODE == ⟦2⟧);", type = "number" },
     { at = "⟦static_assert⟧(HAS_FEATURE == 0);", type = "keyword" },
-    { at = "static_assert(⟦HAS_FEATURE⟧ == 0);", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "static_assert(⟦HAS_FEATURE⟧ == 0);", type = "macro" },
     { at = "static_assert(HAS_FEATURE ⟦==⟧ 0);", type = "operator" },
     { at = "static_assert(HAS_FEATURE == ⟦0⟧);", type = "number" },
     { at = "⟦static_assert⟧(preamble_limit == 20);", type = "keyword" },
@@ -174,10 +169,10 @@ semantic_tokens = [
     { at = "⟦static_assert⟧(__COUNTER__ == 4);", type = "keyword" },
     { at = "static_assert(__COUNTER__ ⟦==⟧ 4);", type = "operator" },
     { at = "static_assert(__COUNTER__ == ⟦4⟧);", type = "number" },
-    { at = "⟦Guarded⟧ guarded{1};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "⟦Guarded⟧ guarded{1};", type = "struct", modifiers = ["global"] },
     { at = "Guarded ⟦guarded⟧{1};", type = "variable", modifiers = ["definition", "global"] },
     { at = "Guarded guarded{⟦1⟧};", type = "number" },
-    { at = "⟦Once⟧ once{2};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "⟦Once⟧ once{2};", type = "struct", modifiers = ["global"] },
     { at = "Once ⟦once⟧{2};", type = "variable", modifiers = ["definition", "global"] },
     { at = "Once once{⟦2⟧};", type = "number" },
     { at = "⟦int⟧ run() {", type = "primitive" },
@@ -188,28 +183,16 @@ semantic_tokens = [
         modifiers = ["controlFlow"],
     },
     { at = "return ⟦guarded⟧.g + once.o + value + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
-    {
-        at = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;",
-        type = "field",
-        modifiers = ["defaultLibrary", "member"],
-    },
+    { at = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;", type = "field", modifiers = ["member"] },
     { at = "return guarded.g ⟦+⟧ once.o + value + counter_now + LIMIT;", type = "operator" },
     { at = "return guarded.g + ⟦once⟧.o + value + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
-    {
-        at = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;",
-        type = "field",
-        modifiers = ["defaultLibrary", "member"],
-    },
+    { at = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;", type = "field", modifiers = ["member"] },
     { at = "return guarded.g + once.o ⟦+⟧ value + counter_now + LIMIT;", type = "operator" },
     { at = "return guarded.g + once.o + ⟦value⟧ + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
     { at = "return guarded.g + once.o + value ⟦+⟧ counter_now + LIMIT;", type = "operator" },
     { at = "return guarded.g + once.o + value + ⟦counter_now⟧ + LIMIT;", type = "variable", modifiers = ["global"] },
     { at = "return guarded.g + once.o + value + counter_now ⟦+⟧ LIMIT;", type = "operator" },
-    {
-        at = "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;",
-        type = "macro",
-        modifiers = ["defaultLibrary"],
-    },
+    { at = "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;", type = "macro" },
 ]
 
 [features.hints]
