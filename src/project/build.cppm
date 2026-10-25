@@ -241,8 +241,8 @@ private:
     /// The edits of `matched` rules, in declaration order.
     Edits edits_of(llvm::ArrayRef<const CompiledRule*> matched) const;
 
-    /// Whether a file sits inside the workspace and every matching active
-    /// rule keeps `field` on: the lint and format sets.
+    /// Whether a file sits inside the workspace, when there is one, and every
+    /// matching active rule keeps `field` on: the lint and format sets.
     bool inside(CanonicalRef path, bool CompiledRule::* field) const;
 
     /// The sources rules declare: the active rules' — and, while the active

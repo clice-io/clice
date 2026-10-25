@@ -328,7 +328,7 @@ bool Build::indexed(CanonicalRef path) const {
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
-    if(!path::is_within(path, config.workspace_root)) {
+    if(!config.workspace_root.empty() && !path::is_within(path, config.workspace_root)) {
         return false;
     }
     return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });

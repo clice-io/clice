@@ -82,9 +82,12 @@ constexpr unsigned list_after = 8;
 constexpr std::size_t list_limit = 4096;
 
 /// The statuses of a directory's entries, links left out; empty when it
-/// cannot be listed or holds too many.
+/// is remote, cannot be listed or holds too many.
 llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
     llvm::StringMap<fs::Status> entries;
+    if(auto volume = fs::volume(dir); !volume || volume->remote) {
+        return entries;
+    }
     auto listed = fs::read_dir_status(dir);
     if(!listed || listed->size() > list_limit) {
         return entries;
