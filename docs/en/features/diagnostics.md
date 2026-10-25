@@ -270,6 +270,7 @@ tests/diagnostics/clang_tidy/09_turned_off
 <!-- END GENERATED ITEMS -->
 
 - [x] Checks too slow for an editor, and those unreliable on code being edited, left out in the editor; `clice lint` runs them
+- [x] `performance-use-std-move` left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module
 - [x] `.clang-tidy` edits apply to open files at their next compile
 - [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features
 - [x] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))

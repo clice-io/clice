@@ -270,6 +270,7 @@ tests/diagnostics/clang_tidy/09_turned_off
 <!-- END GENERATED ITEMS -->
 
 - [x] 对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，不在编辑器中运行；`clice lint` 会运行它们
+- [x] `performance-use-std-move` 既不在编辑器中运行，也不在 `clice lint` 中运行：在 clice 所基于的 LLVM 中，它处理从 PCH 或模块中读取的类时会崩溃
 - [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
 - [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能
 - [x] 抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）

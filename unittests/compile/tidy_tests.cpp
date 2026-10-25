@@ -160,7 +160,7 @@ ZEST_CASE(EditorDropsUnusableChecks) {
             std::vector<std::string>{"bugprone-integer-division", "bugprone-use-after-move"});
 }
 
-ZEST_CASE(UseStdMoveStaysOff) {
+ZEST_CASE(StdMoveStaysOff) {
     Sources sources = {
         {"main.cpp",
          "struct S {\n"
