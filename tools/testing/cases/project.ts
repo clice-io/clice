@@ -93,6 +93,19 @@ export function readProject(dir: string): Project {
             fail(where, `unknown key '${key}'`);
         }
     }
+    for (const table of ["units", "databases"]) {
+        const value = raw[table];
+        const misplaced =
+            typeof value === "object" && value !== null
+                ? KEYS.find((key) => Object.hasOwn(value, key))
+                : undefined;
+        if (misplaced !== undefined) {
+            fail(
+                where,
+                `${dotted(table, misplaced)}: a top-level key goes above the [${table}] header`,
+            );
+        }
+    }
     const project: Project = {};
     if (raw["flags"] !== undefined) {
         project.flags = strings(where, "flags", raw["flags"]);

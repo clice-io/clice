@@ -100,13 +100,20 @@ export function validated(project: Project): Project {
         if (unknown.length > 0) {
             fail(name, `${where}.platforms names unknown platforms: ${unknown.join(", ")}`);
         }
+        if (!Array.isArray(prepare)) {
+            fail(name, `${where}.prepare is a list of [[${where}.prepare]] steps`);
+        }
         for (const [index, step] of prepare.entries()) {
-            const kinds = STEPS.filter((kind) => Object.hasOwn(step, kind));
-            if (kinds.length !== 1) {
+            const keys = Object.keys(step);
+            if (keys.length !== 1 || !STEPS.includes(keys[0] ?? "")) {
                 fail(
                     name,
-                    `${where}.prepare[${String(index)}] needs exactly one of run, generated and database, not ${kinds.join(" and ") || "none"}`,
+                    `${where}.prepare[${String(index)}] holds ${keys.join(", ") || "nothing"}, not one of run, generated and database`,
                 );
+            }
+            const run = "run" in step ? (step.run as unknown) : [];
+            if (!Array.isArray(run) || !run.every((arg) => typeof arg === "string")) {
+                fail(name, `${where}.prepare[${String(index)}].run is an argv, a list of strings`);
             }
         }
         if (parts !== undefined && keep !== undefined) {

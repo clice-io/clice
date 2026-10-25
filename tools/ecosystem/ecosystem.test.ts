@@ -103,9 +103,14 @@ describe("projects", () => {
         expect(
             broken({ configurations: { c: { ...config, parts: { a: ["a/"] }, keep: 1 } } }),
         ).toThrow(/configurations\.c both splits its database \(parts\) and thins it \(keep\)/);
-        const step = { run: ["make"], generated: "build" } as unknown as Step;
+        // A configuration's key written below its [[prepare]] step lands in the step.
+        const step = { run: ["make"], keep: 1 } as unknown as Step;
         expect(broken({ configurations: { c: { ...config, prepare: [step] } } })).toThrow(
-            /configurations\.c\.prepare\[0\] needs exactly one of run, generated and database, not run and generated/,
+            /configurations\.c\.prepare\[0\] holds run, keep, not one of run, generated and database/,
+        );
+        const table = { database: [] } as unknown as Step[];
+        expect(broken({ configurations: { c: { ...config, prepare: table } } })).toThrow(
+            /configurations\.c\.prepare is a list of \[\[configurations\.c\.prepare\]\] steps/,
         );
     });
 });

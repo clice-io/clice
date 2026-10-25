@@ -64,16 +64,18 @@ run = ["cmake", "…", "-DCMAKE_CXX_COMPILER=g++-13"]
   spread evenly over it in path order; its `[[prepare]]` steps; its `[parts]`,
   below.
 - **Steps** run in the checkout, in order, each a `[[prepare]]` table holding
-  one key. `run`, an argv, in which `${JOBS}` reads the machine's core count,
-  `${CHECKOUT}` the checkout's path with `/`, and an argument
+  one key, below the configuration's own keys (a key under a step's header is
+  the step's). `run`, an argv, in which `${JOBS}` reads the machine's core
+  count, `${CHECKOUT}` the checkout's path with `/`, and an argument
   `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's usual target
   (MSVC's on Windows, where xclang's default is MinGW); or
   `generated = "<build dir>"`, the generated sources and headers of a CMake
   build using Ninja, built without the order-only dependencies CMake adds
   (LLVM's TableGen outputs in 11 minutes on 4 cores, not an hour); or
-  `[[configurations.<name>.prepare.database]]` entries, a database written as
-  given, for a project with no build system to write one (`${CHECKOUT}`
-  expanded).
+  `database`, a database written as given, for a project with no build system
+  to write one (`${CHECKOUT}` expanded): an empty `[[prepare]]` header, then
+  a `[[configurations.<name>.prepare.database]]` table per entry
+  (`ecosystem/sqlite/project.toml`).
 - **Parts.** A configuration too large for one runner names parts, each the
   units under its checkout-relative prefixes; a unit belongs to the part with
   its longest matching prefix, and every unit to exactly one. A part's job

@@ -81,6 +81,10 @@ describe("readProject", () => {
             expect(() => readProject(dir)).toThrow(
                 /project\.toml: units\."a\.cpp" is a list of strings/,
             );
+            fs.writeFileSync(file, '[units]\n"a.cpp" = []\nflags = ["-DA"]\n');
+            expect(() => readProject(dir)).toThrow(
+                /project\.toml: units\.flags: a top-level key goes above the \[units\] header/,
+            );
             fs.writeFileSync(file, "flag = []\n");
             expect(() => readProject(dir)).toThrow(/project\.toml: unknown key 'flag'/);
             fs.writeFileSync(file, "flags = [\n");
