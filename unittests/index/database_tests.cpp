@@ -87,25 +87,20 @@ struct ForeignReader {
 };
 
 /// The database open in a process outside the `-open` file's protocol, as
-/// an older clice holds it: LMDB's lock on its `-lock` file. On POSIX a
-/// child process takes the record lock, which never conflicts with its own
-/// process.
+/// an older clice holds it. On POSIX a child process takes LMDB's record
+/// lock on the `-lock` file, which never conflicts with its own process,
+/// and opening the database in it would follow a fork LMDB does not
+/// survive. Windows locks belong to the handle, so a second environment
+/// stands in, holding the lock and the mutexes LMDB names in the `-lock`
+/// file.
 struct OlderOpener {
     explicit OlderOpener(const std::string& database) {
 #ifdef _WIN32
-        require(!llvm::sys::fs::openFileForReadWrite(database + "-lock",
-                                                     fd,
-                                                     llvm::sys::fs::CD_OpenExisting,
-                                                     llvm::sys::fs::OF_None),
-                "open the -lock file");
-        OVERLAPPED at = {};
-        require(::LockFileEx(llvm::sys::fs::convertFDToNativeFile(fd),
-                             LOCKFILE_FAIL_IMMEDIATELY,
-                             0,
-                             1,
-                             0,
-                             &at),
-                "lock the -lock file");
+        require(mdb_env_create(&env) == 0, "create the environment");
+        require(mdb_env_open(env, database.c_str(), MDB_NOSUBDIR | MDB_NOTLS | MDB_RDONLY, 0644) ==
+                    0,
+                "open the database");
+        require(mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn) == 0, "begin a read");
 #else
         auto lock_file = database + "-lock";
         int ready[2];
@@ -134,27 +129,29 @@ struct OlderOpener {
         char locked = 0;
         require(::read(ready[0], &locked, 1) == 1 && locked, "lock the -lock file");
         ::close(ready[0]);
-        fd = done[1];
+        release = done[1];
 #endif
     }
 
     ~OlderOpener() {
 #ifdef _WIN32
-        OVERLAPPED at = {};
-        ::UnlockFileEx(llvm::sys::fs::convertFDToNativeFile(fd), 0, 1, 0, &at);
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        mdb_txn_abort(txn);
+        mdb_env_close(env);
 #else
-        ::close(fd);
+        ::close(release);
         ::waitpid(child, nullptr, 0);
 #endif
     }
 
-    /// The locked `-lock` file; on POSIX the pipe whose close lets the
-    /// child exit.
-    int fd = -1;
+#ifdef _WIN32
+    MDB_env* env = nullptr;
 
-#ifndef _WIN32
+    MDB_txn* txn = nullptr;
+#else
     pid_t child = -1;
+
+    /// Closed to let the child exit.
+    int release = -1;
 #endif
 };
 
