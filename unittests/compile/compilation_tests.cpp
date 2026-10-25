@@ -168,7 +168,16 @@ int quotient = 1 / 0;
                               tmp.path("microsoft.h"),
                               tmp.path("main.cpp")};
     params.input.directory = tmp.root.str().str();
+    auto shown = [](CompilationUnit& unit) {
+        return ranges::to<std::vector>(
+            unit.diagnostics() | views::filter([](const Diagnostic& diag) {
+                return diag.id.value == clang::diag::warn_remainder_division_by_zero;
+            }) |
+            views::transform(&Diagnostic::fid));
+    };
 
+    CompilationParams showing{.kind = CompilationKind::Content, .input = params.input};
+    showing.input.arguments.insert(showing.input.arguments.end() - 1, "-Wsystem-headers");
     auto built = clice::compile(std::move(params));
     ZASSERT(built->completed());
     auto system = [&](llvm::StringRef name) {
@@ -179,12 +188,14 @@ int quotient = 1 / 0;
     ZEXPECT(!system("Shape"));
     ZEXPECT(!system("Panel"));
     ZEXPECT(system("Library"));
-    auto warnings = ranges::to<std::vector>(
-        built->diagnostics() | views::filter([](const Diagnostic& diag) {
-            return diag.id.value == clang::diag::warn_remainder_division_by_zero;
-        }));
-    ZASSERT(warnings.size() == 1U);
-    ZEXPECT(warnings[0].fid == built->focus_file().file());
+    auto warned = shown(*built);
+    ZASSERT(warned.size() == 1U);
+    ZEXPECT(warned[0] == built->focus_file().file());
+
+    // Under -Wsystem-headers the compiler shows a system header's warnings.
+    auto unsilenced = clice::compile(std::move(showing));
+    ZASSERT(unsilenced->completed());
+    ZEXPECT(shown(*unsilenced).size() == 3U);
 }
 
 ZEST_CASE(OverlayNamesRedirectedFile) {

@@ -538,9 +538,11 @@ public:
 
     void silence(clang::FileID header, clang::SourceLocation loc) {
         diagnostics.pushMappings(loc);
-        diagnostics.setSeverityForAll(clang::diag::Flavor::WarningOrError,
-                                      clang::diag::Severity::Ignored,
-                                      loc);
+        if(diagnostics.getSuppressSystemWarnings()) {
+            diagnostics.setSeverityForAll(clang::diag::Flavor::WarningOrError,
+                                          clang::diag::Severity::Ignored,
+                                          loc);
+        }
         headers.push_back({.fid = header});
     }
 
@@ -597,8 +599,8 @@ private:
 /// cmake_pch.hxx it forces into the units of a target with precompiled
 /// headers with one, to silence the warnings of the headers it includes, and
 /// clang makes them all system headers, the project's own among them. In a
-/// header a command forces in, the pragma only silences warnings, up to the
-/// end of it.
+/// header a command forces in, the pragma only silences warnings, unless
+/// -Wsystem-headers shows them, up to the end of it.
 struct SystemHeaderPragma : clang::PragmaHandler {
     SystemHeaderPragma(clang::PragmaHandler* builtin, SilencedHeaders& silenced) :
         PragmaHandler(builtin->getName()), builtin(builtin), silenced(silenced) {}
