@@ -202,11 +202,12 @@ Every failure names the command that reproduces it from the repository root.
 
 ## Perf
 
-clice under test against a **baseline**: by default the previous nightly's
-clice, from its release package (which lives 30 days), so that a round shows
-what the day's commits changed; or against **clangd**, the official release
-of the version the framework pins (the LLVM major xclang tracks), in the
-round of every Sunday, before a stable release and on request. Each runs in
+clice under test against the **baseline**, the clice of the newest nightly
+the tested commit descends from (its release package, which lives 30 days),
+so that a round shows what the day's commits changed. The round of every
+Sunday, one before a stable release and one on request measure it against
+**clangd** instead, the official release of the version the framework pins
+(the LLVM major xclang tracks), and list nothing as slower. Each runs in
 its default configuration: clangd started from the database's directory with
 `--enable-config=0`, clice with the same database named and no `clice.toml`
 rule of the project's. The two servers alternate run by run on the same

@@ -30,7 +30,7 @@ function measures(run: RunResult): { name: string; values: number[]; cost: boole
         out.push({ name: `${name} size`, values: [size], cost: false });
     }
     for (const [name, value] of Object.entries(run.values)) {
-        out.push({ name, values: [value], cost: / (ms|s|MB)$/.test(name) });
+        out.push({ name, values: [value], cost: / (ms|s|MB)( |$)/.test(name) });
     }
     if (run.memory !== undefined) {
         out.push({ name: "peak memory MB", values: [run.memory.peak.total], cost: true });

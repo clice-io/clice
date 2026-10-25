@@ -82,8 +82,9 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    failure: every job green, a job whose failures the project already knows
    (its `known` issues) green too — dispatch its round against clangd and
    read its perf tables:
-   `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`.
-   Then tag its commit:
+   `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`
+   (the round reads the run's `build-*` artifacts, which live three days:
+   for an older nightly, rerun its main workflow first). Then tag its commit:
    `git tag v0.2.0 <commit> && git push origin v0.2.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the

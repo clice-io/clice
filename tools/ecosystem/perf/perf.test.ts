@@ -233,8 +233,11 @@ test("what clice spends a tenth more of than the baseline, above the noise", () 
             "index",
             { index: [ms], hover: [hover] },
             {
-                sizes: { hover: 900 },
-                values: { "indexed files": server === "clice" ? 30 : 20, "index MB on disk": 50 },
+                sizes: { hover: server === "clice" ? 900 : 100 },
+                values: {
+                    "indexed files": server === "clice" ? 30 : 20,
+                    "index MB on disk": server === "clice" && variant === undefined ? 80 : 50,
+                },
                 ...(variant === undefined ? {} : { variant }),
             },
         );
@@ -254,6 +257,14 @@ test("what clice spends a tenth more of than the baseline, above the noise", () 
             clice: "120",
             baseline: "100",
             clicePerBaseline: 1.2,
+        },
+        {
+            scenario: "index",
+            name: "index a.cpp",
+            measure: "index MB on disk",
+            clice: "80.0",
+            baseline: "50.0",
+            clicePerBaseline: 1.6,
         },
     ]);
     const more = slower(
@@ -294,8 +305,9 @@ test("a run against the baseline alone is run again so", () => {
         dir: "/d",
         baseline: "/b/clice",
         clangd: false,
+        dropCaches: true,
     } as unknown as PerfOptions;
     expect(failureOf(run("clice", "index", {}, { error: "x" }), options).repro).toBe(
-        "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario index --baseline /b/clice --no-clangd",
+        "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario index --baseline /b/clice --no-clangd --drop-caches",
     );
 });

@@ -56,8 +56,9 @@ jobs:
           COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
 
-      # The perf jobs' baseline: the newest nightly not at this commit, the
-      # one before the nightly this round tests.
+      # The perf jobs' baseline: the newest nightly this commit descends
+      # from, the one before the nightly this round tests; never a newer one,
+      # which a round run again days later would otherwise pick.
       - name: Find the baseline nightly
         id: baseline
         if: ${{ !inputs.clangd }}
@@ -68,12 +69,12 @@ jobs:
           for TAG in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 40 \
             --json tagName,isPrerelease,isDraft \
             --jq '.[] | select(.isPrerelease and (.isDraft | not)) | .tagName'); do
-            if [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)" != "$COMMIT" ]; then
+            if [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$TAG...$COMMIT" --jq .status)" = ahead ]; then
               echo "tag=$TAG" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
-          echo "::error::no published nightly but one at $COMMIT to measure against"
+          echo "::error::no published nightly that $COMMIT descends from to measure against"
           exit 1
 
       - name: Checkout repository

@@ -42,12 +42,14 @@ export interface PerfOptions {
     out?: string;
 }
 
-/// The command running the job again with the same servers.
+/// The command running the job again with the same servers, the OS file
+/// cache dropped as it was.
 function rerun(options: PerfOptions, extra: string): string {
     const servers = [
         ...(options.baseline === undefined ? [] : ["--baseline", options.baseline]),
         ...(typeof options.clangd === "string" ? ["--clangd", options.clangd] : []),
         ...(options.clangd === false ? ["--no-clangd"] : []),
+        ...(options.dropCaches ? ["--drop-caches"] : []),
     ];
     return rerunCommand(
         options.job,
