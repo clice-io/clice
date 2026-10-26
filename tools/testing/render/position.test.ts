@@ -9,6 +9,7 @@ import {
     type Range,
     type RenderScope,
     SourceText,
+    readOnce,
     renderLocation,
     resolveLocation,
     withoutBom,
@@ -173,6 +174,17 @@ describe("positions", () => {
             const location = { path: "big.cpp", range };
             expect(resolveLocation(renderLocation(location, scope), scope)).toEqual(location);
         }
+    });
+
+    test("a rendering reads each of its files once", () => {
+        let reads = 0;
+        const file = readOnce((path) => {
+            reads += 1;
+            return new SourceText(path, "int x;\n");
+        });
+        expect(file("a.cpp")).toBe(file("a.cpp"));
+        file("b.cpp");
+        expect(reads).toBe(2);
     });
 
     test("ambiguous text is refused", () => {

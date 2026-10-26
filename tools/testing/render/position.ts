@@ -136,6 +136,18 @@ export class SourceText {
     }
 }
 
+/// `file`, reading each path once: a rendering asks for the file once per
+/// position, an answer about a large file holds hundreds of thousands of
+/// them, and each read costs a disk read and a comparison of the whole text.
+export function readOnce(file: (path: string) => SourceText): (path: string) => SourceText {
+    const read = new Map<string, SourceText>();
+    return (path) => {
+        const source = read.get(path) ?? file(path);
+        read.set(path, source);
+        return source;
+    };
+}
+
 /// A range a fixture named, rendered as its name.
 export interface Named {
     name: string;
