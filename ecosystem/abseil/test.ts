@@ -17,6 +17,14 @@ regression({
             detail: /^(?![\s\S]*\n-\s+\{)/,
         },
         {
+            issue: "10-21#17",
+            why: "the macro naming an #include's header in the preamble gets no macro token from the server",
+            kind: "disagree",
+            request: "semanticTokens",
+            file: "absl/debugging/stacktrace.cc",
+            detail: /-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},/,
+        },
+        {
             issue: "10-24#6",
             why: "googletest builds with -WX, which makes clang's -Wcharacter-conversion (a warning cl does not have) an error",
             configuration: "msvc",
