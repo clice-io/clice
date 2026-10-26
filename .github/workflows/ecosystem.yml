@@ -9,8 +9,9 @@ name: ecosystem
 # reproduces it, then the known ones; a regression job's numbers stand
 # beside the previous round's, a perf job's are clice's and the previous
 # nightly's side by side (clangd's instead with `clangd`), what clice spends
-# a tenth more of listed. The round only reports: nothing waits on it but a
-# stable release, which tags a nightly whose round shows no new failure.
+# a tenth more of listed; the last job's summary gathers them all. The round
+# only reports: nothing waits on it but a stable release, which tags a
+# nightly whose round shows no new failure.
 on:
   workflow_dispatch:
     inputs:
@@ -200,10 +201,12 @@ jobs:
       # agent keeps memory enough to stay up; on the whole machine the agent
       # dies and nothing is reported. Linux alone has such scopes. A perf
       # run drops the OS file cache before each cold start where it can.
+      # What the job prints goes beside clice's logs too.
       - name: Run
         env:
           CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
         run: >-
+          mkdir -p "$RUNNER_TEMP/logs" &&
           ${{ runner.os == 'Linux' && 'sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)" -p MemoryMax=14G -p MemorySwapMax=0 -p OOMPolicy=continue --' || '' }}
           pixi run node tools/ecosystem/run.ts ${{ matrix.kind }} "${{ matrix.name }}"
           --dir "$RUNNER_TEMP/projects"
@@ -211,6 +214,7 @@ jobs:
           ${{ matrix.kind == 'regression' && '--previous "$RUNNER_TEMP/previous/results.json"' || '' }}
           ${{ matrix.kind == 'perf' && matrix.platform != 'windows' && '--drop-caches' || '' }}
           ${{ matrix.kind == 'perf' && needs.jobs.outputs.baseline != '' && format('--baseline "$RUNNER_TEMP/baseline/{0}/clice/bin/clice{1}" --no-clangd', needs.jobs.outputs.baseline, matrix.platform == 'windows' && '.exe' || '') || '' }}
+          2>&1 | tee "$RUNNER_TEMP/logs/run.log"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -226,7 +230,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Upload clice's logs
+      # Every clice's logs: the one under test's and the baseline's, its
+      # workers' and their crash stacks, each session in a directory of its
+      # own; a perf run's results name its sessions.
+      - name: Upload the logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -234,6 +241,47 @@ jobs:
           path: |
             ${{ runner.temp }}/projects/*/*/.clice/logs/
             ${{ github.workspace }}/.clice/logs/
+            ${{ runner.temp }}/logs/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30
+
+  # The round in one place (tools/ecosystem/round.ts): every job's new
+  # failures, beside whether the rounds before swept their files, the
+  # regression numbers that moved, and the perf measures past their
+  # threshold by ratio, each with what makes it suspect.
+  report:
+    needs: [jobs, run]
+    if: ${{ !cancelled() && needs.jobs.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      - name: Read the round
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pixi run -e node install-tests
+          pixi run -e node node tools/ecosystem/round.ts "$GITHUB_RUN_ID" --out "$RUNNER_TEMP/round" --no-logs
+
+      - name: Summary
+        run: head -c 1000000 "$RUNNER_TEMP/round/round.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the round
+        uses: actions/upload-artifact@v7
+        with:
+          name: ecosystem-round
+          path: |
+            ${{ runner.temp }}/round/round.md
+            ${{ runner.temp }}/round/round.json
+          retention-days: 90

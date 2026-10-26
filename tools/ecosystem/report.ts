@@ -70,7 +70,7 @@ function numbers(results: Results): Map<string, string> {
         rows.push(
             [
                 "sampled files (server only)",
-                `${String(sweep.files)} (${String(sweep.serverOnly.length)})`,
+                `${String(sweep.files.length)} (${String(sweep.serverOnly.length)})`,
             ],
             ["requests", String(sweep.requests)],
             ["server memory: master + workers, at start / once all closed", resident(sweep.memory)],

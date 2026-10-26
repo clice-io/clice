@@ -277,7 +277,17 @@ then the known ones with their issue, then the known issues it did not see
 the same way, then what clice spends more of than the baseline, then a table
 per scenario: each measure's median and p90 for every server and the ratio of
 clice's median to the other server's (for a scenario over many files, the
-median of the files' ratios). Each job uploads its whole results as JSON.
+median of the files' ratios). Each job uploads its whole results as JSON (a
+regression job's with the files it swept), and its logs: every clice
+session's, the baseline's among them, and what the job printed.
+
+The round's own summary gathers them: every job's new failures, each beside
+whether the rounds before swept its file (a file newly sampled points at an
+old bug the sample exposed, one that passed before at a regression), the
+regression numbers half again the round before's, and every measure past its
+threshold by ratio, flagged where it looks like the measurement rather than
+the code: past the threshold on most jobs at once, on one platform only,
+three times the baseline's or more, negative.
 
 A job is red when it has a new failure; known failures alone leave it green.
 **A round shows no new failure** when every job is green: that is what a
@@ -307,6 +317,7 @@ node tools/ecosystem/run.ts regression <job> --dir <dir> [options]
 node tools/ecosystem/run.ts perf <job> --dir <dir> [options]
 node tools/ecosystem/perf/compare.ts <results.json>...           the perf tables
 node tools/ecosystem/perf/logs.ts <log>... [--trace <file>]      a session's [perf:*] lines
+node tools/ecosystem/round.ts <run id>|latest [options]           a round's summary, results and flagged logs
 ```
 
 `CLICE_EXECUTABLE` names the clice under test. `--dir` is where projects are
@@ -331,6 +342,7 @@ tools/ecosystem/
   regression/     the index, the compiler's confirmation, the sweep, the job
   perf/           the servers, a timed session, the scenarios, results and their tables, [perf:*] lines
   report.ts       the summaries
+  round.ts        a round's summary, from every job's results
   run.ts          the command line
   **/*.test.ts    the framework's own tests, beside the code
 ```

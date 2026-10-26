@@ -221,6 +221,12 @@ export async function findJob(kind: JobKind, name: string): Promise<Job> {
     return job;
 }
 
+/// The name of a job's artifacts on one platform: `ecosystem-<it>` holds
+/// its results, `ecosystem-<it>-logs` clice's logs.
+export function artifactName(kind: JobKind, name: string, platform: Platform): string {
+    return `${kind}-${name.replaceAll("/", "-")}-${platform}`;
+}
+
 export function cliceCommit(): string {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 }
