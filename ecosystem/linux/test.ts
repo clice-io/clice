@@ -8,6 +8,13 @@ regression({
             kind: "compile",
             detail: /will not be visible outside of this function/,
         },
+        {
+            issue: "10-27#5",
+            why: "the server gives a format string in a macro's body one string token, inspect splits out its specifiers",
+            kind: "disagree",
+            request: "semanticTokens",
+            detail: /-\s+(\{ )?at = '(#\s*define [^'\n]*|[^'\n]*\\)',(\n-)?\s+type = "formatSpecifier"/,
+        },
     ],
 });
 
