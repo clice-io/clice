@@ -74,7 +74,16 @@ export interface RoundData {
         platform: Platform;
         failures: (Failure & { history?: string })[];
     }[];
-    missing: { kind: JobKind; job: string; platform: Platform; conclusion: string }[];
+    /// The jobs without results, and those that failed with results naming
+    /// no failure (`partial`).
+    missing: {
+        artifact: string;
+        kind: JobKind;
+        job: string;
+        platform: Platform;
+        conclusion: string;
+        partial: boolean;
+    }[];
     moved: {
         job: string;
         platform: Platform;
@@ -345,13 +354,22 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
                   },
               ];
     });
+    // A job cut short (its runner killed, its time out) can leave the
+    // results a perf job saves as it goes, which name no failure yet.
     const missing = round.jobs
-        .filter((job) => job.regression === undefined && job.perf === undefined)
-        .map(({ kind, name, platform, conclusion }) => ({
+        .filter(
+            (job) =>
+                (job.regression ?? job.perf) === undefined ||
+                (job.conclusion !== "success" &&
+                    (job.regression ?? job.perf)?.failures.length === 0),
+        )
+        .map(({ kind, name, platform, artifact, conclusion, regression, perf }) => ({
+            artifact,
             kind,
             job: name,
             platform,
             conclusion,
+            partial: (regression ?? perf) !== undefined,
         }));
     const moved = regressions.flatMap((job) => {
         const before = round.earlier.get(job.artifact)?.[0]?.results;
@@ -381,6 +399,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     const flagged = [
         ...new Set([
             ...red.map((job) => job.artifact),
+            ...missing.filter((job) => job.partial).map((job) => job.artifact),
             ...rows
                 .filter((row) =>
                     row.flags.some((flag) => /^(every platform|negative|≥)/.test(flag)),
@@ -402,7 +421,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     };
 
     const lines = [
-        `# ecosystem round ${String(round.run)}: ${red.length === 0 && missing.length === 0 ? "green" : `${String(red.length)} red, ${String(missing.length)} without results`}, of ${String(round.jobs.length)} jobs`,
+        `# ecosystem round ${String(round.run)}: ${red.length === 0 && missing.length === 0 ? "green" : `${String(red.length)} red, ${String(missing.length)} cut short or without results`}, of ${String(round.jobs.length)} jobs`,
         "",
         [
             data.clice === undefined ? undefined : `clice \`${data.clice}\``,
@@ -448,11 +467,11 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     if (missing.length > 0) {
         lines.push(
             "",
-            `## Jobs without results (${String(missing.length)})`,
+            `## Jobs without results, or cut short (${String(missing.length)})`,
             "",
             ...missing.map(
                 (job) =>
-                    `- ${job.kind} ${job.job} on ${job.platform}: the job's conclusion: ${job.conclusion}`,
+                    `- ${job.kind} ${job.job} on ${job.platform}: the job's conclusion: ${job.conclusion}${job.partial ? ", its results name no failure: cut short, see its log" : ""}`,
             ),
         );
     }
@@ -580,6 +599,7 @@ async function main(): Promise<void> {
     };
     const out = path.resolve(values.out ?? path.join(REPO_ROOT, "temp", "ecosystem", String(run)));
     fs.rmSync(out, { recursive: true, force: true });
+    fs.mkdirSync(out, { recursive: true });
 
     const listed = view.jobs.flatMap((job) => {
         const match = JOB_NAME.exec(job.name);
@@ -660,7 +680,7 @@ async function main(): Promise<void> {
         }
     }
     console.log(
-        `${path.join(out, "round.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} without results, ${String(data.perf.length)} perf rows past the threshold, ${String(data.flagged.length)} flagged`,
+        `${path.join(out, "round.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} cut short or without results, ${String(data.perf.length)} perf rows past the threshold, ${String(data.flagged.length)} flagged`,
     );
 }
 

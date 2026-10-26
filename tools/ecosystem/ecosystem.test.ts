@@ -829,6 +829,25 @@ describe("round", () => {
         );
     });
 
+    test("a failed job whose results name no failure was cut short", () => {
+        const cut = { ...perf("linux", []), conclusion: "failure" };
+        const { text, data } = roundReport({ run: 7, jobs: [cut], earlier: new Map() });
+        expect(data.missing).toEqual([
+            {
+                artifact: "perf-q-sessions-linux",
+                kind: "perf",
+                job: "q/sessions",
+                platform: "linux",
+                conclusion: "failure",
+                partial: true,
+            },
+        ]);
+        expect(data.flagged).toEqual(["perf-q-sessions-linux"]);
+        expect(text).toContain(
+            "- perf q/sessions on linux: the job's conclusion: failure, its results name no failure: cut short, see its log",
+        );
+    });
+
     test("a measure past the threshold on most jobs is flagged as broad", () => {
         const jobs = (["linux", "macos", "windows"] as const).flatMap((platform, i) => [
             { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: `p${String(i)}/a` },
@@ -858,7 +877,9 @@ describe("round", () => {
             jobs: [job(now, "linux"), job(undefined, "macos")],
             earlier: new Map([["regression-p-linux", [earlier("10-25", before)]]]),
         });
-        expect(text).toContain("# ecosystem round 7: 1 red, 1 without results, of 2 jobs");
+        expect(text).toContain(
+            "# ecosystem round 7: 1 red, 1 cut short or without results, of 2 jobs",
+        );
         expect(text).toContain(
             "- **hang** a.cpp, hover: timed out\n  - newly sampled: none of the 1 rounds before swept it",
         );

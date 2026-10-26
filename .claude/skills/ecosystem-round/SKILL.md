@@ -17,7 +17,8 @@ node tools/ecosystem/round.ts latest          # or a run id of ecosystem.yml
 It writes `temp/ecosystem/<run>/`:
 
 - `round.md` — the red jobs, each failure with whether the rounds before swept
-  its file and the command reproducing it; the jobs without results; the
+  its file and the command reproducing it; the jobs cut short or without
+  results; the
   regression numbers 1.5× the round before's; every perf measure past its
   threshold, by ratio, each with its flags. `round.json` holds the same.
 - `results/ecosystem-<artifact>/` — every job's `results.json` and

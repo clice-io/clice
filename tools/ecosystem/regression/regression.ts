@@ -81,8 +81,8 @@ export interface Results {
         compiledWithErrors: number;
         failed: number;
     };
-    /// The files swept: whether a failing file was swept in an earlier
-    /// round tells a regression from what a new sample exposed.
+    /// The files swept in full: whether a failing file was swept in an
+    /// earlier round tells a regression from what a new sample exposed.
     sweep?: Pick<
         SweepRun,
         "files" | "serverOnly" | "requests" | "inspectSeconds" | "serverSeconds" | "slow" | "memory"
@@ -318,7 +318,7 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
     });
     const { serverOnly, requests, inspectSeconds, serverSeconds, slow, memory } = run;
     results.sweep = {
-        files: run.files,
+        files: run.files.filter((file) => !run.unasked.includes(file) && !run.cut.includes(file)),
         serverOnly,
         requests,
         inspectSeconds,
