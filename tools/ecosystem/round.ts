@@ -598,7 +598,10 @@ async function main(): Promise<void> {
         jobs: { name: string; conclusion: string; status: string }[];
     };
     const out = path.resolve(values.out ?? path.join(REPO_ROOT, "temp", "ecosystem", String(run)));
-    fs.rmSync(out, { recursive: true, force: true });
+    // What an earlier run wrote there, and nothing else the directory holds.
+    for (const written of ["round.md", "round.json", "results", "earlier", "logs"]) {
+        fs.rmSync(path.join(out, written), { recursive: true, force: true });
+    }
     fs.mkdirSync(out, { recursive: true });
 
     const listed = view.jobs.flatMap((job) => {
