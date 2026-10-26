@@ -22,7 +22,8 @@ regression({
             kind: "disagree",
             request: "semanticTokens",
             file: "absl/debugging/stacktrace.cc",
-            detail: /-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},/,
+            // That token missing, and no other difference.
+            detail: /^(?=[\s\S]*^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$).*$)/m,
         },
         {
             issue: "10-24#6",

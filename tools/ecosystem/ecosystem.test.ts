@@ -726,8 +726,16 @@ describe("round", () => {
             ]),
         ).toMatch(/^swept in 1 of the 2 rounds before \(last 10-24\), never failing so/);
         expect(historyOf(hang, [earlier("10-25", regression(["a.cpp"], [hang]))])).toMatch(
-            /^failed so in 1 of the 1 rounds before that swept it/,
+            /^failed so in 1 of the 1 rounds before, last 10-25/,
         );
+        // A file the round before failed on but ran out of time in counts as
+        // failing there, not as unswept.
+        expect(
+            historyOf(hang, [
+                earlier("10-25", regression(["b.cpp"], [hang])),
+                earlier("10-24", regression(["a.cpp"])),
+            ]),
+        ).toMatch(/^failed so in 1 of the 2 rounds before, last 10-25/);
         expect(historyOf(hang, [earlier("10-25", regression(50))])).toMatch(/^unknown/);
     });
 

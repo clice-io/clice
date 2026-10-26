@@ -21,8 +21,8 @@ It writes `temp/ecosystem/<run>/`:
   results; the
   regression numbers 1.5× the round before's; every perf measure past its
   threshold, by ratio, each with its flags. `round.json` holds the same.
-- `results/ecosystem-<artifact>/` — every job's `results.json` and
-  `report.md`.
+- `results/ecosystem-<artifact>/` — the `results.json` and `report.md` of
+  every job that uploaded them (one listed without results has none).
 - `logs/ecosystem-<artifact>-logs/` — the logs of the flagged jobs. Any other
   job's: `gh run download <run> -n ecosystem-<artifact>-logs -D <dir>`.
 
@@ -59,9 +59,9 @@ files on each platform. The history line under each failure says:
 - **failed so before** — an old failure no `known` entry names yet.
 
 Confirm on a box (the agent-box skill) with two binaries: the previous nightly
-(`gh release download <tag> --pattern 'clice-*.<target>.tar.gz'`, 30 days)
-and the tested commit's (every main CI run uploads
-`package-clice.<target>.tar.gz`, three days). Run the failure's reproduce
+(`gh release download <tag> --pattern 'clice-*.<target>.tar.gz'`, `.zip` for
+Windows, 30 days) and the tested commit's (every main CI run uploads
+`package-clice.<target>.tar.gz`, `.zip` for Windows, three days). Run the failure's reproduce
 command with each as `CLICE_EXECUTABLE`. Failing with both: an old bug, a
 board issue (write_issues) and a `known` entry in the project's `test.ts`, as
 narrow as the failure. Failing only with the new one: bisect the commits

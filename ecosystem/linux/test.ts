@@ -13,7 +13,9 @@ regression({
             why: "the server gives a format string in a macro's body one string token, inspect splits out its specifiers",
             kind: "disagree",
             request: "semanticTokens",
-            detail: /-\s+(\{ )?at = '(#\s*define [^'\n]*|[^'\n]*\\)',(\n-)?\s+type = "formatSpecifier"/,
+            // A specifier the server lacks on a macro's line, and every line
+            // the two answers differ in a string or specifier piece of one.
+            detail: /^(?=[\s\S]*^-\s+(?:\{ )?at = '(?:#\s*define [^'\n]*|[^'\n]*\\)',(?:\n-)?\s+type = "formatSpecifier")(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\s+(?:\{ at = '(?:#\s*define [^'\n]*|[^'\n]*\\)', type = "(?:string|formatSpecifier)" \},|at = '(?:#\s*define [^'\n]*|[^'\n]*\\)',|type = "(?:string|formatSpecifier)",|\{|\},)$).*$)/m,
         },
     ],
 });

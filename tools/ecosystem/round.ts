@@ -128,26 +128,23 @@ export function historyOf(failure: Failure, earlier: readonly Earlier[]): string
         [...each.results.failures, ...each.results.known].some((other) =>
             sameFailure(failure, other),
         );
+    const before = earlier.filter(failed);
+    const last = before[0];
+    if (last !== undefined) {
+        return `failed so in ${String(before.length)} of the ${String(earlier.length)} rounds before, last ${last.date}`;
+    }
     if (failure.request === undefined) {
-        const before = earlier.filter(failed);
-        const last = before[0];
-        return last === undefined
-            ? `new: none of the ${String(earlier.length)} rounds before failed so`
-            : `failed so in ${String(before.length)} of the ${String(earlier.length)} rounds before, last ${last.date}`;
+        return `new: none of the ${String(earlier.length)} rounds before failed so`;
     }
     const recorded = earlier.filter((each) => Array.isArray(each.results.sweep?.files));
     if (recorded.length === 0) {
         return `unknown: the ${String(earlier.length)} rounds before recorded no swept files`;
     }
     const swept = recorded.filter((each) => each.results.sweep?.files.includes(failure.file ?? ""));
-    if (swept.length === 0) {
-        return `newly sampled: none of the ${String(recorded.length)} rounds before swept it, likely an old bug; run the reproduce command with the previous nightly`;
-    }
-    const before = swept.filter(failed);
-    const last = (before[0] ?? swept[0])?.date ?? "";
-    return before.length === 0
-        ? `swept in ${String(swept.length)} of the ${String(recorded.length)} rounds before (last ${last}), never failing so: a regression suspect`
-        : `failed so in ${String(before.length)} of the ${String(swept.length)} rounds before that swept it, last ${last}`;
+    const lastSwept = swept[0];
+    return lastSwept === undefined
+        ? `newly sampled: none of the ${String(recorded.length)} rounds before swept it, likely an old bug; run the reproduce command with the previous nightly`
+        : `swept in ${String(swept.length)} of the ${String(recorded.length)} rounds before (last ${lastSwept.date}), never failing so: a regression suspect`;
 }
 
 interface Moved {
