@@ -17,10 +17,6 @@ test(async (t) => {
     await park.release();
     await pulled;
     await s.client.progressed(token, "end");
-    await t.show(
-        "progress",
-        s.client.progressEvents
-            .filter((event) => event.token === token)
-            .map((event) => event.value),
-    );
+    const events = s.client.progressEvents.filter((event) => event.token === token);
+    await t.show("progress", Promise.resolve(events.map((event) => event.value)));
 });
