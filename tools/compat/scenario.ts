@@ -36,6 +36,10 @@ export interface Scenario {
     /// it, as it does under an editor.
     msvc?: boolean;
 
+    /// The MSVC toolset that environment selects (vcvars' `-vcvars_ver`,
+    /// e.g. "14.29"); the newest installed when unset.
+    toolset?: string;
+
     /// Executables the scenario runs, by name or absolute path.
     requires: string[];
     /// Directories the toolchain's own programs need on PATH, where its
@@ -124,15 +128,17 @@ export function systemEnv(): NodeJS.ProcessEnv {
     return env;
 }
 
-let developer: NodeJS.ProcessEnv | null | undefined;
+const developer = new Map<string, NodeJS.ProcessEnv | null>();
 
 /// What vcvars64.bat of the newest Visual Studio with the C++ tools sets
-/// on top of systemEnv(); null without one.
-function developerEnv(): NodeJS.ProcessEnv | null {
-    if (developer !== undefined) {
-        return developer;
+/// on top of systemEnv() for `toolset` ("" for the newest); null without
+/// one.
+function developerEnv(toolset: string): NodeJS.ProcessEnv | null {
+    const known = developer.get(toolset);
+    if (known !== undefined) {
+        return known;
     }
-    developer = null;
+    developer.set(toolset, null);
     const vswhere = path.join(
         process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
         "Microsoft Visual Studio",
@@ -140,7 +146,7 @@ function developerEnv(): NodeJS.ProcessEnv | null {
         "vswhere.exe",
     );
     if (process.platform !== "win32" || !fs.existsSync(vswhere)) {
-        return developer;
+        return null;
     }
     const install = spawnSync(
         vswhere,
@@ -157,9 +163,10 @@ function developerEnv(): NodeJS.ProcessEnv | null {
     ).stdout.trim();
     const vcvars = path.join(install, "VC", "Auxiliary", "Build", "vcvars64.bat");
     if (install === "" || !fs.existsSync(vcvars)) {
-        return developer;
+        return null;
     }
-    const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${vcvars}" 1>&2 && set"`], {
+    const version = toolset === "" ? "" : ` -vcvars_ver=${toolset}`;
+    const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${vcvars}"${version} 1>&2 && set"`], {
         env: systemEnv(),
         encoding: "utf8",
         windowsVerbatimArguments: true,
@@ -174,8 +181,8 @@ function developerEnv(): NodeJS.ProcessEnv | null {
             env[line.slice(0, at)] = line.slice(at + 1);
         }
     }
-    developer = env;
-    return developer;
+    developer.set(toolset, env);
+    return env;
 }
 
 function withPath(env: NodeJS.ProcessEnv, dirs: string[] | undefined): NodeJS.ProcessEnv {
@@ -189,7 +196,7 @@ function withPath(env: NodeJS.ProcessEnv, dirs: string[] | undefined): NodeJS.Pr
 /// The environment the scenario's build and its compiler run in; null
 /// when it needs a Visual Studio the machine does not have.
 export function buildEnv(scenario: Scenario): NodeJS.ProcessEnv | null {
-    const env = scenario.msvc === true ? developerEnv() : systemEnv();
+    const env = scenario.msvc === true ? developerEnv(scenario.toolset ?? "") : systemEnv();
     return env === null ? null : withPath(env, scenario.path);
 }
 

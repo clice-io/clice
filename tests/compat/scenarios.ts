@@ -36,12 +36,13 @@ function cmakeNinja(
     platforms: NodeJS.Platform[],
     cc: string,
     cxx: string,
-    options: { msvc?: boolean; extra?: string[] } = {},
+    options: { msvc?: boolean; toolset?: string; extra?: string[] } = {},
 ): Scenario {
     return {
         name,
         platforms,
         msvc: options.msvc === true,
+        ...(options.toolset === undefined ? {} : { toolset: options.toolset }),
         requires: ["cmake", "ninja", cc, cxx],
         build: cmake("Ninja", cc, cxx, ...(options.extra ?? [])),
         files: BOTH,
@@ -259,6 +260,12 @@ export const SCENARIOS: Scenario[] = [
         "/opt/homebrew/opt/llvm@18/bin/clang++",
     ),
     cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
+    // An older toolset beside the newest: its cl.exe compiles with its own
+    // headers (`_MSVC_STL_VERSION`), not the newest toolset's.
+    cmakeNinja("cmake ninja msvc 14.29 toolset", ["win32"], "cl", "cl", {
+        msvc: true,
+        toolset: "14.29",
+    }),
     // The newest standard, cl's conformance switches, and a Debug build's
     // runtime library. cl's warnings as errors stay warnings, clang-cl's
     // errors.
