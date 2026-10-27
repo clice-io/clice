@@ -115,6 +115,24 @@ int x = FROM_GEN;
     ZASSERT(built->diagnostics().empty());
 }
 
+ZEST_CASE(SearchGoesPastDirectories) {
+    TempDir tmp;
+    tmp.touch("first/config/inner.h");
+    tmp.touch("second/config", "#define FOUND 1\n");
+    tmp.touch("main.cpp", R"(
+#include <config>
+int x = FOUND;
+)");
+
+    params.kind = CompilationKind::Content;
+    params.input.arguments = {"clang++", "-std=c++20", "-Ifirst", "-Isecond", tmp.path("main.cpp")};
+    params.input.directory = tmp.root.str().str();
+
+    auto built = clice::compile(std::move(params));
+    ZASSERT(built->completed());
+    ZASSERT(built->diagnostics().empty());
+}
+
 ZEST_CASE(ForcedSystemHeaderPragma) {
     /// Headers the command forces in declare themselves system headers, as
     /// CMake's cmake_pch.hxx does: the headers they include stay the
@@ -752,13 +770,14 @@ int bar() { return 3; }
     ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
-/// The preamble build of `content` as main.cpp.
-std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content) {
-    add_focus("main.cpp", content);
+/// The preamble build of `content` as `file`.
+std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content,
+                                                llvm::StringRef file = "main.cpp") {
+    add_focus(file, content);
     prepare();
     params.kind = CompilationKind::Preamble;
     params.output_file = artifact("pch");
-    params.input.add_remapped_file(TestVFS::path("main.cpp"), content, preamble_bound(content));
+    params.input.add_remapped_file(TestVFS::path(file), content, preamble_bound(content));
     return clice::compile(std::move(params));
 }
 
@@ -839,6 +858,31 @@ int main() { return four(); }
     ZASSERT(preamble->has_output());
     ZEXPECT(collect_errors(*preamble).size() == 1U);
     ZEXPECT(defines_specialization(*preamble, "twice"));
+}
+
+ZEST_CASE(PCHOfHeaderInCycle) {
+    add_file("b.h", R"(
+#ifndef B_H
+#define B_H
+#include "a.h"
+struct B {};
+#endif
+)");
+
+    // The header's preamble reaches it again through b.h.
+    auto preamble = build_preamble(R"(
+#ifndef A_H
+#define A_H
+#include "b.h"
+struct A : B {};
+#endif
+)",
+                                   "a.h");
+    ZASSERT(preamble->has_output());
+    ZEXPECT(collect_errors(*preamble).empty());
+
+    ZASSERT(compile_with_pch());
+    ZEXPECT(collect_errors(*unit).empty());
 }
 
 ZEST_CASE(RefusedPCHFallsBack) {

@@ -15,6 +15,7 @@ import :compile.tokens;
 import :support.logging;
 import :support.shell;
 import :syntax.header_context;
+import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
 
@@ -701,6 +702,19 @@ CompilationStatus CompilationUnit::run() {
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
         auto focus = focus_file();
         if(has_pragma_once(focus.content(), bound)) {
+            instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
+                *SM().getFileEntryRefForID(focus.file()));
+        }
+    }
+
+    // A header its preamble includes again, through a cycle of headers,
+    // fails the preamble's build ("main file cannot be included recursively
+    // when building a preamble"): clang learns the guard only at the
+    // header's end, enters it, and refuses. Its guard's `#define` comes
+    // before every include, so a compile of the whole file skips it too.
+    if(params.kind == CompilationKind::Preamble && instance->getLangOpts().IsHeaderFile) {
+        auto focus = focus_file();
+        if(guard_opening(focus.content(), focus.lexical())) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
                 *SM().getFileEntryRefForID(focus.file()));
         }

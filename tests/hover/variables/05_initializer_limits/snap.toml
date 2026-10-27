@@ -31,3 +31,24 @@ int values[128]
 Value: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
 '''
 range = "int ⟦values⟧[] = {DUPLICATE_64(3), DUPLICATE_64(3)};"
+
+[answers.empty_list.hover]
+markdown = '''
+**variable** `wide`
+
+```cpp
+Wide wide {}
+```
+'''
+range = "Wide ⟦wide⟧{};"
+
+[answers.lambda_body.hover]
+markdown = '''
+**variable** `sum`
+
+```cpp
+auto sum = [](int x) { ... }
+```
+Type: `int (int)`
+'''
+range = "auto ⟦sum⟧ = [](int x) { return SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x); };"

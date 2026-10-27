@@ -547,6 +547,14 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     }
     auto file = fs::File::open(absolute.str());
     if(!file) {
+        // On Windows kotatsu opens no directory as a file (access denied); a
+        // header search goes past a directory named like its header
+        // (`Utility` for `<utility>` on a case-insensitive volume) only when
+        // told it is one.
+        if(auto status = statuses.status(absolute);
+           status && status->type == fs::FileType::Directory) {
+            return std::make_error_code(std::errc::is_a_directory);
+        }
         return file.error();
     }
     std::string real_name;
