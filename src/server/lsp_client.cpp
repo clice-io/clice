@@ -1364,7 +1364,7 @@ std::vector<protocol::CodeAction>
         assert(argument && "the parameters of a request encode");
         actions.push_back({
             .title = title,
-            .kind = std::string(kind),
+            .kind = protocol::CodeActionKind(kind),
             .command = protocol::Command{.title = std::move(title),
                                          .command = std::string(command),
                                          .arguments = std::vector{std::move(*argument)}},
