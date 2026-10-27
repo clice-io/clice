@@ -23,9 +23,33 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 ["gcc warnings"."$ clice command convert -- missing-g++ -Wall -Wlogical-op -Wno-useless-cast -Werror=duplicated-cond -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors main.cpp"]
-stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wall -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors ${WS}/main.cpp"
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wall -Wformat=2 -Wno-error=unused-variable -Wfatal-errors ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
 error: The command stays a driver command: Cannot find driver: missing-g++
+'''
+exit = 1
+
+["errors of other compilers"."$ clice command convert -- missing-g++ -Wall -Werror -Werror=shadow main.cpp"]
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wall -Wshadow ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-g++
+error: The command stays a driver command: Cannot find driver: missing-g++
+'''
+exit = 1
+
+["errors of other compilers"."$ clice command convert -- cl-missing /W4 /WX main.cpp"]
+stdout = "cl-missing --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /W4 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: cl-missing
+error: The command stays a driver command: Cannot find driver: cl-missing
+'''
+exit = 1
+
+["errors of other compilers"."$ clice command convert -- nvcc-missing -Xcompiler -Werror -c main.cpp"]
+stdout = "nvcc-missing -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: nvcc-missing
+error: The command stays a driver command: Cannot find driver: nvcc-missing
 '''
 exit = 1
