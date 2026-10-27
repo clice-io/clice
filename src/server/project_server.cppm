@@ -86,10 +86,10 @@ public:
 
     /// Weigh what the looks found of the project's databases (see
     /// FileTracker::tick_cdb, `force` as there) and dispatch the reloads;
-    /// how many events that was. Databases that moved to another build's
-    /// index (FileTracker::moved) restart the project on that one instead
-    /// (MasterServer::restart), which counts as one.
-    std::size_t weigh_databases(bool force);
+    /// how many events that was. Nullopt when the databases moved to
+    /// another build's index (FileTracker::moved): the project restarts on
+    /// that one instead (MasterServer::restart).
+    std::optional<std::size_t> weigh_databases(bool force);
 
     /// After a tick looked at the flags: weigh_databases, unless the
     /// project's polling is off.

@@ -93,8 +93,8 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::Pol
             continue;
         }
         if(cdb) {
-            count +=
-                static_cast<std::uint32_t>(project->weigh_databases(params.force.value_or(true)));
+            count += static_cast<std::uint32_t>(
+                project->weigh_databases(params.force.value_or(true)).value_or(1));
             continue;
         }
         auto events = co_await project->tracker->tick_sources();

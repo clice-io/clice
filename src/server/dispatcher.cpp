@@ -341,12 +341,6 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                             Params wp,
                             kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
-    if(!ast.loaded.is_set()) {
-        co_await ast.loaded.wait();
-        if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
-        }
-    }
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
@@ -364,6 +358,9 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     wp.file = path;
     wp.text = session.text().str();
     wp.offset = session.positions().offset_clamped(position, PositionEncoding::UTF16);
+    if(!ast.loaded.is_set()) {
+        co_await ast.loaded.wait();
+    }
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
 

@@ -433,13 +433,13 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
-std::size_t ProjectServer::weigh_databases(bool force) {
+std::optional<std::size_t> ProjectServer::weigh_databases(bool force) {
     if(!tracker) {
         return 0;
     }
-    if(tracker->moved(force)) {
+    if(tracker->moved()) {
         server.restart(*this);
-        return 1;
+        return std::nullopt;
     }
     auto events = tracker->tick_cdb(force);
     if(!events.empty()) {
@@ -449,7 +449,8 @@ std::size_t ProjectServer::weigh_databases(bool force) {
 }
 
 void ProjectServer::tick_databases() {
-    if(project.config.tracker.workspace_poll_seconds.value > 0 && weigh_databases(false) > 0) {
+    if(project.config.tracker.workspace_poll_seconds.value > 0 &&
+       weigh_databases(false).value_or(1) > 0) {
         server.probe.happened(LoopEvent::DatabaseChange);
     }
 }

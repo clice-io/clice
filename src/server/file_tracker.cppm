@@ -34,10 +34,9 @@ public:
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
     /// Whether the build's databases resolve elsewhere than at the load
-    /// (resolved_databases), the same for two ticks unless `force`: another
-    /// build, whose commands a reload would record as the ones this index
-    /// was built with.
-    bool moved(bool force);
+    /// (resolved_databases): another build, whose commands a reload would
+    /// record as the ones this index was built with.
+    bool moved() const;
 
     /// See CDBWatcher::discover_around; the loads' diffs as CDBChanged
     /// events.
@@ -56,10 +55,6 @@ private:
 
     /// The checkout's HEAD and index.
     llvm::SmallVector<std::shared_ptr<const vfs::Flag>> checkout;
-
-    /// What the last tick found the databases resolve to while it differed
-    /// from the load's.
-    std::optional<std::string> pending_resolved;
 };
 
 }  // namespace clice

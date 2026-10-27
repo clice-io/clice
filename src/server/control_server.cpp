@@ -39,12 +39,11 @@ void register_control(ProjectServer& srv, ipc::JSONPeer& peer) {
             }
             // Build changes arrive through the tracker's poll; a request right
             // after a compile_commands.json edit must see the new units.
-            if(srv.tracker) {
-                srv.project.file_table.disk.look_flags();
-                auto events = srv.tracker->tick_cdb(/*force=*/true);
-                if(!events.empty()) {
-                    srv.dispatch(events);
-                }
+            srv.project.file_table.disk.look_flags();
+            if(!srv.weigh_databases(/*force=*/true)) {
+                co_await kota::fail(
+                    ipc::Error{"the running clice server is switching to the build its databases "
+                               "now resolve to; run the command again"});
             }
             auto members = srv.project.build.members();
             if(members.empty()) {

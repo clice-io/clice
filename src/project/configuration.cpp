@@ -39,13 +39,13 @@ std::vector<std::string> real_databases(const Config& config, llvm::StringRef co
     return paths;
 }
 
-/// What the rules tagged `configuration` do besides naming databases, one
-/// string each: configurations alike in it and in the databases they read
-/// build alike.
+/// What the rules active under `configuration` do besides naming
+/// databases, one string each in declaration order: configurations alike in
+/// it and in the databases they read build alike.
 std::vector<std::string> edits_of(const Config& config, llvm::StringRef configuration) {
     std::vector<std::string> edits;
     for(auto rule: config.rules) {
-        if(rule.configuration != configuration) {
+        if(!rule.configuration.empty() && rule.configuration != configuration) {
             continue;
         }
         rule.configuration.clear();
