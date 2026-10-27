@@ -436,20 +436,11 @@ suite("clice E2E", function () {
         assert.ok(host, `${context} should be offered as a context`);
 
         // The client contract: a switch through the extension's commands
-        // keeps the document open; the server recompiles the unchanged text
-        // and has the client pull its diagnostics anew, which it does for a
-        // document a tab shows.
-        const published = () =>
-            until(
-                [vscode.languages.onDidChangeDiagnostics],
-                (event) => event?.uris.some((changed) => changed.toString() === uri) ?? false,
-                "diagnostics publish after the switch",
-            );
-
-        let republished = published();
+        // keeps the document open. The server answers once the choice is
+        // in force; the client pulls the diagnostics anew only when they
+        // changed, and the header compiles clean under either host.
         await vscode.window.showTextDocument(document);
         await vscode.commands.executeCommand("clice.applyContext", host, query.epoch, uri);
-        await republished;
         const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,
         });
@@ -460,10 +451,8 @@ suite("clice E2E", function () {
         assert.ok(!current.automatic, "the switched host is the user's choice");
         assert.strictEqual(document.languageId, "cpp", "the switch keeps the document as it was");
 
-        republished = published();
         await vscode.window.showTextDocument(document);
         await vscode.commands.executeCommand("clice.resetContext");
-        await republished;
         const automatic = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,
         });
