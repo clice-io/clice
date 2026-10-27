@@ -21,7 +21,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [重命名](./rename.md)                | 支持 4 项                                |
 | [诊断](./diagnostics.md)             | 支持 10 项 · 部分支持 1 项               |
 | [代码操作](./code-action.md)         | 支持 38 项                               |
-| [语义 Token](./semantic-tokens.md)   | 支持 59 项                               |
+| [语义 Token](./semantic-tokens.md)   | 支持 60 项                               |
 | [内联提示](./inlay-hints.md)         | 支持 40 项                               |
 | [文档链接](./document-links.md)      | 支持 6 项 · 部分支持 1 项                |
 | [文档符号](./document-symbols.md)    | 支持 29 项                               |

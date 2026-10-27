@@ -21,6 +21,7 @@ local links = {
     ['@lsp.typemod.keyword.controlFlow'] = '@keyword.conditional',
     ['@lsp.typemod.keyword.literal'] = '@boolean',
     ['@lsp.typemod.keyword.documentation'] = '@comment.note',
+    ['@lsp.typemod.keyword.operator'] = '@keyword.operator',
     ['@lsp.typemod.comment.documentation'] = '@comment.documentation',
     ['@lsp.typemod.macro.callable'] = '@function.macro',
     ['@lsp.typemod.function.defaultLibrary'] = '@function.builtin',

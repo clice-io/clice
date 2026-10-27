@@ -354,7 +354,10 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {
@@ -392,7 +395,7 @@
               },
               {
                 "at": {
-                  "$place": "#if defined(FEATURE) && ⟦!defined⟧(MISSING) && __has_include(\"main.cpp\")",
+                  "$place": "#if defined(FEATURE) && ⟦!⟧defined(MISSING) && __has_include(\"main.cpp\")",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -401,11 +404,31 @@
                     },
                     "end": {
                       "line": 10,
-                      "character": 32
+                      "character": 25
                     }
                   }
                 },
                 "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "#if defined(FEATURE) && !⟦defined⟧(MISSING) && __has_include(\"main.cpp\")",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 32
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {
@@ -456,7 +479,10 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {
@@ -630,7 +656,10 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {
@@ -832,7 +861,10 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {

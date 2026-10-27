@@ -32,7 +32,7 @@ semantic_tokens = [
     { at = "int tail = 3⟦;⟧", type = "plain", modifiers = ["inactive"] },
     { at = "⟦#endif⟧ @13", type = "directive" },
     { at = "⟦#if⟧ defined(MISSING)", type = "directive" },
-    { at = "#if ⟦defined⟧(MISSING)", type = "operator" },
+    { at = "#if ⟦defined⟧(MISSING)", type = "keyword", modifiers = ["operator"] },
     { at = "#if defined(⟦MISSING⟧)", type = "macro" },
     { at = "⟦first_branch;⟧", type = "plain", modifiers = ["inactive"] },
     { at = "⟦#elif⟧ 0", type = "directive" },

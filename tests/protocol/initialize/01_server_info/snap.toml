@@ -126,7 +126,8 @@ value = '''
                 "literal",
                 "affix",
                 "empty",
-                "inactive"
+                "inactive",
+                "operator"
             ]
         },
         "range": true,

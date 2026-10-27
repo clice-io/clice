@@ -355,6 +355,10 @@
       {
         "id": "inactive",
         "description": "Inside an inactive preprocessor region, or an argument a macro drops. The clice extension dims these regions; other clients can style the modifier directly."
+      },
+      {
+        "id": "operator",
+        "description": "A keyword that is an operator (e.g., sizeof, new, static_cast, and)"
       }
     ],
     "semanticTokenScopes": [
@@ -378,6 +382,9 @@
           ],
           "keyword.controlFlow": [
             "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
           ],
           "keyword.literal": [
             "constant.language"
@@ -465,6 +472,9 @@
           "keyword.controlFlow": [
             "keyword.control"
           ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
           "keyword.literal": [
             "constant.language"
           ],
@@ -550,6 +560,9 @@
           ],
           "keyword.controlFlow": [
             "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
           ],
           "keyword.literal": [
             "constant.language"
