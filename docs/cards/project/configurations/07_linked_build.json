@@ -310,7 +310,7 @@
         {
           "label": "$ clice index --jobs 2",
           "value": {
-            "stderr": "error: request failed: the running clice server is about to switch to the build its databases now resolve to; run the command again in a moment",
+            "stderr": "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)",
             "exit": 1
           }
         },
@@ -319,6 +319,43 @@
           "value": {
             "stdout": "Indexed through the running clice server (pid #).",
             "exit": 0
+          }
+        },
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "clice index with polling off",
+      "blocks": [
+        {
+          "label": "$ clice index --jobs 2",
+          "value": {
+            "stderr": "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)",
+            "exit": 1
           }
         },
         {

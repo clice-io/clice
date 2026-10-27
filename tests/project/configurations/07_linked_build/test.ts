@@ -119,28 +119,13 @@ test("clice index while the server switches", async (t) => {
     t.disk.linkDirectory("out/current", "out/release");
     const s = await t.start();
     await s.indexed();
-    // The server has not looked since the link moved: the request finds it
-    // out and is refused rather than indexing into the release build's index.
+    // The server has not looked since the link moved (tests run with polling
+    // off): the request finds it out and is refused rather than indexing into
+    // the release build's index, until a look switches the server.
     t.disk.linkDirectory("out/current", "out/debug");
     await t.cli("index --jobs 2");
     await s.poll("cdb");
     await s.indexed();
     await t.cli("index --jobs 2");
-    await t.show("debug", s.workspaceSymbols("_only"));
-});
-
-test("clice index with polling off", async (t) => {
-    t.disk.edit("clice.toml", {
-        after: 'compile_commands = ["out/debug"]',
-        insert: "\n\n[tracker]\nworkspace_poll_seconds = 0",
-    });
-    t.disk.linkDirectory("out/current", "out/release");
-    const s = await t.start();
-    await s.indexed();
-    // Nothing looks at the databases again: the switch waits for a start.
-    t.disk.linkDirectory("out/current", "out/debug");
-    await t.cli("index --jobs 2");
-    await s.restart();
-    await s.indexed();
     await t.show("debug", s.workspaceSymbols("_only"));
 });

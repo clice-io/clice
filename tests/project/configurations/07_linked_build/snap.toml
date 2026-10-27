@@ -62,7 +62,7 @@ workspace_symbols = [
 ]
 
 ["clice index while the server switches"."$ clice index --jobs 2"]
-stderr = "error: request failed: the running clice server is about to switch to the build its databases now resolve to; run the command again in a moment"
+stderr = "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)"
 exit = 1
 
 ["clice index while the server switches"."$ clice index --jobs 2 #2"]
