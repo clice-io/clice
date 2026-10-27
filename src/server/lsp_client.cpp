@@ -133,6 +133,8 @@ LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server)
         }
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
+    compile_phase_conn = server.on_compile_phase.connect(
+        [this](Fid path_id, CompilePhase phase) { report_compile_phase(path_id, phase); });
     serving_conn = server.on_serving_index_changed.connect([this]() { refresh_index_served(); });
     inputs_conn = server.on_inputs_changed.connect([this]() { refresh_stale(); });
     held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
@@ -360,6 +362,9 @@ void LSPClient::register_lifecycle() {
         if(params.process_id && *params.process_id > 0 && srv.client_on_host) {
             srv.watch_client(static_cast<std::uint32_t>(*params.process_id));
         }
+
+        work_done_progress = params.capabilities.window.has_value() &&
+                             params.capabilities.window->work_done_progress;
 
         if(params.capabilities.workspace.has_value()) {
             auto& ws_caps = *params.capabilities.workspace;
@@ -1741,10 +1746,82 @@ void LSPClient::report_index_progress() {
     }
 }
 
+/// What a compile in `phase` waits on, as its progress says.
+static std::string_view describe(CompilePhase phase) {
+    switch(phase) {
+        case CompilePhase::Command: return "finding its command";
+        case CompilePhase::Modules: return "building modules";
+        case CompilePhase::Preamble: return "building preamble";
+        case CompilePhase::Parsing: return "parsing";
+        case CompilePhase::Idle: break;
+    }
+    std::unreachable();
+}
+
+void LSPClient::report_compile_phase(Fid path_id, CompilePhase phase) {
+    if(!work_done_progress || !client_ready) {
+        return;
+    }
+    auto [it, inserted] = compile_progress.try_emplace(path_id);
+    if(inserted) {
+        if(phase == CompilePhase::Idle) {
+            compile_progress.erase(it);
+            return;
+        }
+        it->second = std::make_shared<CompileProgress>(CompileProgress{.phase = phase});
+        server.loop.schedule(announce_compile(it->second, path_id));
+        return;
+    }
+    auto& state = *it->second;
+    state.phase = phase;
+    // Before the announcement, its begin() reads the phase.
+    if(!state.reporter) {
+        return;
+    }
+    if(phase == CompilePhase::Idle) {
+        state.reporter->end();
+        compile_progress.erase(it);
+    } else {
+        state.reporter->report(std::string(describe(phase)));
+    }
+}
+
+kota::task<> LSPClient::announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id) {
+    // Time is the feature: the compile after an edit mostly finishes
+    // sooner, and a progress shown for each would blink in the editor.
+    co_await kota::sleep(std::chrono::milliseconds(500));
+    if(state->abandoned) {
+        co_return;
+    }
+    if(state->phase == CompilePhase::Idle) {
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    auto shown = server.files.display(path_id);
+    lsp::ProgressReporter<ipc::JSONPeer> reporter(
+        peer,
+        protocol::ProgressToken(std::format("clice/compile/{}", feature::to_uri(shown))));
+    // Hang detection: the bound ends the handshake of a client that never
+    // answers, as the index progress's does.
+    auto created = co_await reporter.create({.timeout = std::chrono::minutes(1)});
+    if(state->abandoned) {
+        co_return;
+    }
+    if(created.has_error() || state->phase == CompilePhase::Idle) {
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    reporter.begin(std::string(path::filename(shown)), std::string(describe(state->phase)));
+    state->reporter.emplace(std::move(reporter));
+}
+
 LSPClient::~LSPClient() {
     // A progress handshake may still be awaiting the client; it holds this
     // state alive and checks the flag before touching the peer.
     index_progress->abandoned = true;
+    for(auto& [path_id, state]: compile_progress) {
+        state->abandoned = true;
+    }
 }
 
 }  // namespace clice

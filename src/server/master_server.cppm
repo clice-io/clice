@@ -6,6 +6,7 @@ module clice:server.master_server;
 
 import :feature.semantic_tokens;
 import :sched.index.pump;
+import :server.ast_family;
 import :server.extension;
 import :server.project_server;
 import :server.session;
@@ -218,6 +219,9 @@ public:
     /// What a project's document shows of its diagnostics changed with no
     /// compile (ASTFamily::on_diagnostics).
     Signal<ProjectServer&, std::shared_ptr<Session>> on_diagnostics;
+
+    /// A project's document compile moved on (ASTFamily::on_phase).
+    Signal<Fid, CompilePhase> on_compile_phase;
 
     /// The projects' indexing rounds as one: it begins with the first
     /// project's round and ends with the last one's, and a project whose

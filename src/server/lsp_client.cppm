@@ -9,6 +9,7 @@ import :feature.diagnostics;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.semantic_tokens;
+import :server.ast_family;
 import :server.master_server;
 import :server.project_server;
 import :server.session;
@@ -90,6 +91,11 @@ private:
     /// server's on_notify signal.
     void forward_notify_messages();
 
+    /// Follow a document's compile to `phase` with work-done progress (see
+    /// CompileProgress). Invoked by the server's on_compile_phase signal;
+    /// capability-gated.
+    void report_compile_phase(Fid path_id, CompilePhase phase);
+
     MasterServer& server;
     ipc::JSONPeer& peer;
 
@@ -116,6 +122,10 @@ private:
     /// Whether the client takes a diagnostic's notes as related
     /// information; otherwise they go into its message.
     bool related_information = false;
+
+    /// Whether the client takes work-done progress the server starts
+    /// (window.workDoneProgress).
+    bool work_done_progress = false;
 
     /// The diagnostics in the shape the client takes.
     std::vector<protocol::Diagnostic>
@@ -273,6 +283,10 @@ private:
     /// disconnects on destruction.
     Signal<std::uint64_t>::Connection held_conn;
 
+    /// Subscription to open documents' compile phases; disconnects on
+    /// destruction.
+    Signal<Fid, CompilePhase>::Connection compile_phase_conn;
+
     /// Sequence number of the next notify-log message to forward (see
     /// MasterServer::notify_seq).
     std::uint64_t notify_cursor = 0;
@@ -312,6 +326,28 @@ private:
     };
 
     std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();
+
+    /// The progress of one document's compile. It is announced only once the
+    /// compile has run a while, so the quick compile after every edit shows
+    /// none, and a compile starting while the announcement is pending joins
+    /// it. Shared with the task announcing it, which reads `abandoned` before
+    /// touching the client after each of its waits.
+    struct CompileProgress {
+        /// What the compile waits on; Idle once it ended.
+        CompilePhase phase = CompilePhase::Idle;
+
+        /// The owning LSPClient was destroyed.
+        bool abandoned = false;
+
+        /// Set once announced: reports and the end go through it.
+        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
+    };
+
+    /// The documents whose compile runs or whose announcement is pending.
+    llvm::DenseMap<Fid, std::shared_ptr<CompileProgress>> compile_progress;
+
+    /// Wait out the delay, then announce `state`'s compile unless it ended.
+    kota::task<> announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id);
 };
 
 }  // namespace clice

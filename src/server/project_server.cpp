@@ -58,6 +58,9 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     diagnostics_conn = ast.on_diagnostics.connect([this](const std::shared_ptr<Session>& session) {
         this->server.on_diagnostics.emit(*this, session);
     });
+    phase_conn = ast.on_phase.connect([this](Fid path_id, CompilePhase phase) {
+        this->server.on_compile_phase.emit(path_id, phase);
+    });
     progress_conn = sched.pump.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
 

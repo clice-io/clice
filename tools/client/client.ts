@@ -450,8 +450,10 @@ export class CliceClient {
             // information, like every editor client: code action replies
             // then carry the buffer version they apply to, and a
             // diagnostic's notes point at their places. Document symbols
-            // as a tree in every kind, as every editor takes them.
+            // as a tree in every kind, as every editor takes them, and
+            // progress the server starts.
             capabilities: options.capabilities ?? {
+                window: { workDoneProgress: true },
                 workspace: { workspaceEdit: { documentChanges: true } },
                 textDocument: {
                     hover: { contentFormat: ["markdown", "plaintext"] },

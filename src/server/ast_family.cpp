@@ -371,8 +371,14 @@ ASTFamily::ASTFamily(Project& project,
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
-        return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
+        return run_round(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
+}
+
+kota::task<RoundOutcome> ASTFamily::run_round(RoundContext& ctx, Fid path_id) {
+    auto outcome = co_await run(ctx, path_id);
+    on_phase.emit(path_id, CompilePhase::Idle);
+    co_return outcome;
 }
 
 void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
@@ -925,6 +931,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     auto file_path = std::string(project.file_table.resolve(path_id));
 
     LOG_INFO("compile round: starting path_id={} gen={}", path_id, gen);
+    on_phase.emit(path_id, CompilePhase::Command);
 
     // A round past the gate on a crashed compile or preamble is its retry,
     // and holds the license until its outcome (Quarantine invariant 2).
@@ -1019,6 +1026,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
+        on_phase.emit(path_id, CompilePhase::Modules);
         auto imports = co_await depend_modules(ctx,
                                                session,
                                                resolution,
@@ -1048,6 +1056,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // forces in to parse what it holds.
         std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
+            on_phase.emit(path_id, CompilePhase::Preamble);
             if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
                 auto request =
                     pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
@@ -1166,6 +1175,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             auto conditionals = preamble_state->open_conditionals();
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
+
+        on_phase.emit(path_id, CompilePhase::Parsing);
 
         // The send carries the interrupt, not the round's advisory token:
         // the master must observe the request's real outcome — the crash
