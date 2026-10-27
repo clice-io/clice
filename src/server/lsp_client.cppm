@@ -315,6 +315,9 @@ private:
     /// MasterServer::notify_seq).
     std::uint64_t notify_cursor = 0;
 
+    /// The guidance shown to the user, each text once.
+    llvm::StringSet<> shown_guidance;
+
     /// Progress-token lifecycle, split into orthogonal facts so the
     /// asynchronous create() handshake can reconcile against rounds that
     /// begin or end while it is in flight. At most one create() is ever

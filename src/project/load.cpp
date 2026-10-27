@@ -293,7 +293,7 @@ void load_sources(Project& project,
         }
     }
     if(!project.build.declares_sources() && sources.size() > 1) {
-        LOG_GUIDANCE(
+        LOG_WARN(
             "No rule names a compilation database; the {} found apply in this order, "
             "an earlier one winning for a file both list: {}. To switch between them "
             "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "

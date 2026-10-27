@@ -48,7 +48,9 @@ struct CompileCommand {
     /// of a unit nearby; "fallback", clice's own.
     std::string source;
 
-    /// The file whose command it borrows ("host", "inferred").
+    /// The file whose command it borrows: a header's host, the unit an
+    /// inferred command comes from when the source is not one of the build
+    /// yet (a saved source joined it with the command it borrowed).
     std::optional<std::string> from;
 
     std::string directory;

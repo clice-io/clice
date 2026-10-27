@@ -1,6 +1,9 @@
 [test."before the handshake"]
 value = []
 
+[test."after the handshake"]
+value = []
+
 [test.guidance]
 value = [
     "No compile_commands.json found in workspace ${WS} or its direct subdirectories. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",

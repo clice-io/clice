@@ -21,20 +21,22 @@ test(async (t) => {
     // A round ending before the client answers for its token.
     const answers: (() => void)[] = [];
     s.client.progressCreateHold = new Promise((resolve) => answers.push(resolve));
+    const ends = count("end");
     t.disk.edit("other.cpp", { replace: "return 2;", with: "return 3;" });
     await s.sync({ poll: true });
     answers.forEach((answer) => {
         answer();
     });
     s.client.progressCreateHold = undefined;
-    await s.client.progressed(PROGRESS, "end", count("end") + 1);
+    await s.client.progressed(PROGRESS, "end", ends + 1);
 
     // The round after it shows, held until the client sees it begin.
+    const begins = count("begin");
     const held = await s.park("index", "other.cpp", { at: "reply" });
     t.disk.edit("other.cpp", { replace: "return 3;", with: "return 4;" });
     expect(await s.poll("workspace")).toBe(1);
     await held.reached();
-    await s.client.progressed(PROGRESS, "begin", count("begin") + 1);
+    await s.client.progressed(PROGRESS, "begin", begins + 1);
     await held.release();
     await s.indexed();
     expect(kinds().slice(shown)).toEqual(["begin", "end", "begin", "end"]);

@@ -171,10 +171,14 @@ void LSPClient::forward_notify_messages() {
     for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; ++seq) {
         auto& message = server.notify_log[static_cast<std::size_t>(seq - first_seq)];
         if(message.kind == logging::NotifyKind::Guidance) {
-            peer.send_notification(protocol::ShowMessageParams{
-                .type = protocol::MessageType::Warning,
-                .message = message.text,
-            });
+            // A problem found again, a database reloaded with it still
+            // there, is shown once; the log keeps every report.
+            if(shown_guidance.insert(message.text).second) {
+                peer.send_notification(protocol::ShowMessageParams{
+                    .type = protocol::MessageType::Warning,
+                    .message = message.text,
+                });
+            }
         } else {
             peer.send_notification(protocol::LogMessageParams{
                 .type = protocol::MessageType::Error,

@@ -3,7 +3,8 @@ import { refusal, test } from "@clice/tools/testing";
 
 // `clice serve --workspace` loads its workspace before any client speaks;
 // the guidance that load emits is shown once the client's handshake ends,
-// window/showMessage being no message to send ahead of it.
+// window/showMessage being no message to send ahead of it, and the missing
+// database once a file of the workspace opens.
 
 test(async (t) => {
     const s = await t.spawn({ args: ["serve", `--workspace=${t.root}`] });
@@ -16,5 +17,7 @@ test(async (t) => {
         }),
     );
     await s.client.sendNotification(proto.InitializedNotification.method, {});
+    await t.show("after the handshake", await s.guidance());
+    s.open("main.cpp", { pull: false });
     await t.show("guidance", await s.guidance());
 });

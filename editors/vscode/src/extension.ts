@@ -305,26 +305,50 @@ async function onSettingsChanged(
 }
 
 /// clice reads its configuration when it starts: an edited clice.toml, or
-/// .clice/config.toml, applies once the server restarts. The latter sits
-/// under .clice, which files.watcherExclude keeps from file watchers, so its
-/// saves in the editor are what is seen of it.
+/// .clice/config.toml, of a workspace folder applies once the server
+/// restarts. Only a folder's own: a clice.toml deeper down, a test fixture
+/// or a vendored project's, configures nothing the server runs. The second
+/// sits under .clice, which files.watcherExclude keeps from file watchers,
+/// so its saves in the editor are what is seen of it.
 function watchConfigFiles(context: ExtensionContext) {
     const offer = (uri: vscode.Uri) =>
         void offerRestart(
             `clice: ${vscode.workspace.asRelativePath(uri)} changed; it applies once the server restarts.`,
             context,
         );
-    const watcher = vscode.workspace.createFileSystemWatcher("**/clice.toml");
+    const watchers = new Map<string, vscode.Disposable>();
+    const watch = (folders: readonly vscode.WorkspaceFolder[]) => {
+        for (const folder of folders) {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(folder, "clice.toml"),
+            );
+            watcher.onDidCreate(offer);
+            watcher.onDidChange(offer);
+            watcher.onDidDelete(offer);
+            watchers.set(folder.uri.toString(), watcher);
+        }
+    };
+    watch(vscode.workspace.workspaceFolders ?? []);
     context.subscriptions.push(
-        watcher,
-        watcher.onDidCreate(offer),
-        watcher.onDidChange(offer),
-        watcher.onDidDelete(offer),
+        {
+            dispose: () => {
+                for (const watcher of watchers.values()) {
+                    watcher.dispose();
+                }
+            },
+        },
+        vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+            for (const folder of event.removed) {
+                watchers.get(folder.uri.toString())?.dispose();
+                watchers.delete(folder.uri.toString());
+            }
+            watch(event.added);
+        }),
         vscode.workspace.onDidSaveTextDocument((document) => {
-            const file = document.uri.fsPath;
+            const folder = vscode.workspace.getWorkspaceFolder(document.uri);
             if (
-                path.basename(file) === "config.toml" &&
-                path.basename(path.dirname(file)) === ".clice"
+                folder &&
+                document.uri.fsPath === path.join(folder.uri.fsPath, ".clice", "config.toml")
             ) {
                 offer(document.uri);
             }

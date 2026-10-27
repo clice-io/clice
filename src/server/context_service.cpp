@@ -237,10 +237,10 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     // The command line as its database or rule writes it, the rules
     // applied, rather than the frontend's the compile gets: the one a user
     // recognizes, and could run.
-    for(auto* argument: ws.commands.render_full(resolution.ref.command)) {
+    auto file = ws.file_table.spelling(path_id).str();
+    for(auto* argument: ws.commands.render_full(resolution.ref.command, file)) {
         command.arguments.emplace_back(argument);
     }
-    command.arguments.emplace_back(ws.file_table.spelling(path_id).str());
     command.source = source_name(resolution.source);
     auto from = resolution.host.valid() ? resolution.host : resolution.lender;
     if(from.valid()) {

@@ -54,7 +54,9 @@ export interface CompileCommand {
     /// of a rule, the command of a unit nearby, or clice's own.
     source: "database" | "host" | "default" | "inferred" | "fallback";
 
-    /// The file whose command it borrows ("host", "inferred").
+    /// The file whose command it borrows: a header's host, the unit an
+    /// inferred command comes from when the source is not one of the build
+    /// yet (a saved source joined it with the command it borrowed).
     from: string | null;
 
     directory: string;

@@ -164,6 +164,11 @@ private:
     /// start() ran: documents opened from now on have their serving decided at once.
     bool started = false;
 
+    /// start() found no compile command for the project. The guidance
+    /// saying so waits for the first document the project serves: a folder
+    /// of a multi-root workspace may hold no C or C++ at all.
+    bool commands_missing = false;
+
     /// An index attempt finished with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —
     /// escalate instead of letting it answer empty forever.
