@@ -126,7 +126,8 @@ ProjectLoad load_project(Project& project,
     project.index.workspace = root;
     auto& cfg = project.config.project;
     auto configuration = resolve_configuration(project.config, requested_configuration);
-    project.database_key = database_key(project.config, configuration);
+    project.resolved_databases = resolved_databases(project.config, configuration);
+    project.database_key = database_key(project.config, configuration, project.resolved_databases);
     auto& key = project.database_key;
     if(key.configuration != configuration) {
         LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",

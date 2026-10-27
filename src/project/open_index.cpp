@@ -55,7 +55,8 @@ bool open_database(Project& project, Config config, llvm::StringRef requested_co
     project.index.workspace = project.config.workspace_root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
-    project.database_key = database_key(project.config, configuration);
+    project.resolved_databases = resolved_databases(project.config, configuration);
+    project.database_key = database_key(project.config, configuration, project.resolved_databases);
     auto& key = project.database_key;
     project.database = index::open_database(*project.store, key, /*read_only=*/true);
     if(!project.database) {

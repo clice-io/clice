@@ -53,9 +53,19 @@ static void push_delta(CDBDiff diff, llvm::SmallVectorImpl<FileEvent>& events) {
     }
 }
 
-bool FileTracker::moved() const {
-    return cdb.changing() && database_key(project.config, project.build.active_configuration()) !=
-                                 project.database_key;
+bool FileTracker::moved(bool force) {
+    auto resolved = resolved_databases(project.config, project.build.active_configuration());
+    if(resolved == project.resolved_databases) {
+        pending_resolved.reset();
+        return false;
+    }
+    // Like a database rewrite, a link counts once it held for two ticks: a
+    // link replaced by removing it first is missing in between.
+    if(!force && pending_resolved != resolved) {
+        pending_resolved = std::move(resolved);
+        return false;
+    }
+    return true;
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {

@@ -123,13 +123,16 @@ ZEST_CASE(DatabaseKeyResolved) {
         config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
         return config;
     };
+    auto key_of = [](const Config& config, llvm::StringRef configuration) {
+        return database_key(config, configuration, resolved_databases(config, configuration));
+    };
     auto config = configured("out/a");
-    ZEXPECT(database_key(config, "active").str() == "a");
-    ZEXPECT(database_key(config, "a").str() == "a");
-    ZEXPECT(database_key(config, "both").str() == "both");
+    ZEXPECT(key_of(config, "active").str() == "a");
+    ZEXPECT(key_of(config, "a").str() == "a");
+    ZEXPECT(key_of(config, "both").str() == "both");
 
     config = configured("out/b");
-    auto key = database_key(config, "active");
+    auto key = key_of(config, "active");
     ZEXPECT(key.configuration == "active");
     ZEXPECT(key.resolved ==
             CanonicalPath(Spelling::absolute(tmp.path("out/b/compile_commands.json"))).str());
@@ -138,7 +141,7 @@ ZEST_CASE(DatabaseKeyResolved) {
     config = configured("out/a");
     config.rules[1].append = {"-DTRACE"};
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZEXPECT(database_key(config, "active").configuration == "active");
+    ZEXPECT(key_of(config, "active").configuration == "active");
 };
 
 };  // ZEST_SUITE(Configuration)

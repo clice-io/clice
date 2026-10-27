@@ -163,7 +163,7 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
     return fallback.str();
 }
 
-index::DatabaseKey database_key(const Config& config, llvm::StringRef configuration) {
+std::string resolved_databases(const Config& config, llvm::StringRef configuration) {
     std::string resolved;
     for(auto& rule: config.compiled_rules) {
         if(!rule.resolve_symlinks || !rule.active_under(configuration)) {
@@ -176,6 +176,12 @@ index::DatabaseKey database_key(const Config& config, llvm::StringRef configurat
             resolved += CanonicalPath(database).str();
         }
     }
+    return resolved;
+}
+
+index::DatabaseKey database_key(const Config& config,
+                                llvm::StringRef configuration,
+                                llvm::StringRef resolved) {
     if(resolved.empty()) {
         return {.configuration = configuration.str()};
     }
@@ -190,7 +196,7 @@ index::DatabaseKey database_key(const Config& config, llvm::StringRef configurat
             return {.configuration = tag.str()};
         }
     }
-    return {.configuration = configuration.str(), .resolved = std::move(resolved)};
+    return {.configuration = configuration.str(), .resolved = resolved.str()};
 }
 
 }  // namespace clice

@@ -235,12 +235,6 @@ CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
     return delta;
 }
 
-bool CDBWatcher::changing() const {
-    return ranges::any_of(sources, [](const TrackedSource& tracked) {
-        return looked(tracked) != tracked.applied;
-    });
-}
-
 CDBDiff CDBWatcher::discover_around(Fid path_id) {
     CDBDiff found;
     if(project.build.declares_sources() || !project.build.entries(path_id).empty()) {

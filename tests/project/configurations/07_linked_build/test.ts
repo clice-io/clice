@@ -72,3 +72,26 @@ test("the hand-written configuration reuses the index", async (t) => {
     await t.show("debug", { menu: s.configurations(), symbols: s.workspaceSymbols("_only") });
     expect((await s.counts()).index).toBe(0);
 });
+
+test("a link above the database", async (t) => {
+    t.disk.write(
+        "clice.toml",
+        [
+            'default_configuration = "active"',
+            "",
+            "[[rules]]",
+            'configuration = "active"',
+            'compile_commands = ["out/current/nested"]',
+            "resolve_symlinks = true",
+            "",
+        ].join("\n"),
+    );
+    t.disk.database({ "main.cpp": ["-DRELEASE"] }, "out/release/nested");
+    t.disk.database({ "main.cpp": ["-DDEBUG"] }, "out/debug/nested");
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    await flip(t, s, "debug");
+    await t.show("debug", s.workspaceSymbols("_only"));
+    expect(libraries(t)).toEqual(["active-out_debug_nested", "active-out_release_nested"]);
+});

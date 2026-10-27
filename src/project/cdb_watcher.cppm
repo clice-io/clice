@@ -45,10 +45,6 @@ public:
     /// diff.
     CDBDiff tick(llvm::ArrayRef<Fid> open_files, bool force = false);
 
-    /// Whether the last looks found a source's inputs other than the
-    /// watcher last adopted: a tick will reload it.
-    bool changing() const;
-
     /// Register, load and watch the databases in the directories from the
     /// file's up to the root, which startup discovery (the root and its
     /// direct subdirectories) did not look at: a file of a deeper project

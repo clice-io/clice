@@ -437,7 +437,7 @@ std::size_t ProjectServer::weigh_databases(bool force) {
     if(!tracker) {
         return 0;
     }
-    if(tracker->moved()) {
+    if(tracker->moved(force)) {
         server.restart(*this);
         return 1;
     }

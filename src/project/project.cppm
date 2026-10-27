@@ -280,8 +280,12 @@ struct Project {
     /// destruction runs shards → database → store.
     std::unique_ptr<index::BlobDatabase> database;
 
-    /// Which database `database` is, as the load found the build (see
-    /// database_key); a later look finding another tells the build moved.
+    /// The real paths the build's databases resolved to at load
+    /// (resolved_databases): a look finding others tells the build moved to
+    /// another index.
+    std::string resolved_databases;
+
+    /// Which database `database` is (database_key).
     index::DatabaseKey database_key;
 
     /// Include relationships between files on disk (#include edges).

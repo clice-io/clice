@@ -39,12 +39,18 @@ std::expected<void, std::string> check_requested_configuration(const Config& con
 /// configuration (empty) is active.
 std::string resolve_configuration(const Config& config, llvm::StringRef requested);
 
-/// The index database of the build `configuration` reads: the
-/// configuration's own, unless an active rule resolves symlinks
-/// (ConfigRule::resolve_symlinks); then the one of the real paths its
-/// databases resolve to now, or the own one of another configuration whose
-/// rules differ from its own only in naming exactly those databases
-/// directly.
-index::DatabaseKey database_key(const Config& config, llvm::StringRef configuration);
+/// The real paths that the databases of the rules active under
+/// `configuration` and resolving symlinks (ConfigRule::resolve_symlinks)
+/// resolve to now, one per line; empty when no active rule resolves them.
+std::string resolved_databases(const Config& config, llvm::StringRef configuration);
+
+/// The index database of the build `configuration` reads, its databases
+/// `resolved` (resolved_databases): the configuration's own when nothing
+/// resolved; else the one of those real paths, or the own one of another
+/// configuration whose rules differ from its own only in naming exactly
+/// those databases directly.
+index::DatabaseKey database_key(const Config& config,
+                                llvm::StringRef configuration,
+                                llvm::StringRef resolved);
 
 }  // namespace clice
