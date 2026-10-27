@@ -1,0 +1,38 @@
+["the link picks the build".release]
+symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+inactive = ["⟦int debug_only = 1;⟧"]
+
+["the link picks the build".debug]
+symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+inactive = ["⟦int release_only = 2;⟧"]
+
+["the link picks the build".debug.menu]
+menu = ["active", "debug"]
+active = "active"
+selected = ""
+default = "active"
+
+["switching back indexes nothing"."release again"]
+workspace_symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+
+["a server starts on the build the link names".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+
+["the hand-written configuration reuses the index".debug]
+symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+
+["the hand-written configuration reuses the index".debug.menu]
+menu = ["active", "debug"]
+active = "debug"
+selected = "debug"
+default = "active"
