@@ -200,19 +200,13 @@ ClangReading read_as_clang(std::vector<std::string> args,
         }
         mode.push_back("--target=" + target);
     }
-    llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
-    auto as_clang_takes = [&](llvm::StringRef arg) -> std::optional<std::string> {
-        switch(family) {
-            case CompilerFamily::GCC: return for_clang(arg, triple, quiet);
-            case CompilerFamily::MSVC:
-            case CompilerFamily::NVCC: return warnings_not_errors(arg);
-            default: return arg.str();
-        }
-    };
     std::vector<std::string> taken = {args[0]};
-    for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
-        if(auto kept = as_clang_takes(arg)) {
-            taken.push_back(std::move(*kept));
+    auto taken_flags = flags_for_clang(llvm::ArrayRef(args).drop_front(), family);
+    taken.insert(taken.end(), taken_flags.begin(), taken_flags.end());
+    if(family == CompilerFamily::GCC) {
+        llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
+        for(auto& arg: llvm::MutableArrayRef<std::string>(taken).drop_front()) {
+            arg = for_clang(arg, triple, quiet);
         }
     }
 

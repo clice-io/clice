@@ -197,10 +197,7 @@ std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
 
 }  // namespace
 
-std::optional<std::string> for_clang(llvm::StringRef arg, const llvm::Triple& target, bool quiet) {
-    if(arg == "-fmodules") {
-        return std::nullopt;
-    }
+std::string for_clang(llvm::StringRef arg, const llvm::Triple& target, bool quiet) {
     if(arg.starts_with("-mcpu=")) {
         auto features = arg.find('+');
         auto first = (arg.substr(0, features).split('.').first + arg.substr(features)).str();
@@ -213,7 +210,7 @@ std::optional<std::string> for_clang(llvm::StringRef arg, const llvm::Triple& ta
     if(target.isRISCV() && isa.consume_front("-march=")) {
         return "-march=" + riscv_isa_for_clang(isa, quiet);
     }
-    return warnings_not_errors(arg);
+    return arg.str();
 }
 
 GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) {
@@ -367,18 +364,14 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
     auto parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     llvm::Triple target(output.target);
-    auto add = [&](llvm::StringRef arg) {
-        if(auto taken = for_clang(arg, target)) {
-            clang_args.push_back(std::move(*taken));
-        }
-    };
-    for(auto& parsed: option::table().parse(output.gcc_options, parse_options)) {
+    auto gcc_options = flags_for_clang(output.gcc_options, CompilerFamily::GCC);
+    for(auto& parsed: option::table().parse(gcc_options, parse_options)) {
         if(parsed && parsed->id != option::OPT_UNKNOWN) {
-            add(output.gcc_options[parsed->index]);
+            clang_args.push_back(for_clang(gcc_options[parsed->index], target));
         }
     }
-    for(llvm::StringRef arg: args.drop_front()) {
-        add(arg);
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), CompilerFamily::GCC)) {
+        clang_args.push_back(for_clang(arg, target));
     }
 
     auto job = query_driver(clang_args, cwd);

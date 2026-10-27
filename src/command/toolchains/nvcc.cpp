@@ -915,7 +915,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
         }
     }
 
-    for(llvm::StringRef arg: args.drop_front()) {
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), CompilerFamily::NVCC)) {
         if(is_nvcc_query_flag(arg)) {
             /// The dryrun's resolution of an `-arch=<special>` token lands
             /// exactly where the token sat: an edit-appended selection
@@ -927,9 +927,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
             }
             continue;
         }
-        if(auto kept = warnings_not_errors(arg)) {
-            cuda_args.push_back(std::move(*kept));
-        }
+        cuda_args.push_back(arg.str());
     }
 
     /// A clang host needs no setup: clang's own driver already defaults to

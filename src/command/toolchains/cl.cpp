@@ -100,12 +100,8 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
         mode.insert(mode.end(), {"-resource-dir", *std::next(it)});
     }
     std::vector<std::string> flags = {args[0]};
-    for(llvm::StringRef arg: args.drop_front()) {
-        auto kept = family == CompilerFamily::MSVC ? warnings_not_errors(arg) : arg.str();
-        if(kept) {
-            flags.push_back(std::move(*kept));
-        }
-    }
+    auto taken = flags_for_clang(args.drop_front(), family);
+    flags.insert(flags.end(), taken.begin(), taken.end());
     auto job = ask_clang(flags, mode, cwd);
     if(!job) {
         co_return job;

@@ -470,6 +470,10 @@ echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodule
     ZEXPECT(!contains(argv, "-Werror"));
     ZEXPECT(!contains(argv, "-Werror=shadow"));
     ZEXPECT(contains(argv, "-Wshadow"));
+
+    /// The value of another option is that option's.
+    argv = f.resolve(add("b.cpp", {driver.c_str(), "-Xpreprocessor", "-Werror", "-c"}));
+    ZEXPECT(contains(argv, "-Werror"));
 }
 
 ZEST_CASE(CommandISAForClang, skip = Windows) {
