@@ -23,8 +23,9 @@ regression({
             kind: "disagree",
             request: "signatureHelp",
             file: "llvm/unittests/ADT/HashingTest.cpp",
-            // One signature the server lists later, and no other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^-( +".*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
+            // HashBuilder.h's overload listed later by the server, and no
+            // other difference.
+            detail: /(?<![\s\S])(?=[\s\S]*^-( +"hash_value\(⟦const T &Value⟧\) -> .*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
         },
     ],
 });

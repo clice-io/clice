@@ -24,3 +24,8 @@ struct Wide {
     SIXTEEN_FIELDS(e) SIXTEEN_FIELDS(f) SIXTEEN_FIELDS(g) SIXTEEN_FIELDS(h)
 };
 Wide wi§(empty_list)de{};
+
+// A lambda's body prints as `{ ... }`, however much it holds.
+#define SUM_FOUR(x) x + x + x + x
+#define SUM_SIXTEEN(x) SUM_FOUR(x) + SUM_FOUR(x) + SUM_FOUR(x) + SUM_FOUR(x)
+auto su§(lambda_body)m = [](int x) { return SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x); };

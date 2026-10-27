@@ -55,6 +55,8 @@ test("a sanitizer's report fails the gate, a file named after one does not", () 
         "WARNING: ThreadSanitizer: data race (pid=4242)",
         "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior a.cpp:3:5",
         "a.cpp:3:5: runtime error: signed integer overflow",
+        "AddressSanitizer:DEADLYSIGNAL",
+        "==4242==LeakSanitizer has encountered a fatal error.",
     ]) {
         expect(gate(report)).toEqual(["server stderr contains sanitizer/runtime error output"]);
     }

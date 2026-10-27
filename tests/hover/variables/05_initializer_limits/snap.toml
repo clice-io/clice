@@ -41,3 +41,14 @@ Wide wide {}
 ```
 '''
 range = "Wide ⟦wide⟧{};"
+
+[answers.lambda_body.hover]
+markdown = '''
+**variable** `sum`
+
+```cpp
+auto sum = [](int x) { ... }
+```
+Type: `int (int)`
+'''
+range = "auto ⟦sum⟧ = [](int x) { return SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x); };"
