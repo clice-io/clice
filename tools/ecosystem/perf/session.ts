@@ -315,10 +315,14 @@ export class Session {
                 }
                 const value = event.value as { kind?: string; message?: string };
                 announced = true;
-                changed = event.at;
+                // The events of rounds before the wait still tell whether
+                // one is running; the quiet counts from the wait at least,
+                // or a churn the server has not reacted to yet reads as
+                // settled at once.
+                changed = Math.max(changed, event.at);
                 active = value.kind !== "end";
                 if (value.kind === "end") {
-                    ended = changed;
+                    ended = event.at;
                 }
                 const counted = /(\d+)\/(\d+)/.exec(value.message ?? "");
                 if (counted?.[2] !== undefined) {
@@ -399,6 +403,7 @@ export class Session {
     /// recovered.
     private collectPerf(client: CliceClient): void {
         const fresh = logFiles(this.context.workspace).filter((f) => !this.priorLogs.has(f));
+        this.result.logs = [...new Set(fresh.map((f) => path.basename(path.dirname(f))))];
         const texts =
             fresh.length > 0
                 ? fresh.map((f) => fs.readFileSync(f, "utf8"))

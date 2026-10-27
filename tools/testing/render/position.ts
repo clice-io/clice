@@ -62,6 +62,7 @@ export class SourceText {
     private readonly raw: readonly string[];
     private readonly starts: readonly number[];
     private readonly byteStarts: readonly number[];
+    private byView: ReadonlyMap<string, readonly number[]> | undefined;
 
     constructor(path: string, text: string) {
         this.path = path;
@@ -114,6 +115,37 @@ export class SourceText {
         }
         return start + position.character;
     }
+
+    /// The lines, in order, one of whose `views` is `text`.
+    linesShowing(text: string): readonly number[] {
+        if (this.byView === undefined) {
+            const byView = new Map<string, number[]>();
+            this.lines.forEach((line, index) => {
+                for (const view of new Set(views(line).map((each) => each.text))) {
+                    const lines = byView.get(view);
+                    if (lines === undefined) {
+                        byView.set(view, [index]);
+                    } else {
+                        lines.push(index);
+                    }
+                }
+            });
+            this.byView = byView;
+        }
+        return this.byView.get(text) ?? [];
+    }
+}
+
+/// `file`, reading each path once: a rendering asks for the file once per
+/// position, an answer about a large file holds hundreds of thousands of
+/// them, and each read costs a disk read and a comparison of the whole text.
+export function readOnce(file: (path: string) => SourceText): (path: string) => SourceText {
+    const read = new Map<string, SourceText>();
+    return (path) => {
+        const source = read.get(path) ?? file(path);
+        read.set(path, source);
+        return source;
+    };
 }
 
 /// A range a fixture named, rendered as its name.
@@ -298,14 +330,11 @@ function views(line: string): { text: string; from: number }[] {
     ];
 }
 
-function unique<T>(
-    matches: T[],
-    pick: (match: T) => number,
-    line: number | undefined,
-): T | undefined {
-    const narrowed = line === undefined ? matches : matches.filter((match) => pick(match) === line);
-    const first = narrowed[0];
-    return narrowed.length === 1 ? first : undefined;
+/// The lines a range rendered as `text` may start on: those one of whose
+/// views is `text`, only `line` when the rendering names it.
+function candidates(source: SourceText, text: string, line: number | undefined): readonly number[] {
+    const lines = source.linesShowing(text);
+    return line === undefined ? lines : lines.includes(line) ? [line] : [];
 }
 
 function resolveLine(
@@ -315,8 +344,8 @@ function resolveLine(
 ): Range | undefined {
     const matches: Range[] = [];
     for (const marked of markers(text)) {
-        source.lines.forEach((candidate, index) => {
-            for (const view of views(candidate)) {
+        for (const index of candidates(source, marked.plain, line)) {
+            for (const view of views(source.line(index))) {
                 if (view.text === marked.plain) {
                     const range = {
                         start: { line: index, character: view.from + marked.open },
@@ -324,13 +353,17 @@ function resolveLine(
                     };
                     if (body(source, range) === text) {
                         matches.push(range);
-                        return;
+                        break;
                     }
                 }
             }
-        });
+            // A line the file repeats thousands of times is settled by two.
+            if (matches.length > 1) {
+                return undefined;
+            }
+        }
     }
-    return unique(matches, (range) => range.start.line, line);
+    return matches[0];
 }
 
 function resolveSpanned(
@@ -349,16 +382,17 @@ function resolveSpanned(
     const matches: Range[] = [];
     for (const open of indicesOf(headText, OPEN)) {
         const firstPlain = headText.slice(0, open) + headText.slice(open + 1);
-        source.lines.forEach((candidate, index) => {
+        // A view's text without its trailing whitespace is a view itself.
+        for (const index of candidates(source, firstPlain.trimEnd(), line)) {
             const endLine = index + count - 1;
             const last = source.lines[endLine];
             if (last === undefined) {
-                return;
+                continue;
             }
             const endCharacter = blank(lastShown)
                 ? lastShown.length
                 : indentOf(last) + lastShown.length;
-            for (const view of views(candidate)) {
+            for (const view of views(source.line(index))) {
                 if (
                     view.text.trimEnd() === firstPlain.trimEnd() &&
                     view.text.startsWith(firstPlain)
@@ -372,11 +406,14 @@ function resolveSpanned(
                         body(source, range) === `${text} (${count} lines)`
                     ) {
                         matches.push(range);
-                        return;
+                        break;
                     }
                 }
             }
-        });
+            if (matches.length > 1) {
+                return undefined;
+            }
+        }
     }
-    return unique(matches, (range) => range.start.line, line);
+    return matches[0];
 }

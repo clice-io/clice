@@ -58,6 +58,9 @@ export interface RunResult {
     /// Server-side breakdown from the session's `[perf:*]` log lines
     /// (clice only).
     perf?: Record<string, Stats>;
+    /// The session directories under the workspace's `.clice/logs` holding
+    /// this run's logs (clice only).
+    logs?: string[];
 }
 
 export interface PerfResults {

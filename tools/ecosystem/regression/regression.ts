@@ -81,10 +81,12 @@ export interface Results {
         compiledWithErrors: number;
         failed: number;
     };
+    /// The files swept in full: whether a failing file was swept in an
+    /// earlier round tells a regression from what a new sample exposed.
     sweep?: Pick<
         SweepRun,
-        "serverOnly" | "requests" | "inspectSeconds" | "serverSeconds" | "slow" | "memory"
-    > & { files: number };
+        "files" | "serverOnly" | "requests" | "inspectSeconds" | "serverSeconds" | "slow" | "memory"
+    >;
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
     /// Error-level lines of clice's logs: what went wrong without failing.
@@ -316,7 +318,7 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
     });
     const { serverOnly, requests, inspectSeconds, serverSeconds, slow, memory } = run;
     results.sweep = {
-        files: run.files.length,
+        files: run.files.filter((file) => !run.unasked.includes(file) && !run.cut.includes(file)),
         serverOnly,
         requests,
         inspectSeconds,

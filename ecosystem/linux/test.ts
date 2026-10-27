@@ -8,6 +8,15 @@ regression({
             kind: "compile",
             detail: /will not be visible outside of this function/,
         },
+        {
+            issue: "10-27#5",
+            why: "the server gives a format string in a macro's body one string token, inspect splits out its specifiers",
+            kind: "disagree",
+            request: "semanticTokens",
+            // A specifier the server lacks on a macro's line, and every line
+            // the two answers differ in a string or specifier piece of one.
+            detail: /^(?=[\s\S]*^-\s+(?:\{ )?at = '(?:#\s*define [^'\n]*|[^'\n]*\\)',(?:\n-)?\s+type = "formatSpecifier")(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\s+(?:\{ at = '(?:#\s*define [^'\n]*|[^'\n]*\\)', type = "(?:string|formatSpecifier)" \},|at = '(?:#\s*define [^'\n]*|[^'\n]*\\)',|type = "(?:string|formatSpecifier)",|\{|\},)$).*$)/m,
+        },
     ],
 });
 

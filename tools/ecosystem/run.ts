@@ -40,7 +40,7 @@ import { currentPlatform } from "./project.ts";
 import { regressionReport, perfReport } from "./report.ts";
 import { runRegression, type Results, type Step } from "./regression/regression.ts";
 import { REQUESTS, type Request } from "./regression/sweep.ts";
-import { allJobs, findJob } from "./script.ts";
+import { allJobs, artifactName, findJob } from "./script.ts";
 
 const { values, positionals } = parseArgs({
     options: {
@@ -69,7 +69,7 @@ if (values.jobs) {
                     kind: job.kind,
                     name: job.name,
                     platform,
-                    artifact: `${job.kind}-${job.name.replaceAll("/", "-")}-${platform}`,
+                    artifact: artifactName(job.kind, job.name, platform),
                     packages: platform === "linux" ? (job.config.packages ?? []).join(" ") : "",
                 })),
             ),

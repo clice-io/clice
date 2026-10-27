@@ -29,7 +29,14 @@ import {
     uriToPath,
     type Root,
 } from "./paths.ts";
-import { SourceText, type Location, type Named, type Range, type RenderScope } from "./position.ts";
+import {
+    readOnce,
+    SourceText,
+    type Location,
+    type Named,
+    type Range,
+    type RenderScope,
+} from "./position.ts";
 
 /// What converting and rendering a reply needs to know about the
 /// workspace the server answered for.
@@ -77,7 +84,7 @@ export class AnswerContext {
     }
 
     scope(query?: RenderScope["query"], names?: readonly Named[]): RenderScope {
-        return { file: (path) => this.file(path), query, names };
+        return { file: readOnce((path) => this.file(path)), query, names };
     }
 
     location(location: proto.Location): Location {

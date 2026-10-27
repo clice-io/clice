@@ -16,10 +16,18 @@ import {
     warningIsError,
 } from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
+import type { PerfResults, RunResult } from "./perf/results.ts";
 import { prepare, withoutOrderOnly } from "./prepare.ts";
-import { validated, type Configuration, type Project, type Step } from "./project.ts";
+import {
+    validated,
+    type Configuration,
+    type Platform,
+    type Project,
+    type Step,
+} from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
+import { historyOf, roundReport, type Earlier } from "./round.ts";
 import { allJobs, findJob, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
 
 function scratch(): string {
@@ -617,7 +625,7 @@ describe("report", () => {
             ...base,
             platform: "windows",
             sweep: {
-                files: 1,
+                files: ["a.cpp"],
                 serverOnly: [],
                 requests: 2,
                 inspectSeconds: 80,
@@ -674,5 +682,225 @@ describe("report", () => {
             ],
         });
         expect(text).toContain("````\n-```cpp\n+```c\n\n````");
+    });
+});
+
+describe("round", () => {
+    const regression = (
+        files: unknown,
+        failures: Results["failures"] = [],
+        serverSeconds = 60,
+    ): Results => ({
+        job: "p",
+        platform: "linux",
+        about: "v1",
+        commit: "c",
+        clice: "k",
+        seed: "s",
+        compilerRejects: [],
+        logErrors: [],
+        failures,
+        known: [],
+        unseen: [],
+        accepted: [],
+        sweep: {
+            files: files as string[],
+            serverOnly: [],
+            requests: 1,
+            inspectSeconds: 60,
+            serverSeconds,
+            slow: [],
+        },
+    });
+    const hang = { kind: "hang", file: "a.cpp", request: "hover", detail: "timed out", repro: "r" };
+    const earlier = (date: string, results: Results): Earlier => ({ run: 1, date, results });
+
+    test("a failing file newly sampled, or swept before and passing there", () => {
+        expect(historyOf(hang, [earlier("10-25", regression(["b.cpp"]))])).toMatch(
+            /^newly sampled: none of the 1 rounds before swept it/,
+        );
+        expect(
+            historyOf(hang, [
+                earlier("10-25", regression(["b.cpp"])),
+                earlier("10-24", regression(["a.cpp"])),
+            ]),
+        ).toMatch(/^swept in 1 of the 2 rounds before \(last 10-24\), never failing so/);
+        expect(historyOf(hang, [earlier("10-25", regression(["a.cpp"], [hang]))])).toMatch(
+            /^failed so in 1 of the 1 rounds before, last 10-25/,
+        );
+        // A file the round before failed on but ran out of time in counts as
+        // failing there, not as unswept.
+        expect(
+            historyOf(hang, [
+                earlier("10-25", regression(["b.cpp"], [hang])),
+                earlier("10-24", regression(["a.cpp"])),
+            ]),
+        ).toMatch(/^failed so in 1 of the 2 rounds before, last 10-25/);
+        expect(historyOf(hang, [earlier("10-25", regression(50))])).toMatch(/^unknown/);
+    });
+
+    test("a failure outside the sweep is compared with the same failure before", () => {
+        const index = { kind: "index", file: "a.cpp", detail: "failed", repro: "r" };
+        expect(historyOf(index, [earlier("10-25", regression([], [index]))])).toMatch(
+            /^failed so in 1 of the 1 rounds before/,
+        );
+    });
+
+    const perf = (platform: Platform, slower: PerfResults["slower"], runs: RunResult[] = []) => ({
+        kind: "perf" as const,
+        name: "q/sessions",
+        platform,
+        artifact: `perf-q-sessions-${platform}`,
+        conclusion: "success",
+        perf: {
+            job: "q/sessions",
+            platform,
+            about: "",
+            commit: "",
+            clice: "k",
+            env: {
+                platform,
+                release: "",
+                arch: "",
+                cpus: 4,
+                cpuModel: "",
+                memoryMB: 0,
+                node: "",
+                date: "",
+            },
+            binaries: { clice: "c", baseline: "/t/baseline/v0.1.7/clice/bin/clice" },
+            clangdArgs: [],
+            runs,
+            failures: [],
+            known: [],
+            unseen: [],
+            slower,
+        },
+    });
+    const row = (measure: string, clice: string, baseline: string, ratio: number) => ({
+        scenario: "sample",
+        name: "sample 2 files",
+        measure,
+        clice,
+        baseline,
+        clicePerBaseline: ratio,
+        repro: "r",
+    });
+    const memoryRun = (server: "clice" | "baseline", worker: number): RunResult => ({
+        server,
+        scenario: "sample",
+        label: "2 files",
+        run: 1,
+        series: {},
+        sizes: {},
+        values: {},
+        snapshots: {},
+        memory: {
+            peak: { root: 10, child: worker, total: 10 + worker },
+            end: { root: 10, children: worker },
+            roles: { master: 10, "SL-0": worker },
+            cpu: 1,
+        },
+    });
+
+    test("perf rows by ratio, each with what makes it suspect", () => {
+        const { text, data } = roundReport({
+            run: 7,
+            jobs: [
+                perf(
+                    "linux",
+                    [row("peak memory MB", "553", "32.0", 15), row("open", "120", "100", 1.2)],
+                    [memoryRun("clice", 520), memoryRun("baseline", 4)],
+                ),
+                perf("macos", [row("open", "130", "100", 1.3), row("settle s", "-7.0", "20", 1.1)]),
+            ],
+            earlier: new Map(),
+        });
+        expect(data.baseline).toBe("v0.1.7");
+        expect(data.perf.map((each) => [each.platform, each.measure, each.flags])).toEqual([
+            [
+                "linux",
+                "peak memory MB",
+                ["linux only", "≥3×: likely different work on the two sides", "SL-0 520 vs 4 MB"],
+            ],
+            ["macos", "open", ["every platform", "one sample a side"]],
+            ["linux", "open", ["every platform", "one sample a side"]],
+            [
+                "macos",
+                "settle s",
+                ["macos only", "negative: the harness measured wrong", "one sample a side"],
+            ],
+        ]);
+        expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
+        expect(text).toContain(
+            "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",
+        );
+    });
+
+    test("a failed job whose results name no failure was cut short", () => {
+        const cut = { ...perf("linux", []), conclusion: "failure" };
+        const { text, data } = roundReport({ run: 7, jobs: [cut], earlier: new Map() });
+        expect(data.missing).toEqual([
+            {
+                artifact: "perf-q-sessions-linux",
+                kind: "perf",
+                job: "q/sessions",
+                platform: "linux",
+                conclusion: "failure",
+                partial: true,
+            },
+        ]);
+        expect(data.flagged).toEqual(["perf-q-sessions-linux"]);
+        expect(text).toContain(
+            "- perf q/sessions on linux: the job's conclusion: failure, its results name no failure: cut short, see its log",
+        );
+    });
+
+    test("a measure past the threshold on most jobs is flagged as broad", () => {
+        const jobs = (["linux", "macos", "windows"] as const).flatMap((platform, i) => [
+            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: `p${String(i)}/a` },
+            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: `q${String(i)}/b` },
+        ]);
+        const { data } = roundReport({ run: 7, jobs, earlier: new Map() });
+        expect(data.broad).toHaveLength(1);
+        expect(data.broad[0]).toMatch(
+            /^`initialize` is past the threshold on 6 of the 6 perf jobs/,
+        );
+        expect(data.perf.every((each) => each.flags.includes("broad"))).toBe(true);
+    });
+
+    test("red jobs with their history, jobs without results, numbers that moved", () => {
+        const now = regression(["a.cpp"], [hang], 600);
+        const before = regression(["b.cpp"]);
+        const job = (results: Results | undefined, platform: Platform) => ({
+            kind: "regression" as const,
+            name: "p",
+            platform,
+            artifact: `regression-p-${platform}`,
+            conclusion: results === undefined ? "cancelled" : "failure",
+            ...(results === undefined ? {} : { regression: results }),
+        });
+        const { text, data } = roundReport({
+            run: 7,
+            jobs: [job(now, "linux"), job(undefined, "macos")],
+            earlier: new Map([["regression-p-linux", [earlier("10-25", before)]]]),
+        });
+        expect(text).toContain(
+            "# ecosystem round 7: 1 red, 1 cut short or without results, of 2 jobs",
+        );
+        expect(text).toContain(
+            "- **hang** a.cpp, hover: timed out\n  - newly sampled: none of the 1 rounds before swept it",
+        );
+        expect(text).toContain("- regression p on macos: the job's conclusion: cancelled");
+        expect(data.moved).toEqual([
+            {
+                job: "p",
+                platform: "linux",
+                measure: "sweep: server s",
+                now: 600,
+                before: 60,
+                ratio: 10,
+            },
+        ]);
     });
 });

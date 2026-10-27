@@ -610,12 +610,15 @@ export class Perf {
                       ])
                     : [
                           { servers: this.servers().filter((server) => !isClice(server)) },
-                          {
-                              servers: this.servers().filter(isClice),
-                              wipe: "pch",
-                              variant: "no PCH",
-                          },
-                          { servers: this.servers().filter(isClice) },
+                          // Each clice's run with its PCHs follows its own
+                          // without: after the other's, which drops the OS
+                          // file cache, it would read its binary cold.
+                          ...this.servers()
+                              .filter(isClice)
+                              .flatMap((server) => [
+                                  { servers: [server], wipe: "pch" as const, variant: "no PCH" },
+                                  { servers: [server] },
+                              ]),
                       ];
             for (const variant of variants) {
                 const label = `${String(files.length)} files`;

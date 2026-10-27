@@ -9,6 +9,7 @@ import {
     type Range,
     type RenderScope,
     SourceText,
+    readOnce,
     renderLocation,
     resolveLocation,
     withoutBom,
@@ -156,6 +157,34 @@ describe("positions", () => {
             const location = { path: "m.cpp", range };
             expect(resolveLocation(renderLocation(location, scope), scope)).toEqual(location);
         }
+    });
+
+    test("a large file's every identifier renders in a few seconds, not hours", () => {
+        // LLVM's X86ISelLowering.cpp has 64000 lines and 190000 identifiers;
+        // a rendering that looked at every line once per range stalled the
+        // sweep for an hour.
+        const lines = Array.from({ length: 20_000 }, (_, i) =>
+            i % 4 === 0
+                ? `    return SDValue();`
+                : `  SDValue V${String(i)} = DAG.getNode(Op${String(i)});`,
+        );
+        const big = new SourceText("big.cpp", lines.join("\n"));
+        const scope: RenderScope = { file: () => big, query: { path: "big.cpp" } };
+        for (const range of identifiers(big)) {
+            const location = { path: "big.cpp", range };
+            expect(resolveLocation(renderLocation(location, scope), scope)).toEqual(location);
+        }
+    });
+
+    test("a rendering reads each of its files once", () => {
+        let reads = 0;
+        const file = readOnce((path) => {
+            reads += 1;
+            return new SourceText(path, "int x;\n");
+        });
+        expect(file("a.cpp")).toBe(file("a.cpp"));
+        file("b.cpp");
+        expect(reads).toBe(2);
     });
 
     test("ambiguous text is refused", () => {
