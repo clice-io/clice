@@ -128,3 +128,19 @@ test("clice index while the server switches", async (t) => {
     await t.cli("index --jobs 2");
     await t.show("debug", s.workspaceSymbols("_only"));
 });
+
+test("clice index with polling off", async (t) => {
+    t.disk.edit("clice.toml", {
+        after: 'compile_commands = ["out/debug"]',
+        insert: "\n\n[tracker]\nworkspace_poll_seconds = 0",
+    });
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    // Nothing looks at the databases again: the switch waits for a start.
+    t.disk.linkDirectory("out/current", "out/debug");
+    await t.cli("index --jobs 2");
+    await s.restart();
+    await s.indexed();
+    await t.show("debug", s.workspaceSymbols("_only"));
+});

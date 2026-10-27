@@ -539,7 +539,9 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
         }
         LOG_INFO("Serving project {}", root);
         serving.push_back(make_project(std::move(root)));
+        // Nothing compiles or indexes under no build until it starts.
         serving.back()->ast.loaded.reset();
+        serving.back()->sched.pump.pause_indexing();
         waiting.push_back(serving.back().get());
         made.push_back(serving.back().get());
     }
@@ -581,6 +583,7 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
     projects_generation += 1;
     for(auto* project: starting) {
         project->start();
+        project->sched.pump.resume_indexing();
         // The documents it held while it waited.
         llvm::SmallVector<std::shared_ptr<Session>> held;
         for(auto& [path_id, session]: project->sessions.sessions) {
