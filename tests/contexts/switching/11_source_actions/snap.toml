@@ -1,0 +1,21 @@
+[test.offered]
+value = ["Compile as included by real_host.cpp"]
+
+[test.switched.current_context]
+automatic = false
+
+[test.switched.current_context.context]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
+[test."offered while chosen"]
+value = ["Compile as included by int_host.cpp", "Compile in the context clice picks"]
+
+[test.reset.current_context]
+automatic = true
+
+[test.reset.current_context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"
