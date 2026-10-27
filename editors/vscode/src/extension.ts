@@ -370,8 +370,7 @@ export async function activate(context: ExtensionContext) {
     );
 
     registerBuildConfiguration(client, context);
-    registerCompileCommand(client, context);
-    registerCompilationContext(client, context);
+    registerCompilationContext(client, context, registerCompileCommand(client, context));
     registerConflictCheck(client, context);
     registerCounterparts(client, context);
     registerAliasRedirect(context);

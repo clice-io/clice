@@ -31,6 +31,8 @@ clice 会询问每条命令的编译器如何编译（它的目标、系统头�
 
 从应用市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)；Cursor、VSCodium、Windsurf 等 VS Code 衍生编辑器从 [Open VSX](https://open-vsx.org/extension/clice-io/clice) 安装同一个扩展。发布的构建版本针对不同平台提供，并在扩展中内置 clice 服务端，因此安装后无需再下载或访问网络；若要改用自己的构建版本，请设置 `clice.executable`。
 
+C 或 C++ 文件的语言状态（语言模式旁的 `{}`）会列出 clice 对该文件所知的情况；把某一项固定后，它会常驻状态栏。它说明文件的编译命令从哪里来——编译数据库、包含该头文件的源文件、规则的 `default_command`、附近的单元，或 clice 自己的——点 **Show** 可打开完整命令；文件有不止一个编译上下文时，它显示当前的上下文，规则声明了构建配置时显示生效的配置，两者都可点 **Switch** 切换。运行较久的编译会在状态栏显示进度，在任何显示进度的编辑器中都是如此。
+
 ### Neovim
 
 在 Neovim 0.11 或更高版本上安装 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 后，启用 clice：

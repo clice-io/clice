@@ -210,6 +210,18 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     return all_items;
 }
 
+/// How clice/currentContext names where a command comes from.
+static std::string_view source_name(CommandSource source) {
+    switch(source) {
+        case CommandSource::CDBExact: return "database";
+        case CommandSource::IncludeGraph: return "host";
+        case CommandSource::Default: return "default";
+        case CommandSource::Inferred: return "inferred";
+        case CommandSource::Fallback: return "fallback";
+    }
+    std::unreachable();
+}
+
 ext::CurrentContextResult ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
     if(!session) {
@@ -217,6 +229,18 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     }
     auto& ws = project;
     auto path_id = session->path_id;
+    // Resolved first: the resolution fills the header context the item
+    // below is read from.
+    auto& command = result.command.emplace();
+    auto resolution = editor.resolve_command(path_id, command.directory, command.arguments);
+    command.source = source_name(resolution.source);
+    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
+    if(from.valid()) {
+        command.from = feature::to_uri(ws.file_table.display(from));
+    }
+    if(!resolution.query_failure.empty()) {
+        command.query_failure = std::move(resolution.query_failure);
+    }
     auto path = ws.file_table.resolve(path_id);
     const Selection* choice = editor.selection(path_id);
     result.automatic = choice == nullptr;
@@ -356,32 +380,6 @@ void ContextService::leave_context(Session& session) {
     // change the macro environment.
     ast.switch_identity(session);
     editor.commands.forget_self_contained(session.path_id);
-}
-
-/// How clice/compileCommand names where a command comes from.
-static std::string_view source_name(CommandSource source) {
-    switch(source) {
-        case CommandSource::CDBExact: return "database";
-        case CommandSource::IncludeGraph: return "host";
-        case CommandSource::Default: return "default";
-        case CommandSource::Inferred: return "inferred";
-        case CommandSource::Fallback: return "fallback";
-    }
-    std::unreachable();
-}
-
-ext::CompileCommandResult ContextService::compile_command(Fid path_id) {
-    ext::CompileCommandResult result;
-    auto resolution = editor.resolve_command(path_id, result.directory, result.arguments);
-    result.source = source_name(resolution.source);
-    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
-    if(from.valid()) {
-        result.from = feature::to_uri(project.file_table.display(from));
-    }
-    if(!resolution.query_failure.empty()) {
-        result.query_failure = std::move(resolution.query_failure);
-    }
-    return result;
 }
 
 ext::ListConfigurationsResult ContextService::list_configurations() const {

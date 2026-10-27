@@ -5,6 +5,7 @@ import { LanguageStatus } from "./status";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
 import type {
+    CompileCommand,
     ContextItem,
     CurrentContextResult,
     QueryContextResult,
@@ -209,7 +210,15 @@ class OutlineRefresher implements vscode.Disposable {
     }
 }
 
-export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
+/** The compilation context of the active editor: a language status item
+ * telling who picked it, the Explorer's view of the contexts to switch
+ * between, and the commands switching them. Each refresh also shows the
+ * command the context gives the file (`showCommand`). */
+export function registerCompilationContext(
+    client: ClientHandle,
+    ext: vscode.ExtensionContext,
+    showCommand: (command: CompileCommand | null) => void,
+) {
     const status = new LanguageStatus("clice.context", "clice: compilation context");
     const switchContext: vscode.Command = { title: "Switch", command: "clice.switchContext" };
 
@@ -223,6 +232,7 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         if (vscode.window.activeTextEditor !== editor) {
             return;
         }
+        showCommand(current.command);
         // A file with nothing to choose from has no context to tell of.
         if (current.automatic && tree.count() < 2) {
             status.hide();
@@ -246,6 +256,7 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
         if (result === null) {
             status.hide();
+            showCommand(null);
             return;
         }
         showStatus(editor, result);

@@ -1,24 +1,15 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
-import type { CompileCommandResult } from "@clice/tools/protocol" with {
+import type { CompileCommand, CurrentContextResult } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
 };
 import { LanguageStatus } from "./status";
 
-function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.TextEditor {
-    const language = editor?.document.languageId;
-    return (
-        editor?.document.uri.scheme === "file" &&
-        (language === "c" || language === "cpp" || language === "cuda-cpp")
-    );
-}
-
 /// Where the command comes from, in a sentence.
-function origin(result: CompileCommandResult): string {
-    const from = result.from === null ? "" : path.basename(vscode.Uri.parse(result.from).fsPath);
-    switch (result.source) {
+function origin(command: CompileCommand): string {
+    const from = command.from === null ? "" : path.basename(vscode.Uri.parse(command.from).fsPath);
+    switch (command.source) {
         case "database":
             return "an entry of the compilation database";
         case "host":
@@ -38,24 +29,29 @@ function quote(argument: string): string {
 }
 
 /// The command as a script running it, one argument a line.
-function script(file: vscode.Uri, result: CompileCommandResult): string {
+function script(file: vscode.Uri, command: CompileCommand): string {
     const lines = [`# The command clice compiles ${path.basename(file.fsPath)} with:`];
-    lines.push(`# ${origin(result)}.`);
-    if (result.queryFailure !== null) {
+    lines.push(`# ${origin(command)}.`);
+    if (command.queryFailure !== null) {
         lines.push(
-            `# Its compiler could not be queried (${result.queryFailure}), so clang read the command on its own.`,
+            `# Its compiler could not be queried (${command.queryFailure}), so clang read the command on its own.`,
         );
     }
-    lines.push(`cd ${quote(result.directory)}`);
-    lines.push(result.arguments.map(quote).join(" \\\n    "));
+    lines.push(`cd ${quote(command.directory)}`);
+    lines.push(command.arguments.map(quote).join(" \\\n    "));
     return lines.join("\n") + "\n";
 }
 
 const scheme = "clice-command";
 
 /// The compile command of the active editor: a language status item saying
-/// where it comes from, and a read-only document showing it whole.
-export function registerCompileCommand(client: ClientHandle, ext: vscode.ExtensionContext) {
+/// where it comes from, and a read-only document showing it whole. Returns
+/// what shows the command of the active editor's current context, which the
+/// compilation context feature fetches; null hides it.
+export function registerCompileCommand(
+    client: ClientHandle,
+    ext: vscode.ExtensionContext,
+): (command: CompileCommand | null) => void {
     const status = new LanguageStatus("clice.compileCommand", "clice: compile command");
     const show: vscode.Command = { title: "Show", command: "clice.showCompileCommand" };
 
@@ -64,70 +60,35 @@ export function registerCompileCommand(client: ClientHandle, ext: vscode.Extensi
         onDidChange: changed.event,
         async provideTextDocumentContent(uri) {
             const file = vscode.Uri.parse(uri.query);
+            const name = path.basename(file.fsPath);
             try {
-                const result = await client.sendRequest<CompileCommandResult>(
-                    "clice/compileCommand",
+                const current = await client.sendRequest<CurrentContextResult>(
+                    "clice/currentContext",
                     { uri: file.toString() },
                 );
-                return script(file, result);
+                return current.command === null
+                    ? `# ${name} is not open in clice.\n`
+                    : script(file, current.command);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                return `# clice cannot tell the command of ${path.basename(file.fsPath)}: ${message}\n`;
+                return `# clice cannot tell the command of ${name}: ${message}\n`;
             }
         },
     };
 
-    /// Bumped by every refresh; a reply is dropped when a newer request
-    /// started while it was in flight.
-    let generation = 0;
-
-    async function refresh(editor: vscode.TextEditor | undefined) {
-        generation += 1;
-        const current = generation;
-        if (!isCppEditor(editor)) {
-            return;
-        }
-        let result: CompileCommandResult | undefined;
-        try {
-            result = await client.sendRequest<CompileCommandResult>("clice/compileCommand", {
-                uri: editor.document.uri.toString(),
-            });
-        } catch {
-            result = undefined;
-        }
-        if (current !== generation) {
-            return;
-        }
-        if (!result) {
-            status.hide();
-            return;
-        }
-        const failed =
-            result.queryFailure === null
-                ? ""
-                : `; its compiler could not be queried: ${result.queryFailure}`;
-        status.show(
-            result.source,
-            origin(result) + failed,
-            show,
-            result.source === "fallback" || result.queryFailure !== null,
-        );
-    }
-
     async function showCommand() {
-        const editor = vscode.window.activeTextEditor;
-        if (!isCppEditor(editor)) {
+        const document = vscode.window.activeTextEditor?.document;
+        if (document?.uri.scheme !== "file") {
             return;
         }
         const uri = vscode.Uri.from({
             scheme,
-            path: `/${path.basename(editor.document.uri.fsPath)}.sh`,
-            query: editor.document.uri.toString(),
+            path: `/${path.basename(document.uri.fsPath)}.sh`,
+            query: document.uri.toString(),
         });
         // A document shown before keeps its text until told it changed.
         changed.fire(uri);
-        const document = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(document, {
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), {
             preview: true,
             viewColumn: vscode.ViewColumn.Beside,
         });
@@ -138,22 +99,22 @@ export function registerCompileCommand(client: ClientHandle, ext: vscode.Extensi
         changed,
         vscode.workspace.registerTextDocumentContentProvider(scheme, provider),
         vscode.commands.registerCommand("clice.showCompileCommand", showCommand),
-        vscode.window.onDidChangeActiveTextEditor((editor) => void refresh(editor)),
-        // A compile of the active file follows a change of its command: a
-        // context switch, a database or rule edit, a save making it a unit.
-        vscode.languages.onDidChangeDiagnostics((event) => {
-            const editor = vscode.window.activeTextEditor;
-            if (
-                editor &&
-                event.uris.some((uri) => uri.toString() === editor.document.uri.toString())
-            ) {
-                void refresh(editor);
-            }
-        }),
-        client.onDidChangeState((event) => {
-            if (event.newState !== State.Starting) {
-                void refresh(vscode.window.activeTextEditor);
-            }
-        }),
     );
+
+    return (command) => {
+        if (command === null) {
+            status.hide();
+            return;
+        }
+        const failed =
+            command.queryFailure === null
+                ? ""
+                : `; its compiler could not be queried: ${command.queryFailure}`;
+        status.show(
+            command.source,
+            origin(command) + failed,
+            show,
+            command.source === "fallback" || command.queryFailure !== null,
+        );
+    };
 }

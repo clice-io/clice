@@ -31,6 +31,8 @@ clice asks the compiler of each command how it compiles (its target, its system 
 
 Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the marketplace; Cursor, VSCodium, Windsurf and other VS Code forks install the same extension from [Open VSX](https://open-vsx.org/extension/clice-io/clice). Published builds are platform-specific and ship the clice server inside the extension, so no download or network access is needed after installation; set `clice.executable` to use your own build instead.
 
+The language status of a C or C++ file (the `{}` beside its language mode) tells what clice knows of it; pin an item to keep it in the status bar. It names where the file's compile command comes from — a compilation database, the source including a header, a rule's `default_command`, a unit nearby, or clice's own — and **Show** opens the whole command; it names the compilation context when the file has more than one, and the build configuration when the rules declare any, each with **Switch**. A compile that runs long shows its progress in the status bar, as it does in every editor that shows progress.
+
 ### Neovim
 
 On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:

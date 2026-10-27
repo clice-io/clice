@@ -1246,17 +1246,6 @@ void LSPClient::register_extensions() {
         });
 
     peer.on_request(
-        "clice/compileCommand",
-        [this](RequestContext& ctx, const ext::CompileCommandParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.uri);
-            if(!session) {
-                co_await kota::fail(unserved(path));
-            }
-            co_return to_raw(project->context_service.compile_command(path_id));
-        });
-
-    peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();

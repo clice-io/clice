@@ -19,7 +19,6 @@ import { withTimeout } from "../../promise.ts";
 import {
     WatchRequest,
     type BuildKind,
-    type CompileCommandResult,
     type ContextItem,
     type CurrentContextResult,
     type ListConfigurationsResult,
@@ -444,17 +443,21 @@ export class Serve extends Client {
         }));
     }
 
-    /// Where the command `file` compiles with comes from; the arguments
-    /// differ by machine and stay out.
-    compileCommand(file: string): Promise<CompileCommandResult> {
+    /// Where the command the open `file` compiles with comes from, as its
+    /// current context tells; the arguments differ by machine and stay out.
+    compileCommand(file: string): Promise<CurrentContextResult> {
         const reply = this.ask(`compile command of ${file}`, (client) =>
-            client.compileCommand(this.uri(file)),
+            client.currentContext(this.uri(file)),
         );
-        return shown(reply, "compile_command", (result) => ({
-            source: result.source,
-            ...(result.from === null ? {} : { from: this.relative(result.from) }),
-            ...(result.queryFailure === null ? {} : { query_failure: true }),
-        }));
+        return shown(reply, "compile_command", ({ command }) =>
+            command === null
+                ? {}
+                : {
+                      source: command.source,
+                      ...(command.from === null ? {} : { from: this.relative(command.from) }),
+                      ...(command.queryFailure === null ? {} : { query_failure: true }),
+                  },
+        );
     }
 
     switchContext(

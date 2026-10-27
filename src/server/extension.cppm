@@ -38,6 +38,26 @@ struct QueryContextResult {
     std::uint64_t epoch = 0;
 };
 
+/// The command an open document compiles with, as its next compile sends
+/// it, and where it comes from.
+struct CompileCommand {
+    /// Where the command comes from: "database", an entry of a compilation
+    /// database; "host", the command of a source including the header;
+    /// "default", the default_command of a rule; "inferred", the command
+    /// of a unit nearby; "fallback", clice's own.
+    std::string source;
+
+    /// The file whose command it borrows ("host", "inferred").
+    std::optional<std::string> from;
+
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    /// Why the compiler of the command could not be queried, which left the
+    /// arguments clang's own reading of the command; absent when it was.
+    std::optional<std::string> query_failure;
+};
+
 struct CurrentContextParams {
     std::string uri;
 };
@@ -50,6 +70,9 @@ struct CurrentContextResult {
 
     /// Whether no choice of the user's is in force.
     bool automatic = true;
+
+    /// The command the document compiles with; absent when it is not open.
+    std::optional<CompileCommand> command;
 
     /// The listing generation it answers under (QueryContextResult::epoch):
     /// a listing of another epoch is out of date.
@@ -119,30 +142,6 @@ struct SwitchConfigurationParams {
 
 struct SwitchConfigurationResult {
     bool success = false;
-};
-
-/// clice/compileCommand: the command the open document `uri` compiles
-/// with, and where it comes from.
-struct CompileCommandParams {
-    std::string uri;
-};
-
-struct CompileCommandResult {
-    /// Where the command comes from: "database", an entry of a compilation
-    /// database; "host", the command of a source including the header;
-    /// "default", the default_command of a rule; "inferred", the command
-    /// of a unit nearby; "fallback", clice's own.
-    std::string source;
-
-    /// The file whose command it borrows ("host", "inferred").
-    std::optional<std::string> from;
-
-    std::string directory;
-    std::vector<std::string> arguments;
-
-    /// Why the compiler of the command could not be queried, which left the
-    /// arguments clang's own reading of the command; absent when it was.
-    std::optional<std::string> query_failure;
 };
 
 /// clice/counterparts: the files `uri` pairs with — a header's sources, a
