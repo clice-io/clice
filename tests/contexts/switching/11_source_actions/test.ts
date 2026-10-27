@@ -11,13 +11,13 @@ function actions(
     s: Serve,
     file: string,
     triggerKind: proto.CodeActionTriggerKind = proto.CodeActionTriggerKind.Invoked,
-    only: proto.CodeActionKind[] | undefined = [proto.CodeActionKind.Source],
+    only: proto.CodeActionKind[] | null = [proto.CodeActionKind.Source],
 ): Promise<proto.CodeAction[]> {
     const start = { line: 0, character: 0 };
     return s.client.sendRequest(proto.CodeActionRequest.type, {
         textDocument: { uri: s.uri(file) },
         range: { start, end: start },
-        context: { diagnostics: [], only, triggerKind },
+        context: { diagnostics: [], ...(only === null ? {} : { only }), triggerKind },
     }) as Promise<proto.CodeAction[]>;
 }
 
@@ -59,9 +59,14 @@ test("switch and reset", async (t) => {
 // its hosts of the same flags into one context: nothing is left to switch to.
 test("listed after the first compile", async (t) => {
     const s = await t.start();
+    await s.indexed();
     expect((await s.contexts("plain.h")).total).toBe(2);
-    s.open("plain.h");
-    const offered = await actions(s, "plain.h", proto.CodeActionTriggerKind.Invoked, undefined);
-    expect(titles(offered.filter((action) => action.kind === "source.clice.context"))).toEqual([]);
+    const park = await s.park("compile", "plain.h", { at: "worker" });
+    s.open("plain.h", { pull: false });
+    const offered = actions(s, "plain.h", proto.CodeActionTriggerKind.Invoked, null);
+    await park.reached();
+    await park.release();
+    const switches = (await offered).filter((action) => action.kind === "source.clice.context");
+    expect(titles(switches)).toEqual([]);
     expect((await s.contexts("plain.h")).total).toBe(1);
 });

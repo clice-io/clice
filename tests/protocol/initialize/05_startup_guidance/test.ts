@@ -27,8 +27,8 @@ test("shown after the handshake", async (t) => {
 // opens, is no database missing.
 test("a database written before a file opens", async (t) => {
     const s = await t.start();
-    const entry = { directory: t.root, file: "main.cpp", arguments: ["clang++", "-c", "main.cpp"] };
-    t.disk.write("compile_commands.json", JSON.stringify([entry]));
+    await s.sync();
+    t.disk.database({ "main.cpp": [] });
     expect(await s.poll("cdb")).toBe(1);
     s.open("main.cpp", { pull: false });
     expect(await s.guidance()).toEqual([]);

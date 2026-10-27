@@ -10,6 +10,10 @@ const PROGRESS = "clice/backgroundIndex";
 test(async (t) => {
     const s = await t.start();
     await s.indexed();
+    // The first round may have ended while its token was created, its
+    // token ending after the server went idle.
+    const created = s.client.progressTokens.filter((token) => token === PROGRESS).length;
+    await s.client.progressed(PROGRESS, "end", created);
     const kinds = () =>
         s.client.progressEvents
             .filter((event) => event.token === PROGRESS)
