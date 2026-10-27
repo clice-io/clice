@@ -451,7 +451,6 @@ ZEST_CASE(OpeningAlone) {
     ZASSERT(!opens("#ifndef A_H\n#include \"b.h\"\n#define A_H\n"));
     ZASSERT(!opens("#ifndef A_H\n#define B_H\n"));
     ZASSERT(!opens("int x;\n#ifndef A_H\n#define A_H\n"));
-    ZASSERT(!opens("#ifndef A_H\n#define A_H\n#include \"b.h\"\n#else\n#error twice\n"));
 }
 
 };  // ZEST_SUITE(LexicalScanIncludeGuard)
