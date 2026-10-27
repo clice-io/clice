@@ -30,14 +30,12 @@ std::string state_path(llvm::StringRef cache_dir) {
 }
 
 /// The real paths of the databases the rules active under `configuration`
-/// declare, sorted.
+/// declare, in priority order.
 std::vector<std::string> real_databases(const Config& config, llvm::StringRef configuration) {
     std::vector<std::string> paths;
     for(auto& database: config.declared_databases(configuration)) {
         paths.push_back(CanonicalPath(database).str());
     }
-    ranges::sort(paths);
-    paths.erase(ranges::unique(paths).begin(), paths.end());
     return paths;
 }
 

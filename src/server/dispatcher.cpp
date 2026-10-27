@@ -343,6 +343,9 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     using Result = typename protocol::RequestTraits<Params>::Result;
     if(!ast.loaded.is_set()) {
         co_await ast.loaded.wait();
+        if(!ticket.fresh()) {
+            co_await kota::fail(content_modified());
+        }
     }
     auto& session = *ticket.session;
     auto path_id = session.path_id;
