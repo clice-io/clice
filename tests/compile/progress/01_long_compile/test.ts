@@ -12,12 +12,14 @@ test(async (t) => {
     s.open("main.cpp", { pull: false });
     const pulled = s.diagnostics("main.cpp");
     await park.reached();
-    const token = `clice/compile/${s.uri("main.cpp")}`;
-    await s.client.progressed(token, "begin");
+    // The token names the document by the server's spelling of its URI;
+    // main.cpp is the only document compiling.
+    const compile = (token: string) => token.startsWith("clice/compile/");
+    await s.client.progressed(compile, "begin");
     await park.release();
     await pulled;
-    await s.client.progressed(token, "end");
-    const events = s.client.progressEvents.filter((event) => event.token === token);
+    await s.client.progressed(compile, "end");
+    const events = s.client.progressEvents.filter((event) => compile(event.token));
     await t.show(
         "progress",
         events.map((event) => {

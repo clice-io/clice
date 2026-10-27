@@ -1121,13 +1121,19 @@ export class CliceClient {
         return (await this.sendRequest(GateRequest, { request, uri })).id;
     }
 
-    /// Resolves once the server sent `token` `times` work done progresses of
-    /// `kind` ("begin", "report", "end"), the ones it sent before included.
-    progressed(token: string, kind: string, times = 1): Promise<void> {
+    /// Resolves once the server sent `token` (or a token it accepts)
+    /// `times` work done progresses of `kind` ("begin", "report", "end"),
+    /// the ones it sent before included.
+    progressed(
+        token: string | ((token: string) => boolean),
+        kind: string,
+        times = 1,
+    ): Promise<void> {
+        const matches = typeof token === "string" ? (each: string) => each === token : token;
         const ready = () =>
             this.progressEvents.filter(
                 (event) =>
-                    event.token === token && (event.value as { kind?: unknown }).kind === kind,
+                    matches(event.token) && (event.value as { kind?: unknown }).kind === kind,
             ).length >= times;
         if (ready()) {
             return Promise.resolve();
