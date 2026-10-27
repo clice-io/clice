@@ -192,18 +192,15 @@ void ProjectServer::start() {
         }
     }
 
-    // Documents opened before the project started were created under the
-    // default mode with no choice loaded; validate their persisted
-    // context choices and derive their serving mode now that the
-    // configuration governs. The serving decision waits
-    // until here — after the load — so divergence detection sees the
-    // persisted shards it just loaded (a restored unsaved buffer must
-    // escalate, not read as merely unindexed).
+    // Documents opened before the project started — held while its root's
+    // previous project shut down — had no context choice loaded; validate
+    // their persisted choices and decide their serving now. The serving
+    // decision waits until here — after the load — so divergence detection
+    // sees the persisted shards it just loaded (a restored unsaved buffer
+    // must escalate, not read as merely unindexed).
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
             contexts.validate_saved_context(session->path_id);
-            session->serving =
-                ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
             decide_open_serving(session);
         }
     }

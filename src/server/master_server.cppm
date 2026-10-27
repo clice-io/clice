@@ -317,8 +317,9 @@ private:
     void retire(std::shared_ptr<ProjectServer> project);
 
     /// The cache directories in use: a cache directory belongs to one
-    /// project at a time, a removed one's until it is gone.
-    std::vector<CanonicalPath> taken_cache_dirs() const;
+    /// project at a time, a removed one's until it is gone — but for the
+    /// project serving its root again, `heir`, which opens it then.
+    std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef heir = {}) const;
 
     /// Before a file's first compile: every project whose root holds the
     /// file registers the databases between it and the root, so routing

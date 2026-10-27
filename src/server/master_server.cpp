@@ -332,7 +332,7 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
     return made;
 }
 
-std::vector<CanonicalPath> MasterServer::taken_cache_dirs() const {
+std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef heir) const {
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ProjectServer& project) {
         // The rootless project opens no store.
@@ -345,7 +345,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs() const {
         take(*project);
     }
     for(auto& weak: retired) {
-        if(auto project = weak.lock()) {
+        if(auto project = weak.lock(); project && project->root != heir) {
             take(*project);
         }
     }
@@ -441,11 +441,6 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         if(!moved->quarantine->empty()) {
             to.ast.republish(moved);
         }
-        // One still waiting serves it again under the mode it loads (see
-        // serve_folders).
-        if(!to.ast.loaded.is_set()) {
-            continue;
-        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
@@ -534,7 +529,7 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
 void MasterServer::serve_folders(const ProjectServer* replaced) {
     std::erase_if(retired, [](auto& weak) { return weak.expired(); });
     std::vector<std::shared_ptr<ProjectServer>> serving;
-    bool made = false;
+    llvm::SmallVector<ProjectServer*> made;
     for(auto& root: project_roots()) {
         if(auto it =
                ranges::find_if(projects, [&](auto& project) { return project->root == root; });
@@ -546,7 +541,7 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
         serving.push_back(make_project(std::move(root)));
         serving.back()->ast.loaded.reset();
         waiting.push_back(serving.back().get());
-        made = true;
+        made.push_back(serving.back().get());
     }
 
     std::vector<std::shared_ptr<ProjectServer>> leaving;
@@ -559,6 +554,13 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
     for(auto& project: leaving) {
         std::erase(waiting, project.get());
         retired.push_back(project);
+    }
+    // Configured at once, so the documents it holds while it waits are
+    // served under its own options; the cache directory its root's
+    // previous project still holds passes to it.
+    for(auto* project: made) {
+        project->configure(init_options, taken_cache_dirs(project->root));
+        log_configuration(*project, init_options);
     }
     // A removed project holds its cache directory until it is gone: one
     // taking its root over waits for that, holding the root's documents.
@@ -573,13 +575,11 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
         }
         return !held;
     });
-    if(!made && leaving.empty() && starting.empty()) {
+    if(made.empty() && leaving.empty() && starting.empty()) {
         return;
     }
     projects_generation += 1;
     for(auto* project: starting) {
-        project->configure(init_options, taken_cache_dirs());
-        log_configuration(*project, init_options);
         project->start();
         // The documents it held while it waited.
         llvm::SmallVector<std::shared_ptr<Session>> held;
