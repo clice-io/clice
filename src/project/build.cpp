@@ -57,6 +57,15 @@ llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
     return declared;
 }
 
+bool Build::resolves(SourceID id) const {
+    return ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+        return rule.resolve_symlinks && rule.active_under(active) &&
+               ranges::any_of(rule.compile_commands, [&](const Spelling& database) {
+                   return declared_source(database) == id;
+               });
+    });
+}
+
 std::optional<SourceID> Build::declared_source(const Spelling& database) const {
     if(declared_source_count != cdb.source_count()) {
         declared_source_ids.clear();

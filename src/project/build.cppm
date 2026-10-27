@@ -86,6 +86,11 @@ public:
     /// (under discovery every registered source is discovered).
     bool discovered(SourceID id) const;
 
+    /// Whether an active rule resolving symlinks declares the source
+    /// (ConfigRule::resolve_symlinks): the path it resolves to is its
+    /// identity.
+    bool resolves(SourceID id) const;
+
     /// A file's database entries in build order: entries from the sources
     /// of rules matching the file first, then from the other active rules'
     /// sources, each in declaration order; discovered sources (registered

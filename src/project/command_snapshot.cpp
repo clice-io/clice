@@ -101,7 +101,13 @@ Blob build_snapshot(Project& project,
             if(database.empty()) {
                 continue;
             }
-            auto source = project.index.portable(database);
+            // A database read through links is recorded where it resolves,
+            // as a configuration naming that path directly records it: the
+            // two share the index (see database_key).
+            auto source =
+                project.index.portable(project.build.resolves(candidate.source)
+                                           ? CanonicalPath(Spelling::absolute(database.str())).str()
+                                           : database.str());
             if(!ranges::contains(sources, source)) {
                 sources.push_back(std::move(source));
             }
@@ -275,10 +281,10 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
         // can survive a reload that still changes which entry is the
-        // default selection. Another database listing the same command
-        // builds the same index.
+        // default selection.
         if(it != before.end() && it->second->hashes == entry.hashes &&
-           it->second->selected == entry.selected && it->second->rules == entry.rules) {
+           it->second->selected == entry.selected && it->second->rules == entry.rules &&
+           it->second->sources == entry.sources) {
             continue;
         }
         changed_ids.push_back(server_id);

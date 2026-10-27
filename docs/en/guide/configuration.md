@@ -752,6 +752,16 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 
 <div class="config-option">
 
+| Option             | Type   | Default |
+| ------------------ | ------ | ------- |
+| `resolve_symlinks` | `bool` | `false` |
+
+Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules declare exactly the databases the link resolves to, and resolve no symlinks, shares its index. The index of a build no longer used stays in the cache directory until deleted.
+
+</div>
+
+<div class="config-option">
+
 | Option            | Type                          | Default |
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
@@ -936,6 +946,20 @@ Each board's rule gives its own default command, and `board-a` is the default co
 
 ```case
 tests/project/configurations/03_board_defaults
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**One index per linked build**
+
+A rule resolving symlinks keeps an index for each build its link points to, and follows the link when it moves
+
+The build system points `out/current` at the build it chose. Pointed at `out/debug`, which the `debug` configuration names too, the server switches to that configuration's index; pointed back at `out/release`, the release index serves again and nothing is indexed anew.
+
+```case
+tests/project/configurations/07_linked_build
 ```
 
 <!-- END CAPABILITY -->
