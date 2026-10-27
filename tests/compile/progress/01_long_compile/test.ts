@@ -18,5 +18,15 @@ test(async (t) => {
     await pulled;
     await s.client.progressed(token, "end");
     const events = s.client.progressEvents.filter((event) => event.token === token);
-    await t.show("progress", Promise.resolve(events.map((event) => event.value)));
+    await t.show(
+        "progress",
+        events.map((event) => {
+            const { kind, title, message } = event.value as {
+                kind: string;
+                title?: string;
+                message?: string;
+            };
+            return [kind, title, message].filter((part) => part !== undefined).join(" · ");
+        }),
+    );
 });
