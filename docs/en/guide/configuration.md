@@ -6,9 +6,9 @@ outline: 2
 
 clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
-Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload.
+Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload. The VS Code extension offers the restart when either file changes.
 
-A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it.
+A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
 Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
 
@@ -920,7 +920,7 @@ tests/project/rules/09_remove_flags
 
 ## Switching Configurations
 
-The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the status bar shows the active configuration and clicking it opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
+The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

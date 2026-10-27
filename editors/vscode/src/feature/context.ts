@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { LanguageStatus } from "./status";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
 import type {
+    CompileCommand,
     ContextItem,
     CurrentContextResult,
     QueryContextResult,
@@ -15,6 +17,13 @@ export type { ContextItem };
 function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.TextEditor {
     const language = editor?.document.languageId;
     return language === "c" || language === "cpp" || language === "cuda-cpp";
+}
+
+/// A context's description, a path, as the workspace names it; nothing when
+/// that is all the label says.
+function shown(context: ContextItem): string {
+    const description = vscode.workspace.asRelativePath(context.description);
+    return description === context.label ? "" : description;
 }
 
 function sameContext(a: ContextItem, b: ContextItem | null | undefined): boolean {
@@ -44,7 +53,7 @@ class ContextTreeItem extends vscode.TreeItem {
             this.command = { command: "clice.loadMoreContexts", title: "Load more" };
             return;
         }
-        this.description = active ? `${context.description} (active)` : context.description;
+        this.description = shown(context);
         this.tooltip = context.description;
         this.iconPath = new vscode.ThemeIcon(active ? "pass-filled" : "circle-large-outline");
         this.contextValue = "clice-context";
@@ -181,6 +190,11 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     activeUri() {
         return this.uri;
     }
+
+    /// How many contexts the listing holds.
+    count() {
+        return this.total;
+    }
 }
 
 /** After a context switch the server recompiles the unchanged text and
@@ -203,9 +217,17 @@ class OutlineRefresher implements vscode.Disposable {
     }
 }
 
-export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
-    const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    status.command = "clice.switchContext";
+/** The compilation context of the active editor: a language status item
+ * telling who picked it, the Explorer's view of the contexts to switch
+ * between, and the commands switching them. Each refresh also shows the
+ * command the context gives the file (`showCommand`). */
+export function registerCompilationContext(
+    client: ClientHandle,
+    ext: vscode.ExtensionContext,
+    showCommand: (command: CompileCommand | null) => void,
+) {
+    const status = new LanguageStatus("clice.context", "clice: compilation context");
+    const switchContext: vscode.Command = { title: "Switch", command: "clice.switchContext" };
 
     const tree = new ContextTreeProvider(client);
     const outline = new OutlineRefresher();
@@ -217,12 +239,22 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         if (vscode.window.activeTextEditor !== editor) {
             return;
         }
-        // The item's label can run to every flag of a command; the bar only
-        // says who picked the context, the tooltip names it.
-        status.text = current.automatic ? "$(list-tree) auto" : "$(list-tree) selected";
-        const named = current.context ? `${current.context.label} — ` : "";
-        status.tooltip = `clice: compilation context ${named}${current.automatic ? "picked automatically" : "chosen"} (click to switch)`;
-        status.show();
+        showCommand(current.command);
+        // A file with nothing to choose from has no context to tell of.
+        const choices = !current.automatic || tree.count() > 1;
+        void vscode.commands.executeCommand("setContext", "clice.contextChoices", choices);
+        if (!choices) {
+            status.hide();
+            return;
+        }
+        // The item's label can run to every flag of a command; the text only
+        // says who picked the context, the detail names it.
+        const picked = current.automatic ? "picked automatically" : "chosen";
+        status.show(
+            current.automatic ? "auto" : "selected",
+            current.context ? `${current.context.label}, ${picked}` : picked,
+            switchContext,
+        );
     }
 
     async function refresh(editor: vscode.TextEditor | undefined) {
@@ -232,7 +264,9 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             return;
         }
         if (result === null) {
+            void vscode.commands.executeCommand("setContext", "clice.contextChoices", false);
             status.hide();
+            showCommand(null);
             return;
         }
         showStatus(editor, result);
@@ -304,11 +338,13 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
         const uri = editor.document.uri.toString();
         let automatic: boolean;
+        let inUse: ContextItem | null;
         try {
             const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
                 uri,
             });
             automatic = current.automatic;
+            inUse = current.context;
         } catch {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
@@ -364,8 +400,10 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             }
             items.push(
                 ...loaded.map((context) => ({
-                    label: context.label,
-                    description: context.description,
+                    label: sameContext(context, inUse)
+                        ? `$(pass-filled) ${context.label}`
+                        : context.label,
+                    description: shown(context),
                     context,
                 })),
             );
@@ -424,36 +462,6 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
     }
 
-    async function showCurrent() {
-        const editor = vscode.window.activeTextEditor;
-        if (!isCppEditor(editor)) {
-            return;
-        }
-        let result: CurrentContextResult;
-        try {
-            result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
-                uri: editor.document.uri.toString(),
-            });
-        } catch {
-            vscode.window.showInformationMessage("clice: server not ready");
-            return;
-        }
-        const context = result.context;
-        if (!context) {
-            vscode.window.showInformationMessage("clice: no compilation context for this file");
-            return;
-        }
-        const chosen = result.automatic ? "picked automatically" : "chosen";
-        vscode.window.showInformationMessage(
-            `clice: ${context.label} — ${context.description} (${chosen})`,
-        );
-    }
-
-    async function query() {
-        await refresh(vscode.window.activeTextEditor);
-        await vscode.commands.executeCommand("clice.contexts.focus");
-    }
-
     async function updateStatus(editor: vscode.TextEditor | undefined) {
         if (!isCppEditor(editor)) {
             return;
@@ -494,9 +502,7 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         vscode.workspace.onDidOpenTextDocument((document) => void detectCxxFragment(document)),
         vscode.window.registerTreeDataProvider("clice.contexts", tree),
         vscode.commands.registerCommand("clice.switchContext", select),
-        vscode.commands.registerCommand("clice.showCurrentContext", showCurrent),
         vscode.commands.registerCommand("clice.resetContext", () => reset()),
-        vscode.commands.registerCommand("clice.queryContexts", query),
         vscode.commands.registerCommand("clice.applyContext", applyContext),
         vscode.commands.registerCommand("clice.loadMoreContexts", () => tree.loadMore()),
         vscode.commands.registerCommand("clice.refreshContexts", () =>

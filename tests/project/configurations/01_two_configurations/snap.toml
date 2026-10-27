@@ -194,3 +194,15 @@ stdout = '''
 }
 '''
 exit = 0
+
+["source actions select a configuration".offered]
+value = ["Use build configuration release from the next start"]
+
+["source actions select a configuration".told]
+value = ["clice: release applies once clice restarts"]
+
+["source actions select a configuration".selected.configurations]
+menu = ["debug", "release"]
+active = "debug"
+selected = "release"
+default = "debug"

@@ -1,6 +1,6 @@
 [test.contexts]
 contexts = [
-    { label = "config #0", description = "${WS}", host = "dual.c" },
+    { label = "command #0", description = "${WS}", host = "dual.c" },
     { label = "-DDIALECT_C", description = "${WS}", host = "dual.c" },
 ]
 

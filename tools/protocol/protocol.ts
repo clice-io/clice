@@ -45,6 +45,28 @@ export interface CurrentContextParams {
     uri: string;
 }
 
+/// The command line an open document compiles with, as its database or
+/// rule writes it with the rules of clice.toml applied, naming the
+/// document, and where it comes from.
+export interface CompileCommand {
+    /// Where the command comes from: an entry of a compilation database,
+    /// the command of a source including the header, the default_command
+    /// of a rule, the command of a unit nearby, or clice's own.
+    source: "database" | "host" | "default" | "inferred" | "fallback";
+
+    /// The file whose command it borrows: a header's host, the unit an
+    /// inferred command comes from when the source is not one of the build
+    /// yet (a saved source joined it with the command it borrowed).
+    from: string | null;
+
+    directory: string;
+    arguments: string[];
+
+    /// Why the compiler of the command could not be queried, which left the
+    /// arguments clang's own reading of the command; null when it was.
+    queryFailure: string | null;
+}
+
 export interface CurrentContextResult {
     /// The context the file compiles under, as queryContext lists it:
     /// the user's choice, else the one picked automatically; null when
@@ -53,6 +75,9 @@ export interface CurrentContextResult {
 
     /// Whether no choice of the user's is in force.
     automatic: boolean;
+
+    /// The command the document compiles with; null when it is not open.
+    command: CompileCommand | null;
 
     /// The listing generation it answers under (QueryContextResult.epoch):
     /// a listing of another epoch is out of date.
@@ -143,6 +168,9 @@ export interface SwitchConfigurationParams {
 
 export interface SwitchConfigurationResult {
     success: boolean;
+
+    /// Why the selection was refused, for the user; null on success.
+    reason: string | null;
 }
 
 export const SwitchConfigurationRequest = new RequestType<

@@ -210,9 +210,6 @@ export class Serve extends Client {
     private killArmed = false;
     /// The workers the test killed from outside (`killWorkers`).
     private killed = 0;
-    /// Every window/showMessage the servers sent, oldest first.
-    private readonly shownMessages: string[] = [];
-
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
     constructor(
@@ -363,16 +360,14 @@ export class Serve extends Client {
         );
     }
 
-    /// What the server told the user about the setup ([guidance] messages),
-    /// once idle.
+    /// What the server showed the user (window/showMessage): what it tells
+    /// about the setup, once idle.
     guidance(): Promise<string[]> {
         return this.steps.run("guidance", async () => {
             await this.sync();
-            return this.live()
-                .guidanceMessages()
-                .map((message) =>
-                    portable(message.replace(/^\[guidance\] /, ""), this.workspace.root),
-                );
+            return this.live().shownMessages.map((message) =>
+                portable(message, this.workspace.root),
+            );
         });
     }
 
@@ -446,6 +441,23 @@ export class Serve extends Client {
             ...(result.context === null ? {} : { context: this.contextItem(result.context) }),
             automatic: result.automatic,
         }));
+    }
+
+    /// Where the command the open `file` compiles with comes from, as its
+    /// current context tells; the arguments differ by machine and stay out.
+    compileCommand(file: string): Promise<CurrentContextResult> {
+        const reply = this.ask(`compile command of ${file}`, (client) =>
+            client.currentContext(this.uri(file)),
+        );
+        return shown(reply, "compile_command", ({ command }) =>
+            command === null
+                ? {}
+                : {
+                      source: command.source,
+                      ...(command.from === null ? {} : { from: this.relative(command.from) }),
+                      ...(command.queryFailure === null ? {} : { query_failure: true }),
+                  },
+        );
     }
 
     switchContext(
@@ -769,7 +781,7 @@ export class Serve extends Client {
         const { uri, position } = this.position(at);
         return this.ask(`rename ${describeAnchor(at)} to ${newName}`, (client) =>
             refusable(async () => {
-                const shown = this.shownMessages.length;
+                const shown = client.shownMessages.length;
                 const reply = await client.renameAt(
                     uri,
                     position.line,
@@ -789,7 +801,7 @@ export class Serve extends Client {
                         );
                     }
                 }
-                const notices = this.shownMessages.slice(shown);
+                const notices = client.shownMessages.slice(shown);
                 return {
                     edits: context.workspaceEdit(reply),
                     versions,
@@ -1061,9 +1073,6 @@ export class Serve extends Client {
                 drainStderr: this.options.stderr !== "unread",
             }),
         );
-        client.onNotification(proto.ShowMessageNotification.type, (params) => {
-            this.shownMessages.push(params.message);
-        });
         this.server = client;
         this.servers.push(client);
         return client;

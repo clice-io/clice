@@ -1,10 +1,11 @@
 import { expect } from "vitest";
+import * as proto from "vscode-languageserver-protocol";
 import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
 /// Persist `name` and start the server again: what an editor does to apply
 /// a switch.
 async function switchTo(s: Serve, name: string): Promise<void> {
-    expect(await s.switchConfiguration(name)).toEqual({ success: true });
+    expect(await s.switchConfiguration(name)).toEqual({ success: true, reason: null });
     await s.restart();
 }
 
@@ -25,8 +26,11 @@ test("menu and selection", async (t) => {
         "selected",
     ]);
     // A name no rule declares.
-    expect(await s.switchConfiguration("nope")).toEqual({ success: false });
-    expect(await s.switchConfiguration("release")).toEqual({ success: true });
+    expect(await s.switchConfiguration("nope")).toEqual({
+        success: false,
+        reason: "no rule declares the configuration nope",
+    });
+    expect(await s.switchConfiguration("release")).toEqual({ success: true, reason: null });
     await t.show("state", t.disk.read(".clice/state.json"));
     // The running server keeps its configuration; only the selection moved.
     await t.show("switched", s.configurations());
@@ -94,19 +98,22 @@ test("pins stay with their configuration", async (t) => {
 
 test("command line overrides the selection", async (t) => {
     const s = await t.start();
-    expect(await s.switchConfiguration("release")).toEqual({ success: true });
+    expect(await s.switchConfiguration("release")).toEqual({ success: true, reason: null });
     await s.stop();
 
     const pinned = await t.start({ args: ["serve", "--configuration", "debug"] });
     await t.show("pinned", { menu: pinned.configurations(), gated: pinned.errors("gated.cpp") });
     // The command line owns a pinned session's choice.
-    expect(await pinned.switchConfiguration("release")).toEqual({ success: false });
+    expect(await pinned.switchConfiguration("release")).toEqual({
+        success: false,
+        reason: "the server runs with --configuration debug, which pins it",
+    });
     await pinned.stop();
 
     // An unknown name on the command line is skipped: the selection wins.
     const unknown = await t.start({ args: ["serve", "--configuration", "nope"] });
     await t.show("unknown", unknown.configurations());
-    expect(await unknown.switchConfiguration("debug")).toEqual({ success: true });
+    expect(await unknown.switchConfiguration("debug")).toEqual({ success: true, reason: null });
 });
 
 test("unknown selection falls back untouched", async (t) => {
@@ -143,3 +150,35 @@ test(
         await t.cli("inspect hover gated.cpp --configuration release");
     },
 );
+
+// An editor whose only UI for configurations is its code action menu
+// switches them through source actions; the server tells the user that the
+// choice applies at the next start.
+test("source actions select a configuration", async (t) => {
+    const s = await t.start();
+    s.open("main.cpp", { pull: false });
+    const start = { line: 0, character: 0 };
+    const offered = (await s.client.sendRequest(proto.CodeActionRequest.type, {
+        textDocument: { uri: s.uri("main.cpp") },
+        range: { start, end: start },
+        context: {
+            diagnostics: [],
+            only: [proto.CodeActionKind.Source],
+            triggerKind: proto.CodeActionTriggerKind.Invoked,
+        },
+    })) as proto.CodeAction[];
+    await t.show(
+        "offered",
+        offered.map((action) => action.title),
+    );
+    const command = offered.find((action) => action.kind === "source.clice.configuration")?.command;
+    expect(command).toBeDefined();
+    expect(
+        await s.client.sendRequest(proto.ExecuteCommandRequest.type, {
+            command: command?.command ?? "",
+            arguments: command?.arguments ?? [],
+        }),
+    ).toEqual({ success: true, reason: null });
+    await t.show("told", s.client.shownMessages);
+    await t.show("selected", s.configurations());
+});

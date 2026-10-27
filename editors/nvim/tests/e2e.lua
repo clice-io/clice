@@ -234,7 +234,7 @@ if scenario.context then
     end, 50) then
         fail 'LspCliceShowContext showed nothing'
     end
-    if not notified:find(scenario.context .. '.*picked automatically') then
+    if not notified:find(scenario.context .. '.*picked automatically.*its command: host from .*' .. scenario.context) then
         fail('LspCliceShowContext showed: ' .. notified)
     end
 

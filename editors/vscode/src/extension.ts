@@ -9,37 +9,21 @@ import {
     LanguageClientOptions,
     ServerOptions,
     State,
-    StaticFeature,
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
 import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
+import { registerCompileCommand } from "./feature/command";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerCounterparts } from "./feature/counterparts";
 import { registerInactiveRegions } from "./feature/inactive";
-import { registerProblems } from "./feature/problems";
 import { registerRefactorCommands } from "./feature/refactor";
 
 let client: ClientHandle | undefined;
-
-/// Keeps clice's diagnostics pushed: vscode-languageclient 9 shows the
-/// pull it cancels on every edit as an empty report, so pulled
-/// diagnostics would blink while typing. clice pushes to a client that
-/// does not declare pull support. Registered after the built-in features,
-/// so it runs after the one declaring it.
-const declinePullDiagnostics: StaticFeature = {
-    fillClientCapabilities(capabilities) {
-        delete capabilities.textDocument?.diagnostic;
-        delete capabilities.workspace?.diagnostics;
-    },
-    initialize: () => undefined,
-    getState: () => ({ kind: "static" }),
-    clear: () => undefined,
-};
 
 // Platform-specific builds of the extension ship the server under clice/;
 // universal builds (a plain `vsce package` without the binary staged) carry
@@ -284,6 +268,25 @@ async function startServer(context: ExtensionContext): Promise<void> {
     }
 }
 
+/// Set while a restart is offered: a change before the user answers joins
+/// the offer instead of stacking another one, as saving on every pause would.
+let offering = false;
+
+async function offerRestart(message: string, context: ExtensionContext) {
+    if (offering) {
+        return;
+    }
+    offering = true;
+    try {
+        const choice = await window.showInformationMessage(message, "Restart Server");
+        if (choice === "Restart Server") {
+            await startServer(context);
+        }
+    } finally {
+        offering = false;
+    }
+}
+
 async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
@@ -294,17 +297,63 @@ async function onSettingsChanged(
         "clice.host",
         "clice.port",
         "clice.serverEnv",
+        "clice.initializationOptions",
     ];
-    if (!launchSettings.some((setting) => event.affectsConfiguration(setting))) {
-        return;
+    if (launchSettings.some((setting) => event.affectsConfiguration(setting))) {
+        await offerRestart("clice server settings changed.", context);
     }
-    const choice = await window.showInformationMessage(
-        "clice server settings changed.",
-        "Restart Server",
+}
+
+/// clice reads its configuration when it starts: an edited clice.toml, or
+/// .clice/config.toml, of a workspace folder applies once the server
+/// restarts. Only a folder's own: a clice.toml deeper down, a test fixture
+/// or a vendored project's, configures nothing the server runs. The second
+/// sits under .clice, which files.watcherExclude keeps from file watchers,
+/// so its saves in the editor are what is seen of it.
+function watchConfigFiles(context: ExtensionContext) {
+    const offer = (uri: vscode.Uri) =>
+        void offerRestart(
+            `clice: ${vscode.workspace.asRelativePath(uri)} changed; it applies once the server restarts.`,
+            context,
+        );
+    const watchers = new Map<string, vscode.Disposable>();
+    const watch = (folders: readonly vscode.WorkspaceFolder[]) => {
+        for (const folder of folders) {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(folder, "clice.toml"),
+            );
+            watcher.onDidCreate(offer);
+            watcher.onDidChange(offer);
+            watcher.onDidDelete(offer);
+            watchers.set(folder.uri.toString(), watcher);
+        }
+    };
+    watch(vscode.workspace.workspaceFolders ?? []);
+    context.subscriptions.push(
+        {
+            dispose: () => {
+                for (const watcher of watchers.values()) {
+                    watcher.dispose();
+                }
+            },
+        },
+        vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+            for (const folder of event.removed) {
+                watchers.get(folder.uri.toString())?.dispose();
+                watchers.delete(folder.uri.toString());
+            }
+            watch(event.added);
+        }),
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+            if (
+                folder &&
+                document.uri.fsPath === path.join(folder.uri.fsPath, ".clice", "config.toml")
+            ) {
+                offer(document.uri);
+            }
+        }),
     );
-    if (choice === "Restart Server") {
-        await startServer(context);
-    }
 }
 
 export async function activate(context: ExtensionContext) {
@@ -313,8 +362,8 @@ export async function activate(context: ExtensionContext) {
     // monorepos and vendored checkouts hold C++ the user never opens. Until a
     // C, C++ or CUDA file is opened or a clice command is run there is no
     // server; accepted.
-    const channel = window.createOutputChannel("clice");
-    const traceChannel = window.createOutputChannel("clice (LSP trace)");
+    const channel = window.createOutputChannel("clice", { log: true });
+    const traceChannel = window.createOutputChannel("clice (LSP trace)", { log: true });
     context.subscriptions.push(channel, traceChannel);
 
     const documentSelector = [
@@ -325,10 +374,12 @@ export async function activate(context: ExtensionContext) {
     const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {
         documentSelector,
+        // Read at every start, as the launch settings are.
+        initializationOptions: () =>
+            vscode.workspace.getConfiguration("clice").get<object>("initializationOptions"),
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
-            handleDiagnostics: registerProblems(() => client, documentSelector, context),
             provideDocumentSemanticTokens: inactive.full,
             provideDocumentSemanticTokensEdits: inactive.edits,
             // Space triggers exist only for the module names after `import `
@@ -337,6 +388,17 @@ export async function activate(context: ExtensionContext) {
             // merely avoids request round-trips, while the server
             // independently answers space triggers elsewhere with an empty
             // list.
+            // The source actions switching contexts and configurations are
+            // for editors without this extension's UI for them, which also
+            // refreshes what VS Code caches of the document on a switch.
+            provideCodeActions: async (document, range, context, token, next) => {
+                const actions = await next(document, range, context, token);
+                return actions?.filter(
+                    (action) =>
+                        !(action instanceof vscode.CodeAction) ||
+                        !action.kind?.value.startsWith("source.clice."),
+                );
+            },
             provideCompletionItem: async (document, position, context, token, next) => {
                 if (context.triggerCharacter === " ") {
                     const line = document.lineAt(position.line).text.slice(0, position.character);
@@ -355,11 +417,9 @@ export async function activate(context: ExtensionContext) {
     };
 
     const serverOptions = makeServerOptions(context, channel);
-    client = new ClientHandle(() => {
-        const created = new LanguageClient("clice", "clice", serverOptions, clientOptions);
-        created.registerFeature(declinePullDiagnostics);
-        return created;
-    });
+    client = new ClientHandle(
+        () => new LanguageClient("clice", "clice", serverOptions, clientOptions),
+    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand("clice.restart", () => startServer(context)),
@@ -367,9 +427,10 @@ export async function activate(context: ExtensionContext) {
             void onSettingsChanged(event, context);
         }),
     );
+    watchConfigFiles(context);
 
     registerBuildConfiguration(client, context);
-    registerCompilationContext(client, context);
+    registerCompilationContext(client, context, registerCompileCommand(client, context));
     registerConflictCheck(client, context);
     registerCounterparts(client, context);
     registerAliasRedirect(context);

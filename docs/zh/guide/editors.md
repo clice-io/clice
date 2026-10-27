@@ -31,6 +31,8 @@ clice 会询问每条命令的编译器如何编译（它的目标、系统头�
 
 从应用市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)；Cursor、VSCodium、Windsurf 等 VS Code 衍生编辑器从 [Open VSX](https://open-vsx.org/extension/clice-io/clice) 安装同一个扩展。发布的构建版本针对不同平台提供，并在扩展中内置 clice 服务端，因此安装后无需再下载或访问网络；若要改用自己的构建版本，请设置 `clice.executable`。
 
+C 或 C++ 文件的语言状态（语言模式旁的 `{}`）会列出 clice 对该文件所知的情况；把某一项固定后，它会常驻状态栏。它说明文件的编译命令从哪里来——编译数据库、包含该头文件的源文件、规则的 `default_command`、附近的单元，或 clice 自己的——点 **Show** 可打开完整命令；文件有不止一个编译上下文时，它显示当前的上下文，规则声明了构建配置时显示生效的配置，两者都可点 **Switch** 切换。运行较久的编译会在状态栏显示进度，在任何显示进度的编辑器中都是如此。
+
 ### Neovim
 
 在 Neovim 0.11 或更高版本上安装 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 后，启用 clice：
@@ -43,7 +45,18 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 ### Zed
 
-Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。
+Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。它运行 `PATH` 上的 `clice`，找不到时下载最新的发布版本；把 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
+
+Zed 也会为 C 和 C++ 运行它自带的 clangd，补全和诊断因此会重复出现；只用 clice 时：
+
+```json
+{
+  "languages": {
+    "C": { "language_servers": ["clice", "!clangd", "..."] },
+    "C++": { "language_servers": ["clice", "!clangd", "..."] }
+  }
+}
+```
 
 Zed 默认用 tree-sitter 生成大纲面板和面包屑；要让它们显示 clice 给出的文档符号，在 Zed 的 `settings.json` 里为 C 和 C++ 打开 `document_symbols`：
 
@@ -57,6 +70,8 @@ Zed 默认用 tree-sitter 生成大纲面板和面包屑；要让它们显示 cl
 ```
 
 ## 通用 LSP 客户端
+
+没有 clice 插件的编辑器（包括 Zed）可以在代码操作菜单中切换文件的编译方式：请求代码操作时，clice 会提供源操作，用于让头文件改由另一个宿主包含来编译，或让源文件改用它的另一条命令（`source.clice.context`），回到 clice 自动选择的上下文，以及为下次启动选择另一个构建配置（`source.clice.configuration`）。所有编辑器都会显示索引进度和运行较久的编译的进度，以及提示用户修正配置的消息。
 
 ### Helix
 

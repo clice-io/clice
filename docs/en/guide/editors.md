@@ -31,6 +31,8 @@ clice asks the compiler of each command how it compiles (its target, its system 
 
 Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the marketplace; Cursor, VSCodium, Windsurf and other VS Code forks install the same extension from [Open VSX](https://open-vsx.org/extension/clice-io/clice). Published builds are platform-specific and ship the clice server inside the extension, so no download or network access is needed after installation; set `clice.executable` to use your own build instead.
 
+The language status of a C or C++ file (the `{}` beside its language mode) tells what clice knows of it; pin an item to keep it in the status bar. It names where the file's compile command comes from — a compilation database, the source including a header, a rule's `default_command`, a unit nearby, or clice's own — and **Show** opens the whole command; it names the compilation context when the file has more than one, and the build configuration when the rules declare any, each with **Switch**. A compile that runs long shows its progress in the status bar, as it does in every editor that shows progress.
+
 ### Neovim
 
 On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
@@ -43,7 +45,18 @@ nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.c
 
 ### Zed
 
-The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed).
+The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
+
+Zed runs its built-in clangd for C and C++ as well, which duplicates completion and diagnostics; to use clice alone:
+
+```json
+{
+  "languages": {
+    "C": { "language_servers": ["clice", "!clangd", "..."] },
+    "C++": { "language_servers": ["clice", "!clangd", "..."] }
+  }
+}
+```
 
 Zed builds its outline panel and breadcrumbs with tree-sitter by default; to have them show clice's document symbols, turn on `document_symbols` for C and C++ in Zed's `settings.json`:
 
@@ -57,6 +70,8 @@ Zed builds its outline panel and breadcrumbs with tree-sitter by default; to hav
 ```
 
 ## Generic LSP Clients
+
+An editor without a clice plugin, Zed included, switches what a file compiles under from its code action menu: asked for actions, clice offers source actions that compile a header as included by another of its hosts, or a source with another of its commands (`source.clice.context`), go back to the context clice picks, and select another build configuration for the next start (`source.clice.configuration`). Every editor shows the progress of indexing and of a compile that runs long, and the messages that ask the user to fix the setup.
 
 ### Helix
 

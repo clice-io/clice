@@ -149,7 +149,7 @@ static ext::ContextItem
     auto applied = own[index];
     auto desc = flags_label(ws, applied, own);
     ext::ContextItem item;
-    item.label = desc.empty() ? std::format("config #{}", index) : desc;
+    item.label = desc.empty() ? std::format("command #{}", index) : desc;
     item.description = ws.file_table.display(
         CanonicalPath(Spelling::absolute(ws.commands.get(applied).directory)));
     item.uri = feature::to_uri(ws.file_table.display(path_id));
@@ -210,6 +210,18 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     return all_items;
 }
 
+/// How clice/currentContext names where a command comes from.
+static std::string_view source_name(CommandSource source) {
+    switch(source) {
+        case CommandSource::CDBExact: return "database";
+        case CommandSource::IncludeGraph: return "host";
+        case CommandSource::Default: return "default";
+        case CommandSource::Inferred: return "inferred";
+        case CommandSource::Fallback: return "fallback";
+    }
+    std::unreachable();
+}
+
 ext::CurrentContextResult ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
     if(!session) {
@@ -217,6 +229,26 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     }
     auto& ws = project;
     auto path_id = session->path_id;
+    // Resolved first: the resolution fills the header context the item
+    // below is read from.
+    auto& command = result.command.emplace();
+    std::vector<std::string> resolved;
+    auto resolution = editor.resolve_command(path_id, command.directory, resolved);
+    // The command line as its database or rule writes it, the rules
+    // applied, rather than the frontend's the compile gets: the one a user
+    // recognizes, and could run.
+    auto file = ws.file_table.spelling(path_id).str();
+    for(auto* argument: ws.commands.render_full(resolution.ref.command, file)) {
+        command.arguments.emplace_back(argument);
+    }
+    command.source = source_name(resolution.source);
+    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
+    if(from.valid()) {
+        command.from = feature::to_uri(ws.file_table.display(from));
+    }
+    if(!resolution.query_failure.empty()) {
+        command.query_failure = std::move(resolution.query_failure);
+    }
     auto path = ws.file_table.resolve(path_id);
     const Selection* choice = editor.selection(path_id);
     result.automatic = choice == nullptr;
@@ -371,21 +403,19 @@ ext::ListConfigurationsResult ContextService::list_configurations() const {
 
 ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name,
                                                                     llvm::StringRef pinned) {
+    auto refuse = [&](std::string reason) {
+        LOG_WARN("Cannot select configuration {}: {}", name, reason);
+        return ext::SwitchConfigurationResult{.reason = std::move(reason)};
+    };
     if(!declares_configuration(project.config, name)) {
-        LOG_WARN("Cannot select configuration {}: no rule declares it", name);
-        return {};
+        return refuse(std::format("no rule declares the configuration {}", name));
     }
     if(declares_configuration(project.config, pinned)) {
-        LOG_WARN("Cannot select configuration {}: --configuration {} pins this session's",
-                 name,
-                 pinned);
-        return {};
+        return refuse(
+            std::format("the server runs with --configuration {}, which pins it", pinned));
     }
     if(auto written = write_selection(project.config.project.cache_dir, name); !written) {
-        LOG_WARN("Cannot persist the selected configuration {}: {}",
-                 name,
-                 written.error().message());
-        return {};
+        return refuse(std::format("the selection cannot be saved: {}", written.error().message()));
     }
     LOG_INFO("Selected configuration {}; it becomes active at the next start", name);
     return {.success = true};

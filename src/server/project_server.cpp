@@ -58,6 +58,9 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     diagnostics_conn = ast.on_diagnostics.connect([this](const std::shared_ptr<Session>& session) {
         this->server.on_diagnostics.emit(*this, session);
     });
+    phase_conn = ast.on_phase.connect([this](Fid path_id, CompilePhase phase) {
+        this->server.on_compile_phase.emit(path_id, phase);
+    });
     progress_conn = sched.pump.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
 
@@ -104,10 +107,16 @@ void ProjectServer::configure(const std::optional<codec::dyn::Value>& init_optio
     // final merged values (e.g. a cache_dir overridden by the client).
     project.config =
         Config::load_from_workspace(root, &config_issues, &config_path, /*finalized=*/false);
-    for(auto& issue: config_issues) {
-        LOG_GUIDANCE("Configuration problem in {}: {}",
-                     project.file_table.display_identity(issue.file),
-                     issue.message);
+    // One message: the configuration file lists each as a diagnostic.
+    if(!config_issues.empty()) {
+        auto& first = config_issues.front();
+        LOG_GUIDANCE(
+            "Configuration problem in {}: {}{}",
+            project.file_table.display_identity(first.file),
+            first.message,
+            config_issues.size() == 1
+                ? std::string()
+                : std::format(" (and {} more, listed as its problems)", config_issues.size() - 1));
     }
     std::string own_cache_dir = project.config.project.cache_dir;
     if(init_options) {
@@ -182,14 +191,7 @@ void ProjectServer::start() {
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        if(!report.has_commands && !found_unreadable_database(project)) {
-            LOG_GUIDANCE(
-                "No compile_commands.json found in workspace {} or its direct subdirectories. "
-                "Compile commands will be guessed; see "
-                "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.{}",
-                project.file_table.display(root),
-                deeper_databases_hint(project));
-        }
+        commands_missing = !report.has_commands && !found_unreadable_database(project);
     }
 
     // Documents opened before the project started were created under the
@@ -386,6 +388,17 @@ bool ProjectServer::knows(Fid path_id) {
 }
 
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
+    // A database generated since the start counts: the poll, or the
+    // discovery around this file, has loaded it by now.
+    if(std::exchange(commands_missing, false) && project.build.members().empty() &&
+       !found_unreadable_database(project)) {
+        LOG_GUIDANCE(
+            "No compile_commands.json found in workspace {} or its direct subdirectories. "
+            "Compile commands will be guessed; see "
+            "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.{}",
+            project.file_table.display(root),
+            deeper_databases_hint(project));
+    }
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
     // A reopened document still barred by a crash says so at once: its

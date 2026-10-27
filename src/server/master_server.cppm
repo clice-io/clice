@@ -6,6 +6,7 @@ module clice:server.master_server;
 
 import :feature.semantic_tokens;
 import :sched.index.pump;
+import :server.ast_family;
 import :server.extension;
 import :server.project_server;
 import :server.session;
@@ -47,7 +48,7 @@ enum class ServerLifecycle : std::uint8_t {
 /// The log file is the durable record; this copy exists so a client that
 /// attaches after the message fired can still be shown it.
 struct NotifyMessage {
-    logging::NotifyLevel level;
+    logging::NotifyKind kind;
     std::string text;
 };
 
@@ -219,6 +220,9 @@ public:
     /// compile (ASTFamily::on_diagnostics).
     Signal<ProjectServer&, std::shared_ptr<Session>> on_diagnostics;
 
+    /// A project's document compile moved on (ASTFamily::on_phase).
+    Signal<Fid, CompilePhase> on_compile_phase;
+
     /// The projects' indexing rounds as one: it begins with the first
     /// project's round and ends with the last one's, and a project whose
     /// round ended keeps its counts in it until then.
@@ -251,11 +255,11 @@ public:
     /// touching the hook themselves.
     Signal<> on_notify;
 
-    /// Recent guidance/anomaly messages (window/logMessage material),
-    /// bounded by dropping the oldest. notify_seq numbers the next message,
-    /// so notify_seq - notify_log.size() is the oldest retained sequence; a
-    /// subscriber lagging further behind than the retention window loses
-    /// the evicted messages (the log file keeps the durable record).
+    /// Recent guidance/anomaly messages for the client, bounded by dropping
+    /// the oldest. notify_seq numbers the next message, so notify_seq -
+    /// notify_log.size() is the oldest retained sequence; a subscriber
+    /// lagging further behind than the retention window loses the evicted
+    /// messages (the log file keeps the durable record).
     std::deque<NotifyMessage> notify_log;
     std::uint64_t notify_seq = 0;
 

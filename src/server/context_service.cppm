@@ -37,7 +37,7 @@ struct ContextService {
     std::vector<ext::ContextItem> contexts(Fid path_id);
 
     /// clice/currentContext: the listing's item for the context the file
-    /// compiles under, and whether the user chose it.
+    /// compiles under, whether the user chose it, and its command.
     ext::CurrentContextResult current_context(const Session* session);
 
     /// clice/switchContext: pin a host source or CDB entry — one contexts()

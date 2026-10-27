@@ -14,18 +14,18 @@ namespace clice::testing {
 namespace {
 
 using logging::AnomalyId;
-using logging::NotifyLevel;
+using logging::NotifyKind;
 
 /// RAII fixture: install test hooks and clear them on destruction.
 struct AnomalyCapture {
-    std::vector<std::pair<NotifyLevel, std::string>> notified;
+    std::vector<std::pair<NotifyKind, std::string>> notified;
     std::vector<AnomalyId> trapped;
     logging::Level saved_level;
 
     AnomalyCapture() : saved_level(logging::options.level) {
         logging::reset_anomaly_for_testing();
-        logging::set_notify_hook([this](NotifyLevel level, std::string_view message) {
-            notified.emplace_back(level, std::string(message));
+        logging::set_notify_hook([this](NotifyKind kind, std::string_view message) {
+            notified.emplace_back(kind, std::string(message));
         });
         logging::set_anomaly_trap_for_testing([this](AnomalyId id) { trapped.push_back(id); });
     }
@@ -45,8 +45,8 @@ ZEST_CASE(MarkerAndNotify) {
     LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
 
     ZASSERT(capture.notified.size() == 1u);
-    auto& [level, message] = capture.notified.front();
-    ZEXPECT(level == NotifyLevel::Error);
+    auto& [kind, message] = capture.notified.front();
+    ZEXPECT(kind == NotifyKind::Anomaly);
     ZEXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
 }
 
@@ -123,15 +123,15 @@ ZEST_CASE(LevelGateSkipsEvaluation) {
     ZEXPECT(capture.trapped.size() == 0u);
 }
 
-ZEST_CASE(GuidanceMarkerAndLevel) {
+ZEST_CASE(GuidanceKind) {
     AnomalyCapture capture;
 
     LOG_GUIDANCE("no compilation database found in {}", "/tmp/ws");
 
     ZASSERT(capture.notified.size() == 1u);
-    auto& [level, message] = capture.notified.front();
-    ZEXPECT(level == NotifyLevel::Warning);
-    ZEXPECT(message == "[guidance] no compilation database found in /tmp/ws");
+    auto& [kind, message] = capture.notified.front();
+    ZEXPECT(kind == NotifyKind::Guidance);
+    ZEXPECT(message == "no compilation database found in /tmp/ws");
     ZEXPECT(capture.trapped.size() == 0u);
 }
 
