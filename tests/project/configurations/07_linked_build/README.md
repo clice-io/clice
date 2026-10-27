@@ -2,7 +2,7 @@
 option: rules.resolve_symlinks
 ---
 
-# A build chosen by a link
+# One index per linked build
 
 A rule resolving symlinks keeps an index for each build its link points to, and follows the link when it moves
 
