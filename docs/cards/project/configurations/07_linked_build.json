@@ -224,6 +224,36 @@
           }
         }
       ]
+    },
+    {
+      "name": "a link above the database",
+      "blocks": [
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

@@ -36,3 +36,8 @@ menu = ["active", "debug"]
 active = "debug"
 selected = "debug"
 default = "active"
+
+["a link above the database".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
