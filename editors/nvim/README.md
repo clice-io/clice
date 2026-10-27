@@ -20,14 +20,14 @@ Neovim runs a clice for each project root: the nearest directory above the file 
 
 ## Commands
 
-| Command                        | Does                                                                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `:LspCliceShowContext`         | Show the compilation context of the buffer: the source file a header compiles in, or the compile command of a source file listed with several.         |
-| `:LspCliceSwitchContext`       | Pick another context, or go back to the automatic one.                                                                                                 |
-| `:LspCliceResetContext`        | Go back to the automatic context.                                                                                                                      |
-| `:LspCliceSwitchConfiguration` | Select the build configuration (the `configuration` tags of the `clice.toml` rules) clice runs from its next start.                                    |
-| `:LspCliceRefactor {kind}`     | Apply the refactoring of a code action kind at the cursor, such as `refactor.rewrite.populateSwitch`, offering a choice when several apply.            |
-| `:LspCliceSwitchSourceHeader`  | Open the file the buffer pairs with — a header's source, a source's header, a module's interface or implementation — or pick one when several qualify. |
+| Command                        | Does                                                                                                                                                                               |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:LspCliceShowContext`         | Show the compilation context of the buffer — the source file a header compiles in, or the compile command of a source file listed with several — and where its command comes from. |
+| `:LspCliceSwitchContext`       | Pick another context, or go back to the automatic one.                                                                                                                             |
+| `:LspCliceResetContext`        | Go back to the automatic context.                                                                                                                                                  |
+| `:LspCliceSwitchConfiguration` | Select the build configuration (the `configuration` tags of the `clice.toml` rules) and restart clice under it (Neovim 0.12; before, from its next start).                         |
+| `:LspCliceRefactor {kind}`     | Apply the refactoring of a code action kind at the cursor, such as `refactor.rewrite.populateSwitch`, offering a choice when several apply.                                        |
+| `:LspCliceSwitchSourceHeader`  | Open the file the buffer pairs with — a header's source, a source's header, a module's interface or implementation — or pick one when several qualify.                             |
 
 ## Features
 
