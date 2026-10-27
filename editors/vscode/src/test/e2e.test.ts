@@ -437,7 +437,8 @@ suite("clice E2E", function () {
 
         // The client contract: a switch through the extension's commands
         // keeps the document open; the server recompiles the unchanged text
-        // and publishes its diagnostics anew.
+        // and has the client pull its diagnostics anew, which it does for a
+        // document a tab shows.
         const published = () =>
             until(
                 [vscode.languages.onDidChangeDiagnostics],
@@ -446,6 +447,7 @@ suite("clice E2E", function () {
             );
 
         let republished = published();
+        await vscode.window.showTextDocument(document);
         await vscode.commands.executeCommand("clice.applyContext", host, query.epoch, uri);
         await republished;
         const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
