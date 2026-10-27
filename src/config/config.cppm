@@ -92,6 +92,23 @@ struct ConfigRule {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "Whether builds are told apart by the real paths this "
+                         "rule's `compile_commands` resolve to, through symlinks "
+                         "and Windows junctions, rather than by the "
+                         "configuration's name: for a build system that selects "
+                         "a build by pointing a link at its directory. Each real "
+                         "path keeps an index of its own, and when the link is "
+                         "pointed elsewhere the server switches to that build's "
+                         "index, which still holds what an earlier session "
+                         "indexed there. A configuration whose rules declare "
+                         "exactly the databases the link resolves to, and "
+                         "resolve no symlinks, shares its index. The index of a "
+                         "build no longer used stays in the cache directory "
+                         "until deleted.")
+    <bool> resolve_symlinks = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "The compile command for matching files without a "
                          "database entry, without the source file: a string "
                          "tokenized like a shell command line, or an argv "
@@ -348,6 +365,7 @@ struct CompiledRule {
     /// Absolute paths of the declared databases, in priority order; an
     /// existing directory resolved to the compile_commands.json under it.
     std::vector<Spelling> compile_commands;
+    bool resolve_symlinks = false;
     /// The command's argv (a string spelling tokenized with the host's
     /// shell rules), `${workspace}` substituted; empty means none.
     /// `directory` is its working directory.
@@ -373,6 +391,10 @@ struct CompiledRule {
 
     /// Whether the rule applies to `path`.
     bool matches(CanonicalRef path) const;
+
+    /// Whether the rule applies while `configuration` is active: it is
+    /// untagged or tagged so.
+    bool active_under(llvm::StringRef configuration) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -503,6 +525,10 @@ struct Config {
 
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
+
+    /// The databases the rules active under `configuration` declare, in
+    /// declaration order, each once.
+    llvm::SmallVector<Spelling> declared_databases(llvm::StringRef configuration) const;
 
     /// Try to load configuration from a TOML file. Its relative paths and
     /// patterns anchor at the file's directory: every rule records it, so a

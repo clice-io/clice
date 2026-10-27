@@ -44,7 +44,7 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool sk
     request.hidden = std::move(rendered.hidden);
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule(skip_bodies),
-                                 project.build.active_configuration(),
+                                 project.database_key.str(),
                                  request.directory,
                                  request.file,
                                  canonicalize(request.arguments)});

@@ -207,6 +207,7 @@ void ProjectServer::start() {
             decide_open_serving(session);
         }
     }
+    ast.loaded.set();
 
     if(root.empty()) {
         return;
@@ -432,13 +433,23 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
-void ProjectServer::tick_databases() {
-    if(!tracker || project.config.tracker.workspace_poll_seconds.value == 0) {
-        return;
+std::size_t ProjectServer::weigh_databases(bool force) {
+    if(!tracker) {
+        return 0;
     }
-    auto events = tracker->tick_cdb();
+    if(tracker->moved()) {
+        server.restart(*this);
+        return 1;
+    }
+    auto events = tracker->tick_cdb(force);
     if(!events.empty()) {
         dispatch(events);
+    }
+    return events.size();
+}
+
+void ProjectServer::tick_databases() {
+    if(project.config.tracker.workspace_poll_seconds.value > 0 && weigh_databases(false) > 0) {
         server.probe.happened(LoopEvent::DatabaseChange);
     }
 }

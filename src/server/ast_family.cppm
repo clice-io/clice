@@ -67,6 +67,12 @@ public:
     /// at initialization.
     ReadonlyMode readonly = ReadonlyMode::Off;
 
+    /// Set while compiles may run. A project made while its root's previous
+    /// one still shuts down (MasterServer::serve_folders) holds documents
+    /// before it loads, which would compile under no build at all; stop()
+    /// lets them go too.
+    kota::event loaded{true};
+
     /// Compile an open file's AST if it is not current: join the
     /// document's round (spawning one if none is live) and retry through
     /// stale attempts until a terminal outcome. Returns true when the

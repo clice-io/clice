@@ -271,21 +271,42 @@ public:
     }
 };
 
-/// The directory of a build configuration's index database:
-/// `index/<name>` under the store's version directory, every
-/// configuration having a database of its own. The anonymous
-/// configuration's is `default`; a tag's is its spelling lowercased and
-/// reduced to `[a-z0-9_-]`, then `~` and a hash of the original. The hash
-/// alone makes the name unique — filesystems fold case, Windows reserves
-/// device names and strips trailing dots, and no tag may alias `default`
-/// — while the prefix keeps it recognizable.
-std::string database_directory(const CacheStore& store, llvm::StringRef configuration);
+/// Which index database a build keeps: its configuration's, or, for a
+/// configuration whose rules resolve symlinks, the one of the real paths
+/// its databases resolve to.
+struct DatabaseKey {
+    /// The configuration tag; empty for the anonymous configuration.
+    std::string configuration;
 
-/// Whether the configuration's database holds its `index.mdb`, that is, an
-/// index was ever built for it.
-bool database_exists(const CacheStore& store, llvm::StringRef configuration);
+    /// The real paths of the databases a configuration resolving symlinks
+    /// reads, one per line: each set of them is a build with a database of
+    /// its own. Empty for the configuration's own database.
+    std::string resolved;
 
-/// The configuration's database: a single `index.mdb` (plus its `-lock`
+    /// The key as one string: the tag, then a line per resolved path.
+    std::string str() const {
+        return resolved.empty() ? configuration : std::format("{}\n{}", configuration, resolved);
+    }
+
+    bool operator==(const DatabaseKey&) const = default;
+};
+
+/// The directory of a build's index database: `index/<name>` under the
+/// store's version directory. The anonymous configuration's own is
+/// `default`; any other's name is a label lowercased and reduced to
+/// `[a-z0-9_-]`, then `~` and a hash of the key. The label is the tag,
+/// followed for a resolved build by the trailing directories of its last
+/// database, as many as fit. The hash alone makes the name unique —
+/// filesystems fold case, Windows reserves device names and strips
+/// trailing dots, and no tag may alias `default` — while the label keeps
+/// it recognizable.
+std::string database_directory(const CacheStore& store, const DatabaseKey& key);
+
+/// Whether the build's database holds its `index.mdb`, that is, an index
+/// was ever built for it.
+bool database_exists(const CacheStore& store, const DatabaseKey& key);
+
+/// The build's database: a single `index.mdb` (plus its `-lock`
 /// file, and the `-open` file every reader holds locked while it has the
 /// database open, which the writer locks exclusively to swap in a compact
 /// copy) in its
@@ -303,7 +324,7 @@ bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 /// `initial_mapsize` overrides the default virtual map reservation
 /// (tests exercise the growth path with a tiny map); 0 keeps the default.
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
-                                                 llvm::StringRef configuration,
+                                                 const DatabaseKey& key,
                                                  std::size_t initial_mapsize = 0,
                                                  bool read_only = false);
 
@@ -313,7 +334,7 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 /// FUSE mount gets the warning but proceeds, since FUSE fronts anything
 /// from a local overlay to sshfs.
 std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
-                                            llvm::StringRef configuration,
+                                            const DatabaseKey& key,
                                             bool read_only = false);
 
 }  // namespace clice::index

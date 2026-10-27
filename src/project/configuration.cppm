@@ -5,6 +5,7 @@ module;
 module clice:project.configuration;
 
 import :config.config;
+import :index.database;
 
 namespace clice {
 
@@ -37,5 +38,12 @@ std::expected<void, std::string> check_requested_configuration(const Config& con
 /// is. Without declared tags every layer is ignored and the anonymous
 /// configuration (empty) is active.
 std::string resolve_configuration(const Config& config, llvm::StringRef requested);
+
+/// The index database of the build `configuration` reads: the
+/// configuration's own, unless an active rule resolves symlinks
+/// (ConfigRule::resolve_symlinks); then the one of the real paths its
+/// databases resolve to now, or the own one of another configuration whose
+/// rules resolve no symlinks and declare exactly those databases.
+index::DatabaseKey database_key(const Config& config, llvm::StringRef configuration);
 
 }  // namespace clice

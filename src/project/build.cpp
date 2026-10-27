@@ -32,36 +32,21 @@ llvm::SmallVector<const CompiledRule*> Build::matching(CanonicalRef path) const 
     return config.matching_rules(path, active);
 }
 
-static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
-    return rule.configuration.empty() || rule.configuration == active;
-}
-
 bool Build::declares_sources() const {
     return ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
-        return rule_active(rule, active) && rule.declares_sources();
+        return rule.active_under(active) && rule.declares_sources();
     });
 }
 
 llvm::SmallVector<Spelling> Build::declared_sources() const {
-    llvm::SmallVector<Spelling> result;
-    for(auto& rule: config.compiled_rules) {
-        if(!rule_active(rule, active)) {
-            continue;
-        }
-        for(auto& database: rule.compile_commands) {
-            if(!ranges::contains(result, database)) {
-                result.push_back(database);
-            }
-        }
-    }
-    return result;
+    return config.declared_databases(active);
 }
 
 llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
     llvm::SmallVector<SourceID, 4> declared;
     bool declares = declares_sources();
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) || declares) {
+        if(rule.active_under(active) || declares) {
             for(auto& database: rule.compile_commands) {
                 if(auto id = declared_source(database)) {
                     declared.push_back(*id);
@@ -100,12 +85,12 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
         }
     };
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && ranges::contains(matched, &rule)) {
+        if(rule.active_under(active) && ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && !ranges::contains(matched, &rule)) {
+        if(rule.active_under(active) && !ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
@@ -520,7 +505,7 @@ std::optional<CommandRef> Build::pch_unit(CommandID command,
 llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && rule.has_default_command() && !rule.unmatchable) {
+        if(rule.active_under(active) && rule.has_default_command() && !rule.unmatchable) {
             result.push_back(&rule);
         }
     }

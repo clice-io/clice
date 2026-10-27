@@ -127,6 +127,11 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
+    /// The databases of `project` moved to another build's index
+    /// (FileTracker::moved): a fresh project takes its root over (see
+    /// serve_folders).
+    void restart(ProjectServer& project);
+
     /// didSave: a look at the file's disk content, which every project
     /// knowing the file cascades if it changed (drain_disk_changes). A save
     /// is also when users expect everything to be current: the files every
@@ -298,12 +303,15 @@ private:
     /// rootless project's when there is no folder.
     std::vector<CanonicalPath> project_roots() const;
 
-    /// Make the projects served those project_roots names: start the
-    /// missing ones, retire the ones no folder needs, and move the open
-    /// documents to the projects routing picks now. A root whose previous
-    /// project is still alive starts once that is gone (make_project runs
-    /// this again).
-    void serve_folders();
+    /// Make the projects served those project_roots names: make the
+    /// missing ones — and one in place of `replaced` — retire the ones no
+    /// folder needs, and move the open documents to the projects routing
+    /// picks now. A project made while its root's previous one is still
+    /// alive holds the root's documents, their compiles waiting
+    /// (ASTFamily::loaded), and starts once that is gone (make_project runs
+    /// this again): the previous one saves its index and frees the cache
+    /// directory first.
+    void serve_folders(const ProjectServer* replaced = nullptr);
 
     /// Shut a project that stopped serving down in the background.
     void retire(std::shared_ptr<ProjectServer> project);
@@ -344,10 +352,10 @@ private:
     /// buffer and version intact.
     void rehome_sessions(ProjectServer& from);
 
-    /// The client still shows what the document's old context gave it,
-    /// and no request of its own replaces it: compile it again, or have an
-    /// index-served one's features pulled again.
-    void serve_again(ProjectServer& project, std::shared_ptr<Session> session);
+    /// The client still shows what the documents' old context gave it,
+    /// and no request of their own replaces it: compile them again, or have
+    /// index-served ones' features pulled again.
+    void serve_again(ProjectServer& project, llvm::ArrayRef<std::shared_ptr<Session>> sessions);
 
     /// The project each open document was routed to.
     llvm::DenseMap<Fid, ProjectServer*> owners;
@@ -393,6 +401,10 @@ private:
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
     std::vector<std::weak_ptr<ProjectServer>> retired;
+
+    /// Projects made but not started yet: their root's previous project is
+    /// still shutting down (see serve_folders).
+    llvm::SmallVector<ProjectServer*> waiting;
 
     std::string session_log_dir;
 };

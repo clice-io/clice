@@ -1,0 +1,11 @@
+default_configuration = "active"
+
+# The build system points out/current at the build it chose.
+[[rules]]
+configuration = "active"
+compile_commands = ["out/current"]
+resolve_symlinks = true
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["out/debug"]

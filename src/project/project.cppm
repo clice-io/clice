@@ -280,6 +280,10 @@ struct Project {
     /// destruction runs shards → database → store.
     std::unique_ptr<index::BlobDatabase> database;
 
+    /// Which database `database` is, as the load found the build (see
+    /// database_key); a later look finding another tells the build moved.
+    index::DatabaseKey database_key;
+
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;

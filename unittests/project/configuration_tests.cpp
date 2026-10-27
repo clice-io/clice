@@ -103,6 +103,38 @@ ZEST_CASE(UntaggedIgnoresSelection) {
     ZEXPECT(resolve_configuration(config, "release").empty());
 };
 
+ZEST_CASE(DatabaseKeyResolved) {
+    /// A configuration resolving symlinks keeps a database per real path
+    /// its databases resolve to — the own one of a configuration declaring
+    /// exactly those — and any other configuration its own.
+    TempDir tmp;
+    tmp.touch("out/a/compile_commands.json", "[]");
+    tmp.touch("out/b/compile_commands.json", "[]");
+    auto configured = [&](llvm::StringRef followed) {
+        Config config;
+        config.rules.push_back(ConfigRule{.configuration = "active",
+                                          .compile_commands = {followed.str()},
+                                          .resolve_symlinks = true});
+        config.rules.push_back(ConfigRule{.configuration = "a", .compile_commands = {"out/a"}});
+        config.rules.push_back(ConfigRule{
+            .configuration = "both",
+            .compile_commands = {"out/a", "out/b"}
+        });
+        config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        return config;
+    };
+    auto config = configured("out/a");
+    ZEXPECT(database_key(config, "active").str() == "a");
+    ZEXPECT(database_key(config, "a").str() == "a");
+    ZEXPECT(database_key(config, "both").str() == "both");
+
+    config = configured("out/b");
+    auto key = database_key(config, "active");
+    ZEXPECT(key.configuration == "active");
+    ZEXPECT(key.resolved ==
+            CanonicalPath(Spelling::absolute(tmp.path("out/b/compile_commands.json"))).str());
+};
+
 };  // ZEST_SUITE(Configuration)
 
 }  // namespace

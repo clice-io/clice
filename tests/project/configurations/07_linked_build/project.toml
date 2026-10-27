@@ -1,0 +1,2 @@
+# Each build under out/ ships its own database; out/current links to one.
+databases = {}

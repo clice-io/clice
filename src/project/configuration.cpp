@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :config.config;
+import :index.database;
 import :project.configuration;
 import :support.anomaly;
 import :support.logging;
@@ -26,6 +27,18 @@ struct PersistedState {
 
 std::string state_path(llvm::StringRef cache_dir) {
     return path::join(cache_dir, "state.json");
+}
+
+/// The real paths of the databases the rules active under `configuration`
+/// declare, sorted.
+std::vector<std::string> real_databases(const Config& config, llvm::StringRef configuration) {
+    std::vector<std::string> paths;
+    for(auto& database: config.declared_databases(configuration)) {
+        paths.push_back(CanonicalPath(database).str());
+    }
+    ranges::sort(paths);
+    paths.erase(ranges::unique(paths).begin(), paths.end());
+    return paths;
 }
 
 }  // namespace
@@ -133,6 +146,35 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
         LOG_INFO("Active configuration: {} (default)", fallback);
     }
     return fallback.str();
+}
+
+index::DatabaseKey database_key(const Config& config, llvm::StringRef configuration) {
+    std::string resolved;
+    for(auto& rule: config.compiled_rules) {
+        if(!rule.resolve_symlinks || !rule.active_under(configuration)) {
+            continue;
+        }
+        for(auto& database: rule.compile_commands) {
+            if(!resolved.empty()) {
+                resolved += '\n';
+            }
+            resolved += CanonicalPath(database).str();
+        }
+    }
+    if(resolved.empty()) {
+        return {.configuration = configuration.str()};
+    }
+    auto databases = real_databases(config, configuration);
+    for(auto tag: config.configurations()) {
+        auto resolves = [&](const CompiledRule& rule) {
+            return rule.resolve_symlinks && rule.active_under(tag);
+        };
+        if(tag != configuration && ranges::none_of(config.compiled_rules, resolves) &&
+           real_databases(config, tag) == databases) {
+            return {.configuration = tag.str()};
+        }
+    }
+    return {.configuration = configuration.str(), .resolved = std::move(resolved)};
 }
 
 }  // namespace clice

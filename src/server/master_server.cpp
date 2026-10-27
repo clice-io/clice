@@ -304,7 +304,8 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
 std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
     // A removed project holds its cache directory (writer lock, database)
     // until its last reference — the retirement, or a request still
-    // running in it — goes: a root waiting for the directory serves then.
+    // running in it — goes: the project waiting for the directory starts
+    // then.
     auto released = [this](ProjectServer* project) {
         delete project;
         if(lifecycle == ServerLifecycle::Ready) {
@@ -358,6 +359,11 @@ void MasterServer::builds_changed() {
     for(auto& project: projects) {
         rehome_sessions(*project);
     }
+}
+
+void MasterServer::restart(ProjectServer& project) {
+    LOG_INFO("The databases of project {} moved to another build; restarting it", project.root);
+    serve_folders(&project);
 }
 
 void MasterServer::open_session(Fid path_id, std::string text, int version) {
@@ -520,32 +526,22 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
     return roots;
 }
 
-void MasterServer::serve_folders() {
+void MasterServer::serve_folders(const ProjectServer* replaced) {
     std::erase_if(retired, [](auto& weak) { return weak.expired(); });
     std::vector<std::shared_ptr<ProjectServer>> serving;
-    llvm::SmallVector<ProjectServer*> fresh;
-    auto serve = [&](CanonicalPath root) {
+    bool made = false;
+    for(auto& root: project_roots()) {
         if(auto it =
                ranges::find_if(projects, [&](auto& project) { return project->root == root; });
-           it != projects.end()) {
+           it != projects.end() && it->get() != replaced) {
             serving.push_back(*it);
-            return;
+            continue;
         }
         LOG_INFO("Serving project {}", root);
         serving.push_back(make_project(std::move(root)));
-        fresh.push_back(serving.back().get());
-    };
-    for(auto& root: project_roots()) {
-        // A removed project holds its cache directory until it is gone.
-        if(ranges::none_of(retired, [&](auto& weak) {
-               auto project = weak.lock();
-               return project && project->root == root;
-           })) {
-            serve(std::move(root));
-        }
-    }
-    if(serving.empty()) {
-        serve(CanonicalPath());
+        serving.back()->ast.loaded.reset();
+        waiting.push_back(serving.back().get());
+        made = true;
     }
 
     std::vector<std::shared_ptr<ProjectServer>> leaving;
@@ -554,18 +550,40 @@ void MasterServer::serve_folders() {
             leaving.push_back(project);
         }
     }
-    if(fresh.empty() && leaving.empty()) {
-        return;
-    }
     projects = std::move(serving);
-    projects_generation += 1;
     for(auto& project: leaving) {
+        std::erase(waiting, project.get());
         retired.push_back(project);
     }
-    for(auto* project: fresh) {
+    // A removed project holds its cache directory until it is gone: one
+    // taking its root over waits for that, holding the root's documents.
+    llvm::SmallVector<ProjectServer*> starting;
+    std::erase_if(waiting, [&](ProjectServer* project) {
+        bool held = ranges::any_of(retired, [&](auto& weak) {
+            auto previous = weak.lock();
+            return previous && previous->root == project->root;
+        });
+        if(!held) {
+            starting.push_back(project);
+        }
+        return !held;
+    });
+    if(!made && leaving.empty() && starting.empty()) {
+        return;
+    }
+    projects_generation += 1;
+    for(auto* project: starting) {
         project->configure(init_options, taken_cache_dirs());
         log_configuration(*project, init_options);
         project->start();
+        // The documents it held while it waited.
+        llvm::SmallVector<std::shared_ptr<Session>> held;
+        for(auto& [path_id, session]: project->sessions.sessions) {
+            if(session) {
+                held.push_back(session);
+            }
+        }
+        serve_again(*project, held);
     }
     // Documents may belong elsewhere now: a database under a new root
     // lists them, they sit inside it, or their project stopped serving.
@@ -690,7 +708,9 @@ kota::task<> MasterServer::poll_task() {
         if(files.disk.tick(budget) > 0) {
             probe.happened(LoopEvent::DiskChange);
         }
-        for(auto& project: projects) {
+        // A tick may restart its project, which replaces the list.
+        auto ticking = projects;
+        for(auto& project: ticking) {
             project->tick_databases();
         }
     }
@@ -832,12 +852,19 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     return {.success = true};
 }
 
-void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> session) {
+void MasterServer::serve_again(ProjectServer& project,
+                               llvm::ArrayRef<std::shared_ptr<Session>> sessions) {
     // A compile finishing on unchanged text has the client re-pull what it
     // holds.
-    if(session->serving == ServingMode::Escalated) {
-        project.ast.request_compile(std::move(session));
-    } else {
+    bool index_served = false;
+    for(auto& session: sessions) {
+        if(session->serving == ServingMode::Escalated) {
+            project.ast.request_compile(session);
+        } else {
+            index_served = true;
+        }
+    }
+    if(index_served) {
         on_serving_index_changed.emit();
     }
 }
@@ -896,7 +923,7 @@ static auto awaited_requests(const ipc::JSONPeer& editor) {
 kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
     auto quiet = [&] {
         drain_disk_changes();
-        return awaited_requests(editor).empty() &&
+        return awaited_requests(editor).empty() && waiting.empty() &&
                ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
                ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
     };
@@ -925,6 +952,10 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
         if(auto project = weak.lock()) {
             lines.push_back(std::format("removed project {} shutting down", project->root));
         }
+    }
+    for(auto* project: waiting) {
+        lines.push_back(
+            std::format("project {} waiting for its previous one to go", project->root));
     }
     for(auto& hold: probe.holds()) {
         if(hold.parked) {

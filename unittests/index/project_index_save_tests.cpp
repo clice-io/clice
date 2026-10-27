@@ -56,7 +56,7 @@ WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     project.store.emplace(std::move(*store));
-    auto log = std::make_unique<WriteLog>(index::open_lmdb_database(*project.store, "", mapsize));
+    auto log = std::make_unique<WriteLog>(index::open_lmdb_database(*project.store, {}, mapsize));
     ZASSERT(log->real != nullptr);
     auto& logged = *log;
     project.database = std::move(log);
@@ -152,7 +152,7 @@ ZEST_CASE(SaveMigratesShardViews) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     project.store.emplace(std::move(*store));
-    auto spy = std::make_unique<SnapshotSpy>(index::open_lmdb_database(*project.store, ""));
+    auto spy = std::make_unique<SnapshotSpy>(index::open_lmdb_database(*project.store, {}));
     ZASSERT(spy->real != nullptr);
     auto* probe = spy.get();
     project.database = std::move(spy);
