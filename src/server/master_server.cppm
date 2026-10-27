@@ -404,7 +404,7 @@ private:
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).
-    llvm::SmallVector<ProjectServer*> waiting;
+    std::vector<ProjectServer*> waiting;
 
     std::string session_log_dir;
 };

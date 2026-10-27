@@ -484,7 +484,8 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
     };
 
     auto configuration = project.build.active_configuration();
-    driver::println("Index cache: {}", index::database_directory(*project.store, configuration));
+    driver::println("Index cache: {}",
+                    index::database_directory(*project.store, project.database_key));
     if(!configuration.empty()) {
         driver::println("Configuration: {}", configuration);
     }
