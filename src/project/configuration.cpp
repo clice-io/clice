@@ -29,12 +29,22 @@ std::string state_path(llvm::StringRef cache_dir) {
     return path::join(cache_dir, "state.json");
 }
 
+/// The real path of a declared database file, also of one whose directory
+/// does not exist yet: a path without the .json extension names the
+/// directory holding it.
+std::string real_path(const Spelling& database) {
+    if(path::extension(database.str()) == ".json") {
+        return CanonicalPath(database).str();
+    }
+    return CanonicalPath(Spelling("compile_commands.json", database)).str();
+}
+
 /// The real paths of the databases the rules active under `configuration`
 /// declare, in priority order.
 std::vector<std::string> real_databases(const Config& config, llvm::StringRef configuration) {
     std::vector<std::string> paths;
     for(auto& database: config.declared_databases(configuration)) {
-        paths.push_back(CanonicalPath(database).str());
+        paths.push_back(real_path(database));
     }
     return paths;
 }
@@ -173,7 +183,7 @@ std::string resolved_databases(const Config& config, llvm::StringRef configurati
             if(!resolved.empty()) {
                 resolved += '\n';
             }
-            resolved += CanonicalPath(database).str();
+            resolved += real_path(database);
         }
     }
     return resolved;
