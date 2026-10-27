@@ -45,7 +45,18 @@ nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.c
 
 ### Zed
 
-The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed).
+The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
+
+Zed runs its built-in clangd for C and C++ as well, which duplicates completion and diagnostics; to use clice alone:
+
+```json
+{
+  "languages": {
+    "C": { "language_servers": ["clice", "!clangd", "..."] },
+    "C++": { "language_servers": ["clice", "!clangd", "..."] }
+  }
+}
+```
 
 Zed builds its outline panel and breadcrumbs with tree-sitter by default; to have them show clice's document symbols, turn on `document_symbols` for C and C++ in Zed's `settings.json`:
 

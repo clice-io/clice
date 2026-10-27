@@ -6,9 +6,9 @@ outline: 2
 
 clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在，则从 `.clice/config.toml` 读取。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入；`initializationOptions` 中的值覆盖配置文件，合并后仍未设置的项由默认值填充。
 
-配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。
+配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。任一文件发生变化时，VS Code 扩展会提示重启。
 
-完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。
+完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。VS Code 扩展为 [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml) 把它关联到这两个文件，后者随即为它们提供补全和校验；在其他编辑器中，在文件第一行写上 `#:schema https://docs.clice.io/clice-config.schema.json`，即可让 taplo（Zed 和 Neovim 常用的 TOML 语言服务器）使用它。
 
 文件中的相对路径和模式相对于配置文件自身所在的目录解析；通过 `initializationOptions` 传入的值则相对于工作区根目录解析。
 

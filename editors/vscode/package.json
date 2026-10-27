@@ -84,6 +84,11 @@
           "scope": "machine-overridable",
           "markdownDescription": "Environment variables for the clice server and the compilers it asks how they compile, on top of VS Code's own. A value names VS Code's variables as `${env:NAME}`, as `terminal.integrated.env.*` does. A Cygwin or MSYS2 compiler needs its runtime's `bin` directory on `PATH`: `{ \"PATH\": \"C:\\\\cygwin64\\\\bin;${env:PATH}\" }`."
         },
+        "clice.initializationOptions": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Configuration sent to the server as `initializationOptions`, in the shape of `clice.toml`: `{ \"diagnostics\": { \"clang_tidy\": false } }`. A setting given here takes the place of the same setting in the project's `clice.toml` (see the [configuration guide](https://docs.clice.io/clice/guide/configuration)); it applies when the server restarts."
+        },
         "clice.trace.server": {
           "type": "string",
           "default": "off",
@@ -93,6 +98,13 @@
             "verbose"
           ],
           "description": "Log the LSP traffic between VS Code and clice to the 'clice (LSP trace)' output channel."
+        },
+        "clice.inactiveRegions.opacity": {
+          "type": "number",
+          "default": 0.45,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Opacity of the code in preprocessor branches not taken (#if 0 and the like): 1 leaves it as is."
         }
       }
     },
@@ -725,7 +737,16 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "tomlValidation": [
+      {
+        "fileMatch": [
+          "clice.toml",
+          ".clice/config.toml"
+        ],
+        "url": "https://docs.clice.io/clice-config.schema.json"
+      }
+    ]
   },
   "main": "./dist/extension.js",
   "scripts": {

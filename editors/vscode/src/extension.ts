@@ -285,6 +285,25 @@ async function startServer(context: ExtensionContext): Promise<void> {
     }
 }
 
+/// Set while a restart is offered: a change before the user answers joins
+/// the offer instead of stacking another one, as saving on every pause would.
+let offering = false;
+
+async function offerRestart(message: string, context: ExtensionContext) {
+    if (offering) {
+        return;
+    }
+    offering = true;
+    try {
+        const choice = await window.showInformationMessage(message, "Restart Server");
+        if (choice === "Restart Server") {
+            await startServer(context);
+        }
+    } finally {
+        offering = false;
+    }
+}
+
 async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
@@ -295,17 +314,39 @@ async function onSettingsChanged(
         "clice.host",
         "clice.port",
         "clice.serverEnv",
+        "clice.initializationOptions",
     ];
-    if (!launchSettings.some((setting) => event.affectsConfiguration(setting))) {
-        return;
+    if (launchSettings.some((setting) => event.affectsConfiguration(setting))) {
+        await offerRestart("clice server settings changed.", context);
     }
-    const choice = await window.showInformationMessage(
-        "clice server settings changed.",
-        "Restart Server",
+}
+
+/// clice reads its configuration when it starts: an edited clice.toml, or
+/// .clice/config.toml, applies once the server restarts. The latter sits
+/// under .clice, which files.watcherExclude keeps from file watchers, so its
+/// saves in the editor are what is seen of it.
+function watchConfigFiles(context: ExtensionContext) {
+    const offer = (uri: vscode.Uri) =>
+        void offerRestart(
+            `clice: ${vscode.workspace.asRelativePath(uri)} changed; it applies once the server restarts.`,
+            context,
+        );
+    const watcher = vscode.workspace.createFileSystemWatcher("**/clice.toml");
+    context.subscriptions.push(
+        watcher,
+        watcher.onDidCreate(offer),
+        watcher.onDidChange(offer),
+        watcher.onDidDelete(offer),
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            const file = document.uri.fsPath;
+            if (
+                path.basename(file) === "config.toml" &&
+                path.basename(path.dirname(file)) === ".clice"
+            ) {
+                offer(document.uri);
+            }
+        }),
     );
-    if (choice === "Restart Server") {
-        await startServer(context);
-    }
 }
 
 export async function activate(context: ExtensionContext) {
@@ -326,6 +367,9 @@ export async function activate(context: ExtensionContext) {
     const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {
         documentSelector,
+        // Read at every start, as the launch settings are.
+        initializationOptions: () =>
+            vscode.workspace.getConfiguration("clice").get<object>("initializationOptions"),
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
@@ -368,6 +412,7 @@ export async function activate(context: ExtensionContext) {
             void onSettingsChanged(event, context);
         }),
     );
+    watchConfigFiles(context);
 
     registerBuildConfiguration(client, context);
     registerCompilationContext(client, context, registerCompileCommand(client, context));

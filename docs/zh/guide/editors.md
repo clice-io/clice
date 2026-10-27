@@ -45,7 +45,18 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 ### Zed
 
-Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。
+Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。它运行 `PATH` 上的 `clice`，找不到时下载最新的发布版本；把 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
+
+Zed 也会为 C 和 C++ 运行它自带的 clangd，补全和诊断因此会重复出现；只用 clice 时：
+
+```json
+{
+  "languages": {
+    "C": { "language_servers": ["clice", "!clangd", "..."] },
+    "C++": { "language_servers": ["clice", "!clangd", "..."] }
+  }
+}
+```
 
 Zed 默认用 tree-sitter 生成大纲面板和面包屑；要让它们显示 clice 给出的文档符号，在 Zed 的 `settings.json` 里为 C 和 C++ 打开 `document_symbols`：
 

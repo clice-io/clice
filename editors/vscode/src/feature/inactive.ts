@@ -113,9 +113,13 @@ export function registerInactiveRegions(
         next: DocumentSemanticsTokensEditsSignature,
     ) => Promise<vscode.SemanticTokens | vscode.SemanticTokensEdits | null | undefined>;
 } {
-    const decoration = vscode.window.createTextEditorDecorationType({
-        opacity: "0.45",
-    });
+    const dimming = () =>
+        vscode.window.createTextEditorDecorationType({
+            opacity: String(
+                vscode.workspace.getConfiguration("clice").get<number>("inactiveRegions.opacity"),
+            ),
+        });
+    let decoration = dimming();
     const byUri = new Map<string, vscode.Range[]>();
     // The stream each document's last reply left, which the next edits
     // reply patches.
@@ -175,7 +179,19 @@ export function registerInactiveRegions(
     }
 
     ext.subscriptions.push(
-        decoration,
+        {
+            dispose: () => {
+                decoration.dispose();
+            },
+        },
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (!event.affectsConfiguration("clice.inactiveRegions.opacity")) {
+                return;
+            }
+            decoration.dispose();
+            decoration = dimming();
+            vscode.window.visibleTextEditors.forEach(apply);
+        }),
         vscode.window.onDidChangeVisibleTextEditors((editors) => {
             editors.forEach(apply);
         }),

@@ -59,3 +59,5 @@ vim.api.nvim_create_autocmd('LspAttach', {
 ```
 
 Folding by clice's ranges, with their collapsed text, is `vim.lsp.foldexpr()` and `vim.lsp.foldtext()` (`:help vim.lsp.foldexpr()`). Call and type hierarchies are `vim.lsp.buf.incoming_calls()`, `outgoing_calls()` and `typehierarchy('subtypes' | 'supertypes')`.
+
+clice reports the progress of its background indexing and of an open file's compile that runs long ("main.cpp: building preamble"); `vim.lsp.status()` returns it for a statusline, and the `LspProgress` event fires with each report (`:help vim.lsp.status()`).

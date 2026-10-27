@@ -6,9 +6,9 @@ outline: 2
 
 clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
-Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload.
+Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload. The VS Code extension offers the restart when either file changes.
 
-A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it.
+A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
 Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
 
