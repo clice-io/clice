@@ -361,8 +361,11 @@ void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& token
         std::string utf8;
         if(text.size() >= 2 &&
            ((text[0] == '\xff' && text[1] == '\xfe') || (text[0] == '\xfe' && text[1] == '\xff'))) {
-            llvm::ArrayRef<char> bytes(text.data(), text.size());
-            if(!llvm::convertUTF16ToUTF8String(bytes, utf8)) {
+            // Copied: a string's bytes need not be aligned for UTF-16 (libc++
+            // keeps a short one at an odd address).
+            llvm::SmallVector<llvm::UTF16, 256> units(text.size() / 2);
+            std::memcpy(units.data(), text.data(), units.size() * sizeof(llvm::UTF16));
+            if(text.size() % 2 != 0 || !llvm::convertUTF16ToUTF8String(units, utf8)) {
                 LOG_WARN("Cannot decode UTF-16 response file {}", full);
                 return false;
             }
