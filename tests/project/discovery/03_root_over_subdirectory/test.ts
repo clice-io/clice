@@ -12,8 +12,9 @@ test("root wins over subdirectory", async (t) => {
 });
 
 test("the order is named", async (t) => {
-    // The server logs the same hint; a batch run prints it.
     t.disk.database({ "main.cpp": ["-DROOT"] });
     t.disk.database({ "main.cpp": ["-DSUB"], "extra.cpp": ["-DSUB"] }, "sub");
     await t.cli("index --jobs 2");
+    const s = await t.start();
+    await t.show("guidance", await s.guidance());
 });

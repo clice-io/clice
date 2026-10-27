@@ -83,10 +83,11 @@ private:
     /// MasterServer's on_inputs_changed signal; capability-gated.
     void refresh_stale();
 
-    /// Send every not-yet-forwarded notify-log message as
-    /// window/logMessage, advancing notify_cursor. Invoked once from the
-    /// constructor (a headless server may have accumulated messages) and
-    /// then by the server's on_notify signal.
+    /// Send every not-yet-forwarded notify-log message, advancing
+    /// notify_cursor: guidance as window/showMessage, for the user to act
+    /// on, an anomaly as window/logMessage. Invoked once the client is
+    /// ready (a headless server may have accumulated messages), then by the
+    /// server's on_notify signal.
     void forward_notify_messages();
 
     MasterServer& server;

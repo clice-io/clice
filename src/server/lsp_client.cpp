@@ -139,11 +139,11 @@ LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server)
         this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
     });
 
-    // Guidance/anomaly messages travel as window/logMessage, which the LSP
-    // spec allows before the initialize handshake — drain what a headless
-    // server accumulated, then drain again on every wake-up.
-    forward_notify_messages();
-    notify_conn = server.on_notify.connect([this]() { forward_notify_messages(); });
+    notify_conn = server.on_notify.connect([this]() {
+        if(client_ready) {
+            forward_notify_messages();
+        }
+    });
 
     register_lifecycle();
     register_document_sync();
@@ -155,10 +155,17 @@ void LSPClient::forward_notify_messages() {
     auto first_seq = server.notify_seq - server.notify_log.size();
     for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; ++seq) {
         auto& message = server.notify_log[static_cast<std::size_t>(seq - first_seq)];
-        peer.send_notification(protocol::LogMessageParams{
-            static_cast<protocol::MessageType>(message.level),
-            message.text,
-        });
+        if(message.kind == logging::NotifyKind::Guidance) {
+            peer.send_notification(protocol::ShowMessageParams{
+                .type = protocol::MessageType::Warning,
+                .message = message.text,
+            });
+        } else {
+            peer.send_notification(protocol::LogMessageParams{
+                .type = protocol::MessageType::Error,
+                .message = message.text,
+            });
+        }
     }
     notify_cursor = server.notify_seq;
 }
@@ -536,6 +543,7 @@ void LSPClient::register_lifecycle() {
         }
 
         this->client_ready = true;
+        this->forward_notify_messages();
         this->publish_config_diagnostics();
 
         // Replay compile outputs that materialized while no ready client

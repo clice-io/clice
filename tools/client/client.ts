@@ -168,6 +168,8 @@ export class CliceClient {
     /// Every publishDiagnostics received, in order.
     publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
+    /// Every window/showMessage text, oldest first.
+    shownMessages: string[] = [];
     progressTokens: string[] = [];
     /// Every progress notification, with when it arrived (`performance.now()`).
     progressEvents: { token: string; value: unknown; at: number }[] = [];
@@ -246,6 +248,9 @@ export class CliceClient {
         });
         this.onNotification(proto.LogMessageNotification.type, (p) => {
             this.logMessages.push(p);
+        });
+        this.onNotification(proto.ShowMessageNotification.type, (p) => {
+            this.shownMessages.push(p.message);
         });
         this.onNotification(HeldNotification, (p) => {
             this.parked.add(p.id);
@@ -776,13 +781,6 @@ export class CliceClient {
     /// Anomaly IDs from window/logMessage notifications (master process).
     anomaliesInLogMessages(): string[] {
         return anomaliesInMessages(this.logMessages.map((message) => message.message));
-    }
-
-    /// Guidance texts from window/logMessage notifications.
-    guidanceMessages(): string[] {
-        return this.logMessages
-            .filter((msg) => msg.message.includes("[guidance]"))
-            .map((msg) => msg.message);
     }
 
     // === Standard requests ===============================================

@@ -210,9 +210,6 @@ export class Serve extends Client {
     private killArmed = false;
     /// The workers the test killed from outside (`killWorkers`).
     private killed = 0;
-    /// Every window/showMessage the servers sent, oldest first.
-    private readonly shownMessages: string[] = [];
-
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
     constructor(
@@ -363,16 +360,14 @@ export class Serve extends Client {
         );
     }
 
-    /// What the server told the user about the setup ([guidance] messages),
-    /// once idle.
+    /// What the server showed the user (window/showMessage): what it tells
+    /// about the setup, once idle.
     guidance(): Promise<string[]> {
         return this.steps.run("guidance", async () => {
             await this.sync();
-            return this.live()
-                .guidanceMessages()
-                .map((message) =>
-                    portable(message.replace(/^\[guidance\] /, ""), this.workspace.root),
-                );
+            return this.live().shownMessages.map((message) =>
+                portable(message, this.workspace.root),
+            );
         });
     }
 
@@ -769,7 +764,7 @@ export class Serve extends Client {
         const { uri, position } = this.position(at);
         return this.ask(`rename ${describeAnchor(at)} to ${newName}`, (client) =>
             refusable(async () => {
-                const shown = this.shownMessages.length;
+                const shown = client.shownMessages.length;
                 const reply = await client.renameAt(
                     uri,
                     position.line,
@@ -789,7 +784,7 @@ export class Serve extends Client {
                         );
                     }
                 }
-                const notices = this.shownMessages.slice(shown);
+                const notices = client.shownMessages.slice(shown);
                 return {
                     edits: context.workspaceEdit(reply),
                     versions,
@@ -1061,9 +1056,6 @@ export class Serve extends Client {
                 drainStderr: this.options.stderr !== "unread",
             }),
         );
-        client.onNotification(proto.ShowMessageNotification.type, (params) => {
-            this.shownMessages.push(params.message);
-        });
         this.server = client;
         this.servers.push(client);
         return client;

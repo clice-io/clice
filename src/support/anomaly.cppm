@@ -64,16 +64,19 @@ void report_anomaly(AnomalyId id,
 /// Gate evaluated BEFORE the format arguments of LOG_GUIDANCE.
 bool guidance_should_report();
 
-/// Log "[guidance] <message>" at warn level and forward it to the notify hook.
-/// For user-actionable situations that are not clice bugs (missing CDB,
-/// invalid configuration, ...).
+/// Log "[guidance] <message>" at warn level and forward the message to the
+/// notify hook (master process: `window/showMessage`). For user-actionable
+/// situations that are not clice bugs (missing CDB, invalid configuration,
+/// ...).
 void report_guidance(std::string_view message,
                      std::source_location location = std::source_location::current());
 
-/// Severity forwarded to the notify hook; values mirror LSP MessageType.
-enum class NotifyLevel : std::uint8_t {
-    Error = 1,
-    Warning = 2,
+/// What a message forwarded to the notify hook reports.
+enum class NotifyKind : std::uint8_t {
+    /// A bug in clice, for its log.
+    Anomaly,
+    /// A situation the user must fix, for the user to see.
+    Guidance,
 };
 
 /// Process-wide hook observing anomaly/guidance messages. The master's
@@ -83,7 +86,7 @@ enum class NotifyLevel : std::uint8_t {
 /// thread is safe — but the hook itself is invoked from the reporting
 /// thread, so what it DOES must be safe there (the master's hook touches
 /// event-loop state and is only ever invoked from the event-loop thread).
-void set_notify_hook(std::function<void(NotifyLevel, std::string_view)> hook);
+void set_notify_hook(std::function<void(NotifyKind, std::string_view)> hook);
 
 /// Replace the debug trap so unit tests can observe anomalies (in any build
 /// type) without aborting the test process.

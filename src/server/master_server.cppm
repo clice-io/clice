@@ -47,7 +47,7 @@ enum class ServerLifecycle : std::uint8_t {
 /// The log file is the durable record; this copy exists so a client that
 /// attaches after the message fired can still be shown it.
 struct NotifyMessage {
-    logging::NotifyLevel level;
+    logging::NotifyKind kind;
     std::string text;
 };
 
@@ -251,11 +251,11 @@ public:
     /// touching the hook themselves.
     Signal<> on_notify;
 
-    /// Recent guidance/anomaly messages (window/logMessage material),
-    /// bounded by dropping the oldest. notify_seq numbers the next message,
-    /// so notify_seq - notify_log.size() is the oldest retained sequence; a
-    /// subscriber lagging further behind than the retention window loses
-    /// the evicted messages (the log file keeps the durable record).
+    /// Recent guidance/anomaly messages for the client, bounded by dropping
+    /// the oldest. notify_seq numbers the next message, so notify_seq -
+    /// notify_log.size() is the oldest retained sequence; a subscriber
+    /// lagging further behind than the retention window loses the evicted
+    /// messages (the log file keeps the durable record).
     std::deque<NotifyMessage> notify_log;
     std::uint64_t notify_seq = 0;
 
