@@ -1,13 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-/// Sanitizer/crash fingerprints scanned in server stderr.
+/// Sanitizer/crash fingerprints scanned in server stderr: a report names
+/// its sanitizer followed by ": ", which neither a logged path to LLVM's
+/// AddressSanitizer.cpp nor a name qualified by its class does.
 export const SANITIZER_MARKERS = [
-    "AddressSanitizer",
-    "LeakSanitizer",
-    "MemorySanitizer",
-    "ThreadSanitizer",
-    "UndefinedBehaviorSanitizer",
+    "AddressSanitizer: ",
+    "LeakSanitizer: ",
+    "MemorySanitizer: ",
+    "ThreadSanitizer: ",
+    "UndefinedBehaviorSanitizer: ",
     "==ERROR:",
     "runtime error:",
 ] as const;

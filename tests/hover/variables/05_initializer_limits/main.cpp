@@ -1,8 +1,8 @@
 // An initializer can be long in a single token: the definitions of an
 // `#embed`ded array and of a long string literal leave it out, and the
-// values show the first elements only. One of more than 200 tokens renders
-// truncated too, even though it prints short: 128 elements print in under
-// 500 characters.
+// values show the first elements only. One of more than 100 expressions
+// renders truncated too, even though it prints short: 128 elements print in
+// under 500 characters.
 
 using byte = unsigned char;
 

@@ -164,7 +164,10 @@ its issue id and a `why` for the reader, like a case's `wrong`. One matches the
 failures of its job (`configuration`, `part`, `platform` when given) whose
 `kind`, `request`, `file` (a path or a pattern) and `detail` (a pattern over
 what the failure says) it names. It is as narrow as its failure: one naming
-a kind alone would hide the next failure of that kind.
+a kind alone would hide the next failure of that kind. A `detail` that tells
+what the whole failure holds starts at its beginning, `(?<![\s\S])`: under the
+`m` flag `^` matches at every line, and the lookaheads of a later line see only
+the rest.
 
 ## The regression
 

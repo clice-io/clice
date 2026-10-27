@@ -204,6 +204,12 @@ std::optional<MacroDefinition> macro_definition(llvm::ArrayRef<Token> words);
 /// `argument` (`#pragma` takes its kind from it).
 LexicalInfo::Directive::Kind directive_kind(llvm::StringRef name, llvm::StringRef argument);
 
+/// The index into `info.directives` of an include guard's opening, the
+/// `#ifndef X` directly followed by `#define X` with only comments and
+/// `#pragma once` before them, whether or not the text holds its `#endif`
+/// (a preamble does not).
+std::optional<std::uint32_t> guard_opening(llvm::StringRef content, const LexicalInfo& info);
+
 /// Scan `content` once and collect its LexicalInfo. The matching is purely
 /// lexical: module declarations are recognized by line-start grammar, so
 /// consumers integrating them must cross-check compiler state (e.g. the

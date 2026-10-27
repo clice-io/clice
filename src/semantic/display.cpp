@@ -1233,16 +1233,34 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
 
 namespace {
 
-using TokenCount = llvm::function_ref<std::size_t(clang::SourceRange)>;
+/// Whether `stmt` holds at most `budget` expressions as written, counted
+/// only that far: the conversions and temporaries Sema wraps them in count
+/// none.
+bool within(const clang::Stmt& stmt, std::uint32_t& budget) {
+    const auto* written = &stmt;
+    if(const auto* expr = llvm::dyn_cast<clang::Expr>(written)) {
+        written = expr->IgnoreImplicit();
+    }
+    if(budget == 0) {
+        return false;
+    }
+    budget -= 1;
+    for(const auto* child: written->children()) {
+        if(child && !within(*child, budget)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 /// Initializers might be huge and result in lots of memory allocations in
 /// some catastrophic cases. Such long lists are not useful in hover cards
 /// anyway, and neither is one that does not compile: clang prints the parts
-/// it recovered as `<recovery-expr>`.
-bool hides_initializer(const clang::Expr* init,
-                       const clang::PrintingPolicy& policy,
-                       TokenCount token_count) {
-    return init && (init->containsErrors() || token_count(init->getSourceRange()) > 200 ||
+/// it recovered as `<recovery-expr>`. The AST measures one alike whether its
+/// file was parsed or read from a PCH.
+bool hides_initializer(const clang::Expr* init, const clang::PrintingPolicy& policy) {
+    std::uint32_t budget = 100;
+    return init && (init->containsErrors() || !within(*init, budget) ||
                     printed_length(*init, policy) > 500);
 }
 
@@ -1466,7 +1484,6 @@ struct DeclarationPrinter {
     const clang::PrintingPolicy& policy;
 
     const Options& options;
-    TokenCount token_count;
 
     /// How many more members to print, those of nested tags included.
     std::uint32_t budget;
@@ -1713,7 +1730,7 @@ struct DeclarationPrinter {
     /// instantiation, its value or what the instantiation made of it;
     /// nullopt when it hides it.
     auto initializer(const clang::Expr* init, bool instance) -> std::optional<std::string> {
-        if(hides_initializer(init, policy, token_count)) {
+        if(hides_initializer(init, policy)) {
             return std::nullopt;
         }
         if(!instance) {
@@ -1821,7 +1838,7 @@ struct DeclarationPrinter {
             auto text = initializer(init, instance);
             return text ? " = " + *text : std::string();
         }
-        if(hides_initializer(init, policy, token_count)) {
+        if(hides_initializer(init, policy)) {
             return {};
         }
         /// Parentheses or braces after the declarator, which the
@@ -2593,9 +2610,7 @@ auto attribute(const clang::Attr& attr, const clang::ASTContext& context) -> std
     return written;
 }
 
-auto definition(const clang::Decl* decl,
-                const Options& options,
-                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> Definition {
+auto definition(const clang::Decl* decl, const Options& options) -> Definition {
     assert(decl);
     auto& context = decl->getASTContext();
     auto written = options;
@@ -2612,7 +2627,6 @@ auto definition(const clang::Decl* decl,
         .context = context,
         .policy = policy,
         .options = options,
-        .token_count = token_count,
         .budget = options.max_members,
         .macros = result.attribute_macros,
     };
@@ -2674,7 +2688,7 @@ auto definition(const clang::Decl* decl,
         }
         os << "auto " << (type->isReferenceType() ? "&" : "")
            << (var->isParameterPack() ? "..." : "") << var->getName();
-        if(var->getInit() && !hides_initializer(var->getInit(), policy, token_count)) {
+        if(var->getInit() && !hides_initializer(var->getInit(), policy)) {
             if(auto init = as_written(context, var->getInit(), options)) {
                 switch(var->getInitStyle()) {
                     case clang::VarDecl::CInit: os << " = " << *init; break;
