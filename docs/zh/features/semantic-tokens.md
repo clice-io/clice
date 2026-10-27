@@ -9,31 +9,31 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 
 ## 种类
 
-| 种类                               | 标记的内容                                                                                          |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `comment`                          | 注释                                                                                                |
-| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                                            |
-| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                                           |
-| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                                           |
-| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是                                |
-| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                                                  |
-| `operator`                         | 运算符，无论内置还是重载，包括 `sizeof`、`new`、`and` 这类以单词拼写的运算符                        |
-| `bracket`                          | 模板实参和模板参数两侧的 `<` 与 `>`                                                                 |
-| `directive`、`header`              | 预处理指令；头文件名                                                                                |
-| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名                                                                |
-| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分                                                                            |
-| `typeAlias`                        | `typedef` 或 `using` 别名                                                                           |
-| `typeParameter`                    | 模板类型参数或模板模板参数                                                                          |
-| `templateParameter`                | 非类型模板参数                                                                                      |
-| `concept`                          | Concept                                                                                             |
-| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数                                                          |
-| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员                                                                            |
-| `enumMember`、`label`              | 枚举成员；标签                                                                                      |
-| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                                        |
-| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                  |
-| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                                            |
-| `conflict`                         | 同时指代不同种类实体的名称                                                                          |
-| `plain`                            | 未选中分支中没有自身种类的 Token（关闭词法 Token 时则是其中的所有 Token），为携带 `inactive` 而发送 |
+| 种类                               | 标记的内容                                                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `comment`                          | 注释                                                                                                             |
+| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                                                         |
+| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                                                        |
+| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                                                        |
+| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是；以单词拼写的运算符：`sizeof`、`new`、`and` |
+| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                                                               |
+| `operator`                         | 运算符，无论内置还是重载                                                                                         |
+| `bracket`                          | 模板实参和模板参数两侧的 `<` 与 `>`                                                                              |
+| `directive`、`header`              | 预处理指令；头文件名                                                                                             |
+| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名                                                                             |
+| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分                                                                                         |
+| `typeAlias`                        | `typedef` 或 `using` 别名                                                                                        |
+| `typeParameter`                    | 模板类型参数或模板模板参数                                                                                       |
+| `templateParameter`                | 非类型模板参数                                                                                                   |
+| `concept`                          | Concept                                                                                                          |
+| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数                                                                       |
+| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员                                                                                         |
+| `enumMember`、`label`              | 枚举成员；标签                                                                                                   |
+| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                                                     |
+| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                               |
+| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                                                         |
+| `conflict`                         | 同时指代不同种类实体的名称                                                                                       |
+| `plain`                            | 未选中分支中没有自身种类的 Token（关闭词法 Token 时则是其中的所有 Token），为携带 `inactive` 而发送              |
 
 ## 修饰符
 
@@ -69,6 +69,7 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 |                             | 宏                               | 其展开可能离开函数：`return`、`break`、`goto`、`throw`               |
 | `userDefined`               | 运算符；字面量的后缀             | 调用重载运算符；用户定义字面量                                       |
 | `declarator`                | 运算符                           | 声明符中的 `*`、`&` 或 `&&`，与表达式中的同名运算符区分开            |
+| `operator`                  | 关键字                           | 运算符：`sizeof`、`new`、`static_cast`、`and`、`defined`             |
 | `literal`                   | 关键字                           | `true`、`false`、`nullptr`                                           |
 | `affix`                     | 字面量                           | 其前缀或后缀：`u8`、`L`、`42u`、`1.5f`                               |
 | `empty`                     | 宏                               | 展开为空                                                             |

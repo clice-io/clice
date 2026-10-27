@@ -16,31 +16,31 @@ the names it knows, and the configuration renames clice's to those.
 
 ## Kinds
 
-| Kind                               | Marks                                                                                                         |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `comment`                          | a comment                                                                                                     |
-| `string`, `character`, `number`    | a literal, its prefix and suffix included                                                                     |
-| `escape`                           | an escape sequence in a literal: `\n`, `\x41`, `{{` in a format string                                        |
-| `formatSpecifier`                  | a placeholder of a format string: `{}`, `{:>8}`, `%d`                                                         |
-| `keyword`                          | a keyword; `module`, `import`, `override` and `final` where they act as one                                   |
-| `primitive`                        | a built-in type: `int`, `bool`, `char8_t`                                                                     |
-| `operator`                         | an operator, built-in or overloaded, words such as `sizeof`, `new` and `and` included                         |
-| `bracket`                          | the `<` and `>` around template arguments and parameters                                                      |
-| `directive`, `header`              | a preprocessor directive; a header name                                                                       |
-| `namespace`, `module`              | a namespace or namespace alias; a C++20 module name                                                           |
-| `class`, `struct`, `union`, `enum` | a class by the keyword that declares it                                                                       |
-| `typeAlias`                        | a `typedef` or `using` alias                                                                                  |
-| `typeParameter`                    | a template type or template template parameter                                                                |
-| `templateParameter`                | a non-type template parameter                                                                                 |
-| `concept`                          | a concept                                                                                                     |
-| `function`, `method`               | a free function; a member function, constructors and destructors included                                     |
-| `variable`, `parameter`, `field`   | a variable, a function parameter, a data member                                                               |
-| `enumMember`, `label`              | an enumerator; a label                                                                                        |
-| `macro`, `macroParameter`          | a macro; a parameter of a function-like macro, in its definition                                              |
-| `attribute`                        | an attribute name: `nodiscard`, `gnu::packed`                                                                 |
-| `unknown`                          | a dependent name only an instantiation resolves: `T::reset()`, `value.size()`                                 |
-| `conflict`                         | a name meaning entities of different kinds at once                                                            |
-| `plain`                            | a token in an untaken branch with no kind of its own, or any with lexical tokens off, sent for its `inactive` |
+| Kind                               | Marks                                                                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `comment`                          | a comment                                                                                                                          |
+| `string`, `character`, `number`    | a literal, its prefix and suffix included                                                                                          |
+| `escape`                           | an escape sequence in a literal: `\n`, `\x41`, `{{` in a format string                                                             |
+| `formatSpecifier`                  | a placeholder of a format string: `{}`, `{:>8}`, `%d`                                                                              |
+| `keyword`                          | a keyword; `module`, `import`, `override` and `final` where they act as one; an operator spelled as a word: `sizeof`, `new`, `and` |
+| `primitive`                        | a built-in type: `int`, `bool`, `char8_t`                                                                                          |
+| `operator`                         | an operator, built-in or overloaded                                                                                                |
+| `bracket`                          | the `<` and `>` around template arguments and parameters                                                                           |
+| `directive`, `header`              | a preprocessor directive; a header name                                                                                            |
+| `namespace`, `module`              | a namespace or namespace alias; a C++20 module name                                                                                |
+| `class`, `struct`, `union`, `enum` | a class by the keyword that declares it                                                                                            |
+| `typeAlias`                        | a `typedef` or `using` alias                                                                                                       |
+| `typeParameter`                    | a template type or template template parameter                                                                                     |
+| `templateParameter`                | a non-type template parameter                                                                                                      |
+| `concept`                          | a concept                                                                                                                          |
+| `function`, `method`               | a free function; a member function, constructors and destructors included                                                          |
+| `variable`, `parameter`, `field`   | a variable, a function parameter, a data member                                                                                    |
+| `enumMember`, `label`              | an enumerator; a label                                                                                                             |
+| `macro`, `macroParameter`          | a macro; a parameter of a function-like macro, in its definition                                                                   |
+| `attribute`                        | an attribute name: `nodiscard`, `gnu::packed`                                                                                      |
+| `unknown`                          | a dependent name only an instantiation resolves: `T::reset()`, `value.size()`                                                      |
+| `conflict`                         | a name meaning entities of different kinds at once                                                                                 |
+| `plain`                            | a token in an untaken branch with no kind of its own, or any with lexical tokens off, sent for its `inactive`                      |
 
 ## Modifiers
 
@@ -79,6 +79,7 @@ The rest are clice's own, and some mean something of their own on each kind:
 |                             | a macro                                     | its expansion can leave the function: `return`, `break`, `goto`, `throw`              |
 | `userDefined`               | an operator; a literal's suffix             | calls an overloaded operator; a user-defined literal                                  |
 | `declarator`                | an operator                                 | the `*`, `&` or `&&` of a declarator, apart from the same operators in expressions    |
+| `operator`                  | a keyword                                   | an operator: `sizeof`, `new`, `static_cast`, `and`, `defined`                         |
 | `literal`                   | a keyword                                   | `true`, `false`, `nullptr`                                                            |
 | `affix`                     | a literal                                   | its prefix or suffix: `u8`, `L`, `42u`, `1.5f`                                        |
 | `empty`                     | a macro                                     | expands to nothing                                                                    |
