@@ -105,8 +105,9 @@ Pitfalls of the A/B:
   every fresh server after it reindexes that unit again.
 - **Runners.** Each job gets a runner of its own (EPYC 7763, 9V74, 9V45, Xeon
   8573C on Linux): only one job's numbers compare, and a regression job's
-  numbers beside the round before's come from another machine. The sweep's
-  numbers depend on its sample too.
+  numbers beside the round before's come from another machine, twice apart
+  on the same code and sample (abseil/msvc's index, 290 and 535 s). The
+  sweep's numbers depend on its sample too.
 
 Reproduce on a box with both binaries at paths of equal length (clice finds
 its resource directory beside itself, and path lengths reach some sizes), as
