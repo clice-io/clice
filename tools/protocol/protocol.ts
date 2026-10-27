@@ -45,8 +45,8 @@ export interface CurrentContextParams {
     uri: string;
 }
 
-/// The command an open document compiles with, as its next compile sends
-/// it, and where it comes from.
+/// The command line an open document compiles with, the rules of clice.toml
+/// applied, as its next compile reads it, and where it comes from.
 export interface CompileCommand {
     /// Where the command comes from: an entry of a compilation database,
     /// the command of a source including the header, the default_command

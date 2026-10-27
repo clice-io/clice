@@ -38,8 +38,8 @@ struct QueryContextResult {
     std::uint64_t epoch = 0;
 };
 
-/// The command an open document compiles with, as its next compile sends
-/// it, and where it comes from.
+/// The command line an open document compiles with, the rules of clice.toml
+/// applied, as its next compile reads it, and where it comes from.
 struct CompileCommand {
     /// Where the command comes from: "database", an entry of a compilation
     /// database; "host", the command of a source including the header;

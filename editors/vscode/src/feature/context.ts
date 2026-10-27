@@ -19,6 +19,11 @@ function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.Te
     return language === "c" || language === "cpp" || language === "cuda-cpp";
 }
 
+/// A context's description, a path, as the workspace names it.
+function shown(description: string): string {
+    return vscode.workspace.asRelativePath(description);
+}
+
 function sameContext(a: ContextItem, b: ContextItem | null | undefined): boolean {
     if (!b) {
         return false;
@@ -46,7 +51,7 @@ class ContextTreeItem extends vscode.TreeItem {
             this.command = { command: "clice.loadMoreContexts", title: "Load more" };
             return;
         }
-        this.description = active ? `${context.description} (active)` : context.description;
+        this.description = shown(context.description);
         this.tooltip = context.description;
         this.iconPath = new vscode.ThemeIcon(active ? "pass-filled" : "circle-large-outline");
         this.contextValue = "clice-context";
@@ -331,11 +336,13 @@ export function registerCompilationContext(
         }
         const uri = editor.document.uri.toString();
         let automatic: boolean;
+        let inUse: ContextItem | null;
         try {
             const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
                 uri,
             });
             automatic = current.automatic;
+            inUse = current.context;
         } catch {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
@@ -391,8 +398,10 @@ export function registerCompilationContext(
             }
             items.push(
                 ...loaded.map((context) => ({
-                    label: context.label,
-                    description: context.description,
+                    label: sameContext(context, inUse)
+                        ? `$(pass-filled) ${context.label}`
+                        : context.label,
+                    description: shown(context.description),
                     context,
                 })),
             );

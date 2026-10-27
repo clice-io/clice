@@ -232,7 +232,14 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     // Resolved first: the resolution fills the header context the item
     // below is read from.
     auto& command = result.command.emplace();
-    auto resolution = editor.resolve_command(path_id, command.directory, command.arguments);
+    std::vector<std::string> resolved;
+    auto resolution = editor.resolve_command(path_id, command.directory, resolved);
+    // The compiler's command line rather than the frontend's the compile
+    // gets: the one a user writes and recognizes.
+    for(auto* argument:
+        ws.commands.render_driver(resolution.ref, ws.file_table.spelling(path_id).str())) {
+        command.arguments.emplace_back(argument);
+    }
     command.source = source_name(resolution.source);
     auto from = resolution.host.valid() ? resolution.host : resolution.lender;
     if(from.valid()) {
