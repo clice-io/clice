@@ -95,3 +95,40 @@ test("a link above the database", async (t) => {
     await t.show("debug", s.workspaceSymbols("_only"));
     expect(libraries(t)).toEqual(["active-out_debug_nested", "active-out_release_nested"]);
 });
+
+test("batch commands follow the link", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    await t.cli("index --jobs 2");
+    expect(libraries(t)).toEqual(["active-out_release"]);
+    t.disk.linkDirectory("out/current", "out/debug");
+    await t.cli("index --jobs 2");
+    await t.cli("index stats");
+    expect(libraries(t)).toEqual(["active-out_release", "debug"]);
+});
+
+test("a link made after the start", async (t) => {
+    const s = await t.start();
+    await s.indexed();
+    t.disk.linkDirectory("out/current", "out/release");
+    await s.poll("cdb");
+    await s.indexed();
+    await t.show("release", s.workspaceSymbols("_only"));
+    expect(libraries(t)).toEqual(["active-out_current", "active-out_release"]);
+});
+
+test(
+    "clice index while the server switches",
+    { errors: ["the running clice server is switching to the build its databases now resolve to"] },
+    async (t) => {
+        t.disk.linkDirectory("out/current", "out/release");
+        const s = await t.start();
+        await s.indexed();
+        // The server has not looked since the link moved: the request finds
+        // it out, and the server switches instead of indexing.
+        t.disk.linkDirectory("out/current", "out/debug");
+        await t.cli("index --jobs 2");
+        await s.indexed();
+        await t.cli("index --jobs 2");
+        await t.show("debug", s.workspaceSymbols("_only"));
+    },
+);
