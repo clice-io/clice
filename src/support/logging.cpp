@@ -267,16 +267,15 @@ static void crash_handler(void*) {
 
 void install_crash_handler(std::string_view log_path, bool stderr_trace) {
     executable_base = main_executable_base();
-    std::error_code ec;
-    crash_log_stream =
-        std::make_unique<llvm::raw_fd_ostream>(llvm::StringRef(log_path.data(), log_path.size()),
-                                               ec,
-                                               llvm::sys::fs::OF_Append);
-    if(ec) {
-        LOG_WARN("Failed to install crash handler for {}: {}", log_path, ec.message());
-        crash_log_stream.reset();
+    auto fd =
+        fs::File::open(log_path, {.append = true, .create = true}).and_then([](fs::File file) {
+            return std::move(file).into_descriptor();
+        });
+    if(!fd) {
+        LOG_WARN("Failed to install crash handler for {}: {}", log_path, fd.error().message());
         return;
     }
+    crash_log_stream = std::make_unique<llvm::raw_fd_ostream>(*fd, /*shouldClose=*/true);
     llvm::sys::AddSignalHandler(crash_handler, nullptr);
     // Workers skip the stderr backtrace: their crash traces belong in their
     // own log file only, not relayed into the master log via the stderr pipe.

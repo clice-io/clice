@@ -32,7 +32,7 @@ extern "C++" int main(int argc, const char** argv) {
     // The CRT's argv is in the ANSI code page, which holds few characters
     // past ASCII: the arguments are read from the UTF-16 command line.
     std::vector<const char*> arguments;
-    for(auto& argument: kota::sys::arguments()) {
+    for(auto& argument: clice::sys::arguments()) {
         arguments.push_back(argument.c_str());
     }
     argc = static_cast<int>(arguments.size());
