@@ -490,6 +490,70 @@ suite("clice E2E", function () {
         );
     });
 
+    test("the compile command of the file", async function () {
+        this.timeout(60 * 1000);
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+            uri: document.uri.toString(),
+        });
+        // A header borrows its host's command; a source has its own entry.
+        const host = scenario.context;
+        assert.strictEqual(current.command?.source, host === undefined ? "database" : "host");
+        if (host !== undefined) {
+            assert.ok(current.command.from?.endsWith(host), `borrowed from ${host}`);
+        }
+
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("clice.showCompileCommand");
+        const shown = vscode.window.activeTextEditor?.document;
+        assert.strictEqual(shown?.uri.scheme, "clice-command");
+        const text = shown.getText();
+        assert.ok(text.startsWith(`# The command clice compiles ${scenario.file} with:`), text);
+        assert.ok(text.includes(document.uri.fsPath), "the command names the file");
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    });
+
+    test("the commands the extension offers", async function () {
+        const commands = new Set(await vscode.commands.getCommands(true));
+        assert.ok(commands.has("clice.showCompileCommand"));
+        assert.ok(commands.has("clice.switchContext"));
+        // The language status and the Compilation Contexts view show what
+        // these did.
+        assert.ok(!commands.has("clice.showCurrentContext"));
+        assert.ok(!commands.has("clice.queryContexts"));
+    });
+
+    test("source actions switching contexts stay out of VS Code", async function () {
+        this.timeout(60 * 1000);
+        if (scenario.context === undefined) {
+            this.skip();
+        }
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
+        // The server offers them, for editors without the extension's UI.
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        const start = { line: 0, character: 0 };
+        const offered = await client.sendRequest<{ kind?: string }[]>("textDocument/codeAction", {
+            textDocument: { uri: document.uri.toString() },
+            range: { start, end: start },
+            context: { diagnostics: [], only: ["source"], triggerKind: 1 },
+        });
+        assert.ok(offered.some((action) => action.kind === "source.clice.context"));
+
+        const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+            "vscode.executeCodeActionProvider",
+            document.uri,
+            new vscode.Range(0, 0, 0, 0),
+            vscode.CodeActionKind.Source.value,
+        );
+        assert.ok(
+            !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
+            "VS Code lists no clice source action",
+        );
+    });
+
     test("completion", async function () {
         this.timeout(60 * 1000);
         assert.ok(document, "the scenario's file was not opened (earlier test failed)");

@@ -1883,10 +1883,18 @@ void LSPClient::report_index_progress() {
                 auto create_result =
                     co_await state->reporter->create({.timeout = std::chrono::minutes(1)});
                 state->create_inflight = false;
-                // The round may have ended — or the whole connection may have
-                // been torn down — while the handshake was in flight; drop the
-                // token without announcing it.
-                if(state->abandoned || create_result.has_error() || !state->round_active) {
+                // The whole connection may have been torn down while the
+                // handshake was in flight; drop the token without announcing it.
+                if(state->abandoned || create_result.has_error()) {
+                    state->reporter.reset();
+                    co_return;
+                }
+                // The client keeps a created token until it ends, and refuses
+                // to create it again meanwhile: a round that ended during the
+                // handshake ends it, or no later round could show.
+                if(!state->round_active) {
+                    state->reporter->begin("Indexing");
+                    state->reporter->end();
                     state->reporter.reset();
                     co_return;
                 }

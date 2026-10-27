@@ -201,7 +201,12 @@ export class CliceClient {
     /// waiters of the ones not parked yet.
     private parked = new Set<number>();
     private parkWaiters = new Map<number, (() => void)[]>();
-    private progressWaiters: { token: string; kind: string; resolve: () => void }[] = [];
+    private progressWaiters: { ready: () => boolean; resolve: () => void }[] = [];
+    /// Progress tokens the server created and has not ended: the client
+    /// refuses to create one of them again, as vscode-jsonrpc does.
+    private liveTokens = new Set<string>();
+    /// While set, the replies to window/workDoneProgress/create wait for it.
+    progressCreateHold: Promise<void> | undefined;
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -259,8 +264,17 @@ export class CliceClient {
             }
             this.parkWaiters.delete(p.id);
         });
-        this.connection.onRequest(proto.WorkDoneProgressCreateRequest.type, (p) => {
-            this.progressTokens.push(String(p.token));
+        this.connection.onRequest(proto.WorkDoneProgressCreateRequest.type, async (p) => {
+            const token = String(p.token);
+            this.progressTokens.push(token);
+            await this.progressCreateHold;
+            if (this.liveTokens.has(token)) {
+                throw new proto.ResponseError(
+                    proto.ErrorCodes.InternalError,
+                    `Progress handler for token ${token} already registered`,
+                );
+            }
+            this.liveTokens.add(token);
         });
         // ProtocolConnection's type surface omits the star handlers and the
         // unhandled-progress hook its underlying MessageConnection provides;
@@ -278,13 +292,13 @@ export class CliceClient {
                 value: p.value,
                 at: performance.now(),
             });
-            const kind = (p.value as { kind?: unknown }).kind;
-            const arrived = (waiter: { token: string; kind: string }): boolean =>
-                waiter.token === String(p.token) && waiter.kind === kind;
-            for (const waiter of this.progressWaiters.filter(arrived)) {
+            if ((p.value as { kind?: unknown }).kind === "end") {
+                this.liveTokens.delete(String(p.token));
+            }
+            for (const waiter of this.progressWaiters.filter((waiter) => waiter.ready())) {
                 waiter.resolve();
             }
-            this.progressWaiters = this.progressWaiters.filter((waiter) => !arrived(waiter));
+            this.progressWaiters = this.progressWaiters.filter((waiter) => !waiter.ready());
         });
         // Requests the test client does not model are answered with null
         // instead of "method not found", mirroring pygls' lenient client.
@@ -1107,18 +1121,18 @@ export class CliceClient {
         return (await this.sendRequest(GateRequest, { request, uri })).id;
     }
 
-    /// Resolves once the server sent `token` a work done progress of `kind`
-    /// ("begin", "report", "end"), the ones it sent before included.
-    progressed(token: string, kind: string): Promise<void> {
-        if (
-            this.progressEvents.some(
+    /// Resolves once the server sent `token` `times` work done progresses of
+    /// `kind` ("begin", "report", "end"), the ones it sent before included.
+    progressed(token: string, kind: string, times = 1): Promise<void> {
+        const ready = () =>
+            this.progressEvents.filter(
                 (event) =>
                     event.token === token && (event.value as { kind?: unknown }).kind === kind,
-            )
-        ) {
+            ).length >= times;
+        if (ready()) {
             return Promise.resolve();
         }
-        return new Promise((resolve) => this.progressWaiters.push({ token, kind, resolve }));
+        return new Promise((resolve) => this.progressWaiters.push({ ready, resolve }));
     }
 
     /// Resolves once the hold parked a reply, or the gate a request's work
