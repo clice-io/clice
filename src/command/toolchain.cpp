@@ -245,16 +245,10 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
     bool known_family = command.family != CompilerFamily::Unknown;
 
     llvm::StringRef driver = command.driver;
-#ifdef _WIN32
-    /// Windows resolves bare names against the current directory first
-    /// (plus PATHEXT variants) — never exempt.
-    bool driver_cwd_free = path::is_absolute(driver);
-#else
     /// A bare name resolves through PATH alone (whose components the env
     /// condition below covers); a relative path is cwd-bound.
     bool driver_cwd_free =
         path::is_absolute(driver) || (!driver.contains('/') && !driver.contains('\\'));
-#endif
 
     /// A known option's path values were anchored when the command was
     /// read (names_path); only an unknown one can still hold a

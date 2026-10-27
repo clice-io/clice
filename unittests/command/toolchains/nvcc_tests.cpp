@@ -438,7 +438,7 @@ constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
 #$ LD_LIBRARY_PATH=/opt/cuda/targets/x86_64-linux/lib:
 #$ PATH=/opt/host/bin
 #$ INCLUDES="-I/opt/cuda/targets/x86_64-linux/include"
-#$ g++ -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -E -x c++ -D__CUDACC__ -D__NVCC__ "-I/opt/cuda/targets/x86_64-linux/include" -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=9 -include "cuda_runtime.h" -m64 "/tmp/a.cu" -o "/tmp/a.cpp4.ii"
+#$ g++ -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -E -x c++ -D__CUDACC__ -D__NVCC__ "-I/opt/cuda/targets/x86_64-linux/include" -isystem "/opt/cuda/targets/x86_64-linux/include/cccl" -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=9 -include "cuda_runtime.h" -m64 "/tmp/a.cu" -o "/tmp/a.cpp4.ii"
 #$ cudafe++ --c++17 --gnu_version=140400 "/tmp/a.cpp4.ii"
 #$ g++ -D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -E -x c++ -DCUDA_DOUBLE_MATH_FUNCTIONS -D__CUDACC__ -D__NVCC__ -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=9 -include "cuda_runtime.h" -m64 "/tmp/a.cu" -o "/tmp/a.cpp1.ii"
 #$ cicc --c++17 --gnu_version=140400 -arch compute_52 -m64 "/tmp/a.cpp1.ii" -o "/tmp/a.ptx"
@@ -454,6 +454,9 @@ ZEST_CASE(DryrunParsed) {
     ZEXPECT(info->cpp_dialect == "c++17");
     ZEXPECT(info->default_arch == "sm_52");
     ZEXPECT(ranges::contains(info->search_path, "/opt/host/bin"));
+    std::vector<std::string> include_dirs = {"/opt/cuda/targets/x86_64-linux/include",
+                                             "/opt/cuda/targets/x86_64-linux/include/cccl"};
+    ZEXPECT(info->include_dirs == include_dirs);
 
     // clang derives the blocklisted three itself; the rest must survive.
     for(auto defines: {&info->host_defines, &info->device_defines}) {
@@ -509,6 +512,16 @@ ZEST_CASE(DryrunTopFallback) {
     auto info = parse_nvcc_dryrun(no_top);
     ZASSERT(info);
     ZEXPECT(info->cuda_path == "/opt/cuda");
+
+    // Debian's nvidia-cuda-toolkit keeps libdevice elsewhere: its root is
+    // clang's to find.
+    constexpr llvm::StringRef debian =
+        R"(#$ NVVMIR_LIBRARY_DIR=/usr/lib/nvidia-cuda-toolkit/libdevice
+#$ g++ -D__CUDACC_VER_MAJOR__=12 -E -x c++ "/tmp/a.cu" -o "/tmp/a.ii"
+)";
+    auto debian_info = parse_nvcc_dryrun(debian);
+    ZASSERT(debian_info);
+    ZEXPECT(debian_info->cuda_path.empty());
 
     // With neither line the toolchain still resolves; CUDA detection is
     // left to clang's own search.
@@ -973,6 +986,39 @@ echo 'End of search list.' >&2
     auto flag = "--sysroot=" + sysroot;
     auto argv = f.resolve(add("a.cpp", {nvcc.c_str(), "-Xcompiler", flag.c_str(), "-c"}));
     ZEXPECT(adjacent(argv, "-internal-isystem", sysroot + "/usr/include"));
+}
+
+ZEST_CASE(NVCCHeaderDirs, skip = Windows) {
+    /// The header directories nvcc gives its host compiler, CUDA 13's
+    /// include/cccl among them, come before the host's own, as on nvcc's
+    /// host line; warnings the host makes errors stay warnings.
+    auto host = fake_gcc("g++",
+                         std::format(R"(Target: x86_64-linux-gnu
+ /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet query.cpp -dM
+#include <...> search starts here:
+ {}
+End of search list.)",
+                                     tmp.path("host/include")));
+    auto nvcc = fake_driver(
+        "nvcc",
+        std::format(R"(echo '#$ {} -c -x c++ "-I{}" -isystem "{}" -include "cuda_runtime.h"' >&2
+)",
+                    host,
+                    tmp.path("cuda/include"),
+                    tmp.path("cuda/include/cccl")));
+    auto argv = f.resolve(add("a.cpp", {nvcc.c_str(), "-Xcompiler", "-Werror", "-c"}));
+
+    std::vector<std::string> dirs;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == "-internal-isystem"sv) {
+            dirs.push_back(argv[i + 1]);
+        }
+    }
+    std::vector<std::string> expected = {tmp.path("cuda/include"),
+                                         tmp.path("cuda/include/cccl"),
+                                         tmp.path("host/include")};
+    ZEXPECT(dirs == expected);
+    ZEXPECT(!contains(argv, "-Werror"));
 }
 
 ZEST_CASE(NVCCUnknownHost, skip = Windows) {

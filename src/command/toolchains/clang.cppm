@@ -4,6 +4,8 @@ module;
 
 module clice:command.toolchains.clang;
 
+import :command.argument;
+
 namespace clice {
 
 /// A cc1 job as a driver runs it.
@@ -74,5 +76,14 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
                                  bool strict);
 
 bool names_standard(llvm::ArrayRef<std::string> args);
+
+/// The flags of a command of `family`, spelled as that family spells them,
+/// as clang takes them when its compiler is not clang (GCC, cl, nvcc): the
+/// warnings that compiler makes errors stay warnings, `-Werror` goes and
+/// `-Werror=<group>` is `-W<group>`, since clang warns of what it does not
+/// and its build never shows those as errors; and GCC's `-fmodules` goes,
+/// its C++20 modules, which clang's C++20 has, where to clang it would mean
+/// header modules. The flags of any other family stay as they are.
+std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, CompilerFamily family);
 
 }  // namespace clice

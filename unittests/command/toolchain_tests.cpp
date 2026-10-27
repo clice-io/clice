@@ -138,15 +138,23 @@ ZEST_CASE(KeyTracksConfigFile) {
     /// An absolute config file and a bare name, which clang searches in its
     /// configuration directories, are directory-independent. Paths are
     /// platform-native absolute (POSIX spellings are not absolute on
-    /// Windows), and the driver is absolute too: a bare driver name is
-    /// never cwd-exempt on Windows and would tie the key to the directory
-    /// on its own.
-    auto driver = tmp.path("clang++");
+    /// Windows).
     for(auto cfg: {"--config=" + tmp.path("clang.cfg"), std::string("--config=clang.cfg")}) {
-        auto c = f.add("/fake/a", "/tmp/c.cpp", {driver.c_str(), cfg.c_str(), "/tmp/c.cpp"});
-        auto d = f.add("/fake/b", "/tmp/d.cpp", {driver.c_str(), cfg.c_str(), "/tmp/d.cpp"});
+        auto c = f.add("/fake/a", "/tmp/c.cpp", {"clang++", cfg.c_str(), "/tmp/c.cpp"});
+        auto d = f.add("/fake/b", "/tmp/d.cpp", {"clang++", cfg.c_str(), "/tmp/d.cpp"});
         ZEXPECT(f.key(c) == f.key(d));
     }
+}
+
+ZEST_CASE(BareDriverSharesKey) {
+    /// A bare driver name is looked up on PATH, on Windows too, so entries
+    /// in different directories share one query.
+    auto a = f.add("/fake/a", "/tmp/a.cpp", {"clang++", "/tmp/a.cpp"});
+    auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "/tmp/b.cpp"});
+    ZEXPECT(f.key(a) == f.key(b));
+    auto relative = f.add("/fake/c", "/tmp/c.cpp", {"bin/clang++", "/tmp/c.cpp"});
+    auto elsewhere = f.add("/fake/d", "/tmp/d.cpp", {"bin/clang++", "/tmp/d.cpp"});
+    ZEXPECT(f.key(relative) != f.key(elsewhere));
 }
 
 ZEST_CASE(FailedQueryCooldown, skip = Windows) {

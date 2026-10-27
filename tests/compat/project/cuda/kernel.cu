@@ -2,7 +2,11 @@
 #include "kernel.cu.expect.h"
 #endif
 
+#include <cuda/std/type_traits>
+
 #include "util.h"
+
+static_assert(cuda::std::is_floating_point_v<float>);
 
 __global__ void scale(float* p) {
     p[threadIdx.x] *= 2.0f;

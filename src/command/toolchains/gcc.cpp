@@ -364,12 +364,13 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
     auto parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     llvm::Triple target(output.target);
-    for(auto& parsed: option::table().parse(output.gcc_options, parse_options)) {
+    auto gcc_options = flags_for_clang(output.gcc_options, CompilerFamily::GCC);
+    for(auto& parsed: option::table().parse(gcc_options, parse_options)) {
         if(parsed && parsed->id != option::OPT_UNKNOWN) {
-            clang_args.push_back(for_clang(output.gcc_options[parsed->index], target));
+            clang_args.push_back(for_clang(gcc_options[parsed->index], target));
         }
     }
-    for(llvm::StringRef arg: args.drop_front()) {
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), CompilerFamily::GCC)) {
         clang_args.push_back(for_clang(arg, target));
     }
 

@@ -15,3 +15,9 @@ test("cross gcc", { errors: [MISSING, UNCONVERTED] }, async (t) => {
         "command convert -- aarch64-none-elf-gcc -mcpu=cortex-a72.cortex-a53 -mabi=lp64 -c main.c",
     );
 });
+
+// GCC's -fmodules is its C++20 modules, which clang's C++20 has: to clang
+// it would mean header modules.
+test("gcc modules", { errors: [MISSING, UNCONVERTED] }, async (t) => {
+    await t.cli("command convert -- missing-g++ -std=c++20 -fmodules -c main.cpp");
+});

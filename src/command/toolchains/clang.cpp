@@ -111,6 +111,36 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
     });
 }
 
+std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, CompilerFamily family) {
+    if(family != CompilerFamily::GCC && family != CompilerFamily::MSVC &&
+       family != CompilerFamily::NVCC) {
+        return flags.vec();
+    }
+    // Both options are single tokens; as the value of another option
+    // (`-Xpreprocessor -Werror`) they stay that option's.
+    std::vector<std::string> result;
+    std::size_t next = 0;
+    auto parse_options = kota::option::ParseOptions{.visibility = family_visibility(family)};
+    for(auto& parsed: option::table().parse(flags, parse_options)) {
+        if(!parsed) {
+            continue;
+        }
+        bool modules = family == CompilerFamily::GCC && parsed->id == option::OPT_fmodules;
+        llvm::StringRef warning =
+            parsed->id == option::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
+        if(!modules && warning != "error" && !warning.starts_with("error=")) {
+            continue;
+        }
+        result.insert(result.end(), flags.begin() + next, flags.begin() + parsed->index);
+        next = parsed->index + 1;
+        if(warning.consume_front("error=")) {
+            result.push_back("-W" + warning.str());
+        }
+    }
+    result.insert(result.end(), flags.begin() + next, flags.end());
+    return result;
+}
+
 std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
                                     llvm::ArrayRef<std::string> mode) {
     // Before C++20, clang defers template bodies on MSVC targets so that

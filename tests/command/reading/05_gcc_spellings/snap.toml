@@ -14,3 +14,11 @@ error: Toolchain query failed: Cannot find driver: aarch64-none-elf-gcc
 error: The command stays a driver command: Cannot find driver: aarch64-none-elf-gcc
 '''
 exit = 1
+
+["gcc modules"."$ clice command convert -- missing-g++ -std=c++20 -fmodules -c main.cpp"]
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-g++
+error: The command stays a driver command: Cannot find driver: missing-g++
+'''
+exit = 1

@@ -27,6 +27,14 @@ constexpr inline llvm::StringRef cl_query_source =
 /// Read the output cl wrote to stdout for `cl_query_source`.
 CLOutput parse_cl_output(llvm::StringRef out);
 
+/// What clang's own driver is told for a command of cl or clang-cl beyond
+/// its flags: the cl mode, and for a cl.exe in a toolset,
+/// `<toolset>/bin/Host<arch>/<arch>/cl.exe`, that toolset. Without one,
+/// clang takes the headers of the newest toolset installed, outside a
+/// developer prompt (an editor started clice); in one, the `INCLUDE` it
+/// sets, which naming a toolset would make clang ignore, lists the build's.
+std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily family);
+
 /// cl and clang-cl: asked to preprocess a file naming their macros, the
 /// driver tells the C++ standard it compiles in — what `/std:c++latest`
 /// means moves from one version to the next — and cl its version, where

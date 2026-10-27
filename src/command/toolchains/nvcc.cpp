@@ -663,6 +663,20 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
     llvm::SmallVector<ArchToken> cicc_archs;
     llvm::SmallVector<const char*, 64> first_command;
 
+    auto harvest_include_dirs = [&](llvm::ArrayRef<const char*> tokens) {
+        for(std::size_t i = 0; i < tokens.size(); i += 1) {
+            llvm::StringRef token = tokens[i];
+            if(!token.consume_front("-I") && !token.consume_front("-isystem")) {
+                continue;
+            }
+            if(token.empty() && i + 1 < tokens.size()) {
+                i += 1;
+                token = tokens[i];
+            }
+            info.include_dirs.emplace_back(token);
+        }
+    };
+
     auto harvest_defines = [](llvm::ArrayRef<const char*> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
             if(!token.consume_front("-D"))
@@ -756,12 +770,18 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
             info.host_compiler = argv0;
 
         harvest_defines(tail, is_device ? info.device_defines : info.host_defines);
+        if(!is_device) {
+            harvest_include_dirs(tail);
+        }
     }
 
     /// A dryrun without `TOP=` still names the toolkit root indirectly:
     /// `NVVMIR_LIBRARY_DIR=` is `<root>/nvvm/libdevice`.
-    if(info.cuda_path.empty() && !nvvm_dir.empty())
-        info.cuda_path = path::parent(path::parent(nvvm_dir));
+    auto nvvm = path::parent(nvvm_dir);
+    if(info.cuda_path.empty() && path::filename(nvvm_dir) == "libdevice" &&
+       path::filename(nvvm) == "nvvm") {
+        info.cuda_path = path::parent(nvvm);
+    }
 
     if(!cicc_archs.empty())
         info.default_arch = select_gpu_arch(cicc_archs);
@@ -777,6 +797,7 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
             if(token.consume_front("-D"))
                 info.host_defines.emplace_back(token);
         }
+        harvest_include_dirs(llvm::ArrayRef(first_command).drop_front());
     }
 
     if(info.host_compiler.empty())
@@ -894,7 +915,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
         }
     }
 
-    for(llvm::StringRef arg: args.drop_front()) {
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), CompilerFamily::NVCC)) {
         if(is_nvcc_query_flag(arg)) {
             /// The dryrun's resolution of an `-arch=<special>` token lands
             /// exactly where the token sat: an edit-appended selection
@@ -911,8 +932,22 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
 
     /// A clang host needs no setup: clang's own driver already defaults to
     /// the running machine's triple.
-    co_return !host_output->gcc_job.empty() ? query_as_gcc(*host_output, cuda_args, cwd)
-                                            : query_driver(cuda_args, cwd);
+    auto job = !host_output->gcc_job.empty() ? query_as_gcc(*host_output, cuda_args, cwd)
+                                             : query_driver(cuda_args, cwd);
+    if(!job) {
+        co_return job;
+    }
+    /// After the command's own directories and before the host's, as on
+    /// nvcc's host line.
+    auto host_dirs = ranges::find_if(job->args, [](llvm::StringRef arg) {
+        return arg.starts_with("-internal-");
+    });
+    std::vector<std::string> nvcc_dirs;
+    for(auto& dir: info->include_dirs) {
+        nvcc_dirs.insert(nvcc_dirs.end(), {"-internal-isystem", dir});
+    }
+    job->args.insert(host_dirs, nvcc_dirs.begin(), nvcc_dirs.end());
+    co_return job;
 }
 
 }  // namespace clice

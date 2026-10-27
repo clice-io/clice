@@ -36,12 +36,13 @@ function cmakeNinja(
     platforms: NodeJS.Platform[],
     cc: string,
     cxx: string,
-    options: { msvc?: boolean; extra?: string[] } = {},
+    options: { msvc?: boolean; toolset?: string; extra?: string[] } = {},
 ): Scenario {
     return {
         name,
         platforms,
         msvc: options.msvc === true,
+        ...(options.toolset === undefined ? {} : { toolset: options.toolset }),
         requires: ["cmake", "ninja", cc, cxx],
         build: cmake("Ninja", cc, cxx, ...(options.extra ?? [])),
         files: BOTH,
@@ -182,6 +183,24 @@ export const SCENARIOS: Scenario[] = [
         `${CONDA}/x86_64-conda-linux-gnu-g++`,
     ),
     cmakeNinja("cmake ninja conda clang", ["linux"], `${CONDA}/clang`, `${CONDA}/clang++`),
+    {
+        // GCC 15 spells C++20 modules -fmodules, which to clang would mean
+        // its header modules.
+        name: "make bear conda gcc modules",
+        platforms: ["linux"],
+        requires: ["bear", "make", `${CONDA}/x86_64-conda-linux-gnu-g++`],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                "build/main.o",
+                `CXX=${CONDA}/x86_64-conda-linux-gnu-g++`,
+                "CXXFLAGS=-std=c++20 -fmodules",
+            ],
+        ],
+        files: { "src/main.cpp": { recorded: [["-fmodules"]], excludes: ["-fmodules"] } },
+    },
     // GCC's two-core tuning form, a name clang does not know.
     cmakeCross(
         "cmake ninja aarch64 cross",
@@ -241,15 +260,25 @@ export const SCENARIOS: Scenario[] = [
         "/opt/homebrew/opt/llvm@18/bin/clang++",
     ),
     cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
-    // The newest standard, cl's conformance switches, and a Debug build's
-    // runtime library.
-    cmakeNinja("cmake ninja msvc conformance", ["win32"], "cl", "cl", {
+    // An older toolset beside the newest: its cl.exe compiles with its own
+    // headers (`_MSVC_STL_VERSION`), not the newest toolset's.
+    cmakeNinja("cmake ninja msvc 14.29 toolset", ["win32"], "cl", "cl", {
         msvc: true,
-        extra: [
-            "-DCMAKE_BUILD_TYPE=Debug",
-            "-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /Zc:__cplusplus /permissive-",
-        ],
+        toolset: "14.29",
     }),
+    // The newest standard, cl's conformance switches, and a Debug build's
+    // runtime library. cl's warnings as errors stay warnings, clang-cl's
+    // errors.
+    {
+        ...cmakeNinja("cmake ninja msvc conformance", ["win32"], "cl", "cl", {
+            msvc: true,
+            extra: [
+                "-DCMAKE_BUILD_TYPE=Debug",
+                "-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /Zc:__cplusplus /permissive- /WX",
+            ],
+        }),
+        files: { "src/main.cpp": { excludes: ["-Werror"] }, "src/util.c": {} },
+    },
     cmakeNinja(
         "cmake ninja clang-cl",
         ["win32"],
@@ -257,13 +286,16 @@ export const SCENARIOS: Scenario[] = [
         `${LLVM_WINDOWS}/clang-cl.exe`,
         { msvc: true },
     ),
-    cmakeNinja(
-        "cmake ninja clang-cl conformance",
-        ["win32"],
-        `${LLVM_WINDOWS}/clang-cl.exe`,
-        `${LLVM_WINDOWS}/clang-cl.exe`,
-        { msvc: true, extra: ["-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /permissive-"] },
-    ),
+    {
+        ...cmakeNinja(
+            "cmake ninja clang-cl conformance",
+            ["win32"],
+            `${LLVM_WINDOWS}/clang-cl.exe`,
+            `${LLVM_WINDOWS}/clang-cl.exe`,
+            { msvc: true, extra: ["-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /permissive- /WX"] },
+        ),
+        files: { "src/main.cpp": { contains: [["-Werror"]] }, "src/util.c": {} },
+    },
     cmakeNinja(
         "cmake ninja llvm clang",
         ["win32"],
@@ -392,7 +424,7 @@ export const SCENARIOS: Scenario[] = [
                 "make",
                 `CC=${GCC}`,
                 `CXX=${GXX}`,
-                "CXXFLAGS=-std=gnu++20 -O2 -g -mtune=intel -fno-exceptions -fno-rtti -pthread -MD -MF build/main.d",
+                "CXXFLAGS=-std=gnu++20 -O2 -g -mtune=intel -fno-exceptions -fno-rtti -pthread -Werror -Werror=shadow -MD -MF build/main.d",
                 "CFLAGS=-std=c11 -Os -ffast-math -funsigned-char -march=x86-64-v3 -ffunction-sections -flto -fsanitize=address",
             ],
         ],
@@ -402,6 +434,7 @@ export const SCENARIOS: Scenario[] = [
         // -ffast-math, -funsigned-char, -march and -fno-exceptions), a
         // relative include directory anchored at the entry's directory, and
         // -flto, which the driver requires for flags such as -fsanitize=cfi.
+        // The warnings GCC makes errors stay warnings: clang warns of more.
         files: {
             "src/main.cpp": {
                 contains: [
@@ -409,8 +442,15 @@ export const SCENARIOS: Scenario[] = [
                     ["-fno-rtti"],
                     ["-pthread"],
                     ["-I", "${root}/include"],
+                    ["-Wshadow"],
                 ],
-                excludes: ["-dependency-file", "-debug-info-kind=constructor", "intel"],
+                excludes: [
+                    "-dependency-file",
+                    "-debug-info-kind=constructor",
+                    "intel",
+                    "-Werror",
+                    "-Werror=shadow",
+                ],
             },
             "src/util.c": {
                 contains: [["-std=c11"], ["-fsanitize=address"], ["-flto=full"]],
@@ -443,7 +483,8 @@ export const SCENARIOS: Scenario[] = [
     },
     {
         // Semantic flags an external clang turns into frontend options come
-        // back from the query instead of being dropped with the toolchain's.
+        // back from the query instead of being dropped with the toolchain's;
+        // a clang's warnings as errors stay errors.
         name: "make bear clang flags",
         platforms: ["linux"],
         requires: ["bear", "make", CLANG, CLANGXX],
@@ -454,12 +495,12 @@ export const SCENARIOS: Scenario[] = [
                 "make",
                 `CC=${CLANG}`,
                 `CXX=${CLANGXX}`,
-                "CXXFLAGS=-std=c++23 -fms-extensions -Wno-everything",
+                "CXXFLAGS=-std=c++23 -fms-extensions -Wno-everything -Werror",
             ],
         ],
         files: {
             "src/main.cpp": {
-                contains: [["-std=c++23"], ["-fms-extensions"], ["-Wno-everything"]],
+                contains: [["-std=c++23"], ["-fms-extensions"], ["-Wno-everything"], ["-Werror"]],
             },
             "src/util.c": {},
         },
@@ -510,7 +551,8 @@ export const SCENARIOS: Scenario[] = [
         files: BOTH,
     },
     // A CUDA source parses in the device view, a host-language source nvcc
-    // compiles stays a plain host compile under nvcc's macros.
+    // compiles stays a plain host compile under nvcc's macros. Both include
+    // libcu++, in CUDA 13's include/cccl, which only nvcc's host line names.
     nvcc("make bear nvcc", undefined, {
         "cuda/kernel.cu": { contains: [["-fcuda-is-device"], ["CUDA_DOUBLE_MATH_FUNCTIONS"]] },
         "cuda/host.cpp": { excludes: ["-fcuda-is-device"] },

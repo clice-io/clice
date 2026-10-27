@@ -8,6 +8,7 @@ import :command.argument;
 import :command.toolchains.cl;
 import :command.toolchains.clang;
 import :support.process;
+import :vfs.path;
 
 namespace clice {
 
@@ -32,6 +33,21 @@ CLOutput parse_cl_output(llvm::StringRef out) {
         }
     }
     return output;
+}
+
+std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily family) {
+    std::vector<std::string> mode = {"--driver-mode=cl"};
+    std::string include;
+    if(family != CompilerFamily::MSVC || sys::get_env(include, "INCLUDE")) {
+        return mode;
+    }
+    auto host = path::parent(path::parent(driver));
+    auto bin = path::parent(host);
+    if(llvm::StringRef(path::filename(host)).starts_with_insensitive("host") &&
+       llvm::StringRef(path::filename(bin)).equals_insensitive("bin")) {
+        mode.insert(mode.end(), {"/vctoolsdir", std::string(path::parent(bin))});
+    }
+    return mode;
 }
 
 kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
@@ -77,13 +93,16 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
     }
     auto parsed = parse_cl_output(output->out);
 
-    std::vector<std::string> mode = {"--driver-mode=cl"};
+    auto mode = cl_driver_mode(args[0], family);
     auto clang_job = parse_clang_job(output->err);
     if(auto it = ranges::find(clang_job, "-resource-dir");
        it != clang_job.end() && std::next(it) != clang_job.end()) {
         mode.insert(mode.end(), {"-resource-dir", *std::next(it)});
     }
-    auto job = ask_clang(args, mode, cwd);
+    std::vector<std::string> flags = {args[0]};
+    auto taken = flags_for_clang(args.drop_front(), family);
+    flags.insert(flags.end(), taken.begin(), taken.end());
+    auto job = ask_clang(flags, mode, cwd);
     if(!job) {
         co_return job;
     }
