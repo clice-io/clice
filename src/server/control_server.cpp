@@ -40,11 +40,14 @@ void register_control(ProjectServer& srv, ipc::JSONPeer& peer) {
             // Build changes arrive through the tracker's poll; a request right
             // after a compile_commands.json edit must see the new units.
             srv.project.file_table.disk.look_flags();
-            if(!srv.weigh_databases(/*force=*/true)) {
+            // The poll restarts the project on the other build; restarted
+            // here, it would close this very channel before the answer.
+            if(srv.tracker && srv.tracker->moved()) {
                 co_await kota::fail(
-                    ipc::Error{"the running clice server is switching to the build its databases "
-                               "now resolve to; run the command again"});
+                    ipc::Error{"the running clice server is about to switch to the build its "
+                               "databases now resolve to; run the command again in a moment"});
             }
+            srv.weigh_databases(/*force=*/true);
             auto members = srv.project.build.members();
             if(members.empty()) {
                 co_await kota::fail(ipc::Error{
