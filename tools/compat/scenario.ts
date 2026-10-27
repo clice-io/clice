@@ -165,6 +165,14 @@ function developerEnv(toolset: string): NodeJS.ProcessEnv | null {
     if (install === "" || !fs.existsSync(vcvars)) {
         return null;
     }
+    // vcvars fails on a toolset that is not installed.
+    const toolsets = path.join(install, "VC", "Tools", "MSVC");
+    if (
+        toolset !== "" &&
+        !fs.readdirSync(toolsets).some((installed) => installed.startsWith(`${toolset}.`))
+    ) {
+        return null;
+    }
     const version = toolset === "" ? "" : ` -vcvars_ver=${toolset}`;
     const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${vcvars}"${version} 1>&2 && set"`], {
         env: systemEnv(),
@@ -194,16 +202,20 @@ function withPath(env: NodeJS.ProcessEnv, dirs: string[] | undefined): NodeJS.Pr
 }
 
 /// The environment the scenario's build and its compiler run in; null
-/// when it needs a Visual Studio the machine does not have.
+/// when it needs a Visual Studio, or a toolset of it, the machine does not
+/// have.
 export function buildEnv(scenario: Scenario): NodeJS.ProcessEnv | null {
     const env = scenario.msvc === true ? developerEnv(scenario.toolset ?? "") : systemEnv();
     return env === null ? null : withPath(env, scenario.path);
 }
 
 /// The environment clice runs in for the scenario: never the developer
-/// prompt's, as an editor runs it.
+/// prompt's, as an editor runs it, even when the suite runs in one.
 export function cliceEnv(scenario: Scenario): NodeJS.ProcessEnv {
-    return withPath(systemEnv(), scenario.path);
+    const env = Object.fromEntries(
+        Object.entries(systemEnv()).filter(([name]) => name.toUpperCase() !== "INCLUDE"),
+    );
+    return withPath(env, scenario.path);
 }
 
 function locate(tool: string, env: NodeJS.ProcessEnv): string | undefined {
@@ -223,7 +235,11 @@ function locate(tool: string, env: NodeJS.ProcessEnv): string | undefined {
 export function missingTools(scenario: Scenario): string[] {
     const env = buildEnv(scenario);
     if (env === null) {
-        return ["Visual Studio with the C++ tools"];
+        return [
+            scenario.toolset === undefined
+                ? "Visual Studio with the C++ tools"
+                : `Visual Studio with the MSVC ${scenario.toolset} toolset`,
+        ];
     }
     return scenario.requires.filter((tool) => locate(tool, env) === undefined);
 }
