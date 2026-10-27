@@ -1,0 +1,16 @@
+[test."src/main.cpp".compile_command]
+source = "database"
+
+[test."src/shared.h".compile_command]
+source = "host"
+from = "src/main.cpp"
+
+[test."src/extra.cpp".compile_command]
+source = "inferred"
+from = "src/main.cpp"
+
+[test."tools/gen.cpp".compile_command]
+source = "default"
+
+[test."scratch/plain.c".compile_command]
+source = "fallback"
