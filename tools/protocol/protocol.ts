@@ -102,6 +102,35 @@ export const ResetContextRequest = new RequestType<ResetContextParams, SwitchCon
     "clice/resetContext",
 );
 
+/// clice/compileCommand: the command the open document `uri` compiles
+/// with, and where it comes from.
+export interface CompileCommandParams {
+    uri: string;
+}
+
+export interface CompileCommandResult {
+    /// Where the command comes from: an entry of a compilation database,
+    /// the command of a source including the header, the default_command
+    /// of a rule, the command of a unit nearby, or clice's own.
+    source: "database" | "host" | "default" | "inferred" | "fallback";
+
+    /// The file whose command it borrows ("host", "inferred").
+    from: string | null;
+
+    directory: string;
+    arguments: string[];
+
+    /// Why the compiler of the command could not be queried, which left the
+    /// arguments clang's own reading of the command; null when it was.
+    queryFailure: string | null;
+}
+
+export const CompileCommandRequest = new RequestType<
+    CompileCommandParams,
+    CompileCommandResult,
+    void
+>("clice/compileCommand");
+
 /// clice/listConfigurations: the build configuration menu (the distinct
 /// `configuration` tags of the rules) and the names the selection layers
 /// hold.

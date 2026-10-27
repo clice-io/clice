@@ -57,6 +57,10 @@ struct ContextService {
     /// in flight, the self-containment result — carries over.
     void leave_context(Session& session);
 
+    /// clice/compileCommand: the command the open document compiles with,
+    /// as its next compile sends it, and where it comes from.
+    ext::CompileCommandResult compile_command(Fid path_id);
+
     /// clice/listConfigurations: the configuration menu with the running,
     /// persisted and default names.
     ext::ListConfigurationsResult list_configurations() const;

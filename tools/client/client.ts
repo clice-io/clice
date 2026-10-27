@@ -17,6 +17,7 @@ import {
 } from "vscode-languageserver-protocol/node";
 import { URI } from "vscode-uri";
 import {
+    CompileCommandRequest,
     CounterpartsRequest,
     CurrentContextRequest,
     GateRequest,
@@ -33,6 +34,7 @@ import {
     SwitchContextRequest,
     SyncRequest,
     type BuildKind,
+    type CompileCommandResult,
     type CounterpartsResult,
     type CurrentContextResult,
     type ListConfigurationsResult,
@@ -1031,6 +1033,10 @@ export class CliceClient {
 
     currentContext(uri: string): Promise<CurrentContextResult> {
         return this.sendRequest(CurrentContextRequest, { uri });
+    }
+
+    compileCommand(uri: string): Promise<CompileCommandResult> {
+        return this.sendRequest(CompileCommandRequest, { uri });
     }
 
     resetContext(uri: string): Promise<SwitchContextResult> {

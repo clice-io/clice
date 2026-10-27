@@ -82,6 +82,10 @@ struct Resolution {
     /// invalid for every other source.
     Fid host;
 
+    /// The unit whose command an Inferred resolution borrowed; invalid for
+    /// every other source.
+    Fid lender;
+
     /// The file the host's command forces in that the header context
     /// enters the header through (HeaderContext::forced).
     Fid forced;

@@ -1,0 +1,5 @@
+[test.progress]
+value = [
+    { kind = "begin", title = "main.cpp", message = "parsing" },
+    { kind = "end" },
+]

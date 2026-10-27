@@ -358,6 +358,32 @@ void ContextService::leave_context(Session& session) {
     editor.commands.forget_self_contained(session.path_id);
 }
 
+/// How clice/compileCommand names where a command comes from.
+static std::string_view source_name(CommandSource source) {
+    switch(source) {
+        case CommandSource::CDBExact: return "database";
+        case CommandSource::IncludeGraph: return "host";
+        case CommandSource::Default: return "default";
+        case CommandSource::Inferred: return "inferred";
+        case CommandSource::Fallback: return "fallback";
+    }
+    std::unreachable();
+}
+
+ext::CompileCommandResult ContextService::compile_command(Fid path_id) {
+    ext::CompileCommandResult result;
+    auto resolution = editor.resolve_command(path_id, result.directory, result.arguments);
+    result.source = source_name(resolution.source);
+    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
+    if(from.valid()) {
+        result.from = feature::to_uri(project.file_table.display(from));
+    }
+    if(!resolution.query_failure.empty()) {
+        result.query_failure = std::move(resolution.query_failure);
+    }
+    return result;
+}
+
 ext::ListConfigurationsResult ContextService::list_configurations() const {
     ext::ListConfigurationsResult result;
     for(auto tag: project.config.configurations()) {
