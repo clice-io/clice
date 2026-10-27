@@ -41,3 +41,35 @@ default = "active"
 workspace_symbols = [
     { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
 ]
+
+["batch commands follow the link"."$ clice index --jobs 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["batch commands follow the link"."$ clice index --jobs 2 #2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a link made after the start".release]
+workspace_symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+
+["clice index while the server switches"."$ clice index --jobs 2"]
+stderr = "error: request failed: the running clice server is about to switch to the build its databases now resolve to; run the command again in a moment"
+exit = 1
+
+["clice index while the server switches"."$ clice index --jobs 2 #2"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
+["clice index while the server switches".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]

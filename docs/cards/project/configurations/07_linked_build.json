@@ -254,6 +254,99 @@
           }
         }
       ]
+    },
+    {
+      "name": "batch commands follow the link",
+      "blocks": [
+        {
+          "label": "$ clice index --jobs 2",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice index --jobs 2 #2",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a link made after the start",
+      "blocks": [
+        {
+          "label": "release",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "release_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦release_only⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "clice index while the server switches",
+      "blocks": [
+        {
+          "label": "$ clice index --jobs 2",
+          "value": {
+            "stderr": "error: request failed: the running clice server is about to switch to the build its databases now resolve to; run the command again in a moment",
+            "exit": 1
+          }
+        },
+        {
+          "label": "$ clice index --jobs 2 #2",
+          "value": {
+            "stdout": "Indexed through the running clice server (pid #).",
+            "exit": 0
+          }
+        },
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }
