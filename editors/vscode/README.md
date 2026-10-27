@@ -40,6 +40,27 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 Changing a server setting offers to restart the server in place — no window
 reload is needed.
 
+## What clice tells of a file
+
+The language status of a C or C++ file — the `{}` beside its language mode;
+pin an item to keep it in the status bar — tells:
+
+- where its compile command comes from: `database` (an entry of a
+  compilation database), `host` (the command of a source including the
+  header), `default` (a rule's `default_command`), `inferred` (borrowed from
+  a unit nearby) or `fallback` (clice's own), marked as a warning when the
+  command is clice's own or its compiler could not be queried. **Show**, or
+  `Clice: Show Compile Command`, opens the whole command;
+- its compilation context, when it has more than one: `auto` or `selected`,
+  with **Switch**. The Explorer's Compilation Contexts view lists them all;
+- the build configuration, when the rules in `clice.toml` declare any, with
+  **Switch**, which restarts the server under the one picked.
+
+A compile that runs long shows its progress in the status bar: the file and
+what it waits on (its modules, its preamble, the parse). What needs fixing in
+the setup, such as a workspace without a compilation database, shows as a
+notification.
+
 ## Refactorings
 
 clice's refactorings are behind the lightbulb, `Ctrl+.` and **Refactor...**
