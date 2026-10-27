@@ -191,7 +191,7 @@ tests/semantic_tokens/lexical/02_literals
 
 **关键字**
 
-运算符的替代拼写标记为运算符，上下文说明符仍标记为关键字 Token
+运算符的替代拼写标记为带 `operator` 修饰符的关键字，上下文说明符仍标记为关键字 Token
 
 ```case
 tests/semantic_tokens/lexical/03_keywords
@@ -299,6 +299,20 @@ tests/semantic_tokens/lexical/12_format_strings
 
 ```case
 tests/semantic_tokens/lexical/13_doc_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**以单词拼写的运算符**
+
+以单词拼写的运算符是带 `operator` 修饰符的关键字
+
+`sizeof`、`alignof`、`typeid`、`new`、`delete`、具名转型以及 `and` 这类替代拼写都采用关键字的颜色，修饰符把它们与其他关键字区分开。
+
+```case
+tests/semantic_tokens/lexical/16_word_operators
 ```
 
 <!-- END CAPABILITY -->

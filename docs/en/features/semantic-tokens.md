@@ -221,7 +221,7 @@ tests/semantic_tokens/lexical/02_literals
 
 **Keywords**
 
-Alternative operator spellings are operators, and contextual specifiers keep keyword tokens
+Alternative operator spellings are keywords with the `operator` modifier, and contextual specifiers keep keyword tokens
 
 ```case
 tests/semantic_tokens/lexical/03_keywords
@@ -341,6 +341,22 @@ both with the `documentation` modifier; the rest of the comment stays a
 
 ```case
 tests/semantic_tokens/lexical/13_doc_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Word operators**
+
+Operators spelled as words are keywords with the `operator` modifier
+
+`sizeof`, `alignof`, `typeid`, `new`, `delete`, the named casts and the
+alternative spellings such as `and` take a keyword's color, and the modifier
+tells them apart from other keywords.
+
+```case
+tests/semantic_tokens/lexical/16_word_operators
 ```
 
 <!-- END CAPABILITY -->

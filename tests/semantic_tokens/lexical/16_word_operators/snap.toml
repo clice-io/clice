@@ -1,0 +1,28 @@
+[answers.new.semantic_token]
+text = "new"
+type = "keyword"
+modifiers = ["operator"]
+
+[answers.sizeof.semantic_token]
+text = "sizeof"
+type = "keyword"
+modifiers = ["operator"]
+
+[answers.alignof.semantic_token]
+text = "alignof"
+type = "keyword"
+modifiers = ["operator"]
+
+[answers.delete.semantic_token]
+text = "delete"
+type = "keyword"
+modifiers = ["operator"]
+
+[answers.cast.semantic_token]
+text = "static_cast"
+type = "keyword"
+modifiers = ["operator"]
+
+[answers.cast_open.semantic_token]
+text = "<"
+type = "operator"

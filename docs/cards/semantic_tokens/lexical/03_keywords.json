@@ -3,7 +3,7 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Keywords",
-  "summary": "Alternative operator spellings are operators, and contextual specifiers keep keyword tokens",
+  "summary": "Alternative operator spellings are keywords with the `operator` modifier, and contextual specifiers keep keyword tokens",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -61,7 +61,10 @@
           "value": {
             "semantic_token": {
               "text": "and",
-              "type": "operator"
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
             }
           }
         },
@@ -71,7 +74,10 @@
           "value": {
             "semantic_token": {
               "text": "or",
-              "type": "operator"
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
             }
           }
         },
@@ -81,7 +87,10 @@
           "value": {
             "semantic_token": {
               "text": "not",
-              "type": "operator"
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
             }
           }
         },
