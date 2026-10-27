@@ -169,7 +169,9 @@ function developerEnv(toolset: string): NodeJS.ProcessEnv | null {
     const toolsets = path.join(install, "VC", "Tools", "MSVC");
     if (
         toolset !== "" &&
-        !fs.readdirSync(toolsets).some((installed) => installed.startsWith(`${toolset}.`))
+        !fs
+            .readdirSync(toolsets)
+            .some((installed) => installed === toolset || installed.startsWith(`${toolset}.`))
     ) {
         return null;
     }
@@ -210,10 +212,12 @@ export function buildEnv(scenario: Scenario): NodeJS.ProcessEnv | null {
 }
 
 /// The environment clice runs in for the scenario: never the developer
-/// prompt's, as an editor runs it, even when the suite runs in one.
+/// prompt's, as an editor runs it, even when the suite runs in one. Its
+/// header lists would stand in for the ones clang finds itself.
 export function cliceEnv(scenario: Scenario): NodeJS.ProcessEnv {
+    const prompt = new Set(["INCLUDE", "EXTERNAL_INCLUDE"]);
     const env = Object.fromEntries(
-        Object.entries(systemEnv()).filter(([name]) => name.toUpperCase() !== "INCLUDE"),
+        Object.entries(systemEnv()).filter(([name]) => !prompt.has(name.toUpperCase())),
     );
     return withPath(env, scenario.path);
 }
