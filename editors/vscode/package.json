@@ -11,7 +11,7 @@
   "publisher": "clice-io",
   "icon": "clice.png",
   "engines": {
-    "vscode": "^1.82.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages",
@@ -767,22 +767,22 @@
     "release:tag": "VERSION=$(node -p \"require('./package.json').version\") && git commit -m \"release: v$VERSION\" package.json ../../package-lock.json && git tag \"v$VERSION\" && git push --follow-tags"
   },
   "devDependencies": {
+    "@clice/tools": "*",
     "@types/mocha": "^10.0.10",
     "@types/node": "~25.0.3",
-    "@types/vscode": "^1.82.0",
+    "@types/vscode": "~1.91.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "eslint": "^10.8.0",
     "ovsx": "^1.2.0",
     "ts-loader": "^9.5.4",
-    "typescript-eslint": "^8.65.0",
     "typescript": "~5.5.4",
+    "typescript-eslint": "^8.65.0",
     "webpack": "^5.104.1",
-    "webpack-cli": "^6.0.1",
-    "@clice/tools": "*"
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.2"
   }
 }

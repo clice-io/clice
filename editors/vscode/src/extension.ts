@@ -9,7 +9,6 @@ import {
     LanguageClientOptions,
     ServerOptions,
     State,
-    StaticFeature,
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
@@ -22,25 +21,9 @@ import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerCounterparts } from "./feature/counterparts";
 import { registerInactiveRegions } from "./feature/inactive";
-import { registerProblems } from "./feature/problems";
 import { registerRefactorCommands } from "./feature/refactor";
 
 let client: ClientHandle | undefined;
-
-/// Keeps clice's diagnostics pushed: vscode-languageclient 9 shows the
-/// pull it cancels on every edit as an empty report, so pulled
-/// diagnostics would blink while typing. clice pushes to a client that
-/// does not declare pull support. Registered after the built-in features,
-/// so it runs after the one declaring it.
-const declinePullDiagnostics: StaticFeature = {
-    fillClientCapabilities(capabilities) {
-        delete capabilities.textDocument?.diagnostic;
-        delete capabilities.workspace?.diagnostics;
-    },
-    initialize: () => undefined,
-    getState: () => ({ kind: "static" }),
-    clear: () => undefined,
-};
 
 // Platform-specific builds of the extension ship the server under clice/;
 // universal builds (a plain `vsce package` without the binary staged) carry
@@ -355,8 +338,8 @@ export async function activate(context: ExtensionContext) {
     // monorepos and vendored checkouts hold C++ the user never opens. Until a
     // C, C++ or CUDA file is opened or a clice command is run there is no
     // server; accepted.
-    const channel = window.createOutputChannel("clice");
-    const traceChannel = window.createOutputChannel("clice (LSP trace)");
+    const channel = window.createOutputChannel("clice", { log: true });
+    const traceChannel = window.createOutputChannel("clice (LSP trace)", { log: true });
     context.subscriptions.push(channel, traceChannel);
 
     const documentSelector = [
@@ -373,7 +356,6 @@ export async function activate(context: ExtensionContext) {
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
-            handleDiagnostics: registerProblems(() => client, documentSelector, context),
             provideDocumentSemanticTokens: inactive.full,
             provideDocumentSemanticTokensEdits: inactive.edits,
             // Space triggers exist only for the module names after `import `
@@ -400,11 +382,9 @@ export async function activate(context: ExtensionContext) {
     };
 
     const serverOptions = makeServerOptions(context, channel);
-    client = new ClientHandle(() => {
-        const created = new LanguageClient("clice", "clice", serverOptions, clientOptions);
-        created.registerFeature(declinePullDiagnostics);
-        return created;
-    });
+    client = new ClientHandle(
+        () => new LanguageClient("clice", "clice", serverOptions, clientOptions),
+    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand("clice.restart", () => startServer(context)),

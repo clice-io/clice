@@ -345,14 +345,13 @@ suite("clice E2E", function () {
         position = document.positionAt(offset);
 
         await diagnostics;
-        // clice offers pulls only to a client declaring them; the extension
-        // declines (see declinePullDiagnostics in extension.ts).
+        // clice offers pulls to a client declaring them, as the extension does.
         const extension = vscode.extensions.getExtension("clice-io.clice");
         const client = (extension?.exports as { client: ClientHandle }).client;
-        assert.strictEqual(
+        assert.notStrictEqual(
             client.current.initializeResult?.capabilities.diagnosticProvider,
             undefined,
-            "diagnostics must stay pushed",
+            "diagnostics are pulled",
         );
     });
 

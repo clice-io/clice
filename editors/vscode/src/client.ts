@@ -8,7 +8,7 @@ import {
 /// A start() rejection is terminal for a LanguageClient instance: it
 /// caches the rejected start promise forever, and stop() refuses to run
 /// without a live connection (verified against vscode-languageclient
-/// 9.0.1). Recovery therefore needs a fresh instance, so features bind
+/// 10.1.2). Recovery therefore needs a fresh instance, so features bind
 /// to this stable handle instead of the client; renew() swaps the
 /// instance underneath and re-points state events and notification
 /// handlers at the replacement.
