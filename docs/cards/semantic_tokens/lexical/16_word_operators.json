@@ -3,8 +3,8 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Word operators",
-  "summary": "Operators spelled as words are keywords with the `operator` modifier",
-  "prose": "`sizeof`, `alignof`, `typeid`, `new`, `delete`, the named casts and the\nalternative spellings such as `and` take a keyword's color, and the modifier\ntells them apart from other keywords.",
+  "summary": "Word operators such as `sizeof`, `new` and `static_cast` are keywords with the `operator` modifier",
+  "prose": "`sizeof`, `alignof`, `typeid`, `new`, `delete`, the named casts and the\nalternative spellings such as `and` take a keyword's color, and the modifier\ntells them apart from other keywords. `co_await`, which suspends the\ncoroutine, carries `controlFlow` instead.",
   "status": "supported",
   "issues": [],
   "files": [

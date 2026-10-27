@@ -307,9 +307,9 @@ tests/semantic_tokens/lexical/13_doc_comments
 
 **以单词拼写的运算符**
 
-以单词拼写的运算符是带 `operator` 修饰符的关键字
+`sizeof`、`new`、`static_cast` 这类以单词拼写的运算符是带 `operator` 修饰符的关键字
 
-`sizeof`、`alignof`、`typeid`、`new`、`delete`、具名转型以及 `and` 这类替代拼写都采用关键字的颜色，修饰符把它们与其他关键字区分开。
+`sizeof`、`alignof`、`typeid`、`new`、`delete`、具名转型以及 `and` 这类替代拼写都采用关键字的颜色，修饰符把它们与其他关键字区分开。`co_await` 会挂起协程，带的是 `controlFlow`。
 
 ```case
 tests/semantic_tokens/lexical/16_word_operators
