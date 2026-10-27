@@ -1,3 +1,6 @@
 [[rules]]
+compile_commands = ["compile_commands.json"]
+
+[[rules]]
 patterns = ["tools/**"]
 default_command = "clang++ -std=c++20"

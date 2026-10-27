@@ -16,6 +16,7 @@ import { ClientHandle } from "./client";
 import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
+import { registerCompileCommand } from "./feature/command";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
@@ -369,6 +370,7 @@ export async function activate(context: ExtensionContext) {
     );
 
     registerBuildConfiguration(client, context);
+    registerCompileCommand(client, context);
     registerCompilationContext(client, context);
     registerConflictCheck(client, context);
     registerCounterparts(client, context);

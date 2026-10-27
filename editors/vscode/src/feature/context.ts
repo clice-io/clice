@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { LanguageStatus } from "./status";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
 import type {
@@ -181,6 +182,11 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     activeUri() {
         return this.uri;
     }
+
+    /// How many contexts the listing holds.
+    count() {
+        return this.total;
+    }
 }
 
 /** After a context switch the server recompiles the unchanged text and
@@ -204,8 +210,8 @@ class OutlineRefresher implements vscode.Disposable {
 }
 
 export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
-    const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    status.command = "clice.switchContext";
+    const status = new LanguageStatus("clice.context", "clice: compilation context");
+    const switchContext: vscode.Command = { title: "Switch", command: "clice.switchContext" };
 
     const tree = new ContextTreeProvider(client);
     const outline = new OutlineRefresher();
@@ -217,12 +223,19 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         if (vscode.window.activeTextEditor !== editor) {
             return;
         }
-        // The item's label can run to every flag of a command; the bar only
-        // says who picked the context, the tooltip names it.
-        status.text = current.automatic ? "$(list-tree) auto" : "$(list-tree) selected";
-        const named = current.context ? `${current.context.label} — ` : "";
-        status.tooltip = `clice: compilation context ${named}${current.automatic ? "picked automatically" : "chosen"} (click to switch)`;
-        status.show();
+        // A file with nothing to choose from has no context to tell of.
+        if (current.automatic && tree.count() < 2) {
+            status.hide();
+            return;
+        }
+        // The item's label can run to every flag of a command; the text only
+        // says who picked the context, the detail names it.
+        const picked = current.automatic ? "picked automatically" : "chosen";
+        status.show(
+            current.automatic ? "auto" : "selected",
+            current.context ? `${current.context.label}, ${picked}` : picked,
+            switchContext,
+        );
     }
 
     async function refresh(editor: vscode.TextEditor | undefined) {

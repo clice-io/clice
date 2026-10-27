@@ -1,19 +1,23 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { LanguageStatus } from "./status";
 import type {
     ListConfigurationsResult,
     SwitchConfigurationResult,
 } from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
-/** The build configuration switcher: a status bar item showing the
+/** The build configuration switcher: a language status item naming the
  * configuration the project of the active editor runs (only while its
  * rules declare any) and a quick pick that persists a new choice for that
  * project and restarts the server, since a selection takes effect at the
  * next start. */
 export function registerBuildConfiguration(client: ClientHandle, ext: vscode.ExtensionContext) {
-    const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
-    status.command = "clice.switchConfiguration";
+    const status = new LanguageStatus("clice.configuration", "clice: build configuration");
+    const switchConfiguration: vscode.Command = {
+        title: "Switch",
+        command: "clice.switchConfiguration",
+    };
 
     /// The document naming the project; without one the server answers
     /// for its first folder.
@@ -50,12 +54,13 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             status.hide();
             return;
         }
-        status.text = `$(settings-gear) ${result.active}`;
-        status.tooltip =
+        status.show(
+            result.active,
             result.selected && result.selected !== result.active
-                ? `clice: build configuration ${result.active} is active; ${result.selected} is selected for the next start (click to switch)`
-                : "clice: active build configuration (click to switch)";
-        status.show();
+                ? `the build configuration; ${result.selected} is selected for the next start`
+                : "the build configuration",
+            switchConfiguration,
+        );
     }
 
     async function select() {
