@@ -357,7 +357,7 @@ void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& token
         }
 
         /// UTF-16 response files (MSVC tooling emits them) convert first.
-        llvm::StringRef text = observed->content->getBuffer();
+        llvm::StringRef text = observed->text;
         std::string utf8;
         if(text.size() >= 2 &&
            ((text[0] == '\xff' && text[1] == '\xfe') || (text[0] == '\xfe' && text[1] == '\xff'))) {
@@ -371,7 +371,10 @@ void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& token
 
         llvm::SmallVector<const char*, 32> inner;
         if(cl_mode(family)) {
-            llvm::cl::TokenizeWindowsCommandLineFull(text, saver, inner);
+            for(auto argument:
+                sys::windows::split_command_line(text, sys::windows::CommandLineRules::LLVM)) {
+                inner.push_back(saver.save(llvm::StringRef(argument)).data());
+            }
         } else {
             llvm::cl::TokenizeGNUCommandLine(text, saver, inner);
         }

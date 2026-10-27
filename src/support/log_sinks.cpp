@@ -34,7 +34,7 @@ struct Written {
 /// (EAGAIN; under Windows' PIPE_NOWAIT a write that took nothing); a
 /// blocking descriptor only on a real error.
 Written write_fd(int fd, llvm::StringRef text) {
-    if(write_console(fd, text)) {
+    if(sys::is_console(fd) && !sys::write_console(fd, text)) {
         return {.bytes = text.size()};
     }
     Written result;
@@ -80,7 +80,7 @@ PipeSwitch set_pipe_nonblocking(int fd) {
 StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity) {
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
-    if(is_pipe_or_socket(fd)) {
+    if(sys::is_pipe(fd)) {
         pipe = set_pipe_nonblocking(fd);
     }
 }
@@ -193,19 +193,22 @@ FileSink::FileSink(int fd, bool owned) : fd(fd), owned(owned) {}
 
 FileSink::~FileSink() {
     if(owned) {
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+#ifdef _WIN32
+        ::_close(fd);
+#else
+        ::close(fd);
+#endif
     }
 }
 
 std::expected<std::shared_ptr<FileSink>, std::error_code> FileSink::open(llvm::StringRef path) {
-    int fd = -1;
-    if(auto error = llvm::sys::fs::openFileForWrite(path,
-                                                    fd,
-                                                    llvm::sys::fs::CD_OpenAlways,
-                                                    llvm::sys::fs::OF_Append)) {
-        return std::unexpected(error);
+    auto fd = fs::File::open(path, {.append = true, .create = true}).and_then([](fs::File file) {
+        return std::move(file).into_descriptor();
+    });
+    if(!fd) {
+        return std::unexpected(fd.error());
     }
-    return std::make_shared<FileSink>(fd, /*owned=*/true);
+    return std::make_shared<FileSink>(*fd, /*owned=*/true);
 }
 
 bool FileSink::write_all(llvm::StringRef text) {

@@ -6,22 +6,10 @@ module;
 #include <malloc.h>
 #endif
 
-#ifdef _WIN32
-#include <io.h>
 #include <signal.h>
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <pthread.h>
-#include <signal.h>
+#ifdef __APPLE__
 #include <sys/event.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#else
-#include <signal.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -90,19 +78,6 @@ void purge_freed_memory() {
     }
 }
 
-void lower_thread_priority() {
-#ifdef _WIN32
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-#elif defined(__APPLE__)
-    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
-#else
-    // Linux keeps a nice value per thread. Not SCHED_IDLE: under a machine
-    // kept busy by the user's own build it starves a TU past the build
-    // deadline, which then blames the file for a hang.
-    [[maybe_unused]] auto niceness = ::nice(10);
-#endif
-}
-
 kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
     // Runs after the watcher closes, which restores the default action: a
     // repeated SIGTERM or SIGHUP would then kill a process that is only left
@@ -127,20 +102,6 @@ kota::task<> watch_termination(int signum, bool& requested, std::function<void()
     }
 }
 
-bool process_alive(std::uint32_t pid) {
-#ifdef _WIN32
-    auto process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    if(!process) {
-        return GetLastError() == ERROR_ACCESS_DENIED;
-    }
-    bool alive = WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
-    CloseHandle(process);
-    return alive;
-#else
-    return ::kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM;
-#endif
-}
-
 #ifdef __APPLE__
 
 void exit_with_parent() {
@@ -161,26 +122,5 @@ void exit_with_parent() {
 }
 
 #endif
-
-bool is_pipe_or_socket(int fd) {
-#ifdef _WIN32
-    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
-#else
-    struct stat st = {};
-    return ::fstat(fd, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
-#endif
-}
-
-bool write_console(int fd, llvm::StringRef text) {
-#ifdef _WIN32
-    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    DWORD mode = 0;
-    return handle != INVALID_HANDLE_VALUE && ::GetConsoleMode(handle, &mode) &&
-           !sys::write_console(fd, text);
-#else
-    return false;
-#endif
-}
 
 }  // namespace clice

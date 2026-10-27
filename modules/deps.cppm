@@ -5800,14 +5800,15 @@ using ::kota::detail::when_op;
 
 export namespace kota::fs {
 using ::kota::fs::DirEntry;
+using ::kota::fs::DirStream;
 using ::kota::fs::File;
 using ::kota::fs::FileID;
+using ::kota::fs::FileTimes;
 using ::kota::fs::FileType;
 using ::kota::fs::Mapping;
 using ::kota::fs::OpenOptions;
 using ::kota::fs::SeekFrom;
 using ::kota::fs::Status;
-using ::kota::fs::StatusEntry;
 using ::kota::fs::Volume;
 using ::kota::fs::absolute;
 using ::kota::fs::canonical;
@@ -5825,12 +5826,13 @@ using ::kota::fs::is_directory;
 using ::kota::fs::is_file;
 using ::kota::fs::is_symlink;
 using ::kota::fs::read_dir;
-using ::kota::fs::read_dir_status;
 using ::kota::fs::read_file;
 using ::kota::fs::read_symlink;
 using ::kota::fs::remove;
 using ::kota::fs::remove_all;
 using ::kota::fs::rename;
+using ::kota::fs::set_permissions;
+using ::kota::fs::set_times;
 using ::kota::fs::status;
 using ::kota::fs::symlink_status;
 using ::kota::fs::volume;
@@ -5889,6 +5891,10 @@ using ::kota::fs::cygwin::MountTable;
 using ::kota::fs::cygwin::is_posix_path;
 using ::kota::fs::cygwin::read_symlink;
 using ::kota::fs::cygwin::runtime_dirs;
+}
+
+export namespace kota::fs::detail {
+using ::kota::fs::detail::OpenDirectory;
 }
 
 export namespace kota::fs::path {
@@ -6714,6 +6720,7 @@ using ::kota::meta::detail::make_candidate_names;
 using ::kota::meta::detail::make_candidate_valid;
 using ::kota::meta::detail::make_candidate_values;
 using ::kota::meta::detail::make_field_info;
+using ::kota::meta::detail::make_scan_values;
 using ::kota::meta::detail::map_entries_contained_in;
 using ::kota::meta::detail::merge_config_impl;
 using ::kota::meta::detail::merged_config;
@@ -6729,8 +6736,8 @@ using ::kota::meta::detail::resolve_field_name;
 using ::kota::meta::detail::resolve_node;
 using ::kota::meta::detail::resolve_repr;
 using ::kota::meta::detail::resolved_repr;
+using ::kota::meta::detail::scan_values;
 using ::kota::meta::detail::set_entries_contained_in;
-using ::kota::meta::detail::shifted_integer_sequence;
 using ::kota::meta::detail::single_field_count;
 using ::kota::meta::detail::single_field_slots;
 using ::kota::meta::detail::standard_integer;
@@ -6888,10 +6895,13 @@ using ::kota::sys::data_dir;
 using ::kota::sys::env_name_equal;
 using ::kota::sys::environment;
 using ::kota::sys::executable_path;
+using ::kota::sys::expand_tilde;
 using ::kota::sys::find_program;
 using ::kota::sys::get_env;
 using ::kota::sys::home_dir;
 using ::kota::sys::hostname;
+using ::kota::sys::is_console;
+using ::kota::sys::is_pipe;
 using ::kota::sys::join_paths;
 using ::kota::sys::memory;
 using ::kota::sys::oom_score_adjustment;
@@ -6901,13 +6911,16 @@ using ::kota::sys::parallelism;
 using ::kota::sys::parent_pid;
 using ::kota::sys::pid;
 using ::kota::sys::priority;
+using ::kota::sys::process_alive;
 using ::kota::sys::process_stats;
 using ::kota::sys::resident_memory;
 using ::kota::sys::self_executable;
 using ::kota::sys::set_env;
 using ::kota::sys::set_oom_score_adjustment;
 using ::kota::sys::set_priority;
+using ::kota::sys::set_process_name;
 using ::kota::sys::set_process_title;
+using ::kota::sys::set_thread_priority;
 using ::kota::sys::signal_name;
 using ::kota::sys::spawn;
 using ::kota::sys::split_paths;
@@ -6919,6 +6932,7 @@ using ::kota::sys::write_console;
 }
 
 export namespace kota::sys::windows {
+using ::kota::sys::windows::CommandLineRules;
 using ::kota::sys::windows::join_command_line;
 using ::kota::sys::windows::ntstatus_name;
 using ::kota::sys::windows::quote_argument;

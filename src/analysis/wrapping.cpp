@@ -225,10 +225,14 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
             std::format("cannot list {}: {}", compat, entries.error().message()));
     }
     for(auto& entry: *entries) {
-        if(!entry.name.ends_with(".inc")) {
+        if(!entry) {
+            return std::unexpected(
+                std::format("cannot list {}: {}", compat, entry.error().message()));
+        }
+        if(!entry->name.ends_with(".inc")) {
             continue;
         }
-        auto exported = read_lines(path::join(compat, entry.name));
+        auto exported = read_lines(path::join(compat, entry->name));
         if(!exported) {
             return std::unexpected(exported.error());
         }

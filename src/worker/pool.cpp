@@ -116,10 +116,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
                         error.message());
             return std::nullopt;
         }
-    }
-    // On Linux the program is /proc/self/exe, which ps would show.
-    if(auto& arguments = sys::arguments(); !arguments.empty()) {
-        opts.arg0 = arguments.front();
+        // On Linux the program is /proc/self/exe, which ps would show.
+        if(auto& arguments = sys::arguments(); !arguments.empty()) {
+            opts.arg0 = arguments.front();
+        }
     }
     opts.args = {"worker"};
     if(stateful) {

@@ -99,7 +99,7 @@ inline void add_commands(kota::deco::cli::SubCommander& root) {
 /// line must not end a run before it saves.
 inline void write_output(std::FILE* stream, std::string_view text) {
     int fd = ::fileno(stream);
-    if(write_console(fd, text)) {
+    if(sys::is_console(fd) && !sys::write_console(fd, text)) {
         return;
     }
     if(std::fwrite(text.data(), 1, text.size(), stream) == text.size() &&
@@ -110,7 +110,7 @@ inline void write_output(std::FILE* stream, std::string_view text) {
         return;
     }
     int error = errno;
-    if(error != EAGAIN && is_pipe_or_socket(fd)) {
+    if(error != EAGAIN && sys::is_pipe(fd)) {
 #ifdef _WIN32
         std::_Exit(141);
 #else

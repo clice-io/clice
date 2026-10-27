@@ -1002,7 +1002,7 @@ void MasterServer::watch_client(std::uint32_t pid) {
 }
 
 kota::task<> MasterServer::client_task(std::uint32_t pid) {
-    while(process_alive(pid)) {
+    while(sys::process_alive(static_cast<int>(pid))) {
         // No event: the editor is no child of the server's to wait for.
         co_await kota::sleep(std::chrono::seconds(2), loop);
     }

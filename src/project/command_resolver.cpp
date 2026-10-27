@@ -548,7 +548,7 @@ std::expected<HeaderContext, Fid>
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
             return std::unexpected(host_path_id);
         }
-        chain_contents.emplace_back(observed->content->getBuffer());
+        chain_contents.push_back(std::move(observed->text));
         chain_paths.push_back(project.file_table.spelling(chain[i]));
         chain_entries.push_back({
             .path = chain_paths.back(),
@@ -569,7 +569,7 @@ std::expected<HeaderContext, Fid>
     std::optional<llvm::StringRef> target_content;
     auto target_observed = vfs::read_observed(target_path);
     if(target_observed) {
-        target_content = target_observed->content->getBuffer();
+        target_content = target_observed->text;
         project.file_table.disk.observe(chain.back(), target_observed->obs);
     }
 

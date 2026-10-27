@@ -44,12 +44,20 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
     bool bare = !driver.contains('/') && !driver.contains('\\');
     auto name = bare || cwd.empty() ? driver.str() : path::join(cwd, driver);
     // Cygwin and MSYS2 programs, and a Cygwin symlink's target, are named
-    // without the `.exe` Windows adds when it starts one (`gcc-12.2.0`).
+    // without the `.exe` Windows adds when it starts one (`gcc-12.2.0`); a
+    // driver may be a batch file (emscripten's `emcc.bat`).
     sys::ProgramSearch search{
-        .extensions = {"", ".exe"}
+        .extensions = {"", ".exe", ".bat", ".cmd"}
     };
     std::string found;
-    if(sys::find_program(found, name, search)) {
+    if(auto error = sys::find_program(found, name, search)) {
+        std::string target;
+        if(error == std::errc::permission_denied && fs::cygwin::read_symlink(target, found)) {
+            return std::unexpected(
+                std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",
+                            found,
+                            target));
+        }
         if(bare) {
             return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         }

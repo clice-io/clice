@@ -140,11 +140,17 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    for(auto& entry: fs::read_dir(workspace_root).value_or(std::vector<fs::DirEntry>())) {
-        // A symlinked build directory is a build directory too, even
-        // before its target exists.
-        if(entry.type == fs::FileType::Symlink || entry.type == fs::FileType::Directory) {
-            subdirectories.push_back(Spelling::absolute(path::join(workspace_root, entry.name)));
+    if(auto entries = fs::read_dir(workspace_root)) {
+        for(auto& entry: *entries) {
+            if(!entry) {
+                break;
+            }
+            // A symlinked build directory is a build directory too, even
+            // before its target exists.
+            if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
+                subdirectories.push_back(
+                    Spelling::absolute(path::join(workspace_root, entry->name)));
+            }
         }
     }
     ranges::sort(subdirectories, {}, &Spelling::str);

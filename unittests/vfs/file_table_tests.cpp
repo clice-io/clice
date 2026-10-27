@@ -207,7 +207,7 @@ ZEST_CASE(ReadDropsBom) {
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
     ZASSERT(observed);
-    ZASSERT(observed->content->getBuffer() == "int x;\n");
+    ZASSERT(observed->text == "int x;\n");
     ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
 }
 

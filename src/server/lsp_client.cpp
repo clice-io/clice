@@ -350,7 +350,7 @@ void LSPClient::register_lifecycle() {
             }
         }
         srv.change_folders({}, std::move(roots));
-        if(params.process_id && srv.client_on_host) {
+        if(params.process_id && *params.process_id > 0 && srv.client_on_host) {
             srv.watch_client(static_cast<std::uint32_t>(*params.process_id));
         }
 

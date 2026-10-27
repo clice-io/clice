@@ -579,7 +579,8 @@ static worker::FormatResult handle_format(const worker::FormatParams& params) {
 struct ServeOptions {
     /// Background work: run it on a thread of its own at lowered priority,
     /// which ends with the request. Lowering the pool thread instead would
-    /// leave every later request on it lowered (see lower_thread_priority).
+    /// leave every later request on it lowered: an unprivileged thread
+    /// cannot raise its priority back.
     bool lowered = false;
 };
 
@@ -589,7 +590,10 @@ static auto run_lowered(Work& work) {
     std::optional<std::invoke_result_t<Work&>> result;
     // As much stack as libuv gives its pool threads; a deep parse needs it.
     llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
-        lower_thread_priority();
+        // Not idle: under a machine kept busy by the user's own build it
+        // starves a TU past the build deadline, which then blames the file
+        // for a hang.
+        sys::set_thread_priority(sys::Priority::BelowNormal);
         result.emplace(work());
     });
     thread.join();

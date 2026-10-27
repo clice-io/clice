@@ -64,13 +64,12 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
 /// Whether a live process is working inside this cache layout: every
 /// writable open creates `tmp/{pid}` and keeps it until shutdown.
 bool has_live_instance(llvm::StringRef base) {
-    auto tmp_parent = path::join(base, "tmp");
-    return ranges::any_of(fs::read_dir(tmp_parent).value_or(std::vector<fs::DirEntry>()),
-                          [](const fs::DirEntry& entry) {
-                              std::uint32_t pid = 0;
-                              return !llvm::StringRef(entry.name).getAsInteger(10, pid) &&
-                                     process_alive(pid);
-                          });
+    auto entries = fs::read_dir(path::join(base, "tmp"));
+    return entries && ranges::any_of(*entries, [](const auto& entry) {
+               int pid = 0;
+               return entry && !llvm::StringRef(entry->name).getAsInteger(10, pid) &&
+                      sys::process_alive(pid);
+           });
 }
 
 std::int64_t now_ms() {
@@ -218,11 +217,6 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     } else if(auto error = lock->lock()) {
         LOG_WARN("CacheStore: cannot lock {}: {}", lock_path, error.message());
     }
-    auto unlock = llvm::make_scope_exit([&] {
-        if(lock) {
-            lock->unlock();
-        }
-    });
 
     if(auto made = fs::create_directories(state->base); !made) {
         return std::unexpected(made.error());
@@ -233,22 +227,27 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // instance stays: a clice of another version is serving from it, and
     // its writer locks live inside the directory, so they cannot protect
     // it from us — a later open reclaims it once that process exits.
-    for(auto& entry: fs::read_dir(parent).value_or(std::vector<fs::DirEntry>())) {
-        if(entry.name == version_dir || entry.name == store_lock_name) {
-            continue;
-        }
-        auto layout = path::join(parent, entry.name);
-        if(entry.type != fs::FileType::Directory) {
+    if(auto entries = fs::read_dir(parent)) {
+        for(auto& entry: *entries) {
+            if(!entry) {
+                break;
+            }
+            if(entry->name == version_dir || entry->name == store_lock_name) {
+                continue;
+            }
+            auto layout = path::join(parent, entry->name);
+            if(entry->type != fs::FileType::Directory) {
+                LOG_INFO("CacheStore: discarding stale cache layout {}", layout);
+                fs::remove(layout);
+                continue;
+            }
+            if(has_live_instance(layout)) {
+                LOG_INFO("CacheStore: keeping cache layout {}, still in use", layout);
+                continue;
+            }
             LOG_INFO("CacheStore: discarding stale cache layout {}", layout);
-            fs::remove(layout);
-            continue;
+            fs::remove_all(layout);
         }
-        if(has_live_instance(layout)) {
-            LOG_INFO("CacheStore: keeping cache layout {}, still in use", layout);
-            continue;
-        }
-        LOG_INFO("CacheStore: discarding stale cache layout {}", layout);
-        fs::remove_all(layout);
     }
 
     // Load the manifest.  Corrupt or missing is fine: registration falls
@@ -271,17 +270,22 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // The only crash residue are in-flight tmp files; committed blobs are
     // complete by construction (atomic rename).  Remove tmp directories of
     // instances that no longer exist.
-    auto self_pid = static_cast<std::uint32_t>(sys::pid());
+    auto self_pid = sys::pid();
     auto tmp_parent = path::join(state->base, "tmp");
-    for(auto& entry: fs::read_dir(tmp_parent).value_or(std::vector<fs::DirEntry>())) {
-        std::uint32_t pid = 0;
-        if(llvm::StringRef(entry.name).getAsInteger(10, pid) || pid == self_pid ||
-           process_alive(pid)) {
-            continue;
+    if(auto entries = fs::read_dir(tmp_parent)) {
+        for(auto& entry: *entries) {
+            if(!entry) {
+                break;
+            }
+            int pid = 0;
+            if(llvm::StringRef(entry->name).getAsInteger(10, pid) || pid == self_pid ||
+               sys::process_alive(pid)) {
+                continue;
+            }
+            auto dead = path::join(tmp_parent, entry->name);
+            fs::remove_all(dead);
+            LOG_DEBUG("CacheStore: removed dead instance directory {}", dead);
         }
-        auto dead = path::join(tmp_parent, entry.name);
-        fs::remove_all(dead);
-        LOG_DEBUG("CacheStore: removed dead instance directory {}", dead);
     }
 
     state->tmp_dir = path::join(tmp_parent, std::to_string(self_pid));
@@ -358,10 +362,8 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         std::int64_t mtime_ns;
     };
 
-    std::vector<fs::DirEntry> entries;
-    if(auto listed = fs::read_dir(ns_state.dir)) {
-        entries = std::move(*listed);
-    } else if(!(state->read_only && listed.error() == std::errc::no_such_file_or_directory)) {
+    auto listed = fs::read_dir(ns_state.dir);
+    if(!listed && !(state->read_only && listed.error() == std::errc::no_such_file_or_directory)) {
         // A read-only open of a store whose namespace was never created is
         // a legitimately empty scan; any other failure hides existing blobs.
         LOG_WARN("CacheStore: failed to scan namespace {}: {}",
@@ -370,33 +372,42 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     }
     llvm::StringMap<AuxBlob> aux_blobs;
     llvm::StringMap<std::int64_t> primary_mtimes;
-    for(auto& entry: entries) {
-        llvm::StringRef filename = entry.name;
+    if(listed) {
+        for(auto& entry: *listed) {
+            if(!entry) {
+                LOG_WARN("CacheStore: failed to scan namespace {}: {}",
+                         ns_state.dir,
+                         entry.error().message());
+                break;
+            }
+            llvm::StringRef filename = entry->name;
 
-        auto status = fs::status(path::join(ns_state.dir, filename));
-        if(!status || status->type != fs::FileType::Regular) {
-            continue;
+            auto status = entry->status();
+            if(!status || status->type != fs::FileType::Regular) {
+                continue;
+            }
+            auto stamp = vfs::Stamp::of(*status);
+
+            auto& aux_ext = ns_state.config.aux_extension;
+            if(!aux_ext.empty() && filename.ends_with(aux_ext)) {
+                aux_blobs[filename.drop_back(aux_ext.size())] = {stamp.size, stamp.mtime_ns};
+                continue;
+            }
+
+            auto& ext = ns_state.config.extension;
+            if(!ext.empty() && !filename.consume_back(ext)) {
+                continue;
+            }
+
+            auto atime_it =
+                state->manifest_atimes.find(ns_state.config.name + "/" + filename.str());
+            auto atime = atime_it != state->manifest_atimes.end() ? atime_it->second
+                                                                  : stamp.mtime_ns / 1'000'000;
+
+            ns_state.entries[filename] = {stamp.size, 0, atime};
+            ns_state.total_size += stamp.size;
+            primary_mtimes[filename] = stamp.mtime_ns;
         }
-        auto stamp = vfs::Stamp::of(*status);
-
-        auto& aux_ext = ns_state.config.aux_extension;
-        if(!aux_ext.empty() && filename.ends_with(aux_ext)) {
-            aux_blobs[filename.drop_back(aux_ext.size())] = {stamp.size, stamp.mtime_ns};
-            continue;
-        }
-
-        auto& ext = ns_state.config.extension;
-        if(!ext.empty() && !filename.consume_back(ext)) {
-            continue;
-        }
-
-        auto atime_it = state->manifest_atimes.find(ns_state.config.name + "/" + filename.str());
-        auto atime = atime_it != state->manifest_atimes.end() ? atime_it->second
-                                                              : stamp.mtime_ns / 1'000'000;
-
-        ns_state.entries[filename] = {stamp.size, 0, atime};
-        ns_state.total_size += stamp.size;
-        primary_mtimes[filename] = stamp.mtime_ns;
     }
 
     // Attach aux blobs to their entries. An aux without a primary is crash
@@ -678,7 +689,8 @@ std::vector<CacheStore::EvictedBlob> CacheStore::take_evictions() {
 std::size_t CacheStore::pending_tmp_files() const {
     std::lock_guard guard(state->mutex);
     auto entries = fs::read_dir(state->tmp_dir);
-    return entries ? entries->size() : 0;
+    return entries ? ranges::count_if(*entries, [](const auto& entry) { return entry.has_value(); })
+                   : 0;
 }
 
 llvm::StringRef CacheStore::base_dir() const {

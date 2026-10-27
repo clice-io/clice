@@ -36,10 +36,8 @@ static std::optional<Spelling> setting_path(std::string value,
                                             const Spelling& anchor,
                                             CanonicalRef workspace_root) {
     substitute_workspace(value, workspace_root);
-    if(llvm::StringRef(value).starts_with("~")) {
-        llvm::SmallString<256> expanded;
-        llvm::sys::fs::expand_tilde(value, expanded);
-        value = std::string(expanded);
+    if(std::string expanded; !sys::expand_tilde(expanded, value)) {
+        value = std::move(expanded);
     }
     if(path::is_absolute(value)) {
         return Spelling::absolute(value);

@@ -172,12 +172,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         {.file = database, .hash = observed->obs.hash}
     };
     // An entry holding a byte the repair replaced is skipped.
-    auto repaired = repaired_database_text(observed->content->getBuffer());
+    auto repaired = repaired_database_text(observed->text);
     auto damaged = [&](llvm::StringRef value) {
         return repaired && value.contains("\xEF\xBF\xBD");
     };
     simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
-                                              : observed->content->getBuffer());
+                                              : llvm::StringRef(observed->text));
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {

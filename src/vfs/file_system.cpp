@@ -85,16 +85,22 @@ constexpr std::size_t list_limit = 4096;
 /// is remote, cannot be listed or holds too many.
 llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
     llvm::StringMap<fs::Status> entries;
-    if(auto volume = fs::volume(dir); !volume || volume->remote) {
+    auto listed = fs::read_dir(dir);
+    if(!listed) {
         return entries;
     }
-    auto listed = fs::read_dir_status(dir);
-    if(!listed || listed->size() > list_limit) {
+    if(auto volume = listed->volume(); !volume || volume->remote) {
         return entries;
     }
-    for(auto& entry: *listed) {
-        if(entry.status.type != fs::FileType::Symlink) {
-            entries.try_emplace(entry.name, entry.status);
+    std::size_t count = 0;
+    for(auto& entry: *listed | views::take(list_limit + 1)) {
+        count += 1;
+        if(!entry || count > list_limit) {
+            entries.clear();
+            return entries;
+        }
+        if(auto status = entry->status(); status && status->type != fs::FileType::Symlink) {
+            entries.try_emplace(entry->name, *status);
         }
     }
     return entries;
@@ -401,14 +407,12 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     // The bytes must be a snapshot taken between the two fstats — a mapped
     // buffer would keep tracking the file after the post-fstat, unpairing
     // hash and stat.
-    auto buffer = load_text(*file, path);
-    if(!buffer) {
-        return std::unexpected(buffer.getError());
-    }
-
     ObservedFile result;
-    result.content = std::move(*buffer);
-    result.obs.hash = llvm::xxh3_64bits(result.content->getBuffer());
+    if(auto error = file->read_to_end(result.text)) {
+        return std::unexpected(error);
+    }
+    result.text.erase(0, result.text.size() - without_bom(result.text).size());
+    result.obs.hash = llvm::xxh3_64bits(result.text);
 
     auto after = file->status();
     if(!after) {
@@ -546,7 +550,7 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
         return file.error();
     }
     std::string real_name;
-    if(fs::canonical(real_name, absolute.str())) {
+    if(file->canonical(real_name)) {
         real_name.clear();
     }
     return std::make_unique<DiskFile>(std::move(*file),
@@ -577,8 +581,12 @@ void walk(llvm::StringRef root,
         return;
     }
     for(auto& entry: *entries) {
-        auto path = path::join(root, entry.name);
-        if(visit(path, entry.type) && entry.type == fs::FileType::Directory) {
+        if(!entry) {
+            LOG_WARN("Cannot read directory {}: {}", root, entry.error().message());
+            return;
+        }
+        auto path = path::join(root, entry->name);
+        if(visit(path, entry->type) && entry->type == fs::FileType::Directory) {
             walk(path, visit);
         }
     }

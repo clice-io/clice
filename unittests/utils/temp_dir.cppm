@@ -85,7 +85,10 @@ private:
 /// backdated or preserved timestamps (rsync -t, git-restore-mtime, a project
 /// tree older than the server). Returns false on failure so callers can
 /// assert.
-bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns);
+inline bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns) {
+    using namespace std::chrono;
+    return !fs::set_times(path, {.mtime = sys_time<nanoseconds>(nanoseconds(mtime_ns))});
+}
 
 /// A file's current mtime in nanoseconds, or -1 when it cannot be stat'ed.
 inline std::int64_t file_mtime_ns(llvm::StringRef path) {

@@ -43,11 +43,6 @@ void release_free_memory();
 /// stateless worker at the high-water mark of its biggest request.
 void purge_freed_memory();
 
-/// Lower the calling thread's scheduling priority for the rest of its life:
-/// an unprivileged thread can never raise it back, so this is for a thread
-/// that ends with the background work it runs.
-void lower_thread_priority();
-
 /// Watch `signum` for good. The first delivery of any watched signal (the
 /// shared `requested` flag) calls `stop` for a graceful stop. A second
 /// Ctrl-C exits at once; a repeated SIGTERM or SIGHUP does not: supervisors
@@ -55,22 +50,10 @@ void lower_thread_priority();
 /// process group) and escalate with SIGKILL themselves.
 kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
 
-/// Whether a process with this id exists.
-bool process_alive(std::uint32_t pid);
-
 #ifdef __APPLE__
 /// End this process the moment its parent exits, or now when it already
 /// has: a child started with CreationOptions::exit_with_parent elsewhere.
 void exit_with_parent();
 #endif
-
-/// Whether `fd` is a pipe or a socket, which Windows reports as a pipe too.
-bool is_pipe_or_socket(int fd);
-
-/// Write UTF-8 `text` to `fd` when it is a Windows console, as the UTF-16 a
-/// console takes: bytes would show in its code page. False when `fd` is no
-/// console, as everywhere else, or the console refuses it: the caller writes
-/// the bytes, and their write reports a failure.
-bool write_console(int fd, llvm::StringRef text);
 
 }  // namespace clice

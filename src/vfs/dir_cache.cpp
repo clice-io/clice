@@ -71,13 +71,17 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         return listing;
     }
     for(auto& entry: *entries) {
-        bool directory = entry.type == fs::FileType::Directory;
-        if(entry.type == fs::FileType::Symlink) {
-            directory = fs::is_directory(path::join(dir, entry.name));
+        if(!entry) {
+            LOG_DEBUG("readdir failed for '{}': {}", dir, entry.error().message());
+            return listing;
         }
-        listing->entries.try_emplace(entry.name, directory);
+        bool directory = entry->type == fs::FileType::Directory;
+        if(entry->type == fs::FileType::Symlink) {
+            directory = fs::is_directory(path::join(dir, entry->name));
+        }
+        listing->entries.try_emplace(entry->name, directory);
         if constexpr(case_insensitive) {
-            listing->folded.insert(fold(entry.name));
+            listing->folded.insert(fold(entry->name));
         }
     }
 

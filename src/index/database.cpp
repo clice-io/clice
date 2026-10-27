@@ -174,19 +174,6 @@ public:
         return OpenLock(std::move(*file));
     }
 
-    OpenLock(OpenLock&& other) noexcept = default;
-
-    OpenLock& operator=(OpenLock&& other) noexcept {
-        file.unlock();
-        file = std::move(other.file);
-        return *this;
-    }
-
-    /// Windows releases the lock of a closed handle only some time later.
-    ~OpenLock() {
-        file.unlock();
-    }
-
 private:
     explicit OpenLock(fs::File file) : file(std::move(file)) {}
 

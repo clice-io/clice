@@ -173,10 +173,10 @@ std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
         return std::unexpected(std::format("cannot read {}: {}", path, observed.error().message()));
     }
     DatabaseText text{.hash = observed->obs.hash};
-    auto repaired = repaired_database_text(observed->content->getBuffer());
-    if(auto result =
-           json::from_string(repaired ? llvm::StringRef(*repaired) : observed->content->getBuffer(),
-                             text.entries);
+    auto repaired = repaired_database_text(observed->text);
+    if(auto result = json::from_string(repaired ? llvm::StringRef(*repaired)
+                                                : llvm::StringRef(observed->text),
+                                       text.entries);
        !result) {
         return std::unexpected(
             std::format("{} holds no array of entries: {}", path, result.error().message));

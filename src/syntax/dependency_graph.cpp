@@ -457,7 +457,7 @@ std::optional<ScannedText> read_and_scan(const char* path) {
     }
     return ScannedText{
         .obs = observed->obs,
-        .result = std::make_shared<const ScanResult>(scan_quick(observed->content->getBuffer())),
+        .result = std::make_shared<const ScanResult>(scan_quick(observed->text)),
     };
 }
 
@@ -636,7 +636,7 @@ struct FileScanner {
                 if(observed->obs.hash != hash) {
                     files.disk.observe(path_id, observed->obs);
                     hash = observed->obs.hash;
-                    scan = graph.quick_scans.scan_of(path_id, hash, observed->content->getBuffer());
+                    scan = graph.quick_scans.scan_of(path_id, hash, observed->text);
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
@@ -645,7 +645,7 @@ struct FileScanner {
                 auto declared = scan_module_decl(
                     rendered.argv,
                     cdb.commands().get(group.command).directory,
-                    observed->content->getBuffer(),
+                    observed->text,
                     llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
                 return {declared.provided_module().str(), declared.is_internal_partition()};
             }
@@ -919,12 +919,12 @@ void rescan_dependency_graph(CompilationDatabase& cdb,
             return;
         }
         files.disk.observe(fid, observed->obs);
-        auto declared = scanner.record(
-            fid,
-            graph.quick_scans.scan_of(fid, observed->obs.hash, observed->content->getBuffer()),
-            observed->obs.hash,
-            contexts,
-            reach);
+        auto declared =
+            scanner.record(fid,
+                           graph.quick_scans.scan_of(fid, observed->obs.hash, observed->text),
+                           observed->obs.hash,
+                           contexts,
+                           reach);
         // A unit provides what its commands declare, as on the full scan;
         // a name it keeps declaring keeps its place among the providers.
         if(ranges::any_of(contexts, [](ScanContext context) { return context.unit; })) {

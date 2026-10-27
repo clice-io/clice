@@ -73,7 +73,7 @@ struct DiskObservation {
 /// A completed observed read: the observation plus the text it hashed.
 struct ObservedFile {
     DiskObservation obs;
-    std::unique_ptr<llvm::MemoryBuffer> content;
+    std::string text;
 };
 
 namespace vfs {

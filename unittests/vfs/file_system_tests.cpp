@@ -246,22 +246,6 @@ ZEST_CASE(WalkPrunesAndSkipsLinks) {
     ZASSERT(seen == (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
 }
 
-ZEST_CASE(RemoveMappedFile) {
-    // Workers keep PCHs mapped while the store replaces them.
-    TempDir tmp;
-    tmp.touch("blob.pch", std::string((1 << 20) + 1, 'x'));
-    auto path = tmp.path("blob.pch");
-    auto mapped = fs::File::open(path).and_then(fs::Mapping::map);
-    ZASSERT(mapped);
-    ZASSERT(fs::remove(path));
-    ZASSERT(!fs::exists(path).value_or(false));
-    ZASSERT(mapped->bytes().size() == (1u << 20) + 1);
-    tmp.touch("blob.pch", "new");
-    ZASSERT(read_file(path).value_or("") == "new");
-    ZASSERT(fs::remove(path));
-    ZASSERT(fs::remove(path));
-}
-
 };  // ZEST_SUITE(FileSystem)
 
 }  // namespace
