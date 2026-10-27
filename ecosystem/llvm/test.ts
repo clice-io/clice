@@ -25,7 +25,7 @@ regression({
             file: "llvm/unittests/ADT/HashingTest.cpp",
             // HashBuilder.h's overload listed later by the server, and no
             // other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^-( +"hash_value\(⟦const T &Value⟧\) -> .*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
+            detail: /(?<![\s\S])(?=[\s\S]*^-( +"hash_value\(⟦const T &Value⟧\) -> .*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
         },
     ],
 });

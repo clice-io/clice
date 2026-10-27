@@ -7,8 +7,8 @@ regression({
             why: "importing the module after a preamble that includes the same standard headers fails clang's check that their definitions agree",
             kind: "compile",
             file: "test/runtime/fixed_string_test.cpp",
-            // That error alone, and what the compiler said of the unit.
-            detail: /(?<![\s\S])(?=[\s\S]*'std::basic_istream' has different definitions in different modules)(?![\s\S]*^(?!.*'std::basic_istream' has different definitions in different modules|the compiler ).+$)/m,
+            // That error alone, and why the compiler could not check the unit.
+            detail: /(?<![\s\S])(?=[\s\S]*'std::basic_istream' has different definitions in different modules)(?![\s\S]*^(?!.*'std::basic_istream' has different definitions in different modules|the compiler could not check it: ).+$)/m,
         },
     ],
 });
