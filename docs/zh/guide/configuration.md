@@ -932,7 +932,7 @@ tests/project/rules/09_remove_flags
 
 规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——VS Code 的状态栏显示生效的配置，点击即可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
 
-有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会切换到那个构建的索引；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则直接写明该构建数据库的配置与它共用索引。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
+有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会切换到那个构建的索引；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则只在直接写明该构建的数据库这一点上不同的配置，与它共用索引。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

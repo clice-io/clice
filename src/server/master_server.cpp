@@ -441,6 +441,11 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         if(!moved->quarantine->empty()) {
             to.ast.republish(moved);
         }
+        // One still waiting serves it again under the mode it loads (see
+        // serve_folders).
+        if(!to.ast.loaded.is_set()) {
+            continue;
+        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.

@@ -41,6 +41,23 @@ std::vector<std::string> real_databases(const Config& config, llvm::StringRef co
     return paths;
 }
 
+/// What the rules tagged `configuration` do besides naming databases, one
+/// string each: configurations alike in it and in the databases they read
+/// build alike.
+std::vector<std::string> edits_of(const Config& config, llvm::StringRef configuration) {
+    std::vector<std::string> edits;
+    for(auto rule: config.rules) {
+        if(rule.configuration != configuration) {
+            continue;
+        }
+        rule.configuration.clear();
+        rule.compile_commands.clear();
+        rule.resolve_symlinks = false;
+        edits.push_back(json::to_string(rule).value_or(""));
+    }
+    return edits;
+}
+
 }  // namespace
 
 llvm::StringRef fallback_configuration(const Config& config) {
@@ -165,12 +182,13 @@ index::DatabaseKey database_key(const Config& config, llvm::StringRef configurat
         return {.configuration = configuration.str()};
     }
     auto databases = real_databases(config, configuration);
+    auto edits = edits_of(config, configuration);
     for(auto tag: config.configurations()) {
         auto resolves = [&](const CompiledRule& rule) {
             return rule.resolve_symlinks && rule.active_under(tag);
         };
         if(tag != configuration && ranges::none_of(config.compiled_rules, resolves) &&
-           real_databases(config, tag) == databases) {
+           real_databases(config, tag) == databases && edits_of(config, tag) == edits) {
             return {.configuration = tag.str()};
         }
     }

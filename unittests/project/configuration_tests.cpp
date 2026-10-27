@@ -133,6 +133,12 @@ ZEST_CASE(DatabaseKeyResolved) {
     ZEXPECT(key.configuration == "active");
     ZEXPECT(key.resolved ==
             CanonicalPath(Spelling::absolute(tmp.path("out/b/compile_commands.json"))).str());
+
+    // Naming the databases is not all it does: another build.
+    config = configured("out/a");
+    config.rules[1].append = {"-DTRACE"};
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(database_key(config, "active").configuration == "active");
 };
 
 };  // ZEST_SUITE(Configuration)

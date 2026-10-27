@@ -7,6 +7,7 @@ module clice;
 import :config.config;
 import :index.database;
 import :index.project_index;
+import :project.command_snapshot;
 import :project.save;
 import :sched.index.pending_table;
 import :unittests.utils.cdb_helper;
@@ -170,9 +171,9 @@ ZEST_CASE(SourceRelocationPersists) {
         f.save();
     }
 
-    // The file moved to the other database with the same command: the
-    // provenance change alone reindexes, so the snapshot records the
-    // database that now guarantees the index.
+    // The file moved to the other database with the same command: its
+    // index stays, and the snapshot records the database that now
+    // guarantees it.
     tmp.touch("a/compile_commands.json", "[]");
     tmp.touch("b/compile_commands.json", listing);
     IndexerFixture f;
@@ -181,7 +182,14 @@ ZEST_CASE(SourceRelocationPersists) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.project.index.indexed(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(f.project.command_snapshot.owes_save(f.project));
+    f.save();
+    ZASSERT(f.project.database->advance_read_snapshot());
+    auto remembered = CommandSnapshot::remembered(f.project);
+    ZASSERT(remembered.sources.size() == 1);
+    ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("b/compile_commands.json"));
 }
 
 ZEST_CASE(DiscoveredRelocationRetires) {

@@ -43,7 +43,8 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
 /// configuration's own, unless an active rule resolves symlinks
 /// (ConfigRule::resolve_symlinks); then the one of the real paths its
 /// databases resolve to now, or the own one of another configuration whose
-/// rules resolve no symlinks and declare exactly those databases.
+/// rules differ from its own only in naming exactly those databases
+/// directly.
 index::DatabaseKey database_key(const Config& config, llvm::StringRef configuration);
 
 }  // namespace clice

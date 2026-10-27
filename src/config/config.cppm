@@ -100,11 +100,11 @@ struct ConfigRule {
                          "path keeps an index of its own, and when the link is "
                          "pointed elsewhere the server switches to that build's "
                          "index, which still holds what an earlier session "
-                         "indexed there. A configuration whose rules declare "
-                         "exactly the databases the link resolves to, and "
-                         "resolve no symlinks, shares its index. The index of a "
-                         "build no longer used stays in the cache directory "
-                         "until deleted.")
+                         "indexed there. A configuration whose rules differ "
+                         "from this configuration's only in naming exactly "
+                         "those databases directly shares its index. The index "
+                         "of a build no longer used stays in the cache "
+                         "directory until deleted.")
     <bool> resolve_symlinks = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
