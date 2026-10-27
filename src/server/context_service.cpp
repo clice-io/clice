@@ -234,12 +234,13 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     auto& command = result.command.emplace();
     std::vector<std::string> resolved;
     auto resolution = editor.resolve_command(path_id, command.directory, resolved);
-    // The compiler's command line rather than the frontend's the compile
-    // gets: the one a user writes and recognizes.
-    for(auto* argument:
-        ws.commands.render_driver(resolution.ref, ws.file_table.spelling(path_id).str())) {
+    // The command line as its database or rule writes it, the rules
+    // applied, rather than the frontend's the compile gets: the one a user
+    // recognizes, and could run.
+    for(auto* argument: ws.commands.render_full(resolution.ref.command)) {
         command.arguments.emplace_back(argument);
     }
+    command.arguments.emplace_back(ws.file_table.spelling(path_id).str());
     command.source = source_name(resolution.source);
     auto from = resolution.host.valid() ? resolution.host : resolution.lender;
     if(from.valid()) {

@@ -364,6 +364,17 @@ export async function activate(context: ExtensionContext) {
             // merely avoids request round-trips, while the server
             // independently answers space triggers elsewhere with an empty
             // list.
+            // The source actions switching contexts and configurations are
+            // for editors without this extension's UI for them, which also
+            // refreshes what VS Code caches of the document on a switch.
+            provideCodeActions: async (document, range, context, token, next) => {
+                const actions = await next(document, range, context, token);
+                return actions?.filter(
+                    (action) =>
+                        !(action instanceof vscode.CodeAction) ||
+                        !action.kind?.value.startsWith("source.clice."),
+                );
+            },
             provideCompletionItem: async (document, position, context, token, next) => {
                 if (context.triggerCharacter === " ") {
                     const line = document.lineAt(position.line).text.slice(0, position.character);

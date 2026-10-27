@@ -1978,7 +1978,15 @@ kota::task<> LSPClient::announce_compile(std::shared_ptr<CompileProgress> state,
     if(state->abandoned) {
         co_return;
     }
-    if(created.has_error() || state->phase == CompilePhase::Idle) {
+    if(created.has_error()) {
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    // The client keeps a created token until it ends, and refuses to create
+    // it again meanwhile: a compile that ended during the handshake ends it.
+    if(state->phase == CompilePhase::Idle) {
+        reporter.begin(std::string(path::filename(shown)));
+        reporter.end();
         compile_progress.erase(path_id);
         co_return;
     }
