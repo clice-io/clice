@@ -275,10 +275,10 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
         // can survive a reload that still changes which entry is the
-        // default selection.
+        // default selection. Another database listing the same command
+        // builds the same index.
         if(it != before.end() && it->second->hashes == entry.hashes &&
-           it->second->selected == entry.selected && it->second->rules == entry.rules &&
-           it->second->sources == entry.sources) {
+           it->second->selected == entry.selected && it->second->rules == entry.rules) {
             continue;
         }
         changed_ids.push_back(server_id);
