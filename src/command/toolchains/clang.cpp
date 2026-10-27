@@ -111,6 +111,16 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
     });
 }
 
+std::optional<std::string> warnings_not_errors(llvm::StringRef arg) {
+    if(arg == "-Werror") {
+        return std::nullopt;
+    }
+    if(arg.consume_front("-Werror=")) {
+        return "-W" + arg.str();
+    }
+    return arg.str();
+}
+
 std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
                                     llvm::ArrayRef<std::string> mode) {
     // Before C++20, clang defers template bodies on MSVC targets so that

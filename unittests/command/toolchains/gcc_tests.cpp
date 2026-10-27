@@ -456,6 +456,22 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 
+ZEST_CASE(GCCMeaningsForClang, skip = Windows) {
+    /// GCC's -fmodules is its C++20 modules, which clang's C++20 has; to
+    /// clang it would mean header modules. Warnings GCC makes errors stay
+    /// warnings: clang warns of what GCC does not.
+    auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
+echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodules -dM' >&2
+)");
+    auto argv = f.resolve(
+        add("a.cpp",
+            {driver.c_str(), "-std=c++20", "-fmodules", "-Werror", "-Werror=shadow", "-c"}));
+    ZEXPECT(!contains(argv, "-fmodules"));
+    ZEXPECT(!contains(argv, "-Werror"));
+    ZEXPECT(!contains(argv, "-Werror=shadow"));
+    ZEXPECT(contains(argv, "-Wshadow"));
+}
+
 ZEST_CASE(CommandISAForClang, skip = Windows) {
     /// The command's own -march, which GCC takes as written and clang
     /// without what LLVM does not know.

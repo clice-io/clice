@@ -75,4 +75,11 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
 
 bool names_standard(llvm::ArrayRef<std::string> args);
 
+/// A flag of a compiler that is not clang (GCC, cl, nvcc) as clang takes
+/// it, nothing when nothing of it stays: the warnings that compiler makes
+/// errors stay warnings, `-Werror` goes and `-Werror=<group>` is
+/// `-W<group>`. clang warns of what that compiler does not, and the build
+/// never shows those as errors.
+std::optional<std::string> warnings_not_errors(llvm::StringRef arg);
+
 }  // namespace clice

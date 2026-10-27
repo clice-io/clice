@@ -152,9 +152,11 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 **Cygwin 和 MSYS2 编译器**：Windows 上的这类编译器（Cygwin 和 MSYS2 自带的 GCC，以及基于 Cygwin 构建的工具链，例如 Andes 的 RISC-V GCC）像任何 GCC 风格的驱动程序一样作答，只是给出的是 POSIX 路径（`/usr/include`、`/cygdrive/c/...`），clice 的 clang 无法打开。这些路径由驱动程序加载的运行时用其挂载表映射，每次查询都从该运行时自己的 `mount` 读取挂载表。在驱动程序旁边和 `PATH` 上的运行时（`cygwin1.dll`、`msys-2.0.dll`）中，按 Windows 查找程序 DLL 的顺序，取第一个能把驱动程序所跑作业的程序映射到实际存在的文件的那个：只取第一个运行时的话，若 Git for Windows 的 MSYS2 在 `PATH` 上排在工具链所加载的、位于其外的 Cygwin 之前，就会选错。假定一套映射会出错：Cygwin 把 `/usr/lib` 挂载在 `<root>/lib`，MSYS2 把驱动器挂载在 `/c` 这样的路径上，用户的 `/etc/fstab` 还会加上自己的挂载。驱动程序本身按 Cygwin 的方式查找：名称可以不带 `.exe`，也可以经由 Cygwin 的符号链接找到（CMake 记录的是 `/usr/bin/cc`，它是指向 `gcc.exe` 的链接）。这样的编译器只有在其运行时的 `bin` 目录位于 `PATH` 中时才能启动；否则查询会失败，错误信息会说明这一点，[编辑器设置](../guide/editors.md#compiler-environment)介绍了如何在各个编辑器中设置它。
 
-**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。
+**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。位于某个工具集里的 cl.exe（`<toolset>/bin/Hostx64/x64/cl.exe`）用这个工具集的头文件编译：Clang 驱动会被告知这个工具集（`/vctoolsdir`），否则它自己的探测会取已安装的最新工具集。在开发者命令行里，则以它设置的 `INCLUDE` 列出的构建所用头文件为准。
 
-**nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器以及 nvcc 定义的宏。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式。
+**nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器、nvcc 定义的宏，以及它交给宿主编译器的头文件目录（工具包的 `include`，以及 CUDA 13 的 `include/cccl`，thrust、CUB 和 libcu++ 都在那里）。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式；nvcc 的头文件目录排在命令自己的目录之后、宿主编译器的目录之前，与 nvcc 自己的宿主编译命令一致。
+
+**clang 理解不同的标志**：GCC、cl 或 nvcc 当作错误的警告，在 clice 里仍是警告：`-Werror` 和 `/WX` 去掉，`-Werror=<group>` 改为 `-W<group>`。clice 的 clang 会报出这些编译器不报的警告，而它们的构建从不把这些当作错误。GCC 的 `-fmodules` 也会去掉：它开启的是 GCC 的 C++20 模块，clang 的 C++20 本来就有，而 clang 自己的 `-fmodules` 意味着它的头文件模块。clang 的命令则原样保留这两者。
 
 **clice 不运行的编译器**：规则写上 `query_toolchain = false`，clice 就不运行它所匹配文件的编译器——用于本机上没有的编译器（在容器里或另一台机器上写出的数据库），或是不该运行的编译器。此时改由 Clang 自己的驱动构建 cc1 命令，就像一个以该编译器名字安装的 clang 那样：`g++` 按 C++ 编译，前缀所指的架构若是 clang 认识的（`aarch64-linux-gnu-g++` 是，`riscv-none-elf-gcc` 不是），这个前缀就是目标，除非命令自己指定了目标。GCC 自己的写法按 clang 能接受的形式交给它（`-mcpu=cortex-a72.cortex-a53` 只取第一个核，RISC-V 的 ISA 字符串去掉 LLVM 不认识的扩展），指定了 clang 的目标不认识的 CPU 或 ABI 的选项（AArch64 上的 `-mabi=lp64`）则去掉。其余一切——标准库、系统头文件、默认标准——都取 clang 对该目标的默认值。询问失败的编译器也按同样的方式读取，用它编译的每个文件都会在开头显示询问的报错（`toolchain-query-failed`）；如果 clang 自己的驱动也读不了这条命令，文件显示的则是 clang 的报错。
 
@@ -217,6 +219,8 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 - **部分编译器家族支持不完整。** 对查询既不给出 clang 任务、也不给出 GCC 任务的驱动程序——Intel 的经典编译器 `icc`、其他厂商的编译器——会使用 clang 针对当前机器的默认设置，工具链错误会说明这一点。NVCC 已有专门的查询逻辑（解析 `nvcc --dryrun` 输出并将其转换为 clang CUDA 调用），但仅支持以 GCC 或 Clang 作为宿主编译器——不支持由 nvcc 驱动 MSVC `cl`，多架构命令也只解析最新的架构。
 
 - **只有 GCC 接受的语言特性按 clang 的理解解析。** 只有 GCC 能编译的代码——GCC 专有的内建函数和扩展、在 clang 不支持它的目标上使用 `__float128`、嵌套函数——会显示 clang 的报错；只有 GCC 认识的 CPU 名称会丢失其特性对应的宏。
+
+- **CUDA 按 clang 的 CUDA 理解解析。** 只有 nvcc 能编译的代码会显示 clang 的报错：nvcc 12.8 的原子内建函数（`__nv_atomic_*`，CUTLASS 用到它们）、在主机端调用 CUDA 的 `float` 版 `max` 和 `min`（clang 只把它们声明在设备端），以及带初始化的 `__shared__` 变量。
 
 - **写给其他工具的命令略去了 clice 从中隐藏了文件的目录。** `clice command convert` 写出的是 clice 编译时所用的命令，但去掉了 GCC 的私有 include 目录和另一个 clang 的内置头文件目录：若保留它们，读取命令的工具会看到其中的所有文件，clang 自己的内置头文件也会经由 `#include_next` 进入它们的同名版本（另一个 clang 的 `stdint.h` 会让这条链在到达 C 库的版本之前就终止）。因此，读取转换后命令的工具找不到只有那个编译器才有的头文件（`omp.h`）。`clice command --json` 给出完整的命令，并列出每个目录中被隐藏的文件（`hidden`）：需要这些头文件的工具可以重新搜索该目录，再用自己的文件系统覆盖层（overlay）隐藏列出的文件，例如 clang 的 `-ivfsoverlay`。
 

@@ -78,6 +78,24 @@ ZEST_CASE(CLKeepsClangSpellings, skip = Windows) {
     ZEXPECT(!contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
+ZEST_CASE(CLWarningsStayWarnings, skip = Windows) {
+    // clang warns of what cl does not: cl's /WX makes no errors of those.
+    // clang-cl's stays.
+    auto cl = fake_cl();
+    ZEXPECT(!contains(f.resolve(add("a.cpp", {cl.c_str(), "/WX"})), "-Werror"));
+    auto clang_cl = fake_cl("clang-cl");
+    ZEXPECT(contains(f.resolve(add("b.cpp", {clang_cl.c_str(), "/WX"})), "-Werror"));
+}
+
+ZEST_CASE(CLToolsetHeaders) {
+    // A cl.exe compiles with the headers of its own toolset, not the
+    // newest one installed, outside a developer prompt.
+    auto toolset = tmp.path("MSVC/14.29.30133");
+    auto cl = path::join(toolset, "bin", "Hostx64", "x64", "cl.exe");
+    auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/c"})));
+    ZEXPECT(adjacent(argv, "-internal-isystem", path::join(toolset, "include")));
+}
+
 ZEST_CASE(ClangCLOwnVersion, skip = Windows) {
     // clang-cl's version is the toolset its flags select, which the job
     // finds as clang-cl does; its standard is still its own to tell.

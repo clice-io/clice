@@ -187,7 +187,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
 
     std::vector<std::string> mode;
     if(cl_mode(family)) {
-        mode.push_back("--driver-mode=cl");
+        mode = cl_driver_mode(args[0], family);
     }
     // clang reads a target off its program's name in its main alone, never
     // when its library builds a compilation.
@@ -200,14 +200,23 @@ ClangReading read_as_clang(std::vector<std::string> args,
         }
         mode.push_back("--target=" + target);
     }
-    if(family == CompilerFamily::GCC) {
-        llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
-        for(auto& arg: llvm::MutableArrayRef<std::string>(args).drop_front()) {
-            arg = for_clang(arg, triple, quiet);
+    llvm::Triple triple(target.empty() ? llvm::sys::getDefaultTargetTriple() : target);
+    auto as_clang_takes = [&](llvm::StringRef arg) -> std::optional<std::string> {
+        switch(family) {
+            case CompilerFamily::GCC: return for_clang(arg, triple, quiet);
+            case CompilerFamily::MSVC:
+            case CompilerFamily::NVCC: return warnings_not_errors(arg);
+            default: return arg.str();
+        }
+    };
+    std::vector<std::string> taken = {args[0]};
+    for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
+        if(auto kept = as_clang_takes(arg)) {
+            taken.push_back(std::move(*kept));
         }
     }
 
-    ClangReading reading{.argv = clang_argv(args, mode)};
+    ClangReading reading{.argv = clang_argv(taken, mode)};
     std::vector<std::string> errors;
     reading.job = query_driver(reading.argv, cwd, &errors);
     // The options naming what clang's target does not know go, and the

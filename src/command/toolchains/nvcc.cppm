@@ -99,7 +99,9 @@ std::optional<llvm::SmallVector<std::size_t>>
 struct NVCCDryrun {
     /// The toolkit root (`TOP=` line, else derived from
     /// `NVVMIR_LIBRARY_DIR=`), valid for clang's `--cuda-path`; empty when
-    /// the dryrun names neither. Deriving it from the nvcc binary's location
+    /// the dryrun names neither, or a libdevice outside the root's
+    /// nvvm/libdevice (Debian's nvidia-cuda-toolkit, which clang's own
+    /// detection finds). Deriving it from the nvcc binary's location
     /// instead is wrong for split layouts (conda puts it under
     /// `targets/<triple>`).
     std::string cuda_path;
@@ -114,6 +116,12 @@ struct NVCCDryrun {
     /// bare `host_compiler` resolves. Layouts that activate an environment
     /// around nvcc (conda) keep the host toolchain here, not on our PATH.
     std::vector<std::string> search_path;
+
+    /// The header directories nvcc gives its host compiler (`-I`,
+    /// `-isystem`), in order: its profile's INCLUDES and SYSTEM_INCLUDES,
+    /// the toolkit's include, and CUDA 13's include/cccl, where thrust, CUB
+    /// and libcu++ are.
+    std::vector<std::string> include_dirs;
 
     /// nvcc's default C++ dialect (`cudafe++ --c++17` → "c++17"), applied
     /// when the user command names none.
@@ -135,11 +143,11 @@ struct NVCCDryrun {
 
 std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output);
 
-/// nvcc: its dryrun names the toolkit root, the host compiler and the
-/// macros nvcc injects — none of which clang can derive on its own. The
-/// host compiler is then asked as a GCC-style driver is, in the input's
-/// language and with the command's sysroot, and clang's own driver builds
-/// the job, in CUDA mode for a CUDA input.
+/// nvcc: its dryrun names the toolkit root, the host compiler, the macros
+/// nvcc injects and its header directories — none of which clang can
+/// derive on its own. The host compiler is then asked as a GCC-style
+/// driver is, in the input's language and with the command's sysroot, and
+/// clang's own driver builds the job, in CUDA mode for a CUDA input.
 kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
                                                      llvm::StringRef input,
                                                      llvm::StringRef kind,
