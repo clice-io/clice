@@ -50,7 +50,7 @@ pin an item to keep it in the status bar — tells:
   header), `default` (a rule's `default_command`), `inferred` (borrowed from
   a unit nearby) or `fallback` (clice's own), marked as a warning when the
   command is clice's own or its compiler could not be queried. **Show**, or
-  `Clice: Show Compile Command`, opens the whole command;
+  `clice: Show Compile Command`, opens the whole command;
 - its compilation context, when it has more than one: `auto` or `selected`,
   with **Switch**. The Explorer's Compilation Contexts view lists them all;
 - the build configuration, when the rules in `clice.toml` declare any, with
@@ -65,7 +65,7 @@ notification.
 
 clice's refactorings are behind the lightbulb, `Ctrl+.` and **Refactor...**
 in the editor's context menu. Each also has a command in the Command Palette
-("Clice: Define Out of Line", "Clice: Add Missing Enum Cases to Switch", ...)
+("clice: Define Out of Line", "clice: Add Missing Enum Cases to Switch", ...)
 that a key can be bound to; the
 [code action guide](https://docs.clice.io/clice/features/code-action#running-actions)
 lists them.

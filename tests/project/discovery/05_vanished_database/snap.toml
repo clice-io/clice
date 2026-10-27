@@ -5,7 +5,7 @@ inactive_lines = ["⟦int moved = 1;⟧"]
 main = ["⟦int original = 1;⟧"]
 "main contexts" = [
     { label = "-DMOVED", description = "${WS}", host = "main.cpp" },
-    { label = "config #1", description = "${WS}", host = "main.cpp" },
+    { label = "command #1", description = "${WS}", host = "main.cpp" },
 ]
 "only contexts" = [
     { label = "-DFEATURE", description = "${WS}", host = "only.cpp" },

@@ -149,7 +149,7 @@ static ext::ContextItem
     auto applied = own[index];
     auto desc = flags_label(ws, applied, own);
     ext::ContextItem item;
-    item.label = desc.empty() ? std::format("config #{}", index) : desc;
+    item.label = desc.empty() ? std::format("command #{}", index) : desc;
     item.description = ws.file_table.display(
         CanonicalPath(Spelling::absolute(ws.commands.get(applied).directory)));
     item.uri = feature::to_uri(ws.file_table.display(path_id));
@@ -395,21 +395,19 @@ ext::ListConfigurationsResult ContextService::list_configurations() const {
 
 ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name,
                                                                     llvm::StringRef pinned) {
+    auto refuse = [&](std::string reason) {
+        LOG_WARN("Cannot select configuration {}: {}", name, reason);
+        return ext::SwitchConfigurationResult{.reason = std::move(reason)};
+    };
     if(!declares_configuration(project.config, name)) {
-        LOG_WARN("Cannot select configuration {}: no rule declares it", name);
-        return {};
+        return refuse(std::format("no rule declares the configuration {}", name));
     }
     if(declares_configuration(project.config, pinned)) {
-        LOG_WARN("Cannot select configuration {}: --configuration {} pins this session's",
-                 name,
-                 pinned);
-        return {};
+        return refuse(
+            std::format("the server runs with --configuration {}, which pins it", pinned));
     }
     if(auto written = write_selection(project.config.project.cache_dir, name); !written) {
-        LOG_WARN("Cannot persist the selected configuration {}: {}",
-                 name,
-                 written.error().message());
-        return {};
+        return refuse(std::format("the selection cannot be saved: {}", written.error().message()));
     }
     LOG_INFO("Selected configuration {}; it becomes active at the next start", name);
     return {.success = true};

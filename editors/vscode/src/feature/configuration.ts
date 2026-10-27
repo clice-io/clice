@@ -111,7 +111,9 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             return;
         }
         if (!switched.success) {
-            vscode.window.showWarningMessage("clice: failed to switch build configuration");
+            vscode.window.showWarningMessage(
+                `clice: cannot switch the build configuration: ${switched.reason}`,
+            );
             return;
         }
         if (chosen.label !== result.active) {

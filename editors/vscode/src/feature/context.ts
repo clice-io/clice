@@ -234,7 +234,9 @@ export function registerCompilationContext(
         }
         showCommand(current.command);
         // A file with nothing to choose from has no context to tell of.
-        if (current.automatic && tree.count() < 2) {
+        const choices = !current.automatic || tree.count() > 1;
+        void vscode.commands.executeCommand("setContext", "clice.contextChoices", choices);
+        if (!choices) {
             status.hide();
             return;
         }
@@ -255,6 +257,7 @@ export function registerCompilationContext(
             return;
         }
         if (result === null) {
+            void vscode.commands.executeCommand("setContext", "clice.contextChoices", false);
             status.hide();
             showCommand(null);
             return;
@@ -448,36 +451,6 @@ export function registerCompilationContext(
         }
     }
 
-    async function showCurrent() {
-        const editor = vscode.window.activeTextEditor;
-        if (!isCppEditor(editor)) {
-            return;
-        }
-        let result: CurrentContextResult;
-        try {
-            result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
-                uri: editor.document.uri.toString(),
-            });
-        } catch {
-            vscode.window.showInformationMessage("clice: server not ready");
-            return;
-        }
-        const context = result.context;
-        if (!context) {
-            vscode.window.showInformationMessage("clice: no compilation context for this file");
-            return;
-        }
-        const chosen = result.automatic ? "picked automatically" : "chosen";
-        vscode.window.showInformationMessage(
-            `clice: ${context.label} — ${context.description} (${chosen})`,
-        );
-    }
-
-    async function query() {
-        await refresh(vscode.window.activeTextEditor);
-        await vscode.commands.executeCommand("clice.contexts.focus");
-    }
-
     async function updateStatus(editor: vscode.TextEditor | undefined) {
         if (!isCppEditor(editor)) {
             return;
@@ -518,9 +491,7 @@ export function registerCompilationContext(
         vscode.workspace.onDidOpenTextDocument((document) => void detectCxxFragment(document)),
         vscode.window.registerTreeDataProvider("clice.contexts", tree),
         vscode.commands.registerCommand("clice.switchContext", select),
-        vscode.commands.registerCommand("clice.showCurrentContext", showCurrent),
         vscode.commands.registerCommand("clice.resetContext", () => reset()),
-        vscode.commands.registerCommand("clice.queryContexts", query),
         vscode.commands.registerCommand("clice.applyContext", applyContext),
         vscode.commands.registerCommand("clice.loadMoreContexts", () => tree.loadMore()),
         vscode.commands.registerCommand("clice.refreshContexts", () =>

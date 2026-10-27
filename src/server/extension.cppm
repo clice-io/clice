@@ -142,6 +142,9 @@ struct SwitchConfigurationParams {
 
 struct SwitchConfigurationResult {
     bool success = false;
+
+    /// Why the selection was refused, for the user; absent on success.
+    std::optional<std::string> reason;
 };
 
 /// clice/counterparts: the files `uri` pairs with — a header's sources, a

@@ -28,7 +28,7 @@ clice 针对选区提供代码操作：依据编译器已掌握的信息生成�
 | 展开宏                               | `refactor.inline.macro`                          |
 | 添加包含指令、应用诊断的修复         | `quickfix`                                       |
 
-VS Code 扩展为每种重构提供一条命令，命令名是 `clice.` 加上它的种类，在命令面板中的标题取自操作本身（“Clice: Add Missing Enum Cases to Switch”）。只给出一个操作时，命令会直接应用它，否则让你从中选择。在 `keybindings.json` 中可以为它绑定按键：
+VS Code 扩展为每种重构提供一条命令，命令名是 `clice.` 加上它的种类，在命令面板中的标题取自操作本身（“clice: Add Missing Enum Cases to Switch”）。只给出一个操作时，命令会直接应用它，否则让你从中选择。在 `keybindings.json` 中可以为它绑定按键：
 
 ```json
 {

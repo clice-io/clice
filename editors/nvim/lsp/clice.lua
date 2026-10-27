@@ -154,7 +154,7 @@ local function switch_configuration(client, bufnr)
       end
       request(client, bufnr, 'clice/switchConfiguration', { name = name, uri = uri }, function(result)
         if not result.success then
-          vim.notify('clice: failed to switch the build configuration', vim.log.levels.WARN)
+          vim.notify(('clice: cannot switch the build configuration: %s'):format(result.reason), vim.log.levels.WARN)
         elseif name ~= list.active then
           vim.notify(('clice: %s applies once clice restarts'):format(name))
         end

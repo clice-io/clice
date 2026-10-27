@@ -165,6 +165,9 @@ export interface SwitchConfigurationParams {
 
 export interface SwitchConfigurationResult {
     success: boolean;
+
+    /// Why the selection was refused, for the user; null on success.
+    reason: string | null;
 }
 
 export const SwitchConfigurationRequest = new RequestType<

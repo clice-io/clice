@@ -28,7 +28,7 @@ Each refactoring has its own code action kind, so an editor can ask for one alon
 | Expand a macro                                       | `refactor.inline.macro`                          |
 | Add an include, apply a diagnostic's fix             | `quickfix`                                       |
 
-The VS Code extension has a command for each refactoring, named `clice.` followed by its kind and titled after the action in the Command Palette ("Clice: Add Missing Enum Cases to Switch"). It applies the action at once when it is the only one offered, and lets you pick otherwise. Bind a key to it in `keybindings.json`:
+The VS Code extension has a command for each refactoring, named `clice.` followed by its kind and titled after the action in the Command Palette ("clice: Add Missing Enum Cases to Switch"). It applies the action at once when it is the only one offered, and lets you pick otherwise. Bind a key to it in `keybindings.json`:
 
 ```json
 {
