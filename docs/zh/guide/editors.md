@@ -71,6 +71,8 @@ Zed 默认用 tree-sitter 生成大纲面板和面包屑；要让它们显示 cl
 
 ## 通用 LSP 客户端
 
+没有 clice 插件的编辑器（包括 Zed）可以在代码操作菜单中切换文件的编译方式：请求代码操作时，clice 会提供源操作，用于让头文件改由另一个宿主包含来编译，或让源文件改用它的另一条命令（`source.clice.context`），回到 clice 自动选择的上下文，以及为下次启动选择另一个构建配置（`source.clice.configuration`）。所有编辑器都会显示索引进度和运行较久的编译的进度，以及提示用户修正配置的消息。
+
 ### Helix
 
 在 `~/.config/helix/languages.toml` 中添加以下内容：

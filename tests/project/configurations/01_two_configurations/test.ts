@@ -1,4 +1,5 @@
 import { expect } from "vitest";
+import * as proto from "vscode-languageserver-protocol";
 import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
 /// Persist `name` and start the server again: what an editor does to apply
@@ -149,3 +150,35 @@ test(
         await t.cli("inspect hover gated.cpp --configuration release");
     },
 );
+
+// An editor whose only UI for configurations is its code action menu
+// switches them through source actions; the server tells the user that the
+// choice applies at the next start.
+test("source actions select a configuration", async (t) => {
+    const s = await t.start();
+    s.open("main.cpp", { pull: false });
+    const start = { line: 0, character: 0 };
+    const offered = (await s.client.sendRequest(proto.CodeActionRequest.type, {
+        textDocument: { uri: s.uri("main.cpp") },
+        range: { start, end: start },
+        context: {
+            diagnostics: [],
+            only: [proto.CodeActionKind.Source],
+            triggerKind: proto.CodeActionTriggerKind.Invoked,
+        },
+    })) as proto.CodeAction[];
+    await t.show(
+        "offered",
+        offered.map((action) => action.title),
+    );
+    const command = offered.find((action) => action.kind === "source.clice.configuration")?.command;
+    expect(command).toBeDefined();
+    expect(
+        await s.client.sendRequest(proto.ExecuteCommandRequest.type, {
+            command: command?.command ?? "",
+            arguments: command?.arguments ?? [],
+        }),
+    ).toEqual({ success: true, reason: null });
+    await t.show("told", s.client.shownMessages);
+    await t.show("selected", s.configurations());
+});

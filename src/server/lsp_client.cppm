@@ -10,6 +10,7 @@ import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.semantic_tokens;
 import :server.ast_family;
+import :server.extension;
 import :server.master_server;
 import :server.project_server;
 import :server.session;
@@ -45,6 +46,29 @@ private:
     void register_document_sync();
     void register_language_features();
     void register_extensions();
+
+    /// clice/switchContext, clice/resetContext and clice/switchConfiguration,
+    /// which an editor asks for directly or through the commands of the
+    /// source actions switching them (switch_actions).
+    kota::task<ext::SwitchContextResult> switch_context(const ext::SwitchContextParams& params);
+    ext::SwitchContextResult reset_context(const ext::ResetContextParams& params);
+    ext::SwitchConfigurationResult
+        switch_configuration(const ext::SwitchConfigurationParams& params);
+
+    /// The project serving the named document; without one the first
+    /// project over a folder, the first one being rootless in a server
+    /// without folders.
+    std::shared_ptr<ProjectServer> configured(const std::optional<std::string>& uri);
+
+    /// Source actions switching what the document compiles under, for an
+    /// editor whose only UI for it is its code action menu (Zed, Helix):
+    /// every other context of the listing's first page, the automatic one
+    /// while the user's choice is in force, and every other build
+    /// configuration. Their commands run through workspace/executeCommand.
+    std::vector<protocol::CodeAction> switch_actions(ProjectServer& project,
+                                                     const Session& session,
+                                                     llvm::ArrayRef<protocol::CodeActionKind> only);
+    RawResult execute_command(protocol::ExecuteCommandParams params);
 
     /// Ask the client to pull every document's diagnostics again;
     /// capability-gated.

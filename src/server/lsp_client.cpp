@@ -37,6 +37,19 @@ namespace clice {
 using ipc::RequestResult;
 using RequestContext = ipc::JSONPeer::RequestContext;
 
+/// The commands of the source actions switching what a document compiles
+/// under (LSPClient::switch_actions), each standing for the request of the
+/// same name with its parameters as the one argument. Named apart from the
+/// VS Code extension's commands, which the client library registers them
+/// beside.
+constexpr std::string_view switch_context_command = "clice.lsp.switchContext";
+constexpr std::string_view reset_context_command = "clice.lsp.resetContext";
+constexpr std::string_view switch_configuration_command = "clice.lsp.switchConfiguration";
+
+/// The kinds of those source actions.
+constexpr std::string_view context_action_kind = "source.clice.context";
+constexpr std::string_view configuration_action_kind = "source.clice.configuration";
+
 /// Error response for feature requests on files with no open session.
 static ipc::Error document_not_open() {
     return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
@@ -496,10 +509,16 @@ void LSPClient::register_lifecycle() {
         caps.workspace_symbol_provider = true;
         caps.document_formatting_provider = true;
         caps.document_range_formatting_provider = true;
-        caps.code_action_provider = protocol::CodeActionOptions{
-            .code_action_kinds =
-                std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
-                                                      feature::code_action_kinds.end()),
+        std::vector<protocol::CodeActionKind> kinds(feature::code_action_kinds.begin(),
+                                                    feature::code_action_kinds.end());
+        kinds.emplace_back(context_action_kind);
+        kinds.emplace_back(configuration_action_kind);
+        caps.code_action_provider =
+            protocol::CodeActionOptions{.code_action_kinds = std::move(kinds)};
+        caps.execute_command_provider = protocol::ExecuteCommandOptions{
+            .commands = {std::string(switch_context_command),
+                         std::string(reset_context_command),
+                         std::string(switch_configuration_command)},
         };
         // No inter-file dependencies: an edit reaches no other document's
         // diagnostics, open buffers are never depended upon (see Session).
@@ -990,21 +1009,29 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 return kota::outcome_error(unserved(path));
+            auto only = params.context.only ? llvm::ArrayRef(*params.context.only)
+                                            : llvm::ArrayRef<protocol::CodeActionKind>();
+            // Only a user asking for actions gets the switches, which look
+            // the listings up: an editor asks on every move of the cursor.
+            std::vector<protocol::CodeAction> switches;
+            if(params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic) {
+                switches = switch_actions(*project, *session, only);
+            }
             return kota::co_invoke(
                 [this,
                  project,
-                 actions = project->features.code_action(
-                     Ticket::take(session),
-                     params.range,
-                     params.context.only ? llvm::ArrayRef(*params.context.only)
-                                         : llvm::ArrayRef<protocol::CodeActionKind>(),
-                     ctx.cancellation)]() mutable -> RawResult {
+                 switches = std::move(switches),
+                 actions = project->features.code_action(Ticket::take(session),
+                                                         params.range,
+                                                         only,
+                                                         ctx.cancellation)]() mutable -> RawResult {
                     auto result = co_await std::move(actions).or_fail();
                     if(!versioned_edits) {
                         for(auto& action: result) {
                             unversion(*action.edit);
                         }
                     }
+                    result.append_range(std::move(switches));
                     co_return to_raw(result);
                 });
         });
@@ -1223,6 +1250,175 @@ void LSPClient::register_language_features() {
         });
 }
 
+kota::task<ext::SwitchContextResult>
+    LSPClient::switch_context(const ext::SwitchContextParams& params) {
+    auto path = uri_to_path(params.uri);
+    auto context_path = uri_to_path(params.context_uri);
+    if(!path || !context_path) {
+        co_return ext::SwitchContextResult{};
+    }
+    // The session reset lives inside switch_context (single owner,
+    // synchronous, no cross-file cascade — exempt from the event pipeline;
+    // see the Invalidator charter).
+    co_return co_await server.switch_context(server.files.intern(*path),
+                                             server.files.intern(*context_path),
+                                             params);
+}
+
+ext::SwitchContextResult LSPClient::reset_context(const ext::ResetContextParams& params) {
+    auto path = uri_to_path(params.uri);
+    if(!path) {
+        return {};
+    }
+    return server.reset_context(server.files.intern(*path));
+}
+
+std::shared_ptr<ProjectServer> LSPClient::configured(const std::optional<std::string>& uri) {
+    if(uri) {
+        return resolve_uri(*uri).project;
+    }
+    auto& projects = server.projects;
+    auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
+    return it != projects.end() ? *it : projects.front();
+}
+
+ext::SwitchConfigurationResult
+    LSPClient::switch_configuration(const ext::SwitchConfigurationParams& params) {
+    return configured(params.uri)
+        ->context_service.switch_configuration(params.name, server.requested_configuration);
+}
+
+/// The one argument of `params`, the parameters of the request its command
+/// stands for.
+template <typename Params>
+static std::expected<Params, ipc::Error> argument_of(const protocol::ExecuteCommandParams& params) {
+    Params decoded;
+    if(!params.arguments || params.arguments->size() != 1 ||
+       !codec::dyn::from_dyn<ipc::lsp_config>(params.arguments->front(), decoded)) {
+        return std::unexpected(ipc::Error{
+            protocol::ErrorCode::InvalidParams,
+            std::format("{} takes one argument, the parameters of its request", params.command)});
+    }
+    return decoded;
+}
+
+LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams params) {
+    // A client with no UI for these tells the user nothing of the outcome;
+    // the server does.
+    auto tell = [this](protocol::MessageType type, std::string message) {
+        peer.send_notification(
+            protocol::ShowMessageParams{.type = type, .message = std::move(message)});
+    };
+    if(params.command == switch_context_command || params.command == reset_context_command) {
+        ext::SwitchContextResult result;
+        if(params.command == switch_context_command) {
+            auto argument = argument_of<ext::SwitchContextParams>(params);
+            if(!argument) {
+                co_await kota::fail(std::move(argument.error()));
+            }
+            result = co_await switch_context(*argument);
+        } else {
+            auto argument = argument_of<ext::ResetContextParams>(params);
+            if(!argument) {
+                co_await kota::fail(std::move(argument.error()));
+            }
+            result = reset_context(*argument);
+        }
+        if(result.stale) {
+            tell(protocol::MessageType::Warning,
+                 "clice: the contexts changed meanwhile; ask for the actions again");
+        } else if(!result.success) {
+            tell(protocol::MessageType::Warning, "clice: cannot switch the compilation context");
+        }
+        co_return to_raw(result);
+    }
+    if(params.command == switch_configuration_command) {
+        auto argument = argument_of<ext::SwitchConfigurationParams>(params);
+        if(!argument) {
+            co_await kota::fail(std::move(argument.error()));
+        }
+        auto result = switch_configuration(*argument);
+        if(result.success) {
+            tell(protocol::MessageType::Info,
+                 std::format("clice: {} applies once clice restarts", argument->name));
+        } else {
+            tell(protocol::MessageType::Warning,
+                 std::format("clice: cannot switch the build configuration: {}", *result.reason));
+        }
+        co_return to_raw(result);
+    }
+    co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                   std::format("no command {}", params.command)});
+}
+
+std::vector<protocol::CodeAction>
+    LSPClient::switch_actions(ProjectServer& project,
+                              const Session& session,
+                              llvm::ArrayRef<protocol::CodeActionKind> only) {
+    std::vector<protocol::CodeAction> actions;
+    auto add = [&](std::string title,
+                   std::string_view kind,
+                   std::string_view command,
+                   const auto& params) {
+        auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
+        assert(argument && "the parameters of a request encode");
+        actions.push_back({
+            .title = title,
+            .kind = std::string(kind),
+            .command = protocol::Command{.title = std::move(title),
+                                         .command = std::string(command),
+                                         .arguments = std::vector{std::move(*argument)}},
+        });
+    };
+    auto uri = feature::to_uri(server.files.display(session.path_id));
+    if(feature::admits(only, context_action_kind)) {
+        auto current = server.current_context(project, &session);
+        auto listing = server.query_contexts(session.path_id, {.uri = uri});
+        if(listing.total > 1 || !current.automatic) {
+            auto same = [&](const ext::ContextItem& item) {
+                return current.context && item.uri == current.context->uri &&
+                       item.occurrence == current.context->occurrence &&
+                       item.command_hash == current.context->command_hash;
+            };
+            for(auto& item: listing.contexts) {
+                if(same(item)) {
+                    continue;
+                }
+                auto title = item.uri == uri
+                                 ? std::format("Compile with the command {}", item.label)
+                                 : std::format("Compile as included by {}", item.label);
+                add(std::move(title),
+                    context_action_kind,
+                    switch_context_command,
+                    ext::SwitchContextParams{.uri = uri,
+                                             .context_uri = item.uri,
+                                             .occurrence = item.occurrence,
+                                             .command_hash = item.command_hash,
+                                             .epoch = listing.epoch});
+            }
+            if(!current.automatic) {
+                add("Compile in the context clice picks",
+                    context_action_kind,
+                    reset_context_command,
+                    ext::ResetContextParams{.uri = uri});
+            }
+        }
+    }
+    if(feature::admits(only, configuration_action_kind)) {
+        auto list = project.context_service.list_configurations();
+        auto next = list.selected.empty() ? list.active : list.selected;
+        for(auto& name: list.configurations) {
+            if(name != next) {
+                add(std::format("Use build configuration {} from the next start", name),
+                    configuration_action_kind,
+                    switch_configuration_command,
+                    ext::SwitchConfigurationParams{.name = name, .uri = uri});
+            }
+        }
+    }
+    return actions;
+}
+
 void LSPClient::register_extensions() {
     // ── Compilation context helpers ─────────────────────────────────
 
@@ -1249,58 +1445,33 @@ void LSPClient::register_extensions() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            auto context_path = uri_to_path(params.context_uri);
-            if(!path || !context_path) {
-                co_return to_raw(ext::SwitchContextResult{});
-            }
-            auto path_id = this->server.files.intern(*path);
-            auto context_path_id = this->server.files.intern(*context_path);
-            // The session reset lives inside switch_context (single owner,
-            // synchronous, no cross-file cascade — exempt from the event
-            // pipeline; see the Invalidator charter).
-            co_return to_raw(
-                co_await this->server.switch_context(path_id, context_path_id, params));
+            co_return to_raw(co_await switch_context(params));
         });
 
     peer.on_request(
         "clice/resetContext",
         [this](RequestContext& ctx, const ext::ResetContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            if(!path) {
-                co_return to_raw(ext::SwitchContextResult{});
-            }
-            co_return to_raw(this->server.reset_context(this->server.files.intern(*path)));
+            co_return to_raw(reset_context(params));
         });
 
-    // The project serving the named document; without one the first
-    // project over a folder, the first one being rootless in a server
-    // without folders.
-    auto configured = [this](const std::optional<std::string>& uri) {
-        if(uri) {
-            return resolve_uri(*uri).project;
-        }
-        auto& projects = this->server.projects;
-        auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
-        return it != projects.end() ? *it : projects.front();
-    };
+    peer.on_request(
+        "clice/listConfigurations",
+        [this](RequestContext& ctx, const ext::ListConfigurationsParams& params) -> RawResult {
+            co_return to_raw(configured(params.uri)->context_service.list_configurations());
+        });
 
-    peer.on_request("clice/listConfigurations",
-                    [configured](RequestContext& ctx,
-                                 const ext::ListConfigurationsParams& params) -> RawResult {
-                        co_return to_raw(
-                            configured(params.uri)->context_service.list_configurations());
-                    });
+    peer.on_request(
+        "clice/switchConfiguration",
+        [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
+            co_return to_raw(switch_configuration(params));
+        });
 
-    peer.on_request("clice/switchConfiguration",
-                    [this, configured](RequestContext& ctx,
-                                       const ext::SwitchConfigurationParams& params) -> RawResult {
-                        co_return to_raw(configured(params.uri)
-                                             ->context_service.switch_configuration(
-                                                 params.name,
-                                                 this->server.requested_configuration));
-                    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::ExecuteCommandParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            co_return co_await execute_command(params).or_fail();
+        });
 
     peer.on_request(
         "clice/counterparts",

@@ -71,6 +71,8 @@ Zed builds its outline panel and breadcrumbs with tree-sitter by default; to hav
 
 ## Generic LSP Clients
 
+An editor without a clice plugin, Zed included, switches what a file compiles under from its code action menu: asked for actions, clice offers source actions that compile a header as included by another of its hosts, or a source with another of its commands (`source.clice.context`), go back to the context clice picks, and select another build configuration for the next start (`source.clice.configuration`). Every editor shows the progress of indexing and of a compile that runs long, and the messages that ask the user to fix the setup.
+
 ### Helix
 
 Add to `~/.config/helix/languages.toml`:
