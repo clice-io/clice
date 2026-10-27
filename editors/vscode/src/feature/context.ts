@@ -19,9 +19,11 @@ function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.Te
     return language === "c" || language === "cpp" || language === "cuda-cpp";
 }
 
-/// A context's description, a path, as the workspace names it.
-function shown(description: string): string {
-    return vscode.workspace.asRelativePath(description);
+/// A context's description, a path, as the workspace names it; nothing when
+/// that is all the label says.
+function shown(context: ContextItem): string {
+    const description = vscode.workspace.asRelativePath(context.description);
+    return description === context.label ? "" : description;
 }
 
 function sameContext(a: ContextItem, b: ContextItem | null | undefined): boolean {
@@ -51,7 +53,7 @@ class ContextTreeItem extends vscode.TreeItem {
             this.command = { command: "clice.loadMoreContexts", title: "Load more" };
             return;
         }
-        this.description = shown(context.description);
+        this.description = shown(context);
         this.tooltip = context.description;
         this.iconPath = new vscode.ThemeIcon(active ? "pass-filled" : "circle-large-outline");
         this.contextValue = "clice-context";
@@ -401,7 +403,7 @@ export function registerCompilationContext(
                     label: sameContext(context, inUse)
                         ? `$(pass-filled) ${context.label}`
                         : context.label,
-                    description: shown(context.description),
+                    description: shown(context),
                     context,
                 })),
             );
