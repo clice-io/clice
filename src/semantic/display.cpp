@@ -1234,12 +1234,16 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
 namespace {
 
 /// Whether `stmt` holds at most `budget` expressions as written, counted
-/// only that far: the conversions and temporaries Sema wraps them in count
-/// none.
+/// only that far: the conversions and temporaries Sema wraps them in, and
+/// the members a braced list leaves out, count none.
 bool within(const clang::Stmt& stmt, std::uint32_t& budget) {
     const auto* written = &stmt;
     if(const auto* expr = llvm::dyn_cast<clang::Expr>(written)) {
         written = expr->IgnoreImplicit();
+    }
+    if(const auto* list = llvm::dyn_cast<clang::InitListExpr>(written);
+       list && list->getSyntacticForm()) {
+        written = list->getSyntacticForm();
     }
     if(budget == 0) {
         return false;

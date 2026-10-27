@@ -206,8 +206,8 @@ LexicalInfo::Directive::Kind directive_kind(llvm::StringRef name, llvm::StringRe
 
 /// The index into `info.directives` of an include guard's opening, the
 /// `#ifndef X` directly followed by `#define X` with only comments and
-/// `#pragma once` before them, whether or not the text holds its `#endif`
-/// (a preamble does not).
+/// `#pragma once` before them and no `#else` or `#elif` of it after, whether
+/// or not the text holds its `#endif` (a preamble does not).
 std::optional<std::uint32_t> guard_opening(llvm::StringRef content, const LexicalInfo& info);
 
 /// Scan `content` once and collect its LexicalInfo. The matching is purely

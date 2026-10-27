@@ -23,8 +23,8 @@ regression({
             kind: "disagree",
             request: "signatureHelp",
             file: "llvm/unittests/ADT/HashingTest.cpp",
-            // One signature listed elsewhere, and no other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^[-+]( +".*",)$[\s\S]*^[-+]\1$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\1$).*$)/m,
+            // One signature the server lists later, and no other difference.
+            detail: /(?<![\s\S])(?=[\s\S]*^-( +".*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- |\+\+\+ )[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
         },
     ],
 });

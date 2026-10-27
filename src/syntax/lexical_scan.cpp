@@ -73,9 +73,6 @@ std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef cont
                 return std::nullopt;
             }
         } else if(directive.opening == *opening) {
-            if(directive.kind != Directive::Kind::EndIf) {
-                return std::nullopt;
-            }
             closing = index;
         }
     }
@@ -125,6 +122,13 @@ std::optional<std::uint32_t> guard_opening(llvm::StringRef content, const Lexica
     }
     if(code_in(info, 0, directives[opening].first) ||
        code_in(info, directives[opening].last + 1, definition.first)) {
+        return std::nullopt;
+    }
+    if(ranges::any_of(llvm::ArrayRef(directives).drop_front(opening + 2),
+                      [&](const Directive& directive) {
+                          return directive.opening == opening &&
+                                 directive.kind == Directive::Kind::Else;
+                      })) {
         return std::nullopt;
     }
     return opening;
