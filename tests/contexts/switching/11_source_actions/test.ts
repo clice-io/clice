@@ -11,12 +11,13 @@ function actions(
     s: Serve,
     file: string,
     triggerKind: proto.CodeActionTriggerKind = proto.CodeActionTriggerKind.Invoked,
+    only: proto.CodeActionKind[] | undefined = [proto.CodeActionKind.Source],
 ): Promise<proto.CodeAction[]> {
     const start = { line: 0, character: 0 };
     return s.client.sendRequest(proto.CodeActionRequest.type, {
         textDocument: { uri: s.uri(file) },
         range: { start, end: start },
-        context: { diagnostics: [], only: [proto.CodeActionKind.Source], triggerKind },
+        context: { diagnostics: [], only, triggerKind },
     }) as Promise<proto.CodeAction[]>;
 }
 
@@ -33,7 +34,7 @@ async function run(s: Serve, offered: proto.CodeAction[], title: string): Promis
 
 const titles = (offered: proto.CodeAction[]) => offered.map((action) => action.title);
 
-test(async (t) => {
+test("switch and reset", async (t) => {
     const s = await t.start();
     expect(await s.errors("shared.h")).toEqual([]);
     expect(await actions(s, "shared.h", proto.CodeActionTriggerKind.Automatic)).toEqual([]);
@@ -51,4 +52,16 @@ test(async (t) => {
         stale: false,
     });
     await t.show("reset", s.currentContext("shared.h"));
+});
+
+// Asked for every kind of action, the server answers once the file has
+// compiled. A header's first compile finds it self-contained, which folds
+// its hosts of the same flags into one context: nothing is left to switch to.
+test("listed after the first compile", async (t) => {
+    const s = await t.start();
+    expect((await s.contexts("plain.h")).total).toBe(2);
+    s.open("plain.h");
+    const offered = await actions(s, "plain.h", proto.CodeActionTriggerKind.Invoked, undefined);
+    expect(titles(offered.filter((action) => action.kind === "source.clice.context"))).toEqual([]);
+    expect((await s.contexts("plain.h")).total).toBe(1);
 });

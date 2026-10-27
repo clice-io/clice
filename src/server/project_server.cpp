@@ -388,7 +388,10 @@ bool ProjectServer::knows(Fid path_id) {
 }
 
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
-    if(std::exchange(commands_missing, false)) {
+    // A database generated since the start counts: the poll, or the
+    // discovery around this file, has loaded it by now.
+    if(std::exchange(commands_missing, false) && project.build.members().empty() &&
+       !found_unreadable_database(project)) {
         LOG_GUIDANCE(
             "No compile_commands.json found in workspace {} or its direct subdirectories. "
             "Compile commands will be guessed; see "

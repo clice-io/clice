@@ -1017,14 +1017,14 @@ void LSPClient::register_language_features() {
                                             : llvm::ArrayRef<protocol::CodeActionKind>();
             // Only a user asking for actions gets the switches, which look
             // the listings up: an editor asks on every move of the cursor.
-            std::vector<protocol::CodeAction> switches;
-            if(params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic) {
-                switches = switch_actions(*project, *session, only);
-            }
+            bool offer_switches =
+                params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
             return kota::co_invoke(
                 [this,
                  project,
-                 switches = std::move(switches),
+                 path_id,
+                 offer_switches,
+                 only = std::vector(only.begin(), only.end()),
                  actions = project->features.code_action(Ticket::take(session),
                                                          params.range,
                                                          only,
@@ -1035,7 +1035,12 @@ void LSPClient::register_language_features() {
                             unversion(*action.edit);
                         }
                     }
-                    result.append_range(std::move(switches));
+                    // Listed after the compile the actions waited for: a
+                    // header's first one decides whether it is self-contained,
+                    // which changes its listing and outdates the epoch before.
+                    if(auto live = project->sessions.find(path_id); offer_switches && live) {
+                        result.append_range(switch_actions(*project, *live, only));
+                    }
                     co_return to_raw(result);
                 });
         });
