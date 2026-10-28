@@ -103,40 +103,34 @@ struct FileViewOptions {
     LogLevelOption log;
 };
 
-struct EdgeTarget {
-    DecoInput(meta_var = "<FROM> <TO>",
-              help = "The module whose files name the other's entities, and the module named",
-              required = false)
-    <std::vector<std::string>> inputs;
-};
-
 struct EdgeOptions {
     kota::deco::decl::HelpOption help;
-    EdgeTarget target;
+
+    DecoInput(meta_var = "<FROM> <TO>",
+              help = "The module whose files name the other's entities, and the module named",
+              arg_num = 2)
+    <std::vector<std::string>> modules;
+
     ModelOptions model;
     LogLevelOption log;
-};
-
-struct ModuleTarget {
-    DecoInput(meta_var = "<MODULE>", help = "The module", required = false)
-    <std::vector<std::string>> inputs;
 };
 
 struct ModuleViewOptions {
     kota::deco::decl::HelpOption help;
-    ModuleTarget target;
+
+    DecoInput(meta_var = "<MODULE>", help = "The module")
+    <std::string> module;
+
     ModelOptions model;
     LogLevelOption log;
 };
 
-struct InterfaceTarget {
-    DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
-    <std::vector<std::string>> inputs;
-};
-
 struct InterfaceOptions {
     kota::deco::decl::HelpOption help;
-    InterfaceTarget target;
+
+    DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
+    <std::string> module;
+
     ModelOptions model;
     LogLevelOption log;
 };
@@ -269,34 +263,18 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
 }
 
 /// A module view over the options `Options`, which `view` answers from the
-/// report and the positional arguments `names` name, the options'
-/// `target`, of which the trailing `optional` may be left out.
+/// report.
 template <typename Options, typename View>
-CommandHandler module_view(std::string_view usage,
-                           std::initializer_list<std::string_view> names,
-                           std::size_t optional,
-                           View view) {
-    return operation<Options>(
-        usage,
-        "analyze",
-        Errors::JSON,
-        [names = std::vector<std::string_view>(names), optional, view](const Options& opts) {
-            std::vector<std::string> args;
-            if constexpr(requires { opts.target; }) {
-                auto taken = positional(opts.target.inputs.as_optional(), names, optional);
-                if(!taken) {
-                    return usage_error(Errors::JSON, taken.error());
-                }
-                args = std::move(*taken);
-            }
-            const WeightOptions* weights = nullptr;
-            if constexpr(requires { opts.weights; }) {
-                weights = &opts.weights;
-            }
-            return run_view(opts.model, weights, [&](analysis::Report& report) {
-                return view(report, opts, args);
-            });
+CommandHandler module_view(std::string_view usage, View view) {
+    return operation<Options>(usage, "analyze", Errors::JSON, [view](const Options& opts) {
+        const WeightOptions* weights = nullptr;
+        if constexpr(requires { opts.weights; }) {
+            weights = &opts.weights;
+        }
+        return run_view(opts.model, weights, [&](analysis::Report& report) {
+            return view(report, opts);
         });
+    });
 }
 
 CommandHandler build() {
@@ -304,92 +282,69 @@ CommandHandler build() {
     views.push_back({
         .name = "edge",
         .description = "Every entity an edge between two modules carries, and its uses",
-        .run = module_view<EdgeOptions>(
-            "clice analyze modules edge <FROM> <TO> [OPTIONS]",
-            {"<FROM>", "<TO>"},
-            0,
-            [](analysis::Report& report, const EdgeOptions&, llvm::ArrayRef<std::string> args) {
-                return answer(report.edge(args[0], args[1]));
-            }),
+        .run = module_view<EdgeOptions>("clice analyze modules edge <FROM> <TO> [OPTIONS]",
+                                        [](analysis::Report& report, const EdgeOptions& opts) {
+                                            auto& modules = *opts.modules;
+                                            return answer(report.edge(modules[0], modules[1]));
+                                        }),
     });
     views.push_back({
         .name = "module",
         .description = "A module's files by their dependencies, the lines it splits along",
         .run = module_view<ModuleViewOptions>(
             "clice analyze modules module <MODULE> [OPTIONS]",
-            {"<MODULE>"},
-            0,
-            [](analysis::Report& report,
-               const ModuleViewOptions&,
-               llvm::ArrayRef<std::string> args) { return answer(report.module(args[0])); }),
+            [](analysis::Report& report, const ModuleViewOptions& opts) {
+                return answer(report.module(*opts.module));
+            }),
     });
     views.push_back({
         .name = "file",
         .description = "What a file names by module, who names its entities, its annotations",
-        .run = module_view<FileViewOptions>("clice analyze modules file <PATH> [OPTIONS]",
-                                            {"<PATH>"},
-                                            0,
-                                            [](analysis::Report& report,
-                                               const FileViewOptions& opts,
-                                               llvm::ArrayRef<std::string> args) {
-                                                return answer(report.file(
-                                                    fact_path(opts.model.where, args[0])));
-                                            }),
+        .run = module_view<FileViewOptions>(
+            "clice analyze modules file <PATH> [OPTIONS]",
+            [](analysis::Report& report, const FileViewOptions& opts) {
+                return answer(report.file(fact_path(opts.model.where, *opts.target.path)));
+            }),
     });
     views.push_back({
         .name = "obstacles",
         .description = "What a mechanical rewrite into modules cannot carry over",
-        .run = module_view<PlainViewOptions>(
-            "clice analyze modules obstacles [OPTIONS]",
-            {},
-            0,
-            [](analysis::Report& report, const PlainViewOptions&, llvm::ArrayRef<std::string>) {
-                print_json(report.obstacles());
-                return 0;
-            }),
+        .run = module_view<PlainViewOptions>("clice analyze modules obstacles [OPTIONS]",
+                                             [](analysis::Report& report, const PlainViewOptions&) {
+                                                 print_json(report.obstacles());
+                                                 return 0;
+                                             }),
     });
     views.push_back({
         .name = "macros",
         .description = "The macros crossing modules",
-        .run = module_view<PlainViewOptions>(
-            "clice analyze modules macros [OPTIONS]",
-            {},
-            0,
-            [](analysis::Report& report, const PlainViewOptions&, llvm::ArrayRef<std::string>) {
-                print_json(report.macros());
-                return 0;
-            }),
+        .run = module_view<PlainViewOptions>("clice analyze modules macros [OPTIONS]",
+                                             [](analysis::Report& report, const PlainViewOptions&) {
+                                                 print_json(report.macros());
+                                                 return 0;
+                                             }),
     });
     views.push_back({
         .name = "impact",
         .description = "What a change to each module rebuilds",
-        .run = module_view<ImpactOptions>(
-            "clice analyze modules impact [OPTIONS]",
-            {},
-            0,
-            [](analysis::Report& report, const ImpactOptions&, llvm::ArrayRef<std::string>) {
-                print_json(report.impact());
-                return 0;
-            }),
+        .run = module_view<ImpactOptions>("clice analyze modules impact [OPTIONS]",
+                                          [](analysis::Report& report, const ImpactOptions&) {
+                                              print_json(report.impact());
+                                              return 0;
+                                          }),
     });
     views.push_back({
         .name = "interface",
         .description = "Per module, what a wrapper module over its headers needs",
-        .run = module_view<InterfaceOptions>("clice analyze modules interface [<MODULE>] [OPTIONS]",
-                                             {"<MODULE>"},
-                                             1,
-                                             [](analysis::Report& report,
-                                                const InterfaceOptions&,
-                                                llvm::ArrayRef<std::string> args) {
-                                                 return answer(
-                                                     report.interface(args.empty() ? "" : args[0]));
-                                             }),
+        .run = module_view<InterfaceOptions>(
+            "clice analyze modules interface [<MODULE>] [OPTIONS]",
+            [](analysis::Report& report, const InterfaceOptions& opts) {
+                return answer(report.interface(opts.module.value_or("")));
+            }),
     });
     auto overview = module_view<OverviewOptions>(
         "clice analyze modules [OPTIONS]",
-        {},
-        0,
-        [](analysis::Report& report, const OverviewOptions& opts, llvm::ArrayRef<std::string>) {
+        [](analysis::Report& report, const OverviewOptions& opts) {
             print_json(
                 report.overview(static_cast<std::uint32_t>(std::max(opts.limit.value_or(20), 0))));
             return 0;

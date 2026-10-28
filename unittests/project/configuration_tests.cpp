@@ -47,7 +47,7 @@ ZEST_CASE(SelectionRoundTrips) {
     ZEXPECT(read_selection(cache_dir) == "release");
     ZASSERT(write_selection(cache_dir, "debug"));
     ZEXPECT(read_selection(cache_dir) == "debug");
-    ZEXPECT(fs::exists(path::join(cache_dir, "state.json")).value_or(false));
+    ZEXPECT(fs::exists(path::join(cache_dir, "state.json")));
 
     tmp.touch(".clice/state.json", "not json");
     ZEXPECT(read_selection(cache_dir).empty());

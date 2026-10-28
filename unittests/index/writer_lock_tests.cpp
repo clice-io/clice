@@ -32,11 +32,10 @@ ZEST_CASE(WriterLockAtCacheRoot) {
     ZASSERT(!index::WriterLock::acquire(store.root_dir()));
     // The lock guards the cache directory, not a configuration's database,
     // and opening a database takes none.
-    ZASSERT(fs::exists(path::join(store.root_dir(), "index.lock")).value_or(false));
+    ZASSERT(fs::exists(path::join(store.root_dir(), "index.lock")));
     auto db = index::open_database(store, {"x"});
     ZASSERT(db != nullptr);
-    ZASSERT(!fs::exists(path::join(index::database_directory(store, {"x"}), "index.lock"))
-                 .value_or(false));
+    ZASSERT(!fs::exists(path::join(index::database_directory(store, {"x"}), "index.lock")));
     auto held = read_file(path::join(store.root_dir(), "index.lock"));
     ZASSERT(held);
     ZASSERT(llvm::StringRef(*held).trim() == std::to_string(sys::pid()));
@@ -50,17 +49,17 @@ ZEST_CASE(ProbeIgnoresStaleEndpoint) {
     auto store = open_store(tmp);
     auto cache_dir = store.root_dir();
     index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
-    ZASSERT(fs::exists(path::join(cache_dir, "server.json")).value_or(false));
+    ZASSERT(fs::exists(path::join(cache_dir, "server.json")));
 
     // Nobody holds the lock: the record is a crash's residue, removed by
     // the probe.
     auto probe = index::probe_writer(cache_dir);
     ZASSERT(probe.state == index::WriterProbe::State::Free);
-    ZASSERT(!fs::exists(path::join(cache_dir, "server.json")).value_or(false));
+    ZASSERT(!fs::exists(path::join(cache_dir, "server.json")));
 
     index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
     index::remove_endpoint(cache_dir);
-    ZASSERT(!fs::exists(path::join(cache_dir, "server.json")).value_or(false));
+    ZASSERT(!fs::exists(path::join(cache_dir, "server.json")));
 }
 
 };  // ZEST_SUITE(WriterLock)

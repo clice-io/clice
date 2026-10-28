@@ -936,7 +936,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     auto scanned = co_await kota::queue([root = config.workspace_root, cache_dir, names] {
         Scanned result;
         for(auto& source: workspace_sources(root, cache_dir)) {
-            auto path = source.str();
+            auto path = std::move(source).str();
             if(auto text = vfs::read_text(path)) {
                 if(auto spelled = feature::scan_text(std::move(*text), names)) {
                     result.texts.try_emplace(path, std::move(*spelled));

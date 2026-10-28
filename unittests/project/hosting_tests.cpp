@@ -228,10 +228,9 @@ ZEST_CASE(HostsMatchLanguage) {
     auto dual_hpp = project.file_table.intern(Spelling::absolute(tmp.path("dual/x.hpp")));
     auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
     auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
-    project.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
-    auto cxx = *project.cdb.add_command(tmp.root.str(),
-                                        tmp.path("dual/impl.c"),
-                                        llvm::StringRef(cxx_command));
+    project.cdb.add_command(tmp.root, tmp.path("dual/impl.c"), llvm::StringRef(c_command));
+    auto cxx =
+        *project.cdb.add_command(tmp.root, tmp.path("dual/impl.c"), llvm::StringRef(cxx_command));
     project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
@@ -314,7 +313,7 @@ ZEST_CASE(LenderSearchDir) {
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
-        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        return *project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(command));
     };
     add("zzz/lib.cpp", "");
     auto searching = add("zzz/lib.cpp", "-Iinclude");
@@ -345,7 +344,7 @@ ZEST_CASE(LenderSearchDirSymlink) {
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
-        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        return *project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(command));
     };
     auto searching = add("a/main.cpp", std::format("-I{}", tmp.path("a/inc")));
     add("vendor/b.cpp", "");
@@ -409,7 +408,7 @@ ZEST_CASE(ProvisionalMembers) {
     auto add = [&](llvm::StringRef driver, llvm::StringRef file) {
         tmp.touch(file, "");
         auto command = std::format("{} {}", driver, tmp.path(file));
-        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        return *project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(command));
     };
     auto intern = [&](llvm::StringRef file) {
         tmp.touch(file, "");

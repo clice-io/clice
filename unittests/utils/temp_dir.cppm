@@ -19,35 +19,25 @@ namespace clice::testing {
 /// Also serves as a cross-platform source of absolute paths: on Windows
 /// the root includes a drive letter, so `path("x")` is absolute everywhere.
 struct TempDir {
-    llvm::SmallString<128> root;
-
-    TempDir(llvm::StringRef prefix = "clice-test") {
-        std::string temp;
-        sys::temp_dir(temp);
-        fs::create_temp_directory(root, temp, prefix.str() + "-");
-        // Canonicalize the root so path() spellings match what the compiler
-        // reports (CompilationUnit::file_path realpaths every file): the
-        // macOS temp dir lives behind the /var -> /private/var symlink and
-        // Windows runners hand out 8.3 short names — either would make
-        // every path-keyed index lookup in tests miss.
-        llvm::SmallString<128> real;
-        if(!fs::canonical(real, root.str())) {
-            root = real;
-        }
-    }
-
-    ~TempDir() {
-        fs::remove_all(root.str());
-    }
-
-    kota::zest::FatalHook cleanup{[this] { fs::remove_all(root.str()); }};
+    TempDir(llvm::StringRef prefix = "clice-test") : directory(create(prefix)) {}
 
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;
 
+    fs::TempDirectory directory;
+
+    /// As the OS names it, so path() spells files as the compiler reports
+    /// them (CompilationUnit::file_path realpaths every file): the macOS
+    /// temp dir lives behind the /var -> /private/var symlink and Windows
+    /// runners hand out 8.3 short names — either would make every
+    /// path-keyed index lookup in tests miss.
+    std::string root{directory.path()};
+
+    kota::zest::FatalHook cleanup{[this] { directory.remove(); }};
+
     /// Build an absolute path under this temporary root.
     std::string path(llvm::StringRef relative) const {
-        std::string result(root.str());
+        std::string result = root;
         path::push(result, relative);
 #ifdef _WIN32
         path::to_backslash(result);
@@ -76,6 +66,12 @@ struct TempDir {
     }
 
 private:
+    static fs::TempDirectory create(llvm::StringRef prefix) {
+        std::string temp;
+        sys::temp_dir(temp);
+        return fs::TempDirectory::create(temp, prefix.str() + "-").value();
+    }
+
     /// Pool for strings returned by c_path(). std::deque guarantees that
     /// existing elements are not moved when new ones are appended.
     std::deque<std::string> pool;

@@ -16,7 +16,7 @@ using namespace fs::path;
 template <typename... Parts>
 std::string join(llvm::StringRef base, const Parts&... parts) {
     std::string joined(base);
-    (path::push(joined, llvm::StringRef(parts)), ...);
+    path::push(joined, llvm::StringRef(parts)...);
     return joined;
 }
 
@@ -25,44 +25,9 @@ std::string join(llvm::StringRef base, const Parts&... parts) {
 /// spelling, so every path clice keeps or emits is spelled that way. On
 /// POSIX a path is its raw bytes — '\' and "C:" are ordinary filename
 /// characters — and canonicalization must not touch it.
-
-/// True when `p` deviates from the Windows canonical spelling.
-inline bool needs_canonical(llvm::StringRef p) {
-    return p.contains('\\') || (p.size() >= 2 && p[1] == ':' && llvm::isUpper(p[0]));
-}
-
-/// The rewrite itself, in place. Platform-independent on purpose so the
-/// logic is unit-testable on any host; production code reaches it only
-/// through the gated entry points below.
-inline void make_canonical(llvm::MutableArrayRef<char> p) {
-    std::replace(p.begin(), p.end(), '\\', '/');
-    if(p.size() >= 2 && p[1] == ':' && llvm::isUpper(p[0])) {
-        p[0] = llvm::toLower(p[0]);
-    }
-}
-
-/// Canonical view of `p`: on Windows, `p` itself when already canonical,
-/// otherwise the rewrite materialized in `storage`; on POSIX always `p`.
-inline llvm::StringRef canonical(llvm::StringRef p,
-                                 [[maybe_unused]] llvm::SmallVectorImpl<char>& storage) {
-#ifdef _WIN32
-    if(needs_canonical(p)) {
-        storage.assign(p.begin(), p.end());
-        make_canonical(storage);
-        return llvm::StringRef(storage.data(), storage.size());
-    }
-#endif
-    return p;
-}
-
-/// In-place canonicalization of an owned string (config dirs, the
-/// workspace root). No-op on POSIX.
-inline void canonicalize([[maybe_unused]] std::string& p) {
-#ifdef _WIN32
-    if(needs_canonical(p)) {
-        make_canonical(llvm::MutableArrayRef(p.data(), p.size()));
-    }
-#endif
+inline void canonicalize(kota::buffer_ref p) {
+    path::to_slash(p);
+    path::lowercase_drive(p);
 }
 
 }  // namespace path
@@ -112,8 +77,12 @@ public:
         return llvm::Twine(text);
     }
 
-    const std::string& str() const {
+    const std::string& str() const& {
         return text;
+    }
+
+    std::string str() && {
+        return std::move(text);
     }
 
     bool empty() const {
@@ -123,7 +92,7 @@ public:
     /// The directory holding it, as spelled.
     Spelling parent() const;
 
-    friend bool operator==(const Spelling&, const Spelling&) = default;
+    friend auto operator<=>(const Spelling&, const Spelling&) = default;
 
 private:
     std::string text;
@@ -225,8 +194,12 @@ public:
         return llvm::Twine(text);
     }
 
-    const std::string& str() const {
+    const std::string& str() const& {
         return text;
+    }
+
+    std::string str() && {
+        return std::move(text);
     }
 
     std::size_t size() const {

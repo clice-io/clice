@@ -485,7 +485,7 @@ const ipc::Error* PCMFamily::crashed(Fid module) {
 }
 
 bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
-    if(build.path.empty() || fs::exists(build.path).value_or(false)) {
+    if(build.path.empty() || fs::exists(build.path)) {
         return false;
     }
     // Artifact tier only: the blob vanished, its content did not, so

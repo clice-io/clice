@@ -46,7 +46,7 @@ struct ConvertOptions {
     DecoInput(meta_var = "<DATABASE>",
               help = "The compile_commands.json to convert, relative to the current directory",
               required = false)
-    <std::vector<std::string>> database;
+    <std::string> database;
 
     DecoFlag(names = {"--json"},
              help = "Print the converted command as a database entry instead of text",
@@ -256,17 +256,13 @@ void print_text(const FileCommands& commands) {
 }
 
 int run_file(const FileOptions& opts) {
-    auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
-    if(!args) {
-        return usage_error(Errors::Text, args.error());
-    }
     auto workspace = open_workspace(opts.where);
     if(!workspace) {
         LOG_ERROR("{}", workspace.error());
         return 1;
     }
     auto& project = *workspace->project;
-    auto path = inspected_path(project, args->front());
+    auto path = inspected_path(project, *opts.target.path);
     if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
         return 1;
@@ -377,10 +373,11 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
                       ? "no C-family source"
                       : std::format("{} C-family sources ({})",
                                     sources.size(),
-                                    llvm::join(views::transform(sources,
-                                                                [](const Spelling& source) {
-                                                                    return source.str();
-                                                                }),
+                                    llvm::join(views::transform(
+                                                   sources,
+                                                   [](const Spelling& source) -> llvm::StringRef {
+                                                       return source;
+                                                   }),
                                                ", ")));
         return 1;
     }
@@ -393,7 +390,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
     for(auto& argument: command) {
         argv.push_back(argument.c_str());
     }
-    auto entry = cdb.add_command(directory.str(), sources.front().str(), argv);
+    auto entry = cdb.add_command(directory, sources.front(), argv);
     if(!entry) {
         LOG_ERROR("Not a compile command: {}", join_command(command));
         return 1;
@@ -424,7 +421,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
 /// directory holding a compile_commands.json, printing the database of
 /// converted entries.
 int convert_database(Workspace& workspace, const Spelling& path) {
-    if(path::extension(path.str()) != ".json" && !fs::is_directory(path)) {
+    if(path::extension(path) != ".json" && !fs::is_directory(path)) {
         LOG_ERROR(
             "{}: a compilation database is a .json file, or a directory holding a "
             "compile_commands.json",
@@ -510,11 +507,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
 }
 
 int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command) {
-    auto args = positional(opts.database.as_optional(), {"<DATABASE>"}, 1);
-    if(!args) {
-        return usage_error(Errors::Text, args.error());
-    }
-    if(args->empty() == command.empty()) {
+    if(opts.database.has_value() == !command.empty()) {
         return usage_error(Errors::Text,
                            "convert takes a compile_commands.json, or a command after --");
     }
@@ -530,7 +523,7 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
     if(!command.empty()) {
         return convert_command(*workspace, command, static_cast<bool>(opts.json));
     }
-    return convert_database(*workspace, Spelling(args->front(), Spelling::cwd()));
+    return convert_database(*workspace, Spelling(*opts.database, Spelling::cwd()));
 }
 
 /// `clice command convert`, whose options end at a `--`: what follows is

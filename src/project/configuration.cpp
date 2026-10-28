@@ -33,7 +33,7 @@ std::string state_path(llvm::StringRef cache_dir) {
 /// does not exist yet: a path without the .json extension names the
 /// directory holding it.
 std::string real_path(const Spelling& database) {
-    if(path::extension(database.str()) == ".json") {
+    if(path::extension(database) == ".json") {
         return CanonicalPath(database).str();
     }
     return CanonicalPath(Spelling("compile_commands.json", database)).str();

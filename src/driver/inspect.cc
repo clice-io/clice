@@ -46,8 +46,8 @@ namespace {
 
 /// What every feature takes.
 struct Options {
-    DecoInput(meta_var = "<PATH>", help = "The source file", required = false)
-    <std::vector<std::string>> path;
+    DecoInput(meta_var = "<PATH>", help = "The source file")
+    <std::string> path;
 
     DecoKV(help = R"(JSON file of the markers in the inspected source file, at byte )"
                   R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
@@ -485,7 +485,7 @@ struct SourceFile {
 /// places in it.
 auto read_source(const Spelling& path, const std::optional<std::string>& markers)
     -> std::expected<SourceFile, std::string> {
-    if(!fs::exists(path).value_or(false)) {
+    if(!fs::exists(path)) {
         return std::unexpected(std::format("no such file or directory: {}", path));
     }
     if(fs::is_directory(path)) {
@@ -546,9 +546,9 @@ CanonicalPath workspace_of(CanonicalRef start) {
     path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = ranges::any_of(config_file_names,
                                      [&](llvm::StringRef marker) {
-                                         return fs::exists(path::join(dir, marker)).value_or(false);
+                                         return fs::exists(path::join(dir, marker));
                                      }) ||
-                      fs::exists(path::join(dir, "compile_commands.json")).value_or(false);
+                      fs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             workspace = dir;
         }
@@ -737,11 +737,7 @@ void run_feature(FileEntry& entry,
 }
 
 int run_inspect(const Options& opts, const FeatureSpec& spec) {
-    auto args = positional(opts.path.as_optional(), {"<PATH>"});
-    if(!args) {
-        return usage_error(Errors::Text, args.error());
-    }
-    Spelling path(args->front(), Spelling::cwd());
+    Spelling path(*opts.path, Spelling::cwd());
     auto file = read_source(path, opts.markers.as_optional());
     if(!file) {
         LOG_ERROR("{}", file.error());

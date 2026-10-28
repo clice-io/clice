@@ -61,10 +61,10 @@ ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     auto argv = f.resolve(off);
     ZEXPECT(contains(argv, "-std=c++17"));
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
-    ZEXPECT(!fs::exists(ran).value_or(false));
+    ZEXPECT(!fs::exists(ran));
 
     ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
-    ZEXPECT(fs::exists(ran).value_or(false));
+    ZEXPECT(fs::exists(ran));
 }
 
 ZEST_CASE(NoJobSaysWhy) {

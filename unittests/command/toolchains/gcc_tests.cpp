@@ -335,7 +335,7 @@ echo '#define __STDC_VERSION__ 201710L'
     auto unit = clice::compile({
         .kind = CompilationKind::Content,
         .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
-                  .directory = tmp.root.str().str(),
+                  .directory = tmp.root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
     });
     ZASSERT(unit->completed());

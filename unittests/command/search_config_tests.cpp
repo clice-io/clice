@@ -47,7 +47,7 @@ ZEST_CASE(ReordersDirectoryGroups) {
                                      "-iquote",
                                      tmp.c_path("quoted"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // Expected order: [quoted | user | stdlib, clang, sysroot]
     ZASSERT(config.dirs.size() == 5u);
@@ -75,7 +75,7 @@ ZEST_CASE(KeepsForcedIncludes) {
                                      "-include",
                                      "a.h",
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     ZASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
 }
@@ -92,7 +92,7 @@ ZEST_CASE(MarksDriverDirs) {
                                      "-internal-externc-isystem",
                                      tmp.c_path("sysroot"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
     ZASSERT(config.dirs.size() == 3u);
     ZEXPECT(!config.dirs[0].driver);
     ZEXPECT(config.dirs[1].driver);
@@ -111,7 +111,7 @@ ZEST_CASE(PreservesWithinGroupOrder) {
                                      "-isystem",
                                      tmp.c_path("s1"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     ZASSERT(config.dirs.size() == 4u);
     ZEXPECT(config.angled_start_idx == 0u);
@@ -132,7 +132,7 @@ ZEST_CASE(DeduplicatesAngledSystem) {
                                      "-internal-isystem",
                                      tmp.c_path("only_sys"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // /shared in both Angled and System: the user's copy goes, as in clang.
     ZASSERT(config.dirs.size() == 2u);
@@ -156,7 +156,7 @@ ZEST_CASE(QuotedAngledSamePathKeptInBoth) {
                                      "-I",
                                      tmp.c_path("other"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // "shared" must appear in both Quoted and Angled segments.
     ZASSERT(config.dirs.size() == 3u);
@@ -180,7 +180,7 @@ ZEST_CASE(DeduplicateAdjustsIndices) {
                                      "-isystem",
                                      tmp.c_path("s"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
     // The Angled dup goes for the System one: [q | a2 | dup, s].
@@ -213,7 +213,7 @@ ZEST_CASE(PrefixIncludeOptions) {
                                      "-isystem",
                                      tmp.c_path("sys"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // -iwithprefixbefore → Angled, -iwithprefix → After, behind System.
     ZASSERT(config.dirs.size() == 4u);
@@ -235,7 +235,7 @@ ZEST_CASE(DirafterGroup) {
                                      "-isystem",
                                      tmp.c_path("sys"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     ZASSERT(config.dirs.size() == 3u);
     ZEXPECT(config.angled_start_idx == 0u);
@@ -255,7 +255,7 @@ ZEST_CASE(DirafterDeduplication) {
                                      "-idirafter",
                                      tmp.c_path("extra"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     // After is a system group: -I's copy goes.
     ZASSERT(config.dirs.size() == 2u);
@@ -275,7 +275,7 @@ ZEST_CASE(UserSystemFirst) {
                                      "-isystem",
                                      tmp.c_path("vendored"),
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
 
     ZASSERT(config.dirs.size() == 2u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "vendored"));
@@ -292,13 +292,13 @@ ZEST_CASE(LastSysrootWins) {
                                      second.c_str(),
                                      "-I=/inc",
                                      "main.cpp"};
-    auto config = extract(args, tmp.root.str());
+    auto config = extract(args, tmp.root);
     ZASSERT(config.dirs.size() == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "two/inc"));
 
     auto isysroot = tmp.path("three");
     args = {"clang++", "-isysroot", isysroot.c_str(), second.c_str(), "-I=/inc", "main.cpp"};
-    config = extract(args, tmp.root.str());
+    config = extract(args, tmp.root);
     ZASSERT(config.dirs.size() == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
 }

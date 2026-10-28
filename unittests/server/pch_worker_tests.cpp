@@ -73,7 +73,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     ZASSERT(!pch_path.empty());
 
     // Verify the PCH file exists on disk.
-    ZASSERT(fs::exists(pch_path).value_or(false));
+    ZASSERT(fs::exists(pch_path));
 
     // The worker wrote the paired preamble index: it must load and
     // carry the preamble's document links (the #include of common.h).

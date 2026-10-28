@@ -574,7 +574,7 @@ std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
         argv.push_back(flag.c_str());
     }
     normalizer.expand_response_files(argv, anchor, CompilerFamily::NVCC, saver);
-    auto translated = translate_nvcc_command(argv, anchor.str(), edit);
+    auto translated = translate_nvcc_command(argv, anchor, edit);
     return {std::make_move_iterator(translated.begin() + 1),
             std::make_move_iterator(translated.end())};
 }

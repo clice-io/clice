@@ -247,9 +247,9 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto session = this->server.find_session(path_id);
     if(auto* alias = find_alias(path_id, *path);
        alias && session && alias->buffer.text() != session->text()) {
-        return ResolvedDoc{.path = path->str(), .project = std::move(project)};
+        return ResolvedDoc{.path = std::move(*path).str(), .project = std::move(project)};
     }
-    return ResolvedDoc{path->str(), path_id, std::move(session), std::move(project)};
+    return ResolvedDoc{std::move(*path).str(), path_id, std::move(session), std::move(project)};
 }
 
 LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spelling) {
@@ -695,7 +695,7 @@ void LSPClient::register_document_sync() {
         // The edit reaches a second name's buffer whether or not it still
         // agrees with the first name's.
         auto spelled = uri_to_path(params.text_document.uri);
-        if(!spelled || is_other_language_path(spelled->str())) {
+        if(!spelled || is_other_language_path(*spelled)) {
             return;
         }
         auto& path = spelled->str();

@@ -548,7 +548,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(!inserted) {
             return std::format("{} and {} both become {}", it->second, from.str(), path.str());
         }
-        if(fs::exists(path::join(root, path)).value_or(false)) {
+        if(fs::exists(path::join(root, path))) {
             return std::format("{} would overwrite {}", from.str(), path.str());
         }
         return std::nullopt;

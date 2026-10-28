@@ -228,12 +228,11 @@ std::string deeper_databases_hint(const Project& project) {
 }
 
 bool found_unreadable_database(const Project& project) {
-    return ranges::any_of(
-        views::iota(std::size_t(0), project.cdb.source_count()),
-        [&](std::size_t i) {
-            return !project.cdb.loaded(SourceID(i)) &&
-                   fs::exists(project.cdb.source_path(SourceID(i))).value_or(false);
-        });
+    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
+                          [&](std::size_t i) {
+                              return !project.cdb.loaded(SourceID(i)) &&
+                                     fs::exists(project.cdb.source_path(SourceID(i)));
+                          });
 }
 
 std::string why_no_members(const Project& project, llvm::StringRef root) {
@@ -242,7 +241,7 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
         auto path = project.cdb.source_path(SourceID(i));
         if(project.cdb.loaded(SourceID(i))) {
             empty.push_back(path.str());
-        } else if(fs::exists(path).value_or(false)) {
+        } else if(fs::exists(path)) {
             return std::format("{} cannot be read; the error above says why.", path.str());
         } else {
             return std::format("{} does not exist yet; the build writes it.", path.str());
@@ -319,7 +318,7 @@ void load_sources(Project& project,
         if(auto loaded = project.cdb.load_source(id)) {
             LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
             entries += *loaded;
-        } else if(!fs::exists(project.cdb.source_path(id)).value_or(false)) {
+        } else if(!fs::exists(project.cdb.source_path(id))) {
             LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));
         }
     }

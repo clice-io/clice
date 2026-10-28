@@ -16,22 +16,6 @@ namespace clice::testing {
 
 namespace {
 
-/// A link to a directory: a symlink, or on Windows a junction, which needs
-/// no privilege to make.
-bool link_directory(const std::string& target, const std::string& link) {
-#ifdef _WIN32
-    sys::SpawnOptions options{
-        .program = "cmd",
-        .args = {"/c", "mklink", "/J", link, target}
-    };
-    std::string output;
-    auto status = sys::capture(output, output, std::move(options));
-    return status && status->success();
-#else
-    return ::symlink(target.c_str(), link.c_str()) == 0;
-#endif
-}
-
 ZEST_SUITE(FileSystem) {
 
 ZEST_CASE(OpenedFilesKeepIdentity) {
@@ -215,35 +199,6 @@ ZEST_CASE(StampSeesKeptTimes) {
     ZASSERT(restamp.size == stamp.size);
     ZASSERT(restamp.mtime_ns == stamp.mtime_ns);
     ZASSERT(restamp != stamp);
-}
-
-ZEST_CASE(WalkPrunesAndSkipsLinks) {
-    TempDir tmp;
-    tmp.touch("src/a.cpp");
-    tmp.touch("src/deep/b.cpp");
-    tmp.touch("skip/c.cpp");
-    tmp.touch("outside/d.cpp");
-    ZASSERT(link_directory(tmp.path("outside"), tmp.path("src/link")));
-
-    std::vector<std::string> seen;
-    vfs::walk(tmp.path("src"), [&](llvm::StringRef entry, fs::FileType type) {
-        seen.push_back(std::string(path::filename(entry)));
-        if(seen.back() == "link") {
-            ZEXPECT(type == fs::FileType::Symlink);
-        }
-        return true;
-    });
-    ranges::sort(seen);
-    ZASSERT(seen == (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
-
-    seen.clear();
-    vfs::walk(tmp.root, [&](llvm::StringRef entry, fs::FileType) {
-        auto name = path::filename(entry);
-        seen.push_back(std::string(name));
-        return name != "skip" && name != "src";
-    });
-    ranges::sort(seen);
-    ZASSERT(seen == (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
 }
 
 };  // ZEST_SUITE(FileSystem)

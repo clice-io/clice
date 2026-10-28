@@ -59,7 +59,7 @@ struct SearchQuestion {
     DecoInput(meta_var = "<LOCATOR>",
               help = "The symbols to list, as a locator (default: every symbol)",
               required = false)
-    <std::vector<std::string>> locator;
+    <std::string> locator;
 
     DecoKV(help = "At most this many symbols (default 100)", required = false)
     <int> limit;
@@ -192,12 +192,8 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
 template <typename Question, typename Ask>
 CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
     return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
-        auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
-        if(!args) {
-            return usage_error(Errors::JSON, args.error());
-        }
         return run_query(opts.query, with_build, [&](query::Context& ctx) {
-            return ask(ctx, inspected_path(ctx.project, args->front()), opts);
+            return ask(ctx, inspected_path(ctx.project, *opts.target.path), opts);
         });
     });
 }
@@ -206,12 +202,8 @@ CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
 template <typename Question, typename Ask>
 CommandHandler symbol_question(std::string_view usage, Ask ask) {
     return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
-        auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
-        if(!args) {
-            return usage_error(Errors::JSON, args.error());
-        }
         return run_query(opts.query, /*with_build=*/false, [&](query::Context& ctx) {
-            return index::SymbolQuery::parse(args->front()).and_then([&](auto locator) {
+            return index::SymbolQuery::parse(*opts.target.locator).and_then([&](auto locator) {
                 return ask(ctx, std::move(locator), opts);
             });
         });
@@ -274,11 +266,7 @@ CommandHandler build() {
             "query",
             Errors::JSON,
             [](const SearchQuestion& opts) {
-                auto args = positional(opts.locator.as_optional(), {"<LOCATOR>"}, 1);
-                if(!args) {
-                    return usage_error(Errors::JSON, args.error());
-                }
-                auto text = args->empty() ? std::string() : args->front();
+                auto text = opts.locator.value_or("");
                 auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
                 return run_query(opts.query, /*with_build=*/false, [&](query::Context& ctx) {
                     return query::symbol_search(ctx, text, limit);

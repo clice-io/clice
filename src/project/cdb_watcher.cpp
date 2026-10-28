@@ -166,7 +166,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     llvm::StringSet<> seen;
     auto want = [&](llvm::ArrayRef<Spelling> candidates) {
         for(auto& place: candidates) {
-            if(seen.insert(place.str()).second) {
+            if(seen.insert(place).second) {
                 wanted.push_back(place);
             }
         }
@@ -190,16 +190,16 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     }
 
     for(auto& place: wanted) {
-        if(registered.contains(place.str())) {
+        if(registered.contains(place)) {
             continue;
         }
-        auto it = places.find(place.str());
+        auto it = places.find(place);
         if(it == places.end()) {
             if(project.cdb.find_source(place)) {
-                registered.insert(place.str());
+                registered.insert(place);
                 continue;
             }
-            it = places.try_emplace(place.str(), disk.watch(place.str())).first;
+            it = places.try_emplace(place, disk.watch(place.str())).first;
         }
         if(!it->second->stamp) {
             continue;
@@ -219,7 +219,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
             LOG_INFO("Found compilation database: {}", place);
             track(id);
         }
-        registered.insert(place.str());
+        registered.insert(place);
         places.erase(it);
     }
 }

@@ -30,15 +30,14 @@ namespace {
 /// is a directory that is itself a symlink (build -> out/debug): switching
 /// the link switches the database.
 Spelling source_key(const Spelling& path) {
-    auto file =
-        path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
+    auto file = path::extension(path) != ".json" ? Spelling("compile_commands.json", path) : path;
     auto directory = file.parent();
-    if(fs::is_symlink(directory.str())) {
+    if(fs::is_symlink(directory)) {
         return Spelling(
-            path::filename(file.str()),
-            Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
+            path::filename(file),
+            Spelling(path::filename(directory), Spelling(CanonicalPath(directory.parent()))));
     }
-    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(directory)));
+    return Spelling(path::filename(file), Spelling(CanonicalPath(directory)));
 }
 
 /// The per-file delta between two command hash snapshots.
@@ -103,7 +102,7 @@ SourceID CompilationDatabase::add_source(const Spelling& path) {
         return *existing;
     }
     auto file = file_table.intern(key);
-    source_files.push_back({.path = key.str(), .inputs = {{.file = file}}});
+    source_files.push_back({.path = std::move(key).str(), .inputs = {{.file = file}}});
     return SourceID(source_files.size() - 1);
 }
 
@@ -332,7 +331,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         auto directory = spelled(dir_ref, Spelling::absolute(path).parent(), normalizer.mounts);
         // The compile runs in the directory itself, whichever way the
         // database spells it: its identity keys the command.
-        auto [known, fresh] = working_dirs.try_emplace(directory.str());
+        auto [known, fresh] = working_dirs.try_emplace(directory);
         if(fresh) {
             known->second = Spelling(CanonicalPath(directory));
         }
@@ -348,7 +347,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         auto file = spelled(file_ref, directory, normalizer.mounts);
         auto path_id = file_table.intern_spelled(file);
         llvm::StringRef spelling = file.str() != llvm::StringRef(file_table.resolve(path_id))
-                                       ? command_table.intern(file.str())
+                                       ? command_table.intern(file)
                                        : llvm::StringRef();
 
         auto normalized = command ? normalizer.normalize(working, path_id, *command)

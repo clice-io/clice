@@ -254,7 +254,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
         co_return;
     }
     if(report.members.empty()) {
-        LOG_ERROR("Nothing to index: {}", why_no_members(project, options.root.str()));
+        LOG_ERROR("Nothing to index: {}", why_no_members(project, options.root));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -524,7 +524,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
 
     auto& members = report.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", why_no_members(project, options.root.str()));
+        LOG_ERROR("Nothing to lint: {}", why_no_members(project, options.root));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -777,7 +777,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     for(auto& path: options.paths) {
         if(fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
-        } else if(!fs::exists(path).value_or(false)) {
+        } else if(!fs::exists(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;
@@ -806,7 +806,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
             result.error =
-                std::format("Nothing to format: {}", why_no_members(project, options.root.str()));
+                std::format("Nothing to format: {}", why_no_members(project, options.root));
             return result;
         }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {

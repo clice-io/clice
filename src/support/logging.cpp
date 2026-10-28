@@ -86,7 +86,7 @@ std::string session_log_directory(std::string_view logging_dir) {
 /// directories goes is named, which Windows reports as a missing path.
 static std::string creation_error(llvm::StringRef dir, std::error_code error) {
     for(auto at: fs::path::ancestors(dir)) {
-        if(fs::exists(at).value_or(false)) {
+        if(fs::exists(at)) {
             if(!fs::is_directory(at)) {
                 return std::format("{} is not a directory", at);
             }

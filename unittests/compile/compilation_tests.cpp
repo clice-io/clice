@@ -25,7 +25,7 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
                                        const TempDir& tmp,
                                        llvm::StringRef file) {
     auto path = tmp.path(file);
-    cdb.add_command(tmp.root.str(), path, std::format("clang++ -std=c++20 {}", path));
+    cdb.add_command(tmp.root, path, std::format("clang++ -std=c++20 {}", path));
     auto& entry = cdb.candidate_entries(path).front();
     CommandRef ref{entry.file,
                    entry.command,
@@ -108,7 +108,7 @@ int x = FROM_GEN;
 
     params.kind = CompilationKind::Content;
     params.input.arguments = {"clang++", "-std=c++20", "-Igen", tmp.path("main.cpp")};
-    params.input.directory = tmp.root.str().str();
+    params.input.directory = tmp.root;
 
     auto built = clice::compile(std::move(params));
     ZASSERT(built->completed());
@@ -126,7 +126,7 @@ int x = FOUND;
 
     params.kind = CompilationKind::Content;
     params.input.arguments = {"clang++", "-std=c++20", "-Ifirst", "-Isecond", tmp.path("main.cpp")};
-    params.input.directory = tmp.root.str().str();
+    params.input.directory = tmp.root;
 
     auto built = clice::compile(std::move(params));
     ZASSERT(built->completed());
@@ -185,7 +185,7 @@ int quotient = 1 / 0;
                               "-include",
                               tmp.path("microsoft.h"),
                               tmp.path("main.cpp")};
-    params.input.directory = tmp.root.str().str();
+    params.input.directory = tmp.root;
     auto shown = [](CompilationUnit& unit) {
         return ranges::to<std::vector>(
             unit.diagnostics() | views::filter([](const Diagnostic& diag) {
@@ -246,7 +246,7 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
                               tmp.path("overlay.yaml"),
                               "-I" + tmp.path("virtual"),
                               tmp.path("main.cpp")};
-    params.input.directory = tmp.root.str().str();
+    params.input.directory = tmp.root;
 
     auto built = clice::compile(std::move(params));
     ZASSERT(built->completed());

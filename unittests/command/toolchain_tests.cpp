@@ -369,7 +369,7 @@ ZEST_CASE(PrecompileFullBMI, skip = Windows) {
         flags.insert(flags.begin(), driver.c_str());
         flags.push_back(tmp.c_path("a.cppm"));
         ToolchainEntries fresh;
-        auto ref = fresh.add(tmp.root.str(), tmp.path("a.cppm"), flags);
+        auto ref = fresh.add(tmp.root, tmp.path("a.cppm"), flags);
         return contains(fresh.resolve(ref), "-fmodules-reduced-bmi");
     };
 

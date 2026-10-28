@@ -24,7 +24,8 @@ struct RenameOptions {
               help =
                   "The symbol, as a locator: its whole name, an answer's symbol, or "
                   "file:line[:column]; and its new name",
-              required = false)
+              required = false,
+              arg_num = 2)
     <std::vector<std::string>> inputs;
 
     DecoKV(help =
@@ -180,12 +181,10 @@ int run_rename(const RenameOptions& opts) {
                                "--spec lists the renames; <LOCATOR> <NEW-NAME> names one");
         }
         requests = read_renames(*opts.spec);
+    } else if(!opts.inputs) {
+        return usage_error(Errors::JSON, "rename takes <LOCATOR> <NEW-NAME>, or --spec");
     } else {
-        auto args = positional(opts.inputs.as_optional(), {"<LOCATOR>", "<NEW-NAME>"});
-        if(!args) {
-            return usage_error(Errors::JSON, args.error());
-        }
-        requests = one_rename(*args);
+        requests = one_rename(*opts.inputs);
     }
     if(!requests) {
         return fail(std::move(requests.error()));

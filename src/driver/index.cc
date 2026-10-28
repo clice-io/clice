@@ -962,12 +962,8 @@ int read_index(const WorkspaceOptions& where, Run run) {
 template <typename Show>
 CommandHandler show_file(std::string_view usage, Show show) {
     return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
-        auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
-        if(!args) {
-            return usage_error(Errors::Text, args.error());
-        }
         return read_index(opts.where, [&](Project& project, CommandResolver&, LoadedIndex&) {
-            return show(project, args->front());
+            return show(project, *opts.target.path);
         });
     });
 }
@@ -998,14 +994,11 @@ CommandHandler build() {
             "index",
             Errors::Text,
             [](const SymbolOptions& opts) {
-                auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
-                if(!args) {
-                    return usage_error(Errors::Text, args.error());
-                }
-                return read_index(opts.where,
-                                  [&](Project& project, CommandResolver& commands, LoadedIndex&) {
-                                      return run_show_symbol(project, commands, args->front());
-                                  });
+                return read_index(
+                    opts.where,
+                    [&](Project& project, CommandResolver& commands, LoadedIndex&) {
+                        return run_show_symbol(project, commands, *opts.target.locator);
+                    });
             }),
     });
     operations.push_back({

@@ -64,7 +64,7 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
 /// Whether a live process is working inside this cache layout: every
 /// writable open creates `tmp/{pid}` and keeps it until shutdown.
 bool has_live_instance(llvm::StringRef base) {
-    auto entries = fs::read_dir(path::join(base, "tmp"));
+    auto entries = fs::Directory::open(path::join(base, "tmp"));
     return entries && ranges::any_of(*entries, [](const auto& entry) {
                int pid = 0;
                return entry && !llvm::StringRef(entry->name).getAsInteger(10, pid) &&
@@ -227,7 +227,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // instance stays: a clice of another version is serving from it, and
     // its writer locks live inside the directory, so they cannot protect
     // it from us — a later open reclaims it once that process exits.
-    if(auto entries = fs::read_dir(parent)) {
+    if(auto entries = fs::Directory::open(parent)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
@@ -272,7 +272,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // instances that no longer exist.
     auto self_pid = sys::pid();
     auto tmp_parent = path::join(state->base, "tmp");
-    if(auto entries = fs::read_dir(tmp_parent)) {
+    if(auto entries = fs::Directory::open(tmp_parent)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
@@ -362,7 +362,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         std::int64_t mtime_ns;
     };
 
-    auto listed = fs::read_dir(ns_state.dir);
+    auto listed = fs::Directory::open(ns_state.dir);
     if(!listed && !(state->read_only && listed.error() == std::errc::no_such_file_or_directory)) {
         // A read-only open of a store whose namespace was never created is
         // a legitimately empty scan; any other failure hides existing blobs.
@@ -549,7 +549,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     // A crash cannot leave a blob whose name promises content it doesn't
     // have.
     auto failure = [&] {
-        auto file = fs::File::open(pending.tmp_path, {.write = true});
+        auto file = fs::File::open(pending.tmp_path);
         return file ? file->sync() : file.error();
     }();
     if(failure) {
@@ -586,7 +586,13 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             }
         }
     }
-    bool gone = removed && !fs::exists(final_path).value_or(false);
+    if(!failure) {
+        auto directory = fs::Directory::open(dir);
+        if(auto error = directory ? directory->sync() : directory.error()) {
+            LOG_WARN("CacheStore: cannot sync dir {}: {}", dir, error.message());
+        }
+    }
+    bool gone = removed && !fs::exists(final_path);
 
     {
         std::lock_guard guard(state->mutex);
@@ -688,7 +694,7 @@ std::vector<CacheStore::EvictedBlob> CacheStore::take_evictions() {
 
 std::size_t CacheStore::pending_tmp_files() const {
     std::lock_guard guard(state->mutex);
-    auto entries = fs::read_dir(state->tmp_dir);
+    auto entries = fs::Directory::open(state->tmp_dir);
     return entries ? ranges::count_if(*entries, [](const auto& entry) { return entry.has_value(); })
                    : 0;
 }

@@ -219,7 +219,7 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
     }
 
     auto compat = path::join(directory, "std.compat");
-    auto entries = fs::read_dir(compat);
+    auto entries = fs::Directory::open(compat);
     if(!entries) {
         return std::unexpected(
             std::format("cannot list {}: {}", compat, entries.error().message()));

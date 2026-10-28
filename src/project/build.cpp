@@ -62,7 +62,7 @@ std::optional<SourceID> Build::declared_source(const Spelling& database) const {
         declared_source_ids.clear();
         declared_source_count = cdb.source_count();
     }
-    auto [it, inserted] = declared_source_ids.try_emplace(database.str());
+    auto [it, inserted] = declared_source_ids.try_emplace(database);
     if(inserted) {
         it->second = cdb.find_source(database);
     }
@@ -283,7 +283,7 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
         llvm::SmallString<256> storage;
-        joined += path::portable(item.directory.str(), root, storage);
+        joined += path::portable(item.directory, root, storage);
         joined += '\0';
         for(llvm::StringRef flag: item.flags) {
             // The rule's `${workspace}` put back, so a moved checkout
@@ -573,27 +573,32 @@ void Build::collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::v
 
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     std::vector<CanonicalPath> walked;
-    for(auto& root: walk.roots) {
-        vfs::walk(root, [&](llvm::StringRef entry, fs::FileType type) {
-            // The walk spells paths natively, under the root; only an
-            // entry that is itself a symlink names a file elsewhere.
-            llvm::SmallString<256> storage;
-            auto spelled = path::canonical(entry, storage);
-            if(type == fs::FileType::Directory) {
-                auto name = path::filename(spelled);
-                return name != ".git" && (name != path::filename(walk.cache_dir) ||
-                                          CanonicalRef(root).entry(spelled) != walk.cache_dir);
+    for(CanonicalRef root: walk.roots) {
+        auto entries = fs::walk(root);
+        for(auto& entry: entries) {
+            if(!entry) {
+                vfs::warn_unreadable(entry.error());
+                continue;
             }
-            auto path = type == fs::FileType::Regular ? CanonicalRef(root).entry(spelled)
-                                                      : CanonicalPath(Spelling::absolute(spelled));
+            if(entry->type == fs::FileType::Directory) {
+                auto name = entry->name();
+                if(name == ".git" || (name == path::filename(walk.cache_dir) &&
+                                      root.entry(entry->path) == walk.cache_dir)) {
+                    entries.skip();
+                }
+                continue;
+            }
+            // Only an entry that is itself a symlink names a file elsewhere.
+            auto path = entry->type == fs::FileType::Regular
+                            ? root.entry(entry->path)
+                            : CanonicalPath(Spelling::absolute(entry->path));
             if(suffix_type(path) != clang::driver::types::TY_INVALID ||
                ranges::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
                    return path::is_within(path, patterned);
                })) {
                 walked.push_back(std::move(path));
             }
-            return false;
-        });
+        }
     }
     return walked;
 }
@@ -603,28 +608,33 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
 static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
     auto name = path::filename(dir);
     return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
-           fs::exists(path::join(dir, "CMakeCache.txt")).value_or(false) ||
-           fs::exists(path::join(dir, "build.ninja")).value_or(false);
+           fs::exists(path::join(dir, "CMakeCache.txt")) ||
+           fs::exists(path::join(dir, "build.ninja"));
 }
 
 std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
     std::vector<CanonicalPath> found;
-    vfs::walk(root, [&](llvm::StringRef entry, fs::FileType type) {
-        llvm::SmallString<256> storage;
-        auto spelled = path::canonical(entry, storage);
-        if(type == fs::FileType::Directory) {
-            return !outside_sources(root.entry(spelled), cache_dir);
+    auto entries = fs::walk(root);
+    for(auto& entry: entries) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+            continue;
         }
-        if(type != fs::FileType::Regular) {
-            return false;
+        if(entry->type == fs::FileType::Directory) {
+            if(outside_sources(root.entry(entry->path), cache_dir)) {
+                entries.skip();
+            }
+            continue;
         }
-        auto path = root.entry(spelled);
+        if(entry->type != fs::FileType::Regular) {
+            continue;
+        }
+        auto path = root.entry(entry->path);
         if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
            is_context_header_path(path) || path.str().ends_with(".cuh")) {
             found.push_back(std::move(path));
         }
-        return false;
-    });
+    }
     return found;
 }
 

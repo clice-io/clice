@@ -488,8 +488,8 @@ ZEST_CASE(CDBTickDiscoversAround) {
     ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
     ZEXPECT(tracker.discover_around(main_id).empty());
     ZEXPECT(tracker.discover_around(other_id).empty());
-    auto outside = project.file_table.intern(
-        Spelling::absolute(path::join(path::parent(tmp.root.str()), "x.cpp")));
+    auto outside =
+        project.file_table.intern(Spelling::absolute(path::join(path::parent(tmp.root), "x.cpp")));
     ZEXPECT(tracker.discover_around(outside).empty());
 
     store.open(other_id);

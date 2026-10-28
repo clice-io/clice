@@ -36,7 +36,7 @@ exit = 2
 [test."$ clice analyze modules edge core"]
 stdout = '''
 {
-  "error": "missing <TO>",
+  "error": "at end of argv:\n  core\n      ^\n  expected 2 input arguments, got 1",
   "stale": []
 }
 '''
