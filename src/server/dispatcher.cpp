@@ -7,7 +7,7 @@ module;
 
 module clice;
 
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :feature.code_completion;
 import :feature.document_symbols;
 import :feature.folding_ranges;

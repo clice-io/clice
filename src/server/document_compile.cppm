@@ -101,7 +101,7 @@ struct DocumentCompile {
 /// The AST family's per-document table: the latest compiles plus the freshness
 /// state that used to live on the Session (ast_dirty, dirty_epoch). Owned
 /// and written by the family and its facade; readers (IndexQuery,
-/// Features, transports) only look things up. A separate type so
+/// Requests, transports) only look things up. A separate type so
 /// read-side tests can populate one without the family's machinery.
 struct DocumentCompiles {
     struct Entry {

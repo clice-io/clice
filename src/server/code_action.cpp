@@ -4,11 +4,11 @@ module;
 
 module clice;
 
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :feature.formatting;
 import :feature.protocol;
 import :server.editor_context;
-import :server.features;
+import :server.requests;
 import :syntax.include_resolver;
 import :syntax.source_text;
 import :vfs.file_system;
@@ -17,10 +17,10 @@ import :vfs.path;
 namespace clice {
 
 kota::task<std::vector<protocol::CodeAction>, ipc::Error>
-    Features::code_action(Ticket ticket,
-                          const protocol::Range& range,
-                          llvm::ArrayRef<protocol::CodeActionKind> only,
-                          kota::cancellation_token token) {
+    Requests::code_actions(Ticket ticket,
+                           const protocol::Range& range,
+                           llvm::ArrayRef<protocol::CodeActionKind> only,
+                           kota::cancellation_token token) {
     auto& session = ticket.session;
     std::vector<protocol::CodeAction> out;
     if(ranges::none_of(feature::code_action_kinds,

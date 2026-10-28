@@ -5,12 +5,12 @@ module;
 /// The inside of the code action layer: what an action reads, how the
 /// table anchors it, and the floor every action stands on. An action is a
 /// function from a selection to CodeAction values, computed to completion
-/// against one AST; the table in code_action.cpp decides which actions a
+/// against one AST; the table in code_actions.cpp decides which actions a
 /// selection is offered. Nothing here knows the index or the protocol.
 
-module clice:feature.code_action.action;
+module clice:feature.code_actions.action;
 
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :semantic.selection;
 import :support.text;
 

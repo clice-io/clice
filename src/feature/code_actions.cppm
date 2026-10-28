@@ -2,7 +2,7 @@ module;
 
 #include "support/prelude.h"
 
-module clice:feature.code_action.code_action;
+module clice:feature.code_actions;
 
 import :compile.compilation;
 import :index.query;

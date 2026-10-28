@@ -9,7 +9,7 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;

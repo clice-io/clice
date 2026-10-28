@@ -16,7 +16,7 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(document_link, Tester) {
+ZEST_SUITE(document_links, Tester) {
 
 std::vector<index::DocumentLink> links;
 
@@ -228,7 +228,7 @@ ZEST_CASE(LinksFromEdges) {
     ZASSERT(links[1].target == "/usr/include/second");
 }
 
-};  // ZEST_SUITE(document_link)
+};  // ZEST_SUITE(document_links)
 
 }  // namespace
 

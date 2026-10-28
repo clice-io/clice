@@ -16,7 +16,7 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(folding_range, IndexEntriesTester) {
+ZEST_SUITE(folding_ranges, IndexEntriesTester) {
 
 ZEST_CASE(FoldsSubsetOfAst) {
     add_focus("main.cpp", R"cpp(
@@ -162,7 +162,7 @@ void g() {
     ZASSERT(folds[0].range.end == g_end);
 }
 
-};  // ZEST_SUITE(folding_range)
+};  // ZEST_SUITE(folding_ranges)
 
 }  // namespace
 

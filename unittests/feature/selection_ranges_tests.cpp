@@ -24,7 +24,7 @@ std::vector<std::string> steps_at(llvm::StringRef content, std::uint32_t offset)
     return steps;
 }
 
-ZEST_SUITE(SelectionRange) {
+ZEST_SUITE(selection_ranges) {
 
 ZEST_CASE(EmptyText) {
     ZEXPECT(steps_at("", 0) == std::vector<std::string>{""});
@@ -51,7 +51,7 @@ ZEST_CASE(DeepNestingCapped) {
     ZEXPECT(steps.back() == text);
 }
 
-};  // ZEST_SUITE(SelectionRange)
+};  // ZEST_SUITE(selection_ranges)
 
 }  // namespace
 

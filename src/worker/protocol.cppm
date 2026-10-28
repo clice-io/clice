@@ -6,7 +6,7 @@ module clice:worker.protocol;
 
 import :compile.compilation;
 import :config.config;
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_symbols;

@@ -17,7 +17,7 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(inlay_hint, Tester) {
+ZEST_SUITE(inlay_hints, Tester) {
 
 std::vector<feature::InlayHint> hints;
 llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
@@ -678,7 +678,7 @@ ZEST_CASE(RangeEndExcluded) {
     ZEXPECT(feature::inlay_hints(*unit, {arg, arg + 1}).size() == 1U);
 };
 
-};  // ZEST_SUITE(inlay_hint)
+};  // ZEST_SUITE(inlay_hints)
 
 }  // namespace
 }  // namespace clice::testing

@@ -13,7 +13,7 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(document_symbol, IndexEntriesTester) {
+ZEST_SUITE(document_symbols, IndexEntriesTester) {
 
 /// The outline the index computes from the unit's own entries.
 auto index_outline() -> std::vector<feature::DocumentSymbol> {
@@ -108,7 +108,7 @@ enum class Color {
     compare(compare, from_index, ast);
 }
 
-};  // ZEST_SUITE(document_symbol)
+};  // ZEST_SUITE(document_symbols)
 
 }  // namespace
 

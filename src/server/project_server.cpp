@@ -35,7 +35,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     dispatcher(project, contexts, ast, server.pool, server.position_encoding),
     live_sources(project, sched.pch, sessions, ast.compiles),
     index_query(project.index, project.file_table, &freshness, &live_sources),
-    features(ast,
+    requests(ast,
              dispatcher,
              index_query,
              project,

@@ -74,7 +74,7 @@ public:
     void register_runner();
 
     /// Per-document latest compiles and freshness state; the read surface for
-    /// IndexQuery, Features and the transports.
+    /// IndexQuery, Requests and the transports.
     DocumentCompiles compiles;
 
     /// Parsed form of config.project.readonly, written once by the master

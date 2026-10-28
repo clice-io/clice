@@ -6,8 +6,8 @@ module clice;
 
 import :command.file_kind;
 import :command.search_config;
-import :feature.code_action.action;
-import :feature.code_action.code_action;
+import :feature.code_actions.action;
+import :feature.code_actions;
 import :feature.code_completion;
 import :feature.documentation;
 import :feature.protocol;

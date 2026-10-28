@@ -8,7 +8,7 @@ module;
 
 module clice;
 
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -38,7 +38,7 @@ struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
     }
 };
 
-ZEST_SUITE(code_action, Tester) {
+ZEST_SUITE(code_actions, Tester) {
 
 std::vector<feature::CodeAction> actions;
 std::string original;
@@ -1176,7 +1176,7 @@ private:
 )");
 }
 
-};  // ZEST_SUITE(code_action)
+};  // ZEST_SUITE(code_actions)
 
 }  // namespace
 

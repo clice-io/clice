@@ -2,7 +2,7 @@ module;
 
 #include "support/prelude.h"
 
-module clice:server.features;
+module clice:server.requests;
 
 import :feature.code_completion;
 import :feature.diagnostics;
@@ -53,9 +53,9 @@ namespace clice {
 /// source belongs here. Transports (LSP handlers) only translate
 /// between the protocol and these methods — they never merge, retry,
 /// or gate results themselves.
-class Features {
+class Requests {
 public:
-    Features(ASTFamily& ast,
+    Requests(ASTFamily& ast,
              Dispatcher& dispatcher,
              index::IndexQuery& query,
              Project& project,
@@ -127,21 +127,21 @@ public:
                           const protocol::Range& range,
                           bool label_parts,
                           kota::cancellation_token token = {});
-    RawResult folding_range(Ticket ticket,
-                            feature::FoldingClient client,
-                            kota::cancellation_token token = {});
+    RawResult folding_ranges(Ticket ticket,
+                             feature::FoldingClient client,
+                             kota::cancellation_token token = {});
     /// A flat reply places every symbol at `uri`, the document as the
     /// request names it.
-    RawResult document_symbol(Ticket ticket,
-                              feature::SymbolClient client,
-                              std::string uri,
-                              kota::cancellation_token token = {});
+    RawResult document_symbols(Ticket ticket,
+                               feature::SymbolClient client,
+                               std::string uri,
+                               kota::cancellation_token token = {});
 
     /// One chain of selection ranges per position: from the AST, or for a
     /// document without one from the raw lex of its text.
-    RawResult selection_range(Ticket ticket,
-                              std::vector<protocol::Position> positions,
-                              kota::cancellation_token token = {});
+    RawResult selection_ranges(Ticket ticket,
+                               std::vector<protocol::Position> positions,
+                               kota::cancellation_token token = {});
 
     /// Code actions on a range of the buffer: the worker computes them to
     /// completion against its AST, and the index requests they carry
@@ -150,20 +150,20 @@ public:
     /// is versioned against the buffer it was computed for. `only` is the
     /// client's kind filter (LSP CodeActionContext.only); empty keeps all.
     kota::task<std::vector<protocol::CodeAction>, ipc::Error>
-        code_action(Ticket ticket,
-                    const protocol::Range& range,
-                    llvm::ArrayRef<protocol::CodeActionKind> only,
-                    kota::cancellation_token token = {});
+        code_actions(Ticket ticket,
+                     const protocol::Range& range,
+                     llvm::ArrayRef<protocol::CodeActionKind> only,
+                     kota::cancellation_token token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
     /// a stateless worker. Pauses background indexing for the request's span.
     /// Space-triggered requests are only answered for import contexts.
-    RawResult completion(std::shared_ptr<Session> session,
-                         const protocol::Position& position,
-                         const feature::CompletionClient& client,
-                         llvm::StringRef trigger_character = {},
-                         kota::cancellation_token token = {});
+    RawResult code_completion(std::shared_ptr<Session> session,
+                              const protocol::Position& position,
+                              const feature::CompletionClient& client,
+                              llvm::StringRef trigger_character = {},
+                              kota::cancellation_token token = {});
 
     /// Signature help, dispatched as a stateless build. Pauses background
     /// indexing for the request's span.
@@ -187,7 +187,7 @@ public:
                          Fid path_id,
                          const protocol::Position& position,
                          bool include_declaration);
-    RawResult document_highlight(Ticket ticket, Fid path_id, const protocol::Position& position);
+    RawResult document_highlights(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult declaration(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult type_definition(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult implementation(Ticket ticket, Fid path_id, const protocol::Position& position);
@@ -220,7 +220,7 @@ public:
 
     /// The project's symbols matching `query`, best first; the master
     /// merges every project's list.
-    std::vector<feature::WorkspaceSymbol> workspace_symbol(llvm::StringRef query);
+    std::vector<feature::WorkspaceSymbol> workspace_symbols(llvm::StringRef query);
 
 private:
     /// Whether the worker's AST can answer for this session right now:

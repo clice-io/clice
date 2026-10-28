@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.code_action.action;
+import :feature.code_actions.action;
 import :semantic.types;
 import :syntax.lexical_scan;
 

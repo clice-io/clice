@@ -175,7 +175,7 @@ public:
 
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
-    std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
+    std::vector<protocol::SymbolInformation> workspace_symbols(llvm::StringRef query);
 
     void schedule_shutdown();
 

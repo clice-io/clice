@@ -12,7 +12,7 @@ import :server.ast_family;
 import :server.context_service;
 import :server.dispatcher;
 import :server.editor_context;
-import :server.features;
+import :server.requests;
 import :server.file_tracker;
 import :server.invalidator;
 import :server.live_sources;
@@ -141,7 +141,7 @@ public:
     index::FreshnessGate freshness{project.file_table};
     index::IndexQuery index_query;
 
-    Features features;
+    Requests requests;
     Invalidator invalidator;
 
     /// Polling of the project's databases, default sources and checkout.

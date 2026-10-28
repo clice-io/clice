@@ -13,7 +13,7 @@ import :feature.protocol;
 import :feature.semantic_tokens;
 import :feature.workspace_symbols;
 import :sched.graph;
-import :server.features;
+import :server.requests;
 import :server.lsp_client;
 import :server.master_server;
 import :support.anomaly;
@@ -316,7 +316,7 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
         }
     };
     std::shared_ptr<ProjectServer> made(new ProjectServer(*this, std::move(root)), released);
-    made->features.peers = [this, project = made.get()] {
+    made->requests.peers = [this, project = made.get()] {
         llvm::SmallVector<const index::IndexQuery*> others;
         for(auto& other: projects) {
             if(other.get() != project) {
@@ -325,7 +325,7 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
         }
         return others;
     };
-    made->features.open_in = [this](Fid file) -> const index::IndexQuery* {
+    made->requests.open_in = [this](Fid file) -> const index::IndexQuery* {
         auto it = owners.find(file);
         return it != owners.end() ? &it->second->index_query : nullptr;
     };
@@ -877,7 +877,7 @@ void MasterServer::serve_again(ProjectServer& project,
     }
 }
 
-std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
+std::vector<protocol::SymbolInformation> MasterServer::workspace_symbols(llvm::StringRef query) {
     // Another checkout of the same code opened beside it (a worktree) holds
     // a copy of each symbol at the same place in the same text of its
     // folder: the copy of a folder with open documents, the one being
@@ -893,7 +893,7 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
     });
     llvm::SmallVector<std::vector<feature::WorkspaceSymbol>> ranked;
     for(auto& project: ordered) {
-        ranked.push_back(project->features.workspace_symbol(query));
+        ranked.push_back(project->requests.workspace_symbols(query));
     }
     return feature::merge_workspace_symbols(ranked);
 }
