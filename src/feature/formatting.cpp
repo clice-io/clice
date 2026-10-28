@@ -212,16 +212,4 @@ auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {
     return formatted ? std::move(*formatted) : text.str();
 }
 
-auto to_protocol(llvm::ArrayRef<TextReplacement> edits,
-                 const PositionMap& map,
-                 PositionEncoding encoding) -> std::vector<protocol::TextEdit> {
-    std::vector<protocol::TextEdit> result;
-    for(const auto& edit: edits) {
-        if(auto range = map.range(edit.range, encoding)) {
-            result.push_back({.range = *range, .new_text = edit.text});
-        }
-    }
-    return result;
-}
-
 }  // namespace clice::feature

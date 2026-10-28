@@ -98,7 +98,7 @@ struct IncludeRequest {
     IncludeInsertion insertion;
 };
 
-/// What only the project index can decide: resolve_actions settles it.
+/// What only the project index can decide: resolve_actions resolves it.
 using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
 
 struct CodeAction {

@@ -37,9 +37,9 @@ std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites,
 /// The replacements as LSP edits, all of them or none: half an edit set
 /// would corrupt the buffer.
 std::optional<std::vector<protocol::TextEdit>>
-    to_text_edits(llvm::ArrayRef<TextReplacement> replacements,
-                  const PositionMap& map,
-                  PositionEncoding encoding);
+    to_protocol(llvm::ArrayRef<TextReplacement> replacements,
+                const PositionMap& map,
+                PositionEncoding encoding);
 
 /// The symbol an item's `data` carries, if intact: a prepared hierarchy
 /// item's, or a completion item's whose `#include` the server adds. Items

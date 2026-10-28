@@ -30,8 +30,8 @@ namespace clice {
 /// The project's language requests, each routed to the source that answers
 /// it now: every method gathers the inputs, calls the feature, and replies
 /// with its answer — the feature (src/feature) decides what the user sees.
-/// Where an answer is stitched from several sources in turn (definition,
-/// hover), the order of the stitching is the routing and stays here; each
+/// Where an answer is assembled from several sources in turn (definition,
+/// hover), the order they are asked in is the routing and stays here; each
 /// step is one feature call.
 ///
 /// An answer can come from three sources:
@@ -231,13 +231,6 @@ public:
     std::vector<feature::WorkspaceSymbol> workspace_symbols(llvm::StringRef query);
 
 private:
-    /// Whether the worker's AST can answer for this session right now:
-    /// compiled, current, and its compile not barred by a crash (the bar
-    /// sits before ensure_compiled's clean-AST fast path, so a barred
-    /// session's dispatch returns null even with a clean AST). When false,
-    /// the routing rules try the index before deciding to await a compile.
-    bool ast_answerable(const Session& session) const;
-
     /// The route decision for requests the index may serve: drains the
     /// transport pipe (the handler resumed eagerly; a didChange or cancel
     /// may be queued), then re-derives the source from current state.
@@ -271,6 +264,25 @@ private:
         bool await_cold_attempt = false;
     };
 
+    /// What a gate decided instead of the feature's own answer: null (no
+    /// source can answer — a failed compile) or ContentModified.
+    struct Stop {
+        std::optional<ipc::Error> error;
+    };
+
+    using Cursor = index::IndexQuery::Cursor;
+
+    /// What `navigate`'s answer gives: the reply, or the error to answer
+    /// with.
+    using Reply = std::expected<codec::RawValue, ipc::Error>;
+
+    /// Whether the worker's AST can answer for this session right now:
+    /// compiled, current, and its compile not barred by a crash (the bar
+    /// sits before ensure_compiled's clean-AST fast path, so a barred
+    /// session's dispatch returns null even with a clean AST). When false,
+    /// the routing rules try the index before deciding to await a compile.
+    bool ast_answerable(const Session& session) const;
+
     /// See Route. Sets up escalated sessions' compile kick so an index
     /// answer never strands the AST investment the policy asked for. A
     /// Route::Index decision stores the admitted source into `source`
@@ -288,12 +300,6 @@ private:
                        llvm::StringRef trigger_character,
                        kota::cancellation_token token);
 
-    /// What a gate decided instead of the feature's own answer: null (no
-    /// source can answer — a failed compile) or ContentModified.
-    struct Stop {
-        std::optional<ipc::Error> error;
-    };
-
     RawResult stop_reply(Stop stop);
 
     /// The compile gate of index-navigation requests: awaits the compile
@@ -308,15 +314,12 @@ private:
     /// was superseded.
     kota::task<std::optional<Stop>> await_compile(const Ticket& ticket);
 
-    using Cursor = index::IndexQuery::Cursor;
-
     /// The symbol under a position of the file's serving source, if any.
     std::optional<Cursor> cursor_at(Fid path_id, const protocol::Position& position) const;
 
     /// A navigation request's answer from the symbol at its position,
     /// `answer`'s, once the compile gate passed (navigation_gate); `none` where no
     /// symbol is.
-    using Reply = std::expected<codec::RawValue, ipc::Error>;
     template <typename Answer>
     RawResult navigate(const Ticket& ticket,
                        Fid path_id,
@@ -350,12 +353,19 @@ private:
     kota::task<std::vector<index::DocumentLink>, ipc::Error>
         directive_links(const Ticket& ticket, kota::cancellation_token token);
 
+private:
     ASTFamily& ast;
+
     Dispatcher& dispatcher;
+
     index::IndexQuery& query;
+
     Project& project;
+
     EditorContext& contexts;
+
     IndexPump& pump;
+
     SessionStore& sessions;
 
     /// What the client's positions count in (MasterServer::position_encoding).

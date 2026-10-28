@@ -198,11 +198,12 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
                       kota::cancellation_token token) {
     auto offset = ticket.session->positions().offset_clamped(position, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await ast_request(ticket,
-                                   EvidenceKind::Hover,
-                                   "Hover",
-                                   worker::HoverParams{std::move(path), offset, project.config},
-                                   std::move(token));
+    co_return co_await ast_request(
+        ticket,
+        EvidenceKind::Hover,
+        "Hover",
+        worker::HoverParams{.path = std::move(path), .offset = offset, .config = project.config},
+        std::move(token));
 }
 
 kota::task<std::vector<feature::InlayHint>, ipc::Error>

@@ -349,7 +349,7 @@ auto to_protocol(std::vector<ResolvedAction> actions,
                 .range = {at, at},
                 .new_text = std::move(action.host->text)});
         } else if(action.host_definitions.empty()) {
-            auto edits = to_text_edits(action.edits, positions, encoding);
+            auto edits = to_protocol(action.edits, positions, encoding);
             if(!edits) {
                 continue;
             }

@@ -11,7 +11,6 @@ import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
-import :feature.formatting;
 import :feature.hierarchy;
 import :feature.hover;
 import :feature.inlay_hints;
@@ -834,8 +833,9 @@ Requests::RawResult Requests::formatting(std::shared_ptr<Session> session,
         if(!result->error.empty()) {
             co_await kota::fail(request_failed(std::move(result->error)));
         }
-        co_return to_raw(
-            feature::to_protocol(result->edits, ticket.session->positions(), encoding));
+        auto edits = feature::to_protocol(result->edits, ticket.session->positions(), encoding);
+        assert(edits && "the edits are of the text the ticket was taken on");
+        co_return to_raw(*edits);
     });
 }
 
