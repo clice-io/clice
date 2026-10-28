@@ -2,7 +2,7 @@ module;
 
 #include "support/prelude.h"
 
-module clice:feature.semantic_token_stream;
+module clice:feature.semantic_tokens.stream;
 
 import :compile.compilation;
 import :feature.semantic_tokens;

@@ -7,7 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.inactive_regions;
 import :feature.index_entries;
-import :feature.semantic_token_stream;
+import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :index.query;
 import :index.symbol;

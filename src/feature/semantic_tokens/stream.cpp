@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :feature.semantic_token_stream;
+import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :semantic.token_class;
 import :syntax.doc_comment;
