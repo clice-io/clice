@@ -1,0 +1,26 @@
+["push utf-16".pushes]
+value = ["version 0: 0:38", "version 1: 0:44"]
+
+["pull utf-16".opened]
+value = ["0:38"]
+
+["pull utf-16".edited]
+value = ["0:44"]
+
+["push utf-8".pushes]
+value = ["version 0: 0:42", "version 1: 0:56"]
+
+["pull utf-8".opened]
+value = ["0:42"]
+
+["pull utf-8".edited]
+value = ["0:56"]
+
+["push utf-32".pushes]
+value = ["version 0: 0:37", "version 1: 0:41"]
+
+["pull utf-32".opened]
+value = ["0:37"]
+
+["pull utf-32".edited]
+value = ["0:41"]
