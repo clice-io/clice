@@ -153,7 +153,8 @@ auto host_edit(const index::IndexQuery& query,
                Fid host,
                std::uint64_t container,
                llvm::StringRef text,
-               llvm::function_ref<SourceText*()> host_text) -> std::optional<protocol::TextEdit>;
+               llvm::function_ref<SourceText*()> host_text,
+               PositionEncoding encoding) -> std::optional<protocol::TextEdit>;
 
 /// The headers declaring the name an IncludeRequest names, as the index
 /// knows them: the files of the declarations and definitions of the

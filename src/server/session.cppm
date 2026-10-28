@@ -67,8 +67,9 @@ struct Session {
     /// Current buffer content (may differ from disk until saved) and what
     /// is derived from it, read in the dialect Features::text_of sets.
     /// Behind a pointer: a SourceText stays where it was made, its text
-    /// pointing into itself, and an alias document's session moves.
-    std::unique_ptr<SourceText> source = std::make_unique<SourceText>(std::string());
+    /// pointing into itself, an alias document's session moves, and a
+    /// compile's output keeps the text it compiled.
+    std::shared_ptr<SourceText> source = std::make_shared<SourceText>(std::string());
 
     /// xxh3 of the text, rewritten with it: what "the buffer holds these
     /// bytes" is compared by against disk observations and index shards.
@@ -84,7 +85,7 @@ struct Session {
 
     /// Replace the text, and with it everything derived from it.
     void set_text(std::string text) {
-        source = std::make_unique<SourceText>(std::move(text));
+        source = std::make_shared<SourceText>(std::move(text));
         hash = llvm::xxh3_64bits(source->text());
     }
 

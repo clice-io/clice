@@ -15,6 +15,7 @@ import :server.master_server;
 import :server.project_server;
 import :server.session;
 import :support.signal;
+import :syntax.position;
 import :vfs.file_table;
 
 namespace clice {
@@ -151,9 +152,11 @@ private:
     /// (window.workDoneProgress).
     bool work_done_progress = false;
 
-    /// The diagnostics in the shape the client takes.
-    std::vector<protocol::Diagnostic>
-        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
+    /// The diagnostics shown on the file at `path` in the shape the client
+    /// takes, `positions` mapping the text they were compiled from.
+    std::vector<protocol::Diagnostic> to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                                llvm::StringRef path,
+                                                const PositionMap& positions);
 
     /// How the client takes folds (textDocument.foldingRange).
     feature::FoldingClient folding_client;

@@ -132,10 +132,11 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
                  const PositionMap& map,
+                 PositionEncoding encoding,
                  FileTable& files) -> std::vector<protocol::DocumentLink> {
     std::vector<protocol::DocumentLink> result;
     for(const auto& link: links) {
-        auto range = map.range(link.range, PositionEncoding::UTF16);
+        auto range = map.range(link.range, encoding);
         if(!range)
             continue;
         result.push_back({.range = *range, .target = to_uri(files.display_identity(link.target))});

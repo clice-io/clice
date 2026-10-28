@@ -1,0 +1,35 @@
+[utf-16."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'rules = [{ patterns = ["π/🙂/中文/**"], ⟦apend⟧ = ["-DWIDE"] }]',
+            severity = "warning",
+            message = "unknown field 'apend' at rules[0] (line 1, column 38)",
+            source = "clice",
+        },
+    ],
+]
+
+[utf-8."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'rules = [{ patterns = ["π/🙂/中文/**"], ⟦apend⟧ = ["-DWIDE"] }]',
+            severity = "warning",
+            message = "unknown field 'apend' at rules[0] (line 1, column 38)",
+            source = "clice",
+        },
+    ],
+]
+
+[utf-32."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'rules = [{ patterns = ["π/🙂/中文/**"], ⟦apend⟧ = ["-DWIDE"] }]',
+            severity = "warning",
+            message = "unknown field 'apend' at rules[0] (line 1, column 38)",
+            source = "clice",
+        },
+    ],
+]

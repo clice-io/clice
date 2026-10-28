@@ -2125,13 +2125,14 @@ auto directive_hover(llvm::StringRef text,
                      const PositionMap& map,
                      FileTable& files,
                      const index::DocumentLink& link,
-                     protocol::MarkupKind kind) -> std::optional<protocol::Hover> {
+                     protocol::MarkupKind kind,
+                     PositionEncoding encoding) -> std::optional<protocol::Hover> {
     if(link.range.end > text.size()) {
         return std::nullopt;
     }
     auto info = header_card(text, link.range, files.display_identity(link.target));
 
-    auto hover = to_protocol(info, kind, map, PositionEncoding::UTF16);
+    auto hover = to_protocol(info, kind, map, encoding);
     if(!hover.range) {
         return std::nullopt;
     }

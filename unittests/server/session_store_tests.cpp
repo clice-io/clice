@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :server.session_store;
+import :syntax.position;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -42,7 +43,7 @@ ZEST_CASE(RangeReplace) {
     store.apply_open(*session, "int a;\nint b;\n", 1);
 
     auto change = partial_change(1, 4, 1, 5, "value");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "int a;\nint value;\n");
     ZASSERT(session->version == 2);
@@ -59,7 +60,7 @@ ZEST_CASE(SequentialChangesFold) {
         partial_change(0, 1, 0, 2, "xyz"),  // "ab" -> "axyz"
         partial_change(1, 0, 1, 1, "Q"),    // "cd" -> "Qd"
     };
-    store.apply_change(*session, changes, 2);
+    store.apply_change(*session, changes, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "axyz\nQd\n");
     ZASSERT(session->generation == 2u);
@@ -72,7 +73,7 @@ ZEST_CASE(WholeDocumentReplace) {
 
     protocol::TextDocumentContentChangeEvent change =
         protocol::TextDocumentContentChangeWholeDocument{.text = "brand\nnew\n"};
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "brand\nnew\n");
 }
@@ -85,7 +86,7 @@ ZEST_CASE(InvertedRangeSpans) {
     // A range whose start lies after its end covers the bytes between its
     // ends, as vscode-languageserver-textdocument reads it.
     auto change = partial_change(1, 0, 0, 0, "X");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "Xcd\n");
 }
@@ -98,7 +99,7 @@ ZEST_CASE(InsideSurrogatePair) {
     // UTF-16 unit 1 is inside the emoji's surrogate pair: the edit is applied
     // at the character's start.
     auto change = partial_change(0, 1, 0, 1, "Y");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "Y\xf0\x9f\x98\x80x\n");
 }
@@ -114,11 +115,57 @@ ZEST_CASE(NonASCIILinesTracked) {
         partial_change(0, 0, 0, 0, "\xc3\xa9"),
         partial_change(0, 2, 0, 3, "Z"),
     };
-    store.apply_change(*session, changes, 2);
+    store.apply_change(*session, changes, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() ==
             "\xc3\xa9"
             "aZ\ncd\n");
+}
+
+ZEST_CASE(UTF8ColumnsCountBytes) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "ab\ncd\n", 1);
+
+    protocol::TextDocumentContentChangeEvent changes[] = {
+        partial_change(0, 0, 0, 0, "\xc3\xa9"),
+        partial_change(0, 3, 0, 4, "Z"),
+    };
+    store.apply_change(*session, changes, 2, PositionEncoding::UTF8);
+
+    ZASSERT(session->text() ==
+            "\xc3\xa9"
+            "aZ\ncd\n");
+}
+
+ZEST_CASE(InsideUTF8Sequence) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "\xc3\xa9x\n", 1);
+
+    // Byte 1 is inside the 2-byte character: the edit is applied at the
+    // character's start.
+    auto change = partial_change(0, 1, 0, 1, "Y");
+    store.apply_change(*session, change, 2, PositionEncoding::UTF8);
+
+    ZASSERT(session->text() == "Y\xc3\xa9x\n");
+}
+
+ZEST_CASE(UTF32ColumnsCountCodePoints) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session,
+                     "\xf0\x9f\x98\x80"
+                     "ab\n",
+                     1);
+
+    // The emoji is one code point, two UTF-16 units, four bytes.
+    auto change = partial_change(0, 1, 0, 2, "Z");
+    store.apply_change(*session, change, 2, PositionEncoding::UTF32);
+
+    ZASSERT(session->text() ==
+            "\xf0\x9f\x98\x80"
+            "Zb\n");
 }
 
 ZEST_CASE(SelectAllDeleteClamped) {
@@ -129,7 +176,7 @@ ZEST_CASE(SelectAllDeleteClamped) {
     // Several clients emit select-all-delete as an oversized range; per
     // LSP 3.17 positions past the document clamp to the document end.
     auto change = partial_change(0, 0, 99999, 0, "");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "");
     ZASSERT(session->version == 2);
@@ -144,7 +191,7 @@ ZEST_CASE(InsertPastLastLine) {
     // Line 1 (after the trailing newline) is the last line; line 2 clamps
     // to the true end of the document.
     auto change = partial_change(2, 0, 2, 0, "int b;\n");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "int a;\nint b;\n");
 }
@@ -156,7 +203,7 @@ ZEST_CASE(InsertPastLineEnd) {
 
     // A character beyond the line length clamps to the line end.
     auto change = partial_change(0, 9999, 0, 9999, "X");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "abX\ncd\n");
 }
@@ -172,7 +219,7 @@ ZEST_CASE(ClampedChangeFolds) {
         partial_change(0, 1, 0, 2, "xyz"),  // "ab" -> "axyz"
         partial_change(99, 0, 99, 0, "!"),  // clamps to the new EOF
     };
-    store.apply_change(*session, changes, 2);
+    store.apply_change(*session, changes, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "axyz\ncd\n!");
 }
@@ -183,7 +230,7 @@ ZEST_CASE(EmptyDocumentClamped) {
     store.apply_open(*session, "", 1);
 
     auto change = partial_change(5, 3, 8, 0, "int x;");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "int x;");
 }
@@ -196,7 +243,7 @@ ZEST_CASE(RangeEndPastEof) {
     // The end position sits on the last (empty) line but one character
     // past its length: it clamps to the end of the document.
     auto change = partial_change(1, 0, 2, 1, "");
-    store.apply_change(*session, change, 2);
+    store.apply_change(*session, change, 2, PositionEncoding::UTF16);
 
     ZASSERT(session->text() == "int a;\n");
 }
@@ -253,7 +300,7 @@ ZEST_CASE(EditLetsCrashRetry) {
     auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
     session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
     ZASSERT(session->quarantine->barred(0, later));
-    store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
+    store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2, PositionEncoding::UTF16);
     ZASSERT(!session->quarantine->barred(0, later));
 }
 
@@ -268,22 +315,25 @@ ZEST_CASE(NoopEditNoRetry) {
     // to an empty range at the end of the document, an empty change list
     // and a no-op replacement change nothing — none may send the unchanged
     // crashing bytes to another worker.
-    store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
+    store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2, PositionEncoding::UTF16);
     ZASSERT(session->quarantine->barred(0, later));
 
-    store.apply_change(*session, {}, 3);
+    store.apply_change(*session, {}, 3, PositionEncoding::UTF16);
     ZASSERT(session->quarantine->barred(0, later));
 
-    store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
+    store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4, PositionEncoding::UTF16);
     ZASSERT(session->quarantine->barred(0, later));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text().str();
-    store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
+    store.apply_change(*session,
+                       protocol::TextDocumentContentChangeEvent(whole),
+                       5,
+                       PositionEncoding::UTF16);
     ZASSERT(session->quarantine->barred(0, later));
 
-    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
+    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6, PositionEncoding::UTF16);
     ZASSERT(!session->quarantine->barred(0, later));
 }
 

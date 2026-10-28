@@ -39,6 +39,7 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
 /// file; a link outside `map`'s text is left out.
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
                  const PositionMap& map,
+                 PositionEncoding encoding,
                  FileTable& files) -> std::vector<protocol::DocumentLink>;
 
 /// Go-to-definition on a directive's argument: its target's file.

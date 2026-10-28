@@ -1923,7 +1923,7 @@ auto to_protocol(llvm::ArrayRef<InlayHint> hints,
                                         return std::vector<index::Site>{};
                                     });
         if(!sites.empty()) {
-            it->second = to_location(sites.front());
+            it->second = to_location(sites.front(), encoding);
         }
         return it->second;
     };

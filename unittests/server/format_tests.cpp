@@ -25,7 +25,7 @@ ZEST_CASE(UnmatchedContextWarns) {
         {});
     ZASSERT(diagnostics.size() == 1u);
     ZEXPECT(diagnostics[0].code == "unmatched-includer-context");
-    ZEXPECT(diagnostics[0].range.start.line == 0u);
+    ZEXPECT(diagnostics[0].range.begin == 0u);
     ZEXPECT(format_diagnostics({.source = CommandSource::IncludeGraph}, {}).empty());
 };
 
@@ -41,7 +41,7 @@ ZEST_CASE(QueryFailureWarns) {
     ZASSERT(diagnostics.size() == 1u);
     ZEXPECT(diagnostics[0].code == "toolchain-query-failed");
     ZEXPECT(llvm::StringRef(diagnostics[0].message).contains("riscv32-wch-elf-gcc not found"));
-    ZEXPECT(diagnostics[0].range.start.line == 0u);
+    ZEXPECT(diagnostics[0].range.begin == 0u);
 
     /// A project that knows its compiler is not here hides it by its code.
     feature::DiagnosticsOptions options;

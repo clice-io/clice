@@ -168,7 +168,7 @@ auto hover(CompilationUnit& unit,
            const HoverOptions& options,
            const DocumentationOptions& documentation,
            protocol::MarkupKind kind,
-           PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
+           PositionEncoding encoding) -> std::optional<protocol::Hover>;
 
 /// Assemble the read-only hover card: name, kind, where it is (`scopes`,
 /// the containers outermost first) and what the index can prove from
@@ -199,6 +199,7 @@ auto directive_hover(llvm::StringRef text,
                      const PositionMap& map,
                      FileTable& files,
                      const index::DocumentLink& link,
-                     protocol::MarkupKind kind) -> std::optional<protocol::Hover>;
+                     protocol::MarkupKind kind,
+                     PositionEncoding encoding) -> std::optional<protocol::Hover>;
 
 }  // namespace clice::feature

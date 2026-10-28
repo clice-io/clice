@@ -44,7 +44,11 @@ ipc::Error content_modified();
 /// popup.
 class Dispatcher {
 public:
-    Dispatcher(Project& project, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
+    Dispatcher(Project& project,
+               EditorContext& contexts,
+               ASTFamily& ast,
+               WorkerPool& pool,
+               const PositionEncoding& encoding);
 
     using RawResult = kota::task<codec::RawValue, ipc::Error>;
 
@@ -177,6 +181,9 @@ private:
     EditorContext& contexts;
     ASTFamily& ast;
     WorkerPool& pool;
+
+    /// What the client's positions count in (MasterServer::position_encoding).
+    const PositionEncoding& encoding;
 };
 
 }  // namespace clice

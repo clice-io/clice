@@ -987,7 +987,7 @@ tests/inactive_regions/updates/01_edited_condition
 - [x] 全文档语义 Token（`textDocument/semanticTokens/full`）
 - [x] 范围请求（`textDocument/semanticTokens/range`）：返回与该范围重叠的 Token
 - [x] 增量更新（`textDocument/semanticTokens/full/delta`）：返回自编辑器持有的上一次响应以来的变化
-- [x] 以 UTF-16 为单位的位置，跨行的 Token 按行拆分
+- [x] 以 UTF-16 为单位的位置，编辑器支持时改用 UTF-8 或 UTF-32；跨行的 Token 按行拆分
 
 ## 已知限制
 

@@ -11,6 +11,7 @@ import :index.peer_queries;
 import :index.query;
 import :index.site;
 import :index.symbol;
+import :syntax.position;
 
 namespace clice::feature {
 
@@ -79,10 +80,12 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
 /// function but its own calls.
 std::vector<protocol::CallHierarchyItem>
     call_hierarchy_items(const index::PeerQueries& queries,
-                         const index::IndexQuery::Cursor& cursor);
+                         const index::IndexQuery::Cursor& cursor,
+                         PositionEncoding encoding);
 std::vector<protocol::TypeHierarchyItem>
     type_hierarchy_items(const index::PeerQueries& queries,
-                         const index::IndexQuery::Cursor& cursor);
+                         const index::IndexQuery::Cursor& cursor,
+                         PositionEncoding encoding);
 
 /// The symbol a hierarchy item stands for: its handle when intact, else
 /// the symbol at the item's recorded range (`at_range`) in the serving
@@ -97,15 +100,19 @@ std::optional<index::SymbolHash> item_symbol(const index::IndexQuery& query,
 /// files it answers for, the same entity once.
 std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::PeerQueries& queries,
                                                                 index::SymbolHash symbol,
-                                                                Fid file);
+                                                                Fid file,
+                                                                PositionEncoding encoding);
 std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::PeerQueries& queries,
                                                                 index::SymbolHash symbol,
-                                                                Fid file);
+                                                                Fid file,
+                                                                PositionEncoding encoding);
 std::vector<protocol::TypeHierarchyItem> supertypes(const index::PeerQueries& queries,
                                                     index::SymbolHash symbol,
-                                                    Fid file);
+                                                    Fid file,
+                                                    PositionEncoding encoding);
 std::vector<protocol::TypeHierarchyItem> subtypes(const index::PeerQueries& queries,
                                                   index::SymbolHash symbol,
-                                                  Fid file);
+                                                  Fid file,
+                                                  PositionEncoding encoding);
 
 }  // namespace clice::feature

@@ -26,6 +26,9 @@ export interface AnswersOptions {
     config?: Record<string, unknown>;
     /// Background indexing on the server.
     indexing?: boolean;
+    /// The server's client offers this encoding before UTF-16, and the
+    /// server must take it; it answers in UTF-16 otherwise.
+    positionEncoding?: "utf-8" | "utf-32";
 }
 
 export type Registered =

@@ -44,7 +44,7 @@ kota::task<std::vector<protocol::CodeAction>, ipc::Error>
     auto emit = [&](std::string title,
                     protocol::CodeActionKind kind,
                     llvm::ArrayRef<TextReplacement> replacements) {
-        auto edits = feature::to_text_edits(replacements, map, PositionEncoding::UTF16);
+        auto edits = feature::to_text_edits(replacements, map, encoding);
         if(!edits) {
             return;
         }
@@ -77,14 +77,19 @@ kota::task<std::vector<protocol::CodeAction>, ipc::Error>
             *text);
 
         std::optional<SourceText> disk;
-        auto edit =
-            feature::host_edit(query, host, request.container, formatted, [&]() -> SourceText* {
+        auto edit = feature::host_edit(
+            query,
+            host,
+            request.container,
+            formatted,
+            [&]() -> SourceText* {
                 if(auto* open = host_session ? host_session->source.get() : nullptr) {
                     return open;
                 }
                 auto read = vfs::read_text(host_path);
                 return read ? &disk.emplace(std::move(*read)) : nullptr;
-            });
+            },
+            encoding);
         if(!edit) {
             return;
         }

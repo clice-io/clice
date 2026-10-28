@@ -34,6 +34,8 @@ import {
     SourceText,
     type Location,
     type Named,
+    type Position,
+    type PositionEncoding,
     type Range,
     type RenderScope,
 } from "./position.ts";
@@ -44,13 +46,17 @@ export class AnswerContext {
     readonly workspace: string;
     readonly roots: readonly Root[];
     private readonly read: (path: string) => string;
+    private readonly encoding: PositionEncoding;
     private readonly cache = new Map<string, SourceText>();
 
     /// `read` returns the text requests see for a workspace path: the open
-    /// buffer, else the disk. A file outside reads from the disk.
-    constructor(workspace: string, read: (path: string) => string) {
+    /// buffer, else the disk. A file outside reads from the disk. Replies
+    /// count positions in `encoding`, the answers converted from them in
+    /// UTF-16.
+    constructor(workspace: string, read: (path: string) => string, encoding: PositionEncoding) {
         this.workspace = workspace;
         this.read = read;
+        this.encoding = encoding;
         this.roots = [resourceRoot()];
     }
 
@@ -87,8 +93,37 @@ export class AnswerContext {
         return { file: readOnce((path) => this.file(path)), query, names };
     }
 
+    /// A reply's range in `path` as answers count it.
+    range(path: string, range: Range): Range {
+        return this.encoding === "utf-16"
+            ? range
+            : this.file(path).decodeRange(range, this.encoding);
+    }
+
+    /// A range of `path` as the server counts it.
+    encodedRange(path: string, range: Range): Range {
+        return this.encoding === "utf-16"
+            ? range
+            : this.file(path).encodeRange(range, this.encoding);
+    }
+
+    private position(path: string, position: Position): Position {
+        return this.range(path, { start: position, end: position }).start;
+    }
+
+    private placed(path: string, range: Range): Location {
+        return { path, range: this.range(path, range) };
+    }
+
     location(location: proto.Location): Location {
-        return { path: this.path(location.uri), range: location.range };
+        return this.placed(this.path(location.uri), location.range);
+    }
+
+    edits(path: string, edits: readonly proto.TextEdit[]): TextEdit[] {
+        return edits.map((edit) => ({
+            range: this.range(path, edit.range),
+            newText: edit.newText,
+        }));
     }
 
     locations(
@@ -110,8 +145,8 @@ export class AnswerContext {
         };
         return (Array.isArray(reply) ? reply : [reply]).map((entry) =>
             "uri" in entry
-                ? { path: pathOf(entry.uri), range: entry.range }
-                : { path: pathOf(entry.targetUri), range: entry.targetSelectionRange },
+                ? this.placed(pathOf(entry.uri), entry.range)
+                : this.placed(pathOf(entry.targetUri), entry.targetSelectionRange),
         );
     }
 
@@ -119,7 +154,7 @@ export class AnswerContext {
         return {
             name: item.name,
             kind: enumName(proto.SymbolKind, item.kind),
-            selection: { path: this.path(item.uri), range: item.selectionRange },
+            selection: this.placed(this.path(item.uri), item.selectionRange),
             detail: item.detail,
         };
     }
@@ -129,7 +164,7 @@ export class AnswerContext {
             const item = this.item(call.from);
             return {
                 item,
-                sites: call.fromRanges.map((range) => ({ path: item.selection.path, range })),
+                sites: call.fromRanges.map((range) => this.placed(item.selection.path, range)),
             };
         });
     }
@@ -142,13 +177,13 @@ export class AnswerContext {
         const path = this.path(root.uri);
         return (calls ?? []).map((call) => ({
             item: this.item(call.to),
-            sites: call.fromRanges.map((range) => ({ path, range })),
+            sites: call.fromRanges.map((range) => this.placed(path, range)),
         }));
     }
 
     highlights(path: string, reply: proto.DocumentHighlight[] | null): Highlight[] {
         return (reply ?? []).map((highlight) => ({
-            location: { path, range: highlight.range },
+            location: this.placed(path, highlight.range),
             kind:
                 highlight.kind === proto.DocumentHighlightKind.Read
                     ? "read"
@@ -166,7 +201,7 @@ export class AnswerContext {
             return {
                 kind: reply.contents.kind,
                 text: reply.contents.value,
-                range: reply.range === undefined ? undefined : { path, range: reply.range },
+                range: reply.range === undefined ? undefined : this.placed(path, reply.range),
             };
         }
         // Marked strings, which LSP deprecates, are markdown.
@@ -174,13 +209,13 @@ export class AnswerContext {
         return {
             kind: "markdown",
             text: parts.map((part) => (typeof part === "string" ? part : part.value)).join("\n"),
-            range: reply.range === undefined ? undefined : { path, range: reply.range },
+            range: reply.range === undefined ? undefined : this.placed(path, reply.range),
         };
     }
 
     diagnostics(path: string, reply: readonly proto.Diagnostic[]): Diagnostic[] {
         return reply.map((diagnostic) => ({
-            location: { path, range: diagnostic.range },
+            location: this.placed(path, diagnostic.range),
             severity:
                 diagnostic.severity === proto.DiagnosticSeverity.Warning
                     ? "warning"
@@ -205,12 +240,12 @@ export class AnswerContext {
         }));
     }
 
-    inlayHints(reply: proto.InlayHint[] | null): InlayHint[] {
+    inlayHints(path: string, reply: proto.InlayHint[] | null): InlayHint[] {
         return (reply ?? []).map((hint) => {
             const parts: proto.InlayHintLabelPart[] =
                 typeof hint.label === "string" ? [{ value: hint.label }] : hint.label;
             return {
-                position: hint.position,
+                position: this.position(path, hint.position),
                 label: parts.map((part) => part.value).join(""),
                 kind:
                     hint.kind === undefined
@@ -231,11 +266,14 @@ export class AnswerContext {
         const source = this.file(path);
         return (reply ?? []).map((fold) => ({
             range: {
-                start: { line: fold.startLine, character: fold.startCharacter ?? 0 },
-                end: {
-                    line: fold.endLine,
-                    character: fold.endCharacter ?? source.line(fold.endLine).length,
-                },
+                start: this.position(path, {
+                    line: fold.startLine,
+                    character: fold.startCharacter ?? 0,
+                }),
+                end:
+                    fold.endCharacter === undefined
+                        ? { line: fold.endLine, character: source.line(fold.endLine).length }
+                        : this.position(path, { line: fold.endLine, character: fold.endCharacter }),
             },
             kind: fold.kind,
             collapsedText: fold.collapsedText === "" ? undefined : fold.collapsedText,
@@ -251,9 +289,9 @@ export class AnswerContext {
         const convert = (symbol: proto.DocumentSymbol): OutlineSymbol => ({
             name: symbol.name,
             kind: enumName(proto.SymbolKind, symbol.kind),
-            selection: { path, range: symbol.selectionRange },
+            selection: this.placed(path, symbol.selectionRange),
             detail: symbol.detail,
-            range: { path, range: symbol.range },
+            range: this.placed(path, symbol.range),
             tags: (symbol.tags ?? []).map((tag) => enumName(proto.SymbolTag, tag)),
             children: (symbol.children ?? []).map(convert),
         });
@@ -273,7 +311,7 @@ export class AnswerContext {
 
     links(path: string, reply: proto.DocumentLink[] | null): Link[] {
         return (reply ?? []).map((link) => ({
-            location: { path, range: link.range },
+            location: this.placed(path, link.range),
             target:
                 link.target === undefined
                     ? "(unresolved)"
@@ -328,7 +366,7 @@ export class AnswerContext {
             edits: readonly (proto.TextEdit | proto.AnnotatedTextEdit)[],
         ): void => {
             const path = this.path(uri);
-            out.set(path, [...(out.get(path) ?? []), ...edits]);
+            out.set(path, [...(out.get(path) ?? []), ...this.edits(path, edits)]);
         };
         for (const change of edit?.documentChanges ?? []) {
             if (!("textDocument" in change)) {
@@ -343,6 +381,95 @@ export class AnswerContext {
         }
         for (const [uri, edits] of Object.entries(edit?.changes ?? {})) {
             add(uri, edits);
+        }
+        return out;
+    }
+
+    /// `path` is the document completed in, where the items' edits apply.
+    completion(
+        path: string,
+        reply: proto.CompletionItem[] | proto.CompletionList | null,
+    ): Completion {
+        const items = reply === null ? [] : Array.isArray(reply) ? reply : reply.items;
+        const incomplete = reply !== null && !Array.isArray(reply) && reply.isIncomplete;
+        return {
+            incomplete,
+            items: items.map((item) => {
+                const edit = item.textEdit;
+                const split = edit !== undefined && "insert" in edit;
+                return {
+                    label: item.label + (item.labelDetails?.detail ?? ""),
+                    kind:
+                        item.kind === undefined
+                            ? "None"
+                            : enumName(proto.CompletionItemKind, item.kind),
+                    detail: item.detail ?? item.labelDetails?.description,
+                    deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
+                    filter: item.filterText,
+                    insert: edit?.newText ?? item.insertText,
+                    snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
+                    replace:
+                        edit === undefined
+                            ? undefined
+                            : this.placed(path, "range" in edit ? edit.range : edit.replace),
+                    insertRange:
+                        split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
+                            ? this.placed(path, edit.insert)
+                            : undefined,
+                    sortText: item.sortText ?? "",
+                    documentation:
+                        typeof item.documentation === "string"
+                            ? item.documentation
+                            : item.documentation?.value,
+                    edits: item.additionalTextEdits?.map((extra) => ({
+                        at: this.placed(path, extra.range),
+                        text: extra.newText,
+                    })),
+                };
+            }),
+        };
+    }
+
+    /// A selection range reply's chain around one place, innermost first.
+    selection(path: string, reply: proto.SelectionRange | undefined): Range[] {
+        const ranges: Range[] = [];
+        for (let step = reply; step !== undefined; step = step.parent) {
+            ranges.push(this.range(path, step.range));
+        }
+        return ranges;
+    }
+
+    /// The semantic tokens of `path`, decoded through the server's legend.
+    tokens(
+        path: string,
+        reply: proto.SemanticTokens | null,
+        legend: proto.SemanticTokensLegend,
+    ): Token[] {
+        const data = reply?.data ?? [];
+        const out: Token[] = [];
+        let line = 0;
+        let character = 0;
+        for (let i = 0; i + 4 < data.length; i += 5) {
+            const [deltaLine, deltaStart, length, type, modifiers] = data.slice(i, i + 5) as [
+                number,
+                number,
+                number,
+                number,
+                number,
+            ];
+            line += deltaLine;
+            character = deltaLine === 0 ? character + deltaStart : deltaStart;
+            const { start, end } = this.range(path, {
+                start: { line, character },
+                end: { line, character: character + length },
+            });
+            out.push({
+                line,
+                character: start.character,
+                length: end.character - start.character,
+                type: legend.tokenTypes[type] ?? String(type),
+                modifiers: legend.tokenModifiers.filter((_name, bit) => modifiers & (1 << bit)),
+            });
         }
         return out;
     }
@@ -366,51 +493,6 @@ export function enumName(table: Record<string, unknown>, value: number): string 
         }
     }
     return String(value);
-}
-
-/// `path` is the document completed in, where the items' edits apply.
-export function completion(
-    reply: proto.CompletionItem[] | proto.CompletionList | null,
-    path = "",
-): Completion {
-    const items = reply === null ? [] : Array.isArray(reply) ? reply : reply.items;
-    const incomplete = reply !== null && !Array.isArray(reply) && reply.isIncomplete;
-    return {
-        incomplete,
-        items: items.map((item) => {
-            const edit = item.textEdit;
-            const split = edit !== undefined && "insert" in edit;
-            return {
-                label: item.label + (item.labelDetails?.detail ?? ""),
-                kind:
-                    item.kind === undefined
-                        ? "None"
-                        : enumName(proto.CompletionItemKind, item.kind),
-                detail: item.detail ?? item.labelDetails?.description,
-                deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
-                filter: item.filterText,
-                insert: edit?.newText ?? item.insertText,
-                snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
-                replace:
-                    edit === undefined
-                        ? undefined
-                        : { path, range: "range" in edit ? edit.range : edit.replace },
-                insertRange:
-                    split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
-                        ? { path, range: edit.insert }
-                        : undefined,
-                sortText: item.sortText ?? "",
-                documentation:
-                    typeof item.documentation === "string"
-                        ? item.documentation
-                        : item.documentation?.value,
-                edits: item.additionalTextEdits?.map((extra) => ({
-                    at: { path, range: extra.range },
-                    text: extra.newText,
-                })),
-            };
-        }),
-    };
 }
 
 export function signatures(reply: proto.SignatureHelp | null): Signatures {
@@ -448,43 +530,4 @@ export function signatures(reply: proto.SignatureHelp | null): Signatures {
             };
         }),
     };
-}
-
-/// A selection range reply's chain around one place, innermost first.
-export function selection(reply: proto.SelectionRange | undefined): Range[] {
-    const ranges: Range[] = [];
-    for (let step = reply; step !== undefined; step = step.parent) {
-        ranges.push(step.range);
-    }
-    return ranges;
-}
-
-/// Semantic tokens decoded through the server's legend.
-export function tokens(
-    reply: proto.SemanticTokens | null,
-    legend: proto.SemanticTokensLegend,
-): Token[] {
-    const data = reply?.data ?? [];
-    const out: Token[] = [];
-    let line = 0;
-    let character = 0;
-    for (let i = 0; i + 4 < data.length; i += 5) {
-        const [deltaLine, deltaStart, length, type, modifiers] = data.slice(i, i + 5) as [
-            number,
-            number,
-            number,
-            number,
-            number,
-        ];
-        line += deltaLine;
-        character = deltaLine === 0 ? character + deltaStart : deltaStart;
-        out.push({
-            line,
-            character,
-            length,
-            type: legend.tokenTypes[type] ?? String(type),
-            modifiers: legend.tokenModifiers.filter((_name, bit) => modifiers & (1 << bit)),
-        });
-    }
-    return out;
 }

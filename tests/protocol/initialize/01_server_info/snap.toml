@@ -1,6 +1,7 @@
 [capabilities.capabilities]
 value = '''
 {
+    "positionEncoding": "utf-16",
     "textDocumentSync": {
         "openClose": true,
         "change": 2,
@@ -161,6 +162,18 @@ name = "clice"
 [capabilities."$ clice --version"]
 stdout = "clice version ${VERSION}"
 exit = 0
+
+["offered [utf-32, utf-16, utf-8]"."position encoding"]
+value = "utf-8"
+
+["offered [utf-32, utf-16]"."position encoding"]
+value = "utf-32"
+
+["offered [utf-16, utf-32]"."position encoding"]
+value = "utf-16"
+
+["offered []"."position encoding"]
+value = "utf-16"
 
 ["a second initialize".refused]
 code = -32000

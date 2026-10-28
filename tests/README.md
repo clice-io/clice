@@ -198,7 +198,10 @@ unreleased goes with the server.
 
 **Server options**, given to `t.start` and kept by every restart of that
 server: `config` (initializationOptions in clice.toml's shape), `capabilities`,
-`folders`, `args`, `env`; and the faults the test provokes on purpose —
+`positionEncoding: "utf-8"` or `"utf-32"` (the client offers that encoding
+before UTF-16, and the server must take it; the actions convert at the
+protocol, so what a test shows reads the same in every encoding), `folders`,
+`args`, `env`; and the faults the test provokes on purpose —
 `crash: { request, file }` crashes every such request's worker
 (`CLICE_TEST_CRASH_REQUEST`), `kill: { request, file }` kills the first one's
 from outside (`CLICE_TEST_KILL_REQUEST`), `anomalies: true` misleads the
@@ -215,6 +218,7 @@ declared fails the test, and so does a declared one that never happened.
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
 | `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
 | `indexing: true`           | (answers) the server indexes first                                                                |
+| `positionEncoding: "…"`    | (answers) the server's client offers that encoding, as above                                      |
 
 **Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,
 recorded by `tools/testing/server/record.ts` standing in for the server it

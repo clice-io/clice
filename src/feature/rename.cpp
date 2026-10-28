@@ -562,7 +562,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     // declaration in the same scope, a member of a class above or below —
     // among the symbols bearing it once the batch is done: those named so
     // that no rename of the batch renames, and those its renames name so.
-    llvm::SmallVector<index::IndexQuery::Located> named;
+    std::vector<index::IndexQuery::Located> named;
     llvm::DenseSet<index::SymbolHash> listed;
     auto list = [&](index::IndexQuery::Located hit) {
         if(!batch.renamed.contains(hit.symbol.hash)) {
@@ -894,7 +894,8 @@ static void list_notice(std::string& notice,
 
 Renamed to_protocol(const RenamePlan& plan,
                     llvm::StringRef new_name,
-                    llvm::function_ref<std::optional<int>(Fid)> version_of) {
+                    llvm::function_ref<std::optional<int>(Fid)> version_of,
+                    PositionEncoding encoding) {
     Renamed renamed;
     using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
                                              protocol::CreateFile,
@@ -912,7 +913,7 @@ Renamed to_protocol(const RenamePlan& plan,
             change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
         }
         change->edits.emplace_back(protocol::TextEdit{
-            .range = to_range(edit.site),
+            .range = to_range(edit.site, encoding),
             .new_text = new_name.str(),
         });
         if(edit.heuristic) {

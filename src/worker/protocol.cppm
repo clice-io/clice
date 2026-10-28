@@ -15,6 +15,7 @@ import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :index.symbol;
 import :syntax.header_context;
+import :syntax.position;
 import :syntax.token;
 import :vfs.file_system;
 
@@ -126,6 +127,9 @@ struct HoverParams {
 
     /// What a hover card renders as: the markup the client shows it in.
     protocol::MarkupKind markup = protocol::MarkupKind::Markdown;
+
+    /// What the card's range counts in: the client's position encoding.
+    PositionEncoding encoding = PositionEncoding::UTF16;
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -346,6 +350,9 @@ struct CompletionParams {
     Config config;
 
     feature::CompletionClient client;
+
+    /// What the edits' ranges count in: the client's position encoding.
+    PositionEncoding encoding = PositionEncoding::UTF16;
 
     /// The names of other namespaces the index found for the typed prefix.
     std::vector<feature::ScopeCandidate> candidates;

@@ -7,6 +7,7 @@ module clice:feature.workspace_symbols;
 import :index.peer_queries;
 import :index.site;
 import :index.symbol;
+import :syntax.position;
 import :vfs.path;
 
 namespace clice::feature {
@@ -16,7 +17,8 @@ namespace clice::feature {
 /// its overloads apart.
 protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
-                                               llvm::StringRef container);
+                                               llvm::StringRef container,
+                                               PositionEncoding encoding);
 
 /// The most workspace/symbol answers, from one project or all.
 constexpr inline std::size_t workspace_symbol_limit = 100;
@@ -36,7 +38,8 @@ struct WorkspaceSymbol {
 /// open file's only from the project serving its buffer.
 std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries,
                                                llvm::StringRef text,
-                                               const Spelling& root);
+                                               const Spelling& root,
+                                               PositionEncoding encoding);
 
 /// Every project's list (workspace_symbols) merged rank by rank, in the
 /// order given: a symbol several projects see at one place lists once, the

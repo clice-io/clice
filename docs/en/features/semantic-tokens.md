@@ -1066,7 +1066,7 @@ tests/inactive_regions/updates/01_edited_condition
 - [x] Full document semantic tokens (`textDocument/semanticTokens/full`)
 - [x] Range requests (`textDocument/semanticTokens/range`): the tokens a range overlaps
 - [x] Delta updates (`textDocument/semanticTokens/full/delta`): the changes since the answer the editor holds
-- [x] UTF-16 positions, a token spanning lines split per line
+- [x] UTF-16 positions, or UTF-8 or UTF-32 for an editor that offers them; a token spanning lines split per line
 
 ## Known Limitations
 

@@ -1147,7 +1147,8 @@ auto host_edit(const index::IndexQuery& query,
                Fid host,
                std::uint64_t container,
                llvm::StringRef text,
-               llvm::function_ref<SourceText*()> host_text) -> std::optional<protocol::TextEdit> {
+               llvm::function_ref<SourceText*()> host_text,
+               PositionEncoding encoding) -> std::optional<protocol::TextEdit> {
     std::optional<protocol::Position> after;
     auto source = container != 0 ? query.serving(host) : std::nullopt;
     if(source) {
@@ -1166,8 +1167,7 @@ auto host_edit(const index::IndexQuery& query,
                 if(!definition) {
                     return true;
                 }
-                protocol::Position end{.line = definition->extent.end.line,
-                                       .character = definition->extent.end.utf16_column};
+                auto end = definition->extent.end.position(encoding);
                 if(!after ||
                    std::pair(end.line, end.character) > std::pair(after->line, after->character)) {
                     after = end;
@@ -1186,8 +1186,8 @@ auto host_edit(const index::IndexQuery& query,
         return std::nullopt;
     }
     auto content = source_text->text();
-    auto end = *source_text->positions().position(static_cast<std::uint32_t>(content.size()),
-                                                  PositionEncoding::UTF16);
+    auto end =
+        *source_text->positions().position(static_cast<std::uint32_t>(content.size()), encoding);
     edit.range = {end, end};
     edit.new_text = (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + text.str();
     return edit;

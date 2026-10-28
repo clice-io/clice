@@ -550,14 +550,13 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,
-                                                        std::uint32_t line,
-                                                        std::uint32_t utf16_column) const {
+                                                        protocol::Position position,
+                                                        PositionEncoding encoding) const {
     auto source = serving(file);
     if(!source) {
         return std::nullopt;
     }
-    auto offset = source->positions.offset({.line = line, .character = utf16_column},
-                                           PositionEncoding::UTF16);
+    auto offset = source->positions.offset(position, encoding);
     if(!offset) {
         return std::nullopt;
     }

@@ -32,10 +32,17 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
-    dispatcher(project, contexts, ast, server.pool),
+    dispatcher(project, contexts, ast, server.pool, server.position_encoding),
     live_sources(project, sched.pch, sessions, ast.compiles),
     index_query(project.index, project.file_table, &freshness, &live_sources),
-    features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
+    features(ast,
+             dispatcher,
+             index_query,
+             project,
+             contexts,
+             sched.pump,
+             sessions,
+             server.position_encoding),
     invalidator(project, sessions, contexts, ast, sched.pcm) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
@@ -349,6 +356,7 @@ void ProjectServer::close_session(Fid path_id) {
                            CompileOutput{
                                .version = std::nullopt,
                                .source = CommandSource::CDBExact,
+                               .text = session->source,
                                .diagnostics = {},
                            });
     }

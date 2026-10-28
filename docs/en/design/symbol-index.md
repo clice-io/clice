@@ -150,7 +150,7 @@ Using "find references" as an example to illustrate the full cross-file query fl
 
 For open files whose preamble is compiled into a PCH, the paired preamble-state blob (see below) supplies the entries the PCH swallowed.
 
-> Converting offsets to LSP positions requires line-start information for the file. Shards store the line table and the text of the lines holding non-ASCII bytes — on every other line a byte is a UTF-16 unit — so the conversion works even for files that are not open. Previews of a file's text read it from disk, under a check that it still has the content the shard was built from.
+> Converting offsets to LSP positions requires line-start information for the file. Shards store the line table and the text of the lines holding non-ASCII bytes — on every other line a byte is one unit in every encoding a client counts in — so the conversion works even for files that are not open. Previews of a file's text read it from disk, under a check that it still has the content the shard was built from.
 
 ### Name Search
 

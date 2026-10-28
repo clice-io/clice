@@ -46,8 +46,9 @@ Value empty_value() {
 Dispatcher::Dispatcher(Project& project,
                        EditorContext& contexts,
                        ASTFamily& ast,
-                       WorkerPool& pool) :
-    project(project), contexts(contexts), ast(ast), pool(pool) {}
+                       WorkerPool& pool,
+                       const PositionEncoding& encoding) :
+    project(project), contexts(contexts), ast(ast), pool(pool), encoding(encoding) {}
 
 template <typename Params>
 RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
@@ -177,9 +178,10 @@ Dispatcher::RawResult Dispatcher::hover(const Ticket& ticket,
     wp.path = path;
     wp.config = project.config;
     wp.markup = markup;
+    wp.encoding = encoding;
 
     if(position) {
-        wp.offset = session.positions().offset_clamped(*position, PositionEncoding::UTF16);
+        wp.offset = session.positions().offset_clamped(*position, encoding);
     }
 
     bool unanswered = false;
@@ -256,7 +258,7 @@ kota::task<std::vector<feature::InlayHint>, ipc::Error>
                             kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
     // moves before the reply arrives turns the reply into ContentModified.
-    auto offsets = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
+    auto offsets = ticket.session->positions().offset_range(range, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::InlayHint,
@@ -323,7 +325,7 @@ kota::task<std::vector<feature::CodeAction>, ipc::Error>
                              kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
     // moves before the reply arrives turns the reply into ContentModified.
-    auto selection = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
+    auto selection = ticket.session->positions().offset_range(range, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::CodeAction,
@@ -357,7 +359,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
 
     wp.file = path;
     wp.text = session.text().str();
-    wp.offset = session.positions().offset_clamped(position, PositionEncoding::UTF16);
+    wp.offset = session.positions().offset_clamped(position, encoding);
     if(!ast.loaded.is_set()) {
         co_await ast.loaded.wait();
     }
@@ -433,6 +435,7 @@ kota::task<worker::CompletionResult, ipc::Error>
                        ticket,
                        position,
                        worker::CompletionParams{.client = client,
+                                                .encoding = encoding,
                                                 .candidates = std::move(candidates),
                                                 .more_candidates = more_candidates},
                        std::move(token));
@@ -467,7 +470,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     wp.text = session.text().str();
 
     if(range) {
-        wp.range = session.positions().offset_range(*range, PositionEncoding::UTF16);
+        wp.range = session.positions().offset_range(*range, encoding);
     }
 
     ScopedTimer timer;
@@ -490,7 +493,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     auto positions = session.positions();
     std::vector<protocol::TextEdit> edits;
     for(auto& edit: result->edits) {
-        if(auto range = positions.range(edit.range, PositionEncoding::UTF16)) {
+        if(auto range = positions.range(edit.range, encoding)) {
             edits.push_back({.range = *range, .new_text = std::move(edit.text)});
         }
     }

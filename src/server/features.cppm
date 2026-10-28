@@ -61,9 +61,10 @@ public:
              Project& project,
              EditorContext& contexts,
              IndexPump& pump,
-             SessionStore& sessions) :
+             SessionStore& sessions,
+             const PositionEncoding& encoding) :
         ast(ast), dispatcher(dispatcher), query(query), project(project), contexts(contexts),
-        pump(pump), sessions(sessions) {}
+        pump(pump), sessions(sessions), encoding(encoding) {}
 
     using RawResult = Dispatcher::RawResult;
 
@@ -333,6 +334,9 @@ private:
     EditorContext& contexts;
     IndexPump& pump;
     SessionStore& sessions;
+
+    /// What the client's positions count in (MasterServer::position_encoding).
+    const PositionEncoding& encoding;
 };
 
 }  // namespace clice
