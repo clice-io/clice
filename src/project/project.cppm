@@ -170,8 +170,12 @@ struct PCMBuild {
     std::string superseded;
 
     /// The built PCM; empty while a rebuild runs, after a failure, and once
-    /// the store evicted it.
+    /// it or the PCH it was built over left the store.
     std::string path;
+
+    /// The PCH the PCM was built over, which its importers read with it;
+    /// empty for none.
+    std::string pch;
 
     /// What the build read and looked for, the inputs of the modules it
     /// imports included; none while a rebuild runs and when an import

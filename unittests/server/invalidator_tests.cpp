@@ -44,12 +44,12 @@ struct Harness {
     kota::event_loop loop;
     TaskGraph graph;
     WorkerPool pool{loop};
-    PCMFamily pcm;
     PCHFamily pch;
+    PCMFamily pcm;
     ASTFamily ast;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
-        pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
+        pch(graph, project, pool), pcm(graph, project, resolver.commands, pch, pool),
         ast(project, resolver, graph, pcm, pch, pool, store) {
         project.config.project.skip_header_bodies = false;
     }

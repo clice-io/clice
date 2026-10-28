@@ -6,6 +6,7 @@ module clice:sched.families.pcm;
 
 import :project.command_resolver;
 import :project.project;
+import :sched.families.pch;
 import :sched.graph;
 import :worker.pool;
 
@@ -24,7 +25,11 @@ namespace clice {
 /// identity, edges, rounds and interest.
 class PCMFamily {
 public:
-    PCMFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
+    PCMFamily(TaskGraph& graph,
+              Project& project,
+              CommandResolver& commands,
+              PCHFamily& pch,
+              WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -46,6 +51,15 @@ public:
 
         /// The unit declares a module.
         bool module_unit = false;
+
+        /// A parse of the unit meets a module declaration, which no
+        /// declaration may precede, or a PCM, which names the precompiled
+        /// header it was built over to its importers: over the precompiled
+        /// header its command declares, it reads the one every PCM is built
+        /// over.
+        bool modular() const {
+            return module_unit || !resolved.empty();
+        }
     };
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
@@ -225,6 +239,7 @@ private:
     TaskGraph& graph;
     Project& project;
     CommandResolver& commands;
+    PCHFamily& pch;
     WorkerPool& pool;
 
     /// The scans of open buffers, and of units' disk text: kept while the

@@ -14,8 +14,9 @@ SchedulingStack::SchedulingStack(kota::event_loop& loop,
                                  Project& project,
                                  CommandResolver& commands,
                                  WorkerPool& pool) :
-    project(project), pool(pool), pcm(graph, project, commands, pool), pch(graph, project, pool),
-    turun(graph, project, commands, pcm, pch, pool), pump(loop, project, commands, turun, pool) {
+    project(project), pool(pool), pch(graph, project, pool),
+    pcm(graph, project, commands, pch, pool), turun(graph, project, commands, pcm, pch, pool),
+    pump(loop, project, commands, turun, pool) {
     pcm.register_runner();
     pch.register_runner();
     turun.register_runner();

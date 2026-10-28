@@ -216,6 +216,17 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
     }
 }
 
+std::optional<PCHFamily::Request> ASTFamily::declared_pch(Fid path_id,
+                                                          const Resolution& resolution,
+                                                          const PCMFamily::ModuleDeps& imports) {
+    auto unit = contexts.commands.pch_unit(path_id, resolution);
+    if(!unit) {
+        return std::nullopt;
+    }
+    return pch.precompiled_header(*unit,
+                                  project.config.project.skip_header_bodies && !imports.modular());
+}
+
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        std::optional<std::uint32_t> point,
@@ -1048,11 +1059,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
             on_phase.emit(path_id, CompilePhase::Preamble);
-            if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-                auto request =
-                    pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
-                auto key = request.pch_key;
-                switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
+            if(auto request = declared_pch(path_id, resolution, *imports)) {
+                auto key = request->pch_key;
+                switch(co_await ctx.depend(pch.prepare(std::move(*request)))) {
                     case DependResult::Ready:
                         if(!pch.reads(key, path_id)) {
                             base_pch = key;
@@ -1529,10 +1538,9 @@ kota::task<std::optional<std::string>>
     // The precompiled header the build declares for the command, as a
     // compile round takes it (see run()).
     std::optional<std::string> base;
-    if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
-        auto request = pch.precompiled_header(*unit, project.config.project.skip_header_bodies);
-        auto key = request.pch_key;
-        if(co_await pch.acquire(std::move(request)) == PCHFamily::Outcome::Ready &&
+    if(auto request = declared_pch(path_id, resolution, imports)) {
+        auto key = request->pch_key;
+        if(co_await pch.acquire(std::move(*request)) == PCHFamily::Outcome::Ready &&
            !pch.reads(key, path_id)) {
             base = key;
         }

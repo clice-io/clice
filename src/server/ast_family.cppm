@@ -314,6 +314,14 @@ private:
         bool partial = false;
     };
 
+    /// The request for the precompiled header the build declares for the
+    /// command `resolution` gave the document: the editor's build, skipping
+    /// function bodies, but for a modular parse (ModuleDeps::modular), which
+    /// reads the index's, the one every PCM is built over.
+    std::optional<PCHFamily::Request> declared_pch(Fid path_id,
+                                                   const Resolution& resolution,
+                                                   const PCMFamily::ModuleDeps& imports);
+
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none. `point` is where a
     /// completion's parse stops: the preamble ends before the line holding
