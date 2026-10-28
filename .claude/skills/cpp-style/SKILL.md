@@ -42,10 +42,14 @@ defending against ghosts.
 ## Files & Organization
 
 - clice is one C++20 module, `clice`. An interface is a partition,
-  `<stem>.cppm` beside its source, named by its path under `src/`
-  (`module clice:vfs.path;`, `unittests.*` under `unittests/`);
-  sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
-  `src/driver/*.cc`).
+  `<stem>.cppm` beside its source, named after its layer and then what it
+  is — usually its path under `src/` (`module clice:vfs.path;`,
+  `unittests.*` under `unittests/`); `pixi run check-layers` checks the
+  layer. A part grown into a directory keeps its interface there under the
+  part's own name (`feature/hover/hover.cppm` is `feature.hover`), beside
+  its implementation units and the internal partitions they share
+  (`feature.hover.card`). Sources are implementation units `.cpp`, entry
+  points `.cc` (`clice.cc`, `src/driver/*.cc`).
 - Every module unit but the primary interface (`src/module.cppm`, which
   exports nothing) opens with `module;` and `#include "support/prelude.h"`:
   it includes the generated `modules/prelude.h`, which imports the
