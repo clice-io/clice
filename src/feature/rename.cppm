@@ -11,6 +11,7 @@ module;
 module clice:feature.rename;
 
 import :index.query;
+import :syntax.position;
 
 namespace clice::feature {
 
@@ -209,6 +210,7 @@ struct Renamed {
 /// `version_of` (none for a file not open).
 Renamed to_protocol(const RenamePlan& plan,
                     llvm::StringRef new_name,
-                    llvm::function_ref<std::optional<int>(Fid)> version_of);
+                    llvm::function_ref<std::optional<int>(Fid)> version_of,
+                    PositionEncoding encoding);
 
 }  // namespace clice::feature

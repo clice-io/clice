@@ -510,7 +510,8 @@ std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& 
     return result;
 }
 
-std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights) {
+std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights,
+                                                     PositionEncoding encoding) {
     auto kind_of = [](HighlightKind kind) {
         switch(kind) {
             case HighlightKind::Text: return protocol::DocumentHighlightKind::Text;
@@ -522,7 +523,8 @@ std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighli
     std::vector<protocol::DocumentHighlight> result;
     result.reserve(highlights.size());
     for(const auto& highlight: highlights) {
-        result.push_back({.range = to_range(highlight.site), .kind = kind_of(highlight.kind)});
+        result.push_back(
+            {.range = to_range(highlight.site, encoding), .kind = kind_of(highlight.kind)});
     }
     return result;
 }

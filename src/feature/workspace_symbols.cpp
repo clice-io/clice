@@ -18,20 +18,22 @@ namespace clice::feature {
 
 protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
-                                               llvm::StringRef container) {
+                                               llvm::StringRef container,
+                                               PositionEncoding encoding) {
     protocol::SymbolInformation info;
     info.name = symbol.display_name() + symbol.signature;
     info.kind = to_protocol(symbol.kind);
     if(!container.empty()) {
         info.container_name = container.str();
     }
-    info.location = to_location(site);
+    info.location = to_location(site, encoding);
     return info;
 }
 
 std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries,
                                                llvm::StringRef text,
-                                               const Spelling& root) {
+                                               const Spelling& root,
+                                               PositionEncoding encoding) {
     auto& query = queries.own;
     std::vector<WorkspaceSymbol> results;
     auto parsed = index::SymbolQuery::parse(text);
@@ -50,7 +52,7 @@ std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries
             continue;
         }
         auto container = query.container_name(located.symbol.hash, located.site.file);
-        auto info = symbol_information(located.symbol, located.site, container);
+        auto info = symbol_information(located.symbol, located.site, container, encoding);
         if(qualified && !container.empty()) {
             info.name = container + "::" + info.name;
         }

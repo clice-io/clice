@@ -12,31 +12,30 @@ import :syntax.token;
 
 namespace clice::feature {
 
-protocol::Range to_range(const index::Site& site) {
-    return {
-        .start = {.line = site.begin.line, .character = site.begin.utf16_column},
-        .end = {.line = site.end.line,   .character = site.end.utf16_column  },
-    };
+protocol::Range to_range(const index::Site& site, PositionEncoding encoding) {
+    return {.start = site.begin.position(encoding), .end = site.end.position(encoding)};
 }
 
-protocol::Location to_location(const index::Site& site) {
-    return {.uri = to_uri(site.path), .range = to_range(site)};
+protocol::Location to_location(const index::Site& site, PositionEncoding encoding) {
+    return {.uri = to_uri(site.path), .range = to_range(site, encoding)};
 }
 
-std::vector<protocol::Location> to_locations(llvm::ArrayRef<index::Site> sites) {
+std::vector<protocol::Location> to_locations(llvm::ArrayRef<index::Site> sites,
+                                             PositionEncoding encoding) {
     std::vector<protocol::Location> result;
     result.reserve(sites.size());
     for(const auto& site: sites) {
-        result.push_back(to_location(site));
+        result.push_back(to_location(site, encoding));
     }
     return result;
 }
 
-std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites) {
+std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites,
+                                       PositionEncoding encoding) {
     std::vector<protocol::Range> result;
     result.reserve(sites.size());
     for(const auto& site: sites) {
-        result.push_back(to_range(site));
+        result.push_back(to_range(site, encoding));
     }
     return result;
 }

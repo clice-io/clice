@@ -111,23 +111,12 @@ static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
 
 /// The compile's diagnostics behind the ones its PCH's build raised in the
 /// preamble, which the parse consuming the PCH never raises again — those
-/// of the command line it does, and they appear once. Files with one
-/// preamble share the PCH: notes the build placed in its own focus file
-/// move to `path`.
+/// of the command line it does, and they appear once.
 static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::FileDiagnostic> own,
-                                                          const index::TUIndex& preamble,
-                                                          llvm::StringRef path) {
+                                                          const index::TUIndex& preamble) {
     auto merged = preamble_diagnostics(preamble);
     if(merged.empty()) {
         return own;
-    }
-    auto builder = preamble.path(preamble.path_count() - 1);
-    for(auto& diagnostic: merged) {
-        for(auto& note: diagnostic.notes) {
-            if(note.path == builder) {
-                note.path = path.str();
-            }
-        }
     }
     llvm::StringSet<> raised;
     for(auto& diagnostic: own) {
@@ -221,10 +210,7 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
         // the implicit one of an implementation unit at the top.
         if(offset < session.text().size()) {
             auto end = std::min(session.text().find('\n', offset), session.text().size());
-            if(auto range = session.positions().range({offset, static_cast<std::uint32_t>(end)},
-                                                      PositionEncoding::UTF16)) {
-                warning.range = *range;
-            }
+            warning.range = {offset, static_cast<std::uint32_t>(end)};
         }
         diagnostics.push_back(std::move(warning));
     }
@@ -415,6 +401,7 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                             CompileOutput{
                                 .version = std::nullopt,
                                 .source = previous->output->source,
+                                .text = session->source,
                                 .diagnostics = {},
                             });
     }
@@ -428,6 +415,7 @@ void ASTFamily::republish(const std::shared_ptr<Session>& session) {
                             CompileOutput{
                                 .version = std::nullopt,
                                 .source = CommandSource::CDBExact,
+                                .text = session->source,
                                 .diagnostics = {},
                             });
     }
@@ -510,9 +498,7 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 /// Whether two diagnostics show the same: one message at one place.
 static bool same_diagnostic(const feature::FileDiagnostic& left,
                             const feature::FileDiagnostic& right) {
-    return left.range.start.line == right.range.start.line &&
-           left.range.start.character == right.range.start.character &&
-           left.message == right.message;
+    return left.range.begin == right.range.begin && left.message == right.message;
 }
 
 std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& session,
@@ -1349,6 +1335,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 CompileOutput{
                     .version = setup_fail ? std::optional(session->version) : std::nullopt,
                     .source = source,
+                    .text = session->source,
                     .diagnostics = std::move(result.value().diagnostics),
                     .query_failure = resolution.query_failure,
                     .failed = setup_fail,
@@ -1369,7 +1356,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& diagnostics = result.value().diagnostics;
         if(preamble_state && preamble_state->matches_preamble(params.text)) {
-            diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
+            diagnostics = with_preamble(std::move(diagnostics), *preamble_state);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
         note_provider_choices(diagnostics, *imports, project, *session);
@@ -1475,6 +1462,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
+            .text = session->source,
             .diagnostics = std::move(diagnostics),
             .unconfirmed = std::move(unconfirmed),
             .unmatched_host = resolution.unmatched_host.valid()

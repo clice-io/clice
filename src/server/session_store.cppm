@@ -5,6 +5,7 @@ module;
 module clice:server.session_store;
 
 import :server.session;
+import :syntax.position;
 import :vfs.file_table;
 
 namespace clice {
@@ -62,14 +63,15 @@ struct SessionStore {
     void apply_open(Session& session, std::string text, int version);
 
     /// Apply a didChange: fold the content changes into the buffer (range →
-    /// offset mapping, in-place text replacement, line-start rebuild), then
-    /// bump version and generation. Ranges that do not fit the buffer are
+    /// offset mapping in the client's `encoding`, in-place text replacement,
+    /// line-start rebuild), then bump version and generation. Ranges that do not fit the buffer are
     /// clamped per LSP 3.17 (see the struct comment on desync tolerance).
     /// The latest compile's supersede (ASTFamily::supersede) is the
     /// caller's job — the store owns buffer truth only.
     void apply_change(Session& session,
                       llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
-                      int version);
+                      int version,
+                      PositionEncoding encoding);
 };
 
 }  // namespace clice

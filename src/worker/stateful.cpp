@@ -513,7 +513,8 @@ void StatefulWorker::register_handlers() {
                                              params.offset,
                                              params.config.hover,
                                              params.config.documentation,
-                                             params.markup);
+                                             params.markup,
+                                             params.encoding);
                 return result ? to_raw(*result) : codec::RawValue{"null"};
             });
         });

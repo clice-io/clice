@@ -17,6 +17,20 @@ test("capabilities", async (t) => {
     expect(result?.serverInfo?.version).toBe(/^clice version (\S+)/.exec(run.stdout)?.[1]);
 });
 
+// The positions count in UTF-8 whenever the client offers it, wherever its
+// list puts it; else in the first of the client's list, else in UTF-16.
+for (const offered of [
+    ["utf-32", "utf-16", "utf-8"],
+    ["utf-32", "utf-16"],
+    ["utf-16", "utf-32"],
+    [],
+]) {
+    test(`offered [${offered.join(", ")}]`, async (t) => {
+        const s = await t.start({ capabilities: { general: { positionEncodings: offered } } });
+        await t.show("position encoding", s.client.initResult?.capabilities.positionEncoding ?? "");
+    });
+}
+
 test("a second initialize", async (t) => {
     const s = await t.start();
     const refused = await s.client

@@ -66,8 +66,10 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
   for this reason.
 - Python-style truthiness does not port: `expect([]).toBeFalsy()` fails —
   assert `length` explicitly.
-- LSP positions are UTF-16 code units; ASCII sources keep them equal to
-  string indices — non-ASCII sources need real conversion.
+- LSP positions are UTF-16 code units, or UTF-8 bytes or code points on a
+  server started with `positionEncoding`; ASCII sources keep them equal to
+  string indices — non-ASCII sources need real conversion. A test sending
+  raw positions through `s.client` converts them itself (`SourceText.encode`).
 - `Diagnostic.message` is `string | MarkupContent` — narrow before
   `.includes`.
 - Child stdout/stderr backpressure is real: an undrained pipe blocks the

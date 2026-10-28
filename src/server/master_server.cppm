@@ -12,6 +12,7 @@ import :server.project_server;
 import :server.session;
 import :support.anomaly;
 import :support.signal;
+import :syntax.position;
 import :worker.pool;
 import :worker.probe;
 
@@ -278,6 +279,10 @@ public:
 
     /// The client's initializationOptions, applied to every project.
     std::optional<codec::dyn::Value> init_options;
+
+    /// What every position the client sends or receives counts in, chosen
+    /// once at initialize.
+    PositionEncoding position_encoding = PositionEncoding::UTF16;
 
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the

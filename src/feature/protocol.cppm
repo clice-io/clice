@@ -25,11 +25,14 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     return uri->str();
 }
 
-/// The LSP range of a site, and the location of its file.
-protocol::Range to_range(const index::Site& site);
-protocol::Location to_location(const index::Site& site);
-std::vector<protocol::Location> to_locations(llvm::ArrayRef<index::Site> sites);
-std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites);
+/// The LSP range of a site, and the location of its file, counted in
+/// `encoding`.
+protocol::Range to_range(const index::Site& site, PositionEncoding encoding);
+protocol::Location to_location(const index::Site& site, PositionEncoding encoding);
+std::vector<protocol::Location> to_locations(llvm::ArrayRef<index::Site> sites,
+                                             PositionEncoding encoding);
+std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites,
+                                       PositionEncoding encoding);
 
 /// The replacements as LSP edits, all of them or none: half an edit set
 /// would corrupt the buffer.

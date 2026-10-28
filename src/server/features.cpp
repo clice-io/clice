@@ -171,7 +171,7 @@ std::optional<index::IndexQuery::Cursor>
     if(!path_id.valid()) {
         return std::nullopt;
     }
-    return query.symbol_at(path_id, position.line, position.character);
+    return query.symbol_at(path_id, position, encoding);
 }
 
 index::PeerQueries Features::peer_queries() const {
@@ -219,14 +219,17 @@ kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
             // __has_include/#embed have no edge and produce no link.
             auto links = feature::document_links(text_of(*session), query, session->path_id);
             session->index_served = true;
-            co_return feature::to_protocol(links, session->positions(), project.file_table);
+            co_return feature::to_protocol(links,
+                                           session->positions(),
+                                           encoding,
+                                           project.file_table);
         }
         case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
         case Route::Ast: break;
     }
 
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
-    co_return feature::to_protocol(links, session->positions(), project.file_table);
+    co_return feature::to_protocol(links, session->positions(), encoding, project.file_table);
 }
 
 kota::task<std::vector<feature::FileDiagnostic>>
@@ -272,8 +275,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // mid-flight (the round committed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    auto offset =
-        session ? session->positions().offset(position, PositionEncoding::UTF16) : std::nullopt;
+    auto offset = session ? session->positions().offset(position, encoding) : std::nullopt;
     if(offset && ast.compiles.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
@@ -289,7 +291,7 @@ Features::RawResult Features::definition(Ticket ticket,
         if(!cursor) {
             return {};
         }
-        return feature::to_locations(feature::definition(peer_queries(), *cursor));
+        return feature::to_locations(feature::definition(peer_queries(), *cursor), encoding);
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -360,14 +362,13 @@ Features::RawResult Features::hover(Ticket ticket,
     auto path_id = session->path_id;
 
     auto index_card = [&](const feature::HoverInfo& info) {
-        return to_raw(
-            feature::to_protocol(info, markup, session->positions(), PositionEncoding::UTF16));
+        return to_raw(feature::to_protocol(info, markup, session->positions(), encoding));
     };
 
     // A directive's card names its target, which the worker knows only by
     // identity: this side answers it, from the links. Off a directive line
     // there is none to look for.
-    auto offset = session->positions().offset(position, PositionEncoding::UTF16);
+    auto offset = session->positions().offset(position, encoding);
     bool on_directive = false;
     if(offset) {
         llvm::StringRef text = session->text();
@@ -386,7 +387,8 @@ Features::RawResult Features::hover(Ticket ticket,
                                               session->positions(),
                                               project.file_table,
                                               *link,
-                                              markup);
+                                              markup,
+                                              encoding);
         return hover ? to_raw(*hover) : serde_raw{"null"};
     };
 
@@ -509,12 +511,11 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     }
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
     if(!label_parts) {
-        co_return to_raw(
-            feature::to_protocol(hints, session->positions(), PositionEncoding::UTF16));
+        co_return to_raw(feature::to_protocol(hints, session->positions(), encoding));
     }
     co_return to_raw(feature::to_protocol(hints,
                                           session->positions(),
-                                          PositionEncoding::UTF16,
+                                          encoding,
                                           peer_queries(),
                                           session->path_id));
 }
@@ -524,11 +525,8 @@ Features::RawResult Features::folding_range(Ticket ticket,
                                             kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-        return to_raw(feature::to_protocol(folds,
-                                           session->text(),
-                                           session->positions(),
-                                           PositionEncoding::UTF16,
-                                           client));
+        return to_raw(
+            feature::to_protocol(folds, session->text(), session->positions(), encoding, client));
     };
 
     std::optional<index::IndexSource> source;
@@ -563,16 +561,10 @@ Features::RawResult Features::document_symbol(Ticket ticket,
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::DocumentSymbol> symbols) {
         if(client.hierarchical) {
-            return to_raw(feature::to_protocol(symbols,
-                                               session->positions(),
-                                               PositionEncoding::UTF16,
-                                               client));
+            return to_raw(feature::to_protocol(symbols, session->positions(), encoding, client));
         }
-        return to_raw(feature::to_symbol_information(symbols,
-                                                     session->positions(),
-                                                     PositionEncoding::UTF16,
-                                                     client,
-                                                     uri));
+        return to_raw(
+            feature::to_symbol_information(symbols, session->positions(), encoding, client, uri));
     };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
@@ -602,13 +594,12 @@ Features::RawResult Features::selection_range(Ticket ticket,
     std::vector<std::uint32_t> offsets;
     auto map = session->positions();
     for(const auto& position: positions) {
-        offsets.push_back(map.offset_clamped(position, PositionEncoding::UTF16));
+        offsets.push_back(map.offset_clamped(position, encoding));
     }
     auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
         std::vector<protocol::SelectionRange> result;
         for(const auto& chain: chains) {
-            result.push_back(
-                feature::to_protocol(chain, session->positions(), PositionEncoding::UTF16));
+            result.push_back(feature::to_protocol(chain, session->positions(), encoding));
         }
         return to_raw(result);
     };
@@ -685,7 +676,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto path = std::string(project.file_table.resolve(path_id));
 
     auto map = session->positions();
-    auto offset = map.offset(position, PositionEncoding::UTF16);
+    auto offset = map.offset(position, encoding);
 
     const auto& dialect = contexts.dialect(session->path_id);
     CompletionName completing;
@@ -715,6 +706,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         if(completing.kind == CompletionName::Kind::Directive) {
             co_return to_raw(feature::directive_completion(completing,
                                                            map,
+                                                           encoding,
                                                            dialect,
                                                            project.config.code_completion,
                                                            client));
@@ -730,6 +722,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(feature::include_completion(completing,
                                                          session->text(),
                                                          map,
+                                                         encoding,
                                                          path,
                                                          project.toolchain.search_config(ref),
                                                          scope,
@@ -740,6 +733,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(feature::module_completion(completing,
                                                         session->text(),
                                                         map,
+                                                        encoding,
                                                         path,
                                                         project.dep_graph,
                                                         project.file_table,
@@ -787,7 +781,7 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
     // A directive's name, a header name and the arguments the preprocessor
     // does not expand hold no call: `#include <` and `#define MAX(a, ` ask
     // for none, `#if CHECK(1, ` and `#include PICK(1, ` do.
-    if(auto offset = session->positions().offset(position, PositionEncoding::UTF16)) {
+    if(auto offset = session->positions().offset(position, encoding)) {
         using enum CompletionName::Kind;
         auto completing =
             completion_name(session->text(), *offset, contexts.dialect(session->path_id));
@@ -839,7 +833,8 @@ Features::RawResult Features::references(Ticket ticket,
         feature::to_locations(feature::references(peer_queries(),
                                                   *cursor,
                                                   include_declaration,
-                                                  project.config.references.limit.value)));
+                                                  project.config.references.limit.value),
+                              encoding));
 }
 
 Features::RawResult Features::document_highlight(Ticket ticket,
@@ -854,7 +849,7 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(feature::to_protocol(feature::document_highlights(query, *cursor)));
+    co_return to_raw(feature::to_protocol(feature::document_highlights(query, *cursor), encoding));
 }
 
 static ipc::Error rename_refused(std::string message) {
@@ -890,7 +885,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
         co_await kota::fail(rename_refused(std::move(renamed.error())));
     }
     co_return to_raw(protocol::PrepareRenamePlaceholder{
-        .range = feature::to_range(renamed->token),
+        .range = feature::to_range(renamed->token, encoding),
         .placeholder = renamed->target.symbol.symbol.name,
     });
 }
@@ -1007,10 +1002,14 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     if(plan.blocked()) {
         co_await kota::fail(rename_refused(feature::refusal(plan)));
     }
-    co_return feature::to_protocol(plan, new_name, [&](Fid file) -> std::optional<int> {
-        auto document = sessions.find(file);
-        return document ? std::optional(document->version) : std::nullopt;
-    });
+    co_return feature::to_protocol(
+        plan,
+        new_name,
+        [&](Fid file) -> std::optional<int> {
+            auto document = sessions.find(file);
+            return document ? std::optional(document->version) : std::nullopt;
+        },
+        encoding);
 }
 
 Features::RawResult Features::declaration(Ticket ticket,
@@ -1025,7 +1024,8 @@ Features::RawResult Features::declaration(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(feature::to_locations(feature::declaration(peer_queries(), *cursor)));
+    co_return to_raw(
+        feature::to_locations(feature::declaration(peer_queries(), *cursor), encoding));
 }
 
 Features::RawResult Features::type_definition(Ticket ticket,
@@ -1040,7 +1040,8 @@ Features::RawResult Features::type_definition(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(feature::to_locations(feature::type_definition(peer_queries(), *cursor)));
+    co_return to_raw(
+        feature::to_locations(feature::type_definition(peer_queries(), *cursor), encoding));
 }
 
 Features::RawResult Features::implementation(Ticket ticket,
@@ -1055,7 +1056,8 @@ Features::RawResult Features::implementation(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(feature::to_locations(feature::implementation(peer_queries(), *cursor)));
+    co_return to_raw(
+        feature::to_locations(feature::implementation(peer_queries(), *cursor), encoding));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
@@ -1069,7 +1071,7 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    auto items = feature::call_hierarchy_items(peer_queries(), *cursor);
+    auto items = feature::call_hierarchy_items(peer_queries(), *cursor, encoding);
     if(items.empty())
         co_return serde_raw{"null"};
     co_return to_raw(items);
@@ -1083,7 +1085,7 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                        item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
-    co_return to_raw(feature::incoming_calls(peer_queries(), *symbol, path_id));
+    co_return to_raw(feature::incoming_calls(peer_queries(), *symbol, path_id, encoding));
 }
 
 Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
@@ -1094,7 +1096,7 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                        item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
-    co_return to_raw(feature::outgoing_calls(peer_queries(), *symbol, path_id));
+    co_return to_raw(feature::outgoing_calls(peer_queries(), *symbol, path_id, encoding));
 }
 
 Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
@@ -1108,7 +1110,7 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    auto items = feature::type_hierarchy_items(peer_queries(), *cursor);
+    auto items = feature::type_hierarchy_items(peer_queries(), *cursor, encoding);
     if(items.empty())
         co_return serde_raw{"null"};
     co_return to_raw(items);
@@ -1122,7 +1124,7 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                                        item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("type hierarchy"));
-    co_return to_raw(feature::supertypes(peer_queries(), *symbol, path_id));
+    co_return to_raw(feature::supertypes(peer_queries(), *symbol, path_id, encoding));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -1133,13 +1135,14 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                                        item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("type hierarchy"));
-    co_return to_raw(feature::subtypes(peer_queries(), *symbol, path_id));
+    co_return to_raw(feature::subtypes(peer_queries(), *symbol, path_id, encoding));
 }
 
 std::vector<feature::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRef text) {
     return feature::workspace_symbols(peer_queries(),
                                       text,
-                                      Spelling(project.config.workspace_root));
+                                      Spelling(project.config.workspace_root),
+                                      encoding);
 }
 
 }  // namespace clice

@@ -7,6 +7,7 @@ module clice:server.document_compile;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.project;
+import :syntax.source_text;
 import :vfs.file_table;
 
 namespace clice {
@@ -24,6 +25,9 @@ struct CompileOutput {
     /// How the compile command was obtained; the push path merges a
     /// guidance diagnostic when the command was guessed.
     CommandSource source;
+
+    /// The text compiled, which the diagnostics are at bytes of.
+    std::shared_ptr<SourceText> text;
 
     /// The compile's diagnostics, before format_diagnostics; on a failure
     /// before parsing, why it failed.

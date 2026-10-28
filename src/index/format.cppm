@@ -107,8 +107,9 @@ namespace clice::index {
 /// guard nor a macro its own file undefines is completable; v49: the entity
 /// of a declaration spelled through macros hashes each level of its macro
 /// history with its parent's; v50: the search index is runs of bounded
-/// segments the header lists, which name files by path id.
-constexpr inline std::uint32_t index_format_version = 50;
+/// segments the header lists, which name files by path id; v51: a
+/// preamble's diagnostics are at bytes, not at editor positions.
+constexpr inline std::uint32_t index_format_version = 51;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

@@ -7,6 +7,8 @@ module clice;
 import :compile.compilation;
 import :compile.diagnostic;
 import :feature.diagnostics;
+import :feature.protocol;
+import :syntax.position;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -218,12 +220,61 @@ int main() { return 0; }
     auto diagnostics = feature::diagnostics(*unit);
     bool redefined = false;
     for(auto& diag: diagnostics) {
-        redefined |= diag.message.find("macro redefined") != std::string::npos;
-        for(auto& note: diag.notes) {
-            ZASSERT(!note.path.empty());
+        if(diag.message.find("macro redefined") != std::string::npos) {
+            redefined = true;
+            ZEXPECT(diag.notes.empty());
         }
     }
     ZASSERT(redefined);
+}
+
+ZEST_CASE(NotesPlacedWhenShown) {
+    /// A note in the diagnostic's own file is placed in the text compiled;
+    /// another file is read when the diagnostic is shown: one gone, or
+    /// shorter than the note's range, places nothing.
+    std::string text = "int x;\n";
+    auto starts = lsp::line_starts(text);
+    PositionMap positions(text, starts);
+    std::string header = "int \xe7\x94\xb2\xf0\x9f\x98\x80;\n";
+    auto header_starts = lsp::line_starts(header);
+    feature::FileDiagnostic diagnostic{
+        .range = {4, 5},
+        .message = "redefinition"
+    };
+    diagnostic.notes = {
+        {.path = "",        .range = {4, 5},   .message = "own" },
+        {.path = "/gone.h", .range = {0, 3},   .message = "gone"},
+        {.path = "/wide.h", .range = {20, 21}, .message = "past"},
+        {.path = "/wide.h", .range = {4, 11},  .message = "here"},
+    };
+    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
+        if(path == "/gone.h") {
+            return std::nullopt;
+        }
+        return PositionMap(header, header_starts);
+    };
+
+    for(auto [encoding, end]: {
+            std::pair{PositionEncoding::UTF8,  11u},
+            std::pair{PositionEncoding::UTF16, 7u },
+            std::pair{PositionEncoding::UTF32, 6u },
+    }) {
+        auto shown = feature::to_protocol(diagnostic,
+                                          true,
+                                          encoding,
+                                          "/main.cpp",
+                                          positions,
+                                          note_positions);
+        ZEXPECT(shown.range.end.character == 5u);
+        ZASSERT(shown.related_information);
+        auto& related = *shown.related_information;
+        ZASSERT(related.size() == 2u);
+        ZEXPECT(related[0].message == "own");
+        ZEXPECT(related[0].location.uri == feature::to_uri("/main.cpp"));
+        ZEXPECT(related[0].location.range.end.character == 5u);
+        ZEXPECT(related[1].message == "here");
+        ZEXPECT(related[1].location.range.end.character == end);
+    }
 }
 
 };  // ZEST_SUITE(Diagnostic)

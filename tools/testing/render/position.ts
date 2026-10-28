@@ -25,6 +25,23 @@ export interface Range {
     end: Position;
 }
 
+/// How a client counts a position's character, as it and the server agree
+/// at the handshake (LSP's PositionEncodingKind): in UTF-16 code units, the
+/// shape answers take, in UTF-8 bytes or in code points.
+export type PositionEncoding = "utf-8" | "utf-16" | "utf-32";
+
+/// The units `character`, one code point, counts in `encoding`.
+function unitsOf(character: string, encoding: PositionEncoding): number {
+    switch (encoding) {
+        case "utf-8":
+            return Buffer.byteLength(character);
+        case "utf-16":
+            return character.length;
+        case "utf-32":
+            return 1;
+    }
+}
+
 export interface Location {
     /// Workspace-relative POSIX path, or a `${...}`-rooted one outside it.
     path: string;
@@ -106,6 +123,52 @@ export class SourceText {
             .subarray(0, byteOffset - (this.byteStarts[line] ?? 0))
             .toString("utf8");
         return { line, character: prefix.length };
+    }
+
+    /// A position counted in `encoding` as answers take it. A column
+    /// inside a character is an error: no client could place it.
+    decode(position: Position, encoding: PositionEncoding): Position {
+        const line = this.lines[position.line];
+        if (encoding === "utf-16" || line === undefined) {
+            return position;
+        }
+        let counted = 0;
+        let units = 0;
+        for (const character of line) {
+            if (counted >= position.character) {
+                break;
+            }
+            counted += unitsOf(character, encoding);
+            units += character.length;
+        }
+        if (counted > position.character) {
+            throw new Error(
+                `${this.path}: ${encoding} column ${String(position.character)} of line ${String(position.line)} is inside a character`,
+            );
+        }
+        return { line: position.line, character: units + position.character - counted };
+    }
+
+    decodeRange(range: Range, encoding: PositionEncoding): Range {
+        return { start: this.decode(range.start, encoding), end: this.decode(range.end, encoding) };
+    }
+
+    /// A position as a client counting in `encoding` sends it.
+    encode(position: Position, encoding: PositionEncoding): Position {
+        const line = this.lines[position.line];
+        if (encoding === "utf-16" || line === undefined) {
+            return position;
+        }
+        const within = Math.min(position.character, line.length);
+        let counted = 0;
+        for (const character of line.slice(0, within)) {
+            counted += unitsOf(character, encoding);
+        }
+        return { line: position.line, character: counted + position.character - within };
+    }
+
+    encodeRange(range: Range, encoding: PositionEncoding): Range {
+        return { start: this.encode(range.start, encoding), end: this.encode(range.end, encoding) };
     }
 
     offsetAt(position: Position): number {

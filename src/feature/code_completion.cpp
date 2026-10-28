@@ -2730,6 +2730,7 @@ auto finish_completion(protocol::CompletionList list,
 auto include_completion(const CompletionName& completing,
                         llvm::StringRef text,
                         const PositionMap& map,
+                        PositionEncoding encoding,
                         llvm::StringRef path,
                         const SearchConfig& search,
                         vfs::Scope& scope,
@@ -2749,7 +2750,7 @@ auto include_completion(const CompletionName& completing,
             end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
         }
         return protocol::TextEdit{
-            .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
+            .range = *map.range({completing.replace.begin, end}, encoding),
             .new_text = candidate.is_directory ? candidate.name : candidate.name + closer,
         };
     };
@@ -2769,6 +2770,7 @@ auto include_completion(const CompletionName& completing,
 
 auto directive_completion(const CompletionName& completing,
                           const PositionMap& map,
+                          PositionEncoding encoding,
                           const clang::LangOptions& dialect,
                           const CodeCompletionOptions& options,
                           const CompletionClient& client) -> protocol::CompletionList {
@@ -2827,8 +2829,8 @@ auto directive_completion(const CompletionName& completing,
     LocalSourceRange typed(completing.replace.begin,
                            completing.replace.begin +
                                static_cast<std::uint32_t>(completing.prefix.size()));
-    auto typed_range = map.range(typed, PositionEncoding::UTF16);
-    auto whole_range = map.range(completing.replace, PositionEncoding::UTF16);
+    auto typed_range = map.range(typed, encoding);
+    auto whole_range = map.range(completing.replace, encoding);
     bool snippets = options.statement_snippets && client.snippets;
     FuzzyMatcher matcher(completing.prefix);
     llvm::StringSet<> listed;
@@ -2880,6 +2882,7 @@ auto directive_completion(const CompletionName& completing,
 auto module_completion(const CompletionName& completing,
                        llvm::StringRef text,
                        const PositionMap& map,
+                       PositionEncoding encoding,
                        llvm::StringRef path,
                        const DependencyGraph& graph,
                        FileTable& files,
@@ -2924,7 +2927,7 @@ auto module_completion(const CompletionName& completing,
         item.kind = protocol::CompletionItemKind::Module;
         item.sort_text = std::format("{:05}", distance(name));
         item.text_edit = protocol::TextEdit{
-            .range = *map.range(completing.replace, PositionEncoding::UTF16),
+            .range = *map.range(completing.replace, encoding),
             .new_text = completing.closed ? name : name + ";",
         };
         items.push_back(std::move(item));

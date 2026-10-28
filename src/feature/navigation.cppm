@@ -14,6 +14,7 @@ import :index.shard;
 import :index.site;
 import :index.symbol;
 import :semantic.symbol;
+import :syntax.position;
 
 namespace clice::feature {
 
@@ -95,7 +96,8 @@ struct PlacedHighlight {
 std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
                                                  const index::IndexQuery::Cursor& cursor);
 
-std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
+std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights,
+                                                     PositionEncoding encoding);
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,

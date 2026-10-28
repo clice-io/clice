@@ -53,6 +53,19 @@ ZEST_CASE(CRLFLineEnds) {
     }
 }
 
+ZEST_CASE(AstralCountsEachEncoding) {
+    // The emoji is four UTF-8 bytes, two UTF-16 units and one code point.
+    llvm::StringRef content = "\xf0\x9f\x98\x80x\n";
+    auto starts = lsp::line_starts(content);
+    PositionMap map(content, starts);
+
+    auto position = index::line_column(map, 5);
+    ZASSERT(position);
+    ZEXPECT(position->position(PositionEncoding::UTF8).character == 5u);
+    ZEXPECT(position->position(PositionEncoding::UTF16).character == 3u);
+    ZEXPECT(position->position(PositionEncoding::UTF32).character == 2u);
+}
+
 };  // ZEST_SUITE(LineColumn)
 
 }  // namespace
