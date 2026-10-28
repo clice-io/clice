@@ -30,7 +30,7 @@ for (const positionEncoding of ENCODINGS) {
         s.open("main.cpp");
         await s.pushes("main.cpp");
         s.edit("main.cpp", { replace: `"宽𝄞"`, with: `"宽𝄞宽𝄞宽𝄞"` });
-        await s.completion(t.marker("complete"));
+        await s.completion(t.at("main.cpp", "int total = val|ue;"));
         await s.pushes("main.cpp");
         const uri = s.client.normalizeUri(s.uri("main.cpp"));
         await t.show(
@@ -53,7 +53,7 @@ for (const positionEncoding of ENCODINGS) {
         });
         await s.diagnostics("main.cpp");
         s.edit("main.cpp", { replace: `"宽𝄞"`, with: `"宽𝄞宽𝄞宽𝄞"` });
-        await s.completion(t.marker("complete"));
+        await s.completion(t.at("main.cpp", "int total = val|ue;"));
         const pulled = await s.client.pullDiagnostics(s.uri("main.cpp"));
         await t.show("pulled", at(pulled));
     });
