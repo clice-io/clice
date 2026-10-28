@@ -1,0 +1,28 @@
+name: docs
+
+# Publishes docs.clice.io from main's pages; pull requests check theirs in
+# main.yml's docs-check. Not a job of main.yml, whose runs on main all run
+# at once: here a push waits for the deploy under way and replaces one still
+# waiting, so an older commit's pages never land after a newer one's.
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**"]
+
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: clice-io/docs@main
+        with:
+          project: clice
+          token: ${{ secrets.CLICE_DOCS }}

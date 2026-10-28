@@ -43,7 +43,13 @@ prunes odd-minor pre-releases older than 30 days or beyond the newest 25
 newest stable one), sparing the release `mason-org/mason-registry` pins in
 `packages/clice/package.yaml` — Mason's Renovate bumps that pin only to
 stable releases. Promotion fails loudly
-if no packaged green run exists. Once tagged, it dispatches the ecosystem
+if no packaged green run exists. A nightly can tag only a commit whose
+`.github/workflows/` are main's: GitHub refuses `GITHUB_TOKEN` any other,
+since a tag makes its commit's workflows runnable. Every change to them
+builds (`main.yml`'s path filter) and every main commit gets a run of its
+own, so the pick lacks them only while that change's `main` run is red or
+still running; the nightly then fails before tagging, naming the change:
+rerun its run green (`gh run rerun <id> --failed`), or wait for it. Once tagged, it dispatches the ecosystem
 round (`ecosystem.yml`, `ecosystem/README.md`) on that commit with the
 packages' CI run: every real project's regression and perf jobs, report
 only; perf measures clice against the nightly before (what clice spends a

@@ -7,8 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# Every main commit runs in a group of its own: a group holds one pending
+# run, which a newer one cancels even without cancel-in-progress, leaving
+# its commit untested and unpackaged. Elsewhere a push replaces its ref's
+# run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -75,10 +79,11 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - '.github/actions/**'
-              - '.github/workflows/test.yml'
-              - '.github/workflows/test-leg.yml'
-              - '.github/workflows/editor-test.yml'
-              - '.github/workflows/compat-test.yml'
+              # Every workflow, not only those of the build: the nightly
+              # tags the newest packaged commit, and GitHub refuses
+              # GITHUB_TOKEN a tag on a commit whose workflows differ from
+              # main's.
+              - '.github/workflows/**'
 
   lint:
     needs: changes
@@ -90,22 +95,7 @@ jobs:
     with:
       format: ${{ needs.changes.outputs.format == 'true' }}
 
-  deploy:
-    needs: changes
-    if: ${{ needs.changes.outputs.docs == 'true' && github.ref == 'refs/heads/main' }}
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: clice-io/docs@main
-        with:
-          project: clice
-          token: ${{ secrets.CLICE_DOCS }}
-
-  # Builds the site with this PR's pages, as deploy will after the merge: a
+  # Builds the site with this PR's pages, as docs.yml will after the merge: a
   # page that reads fine on GitHub can still fail VitePress (`{{` in inline
   # code is a Vue interpolation). Its own job, since the action switches node.
   docs-check:
@@ -220,7 +210,6 @@ jobs:
     needs:
       - changes
       - lint
-      - deploy
       - docs-check
       - vscode
       - zed
@@ -233,6 +222,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            lint,deploy,docs-check,vscode,zed,
+            lint,docs-check,vscode,zed,
             test,instant-vscode
           jobs: ${{ toJSON(needs) }}

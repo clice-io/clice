@@ -168,6 +168,17 @@ jobs:
           # in between; fetch it before tagging.
           git rev-parse -q --verify "$COMMIT^{commit}" > /dev/null \
             || git fetch origin "$COMMIT"
+          # A tag makes its commit's workflows runnable, so GitHub refuses
+          # GITHUB_TOKEN a tag on a commit whose workflows are not main's.
+          # Every change to them builds (main.yml's path filter): a pick
+          # without them means that change's run is red or still running.
+          git fetch -q origin main
+          if [ "$(git rev-parse "$COMMIT:.github/workflows")" \
+            != "$(git rev-parse "FETCH_HEAD:.github/workflows")" ]; then
+            CHANGE=$(git log -1 --format='%h ("%s")' "$COMMIT..FETCH_HEAD" -- .github/workflows)
+            echo "::error::$COMMIT, the newest packaged commit, predates main's newest change to .github/workflows, $CHANGE, and GITHUB_TOKEN cannot tag a commit without main's workflows: rerun that change's main run green, or wait for it"
+            exit 1
+          fi
           git tag "$TAG" "$COMMIT"
           git push origin "$TAG"
 
