@@ -22,11 +22,16 @@ for (const positionEncoding of ENCODINGS) {
     const name = positionEncoding ?? "utf-16";
     const options = positionEncoding ? { positionEncoding } : {};
 
+    // The edit lands while the first compile runs: that compile's push
+    // still names its own version and places the error in its own text.
     test(`push ${name}`, async (t) => {
         const s = await t.start({ config: QUIET, ...options });
+        const park = await s.park("compile", "main.cpp", { at: "worker" });
         s.open("main.cpp");
-        await s.pushes("main.cpp");
+        await park.reached();
         s.edit("main.cpp", EDIT);
+        await park.release();
+        await s.pushes("main.cpp");
         await s.hover(t.at("main.cpp", "int total = val|ue;"));
         await s.pushes("main.cpp");
         const uri = s.client.normalizeUri(s.uri("main.cpp"));

@@ -437,13 +437,9 @@ kota::task<std::optional<worker::FormatResult>, ipc::Error>
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    bool served = result.has_value();
     result = finish(ticket, evidence, "Format", std::move(result));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));
-    }
-    if(!served) {
-        co_return std::nullopt;
     }
     LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     co_return std::move(*result);

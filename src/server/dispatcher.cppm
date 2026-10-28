@@ -115,8 +115,7 @@ public:
                              kota::cancellation_token token = {});
 
     /// Formatting on a stateless worker: no sema runs, but it is still this
-    /// document's content on a worker. None when the workers could not
-    /// serve it.
+    /// document's content on a worker. None while a crash bars it.
     kota::task<std::optional<worker::FormatResult>, ipc::Error>
         format(const Ticket& ticket,
                std::optional<protocol::Range> range = {},
