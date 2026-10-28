@@ -11,6 +11,7 @@ import :feature.code_actions;
 import :feature.code_completion;
 import :feature.document_symbols;
 import :feature.folding_ranges;
+import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :server.dispatcher;
@@ -145,65 +146,6 @@ Outcome Dispatcher::finish(const Ticket& ticket,
     return result;
 }
 
-Dispatcher::RawResult Dispatcher::hover(const Ticket& ticket,
-                                        std::optional<protocol::Position> position,
-                                        kota::cancellation_token token,
-                                        protocol::MarkupKind markup) {
-    auto& session = *ticket.session;
-    auto path_id = session.path_id;
-    auto path = std::string(project.file_table.resolve(path_id));
-    auto evidence = evidence_kind(EvidenceKind::Hover);
-    llvm::StringRef label = "Hover";
-
-    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
-        co_return serde_raw{"null"};
-    }
-
-    ScopedTimer timer;
-    if(!co_await ast.ensure_compiled(ticket.session)) {
-        // The join abandons on an edit or ends without an AST (failed
-        // compile, a crash bar): only the former is the client's cue to
-        // re-pull; the latter is the honest "no AST" answer.
-        if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
-        }
-        co_return serde_raw{"null"};
-    }
-    if(!ticket.fresh()) {
-        co_await kota::fail(content_modified());
-    }
-    auto wait_ms = timer.ms_f();
-
-    worker::HoverParams wp;
-    wp.path = path;
-    wp.config = project.config;
-    wp.markup = markup;
-    wp.encoding = encoding;
-
-    if(position) {
-        wp.offset = session.positions().offset_clamped(*position, encoding);
-    }
-
-    bool unanswered = false;
-    auto result = co_await ask(ticket, evidence, wp, token, unanswered);
-    if(unanswered) {
-        if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
-        }
-        co_return serde_raw{"null"};
-    }
-    result = finish(ticket, evidence, label, std::move(result));
-    if(result.has_value()) {
-        LOG_PERF("request",
-                 "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
-                 label,
-                 path,
-                 wait_ms,
-                 timer.ms_f());
-    }
-    co_return std::move(result);
-}
-
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Dispatcher::typed(const Ticket& ticket,
@@ -250,6 +192,19 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                  timer.ms_f());
     }
     co_return std::move(result);
+}
+
+kota::task<std::optional<feature::HoverInfo>, ipc::Error>
+    Dispatcher::hover(const Ticket& ticket,
+                      const protocol::Position& position,
+                      kota::cancellation_token token) {
+    auto offset = ticket.session->positions().offset_clamped(position, encoding);
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::Hover,
+                             "Hover",
+                             worker::HoverParams{std::move(path), offset, project.config},
+                             std::move(token));
 }
 
 kota::task<std::vector<feature::InlayHint>, ipc::Error>
@@ -453,16 +408,17 @@ Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                        std::move(token));
 }
 
-Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
-                                         std::optional<protocol::Range> range,
-                                         kota::cancellation_token token) {
+kota::task<std::optional<worker::FormatResult>, ipc::Error>
+    Dispatcher::format(const Ticket& ticket,
+                       std::optional<protocol::Range> range,
+                       kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path = std::string(project.file_table.resolve(session.path_id));
     auto evidence = evidence_kind(EvidenceKind::Format);
 
     if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
         LOG_DEBUG("Format: {} is barred by a crash", path);
-        co_return serde_raw{"null"};
+        co_return std::nullopt;
     }
 
     worker::FormatParams wp;
@@ -480,24 +436,16 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
+    bool served = result.has_value();
     result = finish(ticket, evidence, "Format", std::move(result));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));
     }
+    if(!served) {
+        co_return std::nullopt;
+    }
     LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
-    if(!result->error.empty()) {
-        co_return kota::outcome_error(
-            ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-                       std::move(result->error)});
-    }
-    auto positions = session.positions();
-    std::vector<protocol::TextEdit> edits;
-    for(auto& edit: result->edits) {
-        if(auto range = positions.range(edit.range, encoding)) {
-            edits.push_back({.range = *range, .new_text = std::move(edit.text)});
-        }
-    }
-    co_return to_raw(edits);
+    co_return std::move(*result);
 }
 
 }  // namespace clice

@@ -2935,4 +2935,69 @@ auto module_completion(const CompletionName& completing,
     return completion_list(std::move(items), limit);
 }
 
+auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
+    auto& text = inputs.text;
+    auto offset = inputs.positions.offset(inputs.position, inputs.encoding);
+    CompletionName completing;
+    if(offset) {
+        completing = completion_name(text, *offset, inputs.dialect);
+    }
+
+    // Anything else a trigger character is typed in — `template<`, a
+    // closing `>`, the dots of a pack ellipsis — is answered before any
+    // include scanning or completion build.
+    if(!inputs.trigger_character.empty()) {
+        bool served = inputs.trigger_character == " "
+                          ? completing.kind == CompletionName::Kind::Import ||
+                                completing.kind == CompletionName::Kind::ModuleDeclaration
+                          : completing.kind != CompletionName::Kind::None || !offset ||
+                                follows_access_operator(text, *offset, inputs.dialect);
+        if(!served) {
+            return NoCompletion{};
+        }
+    }
+
+    auto limit = inputs.options.limit;
+    if(offset) {
+        switch(completing.kind) {
+            case CompletionName::Kind::Directive:
+                return directive_completion(completing,
+                                            inputs.positions,
+                                            inputs.encoding,
+                                            inputs.dialect,
+                                            inputs.options,
+                                            inputs.client);
+            case CompletionName::Kind::IncludeQuoted:
+            case CompletionName::Kind::IncludeAngled:
+                return include_completion(completing,
+                                          text,
+                                          inputs.positions,
+                                          inputs.encoding,
+                                          inputs.path,
+                                          inputs.search(),
+                                          inputs.scope,
+                                          limit);
+            case CompletionName::Kind::Import:
+            case CompletionName::Kind::ModuleDeclaration:
+                return module_completion(completing,
+                                         text,
+                                         inputs.positions,
+                                         inputs.encoding,
+                                         inputs.path,
+                                         inputs.graph,
+                                         inputs.files,
+                                         limit);
+            default: break;
+        }
+    }
+
+    CompileCompletion compile;
+    if(auto prefix = offset ? unqualified_prefix(text, *offset) : std::nullopt;
+       prefix && inputs.options.all_scopes && completing.directive.empty()) {
+        compile.more_candidates =
+            !scope_candidates(inputs.query, inputs.graph, *prefix, inputs.file, compile.candidates);
+    }
+    return compile;
+}
+
 }  // namespace clice::feature

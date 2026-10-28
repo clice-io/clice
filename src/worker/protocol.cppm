@@ -11,6 +11,7 @@ import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_symbols;
 import :feature.folding_ranges;
+import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :index.symbol;
@@ -119,17 +120,11 @@ inline bool is_transport_error(const protocol::Error& error) {
     return error.code == static_cast<protocol::integer>(protocol::ErrorCode::ConnectionClosed);
 }
 
-/// Request the hover card at a point of an open file's AST (see
-/// feature::hover).
+/// Request the hover card at a point of an open file's AST, before it is
+/// rendered (see feature::hover_info).
 struct HoverParams {
     std::string path;
     uint32_t offset = 0;
-
-    /// What a hover card renders as: the markup the client shows it in.
-    protocol::MarkupKind markup = protocol::MarkupKind::Markdown;
-
-    /// What the card's range counts in: the client's position encoding.
-    PositionEncoding encoding = PositionEncoding::UTF16;
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -621,7 +616,7 @@ struct RequestTraits<clice::worker::CompileParams> {
 
 template <>
 struct RequestTraits<clice::worker::HoverParams> {
-    using Result = codec::RawValue;
+    using Result = std::optional<clice::feature::HoverInfo>;
     constexpr inline static std::string_view method = "clice/worker/hover";
 };
 

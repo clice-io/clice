@@ -184,7 +184,7 @@ ZEST_CASE(SwitchIdentityResets) {
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
     compiled->base_pch_key = "base";
-    compiled->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
+    compiled->output = CompileOutput{.version = 3};
     entry.latest = std::move(compiled);
     entry.deps.emplace();
     entry.current = true;
@@ -213,9 +213,10 @@ ZEST_CASE(CrashPublishesNote) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
     stack.ast.compiles.set_output(session->path_id,
-                                  CompileOutput{.version = 1,
-                                                .source = CommandSource::CDBExact,
-                                                .diagnostics = {feature::file_warning("old")}});
+                                  CompileOutput{
+                                      .version = 1,
+                                      .diagnostics = {.own = {feature::file_warning("old")}},
+                                  });
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -226,7 +227,7 @@ ZEST_CASE(CrashPublishesNote) {
     ZEXPECT(emits == 1);
     auto compiled = stack.ast.compiles.latest(session->path_id);
     ZASSERT((compiled && compiled->output.has_value()));
-    ZEXPECT(compiled->output->diagnostics.empty());
+    ZEXPECT(compiled->output->diagnostics.own.empty());
 
     std::vector<feature::FileDiagnostic> notes;
     append_crash_notes(*session, notes);

@@ -60,6 +60,18 @@ std::optional<protocol::Hover> result;
 std::optional<HoverInfo> info;
 llvm::StringRef current_code;
 
+/// The card at `offset` rendered as `kind`, as the server renders it.
+std::optional<protocol::Hover> rendered(std::uint32_t offset, protocol::MarkupKind kind) {
+    auto card = feature::hover_info(*unit, offset);
+    if(!card) {
+        return std::nullopt;
+    }
+    return feature::to_protocol(*card,
+                                kind,
+                                unit->focus_file().positions(),
+                                PositionEncoding::UTF8);
+}
+
 void run(llvm::StringRef code) {
     add_focus("main.cpp", code);
     ZASSERT(compile());
@@ -67,12 +79,7 @@ void run(llvm::StringRef code) {
     auto points = nameless_points();
     ZASSERT(points.size() == 1U);
     auto offset = points[0];
-    result = feature::hover(*unit,
-                            offset,
-                            {},
-                            {},
-                            protocol::MarkupKind::Markdown,
-                            PositionEncoding::UTF8);
+    result = rendered(offset, protocol::MarkupKind::Markdown);
 }
 
 void compile_only(llvm::StringRef code) {
@@ -374,7 +381,7 @@ ZEST_CASE(structured_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "expression";
              hi.kind = SymbolKind::Invalid;
-             hi.type = "int[10]";
+             hi.type = PrintedType{.text = "int[10]"};
              hi.value = "{1}";
          }},
     };
@@ -581,12 +588,7 @@ int §foo = 1;
 )cpp");
     ZASSERT(compile());
 
-    result = feature::hover(*unit,
-                            nameless_points()[0],
-                            {},
-                            {},
-                            protocol::MarkupKind::PlainText,
-                            PositionEncoding::UTF8);
+    result = rendered(nameless_points()[0], protocol::MarkupKind::PlainText);
 
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
@@ -630,12 +632,7 @@ int x = 0;
     ZEXPECT(info->symbol_range->begin == arg.begin);
     ZEXPECT(info->symbol_range->end == arg.end);
 
-    result = feature::hover(*unit,
-                            arg.begin + 1,
-                            {},
-                            {},
-                            protocol::MarkupKind::Markdown,
-                            PositionEncoding::UTF8);
+    result = rendered(arg.begin + 1, protocol::MarkupKind::Markdown);
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
     ZASSERT(content != nullptr);

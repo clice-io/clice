@@ -151,4 +151,12 @@ auto directive_location(FileTable& files, const index::DocumentLink& link) -> pr
     };
 }
 
+auto link_at(llvm::ArrayRef<index::DocumentLink> links, std::uint32_t offset)
+    -> const index::DocumentLink* {
+    auto it = ranges::find_if(links, [&](const index::DocumentLink& link) {
+        return link.range.contains(offset);
+    });
+    return it != links.end() ? &*it : nullptr;
+}
+
 }  // namespace clice::feature

@@ -240,14 +240,6 @@ class StatefulWorker {
         co_return result;
     }
 
-    /// Answers "null" if the AST is not usable.
-    template <typename Params, typename F>
-    kota::task<codec::RawValue, ipc::Error> with_ast(llvm::StringRef kind,
-                                                     const Params& params,
-                                                     F fn) {
-        return with_ast_or(kind, params, codec::RawValue{"null"}, std::move(fn));
-    }
-
     RequestResult<worker::CompileParams> serve_compile(CompileGuard guard,
                                                        const worker::CompileParams& params);
 
@@ -508,15 +500,15 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
-            return with_ast("Hover", params, [&](DocumentEntry& doc) {
-                auto result = feature::hover(*doc.unit,
-                                             params.offset,
-                                             params.config.hover,
-                                             params.config.documentation,
-                                             params.markup,
-                                             params.encoding);
-                return result ? to_raw(*result) : codec::RawValue{"null"};
-            });
+            return with_ast_or("Hover",
+                               params,
+                               std::optional<feature::HoverInfo>{},
+                               [&](DocumentEntry& doc) {
+                                   return feature::hover_info(*doc.unit,
+                                                              params.offset,
+                                                              params.config.hover,
+                                                              params.config.documentation);
+                               });
         });
 }
 

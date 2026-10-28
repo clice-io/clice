@@ -11,6 +11,7 @@ import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
+import :feature.formatting;
 import :feature.hierarchy;
 import :feature.hover;
 import :feature.inlay_hints;
@@ -18,6 +19,7 @@ import :feature.navigation;
 import :feature.protocol;
 import :feature.rename;
 import :feature.selection_ranges;
+import :feature.signature_help;
 import :feature.semantic_tokens;
 import :feature.workspace_symbols;
 import :index.peer_queries;
@@ -28,10 +30,7 @@ import :server.editor_context;
 import :server.requests;
 import :server.query_commands;
 import :support.json;
-import :support.text;
-import :syntax.completion;
 import :syntax.include_resolver;
-import :syntax.lexer;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -42,31 +41,17 @@ namespace clice {
 
 using serde_raw = codec::RawValue;
 
-/// The link whose argument covers `offset`.
-const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
-                                          std::uint32_t offset) {
-    auto it = ranges::find_if(links, [&](const index::DocumentLink& link) {
-        return link.range.contains(offset);
-    });
-    return it != links.end() ? &*it : nullptr;
-}
-
-/// Whether a worker's raw reply is the JSON null — the only inspection
-/// ever made of a reply that is otherwise passed through untouched.
-static bool is_null(const serde_raw& raw) {
-    return raw.data == "null";
-}
-
-/// Error response for feature requests on files with no open session.
-static ipc::Error document_not_open() {
-    return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
-}
-
 /// Error response when a call/type hierarchy item cannot be resolved back to
 /// an indexed symbol.
 static ipc::Error item_not_resolved(llvm::StringRef kind) {
     return ipc::Error{protocol::ErrorCode::InvalidParams,
                       std::format("Failed to resolve {} item", kind)};
+}
+
+/// A request the server cannot carry out, and why.
+static ipc::Error request_failed(std::string message) {
+    return ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                      std::move(message)};
 }
 
 /// The largest buffer the master lexes whole on its own thread.
@@ -176,6 +161,28 @@ std::optional<index::IndexQuery::Cursor>
     return query.symbol_at(path_id, position, encoding);
 }
 
+template <typename Answer>
+Requests::RawResult Requests::navigate(const Ticket& ticket,
+                                       Fid path_id,
+                                       const protocol::Position& position,
+                                       llvm::StringRef none,
+                                       Answer answer) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
+            co_return co_await stop_reply(std::move(*stop));
+        }
+    }
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return serde_raw{none.str()};
+    }
+    auto reply = answer(*cursor);
+    if(!reply) {
+        co_await kota::fail(std::move(reply.error()));
+    }
+    co_return std::move(*reply);
+}
+
 index::PeerQueries Requests::peer_queries() const {
     return {.own = query, .peers = peers, .open_in = open_in};
 }
@@ -209,8 +216,7 @@ kota::task<std::vector<index::DocumentLink>, ipc::Error>
     co_return links;
 }
 
-kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
-    Requests::document_links(Ticket ticket, kota::cancellation_token token) {
+Requests::RawResult Requests::document_links(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
 
     switch(co_await pick_route(ticket, {.await_cold_attempt = true})) {
@@ -221,17 +227,16 @@ kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
             // __has_include/#embed have no edge and produce no link.
             auto links = feature::document_links(text_of(*session), query, session->path_id);
             session->index_served = true;
-            co_return feature::to_protocol(links,
-                                           session->positions(),
-                                           encoding,
-                                           project.file_table);
+            co_return to_raw(
+                feature::to_protocol(links, session->positions(), encoding, project.file_table));
         }
-        case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
+        case Route::Empty: co_return serde_raw{"[]"};
         case Route::Ast: break;
     }
 
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
-    co_return feature::to_protocol(links, session->positions(), encoding, project.file_table);
+    co_return to_raw(
+        feature::to_protocol(links, session->positions(), encoding, project.file_table));
 }
 
 kota::task<std::vector<feature::FileDiagnostic>>
@@ -360,7 +365,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
     auto offset = session ? session->positions().offset(position, encoding) : std::nullopt;
     if(offset && ast.compiles.current(path_id)) {
         auto links = find_preamble_links(*session);
-        if(auto* link = link_at(links, *offset)) {
+        if(auto* link = feature::link_at(links, *offset)) {
             co_return to_raw(std::vector{feature::directive_location(project.file_table, *link)});
         }
     }
@@ -397,7 +402,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
        (shard_served && !cursor_at(path_id, position))) {
         if(offset) {
             auto links = feature::document_links(text_of(*session), query, session->path_id);
-            if(auto* link = link_at(links, *offset)) {
+            if(auto* link = feature::link_at(links, *offset)) {
                 co_return to_raw(
                     std::vector{feature::directive_location(project.file_table, *link)});
             }
@@ -418,7 +423,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
     // A dispatch error is final: a ContentModified in particular must not
     // be replaced by an index answer computed on the newer buffer.
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
-    if(auto* link = offset ? link_at(links, *offset) : nullptr) {
+    if(auto* link = offset ? feature::link_at(links, *offset) : nullptr) {
         co_return to_raw(std::vector{feature::directive_location(project.file_table, *link)});
     }
 
@@ -438,12 +443,9 @@ Requests::RawResult Requests::hover(Ticket ticket,
                                     protocol::MarkupKind markup,
                                     kota::cancellation_token token) {
     auto& session = ticket.session;
-    if(!session) {
-        co_await kota::fail(document_not_open());
-    }
     auto path_id = session->path_id;
 
-    auto index_card = [&](const feature::HoverInfo& info) {
+    auto card = [&](const feature::HoverInfo& info) {
         return to_raw(feature::to_protocol(info, markup, session->positions(), encoding));
     };
 
@@ -451,17 +453,11 @@ Requests::RawResult Requests::hover(Ticket ticket,
     // identity: this side answers it, from the links. Off a directive line
     // there is none to look for.
     auto offset = session->positions().offset(position, encoding);
-    bool on_directive = false;
-    if(offset) {
-        llvm::StringRef text = session->text();
-        on_directive =
-            Lexer(text.substr(logical_line_begin(text, *offset)), contexts.dialect(path_id))
-                .advance()
-                .is_directive_hash();
-    }
+    bool on_directive =
+        offset && feature::on_directive_line(session->text(), *offset, contexts.dialect(path_id));
     auto directive_card =
         [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<serde_raw> {
-        auto* link = link_at(links, *offset);
+        auto* link = feature::link_at(links, *offset);
         if(!link) {
             return std::nullopt;
         }
@@ -478,10 +474,10 @@ Requests::RawResult Requests::hover(Ticket ticket,
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             if(on_directive) {
-                if(auto card =
+                if(auto shown =
                        directive_card(feature::document_links(text_of(*session), query, path_id))) {
                     session->index_served = true;
-                    co_return std::move(*card);
+                    co_return std::move(*shown);
                 }
             }
             auto info = index_hover_card(*session, position);
@@ -497,7 +493,7 @@ Requests::RawResult Requests::hover(Ticket ticket,
                 break;
             }
             session->index_served = true;
-            co_return index_card(*info);
+            co_return card(*info);
         }
         case Route::Empty: co_return serde_raw{"null"};
         case Route::Ast: break;
@@ -508,38 +504,36 @@ Requests::RawResult Requests::hover(Ticket ticket,
     if(auto cursor = cursor_at(path_id, position)) {
         auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
         if(info && info->kind == SymbolKind::Module) {
-            co_return index_card(feature::module_hover(peer_queries(), *cursor, *info));
+            co_return card(feature::module_hover(peer_queries(), *cursor, *info));
         }
     }
 
     if(on_directive) {
         auto links = co_await directive_links(ticket, token).or_fail();
-        if(auto card = directive_card(links)) {
-            co_return std::move(*card);
+        if(auto shown = directive_card(links)) {
+            co_return std::move(*shown);
         }
     }
 
-    auto raw = co_await dispatcher.hover(ticket, position, std::move(token), markup);
-    if(raw.has_value() && is_null(raw.value()) && ast.compiles.current(path_id)) {
-        // The preamble region is the one place a null from the AST is not
-        // authoritative — it is compiled into the PCH and invisible to
-        // the worker (a `#define` there has no node). The index card
-        // fills that gap, and only that gap: past the bound the AST saw
-        // the code and declined on purpose (a lambda's auto parameter
-        // must not hover, and the index would happily name it `auto:1`).
-        auto compiled = ast.compiles.latest(path_id);
-        if(compiled && compiled->pch_key) {
-            if(auto it = project.pch_cache.find(*compiled->pch_key);
-               it != project.pch_cache.end()) {
-                if(offset && *offset < it->second.bound) {
-                    if(auto info = index_hover_card(*session, position)) {
-                        co_return index_card(*info);
-                    }
-                }
+    if(auto info = co_await dispatcher.hover(ticket, position, std::move(token)).or_fail()) {
+        co_return card(*info);
+    }
+    // The preamble region is the one place the AST's having no card is not
+    // authoritative — it is compiled into the PCH and invisible to the
+    // worker (a `#define` there has no node). The index card fills that
+    // gap, and only that gap: past the bound the AST saw the code and
+    // declined on purpose (a lambda's auto parameter must not hover, and
+    // the index would happily name it `auto:1`).
+    if(auto compiled = ast.compiles.current(path_id) ? ast.compiles.latest(path_id) : nullptr;
+       compiled && compiled->pch_key) {
+        if(auto it = project.pch_cache.find(*compiled->pch_key);
+           it != project.pch_cache.end() && offset && *offset < it->second.bound) {
+            if(auto info = index_hover_card(*session, position)) {
+                co_return card(*info);
             }
         }
     }
-    co_return std::move(raw);
+    co_return serde_raw{"null"};
 }
 
 Requests::TokensResult Requests::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
@@ -756,79 +750,40 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
 
     auto path_id = session->path_id;
     auto path = std::string(project.file_table.resolve(path_id));
-
-    auto map = session->positions();
-    auto offset = map.offset(position, encoding);
-
-    const auto& dialect = contexts.dialect(session->path_id);
-    CompletionName completing;
-    if(offset) {
-        completing = completion_name(session->text(), *offset, dialect);
+    auto positions = session->positions();
+    vfs::Scope scope(project.file_table.dirs);
+    auto start = feature::start_completion({
+        .file = path_id,
+        .path = path,
+        .text = session->text(),
+        .positions = positions,
+        .position = position,
+        .encoding = encoding,
+        .trigger_character = trigger_character,
+        .dialect = contexts.dialect(path_id),
+        .options = project.config.code_completion,
+        .client = client,
+        .query = query,
+        .graph = project.dep_graph,
+        .files = project.file_table,
+        .search = [&] { return search_of(path_id); },
+        .scope = scope,
+    });
+    if(std::holds_alternative<feature::NoCompletion>(start)) {
+        co_return serde_raw{"[]"};
     }
-
-    // Clients without request-side gating (nvim, zed) forward every
-    // keystroke of an advertised trigger character. Space is advertised
-    // only so that `import ` opens module suggestions; the others exist
-    // for include paths and member or scope access. Anything else —
-    // `template<`, a closing `>`, the dots of a pack ellipsis — is
-    // answered with an empty list before any include scanning or
-    // completion build.
-    if(!trigger_character.empty()) {
-        bool served = trigger_character == " "
-                          ? completing.kind == CompletionName::Kind::Import ||
-                                completing.kind == CompletionName::Kind::ModuleDeclaration
-                          : completing.kind != CompletionName::Kind::None || !offset ||
-                                follows_access_operator(session->text(), *offset, dialect);
-        if(!served) {
-            co_return serde_raw{"[]"};
-        }
+    if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
+        co_return to_raw(*list);
     }
-
-    if(offset) {
-        if(completing.kind == CompletionName::Kind::Directive) {
-            co_return to_raw(feature::directive_completion(completing,
-                                                           map,
-                                                           encoding,
-                                                           dialect,
-                                                           project.config.code_completion,
-                                                           client));
-        }
-        if(completing.kind == CompletionName::Kind::IncludeQuoted ||
-           completing.kind == CompletionName::Kind::IncludeAngled) {
-            vfs::Scope scope(project.file_table.dirs);
-            co_return to_raw(feature::include_completion(completing,
-                                                         session->text(),
-                                                         map,
-                                                         encoding,
-                                                         path,
-                                                         search_of(path_id),
-                                                         scope,
-                                                         project.config.code_completion.limit));
-        }
-        if(completing.kind == CompletionName::Kind::Import ||
-           completing.kind == CompletionName::Kind::ModuleDeclaration) {
-            co_return to_raw(feature::module_completion(completing,
-                                                        session->text(),
-                                                        map,
-                                                        encoding,
-                                                        path,
-                                                        project.dep_graph,
-                                                        project.file_table,
-                                                        project.config.code_completion.limit));
-        }
-    }
-
-    std::vector<feature::ScopeCandidate> candidates;
-    bool exhausted = true;
-    if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
-       prefix && project.config.code_completion.all_scopes && completing.directive.empty()) {
-        exhausted =
-            feature::scope_candidates(query, project.dep_graph, *prefix, path_id, candidates);
-    }
-    auto result =
-        co_await dispatcher
-            .completion(ticket, position, client, candidates, !exhausted, std::move(token))
-            .or_fail();
+    auto& compile = std::get<feature::CompileCompletion>(start);
+    auto result = co_await dispatcher
+                      .completion(ticket,
+                                  position,
+                                  client,
+                                  compile.candidates,
+                                  compile.more_candidates,
+                                  std::move(token))
+                      .or_fail();
     if(!result.include) {
         co_return std::move(result.list);
     }
@@ -836,10 +791,9 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
     protocol::CompletionList list;
     [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
     assert(decoded && "the worker encodes the list");
-    vfs::Scope scope(project.file_table.dirs);
     co_return to_raw(feature::finish_completion(std::move(list),
                                                 *result.include,
-                                                candidates,
+                                                compile.candidates,
                                                 query,
                                                 path_id,
                                                 search_of(path_id),
@@ -851,20 +805,10 @@ Requests::RawResult Requests::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              std::string selected,
                                              kota::cancellation_token token) {
-    // A directive's name, a header name and the arguments the preprocessor
-    // does not expand hold no call: `#include <` and `#define MAX(a, ` ask
-    // for none, `#if CHECK(1, ` and `#include PICK(1, ` do.
-    if(auto offset = session->positions().offset(position, encoding)) {
-        using enum CompletionName::Kind;
-        auto completing =
-            completion_name(session->text(), *offset, contexts.dialect(session->path_id));
-        constexpr std::array<llvm::StringRef, 8> unexpanded =
-            {"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef", "error", "warning"};
-        if(completing.kind == Directive || completing.kind == IncludeQuoted ||
-           completing.kind == IncludeAngled ||
-           ranges::contains(unexpanded, llvm::StringRef(completing.directive))) {
-            return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
-        }
+    if(auto offset = session->positions().offset(position, encoding);
+       offset &&
+       !feature::can_hold_call(session->text(), *offset, contexts.dialect(session->path_id))) {
+        return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
     }
     ast.escalate(*session);
     return kota::co_invoke([this,
@@ -885,7 +829,15 @@ Requests::RawResult Requests::formatting(std::shared_ptr<Session> session,
                             pause = pump.scoped_pause(),
                             range,
                             token = std::move(token)]() -> RawResult {
-        co_return co_await dispatcher.format(ticket, range, token);
+        auto result = co_await dispatcher.format(ticket, range, token).or_fail();
+        if(!result) {
+            co_return serde_raw{"null"};
+        }
+        if(!result->error.empty()) {
+            co_await kota::fail(request_failed(std::move(result->error)));
+        }
+        co_return to_raw(
+            feature::to_protocol(result->edits, ticket.session->positions(), encoding));
     });
 }
 
@@ -893,74 +845,56 @@ Requests::RawResult Requests::references(Ticket ticket,
                                          Fid path_id,
                                          const protocol::Position& position,
                                          bool include_declaration) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"[]"};
-    }
-    co_return to_raw(
-        feature::to_locations(feature::references(peer_queries(),
-                                                  *cursor,
-                                                  include_declaration,
-                                                  project.config.references.limit.value),
-                              encoding));
+    co_return co_await navigate(ticket,
+                                path_id,
+                                position,
+                                "[]",
+                                [&](const Cursor& cursor) -> Reply {
+                                    return to_raw(feature::to_locations(
+                                        feature::references(peer_queries(),
+                                                            cursor,
+                                                            include_declaration,
+                                                            project.config.references.limit.value),
+                                        encoding));
+                                });
 }
 
 Requests::RawResult Requests::document_highlights(Ticket ticket,
                                                   Fid path_id,
                                                   const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"[]"};
-    }
-    co_return to_raw(feature::to_protocol(feature::document_highlights(query, *cursor), encoding));
-}
-
-static ipc::Error rename_refused(std::string message) {
-    return ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-                      std::move(message)};
-}
-
-/// Refused up front, before the cursor costs a compile.
-static std::optional<ipc::Error> refuse_rootless(const Project& project) {
-    if(project.config.workspace_root.empty()) {
-        return rename_refused("a rename edits the sources of a workspace folder; open one");
-    }
-    return std::nullopt;
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "[]",
+        [&](const Cursor& cursor) -> Reply {
+            return to_raw(
+                feature::to_protocol(feature::document_highlights(query, cursor), encoding));
+        });
 }
 
 Requests::RawResult Requests::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
-    if(auto refused = refuse_rootless(project)) {
-        co_await kota::fail(std::move(*refused));
+    // Refused up front, before the cursor costs a compile.
+    if(auto refused = feature::workspace_refusal(project.config.workspace_root)) {
+        co_await kota::fail(request_failed(std::move(*refused)));
     }
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"null"};
-    }
-    auto renamed = feature::rename_at(query, *cursor);
-    if(!renamed) {
-        co_await kota::fail(rename_refused(std::move(renamed.error())));
-    }
-    co_return to_raw(protocol::PrepareRenamePlaceholder{
-        .range = feature::to_range(renamed->token, encoding),
-        .placeholder = renamed->target.symbol.symbol.name,
-    });
+    co_return co_await navigate(ticket,
+                                path_id,
+                                position,
+                                "null",
+                                [&](const Cursor& cursor) -> Reply {
+                                    auto renamed = feature::rename_at(query, cursor);
+                                    if(!renamed) {
+                                        return std::unexpected(
+                                            request_failed(std::move(renamed.error())));
+                                    }
+                                    return to_raw(protocol::PrepareRenamePlaceholder{
+                                        .range = feature::to_range(renamed->token, encoding),
+                                        .placeholder = renamed->target.symbol.symbol.name,
+                                    });
+                                });
 }
 
 kota::task<std::optional<feature::Renamed>, ipc::Error>
@@ -968,8 +902,9 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
                      Fid path_id,
                      const protocol::Position& position,
                      std::string new_name) {
-    if(auto refused = refuse_rootless(project)) {
-        co_await kota::fail(std::move(*refused));
+    // Refused up front, before the cursor costs a compile.
+    if(auto refused = feature::workspace_refusal(project.config.workspace_root)) {
+        co_await kota::fail(request_failed(std::move(*refused)));
     }
     if(ticket.session) {
         if(auto stop = co_await nav_gate(ticket)) {
@@ -986,34 +921,24 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     }
     auto at = feature::rename_at(query, *cursor);
     if(!at) {
-        co_await kota::fail(rename_refused(std::move(at.error())));
+        co_await kota::fail(request_failed(std::move(at.error())));
     }
 
     // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
-    struct Scanned {
-        std::vector<std::string> files;
-        llvm::StringMap<feature::ScannedText> texts;
-    };
-
     CanonicalPath cache_dir;
     if(!config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
-    llvm::StringSet<> names{at->target.symbol.symbol.name, new_name};
-    auto scanned = co_await kota::queue([root = config.workspace_root, cache_dir, names] {
-        Scanned result;
-        for(auto& source: workspace_sources(root, cache_dir)) {
-            auto path = std::move(source).str();
-            if(auto text = vfs::read_text(path)) {
-                if(auto spelled = feature::scan_text(std::move(*text), names)) {
-                    result.texts.try_emplace(path, std::move(*spelled));
-                }
+    auto root = config.workspace_root;
+    auto texts = co_await kota::queue(
+        [root, cache_dir, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
+            std::vector<std::string> files;
+            for(auto& source: workspace_sources(root, cache_dir)) {
+                files.push_back(std::move(source).str());
             }
-            result.files.push_back(std::move(path));
-        }
-        return result;
-    });
+            return feature::WorkspaceTexts(std::move(files), names);
+        });
     if(ticket.session && !ticket.fresh()) {
         co_await kota::fail(content_modified());
     }
@@ -1026,54 +951,34 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     auto old_name = std::move(at->target.symbol.symbol.name);
     at = feature::rename_at(query, *cursor);
     if(!at) {
-        co_await kota::fail(rename_refused(std::move(at.error())));
+        co_await kota::fail(request_failed(std::move(at.error())));
     }
     if(at->target.symbol.symbol.name != old_name) {
         co_await kota::fail(content_modified());
     }
 
-    auto root = config.workspace_root;
-    llvm::StringSet<> walked;
-    for(auto& path: scanned.files) {
-        walked.insert(path);
-    }
     auto editable = [&](llvm::StringRef path) {
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
-    // Open buffers, and edited files the walk's suffixes left out, are
-    // scanned on first read.
-    llvm::StringMap<std::optional<feature::ScannedText>> late;
-    auto read = [&](llvm::StringRef path) -> const feature::ScannedText* {
+    // Open buffers are read as the editor holds them.
+    auto buffer = [&](llvm::StringRef path) -> std::optional<std::string> {
         auto file = project.file_table.find(Spelling::absolute(path));
         auto document = file ? sessions.find(*file) : nullptr;
-        if(!document) {
-            if(auto it = scanned.texts.find(path); it != scanned.texts.end()) {
-                return &it->second;
-            }
-            if(walked.contains(path)) {
-                return nullptr;
-            }
-        }
-        auto [it, inserted] = late.try_emplace(path);
-        if(inserted) {
-            if(document) {
-                it->second = feature::scan_text(document->text().str(), names);
-            } else if(auto text = vfs::read_text(path)) {
-                it->second = feature::scan_text(std::move(*text), names);
-            }
-        }
-        return it->second ? &*it->second : nullptr;
+        return document ? std::optional(document->text().str()) : std::nullopt;
+    };
+    auto read = [&](llvm::StringRef path) {
+        return texts.read(path, buffer);
     };
     auto plan = feature::plan_rename(query,
                                      project.file_table,
                                      at->target,
                                      new_name,
-                                     {.files = scanned.files,
+                                     {.files = texts.files,
                                       .editable = editable,
                                       .read = read,
                                       .units_pending = clice::query::units_pending(project)});
     if(plan.blocked()) {
-        co_await kota::fail(rename_refused(feature::refusal(plan)));
+        co_await kota::fail(request_failed(feature::refusal(plan)));
     }
     co_return feature::to_protocol(
         plan,
@@ -1088,66 +993,60 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
 Requests::RawResult Requests::declaration(Ticket ticket,
                                           Fid path_id,
                                           const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"[]"};
-    }
-    co_return to_raw(
-        feature::to_locations(feature::declaration(peer_queries(), *cursor), encoding));
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "[]",
+        [&](const Cursor& cursor) -> Reply {
+            return to_raw(
+                feature::to_locations(feature::declaration(peer_queries(), cursor), encoding));
+        });
 }
 
 Requests::RawResult Requests::type_definition(Ticket ticket,
                                               Fid path_id,
                                               const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"[]"};
-    }
-    co_return to_raw(
-        feature::to_locations(feature::type_definition(peer_queries(), *cursor), encoding));
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "[]",
+        [&](const Cursor& cursor) -> Reply {
+            return to_raw(
+                feature::to_locations(feature::type_definition(peer_queries(), cursor), encoding));
+        });
 }
 
 Requests::RawResult Requests::implementation(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor) {
-        co_return serde_raw{"[]"};
-    }
-    co_return to_raw(
-        feature::to_locations(feature::implementation(peer_queries(), *cursor), encoding));
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "[]",
+        [&](const Cursor& cursor) -> Reply {
+            return to_raw(
+                feature::to_locations(feature::implementation(peer_queries(), cursor), encoding));
+        });
 }
 
 Requests::RawResult Requests::call_hierarchy_prepare(Ticket ticket,
                                                      Fid path_id,
                                                      const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor)
-        co_return serde_raw{"null"};
-    auto items = feature::call_hierarchy_items(peer_queries(), *cursor, encoding);
-    if(items.empty())
-        co_return serde_raw{"null"};
-    co_return to_raw(items);
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "null",
+        [&](const Cursor& cursor) -> Reply {
+            auto items = feature::call_hierarchy_items(peer_queries(), cursor, encoding);
+            if(items.empty()) {
+                return serde_raw{"null"};
+            }
+            return to_raw(items);
+        });
 }
 
 Requests::RawResult Requests::call_hierarchy_incoming(Fid path_id,
@@ -1175,18 +1074,18 @@ Requests::RawResult Requests::call_hierarchy_outgoing(Fid path_id,
 Requests::RawResult Requests::type_hierarchy_prepare(Ticket ticket,
                                                      Fid path_id,
                                                      const protocol::Position& position) {
-    if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
-            co_return co_await stop_reply(std::move(*stop));
-        }
-    }
-    auto cursor = cursor_at(path_id, position);
-    if(!cursor)
-        co_return serde_raw{"null"};
-    auto items = feature::type_hierarchy_items(peer_queries(), *cursor, encoding);
-    if(items.empty())
-        co_return serde_raw{"null"};
-    co_return to_raw(items);
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "null",
+        [&](const Cursor& cursor) -> Reply {
+            auto items = feature::type_hierarchy_items(peer_queries(), cursor, encoding);
+            if(items.empty()) {
+                return serde_raw{"null"};
+            }
+            return to_raw(items);
+        });
 }
 
 Requests::RawResult Requests::type_hierarchy_supertypes(Fid path_id,

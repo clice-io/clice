@@ -4,6 +4,7 @@ module;
 
 module clice:feature.formatting;
 
+import :syntax.position;
 import :syntax.token;
 
 namespace clice::feature {
@@ -33,5 +34,11 @@ auto cleanup_edits(llvm::StringRef file,
 /// `text` reformatted as a standalone snippet with the style configured
 /// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
+
+/// The formatting edits in LSP form, placed in the text `map` maps; an
+/// edit outside it is left out.
+auto to_protocol(llvm::ArrayRef<TextReplacement> edits,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> std::vector<protocol::TextEdit>;
 
 }  // namespace clice::feature

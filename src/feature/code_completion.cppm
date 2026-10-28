@@ -228,4 +228,61 @@ auto module_completion(const CompletionName& completing,
                        FileTable& files,
                        std::uint32_t limit) -> protocol::CompletionList;
 
+/// A completion request as the server has it before any compile.
+struct CompletionInputs {
+    /// The file completed in, as the project names it, its path and text,
+    /// and the point completed at in the client's encoding.
+    Fid file;
+    llvm::StringRef path;
+    llvm::StringRef text;
+    const PositionMap& positions;
+    protocol::Position position;
+    PositionEncoding encoding;
+
+    /// The character whose typing asked; empty for a request the user made.
+    llvm::StringRef trigger_character;
+
+    /// The dialect the file is lexed in.
+    const clang::LangOptions& dialect;
+
+    const CodeCompletionOptions& options;
+    const CompletionClient& client;
+
+    /// The project: the index offers the names of other scopes, the
+    /// dependency graph the module names.
+    const index::IndexQuery& query;
+    const DependencyGraph& graph;
+    FileTable& files;
+
+    /// The header search of the file's command, asked only where an
+    /// include path is completed.
+    llvm::function_ref<SearchConfig()> search;
+    vfs::Scope& scope;
+};
+
+/// A trigger character opened nothing to complete: the client gets no
+/// items.
+struct NoCompletion {};
+
+/// What a compile of the code completes with (code_complete): the names of
+/// other scopes the index offers, and whether it holds more of them.
+struct CompileCompletion {
+    std::vector<ScopeCandidate> candidates;
+    bool more_candidates = false;
+};
+
+/// How a completion request is answered: not at all, before any compile,
+/// or by a compile of the code.
+using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
+
+/// The completion at a point, as far as the server answers it alone. A
+/// client without request-side gating (nvim, zed) forwards every keystroke
+/// of an advertised trigger character: space is advertised only so that
+/// `import ` opens module suggestions, the others for include paths and
+/// member or scope access, and any other use of them completes nothing. A
+/// directive name, an include path and a module name are completed here;
+/// other code by a compile, with the names of other scopes the index offers
+/// for an unqualified one.
+auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
+
 }  // namespace clice::feature

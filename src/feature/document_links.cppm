@@ -42,6 +42,10 @@ auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
                  PositionEncoding encoding,
                  FileTable& files) -> std::vector<protocol::DocumentLink>;
 
+/// The link whose argument covers `offset`; null for none.
+auto link_at(llvm::ArrayRef<index::DocumentLink> links, std::uint32_t offset)
+    -> const index::DocumentLink*;
+
 /// Go-to-definition on a directive's argument: its target's file.
 auto directive_location(FileTable& files, const index::DocumentLink& link) -> protocol::Location;
 

@@ -4,6 +4,9 @@ module;
 
 module clice;
 
+import :feature.hover;
+import :semantic.display;
+import :semantic.symbol;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.protocol;
@@ -60,6 +63,43 @@ ZEST_CASE(CompileResultRoundTrip) {
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), decoded);
     ZASSERT(status);
     ZEXPECT(decoded.version == result.version);
+}
+
+ZEST_CASE(HoverInfoRoundTrip) {
+    namespace bincode = codec::bincode;
+
+    /// The card crosses from the worker to the master whole: every field a
+    /// card renders survives.
+    feature::HoverInfo info{
+        .kind = SymbolKind::Function,
+        .name = "area",
+        .scope_kind = "namespace",
+        .scope = "geo",
+        .symbol_range = LocalSourceRange{4, 8},
+        .documentation = {.brief = "The area.", .params = {{.name = "s", .text = "a side"}}},
+        .deprecation = "use size",
+        .definition = "int area(int s)",
+        .type = display::Type{.text = "size_type", .aka = "unsigned long"},
+        .aliases = {display::Type{.text = "size_type", .aka = "unsigned long"}},
+        .value = "42",
+        .size = 32,
+        .callee_arg_info = display::Param{.type = display::Type{.text = "int"}, .name = "s"},
+        .pass_mode = feature::HoverInfo::PassMode::ConstRef,
+        .attribute_macros = {{.use = "NODISCARD", .attributes = "[[nodiscard]]"}},
+    };
+    std::optional<feature::HoverInfo> sent = info;
+    auto bytes = bincode::to_bytes(sent);
+    ZASSERT(bytes);
+
+    std::optional<feature::HoverInfo> decoded;
+    auto status =
+        bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), decoded);
+    ZASSERT(status);
+    ZASSERT(decoded.has_value());
+    ZEXPECT(decoded->present().as_markdown() == info.present().as_markdown());
+    ZEXPECT(decoded->symbol_range == info.symbol_range);
+    ZEXPECT(decoded->type == info.type);
+    ZEXPECT(decoded->pass_mode == info.pass_mode);
 }
 
 };  // ZEST_SUITE(BincodeRoundTrip)

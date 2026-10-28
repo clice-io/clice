@@ -27,9 +27,14 @@ import :syntax.source_text;
 
 namespace clice {
 
-/// The server's language features, each assembled from its providers.
+/// The project's language requests, each routed to the source that answers
+/// it now: every method gathers the inputs, calls the feature, and replies
+/// with its answer — the feature (src/feature) decides what the user sees.
+/// Where an answer is stitched from several sources in turn (definition,
+/// hover), the order of the stitching is the routing and stays here; each
+/// step is one feature call.
 ///
-/// A feature answer can come from three sources:
+/// An answer can come from three sources:
 ///   - the live AST: dispatched to the worker that holds the file's AST;
 ///   - build-companion caches: products derived while building the PCH
 ///     (e.g. the preamble's document links), cached master-side because the
@@ -40,8 +45,8 @@ namespace clice {
 /// Routing is derived per request from readiness, never from a mode
 /// flag: a current AST answers as today; otherwise an index source that
 /// is byte-identical to the buffer answers immediately (whole-document
-/// features through the feature::index_* functions, cursor queries
-/// through index::IndexQuery's freshness clauses); otherwise the request awaits
+/// features through their answers from the index, cursor queries through
+/// index::IndexQuery's freshness clauses); otherwise the request awaits
 /// the compile the policy owes, or answers honestly empty when it owes
 /// none (ServingMode::IndexOnly).
 ///
@@ -49,12 +54,9 @@ namespace clice {
 /// transport pipe, and answers ContentModified once the ticket goes
 /// stale: the client keeps what it has and re-pulls. The exceptions are
 /// completion, which deliberately serves the drained buffer, and
-/// diagnostics, which follow the buffer (see there).
-///
-/// Discipline: any feature whose answer is assembled from more than one
-/// source belongs here. Transports (LSP handlers) only translate
-/// between the protocol and these methods — they never merge, retry,
-/// or gate results themselves.
+/// diagnostics, which follow the buffer (see there). Transports (LSP
+/// handlers) only translate between the protocol and these methods — they
+/// never merge, retry, or gate results themselves.
 class Requests {
 public:
     Requests(ASTFamily& ast,
@@ -82,8 +84,7 @@ public:
 
     /// Full document-link result for a session: the worker's focus-file links
     /// merged behind the PCH's cached preamble links.
-    kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
-        document_links(Ticket ticket, kota::cancellation_token token = {});
+    RawResult document_links(Ticket ticket, kota::cancellation_token token = {});
 
     /// The diagnostics of the document's buffer as it is now: awaits the
     /// compile the buffer is owed, and an edit arriving meanwhile is
@@ -307,9 +308,21 @@ private:
     /// was superseded.
     kota::task<std::optional<Stop>> await_compile(const Ticket& ticket);
 
+    using Cursor = index::IndexQuery::Cursor;
+
     /// The symbol under a position of the file's serving source, if any.
-    std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
-                                                       const protocol::Position& position) const;
+    std::optional<Cursor> cursor_at(Fid path_id, const protocol::Position& position) const;
+
+    /// A navigation request's answer from the symbol at its position,
+    /// `answer`'s, once the compile gate passed (nav_gate); `none` where no
+    /// symbol is.
+    using Reply = std::expected<codec::RawValue, ipc::Error>;
+    template <typename Answer>
+    RawResult navigate(const Ticket& ticket,
+                       Fid path_id,
+                       const protocol::Position& position,
+                       llvm::StringRef none,
+                       Answer answer);
 
     /// The header search of the command the open file compiles under.
     SearchConfig search_of(Fid path_id);

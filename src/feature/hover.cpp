@@ -1965,20 +1965,6 @@ auto hover_info(CompilationUnit& unit,
     return info;
 }
 
-auto hover(CompilationUnit& unit,
-           std::uint32_t offset,
-           const HoverOptions& options,
-           const DocumentationOptions& documentation,
-           protocol::MarkupKind kind,
-           PositionEncoding encoding) -> std::optional<protocol::Hover> {
-    auto info = hover_info(unit, offset, options, documentation);
-    if(!info) {
-        return std::nullopt;
-    }
-
-    return to_protocol(*info, kind, unit.focus_file().positions(), encoding);
-}
-
 /// The text of a definition before the body its extent ends with, or
 /// nullopt when the extent ends otherwise (`= default`, an initializer).
 static std::optional<llvm::StringRef> before_body(const std::string& text) {
@@ -2119,6 +2105,14 @@ auto module_hover(const index::PeerQueries& queries,
     }
     hover.symbol_range = cursor.site.range;
     return hover;
+}
+
+bool on_directive_line(llvm::StringRef text,
+                       std::uint32_t offset,
+                       const clang::LangOptions& dialect) {
+    return Lexer(text.substr(logical_line_begin(text, offset)), dialect)
+        .advance()
+        .is_directive_hash();
 }
 
 auto directive_hover(llvm::StringRef text,

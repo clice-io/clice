@@ -163,13 +163,6 @@ auto to_protocol(const HoverInfo& info,
                  const PositionMap& map,
                  PositionEncoding encoding) -> protocol::Hover;
 
-auto hover(CompilationUnit& unit,
-           std::uint32_t offset,
-           const HoverOptions& options,
-           const DocumentationOptions& documentation,
-           protocol::MarkupKind kind,
-           PositionEncoding encoding) -> std::optional<protocol::Hover>;
-
 /// Assemble the read-only hover card: name, kind, where it is (`scopes`,
 /// the containers outermost first) and what the index can prove from
 /// stored text — no Sema products (type, value, size, aka).
@@ -192,6 +185,12 @@ auto hover_info(const index::PeerQueries& queries,
 auto module_hover(const index::PeerQueries& queries,
                   const index::IndexQuery::Cursor& cursor,
                   const index::SymbolInfo& module) -> HoverInfo;
+
+/// Whether `offset` of `text`, lexed in `dialect`, is on a directive's
+/// line, where a card may be the directive's (directive_hover).
+bool on_directive_line(llvm::StringRef text,
+                       std::uint32_t offset,
+                       const clang::LangOptions& dialect);
 
 /// The card of a directive's argument, naming its target the way the user
 /// knows the file; none when the link's range no longer lies in `text`.

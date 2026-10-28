@@ -69,6 +69,41 @@ struct ScannedText {
 /// event loop over the whole workspace.
 std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names);
 
+/// The texts a rename reads (RenameScope::read): the workspace's files
+/// scanned for its names up front, and on first read the text of an open
+/// buffer or of an edited file the walk's suffixes left out.
+struct WorkspaceTexts {
+    /// Read and scan `files`, the workspace's sources and headers by
+    /// suffix (RenameScope::files): file work alone, safe on any thread.
+    WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names);
+
+    /// A file's text scanned for the names: the open buffer `buffer`
+    /// gives, else the disk's; null when it spells none.
+    const ScannedText*
+        read(llvm::StringRef path,
+             llvm::function_ref<std::optional<std::string>(llvm::StringRef path)> buffer = nullptr);
+
+    std::vector<std::string> files;
+
+private:
+    const ScannedText* read_late(llvm::StringRef path, std::optional<std::string> text);
+
+private:
+    llvm::StringSet<> names;
+
+    llvm::StringSet<> walked;
+
+    /// The walked files spelling a name.
+    llvm::StringMap<ScannedText> scanned;
+
+    /// The texts read on demand: buffers, and files the walk left out.
+    llvm::StringMap<std::optional<ScannedText>> late;
+};
+
+/// Why no rename can be made in the workspace rooted at `root`: one
+/// without a folder has no sources to edit; nullopt when one can.
+std::optional<std::string> workspace_refusal(llvm::StringRef root);
+
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
     /// The workspace files the scan looks at, absolute: its sources and

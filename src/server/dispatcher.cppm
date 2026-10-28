@@ -8,12 +8,14 @@ import :feature.code_actions;
 import :feature.code_completion;
 import :feature.document_symbols;
 import :feature.folding_ranges;
+import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :server.ast_family;
 import :server.editor_context;
 import :server.session;
 import :worker.pool;
+import :worker.protocol;
 
 namespace clice {
 
@@ -52,20 +54,12 @@ public:
 
     using RawResult = kota::task<codec::RawValue, ipc::Error>;
 
-    /// An AST query to the stateful worker holding the file's AST, once the
-    /// family compiled it. Position-sensitive queries (hover) pass a
-    /// Position.
-    /// `token`, on every dispatch: the LSP request's cancellation token.
-    /// Passing it into the worker send turns a client $/cancelRequest into
-    /// an IPC cancel — the worker stops the parse at the next top-level
-    /// declaration instead of computing a result nobody will read. The
-    /// shared compile a query waits on is deliberately NOT cancelled: it
-    /// serves every waiter, not this request.
-    /// `markup`: what a hover card renders as.
-    RawResult hover(const Ticket& ticket,
-                    std::optional<protocol::Position> position = {},
-                    kota::cancellation_token token = {},
-                    protocol::MarkupKind markup = protocol::MarkupKind::Markdown);
+    /// The hover card at a position of the buffer the ticket was taken on,
+    /// before it is rendered.
+    kota::task<std::optional<feature::HoverInfo>, ipc::Error>
+        hover(const Ticket& ticket,
+              const protocol::Position& position,
+              kota::cancellation_token token = {});
 
     /// The inlay hints of the open file's AST within `range` of the buffer
     /// the ticket was taken on.
@@ -121,15 +115,22 @@ public:
                              kota::cancellation_token token = {});
 
     /// Formatting on a stateless worker: no sema runs, but it is still this
-    /// document's content on a worker.
-    RawResult format(const Ticket& ticket,
-                     std::optional<protocol::Range> range = {},
-                     kota::cancellation_token token = {});
+    /// document's content on a worker. None when the workers could not
+    /// serve it.
+    kota::task<std::optional<worker::FormatResult>, ipc::Error>
+        format(const Ticket& ticket,
+               std::optional<protocol::Range> range = {},
+               kota::cancellation_token token = {});
 
 private:
-    /// Shared body of the typed requests to the worker holding the AST
-    /// (document links, folding ranges, code actions): the compile, the gate, the send
-    /// and the finish; a missing AST answers an empty result.
+    /// Shared body of the requests to the worker holding the AST: the
+    /// compile, the gate, the send and the finish; a missing AST answers an
+    /// empty result. `token`, on every dispatch: the LSP request's
+    /// cancellation token. Passing it into the worker send turns a client
+    /// $/cancelRequest into an IPC cancel — the worker stops the parse at
+    /// the next top-level declaration instead of computing a result nobody
+    /// will read. The shared compile a query waits on is deliberately NOT
+    /// cancelled: it serves every waiter, not this request.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         typed(const Ticket& ticket,
