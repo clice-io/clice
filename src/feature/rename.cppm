@@ -79,14 +79,11 @@ struct WorkspaceTexts {
 
     /// A file's text scanned for the names: the open buffer `buffer`
     /// gives, else the disk's; null when it spells none.
-    const ScannedText*
-        read(llvm::StringRef path,
-             llvm::function_ref<std::optional<std::string>(llvm::StringRef path)> buffer = nullptr);
+    const ScannedText* read(
+        llvm::StringRef path,
+        llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer = nullptr);
 
     std::vector<std::string> files;
-
-private:
-    const ScannedText* read_late(llvm::StringRef path, std::optional<std::string> text);
 
 private:
     llvm::StringSet<> names;

@@ -88,11 +88,11 @@ See [Symbol Index](symbol-index.md).
 
 ### `src/feature/` — LSP Feature Implementations
 
-Concrete implementations of LSP features. Each feature takes a `CompilationUnit` and returns the corresponding LSP response data. This layer is purely computational -- it has no involvement with network communication, state management, or process scheduling.
+Concrete implementations of LSP features. Each feature decides what the user sees — which items, their text, their edits and their protocol form — from the inputs it is given: a `CompilationUnit`, the index (`IndexQuery`), a document's text. This layer is purely computational -- it has no involvement with network communication, state management, or process scheduling.
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 
-> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's read services (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+> `feature/` decides each answer; the server's `Requests` routes each request to the source that can answer it now, gathers the feature's inputs, calls it and replies. Cross-file navigation features (go to definition, find references, etc.) answer from the index (`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
 
 ### `src/project/` — Projects on Disk
 
@@ -138,11 +138,11 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **Services** — Read-side services consuming compilation and index results.
 
-- `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise results computed from the index answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
+- `Requests`: Routes each language request to the source that answers it now — the worker's AST, the PCH's cached preamble products, or the index — by readiness: an up-to-date AST answers when available, otherwise results computed from the index answer immediately. It gathers the inputs, calls the feature and replies; the feature decides what the user sees. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
 - `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted through the document's quarantine, dispatched, and landed through one exit that answers `ContentModified` for a buffer the client already edited away
 - `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
-- `ContextService`: The protocol adapter for compilation-context queries and switching
+- `ContextService`: The protocol adapter for compilation-context queries and switching, and the source actions that offer the switches
 
 **Endpoints** — Protocol endpoints driving the server.
 

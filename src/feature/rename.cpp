@@ -880,21 +880,23 @@ WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<>
 
 const ScannedText* WorkspaceTexts::read(
     llvm::StringRef path,
-    llvm::function_ref<std::optional<std::string>(llvm::StringRef path)> buffer) {
-    if(auto text = buffer ? buffer(path) : std::nullopt) {
-        return read_late(path, std::move(text));
+    llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer) {
+    auto open = buffer ? buffer(path) : std::nullopt;
+    if(!open) {
+        if(auto it = scanned.find(path); it != scanned.end()) {
+            return &it->second;
+        }
+        if(walked.contains(path)) {
+            return nullptr;
+        }
     }
-    if(auto it = scanned.find(path); it != scanned.end()) {
-        return &it->second;
-    }
-    return walked.contains(path) ? nullptr : read_late(path, vfs::read_text(path));
-}
-
-const ScannedText* WorkspaceTexts::read_late(llvm::StringRef path,
-                                             std::optional<std::string> text) {
     auto [it, inserted] = late.try_emplace(path);
-    if(inserted && text) {
-        it->second = scan_text(std::move(*text), names);
+    if(inserted) {
+        if(open) {
+            it->second = scan_text(open->str(), names);
+        } else if(auto text = vfs::read_text(path)) {
+            it->second = scan_text(std::move(*text), names);
+        }
     }
     return it->second ? &*it->second : nullptr;
 }

@@ -961,10 +961,10 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
     // Open buffers are read as the editor holds them.
-    auto buffer = [&](llvm::StringRef path) -> std::optional<std::string> {
+    auto buffer = [&](llvm::StringRef path) -> std::optional<llvm::StringRef> {
         auto file = project.file_table.find(Spelling::absolute(path));
         auto document = file ? sessions.find(*file) : nullptr;
-        return document ? std::optional(document->text().str()) : std::nullopt;
+        return document ? std::optional(document->text()) : std::nullopt;
     };
     auto read = [&](llvm::StringRef path) {
         return texts.read(path, buffer);
