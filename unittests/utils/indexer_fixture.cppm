@@ -45,8 +45,8 @@ struct IndexerFixture {
     WorkerPool pool{loop};
     CommandResolver commands{project};
     TaskGraph graph;
-    PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
+    PCMFamily pcm{graph, project, commands, pch, pool};
     TURunFamily turun{graph, project, commands, pcm, pch, pool};
     IndexPump pump{loop, project, commands, turun, pool};
 

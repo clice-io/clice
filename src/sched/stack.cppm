@@ -30,8 +30,8 @@ struct SchedulingStack {
     Project& project;
     WorkerPool& pool;
     TaskGraph graph;
-    PCMFamily pcm;
     PCHFamily pch;
+    PCMFamily pcm;
     TURunFamily turun;
     IndexPump pump;
 

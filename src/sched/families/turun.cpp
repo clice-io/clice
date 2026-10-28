@@ -164,15 +164,15 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // A unit of a target with precompiled headers parses over clice's own
     // build of them: the header its command forces in then reads nothing
     // again, and their declarations are indexed once, with the unit
-    // building them. One that did not build, or a builder left out of the
-    // index, leaves that header to every unit's own parse, as the command
-    // alone does.
+    // building them. One that did not build leaves that header to every
+    // unit's own parse, as the command alone does; a builder left out of
+    // the index does too, but for a modular unit (ModuleDeps::modular).
     DepsSnapshot precompiled;
     if(auto unit =
            commands.pch_unit(path_id,
                              resolved,
                              {.extra_prepend = extras.prepend, .extra_append = extras.append});
-       unit && project.build.indexed(project.file_table.resolve(unit->file))) {
+       unit && (deps.modular() || project.build.indexed(project.file_table.resolve(unit->file)))) {
         auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         switch(co_await ctx.depend(pch.prepare(std::move(request)))) {

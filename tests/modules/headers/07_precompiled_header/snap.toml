@@ -1,0 +1,37 @@
+["every unit compiles".interface.hover]
+markdown = '''
+**function** `step`
+
+```cpp
+export int step(pch::Counter &counter)
+```
+'''
+range = "⟦step⟧(counter);"
+
+["every unit compiles".importer.hover]
+markdown = '''
+**function** `step`
+
+```cpp
+export int step(pch::Counter &counter)
+```
+'''
+range = "return ⟦step⟧(counter) + twice();"
+
+["every unit compiles".part.hover]
+markdown = '''
+**method** `next` · struct `pch::Counter`
+
+```cpp
+int next()
+```
+'''
+range = "return counter.⟦next⟧();"
+
+["the units lint"."$ clice lint"]
+stdout = "Linted 5 translation units in #s: 0 findings."
+exit = 0
+
+["a rule leaving the pch's builder out of the index"."$ clice lint"]
+stdout = "Linted 5 translation units in #s: 0 findings."
+exit = 0

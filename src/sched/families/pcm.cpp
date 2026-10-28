@@ -23,7 +23,7 @@ namespace clice {
 /// Changes whenever a PCM build of the same command comes to write another
 /// BMI, or its key comes to name another build, so a blob or a record an
 /// older clice stored is not taken for the new one.
-constexpr llvm::StringRef pcm_version = "4";
+constexpr llvm::StringRef pcm_version = "5";
 
 /// The provider an import in `importer` resolves to among several of one
 /// name: the nearest — the fewest directories up from the importer to one
@@ -48,8 +48,9 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
 PCMFamily::PCMFamily(TaskGraph& graph,
                      Project& project,
                      CommandResolver& commands,
+                     PCHFamily& pch,
                      WorkerPool& pool) :
-    graph(graph), project(project), commands(commands), pool(pool) {}
+    graph(graph), project(project), commands(commands), pch(pch), pool(pool) {}
 
 void PCMFamily::register_runner() {
     graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
@@ -215,6 +216,38 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             ctx.reference(dep);
         }
     }
+
+    worker::BuildPCMParams bp;
+    auto resolution = commands.resolve_command(path_id, bp.directory, bp.arguments);
+    bp.hidden = resolution.hidden;
+
+    // A unit of a target with precompiled headers builds over clice's own
+    // build of them, as its command builds over the target's: the header
+    // it forces in then reads nothing again, where parsed as text its
+    // declarations would precede the module declaration. The PCM names
+    // that PCH to its importers, which read it with the PCM: it is the
+    // index's, keeping the function bodies, for every importer to read the
+    // same one. One that did not build leaves the header to the unit's own
+    // parse, as for any other unit.
+    std::optional<std::string> pch_key;
+    if(auto unit = commands.pch_unit(path_id, resolution)) {
+        auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
+        auto key = request.pch_key;
+        // Removed behind the store's back, by another process sharing the
+        // cache: an importer reading it only through the PCM never reports
+        // it unreadable.
+        if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
+                                                  !it->second.path.empty() &&
+                                                  !fs::exists(it->second.path)) {
+            pch.invalidate(key);
+        }
+        switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
+            case DependResult::Ready: pch_key = std::move(key); break;
+            case DependResult::Failed: break;
+            case DependResult::Cancelled: co_return RoundOutcome::Stale;
+        }
+    }
+
     // The last round's failed import stands while this one waits: an
     // importer explains its diagnostics from it meanwhile. An import ready
     // early can have lost its PCM by the time the last one is, evicted or
@@ -252,21 +285,31 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Failed;
 
     auto file_path = std::string(project.file_table.resolve(path_id));
-
-    worker::BuildPCMParams bp;
     bp.file = file_path;
-    bp.hidden = commands.resolve_command(path_id, bp.directory, bp.arguments).hidden;
 
     if(!project.store) {
         LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
         co_return RoundOutcome::Failed;
     }
 
+    // The PCH as the build starts, like the imports.
+    std::string pch_blob;
+    DepsSnapshot precompiled;
+    if(pch_key) {
+        if(auto it = project.pch_cache.find(*pch_key);
+           it != project.pch_cache.end() && !it->second.path.empty()) {
+            bp.pch = it->second.path;
+            pch_blob = it->second.blob;
+            precompiled = it->second.deps;
+        }
+    }
+
     // The key names everything of the build but file content, which the
     // inputs cover: the source path, the frontend-relevant subset of the
     // compile flags, the index database that records the blob's
-    // dependency stamps, and what each import resolved to — the
-    // keys of the imported modules, which name theirs in turn.
+    // dependency stamps, what each import resolved to — the keys of the
+    // imported modules, which name theirs in turn — and the very build of
+    // the PCH it reads: rebuilt, that one has another name.
     std::string imports;
     for(auto dep: deps.declared) {
         if(is_unresolved(dep)) {
@@ -287,7 +330,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                                           bp.directory,
                                           file_path,
                                           canonicalize(bp.arguments),
-                                          imports}));
+                                          imports,
+                                          pch_blob}));
 
     // The last build stands while its key and inputs do, failed or not: a
     // failed build rebuilt on unchanged inputs would make every compile
@@ -306,6 +350,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             pcm_miss = "evicted";
         } else {
             LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
+            build.pch = std::move(bp.pch);
             co_return RoundOutcome::Success;
         }
         // The build no longer describes the module: an importer compiling
@@ -369,7 +414,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto inputs = [&] {
         auto snapshot =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-        merge_deps(snapshot, {&imported});
+        merge_deps(snapshot, {&imported, &precompiled});
         return snapshot;
     };
     if(!result.has_value() || !result.value().success) {
@@ -407,6 +452,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     build.key = std::move(pcm_key);
     build.blob = std::move(blob);
     build.path = std::move(committed.value());
+    build.pch = std::move(bp.pch);
     build.deps = inputs();
     LOG_INFO("Built PCM for module {}: {}", module_name, build.path);
 
@@ -485,16 +531,21 @@ const ipc::Error* PCMFamily::crashed(Fid module) {
 }
 
 bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
-    if(build.path.empty() || fs::exists(build.path)) {
+    if(build.path.empty()) {
         return false;
     }
-    // Artifact tier only: the blob vanished, its content did not, so
-    // importers' committed results stay valid. A full invalidate() here
-    // would void the very consumer round that is revalidating before
-    // rebuilding its imports — under a cache budget smaller than the
-    // working set, that voids and respawns the waiter forever.
+    if(!fs::exists(build.path)) {
+        build.blob.clear();
+    } else if(build.pch.empty() || fs::exists(build.pch)) {
+        return false;
+    }
+    // Artifact tier only: the blob vanished, or the PCH it names to its
+    // importers did; its content did not, so importers' committed results
+    // stay valid. A full invalidate() here would void the very consumer
+    // round that is revalidating before rebuilding its imports — under a
+    // cache budget smaller than the working set, that voids and respawns
+    // the waiter forever.
     build.path.clear();
-    build.blob.clear();
     graph.mark_dirty(node(module));
     return true;
 }

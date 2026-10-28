@@ -6,6 +6,7 @@ module clice:sched.families.pcm;
 
 import :project.command_resolver;
 import :project.project;
+import :sched.families.pch;
 import :sched.graph;
 import :worker.pool;
 
@@ -24,7 +25,11 @@ namespace clice {
 /// identity, edges, rounds and interest.
 class PCMFamily {
 public:
-    PCMFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
+    PCMFamily(TaskGraph& graph,
+              Project& project,
+              CommandResolver& commands,
+              PCHFamily& pch,
+              WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -46,6 +51,15 @@ public:
 
         /// The unit declares a module.
         bool module_unit = false;
+
+        /// A parse of the unit meets a module declaration, which no
+        /// declaration may precede, or a PCM, which names the precompiled
+        /// header it was built over to its importers: over the precompiled
+        /// header its command declares, it reads the one every PCM is built
+        /// over.
+        bool modular() const {
+            return module_unit || !resolved.empty();
+        }
     };
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
@@ -65,7 +79,8 @@ public:
                                                        llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
-    /// blob while its node is still clean, so evicted units lose their path
+    /// blob, or the PCH it was built over, while its node is still clean, so
+    /// evicted units lose their path
     /// and are re-dirtied instead of handing clang a dangling path — and
     /// so are the units importing them, directly or not: a clean module
     /// promises every module below it built (see closure). Returns whether
@@ -200,8 +215,9 @@ private:
     /// Move the build's PCM to `superseded`, removing the one it replaced.
     void retire_blob(PCMBuild& build);
 
-    /// The build's PCM left the store: forget it and mark the module dirty,
-    /// so its next round builds again. Returns whether it had.
+    /// The build's PCM, or the PCH it was built over, left the store: forget
+    /// it and mark the module dirty, so its next round builds again. Returns
+    /// whether it had.
     bool drop_evicted(Fid module, PCMBuild& build);
 
     static NodeId node(Fid path_id) {
@@ -225,6 +241,7 @@ private:
     TaskGraph& graph;
     Project& project;
     CommandResolver& commands;
+    PCHFamily& pch;
     WorkerPool& pool;
 
     /// The scans of open buffers, and of units' disk text: kept while the

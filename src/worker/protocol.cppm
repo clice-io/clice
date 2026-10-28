@@ -279,6 +279,10 @@ struct BuildPCMParams {
     /// Transitive PCM dependencies (module name -> artifact path).
     std::unordered_map<std::string, std::string> pcms;
 
+    /// The precompiled header the build declares for the command, built by
+    /// clice; empty for none.
+    std::string pch;
+
     /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
 };

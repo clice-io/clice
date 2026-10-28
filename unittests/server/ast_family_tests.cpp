@@ -66,8 +66,8 @@ struct Stack {
     BuildProbe probe;
     WorkerPool pool{loop};
     TaskGraph graph;
-    PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
+    PCMFamily pcm{graph, project, commands, pch, pool};
     SessionStore sessions;
     ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     PositionEncoding encoding = PositionEncoding::UTF16;

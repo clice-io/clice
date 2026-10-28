@@ -41,10 +41,10 @@ SessionStore session_store;
 WorkerPool pool{loop};
 CommandResolver resolver{project};
 TaskGraph graph;
-PCMFamily pcm{graph, project, resolver, pool};
+PCHFamily pch{graph, project, pool};
+PCMFamily pcm{graph, project, resolver, pch, pool};
 DocumentCompiles compiles;
 
-PCHFamily pch{graph, project, pool};
 TURunFamily turun{graph, project, resolver, pcm, pch, pool};
 IndexPump indexer{loop, project, resolver, turun, pool};
 ServerLiveSources live{project, pch, session_store, compiles};

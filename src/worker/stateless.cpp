@@ -255,7 +255,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
         .output_file = *output,
         .stop = stop,
     };
-    use_artifacts(cp.input, {}, params.pcms);
+    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
