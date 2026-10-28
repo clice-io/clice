@@ -26,7 +26,7 @@ std::string CommandEdits::key() const {
     };
     for(auto& edit: edits) {
         key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
-        key += edit.directory.str();
+        key += edit.directory;
         key += '\0';
         append_section(edit.flags);
     }

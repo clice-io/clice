@@ -78,13 +78,13 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
                                                             const Spelling& anchor,
                                                             CanonicalRef workspace_root) {
     // A substituted workspace root is path, never glob syntax.
-    substitute_workspace(pattern, kota::GlobPattern::escape(workspace_root.str()));
+    substitute_workspace(pattern, kota::GlobPattern::escape(workspace_root));
     std::string text = pattern;
     CanonicalPath root = workspace_root;
     if(!pattern.starts_with("**")) {
         auto [directory, rest] = kota::GlobPattern::split_root(pattern);
         root = CanonicalPath(Spelling(directory, anchor));
-        text = kota::GlobPattern::escape(root.str());
+        text = kota::GlobPattern::escape(root);
         if(!text.ends_with('/')) {
             text += '/';
         }
@@ -177,7 +177,7 @@ void Config::finalize(CanonicalRef workspace_root) {
             // The directory form is told from the file form by extension
             // everywhere else; only the filesystem knows a directory
             // spelled with a .json suffix.
-            if(fs::is_directory(full.str())) {
+            if(fs::is_directory(full)) {
                 full = Spelling("compile_commands.json", full);
             }
             compiled.compile_commands.push_back(std::move(full));
@@ -385,7 +385,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
     for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
                                                               &config.project.logging_dir}) {
         if(!dir->empty()) {
-            *dir = setting_path(*dir, directory, workspace_root)->str();
+            *dir = std::move(*setting_path(*dir, directory, workspace_root)).str();
         }
     }
     if(finalized)
@@ -418,7 +418,7 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
         if(!workspace_root.empty()) {
             for(auto name: config_file_names) {
                 auto config_path = path::join(llvm::StringRef(workspace_root), name);
-                if(!fs::exists(config_path).value_or(false))
+                if(!fs::exists(config_path))
                     continue;
                 found = true;
                 if(loaded_path)
@@ -470,7 +470,7 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
     auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.
-    if(owner == root.str() ||
+    if(owner == llvm::StringRef(root) ||
        (!path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
         live_owner(owner, root))) {
         return;

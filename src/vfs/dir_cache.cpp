@@ -65,7 +65,7 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     auto listing = std::make_shared<Listing>();
     listing->dir = dir.str();
     auto before = fs::status(dir);
-    auto entries = fs::read_dir(dir);
+    auto entries = fs::Directory::open(dir);
     if(!entries) {
         LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
         return listing;

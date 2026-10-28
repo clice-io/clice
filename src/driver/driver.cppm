@@ -229,18 +229,15 @@ inline std::string location(llvm::StringRef file, std::uint32_t line, std::uint3
 
 /// The file an operation is about.
 struct FileTarget {
-    DecoInput(meta_var = "<PATH>",
-              help = "The file, relative to the workspace or absolute",
-              required = false)
-    <std::vector<std::string>> inputs;
+    DecoInput(meta_var = "<PATH>", help = "The file, relative to the workspace or absolute")
+    <std::string> path;
 };
 
 /// The symbol an operation is about.
 struct SymbolTarget {
     DecoInput(meta_var = "<LOCATOR>",
-              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]",
-              required = false)
-    <std::vector<std::string>> inputs;
+              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]")
+    <std::string> locator;
 };
 
 /// --fresh, of the subcommands that read the index.
@@ -326,22 +323,6 @@ inline int usage_error(Errors errors, std::string message) {
         driver::println(stderr, "{}", message);
     }
     return kota::deco::cli::parse_error_exit_code;
-}
-
-/// The positional arguments given, named `names` as the usage spells
-/// them, of which the trailing `optional` may be left out.
-inline std::expected<std::vector<std::string>, std::string>
-    positional(const std::optional<std::vector<std::string>>& given,
-               llvm::ArrayRef<std::string_view> names,
-               std::size_t optional = 0) {
-    auto args = given.value_or(std::vector<std::string>{});
-    if(args.size() + optional < names.size()) {
-        return std::unexpected(std::format("missing {}", names[args.size()]));
-    }
-    if(args.size() > names.size()) {
-        return std::unexpected(std::format("unexpected argument '{}'", args[names.size()]));
-    }
-    return args;
 }
 
 /// A subcommand, or one operation of it, over the options `Options`, whose

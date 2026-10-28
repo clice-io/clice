@@ -85,7 +85,7 @@ constexpr std::size_t list_limit = 4096;
 /// is remote, cannot be listed or holds too many.
 llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
     llvm::StringMap<fs::Status> entries;
-    auto listed = fs::read_dir(dir);
+    auto listed = fs::Directory::open(dir);
     if(!listed) {
         return entries;
     }
@@ -547,14 +547,6 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     }
     auto file = fs::File::open(absolute.str());
     if(!file) {
-        // On Windows kotatsu opens no directory as a file (access denied); a
-        // header search goes past a directory named like its header
-        // (`Utility` for `<utility>` on a case-insensitive volume) only when
-        // told it is one.
-        if(auto status = statuses.status(absolute);
-           status && status->type == fs::FileType::Directory) {
-            return std::make_error_code(std::errc::is_a_directory);
-        }
         return file.error();
     }
     std::string real_name;
@@ -579,24 +571,9 @@ bool stable_mtime(std::int64_t mtime_ns) {
     return mtime_ns <= stat_baseline_before_ns(now_ms);
 }
 
-void walk(llvm::StringRef root,
-          llvm::function_ref<bool(llvm::StringRef path, fs::FileType type)> visit) {
-    auto entries = fs::read_dir(root);
-    if(!entries) {
-        if(entries.error() != std::errc::no_such_file_or_directory) {
-            LOG_WARN("Cannot read directory {}: {}", root, entries.error().message());
-        }
-        return;
-    }
-    for(auto& entry: *entries) {
-        if(!entry) {
-            LOG_WARN("Cannot read directory {}: {}", root, entry.error().message());
-            return;
-        }
-        auto path = path::join(root, entry->name);
-        if(visit(path, entry->type) && entry->type == fs::FileType::Directory) {
-            walk(path, visit);
-        }
+void warn_unreadable(const fs::Walk::Error& error) {
+    if(error.code != std::errc::no_such_file_or_directory) {
+        LOG_WARN("Cannot read directory {}: {}", error.path, error.code.message());
     }
 }
 

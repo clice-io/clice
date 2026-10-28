@@ -125,12 +125,8 @@ private:
 #endif
 };
 
-/// Walk the tree under `root` depth first, links not followed: `visit`
-/// sees the path and type of every entry and answers, for a directory,
-/// whether to walk into it. A directory that cannot be read is skipped,
-/// with a warning unless it is missing.
-void walk(llvm::StringRef root,
-          llvm::function_ref<bool(llvm::StringRef path, fs::FileType type)> visit);
+/// Warns of a directory fs::walk could not read, unless it is missing.
+void warn_unreadable(const fs::Walk::Error& error);
 
 /// Keep the mapping of a PCH from clice's store for the process's later
 /// compiles: Windows pages every fresh mapping in fault by fault, on every

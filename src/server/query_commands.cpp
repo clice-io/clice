@@ -71,7 +71,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         if(!file) {
             return std::unexpected(file.error());
         }
-        path = spelled.str();
+        path = std::move(spelled).str();
         return file->has_value();
     };
     if(query.handle) {
@@ -691,7 +691,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
         return spelled ? &scanned.try_emplace(path, std::move(*spelled)).first->second : nullptr;
     };
     for(auto& source: workspace_sources(root, cache_dir)) {
-        scan(sources.emplace_back(source.str()));
+        scan(sources.emplace_back(std::move(source).str()));
     }
     auto editable = [&](llvm::StringRef path) {
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));

@@ -523,7 +523,7 @@ public:
         }
         // LMDB writes the copy without syncing it, while the swap renames
         // it over the file whose commits it syncs.
-        auto written = fs::File::open(copy, {.write = true});
+        auto written = fs::File::open(copy);
         if(auto error = written ? written->sync() : written.error()) {
             LOG_WARN("Cannot sync the compact copy of the index database: {}", error.message());
             fs::remove(copy);
@@ -553,6 +553,10 @@ public:
             LOG_WARN("Cannot replace the index database by its compact copy: {}", error.message());
         } else {
             replaced = true;
+            auto directory = fs::Directory::open(path::parent(path));
+            if(auto failed = directory ? directory->sync() : directory.error()) {
+                LOG_WARN("Cannot sync the directory of the index database: {}", failed.message());
+            }
         }
         if(!replaced) {
             fs::remove(copy);
@@ -835,7 +839,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         // (make_sparse and mdb_env_open both create on demand): a later
         // session would misread the abandoned uninitialized placeholder as
         // corruption and log a spurious rebuild.
-        bool created = !read_only && !fs::exists(path).value_or(false);
+        bool created = !read_only && !fs::exists(path);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
@@ -1061,7 +1065,7 @@ std::string database_directory(const CacheStore& store, const DatabaseKey& key) 
 }
 
 bool database_exists(const CacheStore& store, const DatabaseKey& key) {
-    return fs::exists(path::join(database_directory(store, key), lmdb_file_name)).value_or(false);
+    return fs::exists(path::join(database_directory(store, key), lmdb_file_name));
 }
 
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,

@@ -10,7 +10,7 @@ namespace clice {
 
 /// `path` with its `..` segments resolved as text.
 static Spelling fold(const Spelling& path) {
-    llvm::SmallString<256> text(path.str());
+    llvm::SmallString<256> text(path);
     path::normalize(text);
     return Spelling::absolute(text);
 }
@@ -19,11 +19,11 @@ Fid FileTable::intern(const Spelling& path) {
     // FIXME: a spelling keeps the identity it first resolved to: a directory
     // that later appears as a symlink, or a case-only rename, leaves the file a
     // second fid until restart.
-    if(auto it = ids.find(path.str()); it != ids.end()) {
+    if(auto it = ids.find(path); it != ids.end()) {
         return it->second;
     }
     auto fid = intern(CanonicalPath(path));
-    ids.try_emplace(path.str(), fid);
+    ids.try_emplace(path, fid);
     return fid;
 }
 
@@ -45,7 +45,7 @@ Fid FileTable::intern(CanonicalRef identity) {
 }
 
 std::optional<Fid> FileTable::find(const Spelling& path) const {
-    auto it = ids.find(path.str());
+    auto it = ids.find(path);
     if(it == ids.end()) {
         it = ids.find(CanonicalPath(path));
     }

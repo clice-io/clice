@@ -578,7 +578,7 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     // not leave behind.
     auto db = index::open_database(store, {}, /*read_only=*/true);
     ZASSERT(db == nullptr);
-    ZASSERT(!fs::exists(index::database_directory(store, {})).value_or(false));
+    ZASSERT(!fs::exists(index::database_directory(store, {})));
 }
 
 ZEST_CASE(ReadOnlyServesExistingDatabase) {
@@ -605,8 +605,7 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
         ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "bytes")}, {}));
         db->condemn();
     }
-    ZASSERT(
-        !fs::exists(path::join(index::database_directory(store, {}), "index.mdb")).value_or(false));
+    ZASSERT(!fs::exists(path::join(index::database_directory(store, {}), "index.mdb")));
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::CommandSnapshot, "cdb"));
@@ -630,10 +629,8 @@ ZEST_CASE(DatabasePerConfiguration) {
     ZASSERT(debug->write({blob(index::BlobKind::Header, "header", "d")}, {}));
     ZASSERT(release->advance_read_snapshot());
     ZASSERT(!release->contains(index::BlobKind::Header, "header"));
-    ZASSERT(fs::exists(path::join(index::database_directory(store, {"debug"}), "index.mdb"))
-                .value_or(false));
-    ZASSERT(fs::exists(path::join(index::database_directory(store, {"release"}), "index.mdb"))
-                .value_or(false));
+    ZASSERT(fs::exists(path::join(index::database_directory(store, {"debug"}), "index.mdb")));
+    ZASSERT(fs::exists(path::join(index::database_directory(store, {"release"}), "index.mdb")));
 }
 
 ZEST_CASE(DatabaseNameSanitized) {
@@ -739,7 +736,7 @@ ZEST_CASE(CompactCopyShrinksFile) {
     ZASSERT(after);
     ZEXPECT(after->pages * 2 < before->pages);
     ZEXPECT(after->free_pages == 0u);
-    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+    ZEXPECT(!fs::exists(file + "-compact"));
     for(std::uint32_t i = 56; i < 64; i += 1) {
         auto value = db->read(index::BlobKind::Shard, std::to_string(i));
         ZASSERT(bool(value));
@@ -770,13 +767,13 @@ ZEST_CASE(ReaderKeepsFile) {
     {
         ForeignReader reader(file);
         ZEXPECT(db->write_compact_copy() == index::BlobDatabase::Copy::Busy);
-        ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+        ZEXPECT(!fs::exists(file + "-compact"));
     }
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
     {
         ForeignReader reader(file);
         ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Busy);
-        ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+        ZEXPECT(!fs::exists(file + "-compact"));
         ZEXPECT(db->usage()->pages == pages);
         ZEXPECT(value.buffer->getBuffer() == std::string(1 << 16, 'a' + 60 % 26));
     }
@@ -796,7 +793,7 @@ ZEST_CASE(OlderOpenerKeepsFile) {
     OlderOpener opener(file);
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
     ZEXPECT(db->swap_compact_copy() == index::BlobDatabase::Swap::Kept);
-    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+    ZEXPECT(!fs::exists(file + "-compact"));
     ZEXPECT(db->usage()->pages == pages);
     auto value = db->read(index::BlobKind::Shard, "60");
     ZASSERT(bool(value));
@@ -810,9 +807,9 @@ ZEST_CASE(ClosingRemovesCopy) {
     auto file = path::join(index::database_directory(store, {}), "index.mdb");
     auto db = sparse_database(store);
     ZASSERT(db->write_compact_copy() == index::BlobDatabase::Copy::Written);
-    ZEXPECT(fs::exists(file + "-compact").value_or(false));
+    ZEXPECT(fs::exists(file + "-compact"));
     db.reset();
-    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+    ZEXPECT(!fs::exists(file + "-compact"));
 }
 
 ZEST_CASE(ReaderHoldsOpenLock) {
@@ -859,11 +856,11 @@ ZEST_CASE(OpenRemovesStaleCopy) {
     {
         auto store = open_store(tmp, "lmdb", /*read_only=*/true);
         ZASSERT(index::open_database(store, {}) != nullptr);
-        ZEXPECT(fs::exists(file + "-compact").value_or(false));
+        ZEXPECT(fs::exists(file + "-compact"));
     }
     auto store = open_store(tmp, "lmdb");
     ZASSERT(index::open_database(store, {}) != nullptr);
-    ZEXPECT(!fs::exists(file + "-compact").value_or(false));
+    ZEXPECT(!fs::exists(file + "-compact"));
 }
 
 };  // ZEST_SUITE(IndexDatabase)

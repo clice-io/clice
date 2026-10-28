@@ -356,20 +356,17 @@ ZEST_CASE(RootDotDotFolded) {
 }
 
 ZEST_CASE(CanonicalSpelling) {
-    // The rewrite itself is platform-independent and testable anywhere;
-    // only its application is Windows-gated.
     auto canon = [](std::string s) {
-        path::make_canonical(llvm::MutableArrayRef(s.data(), s.size()));
+        path::canonicalize(s);
         return s;
     };
+#ifdef _WIN32
     ZEXPECT(canon(R"(D:\ws\x.h)") == "d:/ws/x.h");
+#else
+    ZEXPECT(canon(R"(D:\ws\x.h)") == R"(D:\ws\x.h)");
+#endif
     ZEXPECT(canon("d:/ws/x.h") == "d:/ws/x.h");
     ZEXPECT(canon("/usr/X.h") == "/usr/X.h");
-
-    ZEXPECT(path::needs_canonical(R"(a\b)"));
-    ZEXPECT(path::needs_canonical("C:/x.h"));
-    ZEXPECT(!path::needs_canonical("c:/x.h"));
-    ZEXPECT(!path::needs_canonical("/usr/x.h"));
 }
 
 ZEST_CASE(PortableNames) {
@@ -415,7 +412,7 @@ ZEST_CASE(DriveRootSpelled) {
     ZASSERT(letter > 'D');
     std::wstring device{static_cast<wchar_t>(letter), L':'};
     std::wstring target;
-    ZASSERT(llvm::ConvertUTF8toWide(tmp.root.str(), target));
+    ZASSERT(llvm::ConvertUTF8toWide(tmp.root, target));
     ZASSERT(::DefineDosDeviceW(0, device.c_str(), target.c_str()));
     auto undefine = llvm::make_scope_exit(
         [&] { ::DefineDosDeviceW(DDD_REMOVE_DEFINITION, device.c_str(), nullptr); });

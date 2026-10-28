@@ -71,9 +71,8 @@ struct MergeOptions {
               help =
                   "JSON file listing the build configurations to merge, each a name, the "
                   "preprocessor condition holding in its compilations alone and the --out "
-                  "directory a run for it wrote",
-              required = false)
-    <std::vector<std::string>> file;
+                  "directory a run for it wrote")
+    <std::string> file;
 
     OutputOptions output;
     LogLevelOption log;
@@ -196,14 +195,10 @@ std::expected<std::vector<analysis::Configuration>, std::string>
 }
 
 int run_merge(const MergeOptions& opts) {
-    auto args = positional(opts.file.as_optional(), {"<FILE>"});
-    if(!args) {
-        return usage_error(Errors::JSON, args.error());
-    }
     if(!opts.output.out) {
         return fail("modularize merge needs --out");
     }
-    auto configurations = read_configurations(args->front());
+    auto configurations = read_configurations(*opts.file);
     if(!configurations) {
         return fail(configurations.error());
     }
@@ -258,7 +253,7 @@ int run_modularize(const Options& opts) {
     }
 
     Spelling out_spelling(*opts.output.out, Spelling::cwd());
-    auto out = out_spelling.str();
+    llvm::StringRef out = out_spelling;
     std::optional<analysis::Rewriting> rewriting;
     if(ranges::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the

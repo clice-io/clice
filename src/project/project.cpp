@@ -106,7 +106,7 @@ constexpr llvm::StringLiteral database_name = "compile_commands.json";
 
 std::optional<Spelling> database_in(const Spelling& dir) {
     Spelling candidate(database_name, dir);
-    if(!fs::exists(candidate).value_or(false)) {
+    if(!fs::exists(candidate)) {
         return std::nullopt;
     }
     return candidate;
@@ -115,17 +115,14 @@ std::optional<Spelling> database_in(const Spelling& dir) {
 /// The places that hold a database.
 llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
     places.erase(
-        ranges::remove_if(places,
-                          [](const Spelling& place) { return !fs::exists(place).value_or(false); })
-            .begin(),
+        ranges::remove_if(places, [](const Spelling& place) { return !fs::exists(place); }).begin(),
         places.end());
     return places;
 }
 
 bool configured(const Spelling& dir) {
-    return ranges::any_of(config_file_names, [&](llvm::StringRef name) {
-        return fs::exists(Spelling(name, dir)).value_or(false);
-    });
+    return ranges::any_of(config_file_names,
+                          [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
 }
 
 }  // namespace
@@ -140,7 +137,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    if(auto entries = fs::read_dir(workspace_root)) {
+    if(auto entries = fs::Directory::open(workspace_root)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
@@ -153,7 +150,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
             }
         }
     }
-    ranges::sort(subdirectories, {}, &Spelling::str);
+    ranges::sort(subdirectories);
     for(auto& subdirectory: subdirectories) {
         places.emplace_back(database_name, subdirectory);
     }
@@ -169,36 +166,37 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
     // Deep enough for a CMake preset's out/build/<preset> and a nested
     // project's build directory, and no deeper: a workspace with no
     // database at all may be a home directory.
-    constexpr std::size_t deepest = 3;
-    auto depth = [&](llvm::StringRef dir) {
-        return static_cast<std::size_t>(
-            ranges::count_if(dir.drop_front(workspace_root.size()),
-                             [](char c) { return path::is_separator(c); }));
-    };
     llvm::SmallVector<Spelling> found;
-    vfs::walk(workspace_root, [&](llvm::StringRef path, fs::FileType type) {
-        auto spelled = Spelling::absolute(path);
-        if(type == fs::FileType::Directory) {
-            auto name = path::filename(spelled.str());
-            return !name.starts_with(".") && name != "node_modules" &&
-                   workspace_root.entry(spelled) != cache_dir && depth(spelled) <= deepest;
+    auto walk = fs::walk(workspace_root, {.max_depth = 4});
+    for(auto& entry: walk) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+            continue;
+        }
+        auto spelled = Spelling::absolute(entry->path);
+        if(entry->type == fs::FileType::Directory) {
+            auto name = entry->name();
+            if(name.starts_with(".") || name == "node_modules" ||
+               workspace_root.entry(spelled) == cache_dir) {
+                walk.skip();
+            }
+            continue;
         }
         // The root and its direct subdirectories are where discovery looks.
-        if(llvm::StringRef(path::filename(spelled.str())) == database_name) {
-            if(depth(spelled.parent()) >= 2) {
+        if(llvm::StringRef(entry->name()) == database_name) {
+            if(entry->depth > 2) {
                 found.push_back(std::move(spelled));
             }
-        } else if(type == fs::FileType::Symlink && fs::is_directory(spelled) &&
-                  depth(spelled) >= 2) {
+        } else if(entry->type == fs::FileType::Symlink && entry->depth >= 2 &&
+                  fs::is_directory(spelled)) {
             // Not walked into (links may cycle), but a build directory
             // symlinked elsewhere keeps its database.
             if(auto database = database_in(spelled)) {
                 found.push_back(std::move(*database));
             }
         }
-        return false;
-    });
-    ranges::sort(found, {}, &Spelling::str);
+    }
+    ranges::sort(found);
     return found;
 }
 

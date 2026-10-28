@@ -74,7 +74,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              vfs::Scope& scope) {
     // 1. Absolute path: check directly via stat().
     if(path::is_absolute(filename)) {
-        if(fs::exists(filename).value_or(false)) {
+        if(fs::exists(filename)) {
             return ResolveResult{.path = llvm::SmallString<256>(filename)};
         }
         return std::nullopt;

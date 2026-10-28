@@ -19,7 +19,7 @@ exit = 2
 [test."$ clice refactor rename compute"]
 stdout = '''
 {
-  "error": "missing <NEW-NAME>",
+  "error": "at end of argv:\n  compute\n         ^\n  expected 2 input arguments, got 1",
   "stale": []
 }
 '''
@@ -28,7 +28,7 @@ exit = 2
 [test."$ clice refactor rename"]
 stdout = '''
 {
-  "error": "missing <LOCATOR>",
+  "error": "rename takes <LOCATOR> <NEW-NAME>, or --spec",
   "stale": []
 }
 '''
@@ -37,7 +37,7 @@ exit = 2
 [test."$ clice refactor rename compute \"\""]
 stdout = '''
 {
-  "error": "missing <NEW-NAME>",
+  "error": "at argv[1]:\n  compute \n          ^\n  expected 2 input arguments, got 1",
   "stale": []
 }
 '''

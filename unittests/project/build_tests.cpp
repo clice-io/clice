@@ -846,7 +846,7 @@ ZEST_CASE(RuleTurnsQueryOff) {
 
     // One command under the same appends: only the query tells them apart.
     auto command = std::format("clang++ {}", vendor.str());
-    auto entry = *cdb.add_command(tmp.root.str(), vendor.str(), llvm::StringRef(command));
+    auto entry = *cdb.add_command(tmp.root, vendor.str(), llvm::StringRef(command));
     auto unqueried =
         build.resolve(entry.file, entry.command, CommandSource::CDBExact, vendor_file, vendor_file);
     auto queried = build.resolve(files.intern(own_file),
@@ -881,7 +881,7 @@ ZEST_CASE(LendMergesRules) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
-    auto lender = *cdb.add_command(tmp.root.str(), tmp.path("src/a.cpp"), llvm::StringRef(command));
+    auto lender = *cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
 
     CanonicalPath identity(Spelling::absolute(tmp.path("new/n.cpp")));
     CanonicalRef file = identity;

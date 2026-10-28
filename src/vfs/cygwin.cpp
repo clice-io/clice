@@ -46,8 +46,7 @@ kota::task<std::expected<fs::cygwin::MountTable, std::string>>
         auto missing = ranges::find_if(written, [&](const std::string& file) {
             table->to_windows(windows, file);
             // A program is named as Cygwin names it, without `.exe`.
-            return !fs::exists(windows).value_or(false) &&
-                   !fs::exists(windows + ".exe").value_or(false);
+            return !fs::exists(windows) && !fs::exists(windows + ".exe");
         });
         if(missing == written.end()) {
             co_return std::move(*table);

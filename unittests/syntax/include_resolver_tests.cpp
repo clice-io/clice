@@ -357,7 +357,7 @@ ZEST_CASE(CaseMatchesVolume) {
     TempDir tmp;
     tmp.touch("a/MyHeader.h");
     tmp.touch("b/Sub/x.h");
-    bool insensitive = fs::exists(tmp.path("a/myheader.h")).value_or(false);
+    bool insensitive = fs::exists(tmp.path("a/myheader.h"));
 
     SearchConfig config;
     config.dirs.push_back({tmp.path("a")});
@@ -380,7 +380,7 @@ ZEST_CASE(NormalizationMatchesVolume) {
     // opens one by the other, other volumes do not.
     TempDir tmp;
     tmp.touch("inc/e\xCC\x81.h");
-    bool insensitive = fs::exists(tmp.path("inc/\xC3\xA9.h")).value_or(false);
+    bool insensitive = fs::exists(tmp.path("inc/\xC3\xA9.h"));
 
     SearchConfig config;
     config.dirs.push_back({tmp.path("inc")});

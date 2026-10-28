@@ -116,7 +116,7 @@ std::optional<std::string> ours_for(unsigned id,
     }
     auto builtin_headers = path::join(resource_dir(), "include");
     if(names_search_dir(id) && value.rtrim("/\\") != builtin_headers &&
-       fs::exists(path::join(value, "__stddef_max_align_t.h")).value_or(false)) {
+       fs::exists(path::join(value, "__stddef_max_align_t.h"))) {
         return builtin_headers;
     }
     return std::nullopt;
@@ -125,13 +125,13 @@ std::optional<std::string> ours_for(unsigned id,
 /// The files under `dir`, by their paths relative to it, `/`-separated.
 std::vector<std::string> files_under(const Spelling& dir) {
     std::vector<std::string> names;
-    vfs::walk(dir, [&](llvm::StringRef path, fs::FileType type) {
-        if(type == fs::FileType::Directory) {
-            return true;
+    for(auto& entry: fs::walk(dir)) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+        } else if(entry->type != fs::FileType::Directory) {
+            names.emplace_back(entry->relative());
         }
-        names.push_back(Spelling::absolute(path).str().substr(dir.str().size() + 1));
-        return false;
-    });
+    }
     return names;
 }
 

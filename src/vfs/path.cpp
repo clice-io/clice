@@ -8,14 +8,6 @@ import :vfs.path;
 
 namespace clice {
 
-/// `.` segments, duplicate and trailing separators dropped, canonically
-/// spelled; `..` kept.
-static std::string normalized(std::string text) {
-    path::normalize(text, path::DotDot::Keep);
-    path::canonicalize(text);
-    return text;
-}
-
 llvm::StringRef path::portable(llvm::StringRef p,
                                llvm::StringRef workspace,
                                llvm::SmallVectorImpl<char>& storage) {
@@ -47,16 +39,13 @@ llvm::StringRef path::local(llvm::StringRef name,
 }
 
 Spelling::Spelling(llvm::StringRef text, const Spelling& base) {
-    std::string joined = base.text;
-    path::push(joined, text);
-    this->text = normalized(std::move(joined));
+    path::resolve(this->text, text, base.text, path::DotDot::Keep);
+    path::canonicalize(this->text);
 }
 
 Spelling Spelling::absolute(llvm::StringRef text) {
     assert(path::is_absolute(text) && "an unanchored path");
-    Spelling result;
-    result.text = normalized(text.str());
-    return result;
+    return Spelling(text, Spelling());
 }
 
 Spelling Spelling::cwd() {

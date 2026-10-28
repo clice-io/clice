@@ -5059,6 +5059,7 @@ export namespace kota {
 using ::kota::GlobError;
 using ::kota::GlobPattern;
 using ::kota::GlobRoot;
+using ::kota::ScopeExit;
 using ::kota::UTF8Sequence;
 using ::kota::acceptor;
 using ::kota::aggregate_op;
@@ -5529,6 +5530,7 @@ export namespace kota::deco::cli::detail {
 using ::kota::deco::cli::detail::access_member_path;
 using ::kota::deco::cli::detail::exit_code_of;
 using ::kota::deco::cli::detail::help_requested;
+using ::kota::deco::cli::detail::input_args_text;
 using ::kota::deco::cli::detail::make_usage_document;
 using ::kota::deco::cli::detail::member_object_pointer_traits;
 using ::kota::deco::cli::detail::member_path_result;
@@ -5593,6 +5595,7 @@ using ::kota::deco::decl::AliasForwardField;
 using ::kota::deco::decl::AliasForwardFn;
 using ::kota::deco::decl::AliasForwardFnWithContext;
 using ::kota::deco::decl::AliasForwardResult;
+using ::kota::deco::decl::ArgNum;
 using ::kota::deco::decl::Category;
 using ::kota::deco::decl::CategoryRef;
 using ::kota::deco::decl::CommaJoinedAliasFields;
@@ -5630,6 +5633,8 @@ using ::kota::deco::decl::SubCommand;
 using ::kota::deco::decl::VectorOption;
 using ::kota::deco::decl::default_category;
 using ::kota::deco::decl::help_names;
+using ::kota::deco::decl::input_arg_num;
+using ::kota::deco::decl::invalid_input_arg_num;
 using ::kota::deco::decl::is_alias_placeholder_name;
 using enum ::kota::deco::decl::KVStyle;
 }
@@ -5799,8 +5804,7 @@ using ::kota::detail::when_op;
 }
 
 export namespace kota::fs {
-using ::kota::fs::DirEntry;
-using ::kota::fs::DirStream;
+using ::kota::fs::Directory;
 using ::kota::fs::File;
 using ::kota::fs::FileID;
 using ::kota::fs::FileTimes;
@@ -5809,9 +5813,13 @@ using ::kota::fs::Mapping;
 using ::kota::fs::OpenOptions;
 using ::kota::fs::SeekFrom;
 using ::kota::fs::Status;
+using ::kota::fs::TempDirectory;
+using ::kota::fs::TempFile;
 using ::kota::fs::Volume;
+using ::kota::fs::Walk;
 using ::kota::fs::absolute;
 using ::kota::fs::canonical;
+using ::kota::fs::copy_file;
 using ::kota::fs::create_directories;
 using ::kota::fs::create_directory;
 using ::kota::fs::create_directory_symlink;
@@ -5822,20 +5830,23 @@ using ::kota::fs::create_temp_file;
 using ::kota::fs::current_dir;
 using ::kota::fs::equivalent;
 using ::kota::fs::exists;
+using ::kota::fs::follow_symlinks;
 using ::kota::fs::is_directory;
 using ::kota::fs::is_file;
 using ::kota::fs::is_symlink;
-using ::kota::fs::read_dir;
 using ::kota::fs::read_file;
 using ::kota::fs::read_symlink;
 using ::kota::fs::remove;
 using ::kota::fs::remove_all;
 using ::kota::fs::rename;
+using ::kota::fs::rename_noreplace;
 using ::kota::fs::set_permissions;
 using ::kota::fs::set_times;
 using ::kota::fs::status;
 using ::kota::fs::symlink_status;
+using ::kota::fs::try_exists;
 using ::kota::fs::volume;
+using ::kota::fs::walk;
 using ::kota::fs::weakly_canonical;
 using ::kota::fs::write_file;
 using ::kota::fs::write_file_atomic;
@@ -5912,12 +5923,14 @@ using ::kota::fs::path::has_root;
 using ::kota::fs::path::is_absolute;
 using ::kota::fs::path::is_separator;
 using ::kota::fs::path::is_within;
+using ::kota::fs::path::lowercase_drive;
 using ::kota::fs::path::native_style;
 using ::kota::fs::path::normalize;
 using ::kota::fs::path::parent;
 using ::kota::fs::path::pop;
 using ::kota::fs::path::push;
 using ::kota::fs::path::relative;
+using ::kota::fs::path::resolve;
 using ::kota::fs::path::root;
 using ::kota::fs::path::set_extension;
 using ::kota::fs::path::set_file_name;
@@ -5927,9 +5940,14 @@ using ::kota::fs::path::to_backslash;
 using ::kota::fs::path::to_slash;
 }
 
+export namespace kota::fs::path::detail {
+using ::kota::fs::path::detail::joins;
+}
+
 export namespace kota::ipc {
 using ::kota::ipc::BincodeCodec;
 using ::kota::ipc::BincodePeer;
+using ::kota::ipc::ConversationEnd;
 using ::kota::ipc::Error;
 using ::kota::ipc::FrameParser;
 using ::kota::ipc::IncomingErrorResponse;
@@ -5952,6 +5970,7 @@ using ::kota::ipc::Result;
 using ::kota::ipc::StreamTransport;
 using ::kota::ipc::Transport;
 using ::kota::ipc::UnansweredRequest;
+using ::kota::ipc::ViolationPolicy;
 using ::kota::ipc::basic_request_context;
 using ::kota::ipc::frame_header;
 using ::kota::ipc::lsp_config;
@@ -6925,6 +6944,7 @@ using ::kota::sys::signal_name;
 using ::kota::sys::spawn;
 using ::kota::sys::split_paths;
 using ::kota::sys::split_paths_view;
+using ::kota::sys::started_path;
 using ::kota::sys::temp_dir;
 using ::kota::sys::unset_env;
 using ::kota::sys::uptime;

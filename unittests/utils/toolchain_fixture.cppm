@@ -67,7 +67,7 @@ struct ToolchainFixture {
     /// that file's command.
     CommandRef add(llvm::StringRef file, std::vector<const char*> arguments) {
         arguments.push_back(tmp.c_path(file));
-        return f.add(tmp.root.str(), tmp.path(file), arguments);
+        return f.add(tmp.root, tmp.path(file), arguments);
     }
 
     /// An executable shell script `name` in the temp directory, standing in

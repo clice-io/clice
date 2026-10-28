@@ -101,7 +101,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     }
 
     Command command;
-    command.directory = commands.intern(directory.str()).data();
+    command.directory = commands.intern(directory).data();
     llvm::StringRef driver = arguments[0];
     std::string windows;
     if(mounts && fs::cygwin::is_posix_path(driver)) {

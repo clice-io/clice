@@ -18,9 +18,9 @@ namespace clice::feature {
 /// slashes): LSP clients key documents by vscode-uri's lowercase-drive
 /// form, and an uppercase-drive URI from the server never matches there.
 inline auto to_uri(llvm::StringRef file) -> std::string {
-    llvm::SmallString<256> storage;
-    file = path::canonical(file, storage);
-    auto uri = lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
+    llvm::SmallString<256> canonical(file);
+    path::canonicalize(canonical);
+    auto uri = lsp::URI::from_file_path(canonical.str());
     assert(uri && "a URI names an absolute path");
     return uri->str();
 }

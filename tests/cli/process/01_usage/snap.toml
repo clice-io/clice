@@ -161,7 +161,7 @@ usage: clice command <PATH> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <PATH>...                       The file, relative to the workspace or absolute
+  <PATH>                          The file, relative to the workspace or absolute
   --json                          Print the commands as JSON on stdout instead of text
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -237,7 +237,7 @@ usage: clice query references <LOCATOR> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <LOCATOR>...                    The symbol, as a locator: a name, an answer's symbol, or file:line[:column]
+  <LOCATOR>                       The symbol, as a locator: a name, an answer's symbol, or file:line[:column]
   --include-declaration           List the declarations and the definition too
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -300,7 +300,7 @@ usage: clice analyze modules edge <FROM> <TO> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <FROM> <TO>...                  The module whose files name the other's entities, and the module named
+  <FROM> <TO>                     The module whose files name the other's entities, and the module named
   --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: analyze only the files it matches (default: every indexed file under the workspace outside a dot directory) (may be repeated)
   --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
   --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
@@ -321,7 +321,7 @@ usage: clice inspect hover <PATH> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <PATH>...                       The source file
+  <PATH>                          The source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
   --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -336,7 +336,7 @@ usage: clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]
 
 Options:
   -h|--help                       display this help and exit
-  <DATABASE>...                   The compile_commands.json to convert, relative to the current directory
+  <DATABASE>                      The compile_commands.json to convert, relative to the current directory
   --json                          Print the converted command as a database entry instead of text
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -355,21 +355,26 @@ at argv[0]:
 exit = 2
 
 ["positional arguments"."$ clice index symbol"]
-stderr = "missing <LOCATOR>"
+stderr = "expected 1 input argument, got 0"
 exit = 2
 
 ["positional arguments"."$ clice index file a.h b.h"]
-stderr = "unexpected argument 'b.h'"
+stderr = '''
+at argv[1]:
+  a.h b.h
+      ^~~
+  unexpected input argument b.h: expected 1 input argument
+'''
 exit = 2
 
 ["positional arguments"."$ clice inspect hover"]
-stderr = "missing <PATH>"
+stderr = "expected 1 input argument, got 0"
 exit = 2
 
 ["positional arguments"."$ clice modularize merge"]
 stdout = '''
 {
-  "error": "missing <FILE>",
+  "error": "expected 1 input argument, got 0",
   "stale": []
 }
 '''
@@ -378,18 +383,23 @@ exit = 2
 ["positional arguments"."$ clice query references"]
 stdout = '''
 {
-  "error": "missing <LOCATOR>",
+  "error": "expected 1 input argument, got 0",
   "stale": []
 }
 '''
 exit = 2
 
 ["positional arguments"."$ clice command"]
-stderr = "missing <PATH>"
+stderr = "expected 1 input argument, got 0"
 exit = 2
 
 ["positional arguments"."$ clice command a.cpp b.cpp"]
-stderr = "unexpected argument 'b.cpp'"
+stderr = '''
+at argv[1]:
+  a.cpp b.cpp
+        ^~~~~
+  unexpected input argument b.cpp: expected 1 input argument
+'''
 exit = 2
 
 ["unknown option beside help"."$ clice analyze modules --bogus --help"]

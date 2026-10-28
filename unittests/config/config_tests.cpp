@@ -424,7 +424,7 @@ ZEST_CASE(AnchoredRules) {
     auto identity = [&](llvm::StringRef relative) {
         return CanonicalPath(Spelling::absolute(at(relative)));
     };
-    std::string root = tmp.root.str().str();
+    std::string root = tmp.root;
     path::canonicalize(root);
     tmp.touch("sub/clice.toml",
               std::format(R"(
@@ -497,7 +497,7 @@ ZEST_CASE(InitOptionsAnchorAtWorkspace) {
         path::canonicalize(p);
         return p;
     };
-    std::string root = tmp.root.str().str();
+    std::string root = tmp.root;
     path::canonicalize(root);
     tmp.touch(".clice/config.toml", R"(
 [[rules]]
@@ -543,7 +543,7 @@ ZEST_CASE(RelativeProjectDirsAnchor) {
         path::canonicalize(p);
         return p;
     };
-    std::string root = tmp.root.str().str();
+    std::string root = tmp.root;
     path::canonicalize(root);
     tmp.touch("sub/clice.toml", "[project]\ncache_dir = \"cache\"\n");
 

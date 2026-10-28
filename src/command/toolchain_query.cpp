@@ -132,18 +132,13 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     /// language, not as its own extension).
     std::string dir;
     sys::temp_dir(dir);
-    std::string input;
-    if(auto file =
-           fs::create_temp_file(input, dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
-       !file) {
+    auto input = fs::TempFile::create(dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
+    if(!input) {
         co_return std::unexpected(
-            std::format("Failed to create temp file: {}", file.error().message()));
+            std::format("Failed to create temp file: {}", input.error().message()));
     }
-    auto cleanup = llvm::make_scope_exit([&] {
-        if(auto removed = fs::remove(input); !removed) {
-            LOG_ERROR("Fail to remove temporary file: {}", removed.error());
-        }
-    });
+    // A Windows compiler may open its input without sharing it for writing.
+    input->file().close();
 
     /// The input sits at the slot recorded from the structured command:
     /// selectors after the slot must not govern it (`clang foo.c -x c++`
@@ -152,7 +147,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     if(driver) {
         args[0] = std::move(*driver);
     }
-    args.insert(args.begin() + spec.slot, input);
+    args.insert(args.begin() + spec.slot, std::string(input->path()));
 
     std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
@@ -160,9 +155,9 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     if(!spec.query_toolchain) {
         job = std::move(read_as_clang(std::move(args), spec.family, spec.cwd).job);
     } else if(cl) {
-        job = co_await ask_cl(args, spec.family, input, spec.cwd);
+        job = co_await ask_cl(args, spec.family, input->path(), spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {
-        job = co_await ask_nvcc(args, input, spec.kind, spec.cwd);
+        job = co_await ask_nvcc(args, input->path(), spec.kind, spec.cwd);
     } else {
         job = co_await ask_gcc_style(std::move(args), driver_tokens, spec.cwd);
     }

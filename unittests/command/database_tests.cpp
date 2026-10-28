@@ -348,7 +348,7 @@ ZEST_CASE(FixtureLayouts) {
 
 /// path_id that `cdb` assigns to a file under the temp root.
 Fid id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
-    return cdb.files().intern(Spelling::absolute(path::join(tmp.root.str(), rel)));
+    return cdb.files().intern(Spelling::absolute(path::join(tmp.root, rel)));
 }
 
 /// Overwrite compile_commands.json under the temp root (without loading it).
@@ -367,14 +367,14 @@ ZEST_CASE(AddedEntry) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}}
+                   {tmp.root, "a.cpp", {}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
+                   {tmp.root, "a.cpp", {}},
+                   {tmp.root, "b.cpp", {}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -393,14 +393,14 @@ ZEST_CASE(RemovedEntry) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
+                   {tmp.root, "a.cpp", {}},
+                   {tmp.root, "b.cpp", {}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}}
+                   {tmp.root, "a.cpp", {}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -419,13 +419,13 @@ ZEST_CASE(ChangedFlag) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=1"}}
+                   {tmp.root, "a.cpp", {"-DFOO=1"}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=2"}}
+                   {tmp.root, "a.cpp", {"-DFOO=2"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -444,8 +444,8 @@ ZEST_CASE(IdenticalReload) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=1"}},
-                   {tmp.root.str(), "b.cpp", {"-Wall"}  }
+                   {tmp.root, "a.cpp", {"-DFOO=1"}},
+                   {tmp.root, "b.cpp", {"-Wall"}  }
     });
     cdb.load(cdb_path);
 
@@ -464,17 +464,17 @@ ZEST_CASE(ReorderChangesSelection) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}},
-                   {tmp.root.str(), "b.cpp", {}       }
+                   {tmp.root, "a.cpp", {"-DA=1"}},
+                   {tmp.root, "a.cpp", {"-DB=1"}},
+                   {tmp.root, "b.cpp", {}       }
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "b.cpp", {}       },
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}}
+                   {tmp.root, "b.cpp", {}       },
+                   {tmp.root, "a.cpp", {"-DB=1"}},
+                   {tmp.root, "a.cpp", {"-DA=1"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -498,13 +498,13 @@ ZEST_CASE(CodegenChangeIgnored) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-fomit-frame-pointer", "-g"}}
+                   {tmp.root, "a.cpp", {"-fomit-frame-pointer", "-g"}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-ffunction-sections"}}
+                   {tmp.root, "a.cpp", {"-fno-omit-frame-pointer", "-ffunction-sections"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -522,13 +522,13 @@ ZEST_CASE(OptLevelIsSemantic) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-O2"}}
+                   {tmp.root, "a.cpp", {"-O2"}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-O3"}}
+                   {tmp.root, "a.cpp", {"-O3"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -548,15 +548,15 @@ ZEST_CASE(MultiEntryOneChanged) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}}
+                   {tmp.root, "a.cpp", {"-DA=1"}},
+                   {tmp.root, "a.cpp", {"-DB=1"}}
     });
     cdb.load(cdb_path);
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-DA=2"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}}
+                   {tmp.root, "a.cpp", {"-DA=2"}},
+                   {tmp.root, "a.cpp", {"-DB=1"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -576,8 +576,8 @@ ZEST_CASE(FirstLoadAllAdded) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
+                   {tmp.root, "a.cpp", {}},
+                   {tmp.root, "b.cpp", {}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
@@ -599,18 +599,18 @@ ZEST_CASE(CorruptKeepsEntries) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}}
+                   {tmp.root, "a.cpp", {}}
     });
     cdb.load(cdb_path);
-    ZASSERT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZASSERT(cdb.has_entry(path::join(tmp.root, "a.cpp")));
 
     tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
     ZASSERT(!diff.has_value());
-    ZEXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZEXPECT(cdb.has_entry(path::join(tmp.root, "a.cpp")));
 
-    auto file = path::join(tmp.root.str(), "a.cpp");
+    auto file = path::join(tmp.root, "a.cpp");
     auto candidates = cdb.candidate_entries(file);
     ZASSERT(candidates.size() == 1U);
     ZEXPECT(llvm::StringRef(print_argv(commands.render_full(candidates.front().command)))
@@ -628,7 +628,7 @@ ZEST_CASE(MissingFileFails) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {}}
+                   {tmp.root, "a.cpp", {}}
     });
     cdb.load(cdb_path);
     fs::remove_all(cdb_path);
@@ -636,7 +636,7 @@ ZEST_CASE(MissingFileFails) {
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
     ZASSERT(!diff.has_value());
-    ZEXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZEXPECT(cdb.has_entry(path::join(tmp.root, "a.cpp")));
 };
 
 };  // ZEST_SUITE(ReloadDiff)

@@ -432,7 +432,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         }
         auto server_id = file_of(old.file);
         if(retired.contains(server_id) || project_index.indexed(server_id) ||
-           !fs::exists(project.file_table.resolve(server_id)).value_or(false)) {
+           !fs::exists(project.file_table.resolve(server_id))) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}",
