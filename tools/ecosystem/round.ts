@@ -1,7 +1,8 @@
 /// A round of the ecosystem workflow read in one place: every job's new
 /// failures, each beside whether earlier rounds swept its file, the
 /// regression numbers that moved since the round before, and every perf
-/// measure past its threshold by ratio, with what makes it suspect. The
+/// measure slower than the baseline that another platform or the night
+/// before confirms, by ratio, with what makes it suspect. The
 /// workflow's last job writes it as the round's summary; here it also
 /// downloads the logs of what it flags (the ecosystem-round skill).
 ///
@@ -24,6 +25,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "../repo.ts";
+import { SAMPLES } from "./perf/compare.ts";
 import type { PerfResults, RunResult, Slower } from "./perf/results.ts";
 import { PLATFORMS, type Platform } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
@@ -52,9 +54,11 @@ export interface Round {
     jobs: RoundJob[];
     /// By artifact, the job's results in the rounds before, newest first.
     earlier: ReadonlyMap<string, readonly Earlier[]>;
+    /// By artifact, the perf job's results in the round before.
+    perfBefore: ReadonlyMap<string, PerfResults>;
 }
 
-/// A measure past its threshold, and what makes it suspect.
+/// A slower measure something confirms, and what makes it suspect.
 export interface PerfRow extends Slower {
     job: string;
     platform: Platform;
@@ -93,7 +97,10 @@ export interface RoundData {
         ratio: number;
     }[];
     broad: string[];
+    /// The slower measures another platform or the night before confirms.
     perf: PerfRow[];
+    /// The slower measures nothing confirms, left to the jobs' reports.
+    unconfirmed: number;
     /// The artifacts whose logs a reader wants first.
     flagged: string[];
 }
@@ -198,15 +205,6 @@ function runsOf(perf: PerfResults, row: Slower, server: "clice" | "baseline"): R
     );
 }
 
-/// Whether a time compares one sample of each side: a cold start's varies
-/// severalfold between two runs on one machine.
-function oneSample(perf: PerfResults, row: Slower): boolean {
-    const measure = baseMeasure(row.measure);
-    const samples = (server: "clice" | "baseline") =>
-        runsOf(perf, row, server).reduce((sum, run) => sum + (run.series[measure]?.length ?? 1), 0);
-    return !measure.includes("MB") && samples("clice") <= 1 && samples("baseline") <= 1;
-}
-
 /// For a memory row, the process whose share differs most between the two
 /// servers: a worker holding hundreds of megabytes on one side alone did
 /// work the other did not.
@@ -241,7 +239,7 @@ function roleGap(perf: PerfResults, row: Slower): string | undefined {
         : `${widest.role} ${String(clice.get(widest.role) ?? 0)} vs ${String(baseline.get(widest.role) ?? 0)} MB`;
 }
 
-/// The measures past their threshold on so many jobs at once, across
+/// The measures slower on so many jobs at once, across
 /// projects, that the measurement is the likelier cause than the code.
 function broadMeasures(perfs: readonly RoundJob[]): Map<string, string> {
     const measured = perfs.filter((job) => job.perf?.binaries.baseline !== undefined);
@@ -261,16 +259,35 @@ function broadMeasures(perfs: readonly RoundJob[]): Map<string, string> {
             );
             broad.set(
                 measure,
-                `\`${measure}\` is past the threshold on ${String(jobs.length)} of the ${String(measured.length)} perf jobs (${platforms.join(", ")}): a change on most jobs at once points at the measurement (one sample a side, the run order, the file cache) before the code`,
+                `\`${measure}\` is slower on ${String(jobs.length)} of the ${String(measured.length)} perf jobs (${platforms.join(", ")}): a change on most jobs at once points at the measurement (too few samples, the run order, the file cache) before the code`,
             );
         }
     }
     return broad;
 }
 
-function perfRows(jobs: readonly RoundJob[], broad: ReadonlyMap<string, string>): PerfRow[] {
+/// Whether two results that found a measure slower ran it so that the
+/// servers' order explains neither: one ran it both ways, or each the other
+/// way.
+function covers(a: Slower, b: Slower): boolean {
+    return (
+        a.order === "both" ||
+        b.order === "both" ||
+        (a.order !== undefined && b.order !== undefined && a.order !== b.order)
+    );
+}
+
+/// The slower measures confirmed by another platform's job or the job the
+/// night before, each with what makes it suspect, and how many nothing
+/// confirms.
+function perfRows(
+    jobs: readonly RoundJob[],
+    before: ReadonlyMap<string, PerfResults>,
+    broad: ReadonlyMap<string, string>,
+): { rows: PerfRow[]; unconfirmed: number } {
     const perfs = jobs.filter((job) => job.perf !== undefined);
     const rows: PerfRow[] = [];
+    let unconfirmed = 0;
     for (const job of perfs) {
         const perf = job.perf;
         if (perf === undefined) {
@@ -278,12 +295,23 @@ function perfRows(jobs: readonly RoundJob[], broad: ReadonlyMap<string, string>)
         }
         const platforms = perfs.filter((other) => other.name === job.name);
         for (const row of perf.slower) {
-            const flags: string[] = [];
-            const on = platforms.filter((other) =>
-                (other.perf?.slower ?? []).some(
+            const same = (results: PerfResults | undefined) =>
+                (results?.slower ?? []).find(
                     (each) => each.name === row.name && each.measure === row.measure,
-                ),
-            );
+                );
+            const on = platforms.filter((other) => same(other.perf) !== undefined);
+            const night = same(before.get(job.artifact));
+            const confirmed =
+                (night !== undefined && covers(row, night)) ||
+                platforms.some((other) => {
+                    const theirs = same(other.perf);
+                    return other !== job && theirs !== undefined && covers(row, theirs);
+                });
+            if (!confirmed) {
+                unconfirmed += 1;
+                continue;
+            }
+            const flags: string[] = [];
             if (platforms.length > 1) {
                 flags.push(
                     on.length === 1
@@ -298,8 +326,11 @@ function perfRows(jobs: readonly RoundJob[], broad: ReadonlyMap<string, string>)
             } else if (row.clicePerBaseline >= EXTREME) {
                 flags.push(`≥${String(EXTREME)}×: likely different work on the two sides`);
             }
-            if (oneSample(perf, row)) {
-                flags.push("one sample a side");
+            if (night !== undefined) {
+                flags.push("the night before too");
+            }
+            if (row.samples < SAMPLES) {
+                flags.push(row.samples === 1 ? "one sample a side" : "two samples a side");
             }
             const gap = roleGap(perf, row);
             if (gap !== undefined) {
@@ -317,7 +348,7 @@ function perfRows(jobs: readonly RoundJob[], broad: ReadonlyMap<string, string>)
             });
         }
     }
-    return rows.sort((a, b) => b.clicePerBaseline - a.clicePerBaseline);
+    return { rows: rows.sort((a, b) => b.clicePerBaseline - a.clicePerBaseline), unconfirmed };
 }
 
 function shown(value: number): string {
@@ -392,7 +423,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     });
     moved.sort((a, b) => b.ratio - a.ratio);
     const broad = broadMeasures(perfs);
-    const rows = perfRows(round.jobs, broad);
+    const { rows, unconfirmed } = perfRows(round.jobs, round.perfBefore, broad);
     const flagged = [
         ...new Set([
             ...red.map((job) => job.artifact),
@@ -414,6 +445,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
         moved,
         broad: [...broad.values()],
         perf: rows,
+        unconfirmed,
         flagged,
     };
 
@@ -487,8 +519,14 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
             ),
         );
     }
-    if (rows.length > 0) {
-        lines.push("", `## Perf past the threshold (${String(rows.length)}), by ratio`, "");
+    if (rows.length > 0 || unconfirmed > 0) {
+        lines.push(
+            "",
+            `## Perf slower than the baseline, confirmed (${String(rows.length)}), by ratio`,
+            "",
+            `A measure is slower in a job when it costs clice 1.2× the baseline and more in so many of the pairs of samples that chance is unlikely, or with fewer than ${String(SAMPLES)} pairs 1.5×. It is listed here when another platform or the night before finds it slower too, with the servers in the other order. ${String(unconfirmed)} more that nothing confirms are in the jobs' reports.`,
+            "",
+        );
         if (broad.size > 0) {
             lines.push(...[...broad.values()].map((text) => `- ${text}`), "");
         }
@@ -636,8 +674,6 @@ async function main(): Promise<void> {
         };
     });
 
-    // The round before every regression job's numbers, the rounds before
-    // that for the red jobs' sampled files.
     const before = rounds
         .filter((each) => each.createdAt < view.createdAt && each.databaseId !== run)
         .slice(0, Number(values.history));
@@ -645,30 +681,35 @@ async function main(): Promise<void> {
         jobs.filter((job) => (job.regression?.failures.length ?? 0) > 0).map((job) => job.artifact),
     );
     const earlier = new Map<string, Earlier[]>();
+    const perfBefore = new Map<string, PerfResults>();
     for (const [i, { databaseId, createdAt }] of before.entries()) {
-        const wanted = jobs
-            .filter((job) => job.kind === "regression" && (i === 0 || red.has(job.artifact)))
-            .map((job) => `ecosystem-${job.artifact}`);
+        // The round before every job's results, the rounds before that the
+        // red regression jobs'.
+        const wanted = jobs.filter((job) => i === 0 || red.has(job.artifact));
         const present = new Set(await artifactsOf(databaseId));
         const dir = path.join(out, "earlier", String(databaseId));
         await download(
             databaseId,
-            wanted.filter((name) => present.has(name)),
+            wanted.map((job) => `ecosystem-${job.artifact}`).filter((name) => present.has(name)),
             dir,
         );
-        for (const name of wanted) {
-            const found = readJson(path.join(dir, name, "results.json")) as Results | undefined;
-            if (found !== undefined) {
-                const artifact = name.slice("ecosystem-".length);
-                earlier.set(artifact, [
-                    ...(earlier.get(artifact) ?? []),
-                    { run: databaseId, date: createdAt.slice(0, 10), results: found },
-                ]);
+        for (const job of wanted) {
+            const found = readJson(path.join(dir, `ecosystem-${job.artifact}`, "results.json"));
+            if (found === undefined) {
+                continue;
             }
+            if (job.kind === "perf") {
+                perfBefore.set(job.artifact, found as PerfResults);
+                continue;
+            }
+            earlier.set(job.artifact, [
+                ...(earlier.get(job.artifact) ?? []),
+                { run: databaseId, date: createdAt.slice(0, 10), results: found as Results },
+            ]);
         }
     }
 
-    const { text, data } = roundReport({ run, jobs, earlier });
+    const { text, data } = roundReport({ run, jobs, earlier, perfBefore });
     fs.writeFileSync(path.join(out, "round.md"), text);
     fs.writeFileSync(path.join(out, "round.json"), `${JSON.stringify(data, null, 1)}\n`);
     if (!values["no-logs"]) {
@@ -680,7 +721,7 @@ async function main(): Promise<void> {
         }
     }
     console.log(
-        `${path.join(out, "round.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} cut short or without results, ${String(data.perf.length)} perf rows past the threshold, ${String(data.flagged.length)} flagged`,
+        `${path.join(out, "round.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} cut short or without results, ${String(data.perf.length)} perf measures slower and confirmed (${String(data.unconfirmed)} not), ${String(data.flagged.length)} flagged`,
     );
 }
 

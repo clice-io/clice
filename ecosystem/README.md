@@ -255,11 +255,18 @@ beside the work it bought. A perf job **fails** only when a clice run fails
 unclean exit), or when its time runs out before a scenario begins: no
 scenario begins, and no wait goes on, past 320 minutes into the job. A
 clangd run that fails, or the baseline's, is listed. Numbers never fail:
-where clice spends a tenth more than the baseline (a time, memory, disk or
-CPU; a count or an answer's size is no cost), the summary lists it, with the
-command running its scenario again. A measure under 10 of its unit
-(milliseconds, seconds, megabytes) on the baseline is left out of that list:
-its noise between two runs is more than a tenth.
+where clice spends more than the baseline (a time, memory, disk or CPU; a
+count or an answer's size is no cost), the summary lists it, with the command
+running its scenario again. The two servers' samples of one thing (one file,
+one run, one place in a series) make a pair. A measure is slower at 1.2× the
+baseline when clice is the slower of so many pairs that a fair coin would come
+up that often at most one time in eight (all of three, eight of ten); with
+fewer than three pairs it is slower only at 1.5×, since one cold start varies
+severalfold between two runs of one binary. A measure under 10 of its unit
+(milliseconds, seconds, megabytes) on the baseline is left out: its noise
+between two runs is more than a tenth. The server running second finds the
+file cache the first left, so the order swaps every run, and day by day for a
+scenario of one run.
 
 ### Memory
 
@@ -287,10 +294,12 @@ session's, the baseline's among them, and what the job printed.
 The round's own summary gathers them: every job's new failures, each beside
 whether the rounds before swept its file (a file newly sampled points at an
 old bug the sample exposed, one that passed before at a regression), the
-regression numbers half again the round before's, and every measure past its
-threshold by ratio, flagged where it looks like the measurement rather than
-the code: past the threshold on most jobs at once, on one platform only,
-three times the baseline's or more, negative.
+regression numbers half again the round before's, and by ratio every slower
+measure that another platform's job or the job the night before finds slower
+too, with the servers in the other order (a measure one job ran both ways
+needs no other order). The rest stay in the jobs' reports. A row is flagged
+where it looks like the measurement rather than the code: slower on most jobs
+at once, on one platform only, three times the baseline's or more, negative.
 
 A job is red when it has a new failure; known failures alone leave it green.
 **A round shows no new failure** when every job is green: that is what a

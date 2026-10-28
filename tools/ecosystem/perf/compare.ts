@@ -190,13 +190,74 @@ export function tables(results: readonly PerfResults[]): string[] {
 
 /// How much more a measure may cost clice than the baseline before the
 /// summary lists it.
-const SLOWER = 1.1;
+const SLOWER = 1.2;
+/// Under this many pairs of samples a measure is listed only past
+/// SLOWER_ONCE: one cold start varies severalfold between two runs of one
+/// binary on one machine.
+export const SAMPLES = 3;
+const SLOWER_ONCE = 1.5;
 /// Under this many of its unit (milliseconds, seconds, megabytes) on the
 /// baseline, a measure's noise between two runs is more than a tenth.
 const NOISE_FLOOR = 10;
+/// How unlikely a fair coin is to show heads as often as clice was the
+/// slower of a pair, for the pairs to say clice is slower: three in a row.
+const CHANCE = 1 / 8;
 
-/// The measures of a job's runs where clice costs at least a tenth more
-/// than the baseline, each clice column against its baseline one.
+/// The fewest heads that `n` fair coin flips, three or more, show at most
+/// CHANCE of the time.
+function agreeing(n: number): number {
+    // The binomial tail from the top, its terms in logarithms.
+    let log = -n * Math.LN2;
+    let tail = Math.exp(log);
+    for (let k = n; k > 0; k -= 1) {
+        log += Math.log(k / (n - k + 1));
+        if (tail + Math.exp(log) > CHANCE) {
+            return k;
+        }
+        tail += Math.exp(log);
+    }
+    return 0;
+}
+
+/// The two columns' samples of one thing: one file, one run, one place in
+/// its series, each with the place of its run among the job's runs.
+function pairsOf(
+    runs: readonly RunResult[],
+    name: string,
+    measure: string,
+    of: string,
+    to: string,
+): { of: number; to: number; ofFirst: boolean }[] {
+    const valuesOf = (run: RunResult) =>
+        measures(run).find((each) => each.name === measure)?.values ?? [];
+    const placed = runs
+        .map((run, place) => ({ run, place }))
+        .filter(({ run }) => run.error === undefined && `${run.scenario} ${run.label}` === name);
+    const key = (run: RunResult) => `${run.file ?? run.label}\n${String(run.run)}`;
+    const ofRuns = new Map(
+        placed.filter(({ run }) => columnOf(run) === of).map((each) => [key(each.run), each]),
+    );
+    return placed
+        .filter(({ run }) => columnOf(run) === to)
+        .flatMap(({ run, place }) => {
+            const ofRun = ofRuns.get(key(run));
+            if (ofRun === undefined) {
+                return [];
+            }
+            const a = valuesOf(ofRun.run);
+            const b = valuesOf(run);
+            return a.slice(0, b.length).map((value, index) => ({
+                of: value,
+                to: b[index] ?? 0,
+                ofFirst: ofRun.place < place,
+            }));
+        });
+}
+
+/// The measures of a job's runs where clice costs more than the baseline,
+/// each clice column against its baseline one: past SLOWER, and slower in
+/// so many of the pairs of samples that chance is unlikely, or with fewer
+/// than SAMPLES pairs past SLOWER_ONCE.
 export function slower(result: PerfResults): Omit<Slower, "repro">[] {
     const out: Omit<Slower, "repro">[] = [];
     for (const { ratios, scenarios } of groupsOf([result])) {
@@ -206,15 +267,19 @@ export function slower(result: PerfResults): Omit<Slower, "repro">[] {
                 for (const { of, to } of pairs) {
                     const base = medianOf(pooled(byFile, to));
                     const ratio = ratioOf(byFile, of, to);
+                    if (!cost || base === undefined || base < NOISE_FLOOR || ratio === undefined) {
+                        continue;
+                    }
+                    const samples = pairsOf(result.runs, name, measure, of, to);
+                    const slowerIn = samples.filter((each) => each.of > each.to).length;
                     if (
-                        !cost ||
-                        base === undefined ||
-                        base < NOISE_FLOOR ||
-                        ratio === undefined ||
-                        ratio < SLOWER
+                        samples.length < SAMPLES
+                            ? ratio < SLOWER_ONCE
+                            : ratio < SLOWER || slowerIn < agreeing(samples.length)
                     ) {
                         continue;
                     }
+                    const first = new Set(samples.map((each) => each.ofFirst));
                     out.push({
                         scenario,
                         name,
@@ -223,6 +288,13 @@ export function slower(result: PerfResults): Omit<Slower, "repro">[] {
                         clice: cell(pooled(byFile, of), "p50"),
                         baseline: cell(pooled(byFile, to), "p50"),
                         clicePerBaseline: ratio,
+                        samples: samples.length,
+                        order:
+                            first.size === 2
+                                ? "both"
+                                : first.has(true)
+                                  ? "clice first"
+                                  : "baseline first",
                     });
                 }
             }

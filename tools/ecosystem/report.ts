@@ -235,8 +235,8 @@ const PERF_KINDS: Record<string, string> = {
     runner: "Errors of the runner itself",
 };
 
-/// The measures clice spends a tenth more of than the baseline, and per
-/// scenario the command running it again.
+/// The measures clice spends more of than the baseline (compare.ts,
+/// slower), and per scenario the command running it again.
 function slowerSection(slower: PerfResults["slower"]): string[] {
     if (slower.length === 0) {
         return [];
@@ -246,11 +246,11 @@ function slowerSection(slower: PerfResults["slower"]): string[] {
         "",
         `## Slower or heavier than the baseline (${String(slower.length)})`,
         "",
-        "| scenario | measure | clice p50 | baseline p50 | clice/baseline |",
-        "|---|---|---:|---:|---:|",
+        "| scenario | measure | clice p50 | baseline p50 | clice/baseline | pairs | first |",
+        "|---|---|---:|---:|---:|---:|---|",
         ...slower.map(
             (each) =>
-                `| ${each.name} | ${each.measure} | ${each.clice} | ${each.baseline} | ${each.clicePerBaseline.toFixed(2)}× |`,
+                `| ${each.name} | ${each.measure} | ${each.clice} | ${each.baseline} | ${each.clicePerBaseline.toFixed(2)}× | ${String(each.samples)} | ${each.order ?? "–"} |`,
         ),
         "",
         "Reproduce:",
