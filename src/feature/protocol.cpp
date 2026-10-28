@@ -41,9 +41,9 @@ std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites,
 }
 
 std::optional<std::vector<protocol::TextEdit>>
-    to_text_edits(llvm::ArrayRef<TextReplacement> replacements,
-                  const PositionMap& map,
-                  PositionEncoding encoding) {
+    to_protocol(llvm::ArrayRef<TextReplacement> replacements,
+                const PositionMap& map,
+                PositionEncoding encoding) {
     std::vector<protocol::TextEdit> edits;
     for(const auto& replacement: replacements) {
         auto converted = map.range(replacement.range, encoding);

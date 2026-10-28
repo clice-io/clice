@@ -12,7 +12,7 @@ import :compile.compilation;
 import :compile.tidy;
 import :config.config;
 import :driver.driver;
-import :feature.code_action.code_action;
+import :feature.code_actions;
 import :feature.code_completion;
 import :feature.document_links;
 import :feature.document_symbols;
@@ -313,35 +313,26 @@ struct RawCodeAction {
     std::optional<std::vector<std::string>> host_definitions;
 };
 
-/// The index requests resolved as an empty index would: definitions into
-/// the focus file are all kept, no header declares any name.
+/// The actions resolved as an empty index would: definitions into the
+/// focus file are all kept, no header declares any name.
 std::optional<codec::RawValue> run_code_action(const FeatureParams& params) {
     auto& unit = params.unit;
     std::vector<RawCodeAction> out;
-    auto path = unit.file_path(unit.focus_file().file());
-    for(auto& action: feature::code_actions(unit, params.range)) {
-        RawCodeAction raw{
+    auto actions = feature::resolve_actions(feature::code_actions(unit, params.range),
+                                            {},
+                                            {
+                                                .path = unit.file_path(unit.focus_file().file()),
+                                                .content = unit.focus_file().content(),
+                                            });
+    for(auto& action: actions) {
+        out.push_back({
             .title = std::move(action.title),
             .kind = std::string(action.kind),
             .edits = std::move(action.edits),
-        };
-        if(action.index) {
-            auto keep = [](std::uint64_t) {
-                return false;
-            };
-            if(auto* request = std::get_if<feature::DefineRequest>(&*action.index)) {
-                raw.edits =
-                    *feature::define_edits(*request, path, unit.focus_file().content(), keep);
-            } else if(auto* host = std::get_if<feature::DefineInHostRequest>(&*action.index)) {
-                raw.host_definitions.emplace();
-                for(const auto& piece: host->pieces) {
-                    raw.host_definitions->push_back(piece.text);
-                }
-            } else {
-                continue;
-            }
+        });
+        if(!action.host_definitions.empty()) {
+            out.back().host_definitions = std::move(action.host_definitions);
         }
-        out.push_back(std::move(raw));
     }
     return to_raw_json(out);
 }

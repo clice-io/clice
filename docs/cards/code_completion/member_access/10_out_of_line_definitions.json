@@ -1,0 +1,69 @@
+{
+  "id": "code_completion/member_access/10_out_of_line_definitions",
+  "topic": "code_completion",
+  "subtopic": "member_access",
+  "title": "Out-of-line definitions",
+  "summary": "After `Class::` in a definition, every member is offered, private ones included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Account {\n    void audit();\n\npublic:\n    void deposit(int cents);\n    int balance() const;\n};\n\nvoid Account::\n",
+      "markers": [
+        {
+          "name": "definition",
+          "begin": 115,
+          "end": 115,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "definition",
+          "marker": "definition",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Account",
+                  "kind": "Class"
+                },
+                {
+                  "label": "audit()",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "balance() const",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "deposit(int cents)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "operator=(…) +1 overload",
+                  "kind": "Method"
+                },
+                {
+                  "label": "~Account()",
+                  "kind": "Method",
+                  "detail": "void"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

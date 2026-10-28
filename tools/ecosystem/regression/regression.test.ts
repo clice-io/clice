@@ -78,7 +78,7 @@ describe("sweep", () => {
             "GetAsUInt64(uint64_t fail_value = 18446744073709551615ULL, bool *success_ptr = nullptr) const",
         );
         expect(acceptedDifference("completion", inspect, server)).toBe(
-            "completion/member_access/20_macro_default_arguments",
+            "code_completion/member_access/20_macro_default_arguments",
         );
         expect(acceptedDifference("signatureHelp", inspect, server)).toBeUndefined();
         expect(
@@ -87,7 +87,7 @@ describe("sweep", () => {
                 "  uint32_t m_stop_id = UINT32_MAX;\n",
                 "  uint32_t m_stop_id = 4294967295U;\n",
             ),
-        ).toBe("completion/member_access/20_macro_default_arguments");
+        ).toBe("code_completion/member_access/20_macro_default_arguments");
         expect(
             acceptedDifference("hover", "  int *p = nullptr;\n", "  int *p = 0;\n"),
         ).toBeUndefined();

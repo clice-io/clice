@@ -1,0 +1,55 @@
+{
+  "id": "code_completion/symbols/07_namespace_members",
+  "topic": "code_completion",
+  "subtopic": "symbols",
+  "title": "Namespace-qualified lookup",
+  "summary": "`ns::` lists the namespace's own members",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace geometry {\n\nint area_of(int r);\n\nstruct Point {\n    int x;\n};\n\nint origin;\n\n}  // namespace geometry\n\nvoid bar() {\n    int v = geometry::;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 147,
+          "end": 147,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "area_of(int r)",
+                  "kind": "Function",
+                  "detail": "int"
+                },
+                {
+                  "label": "origin",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "Point",
+                  "kind": "Class"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,7 @@ import :compile.compilation;
 import :feature.document_symbols;
 import :feature.index_check;
 import :feature.index_entries;
-import :feature.semantic_token_stream;
+import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.symbol;

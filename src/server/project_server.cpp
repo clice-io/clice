@@ -35,7 +35,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     dispatcher(project, contexts, ast, server.pool, server.position_encoding),
     live_sources(project, sched.pch, sessions, ast.compiles),
     index_query(project.index, project.file_table, &freshness, &live_sources),
-    features(ast,
+    requests(ast,
              dispatcher,
              index_query,
              project,
@@ -346,19 +346,12 @@ void ProjectServer::close_session(Fid path_id) {
     // (the server holds no peer — see MasterServer's charter). A transport
     // whose client has not completed the handshake drops the push: nothing
     // was ever published for it to clear, and publishDiagnostics may not
-    // flow before the initialize response. CDBExact keeps
-    // format_diagnostics from decorating the empty set with guidance.
+    // flow before the initialize response.
     if(auto session = sessions.find(path_id)) {
         // The crash records stay with the file for a reopen; the
         // retraction must not carry their notes.
         sessions.park(*session);
-        ast.publish_output(session,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = CommandSource::CDBExact,
-                               .text = session->source,
-                               .diagnostics = {},
-                           });
+        ast.publish_output(session, CompileOutput{.text = session->source});
     }
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.

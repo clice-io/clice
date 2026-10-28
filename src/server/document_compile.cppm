@@ -22,35 +22,11 @@ struct CompileOutput {
     /// (a failed compile publishes empty diagnostics without a version).
     std::optional<int> version;
 
-    /// How the compile command was obtained; the push path merges a
-    /// guidance diagnostic when the command was guessed.
-    CommandSource source;
-
     /// The text compiled, which the diagnostics are at bytes of.
     std::shared_ptr<SourceText> text;
 
-    /// The compile's diagnostics, before format_diagnostics; on a failure
-    /// before parsing, why it failed.
-    std::vector<feature::FileDiagnostic> diagnostics;
-
-    /// The warnings of unused declarations the compile raised while it
-    /// skipped the function bodies of the headers, which a use in a skipped
-    /// body cannot silence: held back for the background index's compile to
-    /// confirm.
-    std::vector<feature::FileDiagnostic> unconfirmed;
-
-    /// What the background index's compile of the same text reported that
-    /// this one cannot report or has held back (ASTFamily::shown_skipped),
-    /// shown after the compile's own.
-    std::vector<feature::FileDiagnostic> skipped;
-
-    /// The host whose includer context the compile needed but could not
-    /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
-    std::string unmatched_host;
-
-    /// Why the compiler could not be queried (Resolution::query_failure);
-    /// empty when it could.
-    std::string query_failure;
+    /// What the compile raised and what clice knows of how it compiled.
+    feature::CompileDiagnostics diagnostics;
 
     /// The compile failed before parsing: its diagnostics say why, and
     /// nothing else came of it.
@@ -101,7 +77,7 @@ struct DocumentCompile {
 /// The AST family's per-document table: the latest compiles plus the freshness
 /// state that used to live on the Session (ast_dirty, dirty_epoch). Owned
 /// and written by the family and its facade; readers (IndexQuery,
-/// Features, transports) only look things up. A separate type so
+/// Requests, transports) only look things up. A separate type so
 /// read-side tests can populate one without the family's machinery.
 struct DocumentCompiles {
     struct Entry {

@@ -13,7 +13,7 @@ namespace clice {
 
 /// How open files are served — the parsed form of the `readonly` config
 /// option. Routing is not governed by this: every request is answered by
-/// the best source available at that moment (see Features); the mode
+/// the best source available at that moment (see Requests); the mode
 /// only decides whether PCH/AST builds are a goal at all. Builds are
 /// always pull-driven — no lifecycle event starts one, the first request
 /// that needs the AST does.
@@ -65,7 +65,7 @@ struct Session {
     int version = 0;
 
     /// Current buffer content (may differ from disk until saved) and what
-    /// is derived from it, read in the dialect Features::text_of sets.
+    /// is derived from it, read in the dialect Requests::text_of sets.
     /// Behind a pointer: a SourceText stays where it was made, its text
     /// pointing into itself, an alias document's session moves, and a
     /// compile's output keeps the text it compiled.

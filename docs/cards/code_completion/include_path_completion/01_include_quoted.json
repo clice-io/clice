@@ -1,0 +1,89 @@
+{
+  "id": "code_completion/include_path_completion/01_include_quoted",
+  "topic": "code_completion",
+  "subtopic": "include_path_completion",
+  "title": "Quoted include paths",
+  "summary": "Completion lists headers and directories from the configured search path and marks directories with a trailing slash",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "inc/snap_dir/nested.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "inc/snap_header.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"snap\"\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 14,
+          "end": 14,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "snap_dir/",
+                  "kind": "Folder",
+                  "insert": "snap_dir",
+                  "replace": {
+                    "$place": "#include \"⟦snap⟧\"",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 14
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "snap_header.h",
+                  "kind": "File",
+                  "insert": "snap_header.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦snap\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 15
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

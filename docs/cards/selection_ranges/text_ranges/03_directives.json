@@ -1,0 +1,226 @@
+{
+  "id": "selection_ranges/text_ranges/03_directives",
+  "topic": "selection_ranges",
+  "subtopic": "text_ranges",
+  "title": "Preprocessor directives",
+  "summary": "A directive is selected as a whole line, after the header name it includes or the brackets of its macro body",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "config.h",
+      "text": "#pragma once\n\n#define SIDE 3\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n#define SQUARE(x) ((x) * (x)) // the square\n\nint area = SQUARE(SIDE);\n",
+      "markers": [
+        {
+          "name": "header",
+          "begin": 10,
+          "end": 10,
+          "range": false
+        },
+        {
+          "name": "body",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        },
+        {
+          "name": "note",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "header",
+          "marker": "header",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "#include \"⟦config.h⟧\"",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 18
+                  }
+                }
+              },
+              {
+                "$place": "#include ⟦\"config.h\"⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "⟦#include \"config.h\"⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "body",
+          "marker": "body",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "#define SQUARE(x) ((⟦x⟧) * (x)) // the square",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "#define SQUARE(x) (⟦(x)⟧ * (x)) // the square",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 22
+                  }
+                }
+              },
+              {
+                "$place": "#define SQUARE(x) (⟦(x) * (x)⟧) // the square",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 28
+                  }
+                }
+              },
+              {
+                "$place": "#define SQUARE(x) ⟦((x) * (x))⟧ // the square",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦#define SQUARE(x) ((x) * (x)) // the square⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 43
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "note",
+          "marker": "note",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "#define SQUARE(x) ((x) * (x)) // ⟦the square⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 33
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 43
+                  }
+                }
+              },
+              {
+                "$place": "#define SQUARE(x) ((x) * (x)) ⟦// the square⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 30
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 43
+                  }
+                }
+              },
+              {
+                "$place": "⟦#define SQUARE(x) ((x) * (x)) // the square⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 43
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

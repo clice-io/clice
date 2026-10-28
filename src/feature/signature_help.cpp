@@ -13,6 +13,7 @@ import :semantic.display;
 import :semantic.resolver;
 import :semantic.types;
 import :support.markup;
+import :syntax.completion;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -938,6 +939,16 @@ auto signature_help(CompilationParams params,
         help.active_signature = kept - help.signatures.begin();
     }
     return help;
+}
+
+bool can_hold_call(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect) {
+    using enum CompletionName::Kind;
+    auto completing = completion_name(text, offset, dialect);
+    constexpr std::array<llvm::StringRef, 8> unexpanded =
+        {"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef", "error", "warning"};
+    return completing.kind != Directive && completing.kind != IncludeQuoted &&
+           completing.kind != IncludeAngled &&
+           !ranges::contains(unexpanded, llvm::StringRef(completing.directive));
 }
 
 }  // namespace clice::feature

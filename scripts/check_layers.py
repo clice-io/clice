@@ -4,8 +4,8 @@ project <- analysis and {analysis, server} <- driver; inside core, support <- vf
 command <- syntax <- compile <- semantic <- index <- feature.
 
 Each layer may include, or import the partitions of, downward only: clice is one
-module, clice, whose partitions are named by their path under src/
-(`import :sched.graph;`), and the test helpers by theirs under the repository
+module, clice, whose partitions are named after the layer they are in
+(`import :sched.graph;`), and the test helpers after `unittests`
 (`unittests.utils.tester`), which the check verifies too. Bazel enforces the layering
 between its targets, as it checks that every header a source includes belongs to the
 target or its dependencies; the core directories share one target, so only this check
@@ -86,13 +86,13 @@ def main() -> int:
         for path in sorted((root / "unittests").rglob("*.cppm"))
     ]
     for path, named_by in partitions:
-        name = ".".join(named_by.with_suffix("").parts)
+        layer = named_by.parts[0]
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             declared = PARTITION.match(line)
-            if declared and declared.group(1) != name:
+            if declared and declared.group(1).split(".")[0] != layer:
                 violations.append(
                     f"{path.relative_to(root)}:{number}: "
-                    f"the partition of this file is named {name}"
+                    f"the partition of this file is named {layer}.*"
                 )
     for violation in violations:
         print(violation)

@@ -1,0 +1,101 @@
+{
+  "id": "folding_ranges/macros/01_macro_spelled_blocks",
+  "topic": "folding_ranges",
+  "subtopic": "macros",
+  "title": "Blocks spelled by macros",
+  "summary": "Braces and access specifiers spelled through macros fold at the invocation site",
+  "prose": "A block a macro opens and closes folds between the two invocations, which\nstay visible; its placeholder is `...`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define NS_BEGIN namespace ns {\n#define NS_END }\n#define PUBLIC public:\n#define PRIVATE private:\n\nNS_BEGIN\n\nclass Widget {\nPUBLIC\n    void draw();\n    void resize();\nPRIVATE\n    int width;\n    int height;\n};\n\nNS_END\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "NS_BEGIN⟦ … ⟧ (12 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 0
+                    }
+                  }
+                },
+                "collapsed": "..."
+              },
+              {
+                "kind": "class",
+                "at": {
+                  "$place": "class Widget ⟦{ … }⟧ (8 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "accessSpecifier",
+                "at": {
+                  "$place": "PUBLIC⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "accessSpecifier",
+                "at": {
+                  "$place": "PRIVATE⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

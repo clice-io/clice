@@ -4,6 +4,7 @@ module;
 
 module clice:feature.diagnostics;
 
+import :command.table;
 import :compile.compilation;
 import :compile.diagnostic;
 import :syntax.position;
@@ -107,6 +108,110 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
 FileDiagnostic file_warning(std::string message);
+
+/// What a compile of a file raised, and the facts clice's own warnings
+/// about the compile are built from (shown_diagnostics).
+struct CompileDiagnostics {
+    /// How the compile command was made: a guessed one may explain the
+    /// includes not found.
+    CommandSource source = CommandSource::CDBExact;
+
+    /// What the compile raised: the compiler's and clang-tidy's
+    /// diagnostics, and clice's own about the compile; on a failure before
+    /// parsing, why it failed.
+    std::vector<FileDiagnostic> own;
+
+    /// The warnings of unused declarations the compile raised while it
+    /// skipped the function bodies of the headers (take_unconfirmed), held
+    /// back for the background index's compile to confirm.
+    std::vector<FileDiagnostic> unconfirmed;
+
+    /// What the background index's compile of the same text reported that
+    /// this one cannot report or has held back (confirmed_skipped), shown
+    /// after the compile's own.
+    std::vector<FileDiagnostic> skipped;
+
+    /// The host whose includer context the compile needed but could not
+    /// rebuild, as the user knows it; empty otherwise.
+    std::string unmatched_host;
+
+    /// Why the compiler could not be queried, which leaves the command
+    /// clang's own reading of it; empty when it answered.
+    std::string query_failure;
+};
+
+/// The diagnostics a file shows of its compile: its own, then the skipped
+/// ones, less those `options` suppress and, of those moved to one place
+/// from elsewhere, all but the first error and the first warning; behind
+/// the warnings at its top saying what they may miss: a command clice
+/// guessed, an includer context it could not rebuild, a compiler it could
+/// not query.
+auto shown_diagnostics(const CompileDiagnostics& diagnostics, const DiagnosticsOptions& options)
+    -> std::vector<FileDiagnostic>;
+
+/// The compile's diagnostics behind the ones its PCH's build raised in the
+/// preamble, which the parse consuming the PCH never raises again — those
+/// of the command line it does, and they appear once.
+auto with_preamble(std::vector<FileDiagnostic> own, std::vector<FileDiagnostic> preamble)
+    -> std::vector<FileDiagnostic>;
+
+/// The warnings a compile skipping the function bodies of the headers
+/// cannot trust: those of unused declarations, which a use in a skipped
+/// body would silence; taken out of `diagnostics`.
+auto take_unconfirmed(std::vector<FileDiagnostic>& diagnostics) -> std::vector<FileDiagnostic>;
+
+/// Whether two diagnostics show the same: one message at one place.
+bool same_diagnostic(const FileDiagnostic& left, const FileDiagnostic& right);
+
+/// Of the diagnostics a full compile of the same text reported that a
+/// compile skipping the bodies of the headers can get wrong
+/// (skipped_diagnostics), those the file shows beside that compile's: an
+/// unused declaration's warning it held back, now confirmed, and the rest
+/// it did not raise itself.
+auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiagnostics& compiled)
+    -> std::vector<FileDiagnostic>;
+
+/// Why an imported module did not build: from the imported module down,
+/// the modules whose builds failed in turn, and the error the last one
+/// failed on, or the index in `chain` of the module the last one's import
+/// cycles back to.
+struct ModuleFailure {
+    std::vector<std::string> chain;
+    std::string error;
+    std::optional<std::size_t> cycle;
+};
+
+/// clang reports the import of a module whose build failed as not found:
+/// the import says instead why the module did not build.
+void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
+                            llvm::ArrayRef<ModuleFailure> failures);
+
+/// An import of a module that several files declare, resolved to the
+/// nearest of them.
+struct ModuleChoice {
+    std::string module;
+
+    /// The files declaring it, as the user knows them: the one taken and
+    /// the ones passed over.
+    std::string chosen;
+    std::vector<std::string> others;
+
+    /// Where in the compiled text the import is written; past its end for
+    /// an import the file does not write itself.
+    std::uint32_t offset = 0;
+};
+
+/// The warning on an import saying which of the files declaring its
+/// module it took; on the file's top for an import it does not write.
+FileDiagnostic ambiguous_module(const ModuleChoice& choice, llvm::StringRef text);
+
+/// The warning at a file's top that clang-tidy does not run on it while
+/// its configuration fails to parse with `error`.
+FileDiagnostic invalid_tidy_config(llvm::StringRef error);
+
+/// What a compile reports in place of an index that could not be handed
+/// over.
+FileDiagnostic index_unavailable(llvm::StringRef cause);
 
 /// The LSP form of `diagnostic`, shown on the file at `path` whose
 /// compiled text `positions` maps, its positions counted in `encoding`; a

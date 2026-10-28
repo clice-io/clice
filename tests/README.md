@@ -37,9 +37,9 @@ tests/<topic>/<subtopic>/NN_name/
 ### Topics
 
 - **Features**, what a feature answers on code and how its answers behave
-  over time: `hover`, `completion`, `signature_help`, `navigation`,
-  `document_highlight`, `document_symbol`, `workspace_symbol`,
-  `document_links`, `folding_range`, `selection_range`, `semantic_tokens`,
+  over time: `hover`, `code_completion`, `signature_help`, `navigation`,
+  `document_highlights`, `document_symbols`, `workspace_symbols`,
+  `document_links`, `folding_ranges`, `selection_ranges`, `semantic_tokens`,
   `inlay_hints`, `code_actions`, `switch_source_header`, `rename`,
   `diagnostics`, `inactive_regions`.
 - **Engine**, how the server behaves over time: `compile` (pch, preamble,

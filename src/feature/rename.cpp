@@ -12,6 +12,7 @@ import :index.site;
 import :index.symbol_query;
 import :syntax.lexer;
 import :syntax.source_text;
+import :vfs.file_system;
 
 namespace clice::feature {
 
@@ -863,6 +864,48 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     }
     result += text.substr(copied);
     return result;
+}
+
+WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names) :
+    files(std::move(files)), names(std::move(names)) {
+    for(auto& path: this->files) {
+        walked.insert(path);
+        if(auto text = vfs::read_text(path)) {
+            if(auto spelled = scan_text(std::move(*text), this->names)) {
+                scanned.try_emplace(path, std::move(*spelled));
+            }
+        }
+    }
+}
+
+const ScannedText* WorkspaceTexts::read(
+    llvm::StringRef path,
+    llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer) {
+    auto open = buffer ? buffer(path) : std::nullopt;
+    if(!open) {
+        if(auto it = scanned.find(path); it != scanned.end()) {
+            return &it->second;
+        }
+        if(walked.contains(path)) {
+            return nullptr;
+        }
+    }
+    auto [it, inserted] = late.try_emplace(path);
+    if(inserted) {
+        if(open) {
+            it->second = scan_text(open->str(), names);
+        } else if(auto text = vfs::read_text(path)) {
+            it->second = scan_text(std::move(*text), names);
+        }
+    }
+    return it->second ? &*it->second : nullptr;
+}
+
+std::optional<std::string> workspace_refusal(llvm::StringRef root) {
+    if(root.empty()) {
+        return "a rename edits the sources of a workspace folder; open one";
+    }
+    return std::nullopt;
 }
 
 std::string refusal(const RenamePlan& plan) {

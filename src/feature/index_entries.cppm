@@ -25,7 +25,7 @@ struct IndexDecl {
 /// relations of names nested in another's written name (the class in
 /// `~Foo`, which owns no occurrence there) as occurrences of their own, and
 /// the Decl/Def relations as decl entries. Those features serve open files
-/// that have no AST yet (see Features' routing rules) and take these entries
+/// that have no AST yet (see Requests' routing rules) and take these entries
 /// and narrow resolvers, never index storage. Each one's output is an honest
 /// subset of its AST twin's: missing pieces (Sema modifiers, outline detail,
 /// statement folds, ...) are pinned by the index/read_only cases.

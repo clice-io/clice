@@ -1,0 +1,453 @@
+{
+  "id": "document_symbols/symbol_kinds/04_type_aliases",
+  "topic": "document_symbols",
+  "subtopic": "symbol_kinds",
+  "title": "Type aliases",
+  "summary": "`typedef` and `using` aliases and alias templates list as type aliases",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace aliases {\n\nstruct Widget {};\n\ntypedef Widget LegacyWidget;\n\nusing ModernWidget = Widget;\n\ntemplate <typename T>\nstruct Box {};\n\ntemplate <typename T>\nusing BoxOf = Box<T>;\n\nstruct Holder {\n    using Inner = Widget;\n};\n\n}  // namespace aliases\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "aliases",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦aliases⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Widget",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Widget⟧ {};",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "detail": "struct"
+                  },
+                  {
+                    "name": "LegacyWidget",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "typedef Widget ⟦LegacyWidget⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 4,
+                          "character": 15
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 27
+                        }
+                      }
+                    },
+                    "detail": "type alias"
+                  },
+                  {
+                    "name": "ModernWidget",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "using ⟦ModernWidget⟧ = Widget;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 6,
+                          "character": 6
+                        },
+                        "end": {
+                          "line": 6,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "detail": "type alias"
+                  },
+                  {
+                    "name": "Box",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Box⟧ {};",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 10
+                        }
+                      }
+                    },
+                    "detail": "template struct"
+                  },
+                  {
+                    "name": "BoxOf",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "using ⟦BoxOf⟧ = Box<T>;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 12,
+                          "character": 6
+                        },
+                        "end": {
+                          "line": 12,
+                          "character": 11
+                        }
+                      }
+                    },
+                    "detail": "template type alias"
+                  },
+                  {
+                    "name": "Holder",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Holder⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 14,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 14,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "Inner",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "using ⟦Inner⟧ = Widget;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 10
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 15
+                            }
+                          }
+                        },
+                        "detail": "type alias"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "aliases",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦aliases⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace aliases { … }⟧ (19 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Widget",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Widget⟧ {};",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Widget {}⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 16
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "LegacyWidget",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "typedef Widget ⟦LegacyWidget⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 4,
+                          "character": 15
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 27
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦typedef Widget LegacyWidget⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 4,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 27
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "ModernWidget",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "using ⟦ModernWidget⟧ = Widget;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 6,
+                          "character": 6
+                        },
+                        "end": {
+                          "line": 6,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦using ModernWidget = Widget⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 6,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 6,
+                          "character": 27
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Box",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Box⟧ {};",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 10
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦template <typename T> … struct Box {}⟧ (2 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 13
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "BoxOf",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "using ⟦BoxOf⟧ = Box<T>;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 12,
+                          "character": 6
+                        },
+                        "end": {
+                          "line": 12,
+                          "character": 11
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦template <typename T> … using BoxOf = Box<T>⟧ (2 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 11,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 12,
+                          "character": 20
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Holder",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Holder⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 14,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 14,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Holder { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 14,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 16,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "Inner",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "using ⟦Inner⟧ = Widget;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 10
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 15
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦using Inner = Widget⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 24
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

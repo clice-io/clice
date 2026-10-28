@@ -4,6 +4,9 @@ module;
 
 module clice;
 
+import :feature.hover;
+import :support.json;
+import :syntax.source_text;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.protocol;
@@ -338,9 +341,10 @@ ZEST_CASE(CompileThenHover) {
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
         auto hover_result = co_await w.peer->send_request(hp);
-        ZEXPECT(hover_result);
-        // Should return non-null hover info for 'foo'.
-        ZEXPECT(hover_result.value().data != std::string("null"));
+        ZASSERT(hover_result);
+        // Should return the card of 'foo'.
+        ZASSERT(hover_result.value().has_value());
+        ZEXPECT(hover_result.value()->name == "foo");
 
         test_done = true;
     });
@@ -372,7 +376,15 @@ ZEST_CASE(InvalidUTF8Replaced) {
         hp.offset = static_cast<std::uint32_t>(text.find("foo()"));
         auto result = co_await w.peer->send_request(hp);
         ZASSERT(result);
-        hover = result.value().data;
+        ZASSERT(result.value().has_value());
+        // The card crosses to the master as it is; its JSON for the client
+        // replaces what is not UTF-8.
+        SourceText source(text);
+        hover = to_raw(feature::to_protocol(*result.value(),
+                                            protocol::MarkupKind::Markdown,
+                                            source.positions(),
+                                            PositionEncoding::UTF16))
+                    .data;
     });
 
     ZEXPECT(

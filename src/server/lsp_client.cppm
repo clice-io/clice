@@ -20,6 +20,12 @@ import :vfs.file_table;
 
 namespace clice {
 
+/// How a request on a document is served (LSPClient::on_document).
+struct DocumentRequestOptions {
+    /// A document that is not open is served too, from the index.
+    bool closed = false;
+};
+
 class LSPClient {
 public:
     LSPClient(MasterServer& server, ipc::JSONPeer& peer);
@@ -41,6 +47,13 @@ private:
 
     ResolvedDoc resolve_uri(const std::string& uri);
 
+    /// Registers the handler of a request on a document: the user is
+    /// active, the document resolves to its project, and `answer` — given
+    /// the request's context, its parameters and the document — gets the
+    /// request unless it needs the document open and it is not.
+    template <typename Params, typename Answer>
+    void on_document(Answer answer, DocumentRequestOptions options = {});
+
     /// LSP handler registration, grouped by category. Each installs its
     /// handlers on `peer`; all four are invoked once from the constructor.
     void register_lifecycle();
@@ -50,7 +63,7 @@ private:
 
     /// clice/switchContext, clice/resetContext and clice/switchConfiguration,
     /// which an editor asks for directly or through the commands of the
-    /// source actions switching them (switch_actions).
+    /// source actions switching them (context_actions, configuration_actions).
     kota::task<ext::SwitchContextResult> switch_context(const ext::SwitchContextParams& params);
     ext::SwitchContextResult reset_context(const ext::ResetContextParams& params);
     ext::SwitchConfigurationResult
@@ -61,14 +74,6 @@ private:
     /// without folders.
     std::shared_ptr<ProjectServer> configured(const std::optional<std::string>& uri);
 
-    /// Source actions switching what the document compiles under, for an
-    /// editor whose only UI for it is its code action menu (Zed, Helix):
-    /// every other context of the listing's first page, the automatic one
-    /// while the user's choice is in force, and every other build
-    /// configuration. Their commands run through workspace/executeCommand.
-    std::vector<protocol::CodeAction> switch_actions(ProjectServer& project,
-                                                     const Session& session,
-                                                     llvm::ArrayRef<protocol::CodeActionKind> only);
     RawResult execute_command(protocol::ExecuteCommandParams params);
 
     /// Ask the client to pull every document's diagnostics again;
@@ -171,9 +176,7 @@ private:
         std::optional<protocol::Range> window;
     };
 
-    RawResult send_tokens(std::shared_ptr<ProjectServer> project,
-                          Fid path_id,
-                          std::shared_ptr<Session> session,
+    RawResult send_tokens(ResolvedDoc document,
                           ipc::JSONPeer::RequestContext& ctx,
                           TokensRequest request);
 

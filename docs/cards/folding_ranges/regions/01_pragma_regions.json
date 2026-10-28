@@ -1,0 +1,50 @@
+{
+  "id": "folding_ranges/regions/01_pragma_regions",
+  "topic": "folding_ranges",
+  "subtopic": "regions",
+  "title": "Pragma regions",
+  "summary": "Named pragma regions form folding ranges",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1623"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#pragma region Configuration\n\nint retry_count = 3;\nint timeout_ms = 5000;\n\n#pragma endregion\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "region",
+                "at": {
+                  "$place": "#pragma region Configuration⟦ … ⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

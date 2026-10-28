@@ -184,7 +184,7 @@ ZEST_CASE(SwitchIdentityResets) {
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
     compiled->base_pch_key = "base";
-    compiled->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
+    compiled->output = CompileOutput{.version = 3};
     entry.latest = std::move(compiled);
     entry.deps.emplace();
     entry.current = true;
@@ -213,9 +213,10 @@ ZEST_CASE(CrashPublishesNote) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
     stack.ast.compiles.set_output(session->path_id,
-                                  CompileOutput{.version = 1,
-                                                .source = CommandSource::CDBExact,
-                                                .diagnostics = {feature::file_warning("old")}});
+                                  CompileOutput{
+                                      .version = 1,
+                                      .diagnostics = {.own = {feature::file_warning("old")}},
+                                  });
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -226,7 +227,7 @@ ZEST_CASE(CrashPublishesNote) {
     ZEXPECT(emits == 1);
     auto compiled = stack.ast.compiles.latest(session->path_id);
     ZASSERT((compiled && compiled->output.has_value()));
-    ZEXPECT(compiled->output->diagnostics.empty());
+    ZEXPECT(compiled->output->diagnostics.own.empty());
 
     std::vector<feature::FileDiagnostic> notes;
     append_crash_notes(*session, notes);
@@ -911,7 +912,7 @@ ZEST_CASE(CrashedFormatBarsFormat) {
     auto body = [&]() -> kota::task<> {
         auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
         ZASSERT(result);
-        ZEXPECT(result.value().data == "null");
+        ZEXPECT(!result.value().has_value());
         done = true;
     };
     auto task = body();
@@ -1079,7 +1080,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
         kota::cancellation_source source;
         kota::task_group<> group;
         auto cancelled_waiter = [&]() -> kota::task<> {
-            auto hover = [&]() -> Dispatcher::RawResult {
+            auto hover = [&]() -> kota::task<std::optional<feature::HoverInfo>, ipc::Error> {
                 co_return co_await stack.dispatcher.hover(Ticket::take(session),
                                                           protocol::Position{0, 4},
                                                           source.token());
@@ -1474,7 +1475,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
         ZASSERT(co_await stack.ast.ensure_compiled(b));
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1521,7 +1522,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
         evict();
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
         ZEXPECT(outputs == 3);
 
         co_await stack.ast.stop();
@@ -1562,7 +1563,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         auto before = published;
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
         ZEXPECT(!a->quarantine->crashed(hover));
         ZEXPECT(published == before + 1);
 

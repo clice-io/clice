@@ -1,0 +1,336 @@
+{
+  "id": "document_highlights/access_kinds/06_member_access",
+  "topic": "document_highlights",
+  "subtopic": "access_kinds",
+  "title": "Member access",
+  "summary": "Writing through `object.member` writes the member and reads the object",
+  "prose": "A designated initializer or a constructor's member initializer names the field without writing it. Fields of an anonymous union highlight like any other field.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    int x;\n    int y;\n    union {\n        int raw;\n        float real;\n    };\n};\n\nstruct Origin {\n    int x;\n    Origin(int start) : x(start) {}\n};\n\nvoid shift(Point& point) {\n    point.x = point.y;\n    point.x += 1;\n    point.raw = point.x;\n    Point corner{.x = 0, .y = 0};\n    corner.real = 1.0f;\n}\n",
+      "markers": [
+        {
+          "name": "x",
+          "begin": 23,
+          "end": 23,
+          "range": false
+        },
+        {
+          "name": "raw",
+          "begin": 61,
+          "end": 61,
+          "range": false
+        },
+        {
+          "name": "init",
+          "begin": 148,
+          "end": 148,
+          "range": false
+        },
+        {
+          "name": "point",
+          "begin": 182,
+          "end": 182,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "x",
+          "marker": "x",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦x⟧; @+0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "point.⟦x⟧ = point.y;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 11
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "point.⟦x⟧ += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 11
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "point.raw = point.⟦x⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 23
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "Point corner{.⟦x⟧ = 0, .y = 0};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 19
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "raw",
+          "marker": "raw",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦raw⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 15
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "point.⟦raw⟧ = point.x;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 13
+                    }
+                  }
+                },
+                "kind": "write"
+              }
+            ]
+          }
+        },
+        {
+          "label": "init",
+          "marker": "init",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦x⟧; @-1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "Origin(int start) : ⟦x⟧(start) {}",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 25
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "point",
+          "marker": "point",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "void shift(Point& ⟦point⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 23
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "⟦point⟧.x = point.y;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "point.x = ⟦point⟧.y;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 19
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "⟦point⟧.x += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "⟦point⟧.raw = point.x;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "point.raw = ⟦point⟧.x;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 21
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

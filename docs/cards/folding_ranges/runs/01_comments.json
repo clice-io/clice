@@ -1,0 +1,222 @@
+{
+  "id": "folding_ranges/runs/01_comments",
+  "topic": "folding_ranges",
+  "subtopic": "runs",
+  "title": "Comments",
+  "summary": "Multiline block comments and runs of line comments fold",
+  "prose": "Line comments on consecutive lines fold as one run below the first line,\nwhich stays visible; a blank line or a line of code ends the run. A block\ncomment folds on its delimiters like a brace pair. A comment trailing code\ndoes not fold.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "// This is a long\n// multi-line comment\n// that folds as one run\n\n// A blank line starts another run\n// of two lines\n\n/*\n * Block comment\n * also folds\n */\n\n/* single-line block comments stay unfolded */\n// so does a lone line comment\n\nint counter = 0;  // a comment trailing code\n                  // does not start a run\n\nint limit = 0; /* nor does a block comment\n                  trailing code fold */\n\n/* a block comment\n   next to */\n// a run of\n// line comments\nint separate();\n\nvoid nested() {\n    // runs fold inside bodies\n    // like anywhere else\n    counter += 1;\n}\n\n#define SCALE(x) \\\n    /* a block comment\n       inside a macro */ (x) * 2\n\n#if 0\n// comments in skipped branches\n// fold as well\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "// This is a long⟦ … // that folds as one run⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 24
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "// A blank line starts another run⟦ … // of two lines⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 34
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "⟦/* … */⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 3
+                    }
+                  }
+                },
+                "collapsed": "/*...*/"
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "⟦/* a block comment … next to */⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 13
+                    }
+                  }
+                },
+                "collapsed": "/*...*/"
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "// a run of⟦ … // line comments⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 16
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "void nested() ⟦{ … }⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "// runs fold inside bodies⟦ … // like anywhere else⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "macroDefinition",
+                "at": {
+                  "$place": "#define SCALE(x) \\⟦ … inside a macro */ (x) * 2⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 35,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "⟦/* a block comment … inside a macro */⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 34,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 35,
+                      "character": 24
+                    }
+                  }
+                },
+                "collapsed": "/*...*/"
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#if 0⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 37,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 40,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "comment",
+                "at": {
+                  "$place": "// comments in skipped branches⟦ … // fold as well⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 31
+                    },
+                    "end": {
+                      "line": 39,
+                      "character": 15
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

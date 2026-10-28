@@ -3,7 +3,7 @@
 Expand and shrink the selection by syntax (`textDocument/selectionRange`): each step grows the selection to the next enclosing construct — an expression, a statement with its semicolon, a declaration, a block — and also stops at what only the text shows, such as the inside of a pair of brackets, the text of a string literal or a comment. A file served in read-only mode, without a compiled AST, gets the text-only steps.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests/selection_range/. Do not edit the regions between the
+     in tests/selection_ranges/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -11,7 +11,7 @@ Expand and shrink the selection by syntax (`textDocument/selectionRange`): each 
 
 Steps that follow the structure of the code, from the name under the cursor outward.
 
-<!-- BEGIN GENERATED ITEMS: selection_range/syntax_ranges -->
+<!-- BEGIN GENERATED ITEMS: selection_ranges/syntax_ranges -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -20,7 +20,7 @@ Steps that follow the structure of the code, from the name under the cursor outw
 Selection grows from the name under the cursor through each enclosing expression and statement
 
 ```case
-tests/selection_range/syntax_ranges/01_nested_expression
+tests/selection_ranges/syntax_ranges/01_nested_expression
 ```
 
 <!-- END CAPABILITY -->
@@ -37,7 +37,7 @@ same way; a template's declaration gains it before its `template` head
 joins.
 
 ```case
-tests/selection_range/syntax_ranges/02_statements
+tests/selection_ranges/syntax_ranges/02_statements
 ```
 
 <!-- END CAPABILITY -->
@@ -49,7 +49,7 @@ tests/selection_range/syntax_ranges/02_statements
 The arguments of a call and the parameters of a function are selected without their parentheses before with them
 
 ```case
-tests/selection_range/syntax_ranges/03_argument_lists
+tests/selection_ranges/syntax_ranges/03_argument_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -61,7 +61,7 @@ tests/selection_range/syntax_ranges/03_argument_lists
 Template arguments and template parameters are selected inside their angle brackets before with them
 
 ```case
-tests/selection_range/syntax_ranges/04_template_lists
+tests/selection_ranges/syntax_ranges/04_template_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -77,7 +77,7 @@ the file of its own: the steps go from the argument straight to the
 invocation.
 
 ```case
-tests/selection_range/syntax_ranges/05_macro_arguments
+tests/selection_ranges/syntax_ranges/05_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -89,7 +89,7 @@ tests/selection_range/syntax_ranges/05_macro_arguments
 A lambda's capture list, parameter list and body are steps of their own on the way to the whole lambda
 
 ```case
-tests/selection_range/syntax_ranges/06_lambdas
+tests/selection_ranges/syntax_ranges/06_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -104,7 +104,7 @@ A cursor on a blank line inside a block starts from the block's
 contents.
 
 ```case
-tests/selection_range/syntax_ranges/07_blocks
+tests/selection_ranges/syntax_ranges/07_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -121,7 +121,7 @@ them, such as `const noexcept`, a trailing return type, `override` or a
 `requires` clause.
 
 ```case
-tests/selection_range/syntax_ranges/11_function_signatures
+tests/selection_ranges/syntax_ranges/11_function_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -133,7 +133,7 @@ tests/selection_range/syntax_ranges/11_function_signatures
 A `case` label is selected with the statements it leads before the whole switch body
 
 ```case
-tests/selection_range/syntax_ranges/15_switch_cases
+tests/selection_ranges/syntax_ranges/15_switch_cases
 ```
 
 <!-- END CAPABILITY -->
@@ -148,7 +148,7 @@ Inside a block comment over several lines, the line under the cursor
 comes first, without the `*` it begins with.
 
 ```case
-tests/selection_range/syntax_ranges/19_documented_declarations
+tests/selection_ranges/syntax_ranges/19_documented_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -159,7 +159,7 @@ tests/selection_range/syntax_ranges/19_documented_declarations
 
 Steps that only the text shows: the inside of a literal's quotes, the text of a comment, the line of a directive.
 
-<!-- BEGIN GENERATED ITEMS: selection_range/text_ranges -->
+<!-- BEGIN GENERATED ITEMS: selection_ranges/text_ranges -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -171,7 +171,7 @@ An encoding prefix, a raw string's delimiter and a user-defined suffix
 stay outside the text.
 
 ```case
-tests/selection_range/text_ranges/01_literals
+tests/selection_ranges/text_ranges/01_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -183,7 +183,7 @@ tests/selection_range/text_ranges/01_literals
 A comment's text is selected without its markers, then the comment, then the run of comment lines it belongs to
 
 ```case
-tests/selection_range/text_ranges/02_comments
+tests/selection_ranges/text_ranges/02_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -195,7 +195,7 @@ tests/selection_range/text_ranges/02_comments
 A directive is selected as a whole line, after the header name it includes or the brackets of its macro body
 
 ```case
-tests/selection_range/text_ranges/03_directives
+tests/selection_ranges/text_ranges/03_directives
 ```
 
 <!-- END CAPABILITY -->
@@ -206,7 +206,7 @@ tests/selection_range/text_ranges/03_directives
 
 Steps through the code of `#if` blocks, the branches the preprocessor skipped included.
 
-<!-- BEGIN GENERATED ITEMS: selection_range/conditionals -->
+<!-- BEGIN GENERATED ITEMS: selection_ranges/conditionals -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -218,7 +218,7 @@ A branch the preprocessor skipped gets the same steps, so its code can
 be selected as a whole.
 
 ```case
-tests/selection_range/conditionals/03_conditional_blocks
+tests/selection_ranges/conditionals/03_conditional_blocks
 ```
 
 <!-- END CAPABILITY -->

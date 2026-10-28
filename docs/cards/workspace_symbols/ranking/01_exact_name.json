@@ -1,0 +1,78 @@
+{
+  "id": "workspace_symbols/ranking/01_exact_name",
+  "topic": "workspace_symbols",
+  "subtopic": "ranking",
+  "title": "Alias ranking",
+  "summary": "The name spelled exactly ranks above the names merely starting with it",
+  "prose": "`Connection` lists the alias first and `ConnectionImpl` after it.",
+  "status": "supported",
+  "issues": [
+    "clangd#2253"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct ConnectionImpl {};\n\nusing Connection = ConnectionImpl;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "Connection",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "ConnectionImpl",
+                "kind": "Struct",
+                "at": {
+                  "$place": "main.cpp │ struct ⟦ConnectionImpl⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 21
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Connection",
+                "kind": "Class",
+                "at": {
+                  "$place": "main.cpp │ using ⟦Connection⟧ = ConnectionImpl;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "order",
+          "value": {
+            "value": [
+              "Connection",
+              "ConnectionImpl"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

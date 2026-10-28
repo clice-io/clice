@@ -99,18 +99,6 @@ struct Options {
 
 /// A pretty-printed type, optionally with its desugared form.
 struct Type {
-    Type() = default;
-
-    Type(llvm::StringRef text) : text(text.str()) {}
-
-    Type(llvm::StringRef text, llvm::StringRef aka) : text(text.str()), aka(aka.str()) {}
-
-    /// Allow assigning string literals to std::optional<Type>, which
-    /// would otherwise require two implicit user conversions.
-    Type(const char* text) : Type(llvm::StringRef(text)) {}
-
-    Type(const char* text, const char* aka) : Type(llvm::StringRef(text), llvm::StringRef(aka)) {}
-
     bool operator==(const Type&) const = default;
 
     /// Pretty-printed type.

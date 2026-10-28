@@ -1,0 +1,51 @@
+{
+  "id": "code_completion/filtering/05_prefix_beats_subsequence",
+  "topic": "code_completion",
+  "subtopic": "filtering",
+  "title": "Prefix outranks subsequence",
+  "summary": "An exact-prefix candidate sorts above a scattered subsequence match",
+  "prose": "For prefix `fo`, `format_output` is a true prefix and outscores `fast_math_operation`, which only matches as a subsequence.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int format_output;\nint fast_math_operation;\n\nvoid bar() {\n    int v = fo;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 72,
+          "end": 72,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "format_output",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "fast_math_operation",
+                  "kind": "Variable",
+                  "detail": "int"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

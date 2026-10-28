@@ -1511,7 +1511,7 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 Every name of the symbol in the file is highlighted, macros included.
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/symbols -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/symbols -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1520,7 +1520,7 @@ Every name of the symbol in the file is highlighted, macros included.
 Every name of the symbol under the cursor in the file is highlighted, its declarations and definition included
 
 ```case
-tests/document_highlight/symbols/01_declarations_and_uses
+tests/document_highlights/symbols/01_declarations_and_uses
 ```
 
 <!-- END CAPABILITY -->
@@ -1534,7 +1534,7 @@ A macro highlights at its definition, its expansions, the conditionals testing i
 A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights there, as a plain text occurrence, but not at that macro's invocations.
 
 ```case
-tests/document_highlight/symbols/03_macros
+tests/document_highlights/symbols/03_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -1546,7 +1546,7 @@ tests/document_highlight/symbols/03_macros
 A `break` or `continue` does not highlight the loop it leaves yet
 
 ```case
-tests/document_highlight/symbols/08_control_flow
+tests/document_highlights/symbols/08_control_flow
 ```
 
 <!-- END CAPABILITY -->
@@ -1557,7 +1557,7 @@ tests/document_highlight/symbols/08_control_flow
 
 Each highlight tells whether the code there reads the symbol or writes it.
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/access_kinds -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/access_kinds -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1566,7 +1566,7 @@ Each highlight tells whether the code there reads the symbol or writes it.
 Every use of a variable is highlighted, assignments as writes and other uses as reads
 
 ```case
-tests/document_highlight/access_kinds/01_reads_and_writes
+tests/document_highlights/access_kinds/01_reads_and_writes
 ```
 
 <!-- END CAPABILITY -->
@@ -1578,7 +1578,7 @@ tests/document_highlight/access_kinds/01_reads_and_writes
 An argument bound to a non-const reference parameter is a write, while a const reference, a copy or taking its address reads it
 
 ```case
-tests/document_highlight/access_kinds/03_reference_arguments
+tests/document_highlights/access_kinds/03_reference_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1592,7 +1592,7 @@ Writing through `object.member` writes the member and reads the object
 A designated initializer or a constructor's member initializer names the field without writing it. Fields of an anonymous union highlight like any other field.
 
 ```case
-tests/document_highlight/access_kinds/06_member_access
+tests/document_highlights/access_kinds/06_member_access
 ```
 
 <!-- END CAPABILITY -->
@@ -1603,7 +1603,7 @@ tests/document_highlight/access_kinds/06_member_access
 
 Highlights work in module units and on the names a module exports.
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/modules -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1612,7 +1612,7 @@ Highlights work in module units and on the names a module exports.
 Highlights work in module units and on names imported from a module, the module name included
 
 ```case
-tests/document_highlight/modules/01_module_units
+tests/document_highlights/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1627,7 +1627,7 @@ Search the whole project for a symbol by name (`workspace/symbol`), the names of
 
 A query matches names by their words, and its syntax narrows the search.
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/queries -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/queries -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1636,7 +1636,7 @@ A query matches names by their words, and its syntax narrows the search.
 A query finds the symbols whose names match it, members with their container
 
 ```case
-tests/workspace_symbol/queries/01_name_search
+tests/workspace_symbols/queries/01_name_search
 ```
 
 <!-- END CAPABILITY -->
@@ -1653,7 +1653,7 @@ a word of the name, so `pcfg` finds nothing — its `f` lands in the middle
 of `config`.
 
 ```case
-tests/workspace_symbol/queries/03_fuzzy_matching
+tests/workspace_symbols/queries/03_fuzzy_matching
 ```
 
 <!-- END CAPABILITY -->
@@ -1669,7 +1669,7 @@ Quotes, wildcards, scopes and filters narrow a search
 `kind:function` keeps one kind. Terms combine, separated by spaces.
 
 ```case
-tests/workspace_symbol/queries/04_query_syntax
+tests/workspace_symbols/queries/04_query_syntax
 ```
 
 <!-- END CAPABILITY -->
@@ -1681,7 +1681,7 @@ tests/workspace_symbol/queries/04_query_syntax
 Mangled linker names do not resolve to their source functions yet
 
 ```case
-tests/workspace_symbol/queries/05_mangled_names
+tests/workspace_symbols/queries/05_mangled_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1692,7 +1692,7 @@ tests/workspace_symbol/queries/05_mangled_names
 
 A qualified query names the scopes the symbol must lie in.
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/scopes -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/scopes -->
 
 <!-- BEGIN CAPABILITY: supported clangd#550 -->
 
@@ -1707,7 +1707,7 @@ a qualified query spell the qualified name, so editors that filter
 results against the query text keep them.
 
 ```case
-tests/workspace_symbol/scopes/01_qualified_names
+tests/workspace_symbols/scopes/01_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1719,7 +1719,7 @@ tests/workspace_symbol/scopes/01_qualified_names
 An enum qualifies its enumerators like any other container
 
 ```case
-tests/workspace_symbol/scopes/02_enumerators
+tests/workspace_symbols/scopes/02_enumerators
 ```
 
 <!-- END CAPABILITY -->
@@ -1730,7 +1730,7 @@ tests/workspace_symbol/scopes/02_enumerators
 
 The name spelled exactly ranks first.
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/ranking -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/ranking -->
 
 <!-- BEGIN CAPABILITY: supported clangd#2253 -->
 
@@ -1741,7 +1741,7 @@ The name spelled exactly ranks above the names merely starting with it
 `Connection` lists the alias first and `ConnectionImpl` after it.
 
 ```case
-tests/workspace_symbol/ranking/01_exact_name
+tests/workspace_symbols/ranking/01_exact_name
 ```
 
 <!-- END CAPABILITY -->
@@ -1752,7 +1752,7 @@ tests/workspace_symbol/ranking/01_exact_name
 
 Each result names its symbol and the container it lies in.
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/results -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/results -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1344 -->
 
@@ -1764,7 +1764,7 @@ Querying an overloaded name finds every overload, each named with its
 parameters: the two `process` results differ at a glance.
 
 ```case
-tests/workspace_symbol/results/01_overloads
+tests/workspace_symbols/results/01_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -1780,7 +1780,7 @@ its own file, yet it is a name the project declares: search lists it, once
 per file that declares one. A local variable is not.
 
 ```case
-tests/workspace_symbol/results/06_internal_names
+tests/workspace_symbols/results/06_internal_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1791,7 +1791,7 @@ tests/workspace_symbol/results/06_internal_names
 
 The search spans every file of the project, open in the editor or not.
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/projects -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/projects -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1803,7 +1803,7 @@ The query finds a function in `other.cpp`, which stays closed while
 `main.cpp` is open: the background index answers for it.
 
 ```case
-tests/workspace_symbol/projects/01_closed_files
+tests/workspace_symbols/projects/01_closed_files
 ```
 
 <!-- END CAPABILITY -->
@@ -1820,7 +1820,7 @@ copy of the folder with an open document: the one the editor works in. A
 folder whose file reads otherwise holds a symbol of its own, listed too.
 
 ```case
-tests/workspace_symbol/projects/03_worktree_copies
+tests/workspace_symbols/projects/03_worktree_copies
 ```
 
 <!-- END CAPABILITY -->

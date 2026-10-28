@@ -11,7 +11,7 @@ module;
 module clice;
 
 import :feature.index_entries;
-import :feature.semantic_token_stream;
+import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :index.symbol;
 import :semantic.token_class;

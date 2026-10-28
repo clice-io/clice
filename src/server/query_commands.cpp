@@ -679,34 +679,20 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
     std::vector<std::string> sources;
-    llvm::StringSet<> walked;
-    llvm::StringMap<feature::ScannedText> scanned;
-    auto scan = [&](llvm::StringRef path) -> const feature::ScannedText* {
-        walked.insert(path);
-        auto text = vfs::read_text(path);
-        if(!text) {
-            return nullptr;
-        }
-        auto spelled = feature::scan_text(std::move(*text), names);
-        return spelled ? &scanned.try_emplace(path, std::move(*spelled)).first->second : nullptr;
-    };
     for(auto& source: workspace_sources(root, cache_dir)) {
-        scan(sources.emplace_back(std::move(source).str()));
+        sources.push_back(std::move(source).str());
     }
+    feature::WorkspaceTexts texts(std::move(sources), std::move(names));
     auto editable = [&](llvm::StringRef path) {
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
-    auto read = [&](llvm::StringRef path) -> const feature::ScannedText* {
-        if(auto found = scanned.find(path); found != scanned.end()) {
-            return &found->second;
-        }
-        // An edited file the walk's suffixes left out.
-        return walked.contains(path) ? nullptr : scan(path);
+    auto read = [&](llvm::StringRef path) {
+        return texts.read(path);
     };
     planned.plan = feature::plan_renames(ctx.query,
                                          ctx.project.file_table,
                                          renamings,
-                                         {.files = sources,
+                                         {.files = texts.files,
                                           .editable = editable,
                                           .read = read,
                                           .units_pending = units_pending(ctx.project)});

@@ -1,0 +1,928 @@
+{
+  "id": "document_symbols/symbol_hierarchy/02_qualified_definitions",
+  "topic": "document_symbols",
+  "subtopic": "symbol_hierarchy",
+  "title": "Out-of-line definitions",
+  "summary": "An out-of-line definition lists where it is written, under its qualified name, and a reopened namespace lists once per opening",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace demo {\n\nstruct Point {\n    int x;\n    int y;\n\n    int manhattan() const;\n};\n\nint Point::manhattan() const {\n    return x + y;\n}\n\nenum class Axis { X, Y };\n\nint origin_distance(const Point& p);\n\nnamespace inner {\nconstexpr int level = 2;\n}\n\n}  // namespace demo\n\nnamespace demo {\nint reopened();\n}\n\nnamespace demo::nested {\nint compact();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧ { @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Point",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Point⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "x",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦x⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "detail": "int"
+                      },
+                      {
+                        "name": "y",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦y⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "detail": "int"
+                      },
+                      {
+                        "name": "manhattan",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "int ⟦manhattan⟧() const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 6,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 6,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "detail": "int () const"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Point::manhattan",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "int Point::⟦manhattan⟧() const {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 20
+                        }
+                      }
+                    },
+                    "detail": "int () const"
+                  },
+                  {
+                    "name": "Axis",
+                    "kind": "Enum",
+                    "at": {
+                      "$place": "enum class ⟦Axis⟧ { X, Y };",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "detail": "enum",
+                    "children": [
+                      {
+                        "name": "X",
+                        "kind": "EnumMember",
+                        "at": {
+                          "$place": "enum class Axis { ⟦X⟧, Y };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 18
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "detail": "Axis"
+                      },
+                      {
+                        "name": "Y",
+                        "kind": "EnumMember",
+                        "at": {
+                          "$place": "enum class Axis { X, ⟦Y⟧ };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 21
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 22
+                            }
+                          }
+                        },
+                        "detail": "Axis"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "origin_distance",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "int ⟦origin_distance⟧(const Point& p);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 19
+                        }
+                      }
+                    },
+                    "detail": "int (const Point &p)"
+                  },
+                  {
+                    "name": "inner",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "namespace ⟦inner⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 17,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 17,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "level",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "constexpr int ⟦level⟧ = 2;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 18,
+                              "character": 14
+                            },
+                            "end": {
+                              "line": 18,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "detail": "const int"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧ { @24",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 14
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "reopened",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "int ⟦reopened⟧();",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 24,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 24,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "detail": "int ()"
+                  }
+                ]
+              },
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧::nested {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 14
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "nested",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "namespace demo::⟦nested⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 27,
+                          "character": 16
+                        },
+                        "end": {
+                          "line": 27,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "compact",
+                        "kind": "Function",
+                        "at": {
+                          "$place": "int ⟦compact⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 28,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 28,
+                              "character": 11
+                            }
+                          }
+                        },
+                        "detail": "int ()"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧ { @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace demo { … }⟧ (22 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Point",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Point⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Point { … }⟧ (6 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "x",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦x⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int x⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 9
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "y",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦y⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int y⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 9
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "manhattan",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "int ⟦manhattan⟧() const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 6,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 6,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int manhattan() const⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 6,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 6,
+                              "character": 25
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Point::manhattan",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "int Point::⟦manhattan⟧() const {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 20
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int Point::manhattan() const { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 11,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Axis",
+                    "kind": "Enum",
+                    "at": {
+                      "$place": "enum class ⟦Axis⟧ { X, Y };",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦enum class Axis { X, Y }⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 24
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "X",
+                        "kind": "EnumMember",
+                        "at": {
+                          "$place": "enum class Axis { ⟦X⟧, Y };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 18
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "enum class Axis { ⟦X⟧, Y };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 18
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 19
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "Y",
+                        "kind": "EnumMember",
+                        "at": {
+                          "$place": "enum class Axis { X, ⟦Y⟧ };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 21
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 22
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "enum class Axis { X, ⟦Y⟧ };",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 21
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 22
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "origin_distance",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "int ⟦origin_distance⟧(const Point& p);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 19
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int origin_distance(const Point& p)⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 35
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "inner",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "namespace ⟦inner⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 17,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 17,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦namespace inner { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 17,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 19,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "level",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "constexpr int ⟦level⟧ = 2;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 18,
+                              "character": 14
+                            },
+                            "end": {
+                              "line": 18,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦constexpr int level = 2⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 18,
+                              "character": 0
+                            },
+                            "end": {
+                              "line": 18,
+                              "character": 23
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧ { @24",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace demo { … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "reopened",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "int ⟦reopened⟧();",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 24,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 24,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int reopened()⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 24,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 24,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "demo",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦demo⟧::nested {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace demo::nested { … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "nested",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "namespace demo::⟦nested⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 27,
+                          "character": 16
+                        },
+                        "end": {
+                          "line": 27,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "namespace demo⟦::nested { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 27,
+                          "character": 14
+                        },
+                        "end": {
+                          "line": 29,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "compact",
+                        "kind": "Function",
+                        "at": {
+                          "$place": "int ⟦compact⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 28,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 28,
+                              "character": 11
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int compact()⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 28,
+                              "character": 0
+                            },
+                            "end": {
+                              "line": 28,
+                              "character": 13
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
