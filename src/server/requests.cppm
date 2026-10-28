@@ -113,7 +113,7 @@ public:
     /// session.
     /// @param ticket has no session for a document not open.
     /// @param token the request's cancellation token, forwarded to the
-    /// worker sends (see Dispatcher::query).
+    /// worker sends (see Dispatcher::ast_request).
     RawResult definition(Ticket ticket,
                          Fid path_id,
                          const protocol::Position& position,
@@ -124,7 +124,7 @@ public:
     /// from the index answer while it is not, and a session the policy keeps un-compiled
     /// answers with its pinned degraded surface (empty inlay hints). Each
     /// takes the request's cancellation token and forwards it to the
-    /// worker sends (see Dispatcher::query).
+    /// worker sends (see Dispatcher::ast_request).
     RawResult hover(Ticket ticket,
                     const protocol::Position& position,
                     protocol::MarkupKind markup,
@@ -245,10 +245,10 @@ private:
         /// The ticket went stale while draining (didChange, close):
         /// answer ContentModified — the client re-requests against the
         /// new state.
-        Superseded,
+        Outdated,
         /// Serve from the index source the freshness contract admits.
         Index,
-        /// Fall through to the AST path (Dispatcher::query, which compiles
+        /// Fall through to the AST path (the dispatcher, which compiles
         /// as needed).
         Ast,
         /// No source can serve and none is being invested in (IndexOnly
@@ -302,7 +302,7 @@ private:
     /// index-served sessions resolve through clauses 1/4 without forcing
     /// the build. A Stop means answer with it instead: the compile failed,
     /// or the request was superseded.
-    kota::task<std::optional<Stop>> nav_gate(const Ticket& ticket);
+    kota::task<std::optional<Stop>> navigation_gate(const Ticket& ticket);
 
     /// Await the session's compile; a Stop when it failed or the request
     /// was superseded.
@@ -314,7 +314,7 @@ private:
     std::optional<Cursor> cursor_at(Fid path_id, const protocol::Position& position) const;
 
     /// A navigation request's answer from the symbol at its position,
-    /// `answer`'s, once the compile gate passed (nav_gate); `none` where no
+    /// `answer`'s, once the compile gate passed (navigation_gate); `none` where no
     /// symbol is.
     using Reply = std::expected<codec::RawValue, ipc::Error>;
     template <typename Answer>

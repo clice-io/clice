@@ -39,8 +39,6 @@ import :worker.protocol;
 
 namespace clice {
 
-using serde_raw = codec::RawValue;
-
 /// Error response when a call/type hierarchy item cannot be resolved back to
 /// an indexed symbol.
 static ipc::Error item_not_resolved(llvm::StringRef kind) {
@@ -66,7 +64,7 @@ kota::task<Requests::Route> Requests::pick_route(const Ticket& ticket,
                                                  std::optional<index::IndexSource>* source) {
     for(bool waited = false;;) {
         if(!ticket.fresh()) {
-            co_return Route::Superseded;
+            co_return Route::Outdated;
         }
         auto& session = *ticket.session;
         if(ast_answerable(session)) {
@@ -119,12 +117,12 @@ Requests::RawResult Requests::stop_reply(Stop stop) {
     if(stop.error) {
         co_await kota::fail(std::move(*stop.error));
     }
-    co_return serde_raw{"null"};
+    co_return codec::RawValue{"null"};
 }
 
-kota::task<std::optional<Requests::Stop>> Requests::nav_gate(const Ticket& ticket) {
+kota::task<std::optional<Requests::Stop>> Requests::navigation_gate(const Ticket& ticket) {
     switch(co_await pick_route(ticket, {})) {
-        case Route::Superseded: co_return Stop{content_modified()};
+        case Route::Outdated: co_return Stop{content_modified()};
         // The index sources resolve the cursor under clauses 1/4 — or
         // reject it, which the query layer answers as empty. Either way
         // no compile is owed.
@@ -168,13 +166,13 @@ Requests::RawResult Requests::navigate(const Ticket& ticket,
                                        llvm::StringRef none,
                                        Answer answer) {
     if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
+        if(auto stop = co_await navigation_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
     auto cursor = cursor_at(path_id, position);
     if(!cursor) {
-        co_return serde_raw{none.str()};
+        co_return codec::RawValue{none.str()};
     }
     auto reply = answer(*cursor);
     if(!reply) {
@@ -220,7 +218,7 @@ Requests::RawResult Requests::document_links(Ticket ticket, kota::cancellation_t
     auto& session = ticket.session;
 
     switch(co_await pick_route(ticket, {.await_cold_attempt = true})) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index: {
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
@@ -230,7 +228,7 @@ Requests::RawResult Requests::document_links(Ticket ticket, kota::cancellation_t
             co_return to_raw(
                 feature::to_protocol(links, session->positions(), encoding, project.file_table));
         }
-        case Route::Empty: co_return serde_raw{"[]"};
+        case Route::Empty: co_return codec::RawValue{"[]"};
         case Route::Ast: break;
     }
 
@@ -351,7 +349,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
                                          kota::cancellation_token token) {
     auto& session = ticket.session;
     if(session) {
-        if(auto stop = co_await nav_gate(ticket)) {
+        if(auto stop = co_await navigation_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -386,7 +384,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
 
     // A closed file has no worker leg: the index's answer is the answer.
     if(!session)
-        co_return serde_raw{"[]"};
+        co_return codec::RawValue{"[]"};
 
     // An index-only session never owes the compile the worker dispatch
     // implies, a session served under freshness clause 4 (escalated,
@@ -407,7 +405,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
                     std::vector{feature::directive_location(project.file_table, *link)});
             }
         }
-        co_return serde_raw{"[]"};
+        co_return codec::RawValue{"[]"};
     }
 
     // A symbol the shard names and no index places waits for the compile:
@@ -435,7 +433,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
             co_return to_raw(retry);
         }
     }
-    co_return serde_raw{"[]"};
+    co_return codec::RawValue{"[]"};
 }
 
 Requests::RawResult Requests::hover(Ticket ticket,
@@ -456,7 +454,7 @@ Requests::RawResult Requests::hover(Ticket ticket,
     bool on_directive =
         offset && feature::on_directive_line(session->text(), *offset, contexts.dialect(path_id));
     auto directive_card =
-        [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<serde_raw> {
+        [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<codec::RawValue> {
         auto* link = feature::link_at(links, *offset);
         if(!link) {
             return std::nullopt;
@@ -467,11 +465,11 @@ Requests::RawResult Requests::hover(Ticket ticket,
                                               *link,
                                               markup,
                                               encoding);
-        return hover ? to_raw(*hover) : serde_raw{"null"};
+        return hover ? to_raw(*hover) : codec::RawValue{"null"};
     };
 
     switch(co_await pick_route(ticket, {})) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index: {
             if(on_directive) {
                 if(auto shown =
@@ -482,7 +480,7 @@ Requests::RawResult Requests::hover(Ticket ticket,
             }
             auto info = index_hover_card(*session, position);
             if(!info) {
-                co_return serde_raw{"null"};
+                co_return codec::RawValue{"null"};
             }
             // Without the definition, the index card tells little past the
             // name (the entity the buffer's index recorded can be gone, as
@@ -495,7 +493,7 @@ Requests::RawResult Requests::hover(Ticket ticket,
             session->index_served = true;
             co_return card(*info);
         }
-        case Route::Empty: co_return serde_raw{"null"};
+        case Route::Empty: co_return codec::RawValue{"null"};
         case Route::Ast: break;
     }
 
@@ -533,7 +531,7 @@ Requests::RawResult Requests::hover(Ticket ticket,
             }
         }
     }
-    co_return serde_raw{"null"};
+    co_return codec::RawValue{"null"};
 }
 
 Requests::TokensResult Requests::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
@@ -541,7 +539,7 @@ Requests::TokensResult Requests::semantic_tokens(Ticket ticket, kota::cancellati
     std::optional<index::IndexSource> source;
     std::optional<std::vector<feature::SemanticToken>> tokens;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index: {
             session->index_served = true;
             tokens = feature::semantic_tokens(text_of(*session),
@@ -583,7 +581,7 @@ Requests::RawResult Requests::inlay_hints(Ticket ticket,
     // re-pull once real hints exist.
     if(session->serving == ServingMode::IndexOnly) {
         session->index_served = true;
-        co_return serde_raw{"[]"};
+        co_return codec::RawValue{"[]"};
     }
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
     if(!label_parts) {
@@ -607,7 +605,7 @@ Requests::RawResult Requests::folding_ranges(Ticket ticket,
 
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index: {
             auto folds = feature::folding_ranges(text_of(*session), query, *source);
             session->index_served = true;
@@ -619,13 +617,13 @@ Requests::RawResult Requests::folding_ranges(Ticket ticket,
             // refresh makes it re-pull once the cold document's
             // shard arrives.
             session->index_served = true;
-            co_return serde_raw{"[]"};
+            co_return codec::RawValue{"[]"};
         }
         case Route::Ast: break;
     }
     auto folds = co_await dispatcher.folding_ranges(ticket, std::move(token)).or_fail();
     if(!folds) {
-        co_return serde_raw{"null"};
+        co_return codec::RawValue{"null"};
     }
     co_return convert(*folds);
 }
@@ -644,7 +642,7 @@ Requests::RawResult Requests::document_symbols(Ticket ticket,
     };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index: {
             auto symbols = feature::document_symbols(text_of(*session),
                                                      query,
@@ -653,12 +651,12 @@ Requests::RawResult Requests::document_symbols(Ticket ticket,
             session->index_served = true;
             co_return convert(symbols);
         }
-        case Route::Empty: co_return serde_raw{"[]"};
+        case Route::Empty: co_return codec::RawValue{"[]"};
         case Route::Ast: break;
     }
     auto symbols = co_await dispatcher.document_symbols(ticket, std::move(token)).or_fail();
     if(!symbols) {
-        co_return serde_raw{"null"};
+        co_return codec::RawValue{"null"};
     }
     co_return convert(*symbols);
 }
@@ -693,7 +691,7 @@ Requests::RawResult Requests::selection_ranges(Ticket ticket,
     };
 
     switch(co_await pick_route(ticket, {})) {
-        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await kota::fail(content_modified());
         case Route::Index:
         case Route::Empty: co_return lexical();
         case Route::Ast: break;
@@ -770,7 +768,7 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
         .scope = scope,
     });
     if(std::holds_alternative<feature::NoCompletion>(start)) {
-        co_return serde_raw{"[]"};
+        co_return codec::RawValue{"[]"};
     }
     if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
         co_return to_raw(*list);
@@ -808,7 +806,7 @@ Requests::RawResult Requests::signature_help(std::shared_ptr<Session> session,
     if(auto offset = session->positions().offset(position, encoding);
        offset &&
        !feature::can_hold_call(session->text(), *offset, contexts.dialect(session->path_id))) {
-        return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
+        return kota::co_invoke([]() -> RawResult { co_return codec::RawValue{"null"}; });
     }
     ast.escalate(*session);
     return kota::co_invoke([this,
@@ -831,7 +829,7 @@ Requests::RawResult Requests::formatting(std::shared_ptr<Session> session,
                             token = std::move(token)]() -> RawResult {
         auto result = co_await dispatcher.format(ticket, range, token).or_fail();
         if(!result) {
-            co_return serde_raw{"null"};
+            co_return codec::RawValue{"null"};
         }
         if(!result->error.empty()) {
             co_await kota::fail(request_failed(std::move(result->error)));
@@ -907,7 +905,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     if(ticket.session) {
-        if(auto stop = co_await nav_gate(ticket)) {
+        if(auto stop = co_await navigation_gate(ticket)) {
             if(stop->error) {
                 co_await kota::fail(std::move(*stop->error));
             }
@@ -1043,7 +1041,7 @@ Requests::RawResult Requests::call_hierarchy_prepare(Ticket ticket,
         [&](const Cursor& cursor) -> Reply {
             auto items = feature::call_hierarchy_items(peer_queries(), cursor, encoding);
             if(items.empty()) {
-                return serde_raw{"null"};
+                return codec::RawValue{"null"};
             }
             return to_raw(items);
         });
@@ -1082,7 +1080,7 @@ Requests::RawResult Requests::type_hierarchy_prepare(Ticket ticket,
         [&](const Cursor& cursor) -> Reply {
             auto items = feature::type_hierarchy_items(peer_queries(), cursor, encoding);
             if(items.empty()) {
-                return serde_raw{"null"};
+                return codec::RawValue{"null"};
             }
             return to_raw(items);
         });

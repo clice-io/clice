@@ -133,11 +133,11 @@ private:
     /// cancelled: it serves every waiter, not this request.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-        typed(const Ticket& ticket,
-              EvidenceKind kind,
-              llvm::StringRef label,
-              Params params,
-              kota::cancellation_token token);
+        ast_request(const Ticket& ticket,
+                    EvidenceKind kind,
+                    llvm::StringRef label,
+                    Params params,
+                    kota::cancellation_token token);
 
     /// Shared body of the interactive builds: identical inputs and
     /// quarantine passage, different IPC type, evidence slot and label.

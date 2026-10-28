@@ -24,8 +24,6 @@ import :worker.protocol;
 
 namespace clice {
 
-using serde_raw = codec::RawValue;
-
 ipc::Error content_modified() {
     return ipc::Error{content_modified_code, "Document changed while the request was in flight"};
 }
@@ -35,8 +33,8 @@ namespace {
 /// What a request answers when the workers could not serve it.
 template <typename Value>
 Value empty_value() {
-    if constexpr(std::is_same_v<Value, serde_raw>) {
-        return serde_raw{"null"};
+    if constexpr(std::is_same_v<Value, codec::RawValue>) {
+        return codec::RawValue{"null"};
     } else {
         return Value{};
     }
@@ -148,11 +146,11 @@ Outcome Dispatcher::finish(const Ticket& ticket,
 
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    Dispatcher::typed(const Ticket& ticket,
-                      EvidenceKind kind,
-                      llvm::StringRef label,
-                      Params params,
-                      kota::cancellation_token token) {
+    Dispatcher::ast_request(const Ticket& ticket,
+                            EvidenceKind kind,
+                            llvm::StringRef label,
+                            Params params,
+                            kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -200,11 +198,11 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
                       kota::cancellation_token token) {
     auto offset = ticket.session->positions().offset_clamped(position, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::Hover,
-                             "Hover",
-                             worker::HoverParams{std::move(path), offset, project.config},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::Hover,
+                                   "Hover",
+                                   worker::HoverParams{std::move(path), offset, project.config},
+                                   std::move(token));
 }
 
 kota::task<std::vector<feature::InlayHint>, ipc::Error>
@@ -215,51 +213,52 @@ kota::task<std::vector<feature::InlayHint>, ipc::Error>
     // moves before the reply arrives turns the reply into ContentModified.
     auto offsets = ticket.session->positions().offset_range(range, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::InlayHint,
-                             "InlayHint",
-                             worker::InlayHintParams{std::move(path), offsets, project.config},
-                             std::move(token));
+    co_return co_await ast_request(
+        ticket,
+        EvidenceKind::InlayHint,
+        "InlayHint",
+        worker::InlayHintParams{std::move(path), offsets, project.config},
+        std::move(token));
 }
 
 kota::task<std::vector<index::DocumentLink>, ipc::Error>
     Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::DocumentLink,
-                             "DocumentLink",
-                             worker::DocumentLinkParams{std::move(path)},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::DocumentLink,
+                                   "DocumentLink",
+                                   worker::DocumentLinkParams{std::move(path)},
+                                   std::move(token));
 }
 
 kota::task<std::optional<std::vector<feature::FoldingRange>>, ipc::Error>
     Dispatcher::folding_ranges(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::FoldingRange,
-                             "FoldingRange",
-                             worker::FoldingRangeParams{std::move(path)},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::FoldingRange,
+                                   "FoldingRange",
+                                   worker::FoldingRangeParams{std::move(path)},
+                                   std::move(token));
 }
 
 kota::task<std::optional<std::vector<feature::DocumentSymbol>>, ipc::Error>
     Dispatcher::document_symbols(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::DocumentSymbol,
-                             "DocumentSymbol",
-                             worker::DocumentSymbolParams{std::move(path), project.config},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::DocumentSymbol,
+                                   "DocumentSymbol",
+                                   worker::DocumentSymbolParams{std::move(path), project.config},
+                                   std::move(token));
 }
 
 kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>
     Dispatcher::semantic_tokens(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::SemanticTokens,
-                             "SemanticTokens",
-                             worker::SemanticTokensParams{std::move(path), project.config},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::SemanticTokens,
+                                   "SemanticTokens",
+                                   worker::SemanticTokensParams{std::move(path), project.config},
+                                   std::move(token));
 }
 
 kota::task<std::vector<std::vector<LocalSourceRange>>, ipc::Error>
@@ -267,11 +266,12 @@ kota::task<std::vector<std::vector<LocalSourceRange>>, ipc::Error>
                                  std::vector<std::uint32_t> offsets,
                                  kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::SelectionRange,
-                             "SelectionRange",
-                             worker::SelectionRangeParams{std::move(path), std::move(offsets)},
-                             std::move(token));
+    co_return co_await ast_request(
+        ticket,
+        EvidenceKind::SelectionRange,
+        "SelectionRange",
+        worker::SelectionRangeParams{std::move(path), std::move(offsets)},
+        std::move(token));
 }
 
 kota::task<std::vector<feature::CodeAction>, ipc::Error>
@@ -282,11 +282,11 @@ kota::task<std::vector<feature::CodeAction>, ipc::Error>
     // moves before the reply arrives turns the reply into ContentModified.
     auto selection = ticket.session->positions().offset_range(range, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await typed(ticket,
-                             EvidenceKind::CodeAction,
-                             "CodeAction",
-                             worker::CodeActionParams{std::move(path), selection},
-                             std::move(token));
+    co_return co_await ast_request(ticket,
+                                   EvidenceKind::CodeAction,
+                                   "CodeAction",
+                                   worker::CodeActionParams{std::move(path), selection},
+                                   std::move(token));
 }
 
 template <typename Params>
