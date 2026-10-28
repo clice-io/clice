@@ -823,12 +823,14 @@ describe("round", () => {
                         memory,
                         row("open", "120", "100", 1.2),
                         row("open_edit", "40", "20", 2, 30, "clice first"),
+                        row("switch_edit", "30", "20", 1.5, 30, "clice first"),
                     ],
                     [memoryRun("clice", 520), memoryRun("baseline", 4)],
                 ),
                 perf("macos", [
                     row("open", "130", "100", 1.3),
                     row("open_edit", "36", "20", 1.8, 30, "clice first"),
+                    row("switch_edit", "28", "20", 1.4, 30, "both"),
                     row("settle s", "-7.0", "20", 1.6, 1, "clice first"),
                 ]),
             ],
@@ -836,7 +838,11 @@ describe("round", () => {
             perfBefore: new Map([
                 [
                     "perf-q-sessions-linux",
-                    perf("linux", [{ ...memory, order: "baseline first" }]).perf,
+                    perf("linux", [
+                        { ...memory, order: "baseline first" },
+                        row("open_edit", "40", "20", 2, 30, "clice first"),
+                        row("switch_edit", "30", "20", 1.5, 30, "clice first"),
+                    ]).perf,
                 ],
             ]),
         });
@@ -853,13 +859,16 @@ describe("round", () => {
                     "SL-0 520 vs 4 MB",
                 ],
             ],
+            ["linux", "switch_edit", ["every platform"]],
+            ["macos", "switch_edit", ["every platform"]],
             ["macos", "open", ["every platform"]],
             ["linux", "open", ["every platform"]],
         ]);
-        // open_edit ran with clice first on both platforms, the settle once.
+        // open_edit ran with clice first on both platforms and both nights,
+        // the settle once.
         expect(data.unconfirmed).toBe(3);
         expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
-        expect(text).toContain("## Perf slower than the baseline, confirmed (3), by ratio");
+        expect(text).toContain("## Perf slower than the baseline, confirmed (5), by ratio");
         expect(text).toContain("3 more that nothing confirms are in the jobs' reports.");
         expect(text).toContain(
             "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",

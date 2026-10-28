@@ -271,6 +271,9 @@ export function slower(result: PerfResults): Omit<Slower, "repro">[] {
                         continue;
                     }
                     const samples = pairsOf(result.runs, name, measure, of, to);
+                    if (samples.length === 0) {
+                        continue;
+                    }
                     const slowerIn = samples.filter((each) => each.of > each.to).length;
                     if (
                         samples.length < SAMPLES

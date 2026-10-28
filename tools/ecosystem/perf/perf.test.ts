@@ -288,6 +288,26 @@ test("with three pairs or more, slower past 1.2× in so many pairs that chance i
     expect(edits([13, 13, 13, 13, 13, 13, 13, 9, 9, 9], ten)).toEqual([]);
 });
 
+test("runs that failed on either side pair with nothing", () => {
+    const start = (server: RunResult["server"], round: number, error?: string) =>
+        run(
+            server,
+            "coldStart",
+            { initialize: [server === "clice" ? 200 : 100] },
+            { run: round, ...(error === undefined ? {} : { error }) },
+        );
+    expect(
+        slower(
+            results([
+                start("clice", 1),
+                start("baseline", 1, "crashed"),
+                start("clice", 2, "crashed"),
+                start("baseline", 2),
+            ]),
+        ),
+    ).toEqual([]);
+});
+
 test("the pairs say which server ran first, and the order swaps run by run", () => {
     const start = (server: RunResult["server"], ms: number, round: number) =>
         run(server, "coldStart", { initialize: [ms] }, { run: round });

@@ -301,8 +301,9 @@ function perfRows(
                 );
             const on = platforms.filter((other) => same(other.perf) !== undefined);
             const night = same(before.get(job.artifact));
+            const byNight = night !== undefined && covers(row, night);
             const confirmed =
-                (night !== undefined && covers(row, night)) ||
+                byNight ||
                 platforms.some((other) => {
                     const theirs = same(other.perf);
                     return other !== job && theirs !== undefined && covers(row, theirs);
@@ -326,7 +327,7 @@ function perfRows(
             } else if (row.clicePerBaseline >= EXTREME) {
                 flags.push(`≥${String(EXTREME)}×: likely different work on the two sides`);
             }
-            if (night !== undefined) {
+            if (byNight) {
                 flags.push("the night before too");
             }
             if (row.samples < SAMPLES) {
