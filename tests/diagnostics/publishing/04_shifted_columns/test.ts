@@ -22,17 +22,21 @@ for (const positionEncoding of ENCODINGS) {
     const name = positionEncoding ?? "utf-16";
     const options = positionEncoding ? { positionEncoding } : {};
 
-    // The edit lands while the first compile runs: that compile's push
-    // still names its own version and places the error in its own text.
+    // A crash completing code republishes what the file shows, after an
+    // edit no compile has caught up with: the push names the version it
+    // compiled and places the error in that text. A first crash after an
+    // unsaved edit stays silent, so the edit is saved.
     test(`push ${name}`, async (t) => {
-        const s = await t.start({ config: QUIET, ...options });
-        const park = await s.park("compile", "main.cpp", { at: "worker" });
+        const s = await t.start({
+            config: QUIET,
+            crash: { request: "completion", file: "main.cpp" },
+            ...options,
+        });
         s.open("main.cpp");
-        await park.reached();
-        s.edit("main.cpp", EDIT);
-        await park.release();
         await s.pushes("main.cpp");
-        await s.hover(t.at("main.cpp", "int total = val|ue;"));
+        s.edit("main.cpp", EDIT);
+        s.save("main.cpp");
+        await s.completion(t.at("main.cpp", "int total = val|ue;"));
         await s.pushes("main.cpp");
         const uri = s.client.normalizeUri(s.uri("main.cpp"));
         await t.show(
