@@ -219,7 +219,7 @@ struct WorkerPoolFixture {
                     if(attempt < codes.size()) {
                         co_return kota::outcome_error(protocol::Error{codes[attempt], "scripted"});
                     }
-                    co_return codec::RawValue{"null"};
+                    co_return std::nullopt;
                 },
                 [&](const ipc::Error&) { delivery.blames += 1; });
             delivery.answered = result.has_value();
