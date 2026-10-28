@@ -1,0 +1,52 @@
+{
+  "id": "code_completion/filtering/02_deprecated_tag",
+  "topic": "code_completion",
+  "subtopic": "filtering",
+  "title": "Deprecated tagging",
+  "summary": "A `[[deprecated]]` candidate is marked deprecated and ranks after its plain sibling",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "[[deprecated]] int legacy_thing(int x);\nint modern_thing(int x);\n\nint z = thing;\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 79,
+          "end": 79,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "modern_thing(int x)",
+                  "kind": "Function",
+                  "detail": "int"
+                },
+                {
+                  "label": "legacy_thing(int x)",
+                  "kind": "Function",
+                  "detail": "int",
+                  "deprecated": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

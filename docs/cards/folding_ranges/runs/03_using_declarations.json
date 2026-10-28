@@ -1,0 +1,312 @@
+{
+  "id": "folding_ranges/runs/03_using_declarations",
+  "topic": "folding_ranges",
+  "subtopic": "runs",
+  "title": "`using` declaration runs",
+  "summary": "Consecutive using declarations and directives fold below the first one",
+  "prose": "A blank line or any other line ends the run, and alias declarations do not\njoin one, nor does a declaration sharing its line with other code. Using\ndeclarations produced by macros fold at the invocations.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace lib {\nstruct vector {};\nstruct string {};\nstruct map {};\nenum class color { red, green };\n}  // namespace lib\n\nusing lib::vector;\nusing lib::string;\nusing lib::map;\n\nusing namespace lib;\nusing enum color;\n\nusing alias = lib::vector;\nusing other = lib::string;\n\nvoid scoped() {\n    using lib::vector;\n    using lib::string;\n}\n\nstruct Base {\n    void f();\n    void g();\n};\n\nstruct Derived : Base {\n    using Base::f;\n    using Base::g;\n};\n\ntemplate <typename T>\nstruct Forwarding : T {\n    using T::f;\n    using typename T::type;\n};\n\nnamespace same_line {\nusing lib::vector; using lib::string;\nusing lib::map;\n}  // namespace same_line\n\nnamespace closing {\nusing lib::vector;\nusing lib::string; }\n\n#define USE(name) using lib::name;\n\nnamespace macros {\nUSE(vector)\nUSE(string)\n}  // namespace macros\n\n#define USE_TWO(first, second) using lib::first; using lib::second;\n\nnamespace pairs {\nUSE_TWO(vector, string)\nUSE_TWO(map, vector)\nUSE_TWO(string, map)\n}  // namespace pairs\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace lib ⟦{ … }⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "using lib::vector;⟦ … using lib::map;⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "using namespace lib;⟦ … using enum color;⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 17
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "void scoped() ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "using lib::vector;⟦ … using lib::string;⟧ (2 lines) @19",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Base ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Derived : Base ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "using Base::f;⟦ … using Base::g;⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 18
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Forwarding : T ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "using T::f;⟦ … using typename T::type;⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 34,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 35,
+                      "character": 27
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace same_line ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 41,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace closing ⟦{ … using lib::string; }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 43,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 45,
+                      "character": 20
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace macros ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 49,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 52,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "USE(vector)⟦ … USE(string)⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 50,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 51,
+                      "character": 11
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace pairs ⟦{ … }⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 56,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 60,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "usingDeclaration",
+                "at": {
+                  "$place": "USE_TWO(vector, string)⟦ … USE_TWO(string, map)⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 57,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 59,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

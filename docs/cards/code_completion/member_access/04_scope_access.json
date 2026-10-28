@@ -1,0 +1,73 @@
+{
+  "id": "code_completion/member_access/04_scope_access",
+  "topic": "code_completion",
+  "subtopic": "member_access",
+  "title": "Scope-qualified members",
+  "summary": "After `Class::` static data, nested types, methods and the injected class name all list",
+  "prose": "Qualified completion is not filtered to what a static context can use: instance fields and the destructor show up alongside the static members and nested types.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Config {\n    static int shared_count;\n    static int make(int seed);\n\n    struct Nested {\n        int a;\n    };\n\n    int instance_field;\n};\n\nvoid bar() {\n    int v = Config::;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "instance_field",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "make(int seed)",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "shared_count",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "Config",
+                  "kind": "Class"
+                },
+                {
+                  "label": "Nested",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator=(…) +1 overload",
+                  "kind": "Method"
+                },
+                {
+                  "label": "~Config()",
+                  "kind": "Method",
+                  "detail": "void"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

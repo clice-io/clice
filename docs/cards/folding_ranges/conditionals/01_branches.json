@@ -1,0 +1,136 @@
+{
+  "id": "folding_ranges/conditionals/01_branches",
+  "topic": "folding_ranges",
+  "subtopic": "conditionals",
+  "title": "Preprocessor conditionals",
+  "summary": "Each branch of a conditional forms a folding range up to the directive that ends it, which stays visible",
+  "prose": "A branch that would cut across a block or a section, such as the\n`#ifdef __cplusplus` around `extern \"C\" {` in a C header, gives way to it, so\nthe folds always nest.",
+  "status": "supported",
+  "issues": [
+    "clangd#1661",
+    "clangd#2059"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#ifdef ENABLE_LOGGING\nvoid log_message();\nvoid log_flush();\n#endif\n\n#ifdef USE_THREADS\nvoid spawn_workers();\n#else\nvoid run_inline();\n#endif\n\n#ifdef USE_EPOLL\nvoid poll_epoll();\n#elifdef USE_KQUEUE\nvoid poll_kqueue();\n#else\nvoid poll_select();\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef ENABLE_LOGGING⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef USE_THREADS⟦ … ⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#else⟦ … ⟧ (3 lines) @8",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef USE_EPOLL⟦ … ⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#elifdef USE_KQUEUE⟦ … ⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#else⟦ … ⟧ (3 lines) @16",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

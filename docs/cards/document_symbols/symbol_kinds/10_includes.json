@@ -1,0 +1,94 @@
+{
+  "id": "document_symbols/symbol_kinds/10_includes",
+  "topic": "document_symbols",
+  "subtopic": "symbol_kinds",
+  "title": "Include directives",
+  "summary": "`#include` directives do not list in the outline; their document links lead to the files they name",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "config.h",
+      "text": "#pragma once\n\nint config_value();\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n\nint uses_config();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "uses_config",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦uses_config⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 15
+                    }
+                  }
+                },
+                "detail": "int ()"
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "uses_config",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦uses_config⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 15
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦int uses_config()⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 17
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

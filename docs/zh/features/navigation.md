@@ -1400,7 +1400,7 @@ tests/navigation/type_hierarchy/09_dependent_bases
 
 文件中该符号名称的所有出现位置都会高亮显示，宏也不例外。
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/symbols -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/symbols -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1409,7 +1409,7 @@ tests/navigation/type_hierarchy/09_dependent_bases
 文件中光标所在符号的名称会在所有出现位置高亮显示，包括声明和定义处
 
 ```case
-tests/document_highlight/symbols/01_declarations_and_uses
+tests/document_highlights/symbols/01_declarations_and_uses
 ```
 
 <!-- END CAPABILITY -->
@@ -1423,7 +1423,7 @@ tests/document_highlight/symbols/01_declarations_and_uses
 宏参数中写出的名称会在其书写位置高亮显示；来自宏替换文本的名称则会高亮显示整个宏调用。在另一个宏的替换文本中使用的宏，会在该处作为普通文本出现而高亮显示，但不会在另一个宏的调用处高亮显示。
 
 ```case
-tests/document_highlight/symbols/03_macros
+tests/document_highlights/symbols/03_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -1435,7 +1435,7 @@ tests/document_highlight/symbols/03_macros
 尚不会高亮显示 `break` 或 `continue` 所离开的循环
 
 ```case
-tests/document_highlight/symbols/08_control_flow
+tests/document_highlights/symbols/08_control_flow
 ```
 
 <!-- END CAPABILITY -->
@@ -1446,7 +1446,7 @@ tests/document_highlight/symbols/08_control_flow
 
 每处高亮都会标明该处代码是在读取还是写入符号。
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/access_kinds -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/access_kinds -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1455,7 +1455,7 @@ tests/document_highlight/symbols/08_control_flow
 变量的每次使用都会高亮显示，赋值标记为写入，其他使用标记为读取
 
 ```case
-tests/document_highlight/access_kinds/01_reads_and_writes
+tests/document_highlights/access_kinds/01_reads_and_writes
 ```
 
 <!-- END CAPABILITY -->
@@ -1467,7 +1467,7 @@ tests/document_highlight/access_kinds/01_reads_and_writes
 绑定到非 const 引用形参的实参被视为写入，而绑定到 const 引用、复制或取地址则被视为读取
 
 ```case
-tests/document_highlight/access_kinds/03_reference_arguments
+tests/document_highlights/access_kinds/03_reference_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1481,7 +1481,7 @@ tests/document_highlight/access_kinds/03_reference_arguments
 指定初始化器（designated initializer）或构造函数的成员初始化器会引用字段名称，但不算作写入。匿名联合体的字段与其他字段一样高亮显示。
 
 ```case
-tests/document_highlight/access_kinds/06_member_access
+tests/document_highlights/access_kinds/06_member_access
 ```
 
 <!-- END CAPABILITY -->
@@ -1492,7 +1492,7 @@ tests/document_highlight/access_kinds/06_member_access
 
 高亮显示适用于模块单元以及模块导出的名称。
 
-<!-- BEGIN GENERATED ITEMS: document_highlight/modules -->
+<!-- BEGIN GENERATED ITEMS: document_highlights/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1501,7 +1501,7 @@ tests/document_highlight/access_kinds/06_member_access
 模块单元和从模块导入的名称均支持高亮显示，也包括模块名称
 
 ```case
-tests/document_highlight/modules/01_module_units
+tests/document_highlights/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1516,7 +1516,7 @@ tests/document_highlight/modules/01_module_units
 
 查询根据名称中的单词进行匹配，并通过查询语法缩小搜索范围。
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/queries -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/queries -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1525,7 +1525,7 @@ tests/document_highlight/modules/01_module_units
 查询会找到名称匹配的符号，并为成员显示其所属容器
 
 ```case
-tests/workspace_symbol/queries/01_name_search
+tests/workspace_symbols/queries/01_name_search
 ```
 
 <!-- END CAPABILITY -->
@@ -1539,7 +1539,7 @@ tests/workspace_symbol/queries/01_name_search
 `LinLis` 能找到 `LinkedList`，`pconf` 能找到 `parse_config`：查询中除首字母外的每个字母，要么紧接上一个匹配位置，要么位于名称中某个单词的开头，因此 `pcfg` 找不到任何结果，因为其中的 `f` 位于 `config` 中间。
 
 ```case
-tests/workspace_symbol/queries/03_fuzzy_matching
+tests/workspace_symbols/queries/03_fuzzy_matching
 ```
 
 <!-- END CAPABILITY -->
@@ -1553,7 +1553,7 @@ tests/workspace_symbol/queries/03_fuzzy_matching
 `"process"` 只匹配完整的名称，`proc*` 则匹配它通配到的一切；`io::*` 列出一个命名空间的成员，`io::**` 列出它的整棵子树；`kind:function` 只保留一种种类。各词项之间以空格分隔，可以组合使用。
 
 ```case
-tests/workspace_symbol/queries/04_query_syntax
+tests/workspace_symbols/queries/04_query_syntax
 ```
 
 <!-- END CAPABILITY -->
@@ -1565,7 +1565,7 @@ tests/workspace_symbol/queries/04_query_syntax
 尚无法通过修饰后的链接器名称找到源代码中对应的函数
 
 ```case
-tests/workspace_symbol/queries/05_mangled_names
+tests/workspace_symbols/queries/05_mangled_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1576,7 +1576,7 @@ tests/workspace_symbol/queries/05_mangled_names
 
 限定查询指定符号必须位于哪些作用域中。
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/scopes -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/scopes -->
 
 <!-- BEGIN CAPABILITY: supported clangd#550 -->
 
@@ -1587,7 +1587,7 @@ tests/workspace_symbol/queries/05_mangled_names
 `net::Socket` 能找到 `deep::net::Socket`：这些限定符必须按同样的顺序出现在符号的容器链中，其间和两端允许有别的容器；而以 `::` 开头则要求容器链与之完全一致。对限定查询的回复会写出限定名称，这样那些按查询文本过滤结果的编辑器就不会把它们滤掉。
 
 ```case
-tests/workspace_symbol/scopes/01_qualified_names
+tests/workspace_symbols/scopes/01_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1599,7 +1599,7 @@ tests/workspace_symbol/scopes/01_qualified_names
 枚举和其他容器一样，为自己的枚举项提供限定
 
 ```case
-tests/workspace_symbol/scopes/02_enumerators
+tests/workspace_symbols/scopes/02_enumerators
 ```
 
 <!-- END CAPABILITY -->
@@ -1610,7 +1610,7 @@ tests/workspace_symbol/scopes/02_enumerators
 
 名称完全匹配的结果排在首位。
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/ranking -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/ranking -->
 
 <!-- BEGIN CAPABILITY: supported clangd#2253 -->
 
@@ -1621,7 +1621,7 @@ tests/workspace_symbol/scopes/02_enumerators
 `Connection` 会先列出别名，随后才是 `ConnectionImpl`。
 
 ```case
-tests/workspace_symbol/ranking/01_exact_name
+tests/workspace_symbols/ranking/01_exact_name
 ```
 
 <!-- END CAPABILITY -->
@@ -1632,7 +1632,7 @@ tests/workspace_symbol/ranking/01_exact_name
 
 每个结果都会显示符号及其所属容器的名称。
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/results -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/results -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1344 -->
 
@@ -1643,7 +1643,7 @@ tests/workspace_symbol/ranking/01_exact_name
 查询重载名称会找到所有重载，每个条目都带有其参数：两个 `process` 结果一眼就能区分。
 
 ```case
-tests/workspace_symbol/results/01_overloads
+tests/workspace_symbols/results/01_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -1657,7 +1657,7 @@ tests/workspace_symbol/results/01_overloads
 `static` 变量或匿名命名空间的成员只有它所在的文件才知道，但它仍是项目声明的名称：搜索会列出它，每个声明了它的文件各列一次。局部变量则不会列出。
 
 ```case
-tests/workspace_symbol/results/06_internal_names
+tests/workspace_symbols/results/06_internal_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1668,7 +1668,7 @@ tests/workspace_symbol/results/06_internal_names
 
 搜索范围涵盖项目中的所有文件，无论它们是否已在编辑器中打开。
 
-<!-- BEGIN GENERATED ITEMS: workspace_symbol/projects -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbols/projects -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1679,7 +1679,7 @@ tests/workspace_symbol/results/06_internal_names
 查询会找到 `other.cpp` 中的一个函数。此时 `main.cpp` 已打开，`other.cpp` 仍未打开，结果由后台索引提供。
 
 ```case
-tests/workspace_symbol/projects/01_closed_files
+tests/workspace_symbols/projects/01_closed_files
 ```
 
 <!-- END CAPABILITY -->
@@ -1693,7 +1693,7 @@ tests/workspace_symbol/projects/01_closed_files
 把同一仓库的两个 worktree 作为工作区文件夹打开时，它们的文件文本相同，相同的符号也位于相同的位置。搜索只列出每个符号一次，取自有已打开文档的那个文件夹中的副本：也就是编辑器正在工作的那一个。某个文件夹中的文件内容若有不同，其中的符号就是这个文件夹自己的，同样会列出。
 
 ```case
-tests/workspace_symbol/projects/03_worktree_copies
+tests/workspace_symbols/projects/03_worktree_copies
 ```
 
 <!-- END CAPABILITY -->

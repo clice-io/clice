@@ -1,0 +1,71 @@
+{
+  "id": "code_completion/templates/15_concept_requirements",
+  "topic": "code_completion",
+  "subtopic": "templates",
+  "title": "Concept requirements",
+  "summary": "Inside a constrained template, the members the concept requires complete after a dot",
+  "prose": "A member the concept calls completes as a method with the types of the arguments it is called with; after `T::` the nested types it names complete too.",
+  "status": "supported",
+  "issues": [
+    "clangd#1103"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nconcept Shape = requires(T t) {\n    typename T::unit;\n    t.draw();\n    t.resize(int{}, int{});\n};\n\ntemplate <Shape T>\nvoid render(T& widget) {\n    widget.;\n}\n\ntemplate <Shape T>\nvoid measure() {\n    T::;\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 177,
+          "end": 177,
+          "range": false
+        },
+        {
+          "name": "nested",
+          "begin": 225,
+          "end": 225,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "draw()",
+                  "kind": "Method"
+                },
+                {
+                  "label": "resize(int, int)",
+                  "kind": "Method"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "nested",
+          "marker": "nested",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "unit",
+                  "kind": "TypeParameter"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

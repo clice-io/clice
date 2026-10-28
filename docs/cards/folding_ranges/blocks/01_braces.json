@@ -1,0 +1,103 @@
+{
+  "id": "folding_ranges/blocks/01_braces",
+  "topic": "folding_ranges",
+  "subtopic": "blocks",
+  "title": "Brace blocks",
+  "summary": "Namespaces, types, functions and lambdas fold at their braces",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace store {\n\nstruct Item {\n    int id;\n    int count;\n};\n\nint total(const Item& item) {\n    auto twice = [](int value) {\n        return value * 2;\n    };\n    return twice(item.count);\n}\n\n}  // namespace store\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "namespace store ⟦{ … }⟧ (15 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Item ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "int total(const Item& item) ⟦{ … }⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "compoundStmt",
+                "at": {
+                  "$place": "auto twice = [](int value) ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 31
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

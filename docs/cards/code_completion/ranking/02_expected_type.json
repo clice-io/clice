@@ -1,0 +1,113 @@
+{
+  "id": "code_completion/ranking/02_expected_type",
+  "topic": "code_completion",
+  "subtopic": "ranking",
+  "title": "Expected type first",
+  "summary": "A name of the type the code expects ranks above the others its prefix matches",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum Color { red, greenish };\n\nint green_level = 0;\ndouble green_ratio = 0.5;\n\nstruct Swatch {\n    int tone_index;\n    Color tone;\n};\n\nvoid paint(Swatch swatch) {\n    Color fill = gr;\n    double share = gree;\n    int pick = swatch.to;\n}\n",
+      "markers": [
+        {
+          "name": "enumeration",
+          "begin": 182,
+          "end": 182,
+          "range": false
+        },
+        {
+          "name": "arithmetic",
+          "begin": 207,
+          "end": 207,
+          "range": false
+        },
+        {
+          "name": "member",
+          "begin": 233,
+          "end": 233,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "enumeration",
+          "marker": "enumeration",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "greenish",
+                  "kind": "EnumMember",
+                  "detail": "Color"
+                },
+                {
+                  "label": "green_level",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "green_ratio",
+                  "kind": "Variable",
+                  "detail": "double"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "arithmetic",
+          "marker": "arithmetic",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "green_ratio",
+                  "kind": "Variable",
+                  "detail": "double"
+                },
+                {
+                  "label": "green_level",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "greenish",
+                  "kind": "EnumMember",
+                  "detail": "Color"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "tone_index",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "tone",
+                  "kind": "Field",
+                  "detail": "Color"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "id": "code_completion/filtering/06_inside_a_word",
+  "topic": "code_completion",
+  "subtopic": "filtering",
+  "title": "Completion inside a word",
+  "summary": "Completing in the middle of a word offers both ranges: the editor either inserts before the rest of the word or replaces the whole word",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int balance = 0;\n\nvoid bar() {\n    int v = balance;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 46,
+          "end": 46,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "balance",
+                  "kind": "Variable",
+                  "detail": "int",
+                  "replace": {
+                    "$place": "int v = ⟦balance⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 12
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 19
+                      }
+                    }
+                  },
+                  "insert_range": {
+                    "$place": "int v = ⟦bal⟧ance;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 12
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 15
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

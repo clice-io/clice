@@ -3,7 +3,7 @@
 为正在输入的内容提供候选项：名称、成员、调用、头文件和模块。
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests/completion/. Do not edit the regions between the
+     in tests/code_completion/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -11,7 +11,7 @@
 
 输入时会补全当前作用域内的名称，使用 `ns::` 等限定符则会列出对应作用域中声明的内容。
 
-<!-- BEGIN GENERATED ITEMS: completion/symbols -->
+<!-- BEGIN GENERATED ITEMS: code_completion/symbols -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -20,7 +20,7 @@
 保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项
 
 ```case
-tests/completion/symbols/01_unqualified_lookup
+tests/code_completion/symbols/01_unqualified_lookup
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests/completion/symbols/01_unqualified_lookup
 带有构造函数和推导指引（deduction guide）的类模板仍只显示为一个补全项
 
 ```case
-tests/completion/symbols/02_class_templates
+tests/code_completion/symbols/02_class_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests/completion/symbols/02_class_templates
 其实参的插入方式与函数相同，由 `code_completion.arguments` 控制。
 
 ```case
-tests/completion/symbols/05_macros
+tests/code_completion/symbols/05_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -58,7 +58,7 @@ tests/completion/symbols/05_macros
 `ns::` 列出该命名空间自身的成员
 
 ```case
-tests/completion/symbols/07_namespace_members
+tests/code_completion/symbols/07_namespace_members
 ```
 
 <!-- END CAPABILITY -->
@@ -70,7 +70,7 @@ tests/completion/symbols/07_namespace_members
 有作用域枚举通过 `Type::` 列出枚举项，无作用域枚举的枚举项则通过其未限定名称补全
 
 ```case
-tests/completion/symbols/08_enum_members
+tests/code_completion/symbols/08_enum_members
 ```
 
 <!-- END CAPABILITY -->
@@ -82,7 +82,7 @@ tests/completion/symbols/08_enum_members
 无法通过未限定名称查找到的枚举项，会按其未限定名称匹配，并在补全时加上所需的限定符
 
 ```case
-tests/completion/symbols/11_required_qualifier
+tests/code_completion/symbols/11_required_qualifier
 ```
 
 <!-- END CAPABILITY -->
@@ -94,7 +94,7 @@ tests/completion/symbols/11_required_qualifier
 补全项显示其所指实体的文档注释；模板实例化中的成员显示模板为它编写的注释
 
 ```case
-tests/completion/symbols/13_documentation
+tests/code_completion/symbols/13_documentation
 ```
 
 <!-- END CAPABILITY -->
@@ -105,7 +105,7 @@ tests/completion/symbols/13_documentation
 
 其他命名空间中声明的名称同样会补全，并带上访问它所需的限定符；若当前文件尚未包含或导入声明它的头文件或模块，补全时还会加上所需的 `#include` 或 `import`。
 
-<!-- BEGIN GENERATED ITEMS: completion/scopes -->
+<!-- BEGIN GENERATED ITEMS: code_completion/scopes -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -114,7 +114,7 @@ tests/completion/symbols/13_documentation
 其他命名空间中声明的名称会带上访问它所需的限定符补全，排在作用域内的名称之后
 
 ```case
-tests/completion/scopes/01_other_namespaces
+tests/code_completion/scopes/01_other_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -126,7 +126,7 @@ tests/completion/scopes/01_other_namespaces
 项目中的名称若声明在当前文件尚未包含的头文件里，补全时会一并插入引入它的 `#include`
 
 ```case
-tests/completion/scopes/02_include_insertion
+tests/code_completion/scopes/02_include_insertion
 ```
 
 <!-- END CAPABILITY -->
@@ -138,7 +138,7 @@ tests/completion/scopes/02_include_insertion
 项目中某个模块导出的名称，补全时会一并插入引入它的 `import`；当前模块自身的分区则以分区名导入
 
 ```case
-tests/completion/scopes/03_import_insertion
+tests/code_completion/scopes/03_import_insertion
 ```
 
 <!-- END CAPABILITY -->
@@ -149,7 +149,7 @@ tests/completion/scopes/03_import_insertion
 
 在 `.`、`->` 或 `::` 之后，会补全对象或作用域的成员。
 
-<!-- BEGIN GENERATED ITEMS: completion/member_access -->
+<!-- BEGIN GENERATED ITEMS: code_completion/member_access -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -158,7 +158,7 @@ tests/completion/scopes/03_import_insertion
 在点号后补全时，会列出对象所属类的成员
 
 ```case
-tests/completion/member_access/01_struct_members
+tests/code_completion/member_access/01_struct_members
 ```
 
 <!-- END CAPABILITY -->
@@ -172,7 +172,7 @@ tests/completion/member_access/01_struct_members
 限定名补全不会只列出静态上下文中可用的成员：实例字段和析构函数也会与静态成员、嵌套类型一同显示。
 
 ```case
-tests/completion/member_access/04_scope_access
+tests/code_completion/member_access/04_scope_access
 ```
 
 <!-- END CAPABILITY -->
@@ -184,7 +184,7 @@ tests/completion/member_access/04_scope_access
 对派生类对象进行补全时，列出其自身及基类的成员
 
 ```case
-tests/completion/member_access/05_inherited_members
+tests/code_completion/member_access/05_inherited_members
 ```
 
 <!-- END CAPABILITY -->
@@ -196,7 +196,7 @@ tests/completion/member_access/05_inherited_members
 输入 `{ .` 会列出正在初始化的聚合体的字段；若其类型依赖于模板参数，则列出匹配的偏特化中的字段
 
 ```case
-tests/completion/member_access/06_designated_initializer
+tests/code_completion/member_access/06_designated_initializer
 ```
 
 <!-- END CAPABILITY -->
@@ -208,7 +208,7 @@ tests/completion/member_access/06_designated_initializer
 私有和受保护的成员不会出现在无法使用它们的位置
 
 ```case
-tests/completion/member_access/07_inaccessible_members
+tests/code_completion/member_access/07_inaccessible_members
 ```
 
 <!-- END CAPABILITY -->
@@ -220,7 +220,7 @@ tests/completion/member_access/07_inaccessible_members
 在定义中输入 `Class::` 后，会列出所有成员，包括私有成员
 
 ```case
-tests/completion/member_access/10_out_of_line_definitions
+tests/code_completion/member_access/10_out_of_line_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -232,7 +232,7 @@ tests/completion/member_access/10_out_of_line_definitions
 在指针后输入 `.` 时，会补全通过 `->` 可访问的成员，并把 `.` 改为 `->`
 
 ```case
-tests/completion/member_access/17_dot_on_pointer
+tests/code_completion/member_access/17_dot_on_pointer
 ```
 
 <!-- END CAPABILITY -->
@@ -243,7 +243,7 @@ tests/completion/member_access/17_dot_on_pointer
 
 函数会补全为调用形式，括号内插入什么由 `code_completion.arguments` 决定。以下所有选项均位于 `[code_completion]` 配置节中。
 
-<!-- BEGIN GENERATED ITEMS: completion/functions_snippets -->
+<!-- BEGIN GENERATED ITEMS: code_completion/functions_snippets -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -254,7 +254,7 @@ tests/completion/member_access/17_dot_on_pointer
 设为 `delimiters` 时，调用会插入括号并将光标置于括号内；设为 `none` 时，只插入名称。
 
 ```case
-tests/completion/functions_snippets/01_snippet_arguments
+tests/code_completion/functions_snippets/01_snippet_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -266,7 +266,7 @@ tests/completion/functions_snippets/01_snippet_arguments
 参数列表和返回类型随函数名一起显示
 
 ```case
-tests/completion/functions_snippets/02_function_candidates
+tests/code_completion/functions_snippets/02_function_candidates
 ```
 
 <!-- END CAPABILITY -->
@@ -280,7 +280,7 @@ tests/completion/functions_snippets/02_function_candidates
 关闭重载合并后，每个重载都单独列为一个条目，并显示各自的签名。
 
 ```case
-tests/completion/functions_snippets/03_overload_bundle
+tests/code_completion/functions_snippets/03_overload_bundle
 ```
 
 <!-- END CAPABILITY -->
@@ -292,7 +292,7 @@ tests/completion/functions_snippets/03_overload_bundle
 补全时会为调用添加括号，除非名称后已有实参，或该名称并非用于调用
 
 ```case
-tests/completion/functions_snippets/06_call_parentheses
+tests/code_completion/functions_snippets/06_call_parentheses
 ```
 
 <!-- END CAPABILITY -->
@@ -304,7 +304,7 @@ tests/completion/functions_snippets/06_call_parentheses
 补全类模板时，为每个没有默认值的模板形参插入一个占位符；若所有形参都有默认值，则插入空尖括号
 
 ```case
-tests/completion/functions_snippets/07_template_arguments
+tests/code_completion/functions_snippets/07_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +316,7 @@ tests/completion/functions_snippets/07_template_arguments
 语句关键字补全为关键字；启用该选项后，会插入整条语句，并为每个部分添加占位符
 
 ```case
-tests/completion/functions_snippets/08_statement_snippets
+tests/code_completion/functions_snippets/08_statement_snippets
 ```
 
 <!-- END CAPABILITY -->
@@ -327,7 +327,7 @@ tests/completion/functions_snippets/08_statement_snippets
 
 在模板内部，即使成员依赖于模板形参，也能进行补全。
 
-<!-- BEGIN GENERATED ITEMS: completion/templates -->
+<!-- BEGIN GENERATED ITEMS: code_completion/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -338,7 +338,7 @@ tests/completion/functions_snippets/08_statement_snippets
 解析别名时，会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是不显示任何内容。如果别名表示引用（`Vec<Vec<T>>::reference`），则会列出所引用类的成员；对指向这类对象的指针使用 `->`，则会列出所指对象的成员。
 
 ```case
-tests/completion/templates/01_dependent_member_type
+tests/code_completion/templates/01_dependent_member_type
 ```
 
 <!-- END CAPABILITY -->
@@ -352,7 +352,7 @@ tests/completion/templates/01_dependent_member_type
 对于 `Vec<Vec<T>>`，`rows[0].` 会按照标准容器的声明方式，通过容器的 `reference` 别名解析出类型，并列出 `Vec<T>` 的成员。如果成员函数有 `const` 重载，则根据对象是否为 const 来选择调用哪个重载；通过 const 对象访问的数据成员也视为 const，对返回的迭代器使用 `->` 则可访问元素。
 
 ```case
-tests/completion/templates/05_dependent_expression_results
+tests/code_completion/templates/05_dependent_expression_results
 ```
 
 <!-- END CAPABILITY -->
@@ -366,7 +366,7 @@ tests/completion/templates/05_dependent_expression_results
 `auto& row = rows[0]; row.` 会列出 `Vec<T>` 的成员。声明符按实际类型推导的规则生效：`const auto&` 使对象具有 const 属性，按值声明的 `auto` 去除初始化器的 const 属性，`auto&&` 和 `decltype(auto)` 保留该属性，而 `auto*` 则取指针所指对象。对于数据成员，`decltype(auto)` 取该成员的声明类型；如果加上括号，则取表达式的 const 引用类型。
 
 ```case
-tests/completion/templates/07_deduced_variables
+tests/code_completion/templates/07_deduced_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -380,7 +380,7 @@ Lambda 的 `auto` 参数会补全调用该 Lambda 时所用类型的成员
 调用可以写在 Lambda 之后，也可以是接收该 Lambda 的算法。以多种类型调用的 Lambda 不提供补全。
 
 ```case
-tests/completion/templates/14_generic_lambda_parameters
+tests/code_completion/templates/14_generic_lambda_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -394,7 +394,7 @@ tests/completion/templates/14_generic_lambda_parameters
 概念中调用的成员会补全为方法，参数类型取自调用时传入的实参；在 `T::` 之后，它命名的嵌套类型也会补全。
 
 ```case
-tests/completion/templates/15_concept_requirements
+tests/code_completion/templates/15_concept_requirements
 ```
 
 <!-- END CAPABILITY -->
@@ -408,7 +408,7 @@ tests/completion/templates/15_concept_requirements
 对于 `lib::map<int, T>`，输入 `m.find(1)->` 后，`first` 为 `const int`，`second` 为 `T`，而不是 pair 自身的 `_T1` 和 `_T2`。
 
 ```case
-tests/completion/templates/29_library_specialization_members
+tests/code_completion/templates/29_library_specialization_members
 ```
 
 <!-- END CAPABILITY -->
@@ -419,7 +419,7 @@ tests/completion/templates/29_library_specialization_members
 
 在派生类中，基类的虚函数会补全为完整声明。
 
-<!-- BEGIN GENERATED ITEMS: completion/overrides -->
+<!-- BEGIN GENERATED ITEMS: code_completion/overrides -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -430,7 +430,7 @@ tests/completion/templates/29_library_specialization_members
 在重写函数内部，函数名会补全为调用，而不会再补全出一个声明。
 
 ```case
-tests/completion/overrides/01_override_declaration
+tests/code_completion/overrides/01_override_declaration
 ```
 
 <!-- END CAPABILITY -->
@@ -441,7 +441,7 @@ tests/completion/overrides/01_override_declaration
 
 在行首的 `#` 之后会补全预处理指令，在 `#ifdef` 之后会补全它上方已定义的宏。
 
-<!-- BEGIN GENERATED ITEMS: completion/directives -->
+<!-- BEGIN GENERATED ITEMS: code_completion/directives -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -450,7 +450,7 @@ tests/completion/overrides/01_override_declaration
 在 `#` 之后会补全预处理指令，其中 `#elif`、`#else` 和 `#endif` 只在条件编译块内提供；启用 `statement_snippets` 后，每种写法都带有其参数的占位符
 
 ```case
-tests/completion/directives/01_directive_names
+tests/code_completion/directives/01_directive_names
 ```
 
 <!-- END CAPABILITY -->
@@ -461,7 +461,7 @@ tests/completion/directives/01_directive_names
 
 在 `#include` 之后会补全头文件名：引号形式先搜索包含方文件自身所在的目录，再搜索包含目录，系统目录排在最后。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
 
-<!-- BEGIN GENERATED ITEMS: completion/include_path_completion -->
+<!-- BEGIN GENERATED ITEMS: code_completion/include_path_completion -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -470,7 +470,7 @@ tests/completion/directives/01_directive_names
 补全会列出已配置的搜索路径中的头文件和目录，并用末尾的斜杠标识目录
 
 ```case
-tests/completion/include_path_completion/01_include_quoted
+tests/code_completion/include_path_completion/01_include_quoted
 ```
 
 <!-- END CAPABILITY -->
@@ -482,7 +482,7 @@ tests/completion/include_path_completion/01_include_quoted
 使用尖括号包含头文件时，补全会提供相同搜索路径中的候选项，并以 `>` 闭合
 
 ```case
-tests/completion/include_path_completion/02_include_angled
+tests/code_completion/include_path_completion/02_include_angled
 ```
 
 <!-- END CAPABILITY -->
@@ -496,7 +496,7 @@ tests/completion/include_path_completion/02_include_angled
 补全会替换已有的定界符；如果在路径中较靠前的部分选择头文件，还会替换路径的剩余部分。
 
 ```case
-tests/completion/include_path_completion/03_closing_delimiter
+tests/code_completion/include_path_completion/03_closing_delimiter
 ```
 
 <!-- END CAPABILITY -->
@@ -508,7 +508,7 @@ tests/completion/include_path_completion/03_closing_delimiter
 使用引号包含头文件时，无需配置搜索路径即可找到与当前文件同目录的头文件
 
 ```case
-tests/completion/include_path_completion/04_sibling_headers
+tests/code_completion/include_path_completion/04_sibling_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -520,7 +520,7 @@ tests/completion/include_path_completion/04_sibling_headers
 头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后；两个目录都有的头文件名只列出一次，取自靠前的目录
 
 ```case
-tests/completion/include_path_completion/09_header_order
+tests/code_completion/include_path_completion/09_header_order
 ```
 
 <!-- END CAPABILITY -->
@@ -532,7 +532,7 @@ tests/completion/include_path_completion/09_header_order
 库的保留名称（`__algorithm/`、`_mingw.h`）排在同一搜索组的其他名称之后，隐藏名称（`.git/`）排在所有其他名称之后
 
 ```case
-tests/completion/include_path_completion/11_reserved_names
+tests/code_completion/include_path_completion/11_reserved_names
 ```
 
 <!-- END CAPABILITY -->
@@ -543,7 +543,7 @@ tests/completion/include_path_completion/11_reserved_names
 
 在 `import` 或 `export import` 之后会补全模块名：先列出当前单元所属模块自身的分区，再列出接口单元离当前文件最近的模块。
 
-<!-- BEGIN GENERATED ITEMS: completion/modules -->
+<!-- BEGIN GENERATED ITEMS: code_completion/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -552,7 +552,7 @@ tests/completion/include_path_completion/11_reserved_names
 在 `import` 后补全已知的模块名，并插入结尾的分号
 
 ```case
-tests/completion/modules/01_import_modules
+tests/code_completion/modules/01_import_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -566,7 +566,7 @@ tests/completion/modules/01_import_modules
 已以分号结尾的语句会保留该分号。
 
 ```case
-tests/completion/modules/02_partition_imports
+tests/code_completion/modules/02_partition_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -580,7 +580,7 @@ tests/completion/modules/02_partition_imports
 接口不能导出内部分区，它从内部分区导入的名称对该接口的导入方也未必可达，因此只有模块的其他单元才会补全内部分区。
 
 ```case
-tests/completion/modules/04_interface_partitions
+tests/code_completion/modules/04_interface_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -592,7 +592,7 @@ tests/completion/modules/04_interface_partitions
 模块名补全会优先列出接口单元离当前文件最近的模块
 
 ```case
-tests/completion/modules/09_nearest_modules
+tests/code_completion/modules/09_nearest_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -603,7 +603,7 @@ tests/completion/modules/09_nearest_modules
 
 根据输入内容与候选项中各单词开头的匹配情况筛选候选项。
 
-<!-- BEGIN GENERATED ITEMS: completion/filtering -->
+<!-- BEGIN GENERATED ITEMS: code_completion/filtering -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -612,7 +612,7 @@ tests/completion/modules/09_nearest_modules
 以下划线开头的内部符号默认隐藏，只有输入的前缀也以下划线开头时才会显示
 
 ```case
-tests/completion/filtering/01_underscore_filter
+tests/code_completion/filtering/01_underscore_filter
 ```
 
 <!-- END CAPABILITY -->
@@ -624,7 +624,7 @@ tests/completion/filtering/01_underscore_filter
 带有 `[[deprecated]]` 的候选项会标记为已弃用，并排在与之对应的不带该属性的候选项之后
 
 ```case
-tests/completion/filtering/02_deprecated_tag
+tests/code_completion/filtering/02_deprecated_tag
 ```
 
 <!-- END CAPABILITY -->
@@ -638,7 +638,7 @@ tests/completion/filtering/02_deprecated_tag
 对于 `fb`，`frobnicate` 只能形成较弱的分散子序列匹配，因此被过滤掉；`foo_bar_baz` 在 `foo` 和 `bar` 的单词边界上匹配，因此得以保留。
 
 ```case
-tests/completion/filtering/03_fuzzy_word_boundary
+tests/code_completion/filtering/03_fuzzy_word_boundary
 ```
 
 <!-- END CAPABILITY -->
@@ -652,7 +652,7 @@ tests/completion/filtering/03_fuzzy_word_boundary
 对于前缀 `fo`，`format_output` 属于真正的前缀匹配，得分高于只能按子序列匹配的 `fast_math_operation`。
 
 ```case
-tests/completion/filtering/05_prefix_beats_subsequence
+tests/code_completion/filtering/05_prefix_beats_subsequence
 ```
 
 <!-- END CAPABILITY -->
@@ -664,7 +664,7 @@ tests/completion/filtering/05_prefix_beats_subsequence
 在单词中间补全时，会提供两种编辑范围：编辑器可以在单词剩余部分之前插入补全内容，也可以替换整个单词
 
 ```case
-tests/completion/filtering/06_inside_a_word
+tests/code_completion/filtering/06_inside_a_word
 ```
 
 <!-- END CAPABILITY -->
@@ -675,7 +675,7 @@ tests/completion/filtering/06_inside_a_word
 
 在过滤后剩下的候选项中，离代码最近的名称排在前面，代码所期望类型的名称也排在前面。
 
-<!-- BEGIN GENERATED ITEMS: completion/ranking -->
+<!-- BEGIN GENERATED ITEMS: code_completion/ranking -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -684,7 +684,7 @@ tests/completion/filtering/06_inside_a_word
 在前缀匹配的名称中，局部符号排在最前，其次是类的成员，然后是文件中的名称，宏排在最后
 
 ```case
-tests/completion/ranking/01_closest_first
+tests/code_completion/ranking/01_closest_first
 ```
 
 <!-- END CAPABILITY -->
@@ -696,7 +696,7 @@ tests/completion/ranking/01_closest_first
 代码所期望类型的名称，排在前缀同样匹配的其他名称之前
 
 ```case
-tests/completion/ranking/02_expected_type
+tests/code_completion/ranking/02_expected_type
 ```
 
 <!-- END CAPABILITY -->

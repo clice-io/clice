@@ -1,0 +1,277 @@
+{
+  "id": "selection_ranges/syntax_ranges/07_blocks",
+  "topic": "selection_ranges",
+  "subtopic": "syntax_ranges",
+  "title": "Blocks and their contents",
+  "summary": "The statements of a block, the members of a class and the declarations of a namespace are selected without their braces before with them",
+  "prose": "A cursor on a blank line inside a block starts from the block's\ncontents.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace shapes {\n\nstruct Square {\n    int side;\n    int area() const;\n};\n\nint perimeter(const Square& square) {\n    int sides = 4;\n    \n    return sides * square.side;\n}\n\n}  // namespace shapes\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 44,
+          "end": 44,
+          "range": false
+        },
+        {
+          "name": "blank",
+          "begin": 137,
+          "end": 137,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int ⟦side⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦int side⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦int side;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "⟦int side; … int area() const;⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "struct Square ⟦{ … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Square { … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Square { … };⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 2
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Square { … }⟧ (10 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "namespace shapes ⟦{ … }⟧ (14 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦namespace shapes { … }⟧ (14 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "blank",
+          "marker": "blank",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "⟦int sides = 4; … return sides * square.side;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 31
+                  }
+                }
+              },
+              {
+                "$place": "int perimeter(const Square& square) ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 36
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int perimeter(const Square& square) { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Square { … }⟧ (10 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "namespace shapes ⟦{ … }⟧ (14 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦namespace shapes { … }⟧ (14 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

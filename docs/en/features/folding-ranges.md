@@ -1,7 +1,7 @@
 # Folding Ranges
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests/folding_range/. Do not edit the regions between the
+     in tests/folding_ranges/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -9,7 +9,7 @@
 
 Braces fold: namespaces, types, functions, lambdas and the bodies of statements.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/blocks -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/blocks -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -18,7 +18,7 @@ Braces fold: namespaces, types, functions, lambdas and the bodies of statements.
 Namespaces, types, functions and lambdas fold at their braces
 
 ```case
-tests/folding_range/blocks/01_braces
+tests/folding_ranges/blocks/01_braces
 ```
 
 <!-- END CAPABILITY -->
@@ -33,7 +33,7 @@ Each branch of an `if`/`else` or a `try`/`catch` folds on its own: the line
 that closes one branch and opens the next stays visible.
 
 ```case
-tests/folding_range/blocks/03_statement_bodies
+tests/folding_ranges/blocks/03_statement_bodies
 ```
 
 <!-- END CAPABILITY -->
@@ -45,7 +45,7 @@ tests/folding_range/blocks/03_statement_bodies
 `extern "C"` blocks form folding ranges, also behind the usual `__cplusplus` guards
 
 ```case
-tests/folding_range/blocks/04_linkage_specifications
+tests/folding_ranges/blocks/04_linkage_specifications
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests/folding_range/blocks/04_linkage_specifications
 
 Any parentheses, brackets or braces spanning lines fold, and so do template parameter and argument lists.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/lists -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/lists -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -65,7 +65,7 @@ Any parentheses, brackets or braces spanning lines fold, and so do template para
 Multiline parameter, argument, initializer and capture lists form folding ranges
 
 ```case
-tests/folding_range/lists/01_multiline_lists
+tests/folding_ranges/lists/01_multiline_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -82,7 +82,7 @@ parameters and lambdas with explicit template parameters all fold their
 parameter lists.
 
 ```case
-tests/folding_range/lists/02_template_parameters
+tests/folding_ranges/lists/02_template_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -98,7 +98,7 @@ attribute lists, function types and the arguments of a macro invocation fold
 like a call's arguments do. An attribute list written `[[...]]` folds once.
 
 ```case
-tests/folding_range/lists/05_every_bracket_pair
+tests/folding_ranges/lists/05_every_bracket_pair
 ```
 
 <!-- END CAPABILITY -->
@@ -109,7 +109,7 @@ tests/folding_range/lists/05_every_bracket_pair
 
 The members under an access specifier, and the statements under a `case` label, fold as a section up to the next label.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/sections -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/sections -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1455 -->
 
@@ -118,7 +118,7 @@ The members under an access specifier, and the statements under a `case` label, 
 Access-specifier regions within a class form folding ranges
 
 ```case
-tests/folding_range/sections/01_access_specifiers
+tests/folding_ranges/sections/01_access_specifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -133,7 +133,7 @@ Labels written one after another fold as one case. A case whose body is a
 block opening on the label's line folds as that block.
 
 ```case
-tests/folding_range/sections/02_switch_cases
+tests/folding_ranges/sections/02_switch_cases
 ```
 
 <!-- END CAPABILITY -->
@@ -144,7 +144,7 @@ tests/folding_range/sections/02_switch_cases
 
 A block comment folds on its delimiters, and consecutive line comments, includes, imports or `using` declarations fold as one run.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/runs -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/runs -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -158,7 +158,7 @@ comment folds on its delimiters like a brace pair. A comment trailing code
 does not fold.
 
 ```case
-tests/folding_range/runs/01_comments
+tests/folding_ranges/runs/01_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -174,7 +174,7 @@ another directive ends it. Includes inside a conditional branch fold within
 it, whether or not the branch is taken.
 
 ```case
-tests/folding_range/runs/02_includes
+tests/folding_ranges/runs/02_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -190,7 +190,7 @@ join one, nor does a declaration sharing its line with other code. Using
 declarations produced by macros fold at the invocations.
 
 ```case
-tests/folding_range/runs/03_using_declarations
+tests/folding_ranges/runs/03_using_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -205,7 +205,7 @@ Consecutive import declarations fold as one run, like include directives
 imports stay in it.
 
 ```case
-tests/folding_range/runs/04_import_declarations
+tests/folding_ranges/runs/04_import_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -216,7 +216,7 @@ tests/folding_range/runs/04_import_declarations
 
 A raw string literal spanning lines folds on its delimiters.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/raw_strings -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/raw_strings -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -229,7 +229,7 @@ literal suffix. A raw string written in a macro argument folds where it is
 written.
 
 ```case
-tests/folding_range/raw_strings/01_raw_string_literals
+tests/folding_ranges/raw_strings/01_raw_string_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -240,7 +240,7 @@ tests/folding_range/raw_strings/01_raw_string_literals
 
 Each branch of a conditional folds up to the directive that ends it, taken or not, and so do the blocks inside an untaken one.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/conditionals -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/conditionals -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1661 clangd#2059 -->
 
@@ -253,7 +253,7 @@ A branch that would cut across a block or a section, such as the
 the folds always nest.
 
 ```case
-tests/folding_range/conditionals/01_branches
+tests/folding_ranges/conditionals/01_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -270,7 +270,7 @@ folded away by hand. Untaken code is dimmed by the `inactive` modifier of
 semantic tokens; the folds themselves do not tell the branches apart.
 
 ```case
-tests/folding_range/conditionals/02_untaken_branches
+tests/folding_ranges/conditionals/02_untaken_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -285,7 +285,7 @@ A function, a class or a statement body in code the compile skips folds on
 its brackets, so dead code can be folded piece by piece.
 
 ```case
-tests/folding_range/conditionals/05_blocks_in_untaken_branches
+tests/folding_ranges/conditionals/05_blocks_in_untaken_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -296,7 +296,7 @@ tests/folding_range/conditionals/05_blocks_in_untaken_branches
 
 `#pragma region` and `#pragma endregion` fold the code between them.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/regions -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/regions -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1623 -->
 
@@ -305,7 +305,7 @@ tests/folding_range/conditionals/05_blocks_in_untaken_branches
 Named pragma regions form folding ranges
 
 ```case
-tests/folding_range/regions/01_pragma_regions
+tests/folding_ranges/regions/01_pragma_regions
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +316,7 @@ tests/folding_range/regions/01_pragma_regions
 
 The module fragments and `export` blocks of a module unit fold.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/modules -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -325,7 +325,7 @@ The module fragments and `export` blocks of a module unit fold.
 The global and private module fragments and `export` blocks form folding ranges
 
 ```case
-tests/folding_range/modules/01_module_blocks
+tests/folding_ranges/modules/01_module_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -336,7 +336,7 @@ tests/folding_range/modules/01_module_blocks
 
 Code spelled through a macro, or written in its arguments, folds where you see it.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/macros -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/macros -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -348,7 +348,7 @@ A block a macro opens and closes folds between the two invocations, which
 stay visible; its placeholder is `...`.
 
 ```case
-tests/folding_range/macros/01_macro_spelled_blocks
+tests/folding_ranges/macros/01_macro_spelled_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -360,7 +360,7 @@ tests/folding_range/macros/01_macro_spelled_blocks
 Code written inside macro arguments folds where it is written
 
 ```case
-tests/folding_range/macros/02_macro_arguments
+tests/folding_ranges/macros/02_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -371,7 +371,7 @@ tests/folding_range/macros/02_macro_arguments
 
 A client folding whole lines keeps what a reader needs on screen: a body folds from the line holding its declaration's name, and a client showing collapsed text folds the closing line in.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/line_folding -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/line_folding -->
 
 <!-- BEGIN CAPABILITY: supported clangd#2666 -->
 
@@ -391,7 +391,7 @@ it visible anyway.
 > joins it (see "Closing lines fold in").
 
 ```case
-tests/folding_range/line_folding/01_declaration_lines
+tests/folding_ranges/line_folding/01_declaration_lines
 ```
 
 <!-- END CAPABILITY -->
@@ -412,7 +412,7 @@ after the `...`. A closing line that opens the next block, such as
 > ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).
 
 ```case
-tests/folding_range/line_folding/07_collapsed_lines
+tests/folding_ranges/line_folding/07_collapsed_lines
 ```
 
 <!-- END CAPABILITY -->
@@ -423,7 +423,7 @@ tests/folding_range/line_folding/07_collapsed_lines
 
 A folded range shows a placeholder for what it hides, and a fold that would hide nothing is not offered.
 
-<!-- BEGIN GENERATED ITEMS: folding_range/presentation -->
+<!-- BEGIN GENERATED ITEMS: folding_ranges/presentation -->
 
 <!-- BEGIN CAPABILITY: supported clangd#2667 -->
 
@@ -441,7 +441,7 @@ instead (see "Closing lines fold in").
 > that ignores it still folds, without the placeholder.
 
 ```case
-tests/folding_range/presentation/01_collapsed_text
+tests/folding_ranges/presentation/01_collapsed_text
 ```
 
 <!-- END CAPABILITY -->
@@ -453,7 +453,7 @@ tests/folding_range/presentation/01_collapsed_text
 A fold that hides nothing is noise
 
 ```case
-tests/folding_range/presentation/02_single_line_constructs
+tests/folding_ranges/presentation/02_single_line_constructs
 ```
 
 <!-- END CAPABILITY -->

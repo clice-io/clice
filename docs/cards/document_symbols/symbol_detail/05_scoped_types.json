@@ -1,0 +1,818 @@
+{
+  "id": "document_symbols/symbol_detail/05_scoped_types",
+  "topic": "document_symbols",
+  "subtopic": "symbol_detail",
+  "title": "Scoped types",
+  "summary": "A type written with its class scope keeps that scope once in the detail, dependent names included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace scoped {\n\nstruct Outer {\n    struct Inner {};\n    template <typename T> struct Box {};\n    using Alias = int;\n};\n\nstruct User {\n    Outer::Inner plain;\n    Outer::Box<int> boxed;\n    Outer::Alias aliased;\n    const Outer::Inner frozen;\n};\n\nvoid take(Outer::Box<int> boxed, Outer::Inner plain);\n\ntemplate <typename T>\nstruct Holder {\n    typename T::type value;\n    typename T::inner::type deep;\n    typename T::template rebind<int> bound;\n};\n\n}  // namespace scoped\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "scoped",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦scoped⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 16
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Outer",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Outer⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "Inner",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "struct ⟦Inner⟧ {};",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 11
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 16
+                            }
+                          }
+                        },
+                        "detail": "struct"
+                      },
+                      {
+                        "name": "Box",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "template <typename T> struct ⟦Box⟧ {};",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 33
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 36
+                            }
+                          }
+                        },
+                        "detail": "template struct"
+                      },
+                      {
+                        "name": "Alias",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "using ⟦Alias⟧ = int;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 10
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 15
+                            }
+                          }
+                        },
+                        "detail": "type alias"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "User",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦User⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 11
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "plain",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Inner ⟦plain⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 17
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 22
+                            }
+                          }
+                        },
+                        "detail": "Outer::Inner"
+                      },
+                      {
+                        "name": "boxed",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Box<int> ⟦boxed⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 10,
+                              "character": 20
+                            },
+                            "end": {
+                              "line": 10,
+                              "character": 25
+                            }
+                          }
+                        },
+                        "detail": "Outer::Box<int>"
+                      },
+                      {
+                        "name": "aliased",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Alias ⟦aliased⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 17
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 24
+                            }
+                          }
+                        },
+                        "detail": "Outer::Alias"
+                      },
+                      {
+                        "name": "frozen",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "const Outer::Inner ⟦frozen⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 12,
+                              "character": 23
+                            },
+                            "end": {
+                              "line": 12,
+                              "character": 29
+                            }
+                          }
+                        },
+                        "detail": "const Outer::Inner"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "take",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 5
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "detail": "void (Outer::Box<int> boxed, Outer::Inner plain)"
+                  },
+                  {
+                    "name": "Holder",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Holder⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 18,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 18,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "detail": "template struct",
+                    "children": [
+                      {
+                        "name": "value",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::type ⟦value⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 19,
+                              "character": 21
+                            },
+                            "end": {
+                              "line": 19,
+                              "character": 26
+                            }
+                          }
+                        },
+                        "detail": "typename T::type"
+                      },
+                      {
+                        "name": "deep",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::inner::type ⟦deep⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 28
+                            },
+                            "end": {
+                              "line": 20,
+                              "character": 32
+                            }
+                          }
+                        },
+                        "detail": "typename T::inner::type"
+                      },
+                      {
+                        "name": "bound",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::template rebind<int> ⟦bound⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 21,
+                              "character": 37
+                            },
+                            "end": {
+                              "line": 21,
+                              "character": 42
+                            }
+                          }
+                        },
+                        "detail": "typename T::template rebind<int>"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "scoped",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦scoped⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 16
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace scoped { … }⟧ (25 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Outer",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Outer⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Outer { … }⟧ (5 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 6,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "Inner",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "struct ⟦Inner⟧ {};",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 11
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 16
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦struct Inner {}⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 19
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "Box",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "template <typename T> struct ⟦Box⟧ {};",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 33
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 36
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦template <typename T> struct Box {}⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 39
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "Alias",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "using ⟦Alias⟧ = int;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 10
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 15
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦using Alias = int⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 21
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "User",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦User⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 11
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct User { … }⟧ (6 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "plain",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Inner ⟦plain⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 17
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 22
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦Outer::Inner plain⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 22
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "boxed",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Box<int> ⟦boxed⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 10,
+                              "character": 20
+                            },
+                            "end": {
+                              "line": 10,
+                              "character": 25
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦Outer::Box<int> boxed⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 10,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 10,
+                              "character": 25
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "aliased",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "Outer::Alias ⟦aliased⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 17
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 24
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦Outer::Alias aliased⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 24
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "frozen",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "const Outer::Inner ⟦frozen⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 12,
+                              "character": 23
+                            },
+                            "end": {
+                              "line": 12,
+                              "character": 29
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦const Outer::Inner frozen⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 12,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 12,
+                              "character": 29
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "take",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 5
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦void take(Outer::Box<int> boxed, Outer::Inner plain)⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 52
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Holder",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Holder⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 18,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 18,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦template <typename T> … }⟧ (6 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 17,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 22,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "value",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::type ⟦value⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 19,
+                              "character": 21
+                            },
+                            "end": {
+                              "line": 19,
+                              "character": 26
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦typename T::type value⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 19,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 19,
+                              "character": 26
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "deep",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::inner::type ⟦deep⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 28
+                            },
+                            "end": {
+                              "line": 20,
+                              "character": 32
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦typename T::inner::type deep⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 20,
+                              "character": 32
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "bound",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "typename T::template rebind<int> ⟦bound⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 21,
+                              "character": 37
+                            },
+                            "end": {
+                              "line": 21,
+                              "character": 42
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦typename T::template rebind<int> bound⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 21,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 21,
+                              "character": 42
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

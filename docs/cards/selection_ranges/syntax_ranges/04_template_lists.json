@@ -1,0 +1,571 @@
+{
+  "id": "selection_ranges/syntax_ranges/04_template_lists",
+  "topic": "selection_ranges",
+  "subtopic": "syntax_ranges",
+  "title": "Template argument and parameter lists",
+  "summary": "Template arguments and template parameters are selected inside their angle brackets before with them",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <class First, class Second>\nstruct Pair {\n    First first;\n    Second second;\n};\n\ntemplate <class T>\nT identity(T value) {\n    return value;\n}\n\nPair<int, long> pair{1, 2};\n\nPair<int, Pair<long, char>> nested{1, {2, 'c'}};\n\nint same = identity<int>(3);\n\nstruct Factory {\n    template <class T, class U>\n    T make(U seed);\n};\n\nlong made = Factory{}.make<long, int>(4);\n",
+      "markers": [
+        {
+          "name": "param",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "type_arg",
+          "begin": 163,
+          "end": 163,
+          "range": false
+        },
+        {
+          "name": "nested_arg",
+          "begin": 197,
+          "end": 197,
+          "range": false
+        },
+        {
+          "name": "call_arg",
+          "begin": 252,
+          "end": 252,
+          "range": false
+        },
+        {
+          "name": "member_arg",
+          "begin": 368,
+          "end": 368,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "param",
+          "marker": "param",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "template <class First, class ⟦Second⟧>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 29
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 35
+                  }
+                }
+              },
+              {
+                "$place": "template <class First, ⟦class Second⟧>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 35
+                  }
+                }
+              },
+              {
+                "$place": "template <⟦class First, class Second⟧>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 35
+                  }
+                }
+              },
+              {
+                "$place": "template ⟦<class First, class Second>⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 36
+                  }
+                }
+              },
+              {
+                "$place": "⟦template <class First, class Second> … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦template <class First, class Second> … };⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "type_arg",
+          "marker": "type_arg",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "Pair<int, ⟦long⟧> pair{1, 2};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "Pair<⟦int, long⟧> pair{1, 2};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "Pair⟦<int, long>⟧ pair{1, 2};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, long>⟧ pair{1, 2};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, long> pair{1, 2}⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 26
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, long> pair{1, 2};⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 27
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "nested_arg",
+          "marker": "nested_arg",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "Pair<int, Pair<⟦long⟧, char>> nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "Pair<int, Pair<⟦long, char⟧>> nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 25
+                  }
+                }
+              },
+              {
+                "$place": "Pair<int, Pair⟦<long, char>⟧> nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 26
+                  }
+                }
+              },
+              {
+                "$place": "Pair<int, ⟦Pair<long, char>⟧> nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 26
+                  }
+                }
+              },
+              {
+                "$place": "Pair<⟦int, Pair<long, char>⟧> nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 26
+                  }
+                }
+              },
+              {
+                "$place": "Pair⟦<int, Pair<long, char>>⟧ nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 27
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, Pair<long, char>>⟧ nested{1, {2, 'c'}};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 27
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, Pair<long, char>> nested{1, {2, 'c'}}⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 47
+                  }
+                }
+              },
+              {
+                "$place": "⟦Pair<int, Pair<long, char>> nested{1, {2, 'c'}};⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 48
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "call_arg",
+          "marker": "call_arg",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int same = identity<⟦int⟧>(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "int same = identity⟦<int>⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 24
+                  }
+                }
+              },
+              {
+                "$place": "int same = ⟦identity<int>⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 24
+                  }
+                }
+              },
+              {
+                "$place": "int same = ⟦identity<int>(3)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 27
+                  }
+                }
+              },
+              {
+                "$place": "⟦int same = identity<int>(3)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 27
+                  }
+                }
+              },
+              {
+                "$place": "⟦int same = identity<int>(3);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 28
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "member_arg",
+          "marker": "member_arg",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "long made = Factory{}.make<long, ⟦int⟧>(4);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 33
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 36
+                  }
+                }
+              },
+              {
+                "$place": "long made = Factory{}.make<⟦long, int⟧>(4);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 27
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 36
+                  }
+                }
+              },
+              {
+                "$place": "long made = Factory{}.make⟦<long, int>⟧(4);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 26
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 37
+                  }
+                }
+              },
+              {
+                "$place": "long made = ⟦Factory{}.make<long, int>⟧(4);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 37
+                  }
+                }
+              },
+              {
+                "$place": "long made = ⟦Factory{}.make<long, int>(4)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 40
+                  }
+                }
+              },
+              {
+                "$place": "⟦long made = Factory{}.make<long, int>(4)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 40
+                  }
+                }
+              },
+              {
+                "$place": "⟦long made = Factory{}.make<long, int>(4);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 41
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

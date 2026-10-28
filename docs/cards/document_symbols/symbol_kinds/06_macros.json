@@ -1,0 +1,398 @@
+{
+  "id": "document_symbols/symbol_kinds/06_macros",
+  "topic": "document_symbols",
+  "subtopic": "symbol_kinds",
+  "title": "Macros",
+  "summary": "Object-like and function-like macros list, a function-like one with its parameters as detail",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1744"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "static_assert(true);\n\n#define MAX_BUFFER_SIZE 4096\n#define CHECK(cond, msg) ((cond) ? 0 : (msg))\n#define TRACE(...) log(__VA_ARGS__)\n#define SPLIT_\\\nLIMIT 7\n\nstruct Config {\n#define CONFIG_VERSION 3\n    int version = CONFIG_VERSION;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "MAX_BUFFER_SIZE",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦MAX_BUFFER_SIZE⟧ 4096",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "name": "CHECK",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "(cond, msg)"
+              },
+              {
+                "name": "TRACE",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦TRACE⟧(...) log(__VA_ARGS__)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "(...)"
+              },
+              {
+                "name": "SPLIT_LIMIT",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦SPLIT_\\ … LIMIT⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 5
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Config",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Config⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "struct",
+                "children": [
+                  {
+                    "name": "CONFIG_VERSION",
+                    "kind": "Constant",
+                    "at": {
+                      "$place": "#define ⟦CONFIG_VERSION⟧ 3",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 22
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "version",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "int ⟦version⟧ = CONFIG_VERSION;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 10,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 10,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "detail": "int"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "MAX_BUFFER_SIZE",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦MAX_BUFFER_SIZE⟧ 4096",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 23
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦MAX_BUFFER_SIZE 4096⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 28
+                    }
+                  }
+                }
+              },
+              {
+                "name": "CHECK",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦CHECK(cond, msg) ((cond) ? 0 : (msg))⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 45
+                    }
+                  }
+                }
+              },
+              {
+                "name": "TRACE",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦TRACE⟧(...) log(__VA_ARGS__)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦TRACE(...) log(__VA_ARGS__)⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "name": "SPLIT_LIMIT",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦SPLIT_\\ … LIMIT⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 5
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦SPLIT_\\ … LIMIT 7⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 7
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Config",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Config⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct Config { … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "CONFIG_VERSION",
+                    "kind": "Constant",
+                    "at": {
+                      "$place": "#define ⟦CONFIG_VERSION⟧ 3",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "#define ⟦CONFIG_VERSION 3⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 9,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 9,
+                          "character": 24
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "version",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "int ⟦version⟧ = CONFIG_VERSION;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 10,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 10,
+                          "character": 15
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int version = CONFIG_VERSION⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 10,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 10,
+                          "character": 32
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,277 @@
+{
+  "id": "selection_ranges/conditionals/03_conditional_blocks",
+  "topic": "selection_ranges",
+  "subtopic": "conditionals",
+  "title": "Conditional blocks",
+  "summary": "The lines of a conditional's branch and the whole `#if` through `#endif` are selected after the code inside them",
+  "prose": "A branch the preprocessor skipped gets the same steps, so its code can\nbe selected as a whole.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define FAST 1\n\nint pick(int value) {\n#if FAST\n    value *= 2;\n    return value;\n#else\n    return value + 1;\n#endif\n}\n\n#ifdef FAST\nint fast_enabled = 1;\n#endif\n",
+      "markers": [
+        {
+          "name": "active",
+          "begin": 74,
+          "end": 74,
+          "range": false
+        },
+        {
+          "name": "skipped",
+          "begin": 98,
+          "end": 98,
+          "range": false
+        },
+        {
+          "name": "directive",
+          "begin": 126,
+          "end": 126,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "active",
+          "marker": "active",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "return ⟦value⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦return value⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦return value;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦value *= 2; … return value;⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦#if FAST … #endif⟧ (6 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 6
+                  }
+                }
+              },
+              {
+                "$place": "int pick(int value) ⟦{ … }⟧ (8 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int pick(int value) { … }⟧ (8 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "skipped",
+          "marker": "skipped",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "return ⟦value⟧ + 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦return value + 1;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "⟦#if FAST … #endif⟧ (6 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 6
+                  }
+                }
+              },
+              {
+                "$place": "int pick(int value) ⟦{ … }⟧ (8 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int pick(int value) { … }⟧ (8 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "directive",
+          "marker": "directive",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "#ifdef ⟦FAST⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "⟦#ifdef FAST⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "⟦#ifdef FAST … #endif⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 6
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

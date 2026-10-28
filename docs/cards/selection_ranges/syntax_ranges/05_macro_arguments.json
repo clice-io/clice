@@ -1,0 +1,321 @@
+{
+  "id": "selection_ranges/syntax_ranges/05_macro_arguments",
+  "topic": "selection_ranges",
+  "subtopic": "syntax_ranges",
+  "title": "Macro arguments",
+  "summary": "A name or expression written in a macro argument is selected where it is written, then the argument list and the whole invocation",
+  "prose": "Code a macro's replacement spells around the argument has no place in\nthe file of its own: the steps go from the argument straight to the\ninvocation.",
+  "status": "supported",
+  "issues": [
+    "clangd#1324"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define DECLARE(name) int name = 0\n#define TWICE(value) ((value) * 2)\n\nDECLARE(counter);\n\nint doubled() {\n    return TWICE(counter + 1);\n}\n",
+      "markers": [
+        {
+          "name": "declared",
+          "begin": 79,
+          "end": 79,
+          "range": false
+        },
+        {
+          "name": "expr",
+          "begin": 123,
+          "end": 123,
+          "range": false
+        },
+        {
+          "name": "closing",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "declared",
+          "marker": "declared",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "DECLARE(⟦counter⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "DECLARE⟦(counter)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE(counter)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE(counter);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "expr",
+          "marker": "expr",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "return TWICE(⟦counter⟧ + 1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 24
+                  }
+                }
+              },
+              {
+                "$place": "return TWICE(⟦counter + 1⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 28
+                  }
+                }
+              },
+              {
+                "$place": "return TWICE⟦(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦TWICE(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦return TWICE(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦return TWICE(counter + 1);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "int doubled() ⟦{ … }⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int doubled() { … }⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "closing",
+          "marker": "closing",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "return TWICE⟦(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦TWICE(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦return TWICE(counter + 1)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦return TWICE(counter + 1);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "int doubled() ⟦{ … }⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int doubled() { … }⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

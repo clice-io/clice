@@ -1,0 +1,118 @@
+{
+  "id": "code_completion/symbols/05_macros",
+  "topic": "code_completion",
+  "subtopic": "symbols",
+  "title": "Macros",
+  "summary": "Object-like macros complete as constants, function-like ones as functions with a parameter signature",
+  "prose": "Their arguments follow the functions' setting, `code_completion.arguments`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define RETRY_LIMIT 3\n\n#define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))\n\nint a = RETRY;\nint b = CLA;\n",
+      "markers": [
+        {
+          "name": "object",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "object",
+          "marker": "object",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "RETRY_LIMIT",
+                  "kind": "Constant",
+                  "insert": "RETRY_LIMIT"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "class",
+                  "kind": "Keyword",
+                  "insert": "class"
+                },
+                {
+                  "label": "CLAMP(value, limit)",
+                  "kind": "Function",
+                  "insert": "CLAMP(${1:value}, ${2:limit})",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "none",
+      "config": {
+        "code_completion": {
+          "arguments": "none"
+        }
+      },
+      "blocks": [
+        {
+          "label": "object",
+          "marker": "object",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "RETRY_LIMIT",
+                  "kind": "Constant",
+                  "insert": "RETRY_LIMIT"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "class",
+                  "kind": "Keyword",
+                  "insert": "class"
+                },
+                {
+                  "label": "CLAMP(value, limit)",
+                  "kind": "Function",
+                  "insert": "CLAMP"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

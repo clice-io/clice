@@ -1,0 +1,669 @@
+{
+  "id": "selection_ranges/syntax_ranges/02_statements",
+  "topic": "selection_ranges",
+  "subtopic": "syntax_ranges",
+  "title": "Statements and declarations",
+  "summary": "A statement or declaration is selected with the semicolon that ends it, after the part before it",
+  "prose": "A local variable steps from its declarator to the declaration statement.\nA member, a global or a function declaration gains its semicolon the\nsame way; a template's declaration gains it before its `template` head\njoins.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Counter {\n    int count;\n    void bump();\n};\n\nint limit = 10;\n\ntemplate <class T>\nT twice(T value);\n\nvoid run(Counter& counter) {\n    counter.bump();\n    int next = counter.count + 1;\n    return;\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        },
+        {
+          "name": "method",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        },
+        {
+          "name": "global",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        },
+        {
+          "name": "templated",
+          "begin": 91,
+          "end": 91,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 149,
+          "end": 149,
+          "range": false
+        },
+        {
+          "name": "local",
+          "begin": 165,
+          "end": 165,
+          "range": false
+        },
+        {
+          "name": "ret",
+          "begin": 195,
+          "end": 195,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int ⟦count⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "⟦int count⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "⟦int count;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "⟦int count; … void bump();⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "struct Counter ⟦{ … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Counter { … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Counter { … };⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "void ⟦bump⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "⟦void bump()⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "⟦void bump();⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦int count; … void bump();⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "struct Counter ⟦{ … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Counter { … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Counter { … };⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "global",
+          "marker": "global",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int ⟦limit⟧ = 10;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "⟦int limit = 10⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "⟦int limit = 10;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 15
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "templated",
+          "marker": "templated",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "T ⟦twice⟧(T value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 2
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 7
+                  }
+                }
+              },
+              {
+                "$place": "⟦T twice(T value)⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦T twice(T value);⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦template <class T> … T twice(T value);⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "counter.⟦bump⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump()⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 18
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump();⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump(); … return;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 27
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int ⟦next⟧ = counter.count + 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦int next = counter.count + 1⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 32
+                  }
+                }
+              },
+              {
+                "$place": "⟦int next = counter.count + 1;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 33
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump(); … return;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 27
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "ret",
+          "marker": "ret",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "⟦return⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "⟦return;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "⟦counter.bump(); … return;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 27
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -130,7 +130,7 @@ const ACCEPTED: {
         // Under a preamble a value written as a macro (a default argument,
         // an initializer) can print as the number it expands to: a clang
         // SourceManager bug.
-        case: "completion/member_access/20_macro_default_arguments",
+        case: "code_completion/member_access/20_macro_default_arguments",
         requests: ["completion", "hover"],
         same: macroOrNumber,
     },

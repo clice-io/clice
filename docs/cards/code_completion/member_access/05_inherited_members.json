@@ -1,0 +1,56 @@
+{
+  "id": "code_completion/member_access/05_inherited_members",
+  "topic": "code_completion",
+  "subtopic": "member_access",
+  "title": "Inherited members",
+  "summary": "A derived object completes its own members and those of its base",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    int base_field;\n    int base_method();\n};\n\nstruct Derived : Base {\n    int derived_field;\n};\n\nvoid bar() {\n    Derived d;\n    d.;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 146,
+          "end": 146,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "derived_field",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "base_method()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "base_field",
+                  "kind": "Field",
+                  "detail": "int"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
