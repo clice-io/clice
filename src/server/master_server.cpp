@@ -55,8 +55,8 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string requested_configu
     // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
     // (see support/anomaly.cppm), so no synchronization is needed here.
-    logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
-        notify_log.push_back(NotifyMessage{level, std::string(message)});
+    logging::set_notify_hook([this](logging::NotifyKind kind, std::string_view message) {
+        notify_log.push_back(NotifyMessage{kind, std::string(message)});
         if(notify_log.size() > notify_log_limit) {
             notify_log.pop_front();
         }

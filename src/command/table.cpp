@@ -346,7 +346,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     return argv;
 }
 
-std::vector<const char*> CommandTable::render_full(CommandID id) {
+std::vector<const char*> CommandTable::render_full(CommandID id, llvm::StringRef input) {
     auto& command = get(id);
     std::vector<const char*> argv;
     argv.reserve(command.args.size() + 2);
@@ -358,10 +358,11 @@ std::vector<const char*> CommandTable::render_full(CommandID id) {
         argv.push_back(strings.save(fragment).data());
     };
     for(auto& arg: command.args) {
-        if(arg.cls == ArgClass::Input) {
-            continue;
+        if(arg.cls != ArgClass::Input) {
+            render_arg(arg, emit);
+        } else if(!input.empty()) {
+            emit(input);
         }
-        render_arg(arg, emit);
     }
     return argv;
 }

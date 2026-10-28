@@ -147,6 +147,9 @@ enum class SemanticTokenModifier : std::uint8_t {
     Empty,
     /// In a preprocessor-inactive region, or an argument a macro drops.
     Inactive,
+    /// A keyword that is an operator: `sizeof`, `new`, `static_cast`, an
+    /// alternative spelling (`and`), the preprocessor's `defined`.
+    Operator,
 };
 
 constexpr std::uint32_t mask(SemanticTokenModifier modifier) {

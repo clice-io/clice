@@ -1,0 +1,10 @@
+[answers.header_table.hover]
+markdown = '''
+**variable** `table`
+
+```cpp
+const unsigned char table[128]
+```
+Value: `{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...}`
+'''
+range = "int first = ⟦table⟧[0];"

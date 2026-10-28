@@ -442,7 +442,9 @@ private:
             }
         } else if(clang::tok::getPunctuatorSpelling(kind)) {
             // Alternative spellings (`and`, `not`) lex as their punctuators.
-            if(is_operator(kind) || (!spelling.empty() && llvm::isAlpha(spelling.front()))) {
+            if(!spelling.empty() && llvm::isAlpha(spelling.front())) {
+                piece.classified = {.kind = Kind::Keyword, .modifiers = mask(Modifier::Operator)};
+            } else if(is_operator(kind)) {
                 piece.classified.kind = Kind::Operator;
             }
         } else if(token.is_header_name()) {
@@ -548,10 +550,12 @@ private:
             }
             case Directive::Condition: {
                 if(spelling == "defined") {
-                    piece.classified = {.kind = Kind::Operator};
+                    piece.classified = {.kind = Kind::Keyword,
+                                        .modifiers = mask(Modifier::Operator)};
                     directive = Directive::Defined;
                 } else if(is_check(spelling)) {
-                    piece.classified = {.kind = Kind::Operator};
+                    piece.classified = {.kind = Kind::Keyword,
+                                        .modifiers = mask(Modifier::Operator)};
                     directive = Directive::Check;
                     check_depth = depth;
                 } else if(kind == clang::tok::identifier) {

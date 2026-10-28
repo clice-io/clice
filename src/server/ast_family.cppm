@@ -26,6 +26,20 @@ struct ASTFamilyFixture;
 
 }
 
+/// What a document's compile round waits on.
+enum class CompilePhase : std::uint8_t {
+    /// No round runs.
+    Idle,
+    /// The command it compiles with.
+    Command,
+    /// The modules it imports.
+    Modules,
+    /// Its preamble.
+    Preamble,
+    /// A worker parsing it.
+    Parsing,
+};
+
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
 /// one round = one compile (up to two worker sends for the
@@ -168,6 +182,10 @@ public:
     /// compile: a background run's skipped diagnostics arrived (report_skipped).
     Signal<std::shared_ptr<Session>> on_diagnostics;
 
+    /// Emitted as a document's round moves on to what it waits on next,
+    /// and with Idle once the round ends.
+    Signal<Fid, CompilePhase> on_phase;
+
     /// Callback invoked when indexing should be scheduled.
     std::function<void()> on_indexing_needed;
 
@@ -249,6 +267,9 @@ private:
 
     /// One compile round; see the class comment for its obligations.
     kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
+
+    /// run, and the Idle phase once it ends.
+    kota::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
 
     /// The module-dependency phase of a round: resolve imports from the
     /// round's buffer snapshot under the round's resolved command,

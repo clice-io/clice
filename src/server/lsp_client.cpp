@@ -37,6 +37,19 @@ namespace clice {
 using ipc::RequestResult;
 using RequestContext = ipc::JSONPeer::RequestContext;
 
+/// The commands of the source actions switching what a document compiles
+/// under (LSPClient::switch_actions), each standing for the request of the
+/// same name with its parameters as the one argument. Named apart from the
+/// VS Code extension's commands, which the client library registers them
+/// beside.
+constexpr std::string_view switch_context_command = "clice.lsp.switchContext";
+constexpr std::string_view reset_context_command = "clice.lsp.resetContext";
+constexpr std::string_view switch_configuration_command = "clice.lsp.switchConfiguration";
+
+/// The kinds of those source actions.
+constexpr std::string_view context_action_kind = "source.clice.context";
+constexpr std::string_view configuration_action_kind = "source.clice.configuration";
+
 /// Error response for feature requests on files with no open session.
 static ipc::Error document_not_open() {
     return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
@@ -133,17 +146,19 @@ LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server)
         }
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
+    compile_phase_conn = server.on_compile_phase.connect(
+        [this](Fid path_id, CompilePhase phase) { report_compile_phase(path_id, phase); });
     serving_conn = server.on_serving_index_changed.connect([this]() { refresh_index_served(); });
     inputs_conn = server.on_inputs_changed.connect([this]() { refresh_stale(); });
     held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
         this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
     });
 
-    // Guidance/anomaly messages travel as window/logMessage, which the LSP
-    // spec allows before the initialize handshake — drain what a headless
-    // server accumulated, then drain again on every wake-up.
-    forward_notify_messages();
-    notify_conn = server.on_notify.connect([this]() { forward_notify_messages(); });
+    notify_conn = server.on_notify.connect([this]() {
+        if(client_ready) {
+            forward_notify_messages();
+        }
+    });
 
     register_lifecycle();
     register_document_sync();
@@ -155,10 +170,21 @@ void LSPClient::forward_notify_messages() {
     auto first_seq = server.notify_seq - server.notify_log.size();
     for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; ++seq) {
         auto& message = server.notify_log[static_cast<std::size_t>(seq - first_seq)];
-        peer.send_notification(protocol::LogMessageParams{
-            static_cast<protocol::MessageType>(message.level),
-            message.text,
-        });
+        if(message.kind == logging::NotifyKind::Guidance) {
+            // A problem found again, a database reloaded with it still
+            // there, is shown once; the log keeps every report.
+            if(shown_guidance.insert(message.text).second) {
+                peer.send_notification(protocol::ShowMessageParams{
+                    .type = protocol::MessageType::Warning,
+                    .message = message.text,
+                });
+            }
+        } else {
+            peer.send_notification(protocol::LogMessageParams{
+                .type = protocol::MessageType::Error,
+                .message = message.text,
+            });
+        }
     }
     notify_cursor = server.notify_seq;
 }
@@ -354,6 +380,9 @@ void LSPClient::register_lifecycle() {
             srv.watch_client(static_cast<std::uint32_t>(*params.process_id));
         }
 
+        work_done_progress = params.capabilities.window.has_value() &&
+                             params.capabilities.window->work_done_progress;
+
         if(params.capabilities.workspace.has_value()) {
             auto& ws_caps = *params.capabilities.workspace;
             semantic_tokens_refresh =
@@ -484,10 +513,16 @@ void LSPClient::register_lifecycle() {
         caps.workspace_symbol_provider = true;
         caps.document_formatting_provider = true;
         caps.document_range_formatting_provider = true;
-        caps.code_action_provider = protocol::CodeActionOptions{
-            .code_action_kinds =
-                std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
-                                                      feature::code_action_kinds.end()),
+        std::vector<protocol::CodeActionKind> kinds(feature::code_action_kinds.begin(),
+                                                    feature::code_action_kinds.end());
+        kinds.emplace_back(context_action_kind);
+        kinds.emplace_back(configuration_action_kind);
+        caps.code_action_provider =
+            protocol::CodeActionOptions{.code_action_kinds = std::move(kinds)};
+        caps.execute_command_provider = protocol::ExecuteCommandOptions{
+            .commands = {std::string(switch_context_command),
+                         std::string(reset_context_command),
+                         std::string(switch_configuration_command)},
         };
         // No inter-file dependencies: an edit reaches no other document's
         // diagnostics, open buffers are never depended upon (see Session).
@@ -536,6 +571,7 @@ void LSPClient::register_lifecycle() {
         }
 
         this->client_ready = true;
+        this->forward_notify_messages();
         this->publish_config_diagnostics();
 
         // Replay compile outputs that materialized while no ready client
@@ -977,20 +1013,33 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 return kota::outcome_error(unserved(path));
+            auto only = params.context.only ? llvm::ArrayRef(*params.context.only)
+                                            : llvm::ArrayRef<protocol::CodeActionKind>();
+            // Only a user asking for actions gets the switches, which look
+            // the listings up: an editor asks on every move of the cursor.
+            bool offer_switches =
+                params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
             return kota::co_invoke(
                 [this,
                  project,
-                 actions = project->features.code_action(
-                     Ticket::take(session),
-                     params.range,
-                     params.context.only ? llvm::ArrayRef(*params.context.only)
-                                         : llvm::ArrayRef<protocol::CodeActionKind>(),
-                     ctx.cancellation)]() mutable -> RawResult {
+                 path_id,
+                 offer_switches,
+                 only = std::vector(only.begin(), only.end()),
+                 actions = project->features.code_action(Ticket::take(session),
+                                                         params.range,
+                                                         only,
+                                                         ctx.cancellation)]() mutable -> RawResult {
                     auto result = co_await std::move(actions).or_fail();
                     if(!versioned_edits) {
                         for(auto& action: result) {
                             unversion(*action.edit);
                         }
+                    }
+                    // Listed after the compile the actions waited for: a
+                    // header's first one decides whether it is self-contained,
+                    // which changes its listing and outdates the epoch before.
+                    if(auto live = project->sessions.find(path_id); offer_switches && live) {
+                        result.append_range(switch_actions(*project, *live, only));
                     }
                     co_return to_raw(result);
                 });
@@ -1210,6 +1259,175 @@ void LSPClient::register_language_features() {
         });
 }
 
+kota::task<ext::SwitchContextResult>
+    LSPClient::switch_context(const ext::SwitchContextParams& params) {
+    auto path = uri_to_path(params.uri);
+    auto context_path = uri_to_path(params.context_uri);
+    if(!path || !context_path) {
+        co_return ext::SwitchContextResult{};
+    }
+    // The session reset lives inside switch_context (single owner,
+    // synchronous, no cross-file cascade — exempt from the event pipeline;
+    // see the Invalidator charter).
+    co_return co_await server.switch_context(server.files.intern(*path),
+                                             server.files.intern(*context_path),
+                                             params);
+}
+
+ext::SwitchContextResult LSPClient::reset_context(const ext::ResetContextParams& params) {
+    auto path = uri_to_path(params.uri);
+    if(!path) {
+        return {};
+    }
+    return server.reset_context(server.files.intern(*path));
+}
+
+std::shared_ptr<ProjectServer> LSPClient::configured(const std::optional<std::string>& uri) {
+    if(uri) {
+        return resolve_uri(*uri).project;
+    }
+    auto& projects = server.projects;
+    auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
+    return it != projects.end() ? *it : projects.front();
+}
+
+ext::SwitchConfigurationResult
+    LSPClient::switch_configuration(const ext::SwitchConfigurationParams& params) {
+    return configured(params.uri)
+        ->context_service.switch_configuration(params.name, server.requested_configuration);
+}
+
+/// The one argument of `params`, the parameters of the request its command
+/// stands for.
+template <typename Params>
+static std::expected<Params, ipc::Error> argument_of(const protocol::ExecuteCommandParams& params) {
+    Params decoded;
+    if(!params.arguments || params.arguments->size() != 1 ||
+       !codec::dyn::from_dyn<ipc::lsp_config>(params.arguments->front(), decoded)) {
+        return std::unexpected(ipc::Error{
+            protocol::ErrorCode::InvalidParams,
+            std::format("{} takes one argument, the parameters of its request", params.command)});
+    }
+    return decoded;
+}
+
+LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams params) {
+    // A client with no UI for these tells the user nothing of the outcome;
+    // the server does.
+    auto tell = [this](protocol::MessageType type, std::string message) {
+        peer.send_notification(
+            protocol::ShowMessageParams{.type = type, .message = std::move(message)});
+    };
+    if(params.command == switch_context_command || params.command == reset_context_command) {
+        ext::SwitchContextResult result;
+        if(params.command == switch_context_command) {
+            auto argument = argument_of<ext::SwitchContextParams>(params);
+            if(!argument) {
+                co_await kota::fail(std::move(argument.error()));
+            }
+            result = co_await switch_context(*argument);
+        } else {
+            auto argument = argument_of<ext::ResetContextParams>(params);
+            if(!argument) {
+                co_await kota::fail(std::move(argument.error()));
+            }
+            result = reset_context(*argument);
+        }
+        if(result.stale) {
+            tell(protocol::MessageType::Warning,
+                 "clice: the contexts changed meanwhile; ask for the actions again");
+        } else if(!result.success) {
+            tell(protocol::MessageType::Warning, "clice: cannot switch the compilation context");
+        }
+        co_return to_raw(result);
+    }
+    if(params.command == switch_configuration_command) {
+        auto argument = argument_of<ext::SwitchConfigurationParams>(params);
+        if(!argument) {
+            co_await kota::fail(std::move(argument.error()));
+        }
+        auto result = switch_configuration(*argument);
+        if(result.success) {
+            tell(protocol::MessageType::Info,
+                 std::format("clice: {} applies once clice restarts", argument->name));
+        } else {
+            tell(protocol::MessageType::Warning,
+                 std::format("clice: cannot switch the build configuration: {}", *result.reason));
+        }
+        co_return to_raw(result);
+    }
+    co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                   std::format("no command {}", params.command)});
+}
+
+std::vector<protocol::CodeAction>
+    LSPClient::switch_actions(ProjectServer& project,
+                              const Session& session,
+                              llvm::ArrayRef<protocol::CodeActionKind> only) {
+    std::vector<protocol::CodeAction> actions;
+    auto add = [&](std::string title,
+                   std::string_view kind,
+                   std::string_view command,
+                   const auto& params) {
+        auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
+        assert(argument && "the parameters of a request encode");
+        actions.push_back({
+            .title = title,
+            .kind = protocol::CodeActionKind(kind),
+            .command = protocol::Command{.title = std::move(title),
+                                         .command = std::string(command),
+                                         .arguments = std::vector{std::move(*argument)}},
+        });
+    };
+    auto uri = feature::to_uri(server.files.display(session.path_id));
+    if(feature::admits(only, context_action_kind)) {
+        auto current = server.current_context(project, &session);
+        auto listing = server.query_contexts(session.path_id, {.uri = uri});
+        if(listing.total > 1 || !current.automatic) {
+            auto same = [&](const ext::ContextItem& item) {
+                return current.context && item.uri == current.context->uri &&
+                       item.occurrence == current.context->occurrence &&
+                       item.command_hash == current.context->command_hash;
+            };
+            for(auto& item: listing.contexts) {
+                if(same(item)) {
+                    continue;
+                }
+                auto title = item.uri == uri
+                                 ? std::format("Compile with the command {}", item.label)
+                                 : std::format("Compile as included by {}", item.label);
+                add(std::move(title),
+                    context_action_kind,
+                    switch_context_command,
+                    ext::SwitchContextParams{.uri = uri,
+                                             .context_uri = item.uri,
+                                             .occurrence = item.occurrence,
+                                             .command_hash = item.command_hash,
+                                             .epoch = listing.epoch});
+            }
+            if(!current.automatic) {
+                add("Compile in the context clice picks",
+                    context_action_kind,
+                    reset_context_command,
+                    ext::ResetContextParams{.uri = uri});
+            }
+        }
+    }
+    if(feature::admits(only, configuration_action_kind)) {
+        auto list = project.context_service.list_configurations();
+        auto next = list.selected.empty() ? list.active : list.selected;
+        for(auto& name: list.configurations) {
+            if(name != next) {
+                add(std::format("Use build configuration {} from the next start", name),
+                    configuration_action_kind,
+                    switch_configuration_command,
+                    ext::SwitchConfigurationParams{.name = name, .uri = uri});
+            }
+        }
+    }
+    return actions;
+}
+
 void LSPClient::register_extensions() {
     // ── Compilation context helpers ─────────────────────────────────
 
@@ -1236,58 +1454,33 @@ void LSPClient::register_extensions() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            auto context_path = uri_to_path(params.context_uri);
-            if(!path || !context_path) {
-                co_return to_raw(ext::SwitchContextResult{});
-            }
-            auto path_id = this->server.files.intern(*path);
-            auto context_path_id = this->server.files.intern(*context_path);
-            // The session reset lives inside switch_context (single owner,
-            // synchronous, no cross-file cascade — exempt from the event
-            // pipeline; see the Invalidator charter).
-            co_return to_raw(
-                co_await this->server.switch_context(path_id, context_path_id, params));
+            co_return to_raw(co_await switch_context(params));
         });
 
     peer.on_request(
         "clice/resetContext",
         [this](RequestContext& ctx, const ext::ResetContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            if(!path) {
-                co_return to_raw(ext::SwitchContextResult{});
-            }
-            co_return to_raw(this->server.reset_context(this->server.files.intern(*path)));
+            co_return to_raw(reset_context(params));
         });
 
-    // The project serving the named document; without one the first
-    // project over a folder, the first one being rootless in a server
-    // without folders.
-    auto configured = [this](const std::optional<std::string>& uri) {
-        if(uri) {
-            return resolve_uri(*uri).project;
-        }
-        auto& projects = this->server.projects;
-        auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
-        return it != projects.end() ? *it : projects.front();
-    };
+    peer.on_request(
+        "clice/listConfigurations",
+        [this](RequestContext& ctx, const ext::ListConfigurationsParams& params) -> RawResult {
+            co_return to_raw(configured(params.uri)->context_service.list_configurations());
+        });
 
-    peer.on_request("clice/listConfigurations",
-                    [configured](RequestContext& ctx,
-                                 const ext::ListConfigurationsParams& params) -> RawResult {
-                        co_return to_raw(
-                            configured(params.uri)->context_service.list_configurations());
-                    });
+    peer.on_request(
+        "clice/switchConfiguration",
+        [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
+            co_return to_raw(switch_configuration(params));
+        });
 
-    peer.on_request("clice/switchConfiguration",
-                    [this, configured](RequestContext& ctx,
-                                       const ext::SwitchConfigurationParams& params) -> RawResult {
-                        co_return to_raw(configured(params.uri)
-                                             ->context_service.switch_configuration(
-                                                 params.name,
-                                                 this->server.requested_configuration));
-                    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::ExecuteCommandParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            co_return co_await execute_command(params).or_fail();
+        });
 
     peer.on_request(
         "clice/counterparts",
@@ -1699,10 +1892,18 @@ void LSPClient::report_index_progress() {
                 auto create_result =
                     co_await state->reporter->create({.timeout = std::chrono::minutes(1)});
                 state->create_inflight = false;
-                // The round may have ended — or the whole connection may have
-                // been torn down — while the handshake was in flight; drop the
-                // token without announcing it.
-                if(state->abandoned || create_result.has_error() || !state->round_active) {
+                // The whole connection may have been torn down while the
+                // handshake was in flight; drop the token without announcing it.
+                if(state->abandoned || create_result.has_error()) {
+                    state->reporter.reset();
+                    co_return;
+                }
+                // The client keeps a created token until it ends, and refuses
+                // to create it again meanwhile: a round that ended during the
+                // handshake ends it, or no later round could show.
+                if(!state->round_active) {
+                    state->reporter->begin("Indexing");
+                    state->reporter->end();
                     state->reporter.reset();
                     co_return;
                 }
@@ -1733,10 +1934,90 @@ void LSPClient::report_index_progress() {
     }
 }
 
+/// What a compile in `phase` waits on, as its progress says.
+static std::string_view describe(CompilePhase phase) {
+    switch(phase) {
+        case CompilePhase::Command: return "finding its command";
+        case CompilePhase::Modules: return "building modules";
+        case CompilePhase::Preamble: return "building preamble";
+        case CompilePhase::Parsing: return "parsing";
+        case CompilePhase::Idle: break;
+    }
+    std::unreachable();
+}
+
+void LSPClient::report_compile_phase(Fid path_id, CompilePhase phase) {
+    if(!work_done_progress || !client_ready) {
+        return;
+    }
+    auto [it, inserted] = compile_progress.try_emplace(path_id);
+    if(inserted) {
+        if(phase == CompilePhase::Idle) {
+            compile_progress.erase(it);
+            return;
+        }
+        it->second = std::make_shared<CompileProgress>(CompileProgress{.phase = phase});
+        server.loop.schedule(announce_compile(it->second, path_id));
+        return;
+    }
+    auto& state = *it->second;
+    state.phase = phase;
+    // Before the announcement, its begin() reads the phase.
+    if(!state.reporter) {
+        return;
+    }
+    if(phase == CompilePhase::Idle) {
+        state.reporter->end();
+        compile_progress.erase(it);
+    } else {
+        state.reporter->report(std::string(describe(phase)));
+    }
+}
+
+kota::task<> LSPClient::announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id) {
+    // Time is the feature: the compile after an edit mostly finishes
+    // sooner, and a progress shown for each would blink in the editor.
+    co_await kota::sleep(std::chrono::milliseconds(500));
+    if(state->abandoned) {
+        co_return;
+    }
+    if(state->phase == CompilePhase::Idle) {
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    auto shown = server.files.display(path_id);
+    lsp::ProgressReporter<ipc::JSONPeer> reporter(
+        peer,
+        protocol::ProgressToken(std::format("clice/compile/{}", feature::to_uri(shown))));
+    // Hang detection: the bound ends the handshake of a client that never
+    // answers, as the index progress's does.
+    auto created = co_await reporter.create({.timeout = std::chrono::minutes(1)});
+    if(state->abandoned) {
+        co_return;
+    }
+    if(created.has_error()) {
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    // The client keeps a created token until it ends, and refuses to create
+    // it again meanwhile: a compile that ended during the handshake ends it.
+    if(state->phase == CompilePhase::Idle) {
+        reporter.begin(std::string(path::filename(shown)));
+        reporter.end();
+        compile_progress.erase(path_id);
+        co_return;
+    }
+    reporter.begin(std::string(path::filename(shown)), std::string(describe(state->phase)));
+    state->reporter.emplace(std::move(reporter));
+}
+
 LSPClient::~LSPClient() {
     // A progress handshake may still be awaiting the client; it holds this
     // state alive and checks the flag before touching the peer.
     index_progress->abandoned = true;
+    for(auto& [path_id, state]: compile_progress) {
+        state->abandoned = true;
+    }
 }
 
 }  // namespace clice

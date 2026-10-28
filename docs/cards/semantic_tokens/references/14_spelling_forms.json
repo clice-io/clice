@@ -71,7 +71,10 @@
           "value": {
             "semantic_token": {
               "text": "new",
-              "type": "operator"
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
             }
           }
         },

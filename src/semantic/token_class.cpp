@@ -13,7 +13,7 @@ namespace clice {
 namespace {
 
 using enum SemanticTokenKind;
-using enum SemanticTokenModifier;
+using Modifier = SemanticTokenModifier;
 
 SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
     // An anonymous union, the field holding it, a lambda's class: no name
@@ -92,7 +92,7 @@ SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
 /// Where `decl` is visible from: a function, a class, its file, or
 /// everywhere; nothing for a template parameter without a meaningful
 /// context (a variable template's).
-std::optional<SemanticTokenModifier> scope_of(const clang::NamedDecl* decl) {
+std::optional<Modifier> scope_of(const clang::NamedDecl* decl) {
     const clang::DeclContext* context = decl->getDeclContext();
     // The class name injected into a class belongs to the class's scope.
     if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
@@ -102,14 +102,14 @@ std::optional<SemanticTokenModifier> scope_of(const clang::NamedDecl* decl) {
     // A lambda's captures are its function's locals.
     if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(context);
        record && record->isLambda() && llvm::isa<clang::FieldDecl>(decl)) {
-        return Local;
+        return Modifier::Local;
     }
     for(; !context->isFileContext(); context = context->getParent()) {
         if(context->isFunctionOrMethod()) {
-            return Local;
+            return Modifier::Local;
         }
         if(context->isRecord()) {
-            return Member;
+            return Modifier::Member;
         }
     }
     if(context->isTranslationUnit() && decl->isTemplateParameter()) {
@@ -120,9 +120,9 @@ std::optional<SemanticTokenModifier> scope_of(const clang::NamedDecl* decl) {
     auto linkage = decl->getLinkageInternal();
     if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::UniqueExternal ||
        decl->isInAnonymousNamespace()) {
-        return Internal;
+        return Modifier::Internal;
     }
-    return Global;
+    return Modifier::Global;
 }
 
 /// Whether an object of `type` cannot be modified through its name: const
@@ -239,18 +239,18 @@ TokenClass token_class(const clang::NamedDecl* decl) {
     if(result.kind == None) {
         return result;
     }
-    auto add = [&](SemanticTokenModifier modifier) {
+    auto add = [&](Modifier modifier) {
         result.modifiers |= mask(modifier);
     };
 
     if(decls::is_templated(decl) ||
        llvm::isa<clang::ClassTemplateSpecializationDecl, clang::VarTemplateSpecializationDecl>(
            decl)) {
-        add(Template);
+        add(Modifier::Template);
     }
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
        function && function->getPrimaryTemplate()) {
-        add(Template);
+        add(Modifier::Template);
     }
     // The facts below are the templated declaration's: a class template is
     // abstract when its class is.
@@ -263,75 +263,75 @@ TokenClass token_class(const clang::NamedDecl* decl) {
         add(*scope);
     }
     if(is_readonly(decl)) {
-        add(Readonly);
+        add(Modifier::Readonly);
     }
     if(is_static(decl)) {
-        add(Static);
+        add(Modifier::Static);
     }
     if(decl->getMostRecentDecl()->getAvailability() == clang::AR_Deprecated) {
-        add(Deprecated);
+        add(Modifier::Deprecated);
     }
     if(is_default_library(decl)) {
-        add(DefaultLibrary);
+        add(Modifier::DefaultLibrary);
     }
     if(is_constexpr(decl)) {
-        add(Constexpr);
+        add(Modifier::Constexpr);
     }
     if(llvm::isa<clang::UnresolvedUsingValueDecl,
                  clang::UnresolvedUsingTypenameDecl,
                  clang::UnresolvedUsingIfExistsDecl>(decl)) {
-        add(Dependent);
+        add(Modifier::Dependent);
     }
 
     if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
         if(method->isVirtual()) {
-            add(Virtual);
+            add(Modifier::Virtual);
         }
         if(method->isPureVirtual()) {
-            add(Abstract);
+            add(Modifier::Abstract);
         }
         if(llvm::isa<clang::CXXConstructorDecl>(method)) {
-            add(Constructor);
+            add(Modifier::Constructor);
         }
         if(llvm::isa<clang::CXXDestructorDecl>(method)) {
-            add(Destructor);
+            add(Modifier::Destructor);
         }
     }
     if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
         if(const auto* definition = record->getDefinition()) {
             if(definition->isAbstract()) {
-                add(Abstract);
+                add(Modifier::Abstract);
             }
             if(definition->isPolymorphic()) {
-                add(Virtual);
+                add(Modifier::Virtual);
             }
         }
     }
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         if(function->isNoReturn()) {
-            add(ControlFlow);
+            add(Modifier::ControlFlow);
         }
         if(result.kind == Operator) {
-            add(UserDefined);
+            add(Modifier::UserDefined);
         }
     }
     if(llvm::isa<clang::VarDecl, clang::FieldDecl, clang::BindingDecl>(decl) &&
        is_callable(llvm::cast<clang::ValueDecl>(decl)->getType())) {
-        add(Callable);
+        add(Modifier::Callable);
     }
     return result;
 }
 
 TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager& sources) {
     TokenClass result{.kind = Macro};
-    auto add = [&](SemanticTokenModifier modifier) {
+    auto add = [&](Modifier modifier) {
         result.modifiers |= mask(modifier);
     };
     if(macro.isFunctionLike()) {
-        add(Callable);
+        add(Modifier::Callable);
     }
     if(macro.tokens_empty()) {
-        add(Empty);
+        add(Modifier::Empty);
     }
     // FIXME: only tokens the replacement list writes count: a macro reaching
     // `return` through another macro (`#define WRAP RET`) gets no ControlFlow;
@@ -339,7 +339,7 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     if(ranges::any_of(macro.tokens(), [](const clang::Token& token) {
            return leaves_enclosing(token.getKind());
        })) {
-        add(ControlFlow);
+        add(Modifier::ControlFlow);
     }
     // Not a predefined one (`__GNUC__`), defined in no file: no index holds
     // it, and the references a preamble's index answers for would go
@@ -347,7 +347,7 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     auto location = macro.getDefinitionLoc();
     if(sources.isInSystemHeader(location) &&
        sources.getFileEntryRefForID(sources.getFileID(location))) {
-        add(DefaultLibrary);
+        add(Modifier::DefaultLibrary);
     }
     return result;
 }
@@ -396,7 +396,8 @@ TokenClass keyword_class(clang::tok::TokenKind kind) {
         case clang::tok::kw_dynamic_cast:
         case clang::tok::kw_const_cast:
         case clang::tok::kw_reinterpret_cast:
-        case clang::tok::kw_addrspace_cast: return {.kind = Operator};
+        case clang::tok::kw_addrspace_cast:
+            return {.kind = Keyword, .modifiers = mask(Modifier::Operator)};
 
         case clang::tok::kw_if:
         case clang::tok::kw_else:
@@ -417,17 +418,21 @@ TokenClass keyword_class(clang::tok::TokenKind kind) {
         case clang::tok::kw_co_yield:
         case clang::tok::kw___try:
         case clang::tok::kw___finally:
-        case clang::tok::kw___leave: return {.kind = Keyword, .modifiers = mask(ControlFlow)};
+        case clang::tok::kw___leave:
+            return {.kind = Keyword, .modifiers = mask(Modifier::ControlFlow)};
 
         case clang::tok::kw_true:
         case clang::tok::kw_false:
         case clang::tok::kw_nullptr:
-        case clang::tok::kw___null: return {.kind = Keyword, .modifiers = mask(Literal)};
+        case clang::tok::kw___null: return {.kind = Keyword, .modifiers = mask(Modifier::Literal)};
 
         default: {
             // An alternative operator spelling (`and`) lexes as the
             // punctuator it spells.
-            return {.kind = clang::tok::getPunctuatorSpelling(kind) ? Operator : Keyword};
+            if(clang::tok::getPunctuatorSpelling(kind)) {
+                return {.kind = Keyword, .modifiers = mask(Modifier::Operator)};
+            }
+            return {.kind = Keyword};
         }
     }
 }

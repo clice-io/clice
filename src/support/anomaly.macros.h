@@ -11,7 +11,7 @@
         }                                                                                          \
     } while(0)
 
-/// User-facing guidance via window/logMessage (master) and the log file.
+/// User-facing guidance via window/showMessage (master) and the log file.
 /// Same lazy-evaluation contract as LOG_ANOMALY.
 #define LOG_GUIDANCE(fmt, ...)                                                                     \
     do {                                                                                           \

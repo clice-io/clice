@@ -4,7 +4,8 @@ type = "keyword"
 
 [answers.new.semantic_token]
 text = "new"
-type = "operator"
+type = "keyword"
+modifiers = ["operator"]
 
 [answers.member_class.semantic_token]
 text = "Widget"

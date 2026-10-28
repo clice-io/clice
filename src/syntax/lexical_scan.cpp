@@ -40,8 +40,70 @@ std::optional<llvm::StringRef> guard_tested(llvm::StringRef content, llvm::Array
     return std::nullopt;
 }
 
+/// Whether a token of `info` in [from, to) is code: neither a comment nor a
+/// directive's.
+bool code_in(const LexicalInfo& info, std::uint32_t from, std::uint32_t to) {
+    auto& directives = info.directives;
+    auto directive = ranges::lower_bound(directives, from, {}, &Directive::first);
+    for(auto index = from; index < to; index += 1) {
+        if(directive != directives.end() && index == directive->first) {
+            index = directive->last;
+            ++directive;
+        } else if(info.tokens[index].kind != clang::tok::comment) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef content,
                                                             const LexicalInfo& info) {
+    auto opening = guard_opening(content, info);
+    if(!opening) {
+        return std::nullopt;
+    }
+    auto& directives = info.directives;
+
+    // The `#endif` closing the opening, nothing but `#pragma once` after.
+    std::uint32_t closing = LexicalInfo::none;
+    for(auto index = *opening + 2; index < directives.size(); index += 1) {
+        auto& directive = directives[index];
+        if(closing != LexicalInfo::none) {
+            if(directive.kind != Directive::Kind::PragmaOnce) {
+                return std::nullopt;
+            }
+        } else if(directive.opening == *opening) {
+            if(directive.kind != Directive::Kind::EndIf) {
+                return std::nullopt;
+            }
+            closing = index;
+        }
+    }
+    if(closing == LexicalInfo::none || code_in(info,
+                                               directives[closing].last + 1,
+                                               static_cast<std::uint32_t>(info.tokens.size()))) {
+        return std::nullopt;
+    }
+    return LexicalInfo::IncludeGuard{
+        .opening = *opening,
+        .definition = *opening + 1,
+        .closing = closing,
+        .name = info.words(directives[*opening + 1])[1].range,
+    };
+}
+
+TokenKind closer(TokenKind opener) {
+    switch(opener) {
+        case clang::tok::l_paren: return clang::tok::r_paren;
+        case clang::tok::l_square: return clang::tok::r_square;
+        case clang::tok::l_brace: return clang::tok::r_brace;
+        default: return clang::tok::unknown;
+    }
+}
+
+}  // namespace
+
+std::optional<std::uint32_t> guard_opening(llvm::StringRef content, const LexicalInfo& info) {
     auto& directives = info.directives;
     auto opening = static_cast<std::uint32_t>(
         ranges::find_if(directives,
@@ -61,63 +123,12 @@ std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef cont
     if(defined.size() < 2 || !defined[1].is_identifier() || defined[1].text(content) != *tested) {
         return std::nullopt;
     }
-
-    // The `#endif` closing the opening, nothing but `#pragma once` after.
-    std::uint32_t closing = LexicalInfo::none;
-    for(auto index = opening + 2; index < directives.size(); index += 1) {
-        auto& directive = directives[index];
-        if(closing != LexicalInfo::none) {
-            if(directive.kind != Directive::Kind::PragmaOnce) {
-                return std::nullopt;
-            }
-        } else if(directive.opening == opening) {
-            if(directive.kind != Directive::Kind::EndIf) {
-                return std::nullopt;
-            }
-            closing = index;
-        }
-    }
-    if(closing == LexicalInfo::none) {
+    if(code_in(info, 0, directives[opening].first) ||
+       code_in(info, directives[opening].last + 1, definition.first)) {
         return std::nullopt;
     }
-
-    // Whether a token in [from, to) is code: neither a comment nor a
-    // directive's.
-    auto code_in = [&](std::uint32_t from, std::uint32_t to) {
-        auto directive = ranges::lower_bound(directives, from, {}, &Directive::first);
-        for(auto index = from; index < to; index += 1) {
-            if(directive != directives.end() && index == directive->first) {
-                index = directive->last;
-                ++directive;
-            } else if(info.tokens[index].kind != clang::tok::comment) {
-                return true;
-            }
-        }
-        return false;
-    };
-    if(code_in(0, directives[opening].first) ||
-       code_in(directives[opening].last + 1, definition.first) ||
-       code_in(directives[closing].last + 1, static_cast<std::uint32_t>(info.tokens.size()))) {
-        return std::nullopt;
-    }
-    return LexicalInfo::IncludeGuard{
-        .opening = opening,
-        .definition = opening + 1,
-        .closing = closing,
-        .name = defined[1].range,
-    };
+    return opening;
 }
-
-TokenKind closer(TokenKind opener) {
-    switch(opener) {
-        case clang::tok::l_paren: return clang::tok::r_paren;
-        case clang::tok::l_square: return clang::tok::r_square;
-        case clang::tok::l_brace: return clang::tok::r_brace;
-        default: return clang::tok::unknown;
-    }
-}
-
-}  // namespace
 
 Directive::Kind directive_kind(llvm::StringRef name, llvm::StringRef argument) {
     using enum Directive::Kind;

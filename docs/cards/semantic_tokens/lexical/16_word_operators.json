@@ -1,0 +1,136 @@
+{
+  "id": "semantic_tokens/lexical/16_word_operators",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Word operators",
+  "summary": "Word operators such as `sizeof`, `new` and `static_cast` are keywords with the `operator` modifier",
+  "prose": "`sizeof`, `alignof`, `typeid`, `new`, `delete`, the named casts and the\nalternative spellings such as `and` take a keyword's color, and the modifier\ntells them apart from other keywords. `co_await`, which suspends the\ncoroutine, carries `controlFlow` instead.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Node {\n    int value;\n};\n\nint sizes() {\n    Node* node = new Node{1};\n    auto bytes = sizeof(Node) + alignof(Node);\n    delete node;\n    return static_cast<int>(bytes);\n}\n",
+      "markers": [
+        {
+          "name": "new",
+          "begin": 64,
+          "end": 64,
+          "range": false
+        },
+        {
+          "name": "sizeof",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        },
+        {
+          "name": "alignof",
+          "begin": 109,
+          "end": 109,
+          "range": false
+        },
+        {
+          "name": "delete",
+          "begin": 128,
+          "end": 128,
+          "range": false
+        },
+        {
+          "name": "cast",
+          "begin": 152,
+          "end": 152,
+          "range": false
+        },
+        {
+          "name": "cast_open",
+          "begin": 163,
+          "end": 163,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "new",
+          "marker": "new",
+          "value": {
+            "semantic_token": {
+              "text": "new",
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
+            }
+          }
+        },
+        {
+          "label": "sizeof",
+          "marker": "sizeof",
+          "value": {
+            "semantic_token": {
+              "text": "sizeof",
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
+            }
+          }
+        },
+        {
+          "label": "alignof",
+          "marker": "alignof",
+          "value": {
+            "semantic_token": {
+              "text": "alignof",
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
+            }
+          }
+        },
+        {
+          "label": "delete",
+          "marker": "delete",
+          "value": {
+            "semantic_token": {
+              "text": "delete",
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
+            }
+          }
+        },
+        {
+          "label": "cast",
+          "marker": "cast",
+          "value": {
+            "semantic_token": {
+              "text": "static_cast",
+              "type": "keyword",
+              "modifiers": [
+                "operator"
+              ]
+            }
+          }
+        },
+        {
+          "label": "cast_open",
+          "marker": "cast_open",
+          "value": {
+            "semantic_token": {
+              "text": "<",
+              "type": "operator"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

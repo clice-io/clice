@@ -20,11 +20,11 @@ std::array<std::atomic<std::uint32_t>, anomaly_id_count> report_counts;
 /// testing trap calling reset_anomaly_for_testing).
 std::mutex hook_mutex;
 
-std::function<void(NotifyLevel, std::string_view)> notify_hook;
+std::function<void(NotifyKind, std::string_view)> notify_hook;
 
 std::function<void(AnomalyId)> testing_trap;
 
-std::function<void(NotifyLevel, std::string_view)> current_notify_hook() {
+std::function<void(NotifyKind, std::string_view)> current_notify_hook() {
     std::lock_guard lock(hook_mutex);
     return notify_hook;
 }
@@ -80,7 +80,7 @@ bool anomaly_should_report(AnomalyId id) {
                         anomaly_report_limit);
         logging::err("{}", text);
         if(auto hook = current_notify_hook())
-            hook(NotifyLevel::Error, text);
+            hook(NotifyKind::Anomaly, text);
     }
     return false;
 }
@@ -89,7 +89,7 @@ void report_anomaly(AnomalyId id, std::string_view message, std::source_location
     auto text = std::format("[anomaly:{}] {}", id, message);
     logging::log(spdlog::level::err, location, "{}", text);
     if(auto hook = current_notify_hook())
-        hook(NotifyLevel::Error, text);
+        hook(NotifyKind::Anomaly, text);
     trap(id);
 }
 
@@ -98,13 +98,12 @@ bool guidance_should_report() {
 }
 
 void report_guidance(std::string_view message, std::source_location location) {
-    auto text = std::format("[guidance] {}", message);
-    logging::log(spdlog::level::warn, location, "{}", text);
+    logging::log(spdlog::level::warn, location, "[guidance] {}", message);
     if(auto hook = current_notify_hook())
-        hook(NotifyLevel::Warning, text);
+        hook(NotifyKind::Guidance, message);
 }
 
-void set_notify_hook(std::function<void(NotifyLevel, std::string_view)> hook) {
+void set_notify_hook(std::function<void(NotifyKind, std::string_view)> hook) {
     std::lock_guard lock(hook_mutex);
     notify_hook = std::move(hook);
 }

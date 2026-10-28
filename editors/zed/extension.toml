@@ -3,7 +3,7 @@ name = "clice"
 version = "0.1.2"
 schema_version = 1
 authors = ["clice-io"]
-description = "C++ support"
+description = "C and C++ language support by clice, a language server for modern C++"
 repository = "https://github.com/clice-io/clice"
 
 [language_servers.clice]

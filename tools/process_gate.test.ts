@@ -33,6 +33,35 @@ test("process gate rejects every incomplete or unsafe process outcome", () => {
     ]);
 });
 
+test("a sanitizer's report fails the gate, a file named after one does not", () => {
+    const gate = (stderrText: string) =>
+        processGateFailures({
+            exitCode: 0,
+            signalCode: null,
+            stderrText,
+            stderrComplete: true,
+            stderrDrainedFromStart: true,
+        });
+    expect(
+        gate(
+            "[info] [pump.cpp:353] [3/9] Indexing /llvm/lib/Transforms/Instrumentation/AddressSanitizer.cpp\n" +
+                "[info] [pch.cpp:152] file=/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp\n" +
+                "[warn] [indexer.cpp:88] no target for AddressSanitizer::instrumentFunction\n",
+        ),
+    ).toEqual([]);
+    for (const report of [
+        "==4242==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010",
+        "==4242==ERROR: HWAddressSanitizer: tag-mismatch on address 0x0042",
+        "WARNING: ThreadSanitizer: data race (pid=4242)",
+        "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior a.cpp:3:5",
+        "a.cpp:3:5: runtime error: signed integer overflow",
+        "AddressSanitizer:DEADLYSIGNAL",
+        "==4242==LeakSanitizer has encountered a fatal error.",
+    ]) {
+        expect(gate(report)).toEqual(["server stderr contains sanitizer/runtime error output"]);
+    }
+});
+
 test("stderr excerpt keeps the runtime's abort messages", () => {
     const aborts = [
         "Fatal glibc error: malloc.c:2601 (sysmalloc): assertion failed: (old_top == initial_top (av) && old_size == 0)",

@@ -7,7 +7,7 @@ test(async (t) => {
     expect(await s.errors("src/main.c")).toEqual([]);
     expect(await s.errors("include/board.h")).toEqual([]);
     await t.show("board-a", s.inactiveLines("include/board.h"));
-    expect(await s.switchConfiguration("board-b")).toEqual({ success: true });
+    expect(await s.switchConfiguration("board-b")).toEqual({ success: true, reason: null });
     await s.restart();
     expect(await s.errors("src/main.c")).toEqual([]);
     expect(await s.errors("include/board.h")).toEqual([]);

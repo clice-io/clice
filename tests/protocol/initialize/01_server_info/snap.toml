@@ -47,7 +47,9 @@ value = '''
             "refactor.rewrite.populateSwitch",
             "refactor.rewrite.expandDeducedType",
             "refactor.rewrite.reorderDefinitions",
-            "refactor.inline.macro"
+            "refactor.inline.macro",
+            "source.clice.context",
+            "source.clice.configuration"
         ]
     },
     "documentLinkProvider": {},
@@ -59,6 +61,13 @@ value = '''
     },
     "foldingRangeProvider": true,
     "selectionRangeProvider": true,
+    "executeCommandProvider": {
+        "commands": [
+            "clice.lsp.switchContext",
+            "clice.lsp.resetContext",
+            "clice.lsp.switchConfiguration"
+        ]
+    },
     "callHierarchyProvider": true,
     "semanticTokensProvider": {
         "legend": {
@@ -126,7 +135,8 @@ value = '''
                 "literal",
                 "affix",
                 "empty",
-                "inactive"
+                "inactive",
+                "operator"
             ]
         },
         "range": true,

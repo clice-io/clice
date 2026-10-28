@@ -641,9 +641,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             if(index != 0) {
                 info.target_definition += '\n';
             }
-            auto definition = display::definition(target, options, [&](clang::SourceRange range) {
-                return unit.focus_file().tokens().expanded(range).size();
-            });
+            auto definition = display::definition(target, options);
             add_macros(info, definition, options);
             info.target_definition += layout(std::move(definition), false) + ";";
         }
@@ -673,10 +671,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         const auto* tag = alias->getUnderlyingType()->getAsTagDecl();
         if(tag && tag->getDefinition() && tag->getTypedefNameForAnonDecl() != alias &&
            !llvm::isa<clang::ClassTemplateSpecializationDecl>(tag)) {
-            auto definition =
-                display::definition(tag->getDefinition(), options, [&](clang::SourceRange range) {
-                    return unit.focus_file().tokens().expanded(range).size();
-                });
+            auto definition = display::definition(tag->getDefinition(), options);
             add_macros(info, definition, options);
             info.target_definition = layout(std::move(definition), false);
         }
@@ -709,9 +704,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             return info;
         }
     }
-    auto definition = display::definition(declaration, options, [&](clang::SourceRange range) {
-        return unit.focus_file().tokens().expanded(range).size();
-    });
+    auto definition = display::definition(declaration, options);
     add_macros(info, definition, options);
     info.definition = layout(std::move(definition), decls::is_exported(decl));
     return info;

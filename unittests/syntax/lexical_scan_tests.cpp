@@ -441,6 +441,18 @@ ZEST_CASE(NoGuard) {
     ZASSERT(guard("#ifdef A_H\n#define A_H\n#endif\n") == "");
 }
 
+ZEST_CASE(OpeningAlone) {
+    auto opens = [](llvm::StringRef content) {
+        return guard_opening(content, lexical_scan(content, dialect_of())).has_value();
+    };
+    ZASSERT(opens("// license\n#pragma once\n#ifndef A_H\n#define A_H\n#include \"b.h\"\n"));
+    ZASSERT(opens("#if !defined(A_H)\n#define A_H\n"));
+    ZASSERT(!opens("#include \"b.h\"\n#ifndef A_H\n#define A_H\n"));
+    ZASSERT(!opens("#ifndef A_H\n#include \"b.h\"\n#define A_H\n"));
+    ZASSERT(!opens("#ifndef A_H\n#define B_H\n"));
+    ZASSERT(!opens("int x;\n#ifndef A_H\n#define A_H\n"));
+}
+
 };  // ZEST_SUITE(LexicalScanIncludeGuard)
 
 ZEST_SUITE(BracketPairing) {

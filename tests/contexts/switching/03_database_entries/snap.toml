@@ -1,7 +1,7 @@
 [test.contexts]
 contexts = [
     { label = "-DEXPECTED", description = "${WS}", host = "main.cpp" },
-    { label = "config #1", description = "${WS}", host = "main.cpp" },
+    { label = "command #1", description = "${WS}", host = "main.cpp" },
 ]
 
 [test."with the define"]

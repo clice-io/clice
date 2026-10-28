@@ -414,13 +414,10 @@ struct Definition {
 
 /// Pretty-print the declaration itself, its attributes as written. A class
 /// or enum with a visible definition prints that definition, its body
-/// summarized as options.max_members asks. Initializers longer than 200
-/// tokens, counted by `token_count` over a range, are suppressed — such lists
-/// are not useful in a hover card and are catastrophically expensive to
-/// print.
-auto definition(const clang::Decl* decl,
-                const Options& options,
-                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> Definition;
+/// summarized as options.max_members asks. Initializers of more than 100
+/// expressions as written are suppressed — such lists are not useful in a
+/// hover card and are catastrophically expensive to print.
+auto definition(const clang::Decl* decl, const Options& options) -> Definition;
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type);
 

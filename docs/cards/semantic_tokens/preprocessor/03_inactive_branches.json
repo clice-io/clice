@@ -657,7 +657,10 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword",
+                "modifiers": [
+                  "operator"
+                ]
               },
               {
                 "at": {

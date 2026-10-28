@@ -403,6 +403,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     if(auto lender = command_lender(project, path_id)) {
         auto lender_path = project.file_table.resolve(lender->unit);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
+        resolution.lender = lender->unit;
         return finish_own(project.build.lend(lender->command, lender_path, path),
                           CommandSource::Inferred,
                           path,

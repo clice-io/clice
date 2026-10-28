@@ -6,9 +6,9 @@ outline: 2
 
 clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在，则从 `.clice/config.toml` 读取。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入；`initializationOptions` 中的值覆盖配置文件，合并后仍未设置的项由默认值填充。
 
-配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。
+配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。任一文件发生变化时，VS Code 扩展会提示重启。
 
-完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。
+完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。VS Code 扩展为 [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml) 把它关联到这两个文件，后者随即为它们提供补全和校验；在其他编辑器中，在文件第一行写上 `#:schema https://docs.clice.io/clice-config.schema.json`，即可让 taplo（Zed 和 Neovim 常用的 TOML 语言服务器）使用它。
 
 文件中的相对路径和模式相对于配置文件自身所在的目录解析；通过 `initializationOptions` 传入的值则相对于工作区根目录解析。
 
@@ -930,7 +930,7 @@ tests/project/rules/09_remove_flags
 
 ## 切换配置
 
-规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——VS Code 的状态栏显示生效的配置，点击即可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
+规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——在 VS Code 中，C 或 C++ 文件的语言状态（语言模式旁的 `{}`）显示生效的配置并可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
 
 有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会切换到那个构建的索引；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则只在直接写明该构建的数据库这一点上不同的配置，与它共用索引。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
 

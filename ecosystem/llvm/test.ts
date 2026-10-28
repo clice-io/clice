@@ -18,10 +18,14 @@ regression({
             detail: /^(?![\s\S]*\n-\s+\{)/,
         },
         {
-            issue: "10-24#8",
-            why: "a header in an include cycle reaches itself through its preamble, which clang refuses",
-            kind: "compile",
-            detail: /main file cannot be included recursively when building a preamble/,
+            issue: "10-28#5",
+            why: "signature help lists the overloads Sema ranks alike in lookup order, which a preamble's PCH changes",
+            kind: "disagree",
+            request: "signatureHelp",
+            file: "llvm/unittests/ADT/HashingTest.cpp",
+            // HashBuilder.h's overload listed later by the server, and no
+            // other difference.
+            detail: /(?<![\s\S])(?=[\s\S]*^-( +"hash_value\(⟦const T &Value⟧\) -> .*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
         },
     ],
 });

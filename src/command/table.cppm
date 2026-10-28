@@ -186,8 +186,9 @@ public:
                                            const RenderOptions& opts = {});
 
     /// Every argument including codegen and discarded ones: the
-    /// debug/display form. No file injection.
-    std::vector<const char*> render_full(CommandID id);
+    /// debug/display form. The input slot names `input`, and is left out
+    /// without one.
+    std::vector<const char*> render_full(CommandID id, llvm::StringRef input = {});
 
 private:
     /// Append the Frontend-view fragments of `id` (the hash input) to out.

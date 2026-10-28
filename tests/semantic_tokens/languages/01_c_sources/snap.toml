@@ -61,7 +61,7 @@ semantic_tokens = [
     { at = "return a->x ⟦==⟧ b->x and c == RED && flag && count;", type = "operator" },
     { at = "return a->x == ⟦b⟧->x and c == RED && flag && count;", type = "parameter", modifiers = ["local"] },
     { at = "return a->x == b->⟦x⟧ and c == RED && flag && count;", type = "field", modifiers = ["member"] },
-    { at = "return a->x == b->x ⟦and⟧ c == RED && flag && count;", type = "operator" },
+    { at = "return a->x == b->x ⟦and⟧ c == RED && flag && count;", type = "keyword", modifiers = ["operator"] },
     { at = "return a->x == b->x and ⟦c⟧ == RED && flag && count;", type = "variable", modifiers = ["local"] },
     { at = "return a->x == b->x and c ⟦==⟧ RED && flag && count;", type = "operator" },
     {
