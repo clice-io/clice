@@ -164,6 +164,7 @@ public:
         if(main.fid.isValid() && !place(main, diagnostic)) {
             return std::nullopt;
         }
+        diagnostic.range = in_text(diagnostic.range);
         for(const auto& note: main.notes) {
             add_note(diagnostic, note.fid, note.range, note.message);
         }
@@ -171,6 +172,14 @@ public:
     }
 
 private:
+    /// `range` of the focus file, ending with its text: a token running on
+    /// past it (an unterminated raw string) runs into the suffix of a header
+    /// context, which clang's buffer of the file goes on with.
+    LocalSourceRange in_text(LocalSourceRange range) {
+        auto size = static_cast<std::uint32_t>(unit.focus_file().content().size());
+        return {std::min(range.begin, size), std::min(range.end, size)};
+    }
+
     /// Locate the diagnostic in the focus file. One from another file moves
     /// there: to the instantiation the focus file requested, else an error
     /// to the #include or import that brought its file in, else to the top of the
@@ -294,9 +303,10 @@ private:
            !range.valid()) {
             return;
         }
+        bool own = unit.focus_file().contains(fid);
         diagnostic.notes.push_back({
-            .path = unit.focus_file().contains(fid) ? std::string() : unit.file_path(fid).str(),
-            .range = range,
+            .path = own ? std::string() : unit.file_path(fid).str(),
+            .range = own ? in_text(range) : range,
             .message = message.str(),
         });
     }

@@ -1,0 +1,17 @@
+[test."m.inc"]
+diagnostics = [
+    {
+        at = 'const char* s = ⟦R"(never closed … ⟧ (2 lines)',
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
+    {
+        at = 'const char* s = ⟦R"(never closed … ⟧ (2 lines)',
+        severity = "error",
+        message = 'raw string missing terminating delimiter )"',
+        source = "clang",
+        code = "err_unterminated_raw_string",
+    },
+]
