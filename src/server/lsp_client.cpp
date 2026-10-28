@@ -926,7 +926,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
 }
 
 template <typename Params, typename Answer>
-void LSPClient::on_document(Answer answer, DocumentOptions options) {
+void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
     peer.on_request([this, answer = std::move(answer), options](RequestContext& ctx,
                                                                 const Params& params) -> RawResult {
         server.pool.foreground_pulse();

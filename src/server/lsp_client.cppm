@@ -20,6 +20,12 @@ import :vfs.file_table;
 
 namespace clice {
 
+/// How a request on a document is served (LSPClient::on_document).
+struct DocumentRequestOptions {
+    /// A document that is not open is served too, from the index.
+    bool closed = false;
+};
+
 class LSPClient {
 public:
     LSPClient(MasterServer& server, ipc::JSONPeer& peer);
@@ -41,17 +47,12 @@ private:
 
     ResolvedDoc resolve_uri(const std::string& uri);
 
-    struct DocumentOptions {
-        /// A document that is not open is served too, from the index.
-        bool closed = false;
-    };
-
     /// Registers the handler of a request on a document: the user is
     /// active, the document resolves to its project, and `answer` — given
     /// the request's context, its parameters and the document — gets the
     /// request unless it needs the document open and it is not.
     template <typename Params, typename Answer>
-    void on_document(Answer answer, DocumentOptions options = {});
+    void on_document(Answer answer, DocumentRequestOptions options = {});
 
     /// LSP handler registration, grouped by category. Each installs its
     /// handlers on `peer`; all four are invoked once from the constructor.

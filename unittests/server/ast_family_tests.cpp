@@ -912,7 +912,7 @@ ZEST_CASE(CrashedFormatBarsFormat) {
     auto body = [&]() -> kota::task<> {
         auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
         ZASSERT(result);
-        ZEXPECT(result.value().data == "null");
+        ZEXPECT(!result.value().has_value());
         done = true;
     };
     auto task = body();
@@ -1080,7 +1080,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
         kota::cancellation_source source;
         kota::task_group<> group;
         auto cancelled_waiter = [&]() -> kota::task<> {
-            auto hover = [&]() -> Dispatcher::RawResult {
+            auto hover = [&]() -> kota::task<std::optional<feature::HoverInfo>, ipc::Error> {
                 co_return co_await stack.dispatcher.hover(Ticket::take(session),
                                                           protocol::Position{0, 4},
                                                           source.token());
@@ -1475,7 +1475,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
         ZASSERT(co_await stack.ast.ensure_compiled(b));
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1522,7 +1522,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
         evict();
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
         ZEXPECT(outputs == 3);
 
         co_await stack.ast.stop();
@@ -1563,7 +1563,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         auto before = published;
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
-        ZEXPECT(result.value().data != "null");
+        ZEXPECT(result.value().has_value());
         ZEXPECT(!a->quarantine->crashed(hover));
         ZEXPECT(published == before + 1);
 
