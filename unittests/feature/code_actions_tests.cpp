@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :feature.code_actions;
+import :unittests.utils.index_query_tester;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -40,7 +41,6 @@ struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
 
 ZEST_SUITE(code_actions, Tester) {
 
-std::vector<feature::CodeAction> actions;
 std::string original;
 std::string applied;
 
@@ -54,9 +54,8 @@ void run(llvm::StringRef code, llvm::StringRef focus = "main.cpp") {
 /// `prefix`.
 std::vector<std::string> titles(llvm::StringRef marker, llvm::StringRef prefix) {
     auto offset = point(marker);
-    actions = feature::code_actions(*unit, {offset, offset});
     std::vector<std::string> titles;
-    for(const auto& action: actions) {
+    for(const auto& action: feature::code_actions(*unit, {offset, offset})) {
         if(llvm::StringRef(action.title).starts_with(prefix)) {
             titles.push_back(action.title);
         }
@@ -68,27 +67,23 @@ std::vector<std::string> definitions(llvm::StringRef marker) {
     return titles(marker, "Define");
 }
 
-/// Apply the action titled `title` offered at the marker, its definitions
-/// resolved and formatted as `clice inspect` does without an index.
+/// Apply the action titled `title` offered at the marker to the focus
+/// file, resolved as `clice inspect` resolves it, without an index.
 void apply(llvm::StringRef marker, llvm::StringRef title) {
     auto offset = point(marker);
-    actions = feature::code_actions(*unit, {offset, offset});
-    auto action = ranges::find_if(actions, [&](const feature::CodeAction& action) {
+    original = unit->focus_file().content().str();
+    auto actions = feature::resolve_actions(feature::code_actions(*unit, {offset, offset}),
+                                            {},
+                                            {
+                                                .path = unit->file_path(unit->focus_file().file()),
+                                                .content = original,
+                                            });
+    auto action = ranges::find_if(actions, [&](const feature::ResolvedAction& action) {
         return action.title == title;
     });
     ZASSERT(action != actions.end());
-    original = unit->focus_file().content().str();
+    ZASSERT(action->host_definitions.empty());
     auto edits = action->edits;
-    if(action->index) {
-        auto* request = std::get_if<feature::DefineRequest>(&*action->index);
-        ZASSERT(request != nullptr);
-        auto defined = feature::define_edits(*request,
-                                             unit->file_path(unit->focus_file().file()),
-                                             original,
-                                             [](std::uint64_t) { return false; });
-        ZASSERT(defined);
-        edits = *defined;
-    }
     ranges::sort(edits, [](const auto& lhs, const auto& rhs) {
         return lhs.range.begin > rhs.range.begin;
     });
@@ -1177,6 +1172,222 @@ private:
 }
 
 };  // ZEST_SUITE(code_actions)
+
+ZEST_SUITE(resolve_actions, IndexQueryTester) {
+
+/// Compile the focus file as an open file is compiled.
+void open() {
+    kind = CompilationKind::Content;
+    ZASSERT(compile());
+}
+
+/// The actions offered at the marker of the compiled focus file, resolved
+/// with `inputs`, the focus file's own filled in.
+std::vector<feature::ResolvedAction> resolve(llvm::StringRef marker,
+                                             feature::ResolveInputs inputs) {
+    auto offset = point(marker);
+    auto path = unit->file_path(unit->focus_file().file());
+    inputs.file = project.file_table.intern(Spelling::absolute(path));
+    inputs.path = path;
+    inputs.content = unit->focus_file().content();
+    return feature::resolve_actions(feature::code_actions(*unit, {offset, offset}), {}, inputs);
+}
+
+const feature::ResolvedAction* titled(llvm::ArrayRef<feature::ResolvedAction> actions,
+                                      llvm::StringRef title) {
+    auto it = ranges::find_if(actions, [&](const auto& action) { return action.title == title; });
+    return it != actions.end() ? &*it : nullptr;
+}
+
+ZEST_CASE(DefinedElsewhereDropped) {
+    add_focus("other.cpp", R"(
+struct Shape {
+    void draw();
+    void move();
+};
+void Shape::move() {}
+)");
+    index_workspace();
+    clear();
+    add_focus("main.cpp", R"(
+struct §(shape)Shape {
+    void draw();
+    void move();
+};
+)");
+    open();
+
+    auto kept = resolve("shape", {.query = &query});
+    auto* action = titled(kept, "Define missing members of 'Shape'");
+    ZASSERT(action != nullptr);
+    ZASSERT(action->edits.size() == 1U);
+    ZEXPECT(llvm::StringRef(action->edits[0].text).contains("Shape::draw"));
+    ZEXPECT(!llvm::StringRef(action->edits[0].text).contains("Shape::move"));
+
+    auto unvetted = resolve("shape", {});
+    action = titled(unvetted, "Define missing members of 'Shape'");
+    ZASSERT(action != nullptr);
+    ZEXPECT(llvm::StringRef(action->edits[0].text).contains("Shape::move"));
+}
+
+ZEST_CASE(AllDefinedElsewhere) {
+    add_focus("other.cpp", R"(
+struct Shape {
+    void draw();
+};
+void Shape::draw() {}
+)");
+    index_workspace();
+    clear();
+    add_focus("main.cpp", R"(
+struct Shape {
+    void §(draw)draw();
+};
+)");
+    open();
+
+    auto actions = resolve("draw", {.query = &query});
+    ZEXPECT(titled(actions, "Define 'Shape::draw' out of line") == nullptr);
+    ZEXPECT(titled(resolve("draw", {}), "Define 'Shape::draw' out of line") != nullptr);
+}
+
+ZEST_CASE(HostPlacement) {
+    add_file("header.h", R"(
+struct Shape {
+    void draw();
+    void move();
+};
+)");
+    add_focus("host.cpp", R"(#include "header.h"
+void Shape::move() {}
+)");
+    index_workspace();
+    auto host = focus_id;
+    auto host_path = TestVFS::path("host.cpp");
+    clear();
+    add_focus("header.h", R"(
+struct Shape {
+    void §(draw)draw();
+    void move();
+};
+)");
+    open();
+
+    bool read = false;
+    auto actions = resolve("draw",
+                           {
+                               .query = &query,
+                               .host = host,
+                               .host_path = host_path,
+                               .host_style_path = host_path,
+                               .host_text = [&]() -> SourceText* {
+                                   read = true;
+                                   return nullptr;
+                               },
+                           });
+    auto* action = titled(actions, "Define 'Shape::draw' in host.cpp");
+    ZASSERT(action != nullptr);
+    ZASSERT(action->host.has_value());
+    ZEXPECT(!read);
+    ZEXPECT(action->host->at.line == 1U);
+    ZEXPECT(action->host->at.column == 21U);
+    ZEXPECT(llvm::StringRef(action->host->text).starts_with("\n\nvoid Shape::draw()"));
+    ZEXPECT(action->edits.empty());
+}
+
+ZEST_CASE(HostEnd) {
+    add_file("header.h", R"(
+struct Shape {
+    void draw();
+};
+)");
+    add_focus("host.cpp", R"(#include "header.h"
+)");
+    index_workspace();
+    auto host = focus_id;
+    auto host_path = TestVFS::path("host.cpp");
+    clear();
+    add_focus("header.h", R"(
+struct Shape {
+    void §(draw)draw();
+};
+)");
+    open();
+
+    SourceText text(std::string("#include \"header.h\"\n"));
+    auto actions = resolve("draw",
+                           {
+                               .query = &query,
+                               .host = host,
+                               .host_path = host_path,
+                               .host_style_path = host_path,
+                               .host_text = [&] { return &text; },
+                           });
+    auto* action = titled(actions, "Define 'Shape::draw' in host.cpp");
+    ZASSERT(action != nullptr);
+    ZASSERT(action->host.has_value());
+    ZEXPECT(action->host->at.line == 1U);
+    ZEXPECT(action->host->at.column == 0U);
+    ZEXPECT(llvm::StringRef(action->host->text).starts_with("\nvoid Shape::draw()"));
+}
+
+ZEST_CASE(NoHost) {
+    add_focus("header.h", R"(
+struct Shape {
+    void §(draw)draw();
+};
+)");
+    open();
+
+    auto actions = resolve("draw", {});
+    auto* action = titled(actions, "Define 'Shape::draw'");
+    ZASSERT(action != nullptr);
+    ZASSERT(action->host_definitions.size() == 1U);
+    ZEXPECT(llvm::StringRef(action->host_definitions[0]).contains("Shape::draw"));
+
+    auto shown = feature::to_protocol(std::move(actions),
+                                      unit->focus_file().positions(),
+                                      PositionEncoding::UTF16,
+                                      {.uri = "file:///header.h"},
+                                      {});
+    ZEXPECT(ranges::none_of(shown, [](const protocol::CodeAction& action) {
+        return action.title == "Define 'Shape::draw'";
+    }));
+}
+
+ZEST_CASE(IncludeFromIndex) {
+    add_file("widget.h", R"(
+struct Widget {};
+)");
+    add_focus("lib.cpp", R"(#include "widget.h"
+)");
+    index_workspace();
+    clear();
+    add_focus("main.cpp", R"(§(use)Widget w;
+)");
+    open();
+
+    std::vector<std::string> asked;
+    auto actions =
+        resolve("use",
+                {
+                    .query = &query,
+                    .include_argument = [&](CanonicalRef header) -> std::optional<std::string> {
+                        asked.push_back(header.str());
+                        return R"("widget.h")";
+                    },
+                });
+    ZASSERT(asked.size() == 1U);
+    ZEXPECT(llvm::StringRef(asked[0]).ends_with("widget.h"));
+    auto* action = titled(actions, R"(Add #include "widget.h")");
+    ZASSERT(action != nullptr);
+    ZASSERT(action->edits.size() == 1U);
+    ZEXPECT(action->edits[0].text == "#include \"widget.h\"\n");
+
+    ZEXPECT(titled(resolve("use", {}), R"(Add #include "widget.h")") == nullptr);
+}
+
+};  // ZEST_SUITE(resolve_actions)
 
 }  // namespace
 

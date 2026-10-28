@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :command.search_config;
+import :feature.code_actions;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_links;
@@ -30,10 +31,12 @@ import :server.query_commands;
 import :support.json;
 import :support.text;
 import :syntax.completion;
+import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
+import :vfs.path;
 import :worker.protocol;
 
 namespace clice {
@@ -256,6 +259,79 @@ std::vector<feature::FileDiagnostic> Requests::finished_diagnostics(const Sessio
     }
     append_crash_notes(session, diagnostics);
     return diagnostics;
+}
+
+kota::task<std::vector<protocol::CodeAction>, ipc::Error>
+    Requests::code_actions(Ticket ticket,
+                           const protocol::Range& range,
+                           std::vector<protocol::CodeActionKind> only,
+                           kota::cancellation_token token) {
+    auto& session = ticket.session;
+    // Code actions are AST products the index cannot compute; a session
+    // the policy keeps un-compiled answers honestly empty rather than
+    // forcing the compile the policy declined.
+    if(!feature::admits_any(only) ||
+       (!ast_answerable(*session) && session->serving == ServingMode::IndexOnly)) {
+        co_return std::vector<protocol::CodeAction>{};
+    }
+    auto actions = co_await dispatcher.code_actions(ticket, range, std::move(token)).or_fail();
+
+    auto path_id = session->path_id;
+    auto path = project.file_table.display(path_id);
+    Fid host = contexts.host_of(path_id);
+    auto host_session = host.valid() ? sessions.find(host) : nullptr;
+    auto host_path = host.valid() ? project.file_table.display(host) : std::string();
+    // A closed host formats as the build spells it.
+    auto host_style_path =
+        host_session || !host.valid() ? host_path : project.file_table.spelling(host).str();
+    std::optional<SourceText> host_disk;
+    std::optional<SearchConfig> search;
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved = feature::resolve_actions(
+        std::move(actions),
+        only,
+        {
+            .query = &query,
+            .file = path_id,
+            .path = path,
+            .content = session->text(),
+            .host = host,
+            .host_path = host_path,
+            .host_style_path = host_style_path,
+            .host_text = [&]() -> SourceText* {
+                if(host_session) {
+                    return host_session->source.get();
+                }
+                auto read = vfs::read_text(host_path);
+                return read ? &host_disk.emplace(std::move(*read)) : nullptr;
+            },
+            .include_argument =
+                [&](CanonicalRef header) {
+                    if(!search) {
+                        search = search_of(path_id);
+                    }
+                    return include_argument(header,
+                                            *search,
+                                            project.file_table.spelling(path_id),
+                                            scope);
+                },
+        });
+    co_return feature::to_protocol(
+        std::move(resolved),
+        session->positions(),
+        encoding,
+        {.uri = feature::to_uri(path), .version = session->version},
+        {.uri = host.valid() ? feature::to_uri(host_path) : std::string(),
+         .version = host_session ? std::optional(host_session->version) : std::nullopt});
+}
+
+SearchConfig Requests::search_of(Fid path_id) {
+    // Editor use: the search follows the command (host choice, chosen CDB
+    // entry) the open buffer compiles under.
+    std::string directory;
+    std::vector<std::string> arguments;
+    return project.toolchain.search_config(
+        contexts.resolve_command(path_id, directory, arguments).ref);
 }
 
 Requests::RawResult Requests::definition(Ticket ticket,
@@ -713,18 +789,13 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
         }
         if(completing.kind == CompletionName::Kind::IncludeQuoted ||
            completing.kind == CompletionName::Kind::IncludeAngled) {
-            std::string directory;
-            std::vector<std::string> arguments;
-            // Editor use: candidates must come from the same command (host
-            // choice, chosen CDB entry) the open buffer compiles under.
-            auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
             vfs::Scope scope(project.file_table.dirs);
             co_return to_raw(feature::include_completion(completing,
                                                          session->text(),
                                                          map,
                                                          encoding,
                                                          path,
-                                                         project.toolchain.search_config(ref),
+                                                         search_of(path_id),
                                                          scope,
                                                          project.config.code_completion.limit));
         }
@@ -759,17 +830,13 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
     protocol::CompletionList list;
     [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
     assert(decoded && "the worker encodes the list");
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto search = project.toolchain.search_config(
-        contexts.resolve_command(path_id, directory, arguments).ref);
     vfs::Scope scope(project.file_table.dirs);
     co_return to_raw(feature::finish_completion(std::move(list),
                                                 *result.include,
                                                 candidates,
                                                 query,
                                                 path_id,
-                                                search,
+                                                search_of(path_id),
                                                 scope,
                                                 project.config.code_completion.limit));
 }

@@ -6,6 +6,7 @@ module clice:feature.code_actions;
 
 import :compile.compilation;
 import :index.query;
+import :index.site;
 import :syntax.source_text;
 import :syntax.token;
 import :vfs.ids;
@@ -97,8 +98,7 @@ struct IncludeRequest {
     IncludeInsertion insertion;
 };
 
-/// What only the project index can decide: resolved by the master at the
-/// reply edge; clice inspect resolves it as an empty index would.
+/// What only the project index can decide: resolve_actions settles it.
 using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
 
 struct CodeAction {
@@ -113,54 +113,87 @@ struct CodeAction {
 /// carry their edits, the ones needing the index carry their request.
 auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vector<CodeAction>;
 
-/// The pieces the index keeps, joined by blank lines; nullopt when none
-/// survives.
-auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
-                          llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
-    -> std::optional<std::string>;
-
 /// Whether a request's kind filter (LSP CodeActionContext.only) admits
 /// `kind`: LSP kinds are hierarchical, a requested "refactor" admits
 /// "refactor.rewrite"; an empty filter admits every kind.
 bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind);
 
-/// One file an action edits, its edits in LSP form.
-struct FileEdit {
-    std::string uri;
-    std::optional<int> version;
-    std::vector<protocol::TextEdit> edits;
+/// Whether `only` admits any kind of code_action_kinds: when it admits
+/// none, there is nothing to compute.
+bool admits_any(llvm::ArrayRef<protocol::CodeActionKind> only);
+
+/// What the index requests of code actions are resolved against: the
+/// project's index, the focus file, and the host source a header's
+/// definitions go to.
+struct ResolveInputs {
+    /// Null resolves as an empty index would: every definition is kept and
+    /// no header declares a name.
+    const index::IndexQuery* query = nullptr;
+
+    /// The focus file, the path whose clang-format style formats the
+    /// definitions placed in it, and its text.
+    Fid file;
+    llvm::StringRef path;
+    llvm::StringRef content;
+
+    /// The host source; invalid when the file has none.
+    Fid host;
+
+    /// The host's path as the user knows it, which names it in the
+    /// action's title.
+    llvm::StringRef host_path;
+
+    /// The path whose clang-format style formats the definitions placed
+    /// in the host.
+    llvm::StringRef host_style_path;
+
+    /// The host's text, read only when the index places nothing there.
+    llvm::function_ref<SourceText*()> host_text;
+
+    /// The argument an `#include` of `header` takes in the focus file;
+    /// nullopt when no search path reaches it.
+    llvm::function_ref<std::optional<std::string>(CanonicalRef header)> include_argument;
 };
 
-protocol::CodeAction to_protocol(std::string title, protocol::CodeActionKind kind, FileEdit file);
+/// Definitions inserted into the host source at `at`, a point of its text.
+struct HostInsertion {
+    index::LineColumn at;
+    std::string text;
+};
 
-/// A DefineRequest's edit of the focus file `file`, whose text is
-/// `content`: the pieces the index keeps (assemble_definitions) formatted
-/// in place; none when none survives.
-auto define_edits(const DefineRequest& request,
-                  llvm::StringRef file,
-                  llvm::StringRef content,
-                  llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
-    -> std::optional<std::vector<TextReplacement>>;
+/// A code action with its index request resolved: it edits the focus
+/// file, inserts into the host, or holds definitions no host takes.
+struct ResolvedAction {
+    std::string title;
+    protocol::CodeActionKind kind;
 
-/// The edit inserting a DefineInHostRequest's definitions, `text`
-/// formatted for the host file `host`: after the last definition of the
-/// container's members in the host's serving index, in the coordinates
-/// that source guarantees — the relations read directly, as an open host's
-/// own index knows its definitions before the background index merges them
-/// into the project index — else at the end of the host's text, which
-/// `host_text` reads only then; none when it cannot.
-auto host_edit(const index::IndexQuery& query,
-               Fid host,
-               std::uint64_t container,
-               llvm::StringRef text,
-               llvm::function_ref<SourceText*()> host_text,
-               PositionEncoding encoding) -> std::optional<protocol::TextEdit>;
+    /// The edits of the focus file, at bytes of its text.
+    std::vector<TextReplacement> edits;
 
-/// The headers declaring the name an IncludeRequest names, as the index
-/// knows them: the files of the declarations and definitions of the
-/// symbols spelling it exactly in its scope, each once; the focus file
-/// `file`, sources and context headers left out.
-auto declaring_headers(const index::IndexQuery& query, const IncludeRequest& request, Fid file)
-    -> std::vector<CanonicalRef>;
+    std::optional<HostInsertion> host;
+
+    /// The definitions of a DefineInHostRequest the index keeps, when the
+    /// file has no host to place them in.
+    std::vector<std::string> host_definitions;
+};
+
+/// The actions `only` admits, their index requests resolved. A
+/// definition another source defines already is dropped, an action whose
+/// definitions all are goes; definitions for the host go after the
+/// definitions of their container's members there, else at its end; an
+/// IncludeRequest becomes one action per header declaring the name.
+auto resolve_actions(std::vector<CodeAction> actions,
+                     llvm::ArrayRef<protocol::CodeActionKind> only,
+                     const ResolveInputs& inputs) -> std::vector<ResolvedAction>;
+
+/// The LSP form of resolved actions: the focus file's edits placed in the
+/// text `positions` maps, each file's edit naming it as `focus` and `host`
+/// do. An action holding definitions no host takes is left out.
+auto to_protocol(std::vector<ResolvedAction> actions,
+                 const PositionMap& positions,
+                 PositionEncoding encoding,
+                 const protocol::OptionalVersionedTextDocumentIdentifier& focus,
+                 const protocol::OptionalVersionedTextDocumentIdentifier& host)
+    -> std::vector<protocol::CodeAction>;
 
 }  // namespace clice::feature

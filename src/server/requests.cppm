@@ -4,6 +4,7 @@ module;
 
 module clice:server.requests;
 
+import :command.search_config;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_symbols;
@@ -143,16 +144,14 @@ public:
                                std::vector<protocol::Position> positions,
                                kota::cancellation_token token = {});
 
-    /// Code actions on a range of the buffer: the worker computes them to
-    /// completion against its AST, and the index requests they carry
-    /// (definitions to vet and place in the host source, headers
-    /// declaring a name) are resolved here, at the reply edge. Every edit
-    /// is versioned against the buffer it was computed for. `only` is the
-    /// client's kind filter (LSP CodeActionContext.only); empty keeps all.
+    /// Code actions on a range of the buffer: the worker computes them
+    /// against its AST, and their index requests are resolved against
+    /// this project (feature::resolve_actions). `only` is the client's
+    /// kind filter (LSP CodeActionContext.only); empty keeps all.
     kota::task<std::vector<protocol::CodeAction>, ipc::Error>
         code_actions(Ticket ticket,
                      const protocol::Range& range,
-                     llvm::ArrayRef<protocol::CodeActionKind> only,
+                     std::vector<protocol::CodeActionKind> only,
                      kota::cancellation_token token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
@@ -303,6 +302,9 @@ private:
     /// The symbol under a position of the file's serving source, if any.
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
+
+    /// The header search of the command the open file compiles under.
+    SearchConfig search_of(Fid path_id);
 
     /// This project's query and its peers', for one synchronous read: the
     /// peers are those the master serves when it is taken.

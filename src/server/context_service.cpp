@@ -46,6 +46,73 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
     });
 }
 
+/// A source action running `command` with `params`, the parameters of the
+/// request it stands for.
+template <typename Params>
+static protocol::CodeAction source_action(std::string title,
+                                          std::string_view kind,
+                                          std::string_view command,
+                                          const Params& params) {
+    auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
+    assert(argument && "the parameters of a request encode");
+    return {
+        .title = title,
+        .kind = protocol::CodeActionKind(kind),
+        .command = protocol::Command{.title = std::move(title),
+                                     .command = std::string(command),
+                                     .arguments = std::vector{std::move(*argument)}},
+    };
+}
+
+std::vector<protocol::CodeAction> context_actions(llvm::StringRef uri,
+                                                  const ext::CurrentContextResult& current,
+                                                  const ext::QueryContextResult& listing) {
+    std::vector<protocol::CodeAction> actions;
+    if(listing.total <= 1 && current.automatic) {
+        return actions;
+    }
+    for(auto& item: listing.contexts) {
+        if(current.context && item.uri == current.context->uri &&
+           item.occurrence == current.context->occurrence &&
+           item.command_hash == current.context->command_hash) {
+            continue;
+        }
+        auto title = item.uri == uri ? std::format("Compile with the command {}", item.label)
+                                     : std::format("Compile as included by {}", item.label);
+        actions.push_back(source_action(std::move(title),
+                                        context_action_kind,
+                                        switch_context_command,
+                                        ext::SwitchContextParams{.uri = uri.str(),
+                                                                 .context_uri = item.uri,
+                                                                 .occurrence = item.occurrence,
+                                                                 .command_hash = item.command_hash,
+                                                                 .epoch = listing.epoch}));
+    }
+    if(!current.automatic) {
+        actions.push_back(source_action("Compile in the context clice picks",
+                                        context_action_kind,
+                                        reset_context_command,
+                                        ext::ResetContextParams{.uri = uri.str()}));
+    }
+    return actions;
+}
+
+std::vector<protocol::CodeAction> configuration_actions(llvm::StringRef uri,
+                                                        const ext::ListConfigurationsResult& list) {
+    std::vector<protocol::CodeAction> actions;
+    auto next = list.selected.empty() ? list.active : list.selected;
+    for(auto& name: list.configurations) {
+        if(name != next) {
+            actions.push_back(
+                source_action(std::format("Use build configuration {} from the next start", name),
+                              configuration_action_kind,
+                              switch_configuration_command,
+                              ext::SwitchConfigurationParams{.name = name, .uri = uri.str()}));
+        }
+    }
+    return actions;
+}
+
 /// The flags a context's label tells a command by: each -D, -O, -std and
 /// -g, a separate value joined to its -D or -O.
 static llvm::SmallVector<std::string> state_flags(Project& ws, CommandID command) {

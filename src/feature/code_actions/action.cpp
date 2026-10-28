@@ -4,17 +4,9 @@ module;
 
 module clice;
 
-import :command.file_kind;
 import :compile.compilation;
 import :feature.code_actions.action;
 import :feature.code_actions;
-import :feature.formatting;
-import :index.query;
-import :index.search;
-import :index.shard;
-import :index.symbol;
-import :index.symbol_query;
-import :index.text;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.semantics;

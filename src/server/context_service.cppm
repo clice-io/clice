@@ -22,6 +22,33 @@ namespace clice {
 /// the includer's context.
 std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
+/// The commands of the source actions switching what a document compiles
+/// under (context_actions, configuration_actions), each standing for the
+/// request of the same name with its parameters as the one argument.
+/// Named apart from the VS Code extension's commands, which the client
+/// library registers them beside.
+constexpr inline std::string_view switch_context_command = "clice.lsp.switchContext";
+constexpr inline std::string_view reset_context_command = "clice.lsp.resetContext";
+constexpr inline std::string_view switch_configuration_command = "clice.lsp.switchConfiguration";
+
+/// The kinds of those source actions.
+constexpr inline std::string_view context_action_kind = "source.clice.context";
+constexpr inline std::string_view configuration_action_kind = "source.clice.configuration";
+
+/// Source actions switching the context the document at `uri` compiles
+/// under, for an editor whose only UI for it is its code action menu (Zed,
+/// Helix): every other context of the listing's first page, and the
+/// automatic one while the user's choice (`current`) is in force; none
+/// when the listing offers no choice.
+std::vector<protocol::CodeAction> context_actions(llvm::StringRef uri,
+                                                  const ext::CurrentContextResult& current,
+                                                  const ext::QueryContextResult& listing);
+
+/// Source actions choosing every other build configuration for the next
+/// start.
+std::vector<protocol::CodeAction> configuration_actions(llvm::StringRef uri,
+                                                        const ext::ListConfigurationsResult& list);
+
 /// The editor-facing context protocol (clice/queryContext, currentContext,
 /// switchContext) and session-coupled maintenance of context choices. The
 /// domain state lives in EditorContext; this service drives it with LSP

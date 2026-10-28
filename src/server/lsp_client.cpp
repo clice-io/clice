@@ -16,6 +16,7 @@ import :feature.semantic_tokens;
 import :index.project_index;
 import :index.shard;
 import :project.save;
+import :server.context_service;
 import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
@@ -39,19 +40,6 @@ namespace clice {
 
 using ipc::RequestResult;
 using RequestContext = ipc::JSONPeer::RequestContext;
-
-/// The commands of the source actions switching what a document compiles
-/// under (LSPClient::switch_actions), each standing for the request of the
-/// same name with its parameters as the one argument. Named apart from the
-/// VS Code extension's commands, which the client library registers them
-/// beside.
-constexpr std::string_view switch_context_command = "clice.lsp.switchContext";
-constexpr std::string_view reset_context_command = "clice.lsp.resetContext";
-constexpr std::string_view switch_configuration_command = "clice.lsp.switchConfiguration";
-
-/// The kinds of those source actions.
-constexpr std::string_view context_action_kind = "source.clice.context";
-constexpr std::string_view configuration_action_kind = "source.clice.configuration";
 
 /// Error response for feature requests on files with no open session.
 static ipc::Error document_not_open() {
@@ -1073,28 +1061,27 @@ void LSPClient::register_language_features() {
             co_return report;
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::CodeActionParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        if(!session)
-            return kota::outcome_error(unserved(path));
-        auto only = params.context.only ? llvm::ArrayRef(*params.context.only)
-                                        : llvm::ArrayRef<protocol::CodeActionKind>();
-        // Only a user asking for actions gets the switches, which look
-        // the listings up: an editor asks on every move of the cursor.
-        bool offer_switches =
-            params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
-        return kota::co_invoke(
-            [this,
-             project,
-             path_id,
-             offer_switches,
-             only = std::vector(only.begin(), only.end()),
-             actions = project->requests.code_actions(Ticket::take(session),
-                                                      params.range,
-                                                      only,
-                                                      ctx.cancellation)]() mutable -> RawResult {
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            if(!session)
+                return kota::outcome_error(unserved(path));
+            auto only = params.context.only.value_or(std::vector<protocol::CodeActionKind>());
+            // Only a user asking for actions gets the switches, which look
+            // the listings up: an editor asks on every move of the cursor.
+            bool offer_switches =
+                params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
+            auto actions = project->requests.code_actions(Ticket::take(session),
+                                                          params.range,
+                                                          only,
+                                                          ctx.cancellation);
+            return kota::co_invoke([this,
+                                    project,
+                                    path_id,
+                                    offer_switches,
+                                    only = std::move(only),
+                                    actions = std::move(actions)]() mutable -> RawResult {
                 auto result = co_await std::move(actions).or_fail();
                 if(!versioned_edits) {
                     for(auto& action: result) {
@@ -1104,12 +1091,23 @@ void LSPClient::register_language_features() {
                 // Listed after the compile the actions waited for: a
                 // header's first one decides whether it is self-contained,
                 // which changes its listing and outdates the epoch before.
-                if(auto live = project->sessions.find(path_id); offer_switches && live) {
-                    result.append_range(switch_actions(*project, *live, only));
+                auto live = project->sessions.find(path_id);
+                if(!offer_switches || !live) {
+                    co_return to_raw(result);
+                }
+                auto uri = feature::to_uri(server.files.display(path_id));
+                if(feature::admits(only, context_action_kind)) {
+                    auto current = server.current_context(*project, live.get());
+                    auto listing = server.query_contexts(path_id, {.uri = uri});
+                    result.append_range(context_actions(uri, current, listing));
+                }
+                if(feature::admits(only, configuration_action_kind)) {
+                    result.append_range(
+                        configuration_actions(uri, project->context_service.list_configurations()));
                 }
                 co_return to_raw(result);
             });
-    });
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
@@ -1424,74 +1422,6 @@ LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams p
     }
     co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
                                    std::format("no command {}", params.command)});
-}
-
-std::vector<protocol::CodeAction>
-    LSPClient::switch_actions(ProjectServer& project,
-                              const Session& session,
-                              llvm::ArrayRef<protocol::CodeActionKind> only) {
-    std::vector<protocol::CodeAction> actions;
-    auto add = [&](std::string title,
-                   std::string_view kind,
-                   std::string_view command,
-                   const auto& params) {
-        auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
-        assert(argument && "the parameters of a request encode");
-        actions.push_back({
-            .title = title,
-            .kind = protocol::CodeActionKind(kind),
-            .command = protocol::Command{.title = std::move(title),
-                                         .command = std::string(command),
-                                         .arguments = std::vector{std::move(*argument)}},
-        });
-    };
-    auto uri = feature::to_uri(server.files.display(session.path_id));
-    if(feature::admits(only, context_action_kind)) {
-        auto current = server.current_context(project, &session);
-        auto listing = server.query_contexts(session.path_id, {.uri = uri});
-        if(listing.total > 1 || !current.automatic) {
-            auto same = [&](const ext::ContextItem& item) {
-                return current.context && item.uri == current.context->uri &&
-                       item.occurrence == current.context->occurrence &&
-                       item.command_hash == current.context->command_hash;
-            };
-            for(auto& item: listing.contexts) {
-                if(same(item)) {
-                    continue;
-                }
-                auto title = item.uri == uri
-                                 ? std::format("Compile with the command {}", item.label)
-                                 : std::format("Compile as included by {}", item.label);
-                add(std::move(title),
-                    context_action_kind,
-                    switch_context_command,
-                    ext::SwitchContextParams{.uri = uri,
-                                             .context_uri = item.uri,
-                                             .occurrence = item.occurrence,
-                                             .command_hash = item.command_hash,
-                                             .epoch = listing.epoch});
-            }
-            if(!current.automatic) {
-                add("Compile in the context clice picks",
-                    context_action_kind,
-                    reset_context_command,
-                    ext::ResetContextParams{.uri = uri});
-            }
-        }
-    }
-    if(feature::admits(only, configuration_action_kind)) {
-        auto list = project.context_service.list_configurations();
-        auto next = list.selected.empty() ? list.active : list.selected;
-        for(auto& name: list.configurations) {
-            if(name != next) {
-                add(std::format("Use build configuration {} from the next start", name),
-                    configuration_action_kind,
-                    switch_configuration_command,
-                    ext::SwitchConfigurationParams{.name = name, .uri = uri});
-            }
-        }
-    }
-    return actions;
 }
 
 void LSPClient::register_extensions() {

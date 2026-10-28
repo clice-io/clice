@@ -50,7 +50,7 @@ private:
 
     /// clice/switchContext, clice/resetContext and clice/switchConfiguration,
     /// which an editor asks for directly or through the commands of the
-    /// source actions switching them (switch_actions).
+    /// source actions switching them (context_actions, configuration_actions).
     kota::task<ext::SwitchContextResult> switch_context(const ext::SwitchContextParams& params);
     ext::SwitchContextResult reset_context(const ext::ResetContextParams& params);
     ext::SwitchConfigurationResult
@@ -61,14 +61,6 @@ private:
     /// without folders.
     std::shared_ptr<ProjectServer> configured(const std::optional<std::string>& uri);
 
-    /// Source actions switching what the document compiles under, for an
-    /// editor whose only UI for it is its code action menu (Zed, Helix):
-    /// every other context of the listing's first page, the automatic one
-    /// while the user's choice is in force, and every other build
-    /// configuration. Their commands run through workspace/executeCommand.
-    std::vector<protocol::CodeAction> switch_actions(ProjectServer& project,
-                                                     const Session& session,
-                                                     llvm::ArrayRef<protocol::CodeActionKind> only);
     RawResult execute_command(protocol::ExecuteCommandParams params);
 
     /// Ask the client to pull every document's diagnostics again;
