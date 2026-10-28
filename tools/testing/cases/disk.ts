@@ -109,6 +109,18 @@ export class Disk {
         fs.symlinkSync(path.isAbsolute(target) ? target : this.path(target), this.path(link));
     }
 
+    /// Point a directory link at `target`, replacing the one there: a
+    /// junction on Windows, which needs no privilege, a symlink elsewhere.
+    linkDirectory(link: string, target: string): void {
+        this.steps.note(`disk: link directory ${link} to ${target}`);
+        const at = this.path(link);
+        if (fs.lstatSync(at, { throwIfNoEntry: false })) {
+            fs.unlinkSync(at);
+        }
+        fs.mkdirSync(path.dirname(at), { recursive: true });
+        fs.symlinkSync(this.path(target), at, "junction");
+    }
+
     mtime(file: string): Date {
         return fs.statSync(this.path(file)).mtime;
     }

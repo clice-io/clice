@@ -22,7 +22,7 @@ std::string damaged_index_error(const Project& project) {
     return std::format(
         "the index database at {} is damaged (the log above says where); delete that "
         "directory and run `clice index` to rebuild it",
-        index::database_directory(*project.store, project.build.active_configuration()));
+        index::database_directory(*project.store, project.database_key));
 }
 
 Spelling inspected_path(const Project& project, llvm::StringRef argument) {
@@ -55,12 +55,15 @@ bool open_database(Project& project, Config config, llvm::StringRef requested_co
     project.index.workspace = project.config.workspace_root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
-    project.database = index::open_database(*project.store, configuration, /*read_only=*/true);
+    project.resolved_databases = resolved_databases(project.config, configuration);
+    project.database_key = database_key(project.config, configuration, project.resolved_databases);
+    auto& key = project.database_key;
+    project.database = index::open_database(*project.store, key, /*read_only=*/true);
     if(!project.database) {
         // A database that exists but did not open said why as it failed.
-        if(!index::database_exists(*project.store, configuration)) {
+        if(!index::database_exists(*project.store, key)) {
             LOG_ERROR("No index cache at {}; run `clice index` first",
-                      index::database_directory(*project.store, configuration));
+                      index::database_directory(*project.store, key));
         }
         return false;
     }

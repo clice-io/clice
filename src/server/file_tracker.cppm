@@ -33,6 +33,11 @@ public:
     /// as one CDBChanged event.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
+    /// Whether the build's databases resolve elsewhere than at the load
+    /// (resolved_databases): another build, whose commands a reload would
+    /// record as the ones this index was built with.
+    bool moved() const;
+
     /// See CDBWatcher::discover_around; the loads' diffs as CDBChanged
     /// events.
     llvm::SmallVector<FileEvent> discover_around(Fid path_id);

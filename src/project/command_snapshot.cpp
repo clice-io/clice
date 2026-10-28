@@ -277,8 +277,10 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         // can survive a reload that still changes which entry is the
         // default selection.
         if(it != before.end() && it->second->hashes == entry.hashes &&
-           it->second->selected == entry.selected && it->second->rules == entry.rules &&
-           it->second->sources == entry.sources) {
+           it->second->selected == entry.selected && it->second->rules == entry.rules) {
+            // Listed by other databases, the same command builds the same
+            // index: only the snapshot follows the databases now listing it.
+            dirty = dirty || it->second->sources != entry.sources;
             continue;
         }
         changed_ids.push_back(server_id);

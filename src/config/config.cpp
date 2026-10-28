@@ -182,6 +182,7 @@ void Config::finalize(CanonicalRef workspace_root) {
             }
             compiled.compile_commands.push_back(std::move(full));
         }
+        compiled.resolve_symlinks = rule.resolve_symlinks;
         // A string spelling is tokenized before `${workspace}` is
         // substituted, so a root with spaces stays one argument.
         if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
@@ -237,13 +238,31 @@ bool CompiledRule::matches(CanonicalRef path) const {
            });
 }
 
+bool CompiledRule::active_under(llvm::StringRef configuration) const {
+    return this->configuration.empty() || this->configuration == configuration;
+}
+
 llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
                                                               llvm::StringRef configuration) const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: compiled_rules) {
-        if((rule.configuration.empty() || rule.configuration == configuration) &&
-           rule.matches(path)) {
+        if(rule.active_under(configuration) && rule.matches(path)) {
             result.push_back(&rule);
+        }
+    }
+    return result;
+}
+
+llvm::SmallVector<Spelling> Config::declared_databases(llvm::StringRef configuration) const {
+    llvm::SmallVector<Spelling> result;
+    for(auto& rule: compiled_rules) {
+        if(!rule.active_under(configuration)) {
+            continue;
+        }
+        for(auto& database: rule.compile_commands) {
+            if(!ranges::contains(result, database)) {
+                result.push_back(database);
+            }
         }
     }
     return result;

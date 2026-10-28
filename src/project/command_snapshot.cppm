@@ -65,8 +65,9 @@ public:
     void reconcile(Project& project, index::IndexReport& report);
 
     /// Whether a save owes the snapshot a rewrite no index change would
-    /// trigger: its last write failed, it was missing or unreadable at load,
-    /// or a provisional member was recorded since it serialized.
+    /// trigger: its last write failed, it was missing or unreadable at load
+    /// or recorded other databases than list its files now, or a
+    /// provisional member was recorded since it serialized.
     bool owes_save(const Project& project) const;
 
     /// The snapshot of the live build for the next save, with the
@@ -106,8 +107,9 @@ private:
     std::string persisted_bytes;
 
     /// The persisted snapshot needs a rewrite no index change will
-    /// trigger: the load found it missing or corrupt, a batch carrying it
-    /// did not commit, or its database was replaced. Without this flag the
+    /// trigger: the load found it missing or corrupt, or found a file
+    /// listed by other databases than it records, a batch carrying it did
+    /// not commit, or its database was replaced. Without this flag the
     /// rewrite would wait for an unrelated dirtying merge: a save with
     /// nothing else to commit skips the snapshot entirely.
     bool dirty = false;

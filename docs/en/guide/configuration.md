@@ -752,6 +752,16 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 
 <div class="config-option">
 
+| Option             | Type   | Default |
+| ------------------ | ------ | ------- |
+| `resolve_symlinks` | `bool` | `false` |
+
+Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.
+
+</div>
+
+<div class="config-option">
+
 | Option            | Type                          | Default |
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
@@ -922,6 +932,8 @@ tests/project/rules/09_remove_flags
 
 The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
 
+Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server switches to that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
+
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 
 <!-- BEGIN CAPABILITY: supported -->
@@ -934,6 +946,20 @@ Each board's rule gives its own default command, and `board-a` is the default co
 
 ```case
 tests/project/configurations/03_board_defaults
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**One index per linked build**
+
+A rule resolving symlinks keeps an index for each build its link points to, and follows the link when it moves
+
+The build system points `out/current` at the build it chose. Pointed at `out/debug`, which the `debug` configuration names too, the server switches to that configuration's index; pointed back at `out/release`, the release index serves again and nothing is indexed anew.
+
+```case
+tests/project/configurations/07_linked_build
 ```
 
 <!-- END CAPABILITY -->

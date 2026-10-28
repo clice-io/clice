@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :config.config;
+import :index.database;
 import :project.configuration;
 import :support.anomaly;
 import :support.logging;
@@ -26,6 +27,43 @@ struct PersistedState {
 
 std::string state_path(llvm::StringRef cache_dir) {
     return path::join(cache_dir, "state.json");
+}
+
+/// The real path of a declared database file, also of one whose directory
+/// does not exist yet: a path without the .json extension names the
+/// directory holding it.
+std::string real_path(const Spelling& database) {
+    if(path::extension(database.str()) == ".json") {
+        return CanonicalPath(database).str();
+    }
+    return CanonicalPath(Spelling("compile_commands.json", database)).str();
+}
+
+/// The real paths of the databases the rules active under `configuration`
+/// declare, in priority order.
+std::vector<std::string> real_databases(const Config& config, llvm::StringRef configuration) {
+    std::vector<std::string> paths;
+    for(auto& database: config.declared_databases(configuration)) {
+        paths.push_back(real_path(database));
+    }
+    return paths;
+}
+
+/// What the rules active under `configuration` do besides naming
+/// databases, one string each in declaration order: configurations alike in
+/// it and in the databases they read build alike.
+std::vector<std::string> edits_of(const Config& config, llvm::StringRef configuration) {
+    std::vector<std::string> edits;
+    for(auto rule: config.rules) {
+        if(!rule.configuration.empty() && rule.configuration != configuration) {
+            continue;
+        }
+        rule.configuration.clear();
+        rule.compile_commands.clear();
+        rule.resolve_symlinks = false;
+        edits.push_back(json::to_string(rule).value_or(""));
+    }
+    return edits;
 }
 
 }  // namespace
@@ -133,6 +171,42 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
         LOG_INFO("Active configuration: {} (default)", fallback);
     }
     return fallback.str();
+}
+
+std::string resolved_databases(const Config& config, llvm::StringRef configuration) {
+    std::string resolved;
+    for(auto& rule: config.compiled_rules) {
+        if(!rule.resolve_symlinks || !rule.active_under(configuration)) {
+            continue;
+        }
+        for(auto& database: rule.compile_commands) {
+            if(!resolved.empty()) {
+                resolved += '\n';
+            }
+            resolved += real_path(database);
+        }
+    }
+    return resolved;
+}
+
+index::DatabaseKey database_key(const Config& config,
+                                llvm::StringRef configuration,
+                                llvm::StringRef resolved) {
+    if(resolved.empty()) {
+        return {.configuration = configuration.str()};
+    }
+    auto databases = real_databases(config, configuration);
+    auto edits = edits_of(config, configuration);
+    for(auto tag: config.configurations()) {
+        auto resolves = [&](const CompiledRule& rule) {
+            return rule.resolve_symlinks && rule.active_under(tag);
+        };
+        if(tag != configuration && ranges::none_of(config.compiled_rules, resolves) &&
+           real_databases(config, tag) == databases && edits_of(config, tag) == edits) {
+            return {.configuration = tag.str()};
+        }
+    }
+    return {.configuration = configuration.str(), .resolved = resolved.str()};
 }
 
 }  // namespace clice

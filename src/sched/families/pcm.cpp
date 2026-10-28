@@ -264,8 +264,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // The key names everything of the build but file content, which the
     // inputs cover: the source path, the frontend-relevant subset of the
-    // compile flags, the build configuration whose library records the
-    // blob's dependency stamps, and what each import resolved to — the
+    // compile flags, the index database that records the blob's
+    // dependency stamps, and what each import resolved to — the
     // keys of the imported modules, which name theirs in turn.
     std::string imports;
     for(auto dep: deps.declared) {
@@ -283,7 +283,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
                                           pcm_version,
-                                          project.build.active_configuration(),
+                                          project.database_key.str(),
                                           bp.directory,
                                           file_path,
                                           canonicalize(bp.arguments),

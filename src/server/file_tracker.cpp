@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :project.configuration;
 import :server.file_tracker;
 import :vfs.file_system;
 import :vfs.path;
@@ -50,6 +51,11 @@ static void push_delta(CDBDiff diff, llvm::SmallVectorImpl<FileEvent>& events) {
     if(!diff.empty()) {
         events.push_back(FileEvent::cdb_changed(std::move(diff)));
     }
+}
+
+bool FileTracker::moved() const {
+    return resolved_databases(project.config, project.build.active_configuration()) !=
+           project.resolved_databases;
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {

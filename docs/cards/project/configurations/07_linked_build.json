@@ -1,0 +1,352 @@
+{
+  "id": "project/configurations/07_linked_build",
+  "topic": "project",
+  "subtopic": "configurations",
+  "title": "One index per linked build",
+  "summary": "A rule resolving symlinks keeps an index for each build its link points to, and follows the link when it moves",
+  "prose": "The build system points `out/current` at the build it chose. Pointed at `out/debug`, which the `debug` configuration names too, the server switches to that configuration's index; pointed back at `out/release`, the release index serves again and nothing is indexed anew.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "default_configuration = \"active\"\n\n# The build system points out/current at the build it chose.\n[[rules]]\nconfiguration = \"active\"\ncompile_commands = [\"out/current\"]\nresolve_symlinks = true\n\n[[rules]]\nconfiguration = \"debug\"\ncompile_commands = [\"out/debug\"]\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#ifdef RELEASE\nint release_only = 2;\n#else\nint debug_only = 1;\n#endif\n\nint main() {\n    return 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "out/debug/compile_commands.json",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.cpp\",\n    \"arguments\": [\"clang++\", \"-std=c++20\", \"-DDEBUG\", \"-fsyntax-only\", \"${WS}/main.cpp\"]\n  }\n]\n",
+      "markers": []
+    },
+    {
+      "path": "out/release/compile_commands.json",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.cpp\",\n    \"arguments\": [\"clang++\", \"-std=c++20\", \"-DRELEASE\", \"-fsyntax-only\", \"${WS}/main.cpp\"]\n  }\n]\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "the link picks the build",
+      "blocks": [
+        {
+          "label": "release",
+          "value": {
+            "symbols": [
+              {
+                "name": "release_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦release_only⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ],
+            "inactive": [
+              {
+                "$place": "⟦int debug_only = 1;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "debug",
+          "value": {
+            "menu": {
+              "menu": [
+                "active",
+                "debug"
+              ],
+              "active": "active",
+              "selected": "",
+              "default": "active"
+            },
+            "symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ],
+            "inactive": [
+              {
+                "$place": "⟦int release_only = 2;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 21
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "switching back indexes nothing",
+      "blocks": [
+        {
+          "label": "release again",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "release_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦release_only⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a server starts on the build the link names",
+      "blocks": [
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "the hand-written configuration reuses the index",
+      "blocks": [
+        {
+          "label": "debug",
+          "value": {
+            "menu": {
+              "menu": [
+                "active",
+                "debug"
+              ],
+              "active": "debug",
+              "selected": "debug",
+              "default": "active"
+            },
+            "symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a link above the database",
+      "blocks": [
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "batch commands follow the link",
+      "blocks": [
+        {
+          "label": "$ clice index --jobs 2",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice index --jobs 2 #2",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a link made after the start",
+      "blocks": [
+        {
+          "label": "release",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "release_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦release_only⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "clice index while the server switches",
+      "blocks": [
+        {
+          "label": "$ clice index --jobs 2",
+          "value": {
+            "stderr": "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)",
+            "exit": 1
+          }
+        },
+        {
+          "label": "$ clice index --jobs 2 #2",
+          "value": {
+            "stdout": "Indexed through the running clice server (pid #).",
+            "exit": 0
+          }
+        },
+        {
+          "label": "debug",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "debug_only",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ int ⟦debug_only⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

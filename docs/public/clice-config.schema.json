@@ -563,6 +563,11 @@
                     "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.",
                     "default": []
                 },
+                "resolve_symlinks": {
+                    "type": "boolean",
+                    "description": "Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.",
+                    "default": false
+                },
                 "default_command": {
                     "anyOf": [
                         {

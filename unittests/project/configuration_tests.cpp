@@ -103,6 +103,47 @@ ZEST_CASE(UntaggedIgnoresSelection) {
     ZEXPECT(resolve_configuration(config, "release").empty());
 };
 
+ZEST_CASE(DatabaseKeyResolved) {
+    /// A configuration resolving symlinks keeps a database per real path
+    /// its databases resolve to — the own one of a configuration declaring
+    /// exactly those — and any other configuration its own.
+    TempDir tmp;
+    tmp.touch("out/a/compile_commands.json", "[]");
+    tmp.touch("out/b/compile_commands.json", "[]");
+    auto configured = [&](llvm::StringRef followed) {
+        Config config;
+        config.rules.push_back(ConfigRule{.configuration = "active",
+                                          .compile_commands = {followed.str()},
+                                          .resolve_symlinks = true});
+        config.rules.push_back(ConfigRule{.configuration = "a", .compile_commands = {"out/a"}});
+        config.rules.push_back(ConfigRule{
+            .configuration = "both",
+            .compile_commands = {"out/a", "out/b"}
+        });
+        config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        return config;
+    };
+    auto key_of = [](const Config& config, llvm::StringRef configuration) {
+        return database_key(config, configuration, resolved_databases(config, configuration));
+    };
+    auto config = configured("out/a");
+    ZEXPECT(key_of(config, "active").str() == "a");
+    ZEXPECT(key_of(config, "a").str() == "a");
+    ZEXPECT(key_of(config, "both").str() == "both");
+
+    config = configured("out/b");
+    auto key = key_of(config, "active");
+    ZEXPECT(key.configuration == "active");
+    ZEXPECT(key.resolved ==
+            CanonicalPath(Spelling::absolute(tmp.path("out/b/compile_commands.json"))).str());
+
+    // Naming the databases is not all it does: another build.
+    config = configured("out/a");
+    config.rules[1].append = {"-DTRACE"};
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(key_of(config, "active").configuration == "active");
+};
+
 };  // ZEST_SUITE(Configuration)
 
 }  // namespace

@@ -105,12 +105,12 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::Pol
         if(!project->tracker) {
             continue;
         }
-        llvm::SmallVector<FileEvent> events;
         if(cdb) {
-            events = project->tracker->tick_cdb(params.force.value_or(true));
-        } else {
-            events = co_await project->tracker->tick_sources();
+            count += static_cast<std::uint32_t>(
+                project->weigh_databases(params.force.value_or(true)).value_or(1));
+            continue;
         }
+        auto events = co_await project->tracker->tick_sources();
         count += static_cast<std::uint32_t>(events.size());
         if(!events.empty()) {
             project->dispatch(events);

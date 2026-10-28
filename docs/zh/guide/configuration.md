@@ -752,6 +752,16 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 <div class="config-option">
 
+| 选项               | 类型   | 默认值  |
+| ------------------ | ------ | ------- |
+| `resolve_symlinks` | `bool` | `false` |
+
+是否按本规则的 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建，而不是按配置名：适用于通过把链接指向某个构建目录来选定构建的构建系统。每个真实路径各有一份索引；链接改指别处时，服务器会切换到那个构建的索引，其中仍保留着之前的会话在那里建立的索引。规则与本配置的规则只在直接写明恰好这些数据库这一点上不同的配置，与它共用索引。不再使用的构建的索引会留在缓存目录中，直到被删除。
+
+</div>
+
+<div class="config-option">
+
 | 选项              | 类型                          | 默认值 |
 | ----------------- | ----------------------------- | ------ |
 | `default_command` | `string` 或 `array of string` | `""`   |
@@ -922,6 +932,8 @@ tests/project/rules/09_remove_flags
 
 规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——在 VS Code 中，C 或 C++ 文件的语言状态（语言模式旁的 `{}`）显示生效的配置并可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
 
+有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会切换到那个构建的索引；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则只在直接写明该构建的数据库这一点上不同的配置，与它共用索引。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
+
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 
 <!-- BEGIN CAPABILITY: supported -->
@@ -934,6 +946,20 @@ tests/project/rules/09_remove_flags
 
 ```case
 tests/project/configurations/03_board_defaults
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**每个链接到的构建一份索引**
+
+解析符号链接的规则为其链接指向过的每个构建各保留一份索引，并在链接改指时跟着切换
+
+构建系统把 `out/current` 指向它选定的构建。指向 `out/debug` 时——`debug` 配置也写明了这个目录——服务器切换到该配置的索引；再指回 `out/release` 时，release 的索引重新提供服务，不会重新索引任何内容。
+
+```case
+tests/project/configurations/07_linked_build
 ```
 
 <!-- END CAPABILITY -->

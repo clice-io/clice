@@ -1,0 +1,131 @@
+import { expect } from "vitest";
+import { test, type Serve, type TestContext } from "@clice/tools/testing";
+
+/// The index databases the cache holds, by the label before their hash.
+function libraries(t: TestContext): string[] {
+    return t.disk
+        .list(".clice/cache/*/index/*/index.mdb")
+        .map((file) => file.split("/").at(-2)?.split("~")[0] ?? file);
+}
+
+/// Point out/current at another build, as the build system does, and have
+/// the server look at its databases.
+async function flip(t: TestContext, s: Serve, build: string): Promise<void> {
+    t.disk.linkDirectory("out/current", `out/${build}`);
+    await s.poll("cdb");
+    await s.indexed();
+}
+
+test("the link picks the build", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    expect(await s.errors("main.cpp")).toEqual([]);
+    await s.indexed();
+    await t.show("release", {
+        symbols: s.workspaceSymbols("_only"),
+        inactive: s.inactiveLines("main.cpp"),
+    });
+    expect(libraries(t)).toEqual(["active-out_release"]);
+    // out/debug is the debug configuration's database too: the build
+    // shares that configuration's index.
+    await flip(t, s, "debug");
+    expect(await s.errors("main.cpp")).toEqual([]);
+    await t.show("debug", {
+        menu: s.configurations(),
+        symbols: s.workspaceSymbols("_only"),
+        inactive: s.inactiveLines("main.cpp"),
+    });
+    expect(libraries(t)).toEqual(["active-out_release", "debug"]);
+});
+
+test("switching back indexes nothing", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    await flip(t, s, "debug");
+    const indexed = (await s.counts()).index;
+    await flip(t, s, "release");
+    await t.show("release again", s.workspaceSymbols("_only"));
+    expect((await s.counts()).index).toBe(indexed);
+});
+
+test("a server starts on the build the link names", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    await s.offline(() => {
+        t.disk.linkDirectory("out/current", "out/debug");
+    });
+    await s.indexed();
+    await t.show("debug", s.workspaceSymbols("_only"));
+    expect(libraries(t)).toEqual(["active-out_release", "debug"]);
+});
+
+test("the hand-written configuration reuses the index", async (t) => {
+    t.disk.linkDirectory("out/current", "out/debug");
+    const s = await t.start();
+    await s.indexed();
+    expect(libraries(t)).toEqual(["debug"]);
+    expect(await s.switchConfiguration("debug")).toEqual({ success: true, reason: null });
+    await s.restart();
+    await s.indexed();
+    await t.show("debug", { menu: s.configurations(), symbols: s.workspaceSymbols("_only") });
+    expect((await s.counts()).index).toBe(0);
+});
+
+test("a link above the database", async (t) => {
+    t.disk.write(
+        "clice.toml",
+        [
+            'default_configuration = "active"',
+            "",
+            "[[rules]]",
+            'configuration = "active"',
+            'compile_commands = ["out/current/nested"]',
+            "resolve_symlinks = true",
+            "",
+        ].join("\n"),
+    );
+    t.disk.database({ "main.cpp": ["-DRELEASE"] }, "out/release/nested");
+    t.disk.database({ "main.cpp": ["-DDEBUG"] }, "out/debug/nested");
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    await flip(t, s, "debug");
+    await t.show("debug", s.workspaceSymbols("_only"));
+    expect(libraries(t)).toEqual(["active-out_debug_nested", "active-out_release_nested"]);
+});
+
+test("batch commands follow the link", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    await t.cli("index --jobs 2");
+    expect(libraries(t)).toEqual(["active-out_release"]);
+    t.disk.linkDirectory("out/current", "out/debug");
+    await t.cli("index --jobs 2");
+    expect(libraries(t)).toEqual(["active-out_release", "debug"]);
+});
+
+test("a link made after the start", async (t) => {
+    const s = await t.start();
+    await s.indexed();
+    t.disk.linkDirectory("out/current", "out/release");
+    await s.poll("cdb");
+    await s.indexed();
+    await t.show("release", s.workspaceSymbols("_only"));
+    expect(libraries(t)).toEqual(["active-out_current", "active-out_release"]);
+});
+
+test("clice index while the server switches", async (t) => {
+    t.disk.linkDirectory("out/current", "out/release");
+    const s = await t.start();
+    await s.indexed();
+    // The server has not looked since the link moved (tests run with polling
+    // off): the request finds it out and is refused rather than indexing into
+    // the release build's index, until a look switches the server.
+    t.disk.linkDirectory("out/current", "out/debug");
+    await t.cli("index --jobs 2");
+    await s.poll("cdb");
+    await s.indexed();
+    await t.cli("index --jobs 2");
+    await t.show("debug", s.workspaceSymbols("_only"));
+});

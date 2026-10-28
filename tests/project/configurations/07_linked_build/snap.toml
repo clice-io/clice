@@ -1,0 +1,75 @@
+["the link picks the build".release]
+symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+inactive = ["⟦int debug_only = 1;⟧"]
+
+["the link picks the build".debug]
+symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+inactive = ["⟦int release_only = 2;⟧"]
+
+["the link picks the build".debug.menu]
+menu = ["active", "debug"]
+active = "active"
+selected = ""
+default = "active"
+
+["switching back indexes nothing"."release again"]
+workspace_symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+
+["a server starts on the build the link names".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+
+["the hand-written configuration reuses the index".debug]
+symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+
+["the hand-written configuration reuses the index".debug.menu]
+menu = ["active", "debug"]
+active = "debug"
+selected = "debug"
+default = "active"
+
+["a link above the database".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]
+
+["batch commands follow the link"."$ clice index --jobs 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["batch commands follow the link"."$ clice index --jobs 2 #2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a link made after the start".release]
+workspace_symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
+]
+
+["clice index while the server switches"."$ clice index --jobs 2"]
+stderr = "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)"
+exit = 1
+
+["clice index while the server switches"."$ clice index --jobs 2 #2"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
+["clice index while the server switches".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
+]

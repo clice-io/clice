@@ -312,9 +312,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // keeps the path in too: the PCH places the macro and its uses in the
     // file that built it, where a file sharing it would find its own.  The
     // clang version guards against reusing
-    // blobs a newer bundled clang would reject, and the build configuration
-    // keeps the blob with the database that records its dependencies:
-    // shared across configurations, one could rebuild it while another's
+    // blobs a newer bundled clang would reject, and the database key keeps
+    // the blob with the index database that records its dependencies:
+    // shared across databases, one could rebuild it while another's
     // records still confirmed the old content. A PCH built over the
     // build's precompiled header names the very build it chains onto:
     // rebuilt, that one has another name.
@@ -327,7 +327,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     bool skip_bodies = project.config.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies),
-                              project.build.active_configuration(),
+                              project.database_key.str(),
                               directory,
                               path::parent(path),
                               own_path,
@@ -684,6 +684,7 @@ void ASTFamily::request_compile(std::shared_ptr<Session> session) {
 }
 
 kota::task<> ASTFamily::stop() {
+    loaded.set();
     for(auto& [path_id, interrupt]: compile_interrupts) {
         interrupt->cancel();
     }
@@ -699,6 +700,10 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
               session->version,
               session->generation,
               compiles.current(path_id));
+
+    if(!loaded.is_set()) {
+        co_await loaded.wait();
+    }
 
     // A closed session never compiles again, and the join below cannot
     // tell: its generation stopped moving at the close.

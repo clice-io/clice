@@ -358,6 +358,9 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     wp.file = path;
     wp.text = session.text().str();
     wp.offset = session.positions().offset_clamped(position, PositionEncoding::UTF16);
+    if(!ast.loaded.is_set()) {
+        co_await ast.loaded.wait();
+    }
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
 

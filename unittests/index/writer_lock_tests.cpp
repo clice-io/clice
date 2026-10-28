@@ -33,9 +33,9 @@ ZEST_CASE(WriterLockAtCacheRoot) {
     // The lock guards the cache directory, not a configuration's database,
     // and opening a database takes none.
     ZASSERT(fs::exists(path::join(store.root_dir(), "index.lock")).value_or(false));
-    auto db = index::open_database(store, "x");
+    auto db = index::open_database(store, {"x"});
     ZASSERT(db != nullptr);
-    ZASSERT(!fs::exists(path::join(index::database_directory(store, "x"), "index.lock"))
+    ZASSERT(!fs::exists(path::join(index::database_directory(store, {"x"}), "index.lock"))
                  .value_or(false));
     auto held = read_file(path::join(store.root_dir(), "index.lock"));
     ZASSERT(held);

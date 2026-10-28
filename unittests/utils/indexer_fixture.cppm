@@ -237,7 +237,7 @@ inline void open_store(TempDir& tmp, Project& project) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     project.store.emplace(std::move(*store));
-    project.database = index::open_lmdb_database(*project.store, "");
+    project.database = index::open_lmdb_database(*project.store, {});
 }
 
 /// Plant a blob between sessions (no fixture may be alive — the writer
@@ -246,7 +246,7 @@ inline void
     inject_blob(TempDir& tmp, index::BlobKind kind, llvm::StringRef key, llvm::StringRef bytes) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
-    auto db = index::open_lmdb_database(*store, "");
+    auto db = index::open_lmdb_database(*store, {});
     ZASSERT(db != nullptr);
     index::BlobDatabase::Blob blob{kind, key.str(), copy_bytes(bytes)};
     ZASSERT(db->write(blob, {}));

@@ -194,21 +194,19 @@ void ProjectServer::start() {
         commands_missing = !report.has_commands && !found_unreadable_database(project);
     }
 
-    // Documents opened before the project started were created under the
-    // default mode with no choice loaded; validate their persisted
-    // context choices and derive their serving mode now that the
-    // configuration governs. The serving decision waits
-    // until here — after the load — so divergence detection sees the
-    // persisted shards it just loaded (a restored unsaved buffer must
-    // escalate, not read as merely unindexed).
+    // Documents opened before the project started — held while its root's
+    // previous project shut down — had no context choice loaded; validate
+    // their persisted choices and decide their serving now. The serving
+    // decision waits until here — after the load — so divergence detection
+    // sees the persisted shards it just loaded (a restored unsaved buffer
+    // must escalate, not read as merely unindexed).
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
             contexts.validate_saved_context(session->path_id);
-            session->serving =
-                ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
             decide_open_serving(session);
         }
     }
+    ast.loaded.set();
 
     if(root.empty()) {
         return;
@@ -445,13 +443,24 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
-void ProjectServer::tick_databases() {
-    if(!tracker || project.config.tracker.workspace_poll_seconds.value == 0) {
-        return;
+std::optional<std::size_t> ProjectServer::weigh_databases(bool force) {
+    if(!tracker) {
+        return 0;
     }
-    auto events = tracker->tick_cdb();
+    if(tracker->moved()) {
+        server.restart(*this);
+        return std::nullopt;
+    }
+    auto events = tracker->tick_cdb(force);
     if(!events.empty()) {
         dispatch(events);
+    }
+    return events.size();
+}
+
+void ProjectServer::tick_databases() {
+    if(project.config.tracker.workspace_poll_seconds.value > 0 &&
+       weigh_databases(false).value_or(1) > 0) {
         server.probe.happened(LoopEvent::DatabaseChange);
     }
 }

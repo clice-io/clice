@@ -1027,33 +1027,51 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::string database_directory(const CacheStore& store, llvm::StringRef configuration) {
-    std::string name = "default";
-    if(!configuration.empty()) {
-        name = configuration.take_front(32).lower();
-        for(char& c: name) {
-            if(!llvm::isAlnum(c) && c != '-' && c != '_') {
-                c = '_';
-            }
-        }
-        name += std::format("~{:016x}", llvm::xxh3_64bits(configuration));
+std::string database_directory(const CacheStore& store, const DatabaseKey& key) {
+    if(key.configuration.empty() && key.resolved.empty()) {
+        return path::join(store.base_dir(), "index", "default");
     }
+    constexpr std::size_t label_size = 32;
+    std::string label = key.configuration;
+    if(!key.resolved.empty()) {
+        llvm::StringRef resolved = key.resolved;
+        llvm::StringRef directory = path::parent(resolved.drop_front(resolved.rfind('\n') + 1));
+        if(!label.empty()) {
+            label += '-';
+        }
+        auto tail = directory.take_back(label_size - std::min(label.size(), label_size));
+        // Whole directory names only.
+        auto separator = [](char c) {
+            return path::is_separator(c);
+        };
+        if(tail.size() < directory.size()) {
+            tail = tail.drop_until(separator);
+        }
+        tail = tail.drop_while(separator);
+        label += tail;
+    }
+    auto name = llvm::StringRef(label).take_front(label_size).lower();
+    for(char& c: name) {
+        if(!llvm::isAlnum(c) && c != '-' && c != '_') {
+            c = '_';
+        }
+    }
+    name += std::format("~{:016x}", llvm::xxh3_64bits(key.str()));
     return path::join(store.base_dir(), "index", name);
 }
 
-bool database_exists(const CacheStore& store, llvm::StringRef configuration) {
-    return fs::exists(path::join(database_directory(store, configuration), lmdb_file_name))
-        .value_or(false);
+bool database_exists(const CacheStore& store, const DatabaseKey& key) {
+    return fs::exists(path::join(database_directory(store, key), lmdb_file_name)).value_or(false);
 }
 
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
-                                                 llvm::StringRef configuration,
+                                                 const DatabaseKey& key,
                                                  std::size_t initial_mapsize,
                                                  bool read_only) {
     read_only = read_only || store.read_only();
-    auto directory = database_directory(store, configuration);
+    auto directory = database_directory(store, key);
     if(read_only) {
-        if(!database_exists(store, configuration)) {
+        if(!database_exists(store, key)) {
             return nullptr;
         }
     } else if(auto made = fs::create_directories(directory); !made) {
@@ -1071,7 +1089,7 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 }
 
 std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
-                                            llvm::StringRef configuration,
+                                            const DatabaseKey& key,
                                             bool read_only) {
     // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
     // their locking and cache coherence differ too much to trust LMDB or one
@@ -1093,7 +1111,7 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
             break;
         }
     }
-    return open_lmdb_database(store, configuration, 0, read_only);
+    return open_lmdb_database(store, key, 0, read_only);
 }
 
 }  // namespace clice::index

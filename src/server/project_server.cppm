@@ -84,9 +84,15 @@ public:
     /// (Build::record), the build following it as a database reload would.
     void saved(Fid path_id);
 
-    /// After a tick looked at the flags: weigh what the looks found of the
-    /// project's databases (see FileTracker::tick_cdb) and dispatch the
-    /// reloads. Nothing while the project's polling is off.
+    /// Weigh what the looks found of the project's databases (see
+    /// FileTracker::tick_cdb, `force` as there) and dispatch the reloads;
+    /// how many events that was. Nullopt when the databases moved to
+    /// another build's index (FileTracker::moved): the project restarts on
+    /// that one instead (MasterServer::restart).
+    std::optional<std::size_t> weigh_databases(bool force);
+
+    /// After a tick looked at the flags: weigh_databases, unless the
+    /// project's polling is off.
     void tick_databases();
 
     /// The single entry point for file events: fold the batch through the

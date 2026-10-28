@@ -126,6 +126,18 @@ ProjectLoad load_project(Project& project,
     project.index.workspace = root;
     auto& cfg = project.config.project;
     auto configuration = resolve_configuration(project.config, requested_configuration);
+    project.resolved_databases = resolved_databases(project.config, configuration);
+    project.database_key = database_key(project.config, configuration, project.resolved_databases);
+    auto& key = project.database_key;
+    if(key.configuration != configuration) {
+        LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",
+                 configuration,
+                 key.configuration);
+    } else if(!key.resolved.empty()) {
+        LOG_INFO("The databases of configuration {} resolve to {}",
+                 configuration,
+                 llvm::join(llvm::split(key.resolved, '\n'), ", "));
+    }
 
     if(!project.store && !cfg.cache_dir.empty()) {
         auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
@@ -149,7 +161,7 @@ ProjectLoad load_project(Project& project,
             // metadata still seed this session. Its own metadata stays in
             // memory and exits with it.
             if(read_only_index) {
-                project.database = index::open_database(*project.store, configuration, true);
+                project.database = index::open_database(*project.store, key, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
                 // The owner is recorded, and checked again, under the lock:
                 // another project may have become the directory's owner since
@@ -162,7 +174,7 @@ ProjectLoad load_project(Project& project,
                     project.writer_lock.reset();
                 } else {
                     set_cache_dir_owner(cfg.cache_dir, root);
-                    project.database = index::open_database(*project.store, configuration);
+                    project.database = index::open_database(*project.store, key);
                     if(!project.database) {
                         project.writer_lock.reset();
                     }
