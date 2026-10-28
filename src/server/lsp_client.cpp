@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :command.file_kind;
+import :compile.diagnostic;
 import :feature.code_actions;
 import :feature.diagnostics;
 import :feature.protocol;
@@ -21,7 +22,6 @@ import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
 import :server.file_tracker;
-import :server.format;
 import :server.lsp_client;
 import :server.master_server;
 import :server.query_commands;
@@ -326,11 +326,10 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
                                        alias.spelling,
                                        alias.buffer.positions());
     } else if(auto compiled = project.ast.compiles.latest_at(owner->path_id, owner->version)) {
-        auto diagnostics =
-            format_diagnostics(*compiled->output, project.project.config.diagnostics);
-        append_crash_notes(*owner, diagnostics);
         params.diagnostics =
-            to_client(diagnostics, alias.spelling, compiled->output->text->positions());
+            to_client(project.requests.shown_diagnostics(*owner, *compiled->output),
+                      alias.spelling,
+                      compiled->output->text->positions());
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
@@ -1708,7 +1707,7 @@ void LSPClient::register_extensions() {
 /// the problems panel. The loaded file always gets a publish, so a clean
 /// load clears diagnostics from a previous (broken) state.
 void LSPClient::publish_config_diagnostics() {
-    llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
+    llvm::StringMap<std::vector<feature::FileDiagnostic>> by_file;
     // An issue is at the file as loaded; one that changed since is about to
     // load again. One that is gone places its issues at the top.
     llvm::StringMap<SourceText> texts;
@@ -1733,27 +1732,20 @@ void LSPClient::publish_config_diagnostics() {
         by_file.try_emplace(project->config_path);
         for(auto& issue: project->config_issues) {
             // Issue positions are 1-based, their columns counted in code
-            // points; LSP wants 0-based. An unknown position (0) maps to the
-            // file top.
+            // points. An unknown position (0) maps to the file top.
             auto positions = text_of(issue.file).positions();
-            auto position = [&](std::uint32_t line, std::uint32_t column) {
-                auto offset = positions.offset_clamped(
+            auto offset = [&](std::uint32_t line, std::uint32_t column) {
+                return positions.offset_clamped(
                     {.line = line > 0 ? line - 1 : 0, .character = column > 0 ? column - 1 : 0},
                     PositionEncoding::UTF32);
-                return *positions.position(offset, server.position_encoding);
             };
-
-            protocol::Diagnostic diagnostic;
-            diagnostic.range = protocol::Range{
-                .start = position(issue.line, issue.column),
-                .end = position(issue.end_line, issue.end_column),
-            };
-            diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
-                                      ? protocol::DiagnosticSeverity::Error
-                                      : protocol::DiagnosticSeverity::Warning;
-            diagnostic.source = "clice";
-            diagnostic.message = issue.message;
-            by_file[issue.file].push_back(std::move(diagnostic));
+            by_file[issue.file].push_back({
+                .range = {offset(issue.line, issue.column),
+                          offset(issue.end_line, issue.end_column)},
+                .level = issue.severity == ConfigIssue::Severity::Error ? DiagnosticLevel::Error
+                                                                        : DiagnosticLevel::Warning,
+                .message = issue.message,
+            });
             published_configs.insert(issue.file);
         }
         published_configs.insert(project->config_path);
@@ -1762,7 +1754,9 @@ void LSPClient::publish_config_diagnostics() {
     for(auto& [file, diagnostics]: by_file) {
         protocol::PublishDiagnosticsParams params;
         params.uri = feature::to_uri(server.files.display_identity(file));
-        params.diagnostics = std::move(diagnostics);
+        if(!diagnostics.empty()) {
+            params.diagnostics = to_client(diagnostics, file, text_of(file).positions());
+        }
         publish(peer, params);
     }
 }
@@ -1795,10 +1789,9 @@ void LSPClient::push_output(ProjectServer& project, const Session& session, bool
         protocol::PublishDiagnosticsParams params;
         params.uri = feature::to_uri(server.files.display(session.path_id));
         params.version = output.version;
-        auto diagnostics = format_diagnostics(output, project.project.config.diagnostics);
-        append_crash_notes(session, diagnostics);
-        params.diagnostics =
-            to_client(diagnostics, server.files.display(session.path_id), output.text->positions());
+        params.diagnostics = to_client(project.requests.shown_diagnostics(session, output),
+                                       server.files.display(session.path_id),
+                                       output.text->positions());
         publish(peer, params);
         publish_aliases(session.path_id);
     }

@@ -7,7 +7,6 @@ module;
 module clice:worker.common;
 
 import :compile.compilation;
-import :feature.diagnostics;
 import :support.bytes;
 import :support.timer;
 import :vfs.file_system;
@@ -56,15 +55,6 @@ std::optional<std::string> hand_over_index(std::vector<std::byte> blob,
     }
     result.index_in_file = true;
     return std::nullopt;
-}
-
-/// What a compile reports in place of an index that could not be handed
-/// over.
-inline feature::FileDiagnostic index_unavailable(llvm::StringRef cause) {
-    return feature::file_warning(std::format(
-        "{}; features that read the file's own index, such as references within it, are "
-        "unavailable",
-        cause));
 }
 
 }  // namespace clice

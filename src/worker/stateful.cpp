@@ -363,7 +363,7 @@ RequestResult<worker::CompileParams>
             if(unit->completed()) {
                 auto diags = feature::diagnostics(*unit);
                 if(index_error) {
-                    diags.push_back(index_unavailable(*index_error));
+                    diags.push_back(feature::index_unavailable(*index_error));
                 }
                 LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                          params.path,

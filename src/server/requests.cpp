@@ -26,7 +26,6 @@ import :semantic.symbol;
 import :server.ast_family;
 import :server.editor_context;
 import :server.requests;
-import :server.format;
 import :server.query_commands;
 import :support.json;
 import :support.text;
@@ -248,15 +247,22 @@ kota::task<std::vector<feature::FileDiagnostic>>
 }
 
 std::vector<feature::FileDiagnostic> Requests::finished_diagnostics(const Session& session) const {
-    std::vector<feature::FileDiagnostic> diagnostics;
     if(session.closed) {
-        return diagnostics;
+        return {};
     }
     // A compile that failed or is barred left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
     if(auto compiled = ast.compiles.latest_at(session.path_id, session.version)) {
-        diagnostics = format_diagnostics(*compiled->output, project.config.diagnostics);
+        return shown_diagnostics(session, *compiled->output);
     }
+    std::vector<feature::FileDiagnostic> diagnostics;
+    append_crash_notes(session, diagnostics);
+    return diagnostics;
+}
+
+std::vector<feature::FileDiagnostic>
+    Requests::shown_diagnostics(const Session& session, const CompileOutput& output) const {
+    auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.config.diagnostics);
     append_crash_notes(session, diagnostics);
     return diagnostics;
 }

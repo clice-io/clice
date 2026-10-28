@@ -28,7 +28,6 @@ import :syntax.dependency_graph;
 import :syntax.preamble;
 import :vfs.file_table;
 import :vfs.path;
-import :worker.common;
 import :worker.protocol;
 
 namespace clice {
@@ -103,84 +102,32 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
     return diagnostics;
 }
 
-static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
-    return preamble && ranges::any_of(preamble_diagnostics(*preamble), [](const auto& diagnostic) {
-               return diagnostic.level >= DiagnosticLevel::Error;
-           });
-}
-
-/// The compile's diagnostics behind the ones its PCH's build raised in the
-/// preamble, which the parse consuming the PCH never raises again — those
-/// of the command line it does, and they appear once.
-static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::FileDiagnostic> own,
-                                                          const index::TUIndex& preamble) {
-    auto merged = preamble_diagnostics(preamble);
-    if(merged.empty()) {
-        return own;
-    }
-    llvm::StringSet<> raised;
-    for(auto& diagnostic: own) {
-        raised.insert(to_client_json(diagnostic, ""));
-    }
-    std::erase_if(merged, [&](const feature::FileDiagnostic& diagnostic) {
-        return raised.contains(to_client_json(diagnostic, ""));
-    });
-    ranges::move(own, std::back_inserter(merged));
-    return merged;
-}
-
-/// clang reports the import of a module whose build failed as not found:
-/// the import says instead why the module did not build.
-static void explain_failed_imports(std::vector<feature::FileDiagnostic>& diagnostics,
-                                   llvm::ArrayRef<Fid> imports,
-                                   const PCMFamily& pcm,
-                                   const DependencyGraph& modules) {
+/// Why each import that failed to build did not, named by module.
+static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
+                                                           const PCMFamily& pcm,
+                                                           const DependencyGraph& graph) {
+    std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
         auto failure = pcm.build_failure(module);
         if(!failure) {
             continue;
         }
-        llvm::ArrayRef<Fid> chain = failure->chain;
-        std::string message;
-        for(auto unit: chain.take_front(failure->cycle.value_or(chain.size()))) {
-            message += std::format("could not build module '{}': ", modules.module_of(unit));
-        }
-        if(failure->cycle) {
-            auto cycle = chain.drop_front(*failure->cycle);
-            message +=
-                std::format("cyclic dependency in module '{}': ", modules.module_of(cycle.front()));
-            for(auto unit: cycle) {
-                message += std::format("{} -> ", modules.module_of(unit));
-            }
-            message += modules.module_of(cycle.front());
-        } else {
-            message += failure->error;
-        }
-        auto not_found = std::format("module '{}' not found", modules.module_of(module));
-        for(auto& diagnostic: diagnostics) {
-            if(diagnostic.id == clang::diag::err_module_not_found &&
-               diagnostic.message == not_found) {
-                diagnostic.message = message;
-                // As clang codes it: a cycle only where the imported module
-                // is on it, not built where the message starts with one
-                // that is not.
-                diagnostic.id = failure->cycle == 0 ? clang::diag::err_module_cycle
-                                                    : clang::diag::err_module_not_built;
-                diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
-            }
+        auto& named = failures.emplace_back(
+            feature::ModuleFailure{.error = failure->error, .cycle = failure->cycle});
+        for(auto unit: failure->chain) {
+            named.chain.push_back(graph.module_of(unit).str());
         }
     }
+    return failures;
 }
 
-/// An import of a module several units provide resolves to the nearest
-/// of them (PCMFamily::direct_deps); the import says which it took and
-/// which it passed over.
-static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnostics,
-                                  const PCMFamily::ModuleDeps& imports,
-                                  const Project& project,
-                                  const Session& session) {
+/// The imports of a module several units provide, each resolved to the
+/// nearest of them (PCMFamily::direct_deps).
+static std::vector<feature::ModuleChoice> module_choices(const PCMFamily::ModuleDeps& imports,
+                                                         const Project& project) {
     auto& graph = project.dep_graph;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
+    std::vector<feature::ModuleChoice> choices;
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
         if(PCMFamily::is_unresolved(dep)) {
             continue;
@@ -191,29 +138,18 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
         if(providers.size() < 2) {
             continue;
         }
-        std::string others;
+        auto& choice = choices.emplace_back(feature::ModuleChoice{
+            .module = name.str(),
+            .chosen = project.file_table.display(chosen),
+            .offset = offset,
+        });
         for(auto provider: providers) {
             if(provider != chosen) {
-                others += others.empty() ? "" : ", ";
-                others += project.file_table.display(provider);
+                choice.others.push_back(project.file_table.display(provider));
             }
         }
-        auto warning = feature::file_warning(
-            std::format("module '{}' is declared by more than one file; this file imports {}, the "
-                        "nearest, not {}",
-                        name,
-                        project.file_table.display(chosen),
-                        others));
-        warning.code = "ambiguous-module";
-        // At the import when it is the file's own; an import through an
-        // included file sits at the include, one of the command line's or
-        // the implicit one of an implementation unit at the top.
-        if(offset < session.text().size()) {
-            auto end = std::min(session.text().find('\n', offset), session.text().size());
-            warning.range = {offset, static_cast<std::uint32_t>(end)};
-        }
-        diagnostics.push_back(std::move(warning));
     }
+    return choices;
 }
 
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
@@ -399,10 +335,8 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
        (kind == evidence_kind(EvidenceKind::Compile) || kind == evidence_kind(EvidenceKind::PCH))) {
         compiles.set_output(session->path_id,
                             CompileOutput{
-                                .version = std::nullopt,
-                                .source = previous->output->source,
                                 .text = session->source,
-                                .diagnostics = {},
+                                .diagnostics = {.source = previous->output->diagnostics.source},
                             });
     }
     republish(session);
@@ -411,13 +345,7 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
 void ASTFamily::republish(const std::shared_ptr<Session>& session) {
     if(auto previous = compiles.latest(session->path_id);
        !previous || !previous->output.has_value()) {
-        compiles.set_output(session->path_id,
-                            CompileOutput{
-                                .version = std::nullopt,
-                                .source = CommandSource::CDBExact,
-                                .text = session->source,
-                                .diagnostics = {},
-                            });
+        compiles.set_output(session->path_id, CompileOutput{.text = session->source});
     }
     on_output.emit(session);
 }
@@ -442,7 +370,7 @@ void ASTFamily::saved(Session& session) {
     // runs it again.
     if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
         if(auto compiled = compiles.latest_at(session.path_id, session.version);
-           !compiled || missing_context_errors(compiled->output->diagnostics) > 0) {
+           !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0) {
             contexts.commands.forget_self_contained(session.path_id);
             session.trial_done = false;
             invalidate(session.path_id);
@@ -480,7 +408,12 @@ void ASTFamily::saved(Session& session) {
     if(auto compiled = compiles.latest(session.path_id)) {
         if(compiled->failed_pch_key) {
             retry |= pch.forget_failure(*compiled->failed_pch_key);
-        } else if(compiled->pch_key && kept_errors(pch.preamble_state(*compiled->pch_key))) {
+        } else if(auto preamble =
+                      compiled->pch_key ? pch.preamble_state(*compiled->pch_key) : nullptr;
+                  preamble && ranges::any_of(preamble_diagnostics(*preamble),
+                                             [](const feature::FileDiagnostic& diagnostic) {
+                                                 return diagnostic.level >= DiagnosticLevel::Error;
+                                             })) {
             pch.invalidate(*compiled->pch_key);
             retry = true;
         }
@@ -495,34 +428,15 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
     on_output.emit(session);
 }
 
-/// Whether two diagnostics show the same: one message at one place.
-static bool same_diagnostic(const feature::FileDiagnostic& left,
-                            const feature::FileDiagnostic& right) {
-    return left.range.begin == right.range.begin && left.message == right.message;
-}
-
 std::vector<feature::FileDiagnostic> ASTFamily::shown_skipped(const Session& session,
                                                               const CompileOutput& output) const {
     auto it = skipped.find(session.path_id);
     if(it == skipped.end() || it->second.text_hash != session.hash ||
-       output.source != CommandSource::CDBExact || contexts.selection(session.path_id)) {
+       output.diagnostics.source != CommandSource::CDBExact ||
+       contexts.selection(session.path_id)) {
         return {};
     }
-    std::vector<feature::FileDiagnostic> result;
-    for(const auto& diagnostic: it->second.diagnostics) {
-        auto same = [&](const feature::FileDiagnostic& own) {
-            return same_diagnostic(own, diagnostic);
-        };
-        if(ranges::contains(unused_declaration_warnings, diagnostic.id)) {
-            if(auto own = ranges::find_if(output.unconfirmed, same);
-               own != output.unconfirmed.end()) {
-                result.push_back(*own);
-            }
-        } else if(ranges::none_of(output.diagnostics, same)) {
-            result.push_back(diagnostic);
-        }
-    }
-    return result;
+    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
 }
 
 bool ASTFamily::lacks_skipped(Fid path_id) const {
@@ -549,11 +463,11 @@ void ASTFamily::report_skipped(Fid path_id,
         return;
     }
     auto shown = shown_skipped(*session, *compiled->output);
-    if(ranges::equal(compiled->output->skipped, shown, same_diagnostic)) {
+    if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
         return;
     }
     auto output = *compiled->output;
-    output.skipped = std::move(shown);
+    output.diagnostics.skipped = std::move(shown);
     compiles.set_output(path_id, std::move(output));
     on_diagnostics.emit(session);
 }
@@ -1334,12 +1248,15 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 session,
                 CompileOutput{
                     .version = setup_fail ? std::optional(session->version) : std::nullopt,
-                    .source = source,
                     .text = session->source,
-                    .diagnostics = std::move(result.value().diagnostics),
-                    .query_failure = resolution.query_failure,
+                    .diagnostics =
+                        {
+                                      .source = source,
+                                      .own = std::move(result.value().diagnostics),
+                                      .query_failure = resolution.query_failure,
+                                      },
                     .failed = setup_fail,
-                });
+            });
             co_return RoundOutcome::Failed;
         }
 
@@ -1356,16 +1273,17 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& diagnostics = result.value().diagnostics;
         if(preamble_state && preamble_state->matches_preamble(params.text)) {
-            diagnostics = with_preamble(std::move(diagnostics), *preamble_state);
+            diagnostics = feature::with_preamble(std::move(diagnostics),
+                                                 preamble_diagnostics(*preamble_state));
         }
-        explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
-        note_provider_choices(diagnostics, *imports, project, *session);
+        feature::explain_failed_imports(diagnostics,
+                                        module_failures(imports->resolved, pcm, project.dep_graph));
+        for(auto& choice: module_choices(*imports, project)) {
+            diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
+        }
         if(tidy_config && !tidy_config->error.empty()) {
-            auto warning = feature::file_warning(std::format(
-                "clang-tidy does not run on this file until its configuration parses. {}",
-                tidy_config->error));
-            warning.code = "invalid-clang-tidy-config";
-            diagnostics.insert(diagnostics.begin(), std::move(warning));
+            diagnostics.insert(diagnostics.begin(),
+                               feature::invalid_tidy_config(tidy_config->error));
         }
 
         // Self-containment trial result. Scored once per stable input
@@ -1440,10 +1358,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 next->index =
                     std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
             } else {
-                diagnostics.push_back(
-                    index_unavailable(std::format("reading this file's index from {} failed: {}",
-                                                  transfer->tmp_path,
-                                                  read.getError().message())));
+                diagnostics.push_back(feature::index_unavailable(
+                    std::format("reading this file's index from {} failed: {}",
+                                transfer->tmp_path,
+                                read.getError().message())));
             }
         } else if(!index_data.empty()) {
             next->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
@@ -1451,26 +1369,23 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
-        std::vector<feature::FileDiagnostic> unconfirmed;
-        if(params.skip_bodies) {
-            auto unused = [](const feature::FileDiagnostic& diagnostic) {
-                return ranges::contains(unused_declaration_warnings, diagnostic.id);
-            };
-            ranges::copy_if(diagnostics, std::back_inserter(unconfirmed), unused);
-            std::erase_if(diagnostics, unused);
-        }
+        auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
+                                              : std::vector<feature::FileDiagnostic>();
         next->output = CompileOutput{
             .version = session->version,
-            .source = source,
             .text = session->source,
-            .diagnostics = std::move(diagnostics),
-            .unconfirmed = std::move(unconfirmed),
-            .unmatched_host = resolution.unmatched_host.valid()
-                                  ? project.file_table.display(resolution.unmatched_host)
-                                  : std::string(),
-            .query_failure = resolution.query_failure,
+            .diagnostics =
+                {
+                              .source = source,
+                              .own = std::move(diagnostics),
+                              .unconfirmed = std::move(unconfirmed),
+                              .unmatched_host = resolution.unmatched_host.valid()
+                                          ? project.file_table.display(resolution.unmatched_host)
+                                          : std::string(),
+                              .query_failure = resolution.query_failure,
+                              },
         };
-        next->output->skipped = shown_skipped(*session, *next->output);
+        next->output->diagnostics.skipped = shown_skipped(*session, *next->output);
 
         auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that

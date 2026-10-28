@@ -56,7 +56,7 @@ struct InputKind {
 /// Where the compile command for a file came from. Anything other than
 /// CDBExact means the command was guessed to some degree, which is why
 /// diagnostics produced with it may deserve a guidance note (see
-/// format_diagnostics).
+/// feature::shown_diagnostics).
 enum class CommandSource : std::uint8_t {
     /// Direct compilation database entry for the file.
     CDBExact,

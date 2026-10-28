@@ -19,6 +19,7 @@ import :project.project;
 import :sched.index.pump;
 import :server.ast_family;
 import :server.dispatcher;
+import :server.document_compile;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
@@ -97,6 +98,13 @@ public:
     /// for one: the output's diagnostics while it describes the buffer,
     /// then the crash notes; nothing once the session closed.
     std::vector<feature::FileDiagnostic> finished_diagnostics(const Session& session) const;
+
+    /// What a compile output of the session's document shows: its
+    /// diagnostics (feature::shown_diagnostics), then the crash notes. The
+    /// one assembly of the pull above and of the transports' push, which
+    /// keep their own rules of which output and which version.
+    std::vector<feature::FileDiagnostic> shown_diagnostics(const Session& session,
+                                                           const CompileOutput& output) const;
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with
