@@ -79,7 +79,8 @@ public:
                                                        llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
-    /// blob while its node is still clean, so evicted units lose their path
+    /// blob, or the PCH it was built over, while its node is still clean, so
+    /// evicted units lose their path
     /// and are re-dirtied instead of handing clang a dangling path — and
     /// so are the units importing them, directly or not: a clean module
     /// promises every module below it built (see closure). Returns whether
@@ -214,8 +215,9 @@ private:
     /// Move the build's PCM to `superseded`, removing the one it replaced.
     void retire_blob(PCMBuild& build);
 
-    /// The build's PCM left the store: forget it and mark the module dirty,
-    /// so its next round builds again. Returns whether it had.
+    /// The build's PCM, or the PCH it was built over, left the store: forget
+    /// it and mark the module dirty, so its next round builds again. Returns
+    /// whether it had.
     bool drop_evicted(Fid module, PCMBuild& build);
 
     static NodeId node(Fid path_id) {

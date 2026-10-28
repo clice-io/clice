@@ -7,7 +7,8 @@ import { answers, test } from "@clice/tools/testing";
 // names the PCH it was built over to its importers, so the module units
 // and the units importing them all read the one clice builds for the
 // index, which keeps the function bodies; the header's Counter::next would
-// otherwise have two definitions.
+// otherwise have two definitions. app.cpp, of another target, has no PCH
+// of its own.
 answers(
     "every unit compiles",
     {
@@ -50,13 +51,14 @@ test("a header of the pch changes", async (t) => {
 });
 
 test("the pch leaves the store", async (t) => {
-    // As another process sharing the cache removes it: the PCMs naming it
-    // are built again, over the PCH built again.
+    // As another process sharing the cache removes it. app.cpp, of a target
+    // without precompiled headers, reads it only through the PCMs naming it:
+    // they are built again over the PCH built again.
     const s = await t.start({ config: { project: { enable_indexing: false } } });
-    expect(await s.errors("src/main.cpp")).toEqual([]);
-    const lost = t.disk.list(".clice/cache/*/pch/*.pch");
-    expect(lost).toHaveLength(1);
-    t.disk.rm(lost[0] ?? "");
-    s.edit("src/main.cpp", { replace: "+ twice();", with: "+ twice() + 1;" });
-    expect(await s.errors("src/main.cpp")).toEqual([]);
+    expect(await s.errors("src/app.cpp")).toEqual([]);
+    for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
+        t.disk.rm(pch);
+    }
+    s.edit("src/app.cpp", { replace: "return twice();", with: "return twice() + 1;" });
+    expect(await s.errors("src/app.cpp")).toEqual([]);
 });

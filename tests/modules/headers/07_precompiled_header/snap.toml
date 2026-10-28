@@ -29,9 +29,9 @@ int next()
 range = "return counter.⟦next⟧();"
 
 ["the units lint"."$ clice lint"]
-stdout = "Linted 4 translation units in #s: 0 findings."
+stdout = "Linted 5 translation units in #s: 0 findings."
 exit = 0
 
 ["a rule leaving the pch's builder out of the index"."$ clice lint"]
-stdout = "Linted 4 translation units in #s: 0 findings."
+stdout = "Linted 5 translation units in #s: 0 findings."
 exit = 0

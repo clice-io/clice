@@ -233,6 +233,14 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     if(auto unit = commands.pch_unit(path_id, resolution)) {
         auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
+        // Removed behind the store's back, by another process sharing the
+        // cache: an importer reading it only through the PCM never reports
+        // it unreadable.
+        if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
+                                                  !it->second.path.empty() &&
+                                                  !fs::exists(it->second.path)) {
+            pch.invalidate(key);
+        }
         switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
             case DependResult::Ready: pch_key = std::move(key); break;
             case DependResult::Failed: break;
@@ -342,6 +350,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             pcm_miss = "evicted";
         } else {
             LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
+            build.pch = std::move(bp.pch);
             co_return RoundOutcome::Success;
         }
         // The build no longer describes the module: an importer compiling
@@ -443,6 +452,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     build.key = std::move(pcm_key);
     build.blob = std::move(blob);
     build.path = std::move(committed.value());
+    build.pch = std::move(bp.pch);
     build.deps = inputs();
     LOG_INFO("Built PCM for module {}: {}", module_name, build.path);
 
@@ -521,16 +531,21 @@ const ipc::Error* PCMFamily::crashed(Fid module) {
 }
 
 bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
-    if(build.path.empty() || fs::exists(build.path)) {
+    if(build.path.empty()) {
         return false;
     }
-    // Artifact tier only: the blob vanished, its content did not, so
-    // importers' committed results stay valid. A full invalidate() here
-    // would void the very consumer round that is revalidating before
-    // rebuilding its imports — under a cache budget smaller than the
-    // working set, that voids and respawns the waiter forever.
+    if(!fs::exists(build.path)) {
+        build.blob.clear();
+    } else if(build.pch.empty() || fs::exists(build.pch)) {
+        return false;
+    }
+    // Artifact tier only: the blob vanished, or the PCH it names to its
+    // importers did; its content did not, so importers' committed results
+    // stay valid. A full invalidate() here would void the very consumer
+    // round that is revalidating before rebuilding its imports — under a
+    // cache budget smaller than the working set, that voids and respawns
+    // the waiter forever.
     build.path.clear();
-    build.blob.clear();
     graph.mark_dirty(node(module));
     return true;
 }
