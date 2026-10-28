@@ -10,6 +10,8 @@ module clice;
 
 import :feature.code_actions;
 import :unittests.utils.index_query_tester;
+import :unittests.utils.temp_dir;
+import :vfs.disk_state;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -1252,20 +1254,29 @@ struct Shape {
 }
 
 ZEST_CASE(HostPlacement) {
-    add_file("header.h", R"(
+    // The index places the definitions by the host's text as it read it:
+    // the files are on disk.
+    TempDir dir;
+    auto file = [&](llvm::StringRef name) {
+        return CanonicalPath(Spelling::absolute(dir.path(name))).str();
+    };
+    llvm::StringRef host_text = R"(#include "header.h"
+void Shape::move() {}
+)";
+    add_file(file("header.h"), R"(
 struct Shape {
     void draw();
     void move();
 };
 )");
-    add_focus("host.cpp", R"(#include "header.h"
-void Shape::move() {}
-)");
+    add_focus(file("host.cpp"), host_text);
     index_workspace();
+    ZASSERT(!static_cast<bool>(fs::write_file(file("host.cpp"), host_text)));
+    project.file_table.disk.look_all();
     auto host = focus_id;
-    auto host_path = TestVFS::path("host.cpp");
+    auto host_path = file("host.cpp");
     clear();
-    add_focus("header.h", R"(
+    add_focus(file("header.h"), R"(
 struct Shape {
     void §(draw)draw();
     void move();
