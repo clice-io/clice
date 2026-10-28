@@ -64,6 +64,13 @@ function round(value: number): number {
     return Math.round(value * 10) / 10;
 }
 
+/// The servers in the order they take the `run`th round of a scenario: the
+/// one running second finds the file cache the first left, so the order
+/// swaps every run, and day by day for a scenario of one run.
+export function runOrder(servers: readonly ServerName[], run: number, day: number): ServerName[] {
+    return (run + day) % 2 === 0 ? [...servers] : [...servers].reverse();
+}
+
 export class Perf {
     private readonly context: PerfContext;
     private readonly entries: readonly DatabaseEntry[];
@@ -72,6 +79,8 @@ export class Perf {
     private readonly save: () => void;
     /// The scenarios the job's time ran out before.
     readonly unrun: string[] = [];
+    /// The day (UTC) the job started, which sets the run order.
+    private readonly day = Math.floor(Date.now() / 86_400_000);
 
     constructor(
         context: PerfContext,
@@ -131,7 +140,7 @@ export class Perf {
             return;
         }
         for (let run = 1; run <= (options.runs ?? 1); run += 1) {
-            for (const server of options.servers ?? this.servers()) {
+            for (const server of runOrder(options.servers ?? this.servers(), run, this.day)) {
                 if (Date.now() > this.context.deadline) {
                     this.unrun.push(
                         `${scenario} ${options.file ?? label}, ${server} run ${String(run)}`,
@@ -601,19 +610,20 @@ export class Perf {
         files: readonly string[],
         options: { wipe?: "pch" | "cache" } = {},
     ): Promise<void> {
-        for (const file of files) {
+        for (const [index, file] of files.entries()) {
+            const servers = runOrder(this.servers(), index + 1, this.day);
             const variants: { servers: ServerName[]; wipe?: "pch" | "cache"; variant?: string }[] =
                 options.wipe === "cache"
-                    ? this.servers().flatMap((server) => [
+                    ? servers.flatMap((server) => [
                           { servers: [server], wipe: "cache" as const, variant: "no cache" },
                           { servers: [server] },
                       ])
                     : [
-                          { servers: this.servers().filter((server) => !isClice(server)) },
+                          { servers: servers.filter((server) => !isClice(server)) },
                           // Each clice's run with its PCHs follows its own
                           // without: after the other's, which drops the OS
                           // file cache, it would read its binary cold.
-                          ...this.servers()
+                          ...servers
                               .filter(isClice)
                               .flatMap((server) => [
                                   { servers: [server], wipe: "pch" as const, variant: "no PCH" },

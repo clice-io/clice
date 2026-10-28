@@ -2,8 +2,8 @@
 /// over clice, clangd unless left out, and a baseline clice when one is
 /// given. A clice run that fails (a crash, a hang, an error answer, an
 /// unclean exit) fails the job unless the project knows it; a clangd run
-/// that fails is listed; numbers never fail, and where clice costs a tenth
-/// more than the baseline the summary lists it.
+/// that fails is listed; numbers never fail, and where clice costs more
+/// than the baseline (compare.ts, slower) the summary lists it.
 
 import * as fs from "node:fs";
 import * as os from "node:os";

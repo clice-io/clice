@@ -16,7 +16,7 @@ import {
     warningIsError,
 } from "./database.ts";
 import { parsed, residentNow, watchTree } from "./memory.ts";
-import type { PerfResults, RunResult } from "./perf/results.ts";
+import type { Order, PerfResults, RunResult } from "./perf/results.ts";
 import { prepare, withoutOrderOnly } from "./prepare.ts";
 import {
     validated,
@@ -777,13 +777,22 @@ describe("round", () => {
             slower,
         },
     });
-    const row = (measure: string, clice: string, baseline: string, ratio: number) => ({
+    const row = (
+        measure: string,
+        clice: string,
+        baseline: string,
+        ratio: number,
+        samples = 30,
+        order: Order = "both",
+    ) => ({
         scenario: "sample",
         name: "sample 2 files",
         measure,
         clice,
         baseline,
         clicePerBaseline: ratio,
+        samples,
+        order,
         repro: "r",
     });
     const memoryRun = (server: "clice" | "baseline", worker: number): RunResult => ({
@@ -803,35 +812,64 @@ describe("round", () => {
         },
     });
 
-    test("perf rows by ratio, each with what makes it suspect", () => {
+    test("perf rows another platform or the night before confirms, by ratio", () => {
+        const memory = row("peak memory MB", "553", "32.0", 15, 1, "clice first");
         const { text, data } = roundReport({
             run: 7,
             jobs: [
                 perf(
                     "linux",
-                    [row("peak memory MB", "553", "32.0", 15), row("open", "120", "100", 1.2)],
+                    [
+                        memory,
+                        row("open", "120", "100", 1.2),
+                        row("open_edit", "40", "20", 2, 30, "clice first"),
+                        row("switch_edit", "30", "20", 1.5, 30, "clice first"),
+                    ],
                     [memoryRun("clice", 520), memoryRun("baseline", 4)],
                 ),
-                perf("macos", [row("open", "130", "100", 1.3), row("settle s", "-7.0", "20", 1.1)]),
+                perf("macos", [
+                    row("open", "130", "100", 1.3),
+                    row("open_edit", "36", "20", 1.8, 30, "clice first"),
+                    row("switch_edit", "28", "20", 1.4, 30, "both"),
+                    row("settle s", "-7.0", "20", 1.6, 1, "clice first"),
+                ]),
             ],
             earlier: new Map(),
+            perfBefore: new Map([
+                [
+                    "perf-q-sessions-linux",
+                    perf("linux", [
+                        { ...memory, order: "baseline first" },
+                        row("open_edit", "40", "20", 2, 30, "clice first"),
+                        row("switch_edit", "30", "20", 1.5, 30, "clice first"),
+                    ]).perf,
+                ],
+            ]),
         });
         expect(data.baseline).toBe("v0.1.7");
         expect(data.perf.map((each) => [each.platform, each.measure, each.flags])).toEqual([
             [
                 "linux",
                 "peak memory MB",
-                ["linux only", "≥3×: likely different work on the two sides", "SL-0 520 vs 4 MB"],
+                [
+                    "linux only",
+                    "≥3×: likely different work on the two sides",
+                    "the night before too",
+                    "one sample a side",
+                    "SL-0 520 vs 4 MB",
+                ],
             ],
-            ["macos", "open", ["every platform", "one sample a side"]],
-            ["linux", "open", ["every platform", "one sample a side"]],
-            [
-                "macos",
-                "settle s",
-                ["macos only", "negative: the harness measured wrong", "one sample a side"],
-            ],
+            ["linux", "switch_edit", ["every platform"]],
+            ["macos", "switch_edit", ["every platform"]],
+            ["macos", "open", ["every platform"]],
+            ["linux", "open", ["every platform"]],
         ]);
+        // open_edit ran with clice first on both platforms and both nights,
+        // the settle once.
+        expect(data.unconfirmed).toBe(3);
         expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
+        expect(text).toContain("## Perf slower than the baseline, confirmed (5), by ratio");
+        expect(text).toContain("3 more that nothing confirms are in the jobs' reports.");
         expect(text).toContain(
             "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",
         );
@@ -839,7 +877,12 @@ describe("round", () => {
 
     test("a failed job whose results name no failure was cut short", () => {
         const cut = { ...perf("linux", []), conclusion: "failure" };
-        const { text, data } = roundReport({ run: 7, jobs: [cut], earlier: new Map() });
+        const { text, data } = roundReport({
+            run: 7,
+            jobs: [cut],
+            earlier: new Map(),
+            perfBefore: new Map(),
+        });
         expect(data.missing).toEqual([
             {
                 artifact: "perf-q-sessions-linux",
@@ -856,16 +899,14 @@ describe("round", () => {
         );
     });
 
-    test("a measure past the threshold on most jobs is flagged as broad", () => {
-        const jobs = (["linux", "macos", "windows"] as const).flatMap((platform, i) => [
-            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: `p${String(i)}/a` },
-            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: `q${String(i)}/b` },
+    test("a measure slower on most jobs is flagged as broad", () => {
+        const jobs = (["linux", "macos", "windows"] as const).flatMap((platform) => [
+            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: "p/a" },
+            { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: "q/b" },
         ]);
-        const { data } = roundReport({ run: 7, jobs, earlier: new Map() });
+        const { data } = roundReport({ run: 7, jobs, earlier: new Map(), perfBefore: new Map() });
         expect(data.broad).toHaveLength(1);
-        expect(data.broad[0]).toMatch(
-            /^`initialize` is past the threshold on 6 of the 6 perf jobs/,
-        );
+        expect(data.broad[0]).toMatch(/^`initialize` is slower on 6 of the 6 perf jobs/);
         expect(data.perf.every((each) => each.flags.includes("broad"))).toBe(true);
     });
 
@@ -884,6 +925,7 @@ describe("round", () => {
             run: 7,
             jobs: [job(now, "linux"), job(undefined, "macos")],
             earlier: new Map([["regression-p-linux", [earlier("10-25", before)]]]),
+            perfBefore: new Map(),
         });
         expect(text).toContain(
             "# ecosystem round 7: 1 red, 1 cut short or without results, of 2 jobs",

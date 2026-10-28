@@ -82,13 +82,15 @@ export interface PerfResults {
     };
     binaries: Partial<Record<ServerName, string>>;
     clangdArgs: string[];
+    /// In the order they ran.
     runs: RunResult[];
     /// The failures of clice's runs the project does not know, those it
     /// knows, and the known issues the job did not see.
     failures: Failure[];
     known: (Failure & { issue: string })[];
     unseen: Known[];
-    /// The measures clice spends a tenth more of than the baseline.
+    /// The measures clice spends more of than the baseline (compare.ts,
+    /// slower).
     slower: Slower[];
 }
 
@@ -102,5 +104,13 @@ export interface Slower {
     clice: string;
     baseline: string;
     clicePerBaseline: number;
+    /// The pairs of samples compared: the two servers' of one file, one
+    /// run, one place in its series.
+    samples: number;
+    /// Which server ran first in those pairs; absent in results recorded
+    /// before the order was.
+    order?: Order;
     repro: string;
 }
+
+export type Order = "clice first" | "baseline first" | "both";

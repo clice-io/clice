@@ -1,6 +1,6 @@
 ---
 name: ecosystem-round
-description: Read before reading a nightly ecosystem round (a red job, a perf measure past its threshold, a number that moved) — the round script, where the logs are, telling a regression from an old bug a new sample exposed, and the A/B pitfalls before calling a perf change real.
+description: Read before reading a nightly ecosystem round (a red job, a slower perf measure, a number that moved) — the round script, where the logs are, telling a regression from an old bug a new sample exposed, and the A/B pitfalls before calling a perf change real.
 ---
 
 # Reading an ecosystem round
@@ -19,8 +19,10 @@ It writes `temp/ecosystem/<run>/`:
 - `round.md` — the red jobs, each failure with whether the rounds before swept
   its file and the command reproducing it; the jobs cut short or without
   results; the
-  regression numbers 1.5× the round before's; every perf measure past its
-  threshold, by ratio, each with its flags. `round.json` holds the same.
+  regression numbers 1.5× the round before's; every slower perf measure
+  another platform or the night before confirms, by ratio, each with its
+  flags, and how many nothing confirms (in the jobs' `report.md`).
+  `round.json` holds the same.
 - `results/ecosystem-<artifact>/` — the `results.json` and `report.md` of
   every job that uploaded them (one listed without results has none).
 - `logs/ecosystem-<artifact>-logs/` — the logs of the flagged jobs. Any other
@@ -76,14 +78,16 @@ its `runner heap` figures show where.
 
 The flags in `round.md`:
 
-- `broad` — the measure is past the threshold on most jobs at once: the
-  measurement is the likelier cause.
+- `broad` — the measure is slower on most jobs at once: the measurement is
+  the likelier cause.
 - `<platform> only` / `every platform` — whether the job's other platforms
   agree.
 - `≥3×` — more than a day's commits change: the two sides likely did
   different work.
 - `negative` — the framework measured wrong.
-- `one sample a side` — a time measured once per server.
+- `the night before too` — the confirmation came from the night before.
+- `one sample a side`, `two samples a side` — too few pairs to say more than
+  that it is 1.5× the baseline.
 - a process with two figures (`SL-0 523 vs 4 MB`) — whose memory differs.
 
 Pitfalls of the A/B:
@@ -94,9 +98,12 @@ Pitfalls of the A/B:
   Swap the binaries on the same box (`CLICE_EXECUTABLE=<old> … --baseline
 <new>`) and run one binary on both sides as the negative control: a real
   change follows the binary; noise, or a bias of the order, does not.
-- **Run order.** In each run the clice under test goes first, the baseline
-  second. Where one server's run changes what the next one starts from (a
-  file cache dropped, files a churn rewrote), the order is in the numbers.
+- **Run order.** The order of the two servers swaps every run, and day by
+  day for a scenario of one run. Where one server's run changes what the
+  next one starts from (a file cache dropped, files a churn rewrote), the
+  order is in the numbers: a job's report says per row which server ran
+  first in its pairs. A round on main confirms a row only with the other
+  order.
 - **The OS file cache.** Dropped before each run that wipes a cache, on Linux
   and macOS (`--drop-caches`, through sudo); Windows has no command for it, so
   its cold numbers are warm.

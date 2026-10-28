@@ -7,6 +7,7 @@ import { expect, test } from "vitest";
 import { perfReport } from "../report.ts";
 import { slower, tables } from "./compare.ts";
 import { failureOf, type PerfOptions } from "./perf.ts";
+import { runOrder } from "./scenarios.ts";
 import type { PerfResults, RunResult } from "./results.ts";
 
 function run(
@@ -226,7 +227,7 @@ test("a run's errors name its failure: a crash before the hang it caused", () =>
     );
 });
 
-test("what clice spends a tenth more of than the baseline, above the noise", () => {
+test("a measure sampled once a side is slower only past 1.5× the baseline", () => {
     const index = (server: RunResult["server"], ms: number, hover: number, variant?: string) =>
         run(
             server,
@@ -243,7 +244,7 @@ test("what clice spends a tenth more of than the baseline, above the noise", () 
         );
     const found = slower(
         results([
-            index("clice", 120, 5),
+            index("clice", 140, 5),
             index("baseline", 100, 4),
             index("clice", 320, 50, "no PCH"),
             index("baseline", 300, 50, "no PCH"),
@@ -253,25 +254,84 @@ test("what clice spends a tenth more of than the baseline, above the noise", () 
         {
             scenario: "index",
             name: "index a.cpp",
-            measure: "index",
-            clice: "120",
-            baseline: "100",
-            clicePerBaseline: 1.2,
-        },
-        {
-            scenario: "index",
-            name: "index a.cpp",
             measure: "index MB on disk",
             clice: "80.0",
             baseline: "50.0",
             clicePerBaseline: 1.6,
+            samples: 1,
+            order: "clice first",
         },
     ]);
     const more = slower(
-        results([index("clice", 120, 50, "no PCH"), index("baseline", 100, 40, "no PCH")]),
+        results([index("clice", 160, 60, "no PCH"), index("baseline", 100, 40, "no PCH")]),
     );
     expect(more.map(({ measure }) => measure)).toEqual(["index (no PCH)", "hover (no PCH)"]);
     expect(slower(results([index("clice", 500, 50), index("clangd", 100, 40)]))).toEqual([]);
+});
+
+test("with three pairs or more, slower past 1.2× in so many pairs that chance is unlikely", () => {
+    const edits = (clice: number[], baseline: number[]) =>
+        slower(
+            results([
+                run("clice", "editLoop", { edit: clice }),
+                run("baseline", "editLoop", { edit: baseline }),
+            ]),
+        ).map(({ measure, samples }) => [measure, samples]);
+    const base = [10, 10, 10, 10, 10];
+    expect(edits([12, 13, 11, 14, 12], base)).toEqual([["edit", 5]]);
+    // Five pairs need all five: four of five a coin shows too often.
+    expect(edits([12, 13, 9, 14, 12], base)).toEqual([]);
+    expect(edits([11, 11, 11, 11, 11], base)).toEqual([]);
+    // Ten pairs need eight.
+    const ten = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+    expect(edits([13, 13, 13, 13, 13, 13, 13, 13, 9, 9], ten)).toEqual([["edit", 10]]);
+    expect(edits([13, 13, 13, 13, 13, 13, 13, 9, 9, 9], ten)).toEqual([]);
+});
+
+test("runs that failed on either side pair with nothing", () => {
+    const start = (server: RunResult["server"], round: number, error?: string) =>
+        run(
+            server,
+            "coldStart",
+            { initialize: [server === "clice" ? 200 : 100] },
+            { run: round, ...(error === undefined ? {} : { error }) },
+        );
+    expect(
+        slower(
+            results([
+                start("clice", 1),
+                start("baseline", 1, "crashed"),
+                start("clice", 2, "crashed"),
+                start("baseline", 2),
+            ]),
+        ),
+    ).toEqual([]);
+});
+
+test("the pairs say which server ran first, and the order swaps run by run", () => {
+    const start = (server: RunResult["server"], ms: number, round: number) =>
+        run(server, "coldStart", { initialize: [ms] }, { run: round });
+    const order = (runs: RunResult[]) => slower(results(runs)).map((each) => each.order);
+    const rounds = [1, 2, 3].flatMap((round) =>
+        runOrder(["clice", "baseline"], round, 0).map((server) =>
+            start(server, server === "clice" ? 30 : 20, round),
+        ),
+    );
+    expect(rounds.map(({ server }) => server)).toEqual([
+        "baseline",
+        "clice",
+        "clice",
+        "baseline",
+        "baseline",
+        "clice",
+    ]);
+    expect(order(rounds)).toEqual(["both"]);
+    expect(
+        order(
+            [1, 2, 3].flatMap((round) => [start("clice", 30, round), start("baseline", 20, round)]),
+        ),
+    ).toEqual(["clice first"]);
+    expect(runOrder(["clice", "baseline"], 1, 1)).toEqual(["clice", "baseline"]);
 });
 
 test("a perf job's summary lists what clice spends more of, with the command per scenario", () => {
@@ -288,13 +348,15 @@ test("a perf job's summary lists what clice spends more of, with the command per
                 clice: "120",
                 baseline: "100",
                 clicePerBaseline: 1.2,
+                samples: 1,
+                order: "clice first",
                 repro: "run index",
             },
         ],
     });
     expect(text).toContain("# perf p/editing on linux: green, 1 slower");
     expect(text).toContain(
-        "## Slower or heavier than the baseline (1)\n\n| scenario | measure | clice p50 | baseline p50 | clice/baseline |\n|---|---|---:|---:|---:|\n| index a.cpp | index | 120 | 100 | 1.20× |\n\nReproduce:\n\n- index: `run index`",
+        "## Slower or heavier than the baseline (1)\n\n| scenario | measure | clice p50 | baseline p50 | clice/baseline | pairs | first |\n|---|---|---:|---:|---:|---:|---|\n| index a.cpp | index | 120 | 100 | 1.20× | 1 | clice first |\n\nReproduce:\n\n- index: `run index`",
     );
 });
 
