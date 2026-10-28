@@ -66,7 +66,7 @@ test("the hand-written configuration reuses the index", async (t) => {
     const s = await t.start();
     await s.indexed();
     expect(libraries(t)).toEqual(["debug"]);
-    expect(await s.switchConfiguration("debug")).toEqual({ success: true });
+    expect(await s.switchConfiguration("debug")).toEqual({ success: true, reason: null });
     await s.restart();
     await s.indexed();
     await t.show("debug", { menu: s.configurations(), symbols: s.workspaceSymbols("_only") });
