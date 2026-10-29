@@ -1,0 +1,4 @@
+# CMake's database for a target with precompiled headers and a module
+# unit, as it writes it for clang, under flags that force a header in. It
+# sits at the root, where clice inspect finds it too.
+databases = {}

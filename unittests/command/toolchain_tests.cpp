@@ -356,6 +356,26 @@ ZEST_CASE(UserContentAttached, skip = Windows) {
     ZEXPECT(adjacent(argv, "-D", "FOO=1"));
 }
 
+ZEST_CASE(XclangAfterUserContent, skip = Windows) {
+    // As CMake builds a target's PCH: the driver passes the -Xclang values
+    // on after the command's own -include, which the PCH header needs first.
+    auto driver = fake_clang(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/build/cmake_pch.hxx" "-x" "c++-header")");
+    auto argv = f.resolve(add("a.cpp",
+                              {driver.c_str(),
+                               "-include",
+                               "/src/global.h",
+                               "-Xclang",
+                               "-include",
+                               "-Xclang",
+                               "/build/cmake_pch.hxx"}));
+    auto at = [&](std::string_view arg) {
+        return ranges::find(argv, arg) - argv.begin();
+    };
+    ZEXPECT(contains(argv, "/build/cmake_pch.hxx"));
+    ZEXPECT(at("/src/global.h") < at("/build/cmake_pch.hxx"));
+}
+
 ZEST_CASE(PrecompileFullBMI, skip = Windows) {
     auto driver = fake_clang(
         R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi")");
