@@ -1,8 +1,0 @@
-# A system header, which clang checks in a PCH only when it reads it. Bazel's
-# module rules embed a module's sources in it, which an importer's sandbox
-# needs.
-flags = ["-isystem", "system"]
-
-[units]
-"a.cppm" = ["-Xclang", "-fmodules-embed-all-files"]
-"main.cpp" = []
