@@ -106,12 +106,12 @@ files.
   `patches/0004` builds it on MinGW until llvm/llvm-project#226794 lands.
   Check: xclang's Windows smoke test, `clang++ --target=<arch>-pc-windows-msvc -###`
   naming `VC\Tools\MSVC\` with no Visual Studio environment.
-- **`clice.exe` does not link: `undefined symbol: __declspec(dllimport)
-  SysFreeString`, referenced by `MSVCPaths.cpp`.** That lookup calls
-  oleaut32, which CMake links into every Windows program by default, so
-  LLVM's export never names it, and xclang 23.1.3.5's `@libclang` for MinGW
-  links what the export names. `-loleaut32` on `//bazel:llvm` until xclang
-  23.1.3.6, which links CMake's default Windows libraries itself. Check:
+- **`clice.exe` does not link: `SysFreeString` is an undefined symbol,
+  referenced by `MSVCPaths.cpp`.** That lookup calls oleaut32, which CMake
+  links into every Windows program by default, so LLVM's export never names
+  it, and xclang 23.1.3.5's `@libclang` for MinGW links what the export
+  names. `-loleaut32` on `//bazel:llvm` until xclang 23.1.3.6, which links
+  CMake's default Windows libraries itself. Check:
   `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-w64-mingw32`
   on x64 Linux links.
 - **An `llvm.exe clang++ ...` process left suspended forever** (0 CPU, one
