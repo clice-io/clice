@@ -279,6 +279,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 args.push_back({.opt_id = option::OPT_emit_pch, .cls = ArgClass::Discarded});
                 continue;
             }
+            /// Bazel's module rules (xclang's) embed a module's sources in
+            /// it: the flag goes as its driver spelling does
+            /// (is_discarded_option).
+            if(value == "-fmodules-embed-all-files") {
+                args.push_back(
+                    {.opt_id = option::OPT_fmodules_embed_all_files, .cls = ArgClass::Discarded});
+                continue;
+            }
         }
 
         auto local = commands.local_arg(parsed, parse_args);

@@ -230,9 +230,13 @@ bool is_discarded_option(unsigned id) {
         case OPT__SLASH_showIncludes:
         case OPT__SLASH_showIncludes_user:
 
-        /// C++ modules — we handle these ourselves.
+        /// C++ modules — we handle these ourselves. A module embedding
+        /// its sources overrides them in every importer, where a
+        /// preamble's PCH holding the same files then refuses to load;
+        /// clice builds its modules from the files on disk.
         case OPT_fmodule_file:
         case OPT_fmodule_output:
+        case OPT_fmodules_embed_all_files:
         case OPT_fprebuilt_module_path: return true;
 
         default: return false;

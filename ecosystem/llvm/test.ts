@@ -18,6 +18,15 @@ regression({
             detail: /^(?![\s\S]*\n-\s+\{)/,
         },
         {
+            issue: "10-29#6",
+            why: "the server's hover of a class a preamble header defines prints a member's macro initializer expanded",
+            kind: "disagree",
+            request: "hover",
+            file: "lldb/source/DataFormatters/TypeCategoryMap.cpp",
+            // That initializer alone differs, expanded on the server.
+            detail: /(?<![\s\S])(?=[\s\S]*^-\s+static const Position Last = UINT32_MAX;$)(?=[\s\S]*^\+\s+static const Position Last = \(4294967295U\);$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+static const Position Last = (?:UINT32_MAX|\(4294967295U\));$).*$)/m,
+        },
+        {
             issue: "10-28#5",
             why: "signature help lists the overloads Sema ranks alike in lookup order, which a preamble's PCH changes",
             kind: "disagree",
