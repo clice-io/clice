@@ -22,6 +22,7 @@ General-purpose utilities and infrastructure shared by all other modules.
 
 - `FuzzyMatcher`: Token-aware fuzzy matching for code completion and symbol search
 - Markup: The markdown or plain text a card or a query answer is rendered in
+- `FailureRecord`: What is remembered of an operation that failed — how many times in a row, when and why — and its operation's policy for when it runs again: how many failures stop it, a cooldown, whether a change of its inputs or a save retries it
 - Logging, filesystem abstractions, string utilities, etc.
 
 ### `src/vfs/` — File Identity and Versions
@@ -102,6 +103,7 @@ A project is what one set of compilation databases and one cache directory descr
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
 - `CommandSnapshot`: The commands the index was built with, as the index database records them; loading diffs them against the build to drop the index of files whose command changed while no server ran
 - Saving and loading: one transaction writes the index's changes with what the database carries beside it — the command snapshot, the PCH and PCM records, the editor's context choices — and the load reads them back
+- `Memo`: Results remembered by request with the trace of the files each read, checked on lookup; it holds the failures of the artifacts: a PCH or module build that failed or crashed a worker, standing until the files it is known to have read change, and a PCH its readers keep failing to read, left out for a while
 - `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
 - Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
@@ -110,9 +112,9 @@ A project is what one set of compilation databases and one cache directory descr
 The task-graph engine that decides what gets built, when, and shares the results.
 
 - `TaskGraph`: The shared build graph. Every expensive product is a node; concurrent requests for the same node join one build round instead of duplicating work, cancellation is cooperative, and edges drive dependency-aware invalidation
-- `PCHFamily` / `PCMFamily` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
+- `PCHBuilder` / `PCMBuilder` / `TURunFamily`: The builders of preamble PCHs (keyed by content) and C++20 module PCMs (with import edges and provider tracking), and the one-shot translation-unit runs shared by indexing and lint, each a family of the graph's nodes
 - `IndexPump`: The background scheduler that feeds stale files through workers with foreground-aware budgeting
-- `SchedulingStack`: The worker pool, the task graph with its families, and a project's indexing pump, assembled the same way for the server and the batch drivers
+- `SchedulingStack`: The worker pool, the task graph with its builders, and a project's indexing pump, assembled the same way for the server and the batch drivers
 - Bootstrap and batch drivers: cold-start orchestration for the server, and the headless execution mode behind `clice index` / `clice lint`
 
 ### `src/worker/` — Worker Processes
@@ -134,13 +136,13 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
 - `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
-- `Quarantine`: Per-document crash records — a kind of work that crashed a worker on a document pauses for that document until it changes (spaced and bounded) or is saved
+- `DocumentFailures`: What crashed on each document, kept for the whole process — a kind of work that crashed a worker on a document pauses for that document until it changes (spaced and bounded) or is saved, whichever project serves it
 
 **Services** — Read-side services consuming compilation and index results.
 
 - `Requests`: Routes each language request to the source that answers it now — the worker's AST, the PCH's cached preamble products, or the index — by readiness: an up-to-date AST answers when available, otherwise results computed from the index answer immediately. It gathers the inputs, calls the feature and replies; the feature decides what the user sees. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
-- `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted through the document's quarantine, dispatched, and landed through one exit that answers `ContentModified` for a buffer the client already edited away
+- `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted by the document's failure records, admitted again where it reaches a worker, and answered through one exit that replies `ContentModified` for a buffer the client already edited away
 - `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
 - `ContextService`: The protocol adapter for compilation-context queries and switching, and the source actions that offer the switches
 

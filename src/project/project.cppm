@@ -13,7 +13,9 @@ import :index.writer_lock;
 import :project.build;
 import :project.command_snapshot;
 import :project.hosting;
+import :project.memo;
 import :semantic.symbol;
+import :support.failure_record;
 import :support.prelude;
 import :syntax.dependency_graph;
 import :syntax.header_context;
@@ -122,7 +124,7 @@ struct PCHState {
     /// The pair the latest build replaced, kept for one more build: a
     /// consumer that took its path just before the replacement may not
     /// have opened it yet.
-    std::string superseded;
+    std::string previous;
 
     std::string path;
     std::uint32_t bound = 0;
@@ -146,14 +148,14 @@ struct PCHState {
     const std::shared_ptr<index::TUIndex>& load_state();
 };
 
-/// The last build of a C++20 module unit, failed or not: what it read and
-/// what came of it. Shared across all files that import the module.
+/// The last build of a C++20 module unit that built: what it read and the
+/// PCM it wrote. Shared across all files that import the module; a build
+/// that failed is a failure record (ArtifactFailures::pcm_builds).
 struct PCMBuild {
     /// The build's identity: "{module}-{hash}" over the unit's path and
     /// canonical flags, the build configuration, and the key of every module
     /// it imports (an unresolved import by its name) — so a command change
-    /// anywhere below the module changes its key too. Empty when an import
-    /// failed and the build never ran.
+    /// anywhere below the module changes its key too.
     std::string key;
 
     /// The PCM's name in the store: the key and a nonce of the build that
@@ -164,7 +166,7 @@ struct PCMBuild {
     std::string blob;
 
     /// The PCM the latest build replaced, kept for one more build.
-    std::string superseded;
+    std::string previous;
 
     /// The built PCM; empty while a rebuild runs, after a failure, and once
     /// it or the PCH it was built over left the store.
@@ -175,21 +177,41 @@ struct PCMBuild {
     std::string pch;
 
     /// What the build read and looked for, the inputs of the modules it
-    /// imports included; none while a rebuild runs and when an import
-    /// failed it — the import's build tells what to watch.
+    /// imports included; none while a rebuild runs.
     DepsSnapshot deps;
+};
 
-    /// Why the build failed on the user's code.
-    struct Failure {
-        /// The build's first error; empty when an import failed it.
-        std::string error;
+/// A module unit's build that failed: on the user's code, on an import that
+/// failed in turn, or by crashing a worker.
+struct ModuleFailure {
+    /// The key of the build that failed (PCMBuild::key); empty when an
+    /// import failed it and it never ran.
+    std::string key;
 
-        /// The import whose build failed, or that closed a cycle back to
-        /// the unit; invalid when the unit's own build failed.
-        Fid import;
-    };
+    /// The build's first error, or how the worker it crashed died; empty
+    /// when an import failed it.
+    FailureRecord record;
 
-    std::optional<Failure> failure;
+    /// The import whose build failed, or that closed a cycle back to the
+    /// unit; invalid when the unit's own build failed.
+    Fid import;
+};
+
+/// What failed of the artifacts, each failure with the inputs it stands on
+/// (see Memo): those of a failed build are what it read, those of a crash
+/// what was known before it ran. Only a success of the same operation, a
+/// change of those inputs, or a consumer's save lets one run again — but for
+/// the consumption of a PCH, which only a consumer's success clears.
+struct ArtifactFailures {
+    /// The PCH builds by key.
+    Memo<std::string, FailureRecord> pch_builds;
+
+    /// The PCH pairs by key that a parse died reading or found unreadable:
+    /// rebuilding a pair every consumer fails on would fare no better.
+    Memo<std::string, FailureRecord> pch_consumes;
+
+    /// The module builds by unit.
+    Memo<Fid, ModuleFailure> pcm_builds;
 };
 
 /// The editor's context choices as the index database carries them beside
@@ -197,8 +219,8 @@ struct PCMBuild {
 /// serializes into them when it changes and parses them after a load (see
 /// EditorContext), so a process without that state writes back the bytes it
 /// loaded, and only into a database replacing a corrupt one. Only this blob has a durability waiter
-/// (switchContext), so only it hands out tickets: a ticket resolves once a
-/// save whose snapshot covers it commits the blob — independent of the
+/// (switchContext), so only it numbers its changes: a change is durable once a
+/// save whose snapshot covers its number commits the blob — independent of the
 /// artifact records, whose failures retry through the dirty flag alone and
 /// must not hold a context ack hostage. `committed` pulses after every
 /// attempt, failed ones included, so waiters can give up on a disk that
@@ -210,10 +232,10 @@ struct ContextChoices {
 
     bool dirty = false;
 
-    /// The last ticket handed out, and the last one a save committed.
-    std::uint64_t ticket = 0;
+    /// The number of the latest change, and of the latest one a save committed.
+    std::uint64_t save_seq = 0;
 
-    std::uint64_t committed_ticket = 0;
+    std::uint64_t committed_seq = 0;
 
     kota::event committed;
 };
@@ -298,8 +320,10 @@ struct Project {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// The last PCM build of each module unit, failed ones included.
+    /// The last PCM build of each module unit that built.
     llvm::DenseMap<Fid, PCMBuild> pcm_builds;
+
+    ArtifactFailures failures;
 
     /// The persisted index, read as it is used: the symbol and file
     /// records, the per-TU manifests, the per-file shard blobs and the name
@@ -344,7 +368,7 @@ struct Project {
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the invalidator's job (PCMFamily::invalidate).
+    /// the invalidator's job (PCMBuilder::invalidate).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
@@ -467,16 +491,14 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at);
 
+/// The file as the disk holds it now, as a dependency of a build that
+/// reported nothing it read: a crash. None when the file cannot be read.
+std::optional<DepState> current_dep(FileTable& files, Fid file);
+
 /// Append the entries of `parts` that `into` lacks. A module's snapshot
 /// already carries its imports', so a plain concatenation of several
 /// repeats a module's inputs once per import path to it — exponentially
 /// many over a deep partition graph.
 void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts);
-
-/// Whether any consumed version stopped matching the disk; see
-/// FileTable::check_version and DepState for the
-/// per-reference missing policy. Every dependency is looked at, so the
-/// changes one check finds cascade together.
-bool deps_changed(FileTable& files, const DepsSnapshot& snap);
 
 }  // namespace clice

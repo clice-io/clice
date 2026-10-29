@@ -121,12 +121,12 @@ kota::task<index::IndexReport> save_project(Project& project,
     }
 
     // Metadata blobs ride every save: dirty artifact records and context
-    // choices flush on whatever save runs next. The context choices' ticket
+    // choices flush on whatever save runs next. The context choices' change number
     // is taken here — marks arriving past this point are not covered by
     // these bytes and wait for the next save. The context choices' fate
     // is tracked on its own: failing artifact records must not park a
     // switchContext ack whose choice is already durable.
-    auto flush_ticket = contexts.ticket;
+    auto flush_seq = contexts.save_seq;
     bool carries_artifacts = false;
     bool carries_contexts = false;
     bool contexts_ok = true;
@@ -197,14 +197,14 @@ kota::task<index::IndexReport> save_project(Project& project,
     }
 
     if(co_await index.migrate_views(db, loop, report)) {
-        // Context choices as of the ticket taken are durable: advance the
-        // committed ticket and wake durability waiters (switchContext).
+        // Context choices as of the number taken are durable: advance the
+        // committed number and wake durability waiters (switchContext).
         // Failed attempts pulse too, or a permanently failing write (full
         // disk, unserializable path) parks every durability wait forever;
         // they give up after a few of these. A recovery pulses as it
         // reopens: what the condemned database took is not durable.
         if(contexts_ok) {
-            contexts.committed_ticket = std::max(contexts.committed_ticket, flush_ticket);
+            contexts.committed_seq = std::max(contexts.committed_seq, flush_seq);
         }
         pulse(contexts);
     } else {

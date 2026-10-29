@@ -1,12 +1,12 @@
-module clice:sched.families.turun;
+module clice:sched.builders.turun;
 
 import :compile.compilation;
 import :feature.diagnostics;
 import :project.command_resolver;
 import :index.project_index;
 import :project.project;
-import :sched.families.pch;
-import :sched.families.pcm;
+import :sched.builders.pch;
+import :sched.builders.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
 import :support.prelude;
@@ -34,8 +34,8 @@ public:
     TURunFamily(TaskGraph& graph,
                 Project& project,
                 CommandResolver& commands,
-                PCMFamily& pcm,
-                PCHFamily& pch,
+                PCMBuilder& pcm,
+                PCHBuilder& pch,
                 WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the pump against a
@@ -161,9 +161,9 @@ private:
 
     CommandResolver& commands;
 
-    PCMFamily& pcm;
+    PCMBuilder& pcm;
 
-    PCHFamily& pch;
+    PCHBuilder& pch;
 
     WorkerPool& pool;
 
@@ -180,6 +180,10 @@ private:
     /// index did not hold for its file: the next run sends every section's bytes,
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
+
+    /// TUs whose last run crashed its worker over their target's
+    /// precompiled header, with its key: the next run leaves it out.
+    llvm::DenseMap<Fid, std::string> crashed_over_pch;
 
     /// What each TU's runs in this session measured: the peak of the last
     /// finished one, at least what a run killed for memory before it

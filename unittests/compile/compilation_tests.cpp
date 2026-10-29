@@ -504,15 +504,15 @@ int main() { return preamble_func(); }
         reuse.input.pch = {pch_path, bound};
         auto content_unit = clice::compile(std::move(reuse));
         ZASSERT((content_unit->setup_fail() || content_unit->fatal_error()));
-        // The blame signal the master's retraction keys on (pch_suspect):
+        // The signal the master's retraction keys on (pch_suspect):
         // a diagnostic naming the blob, or an AST-deserialization error —
         // that family's messages do not reliably carry the path ("Blob
         // ends too soon").
-        bool blames_pch = ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
+        bool points_at_pch = ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
             return llvm::StringRef(diag.message).contains(pch_path) ||
                    diag.id.is_deserialization_error();
         });
-        ZASSERT(blames_pch);
+        ZASSERT(points_at_pch);
     }
 }
 

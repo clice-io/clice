@@ -41,13 +41,13 @@ enum class ReindexReason : std::uint8_t {
 ///   (bounded for worker deaths by the requeue budget), unless newer
 ///   content already re-booked the work or the file's own run crashed.
 ///
-/// A TakenDebt carries an opaque monotonic ticket as its identity; the
+/// A TakenDebt carries the recording's sequence number as its identity; the
 /// table never touches queues, sessions or workers.
 class PendingTable {
 public:
     struct TakenDebt {
         Fid id;
-        std::uint64_t ticket = 0;
+        std::uint64_t seq = 0;
     };
 
     /// Why a dispatch failed.
@@ -175,12 +175,12 @@ private:
 
     struct Entry {
         ReindexReason reason;
-        std::uint64_t ticket;
-        /// Ticket of the newest ContentChanged recording. superseded()
-        /// compares against this, not `ticket`: a deps-only requeue
-        /// during a flight bumps `ticket` (to survive the finish) but
+        std::uint64_t seq;
+        /// The sequence number of the newest ContentChanged recording. superseded()
+        /// compares against this, not `seq`: a deps-only requeue
+        /// during a flight bumps `seq` (to survive the finish) but
         /// must not discard an in-flight content pass.
-        std::uint64_t content_ticket;
+        std::uint64_t content_seq;
 
         /// Lost-run requeues of this entry. Bounds the damage of a file
         /// whose runs keep dying without the worker naming it (an OOM
@@ -195,7 +195,7 @@ private:
     /// to the pump.
     llvm::DenseSet<Fid> queued;
 
-    std::uint64_t ticket = 0;
+    std::uint64_t seq = 0;
     unsigned max_requeue_attempts;
 };
 

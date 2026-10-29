@@ -414,8 +414,8 @@ kota::task<ext::SwitchContextResult>
     leave_context(session);
 
     // The table entry is the active choice; persist it across sessions:
-    // the ticket resolves once a write batch whose snapshot covers this
-    // mark has committed — an already-running save that snapshotted
+    // the mark is durable once a write batch whose snapshot covers its
+    // number has committed — an already-running save that snapshotted
     // earlier cannot acknowledge it, the next one does. Failed saves pulse
     // the event without advancing the epoch; after a few such wakeups the
     // request reports failure instead of parking forever on a disk that
@@ -423,13 +423,13 @@ kota::task<ext::SwitchContextResult>
     editor.selections[path_id] = std::move(saved);
     editor.mark_dirty();
     auto& blob = editor.blob;
-    auto ticket = blob.ticket;
+    auto seq = blob.save_seq;
     int failed_saves = 0;
     while(ws.request_flush && ws.database && !ws.database->read_only() &&
-          blob.committed_ticket < ticket) {
-        auto seen = blob.committed_ticket;
+          blob.committed_seq < seq) {
+        auto seen = blob.committed_seq;
         co_await blob.committed.wait();
-        if(blob.committed_ticket == seen) {
+        if(blob.committed_seq == seen) {
             failed_saves += 1;
             if(failed_saves >= 3) {
                 co_return result;

@@ -1,7 +1,7 @@
 import { test } from "@clice/tools/testing";
 
 // A compile running past its deadline is taken for a hung worker: the
-// worker is killed and the file barred like a crash, so the hang does not
+// worker is killed and the file stopped like a crash, so the hang does not
 // come back on the next request.
 
 test(

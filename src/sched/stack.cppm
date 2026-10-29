@@ -2,9 +2,9 @@ module clice:sched.stack;
 
 import :project.command_resolver;
 import :project.project;
-import :sched.families.pch;
-import :sched.families.pcm;
-import :sched.families.turun;
+import :sched.builders.pch;
+import :sched.builders.pcm;
+import :sched.builders.turun;
 import :sched.graph;
 import :sched.index.pump;
 import :support.prelude;
@@ -14,7 +14,7 @@ namespace clice {
 
 /// The scheduling stack of one project, shared by the server and the batch
 /// driver so the two assemble it the same way: the task graph with its
-/// artifact families (runners registered) over the process's worker pool,
+/// artifact builders (runners registered) over the process's worker pool,
 /// and the project's indexing pump, which a PCM commit that unblocks
 /// indexing kicks. The server layers its serving side — the AST
 /// family, the pump's escalation hook — on top.
@@ -27,8 +27,8 @@ struct SchedulingStack {
     Project& project;
     WorkerPool& pool;
     TaskGraph graph;
-    PCHFamily pch;
-    PCMFamily pcm;
+    PCHBuilder pch;
+    PCMBuilder pcm;
     TURunFamily turun;
     IndexPump pump;
 

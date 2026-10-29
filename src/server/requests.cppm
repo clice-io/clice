@@ -16,6 +16,7 @@ import :sched.index.pump;
 import :server.ast_family;
 import :server.dispatcher;
 import :server.document_compile;
+import :server.document_failures;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
@@ -63,9 +64,10 @@ public:
              EditorContext& contexts,
              IndexPump& pump,
              SessionStore& sessions,
+             DocumentFailures& failures,
              const PositionEncoding& encoding) :
         ast(ast), dispatcher(dispatcher), query(query), project(project), contexts(contexts),
-        pump(pump), sessions(sessions), encoding(encoding) {}
+        pump(pump), sessions(sessions), failures(failures), encoding(encoding) {}
 
     using RawResult = Dispatcher::RawResult;
 
@@ -274,8 +276,8 @@ private:
     using Reply = std::expected<codec::RawValue, ipc::Error>;
 
     /// Whether the worker's AST can answer for this session right now:
-    /// compiled, current, and its compile not barred by a crash (the bar
-    /// sits before ensure_compiled's clean-AST fast path, so a barred
+    /// compiled, current, and its compile not stopped by a crash (the
+    /// check sits before ensure_compiled's clean-AST fast path, so a stopped
     /// session's dispatch returns null even with a clean AST). When false,
     /// the routing rules try the index before deciding to await a compile.
     bool ast_answerable(const Session& session) const;
@@ -364,6 +366,8 @@ private:
     IndexPump& pump;
 
     SessionStore& sessions;
+
+    DocumentFailures& failures;
 
     /// What the client's positions count in (MasterServer::position_encoding).
     const PositionEncoding& encoding;

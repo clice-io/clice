@@ -304,7 +304,7 @@ RequestResult<worker::CompileParams>
             worker::CompileResult result;
             result.version = doc->version;
 
-            // A failed parse that blames the consumed PCH: either a
+            // A failed parse whose diagnostics point at the consumed PCH: either a
             // diagnostic names the blob's path outright, or it is an
             // AST-deserialization error naming no other prebuilt input
             // (that family's messages do not reliably carry the path —
@@ -314,10 +314,10 @@ RequestResult<worker::CompileParams>
             // (missing include, modified header, bad flags) match neither,
             // so the master never rebuilds an innocent shared PCH over a
             // failure it did not cause. An anonymous read error with PCMs
-            // in play is ambiguous; blaming the PCH costs at most one
+            // in play is ambiguous; suspecting the PCH costs at most one
             // retracted pair per round and self-corrects on the retry.
             if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
-                auto blames_pch = [&](const Diagnostic& diag) {
+                auto points_at_pch = [&](const Diagnostic& diag) {
                     llvm::StringRef message = diag.message;
                     if(message.contains(doc->pch.first)) {
                         return true;
@@ -330,7 +330,7 @@ RequestResult<worker::CompileParams>
                     });
                 };
                 result.pch_suspect = ranges::any_of(unit->diagnostics(), [&](auto& diag) {
-                    return blames_pch(diag) || ranges::any_of(diag.notes, blames_pch);
+                    return points_at_pch(diag) || ranges::any_of(diag.notes, points_at_pch);
                 });
             }
 

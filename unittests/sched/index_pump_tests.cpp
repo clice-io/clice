@@ -71,7 +71,7 @@ ZEST_CASE(StaleCrashKeepsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/edited.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    auto stale = f.ticket(id);
+    auto stale = f.seq(id);
 
     // The user fixes the file while the old bytes' dispatch is in flight:
     // the stale crash must not spend the fixed content's budget or touch
@@ -87,7 +87,7 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/c.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    auto launch = f.ticket(id);
+    auto launch = f.seq(id);
 
     // The content pass is dispatched; a deps-only cascade arrives mid-flight
     // and downgrades the pending reason, betting on that pass to cover the
@@ -107,7 +107,7 @@ ZEST_CASE(GaveUpClearsDowngraded) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/d.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    auto launch = f.ticket(id);
+    auto launch = f.seq(id);
     f.set_attempts(id, IndexerFixture::budget);
 
     // A deps-only enqueue arrives mid-flight, then the content pass spends
@@ -126,11 +126,11 @@ ZEST_CASE(DroppedWithoutPending) {
     ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
 }
 
-ZEST_CASE(AttemptWaitPerTicket) {
+ZEST_CASE(AttemptWaitPerSeq) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/waited.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    auto launch = f.ticket(id);
+    auto launch = f.seq(id);
 
     bool first_woke = false;
     auto first_body = [&]() -> kota::task<> {
@@ -142,7 +142,7 @@ ZEST_CASE(AttemptWaitPerTicket) {
     f.loop.run();
 
     // A requeue arrives mid-flight: the entry stays pending under a fresh
-    // ticket, and a new waiter binds to that newer attempt.
+    // sequence number, and a new waiter binds to that newer attempt.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     bool second_woke = false;
@@ -154,7 +154,7 @@ ZEST_CASE(AttemptWaitPerTicket) {
     f.loop.schedule(second);
     f.loop.run();
 
-    // The flight's completion covers the ticket its waiter observed, no
+    // The flight's completion covers the sequence number its waiter observed, no
     // matter the requeue: await_attempt promises one attempt, and holding
     // the waiter through every follow-up would park a feature request for
     // as long as edits keep arriving.
@@ -162,7 +162,7 @@ ZEST_CASE(AttemptWaitPerTicket) {
     ZASSERT(first_woke);
     ZASSERT(!second_woke);
 
-    f.wake_waiters(id, f.ticket(id));
+    f.wake_waiters(id, f.seq(id));
     ZASSERT(second_woke);
 }
 

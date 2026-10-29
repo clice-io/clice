@@ -82,7 +82,7 @@ llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
 void EditorContext::mark_dirty() {
     blob.bytes = serialize();
     blob.dirty = true;
-    blob.ticket += 1;
+    blob.save_seq += 1;
     if(project.request_flush) {
         project.request_flush();
     }

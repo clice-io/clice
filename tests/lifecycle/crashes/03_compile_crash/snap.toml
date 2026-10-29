@@ -79,6 +79,25 @@ pushes = [
 ["a fix retries after a pause"."crashes after the fix"]
 value = 1
 
+["an open resent with other text retries".hover]
+hover = {}
+
+["an open resent with other text retries".crashes]
+value = 1
+
+["an open resent with other text retries"."hover after the resent open".hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["an open resent with other text retries"."crashes after the resent open"]
+value = 1
+
 ["reopening keeps the bar".hover]
 hover = {}
 
@@ -117,3 +136,15 @@ hover = {}
 
 ["reopening keeps the bar"."crashes after a save"]
 value = 2
+
+["an edit that changes nothing is no retry".hover]
+hover = {}
+
+["an edit that changes nothing is no retry".crashes]
+value = 1
+
+["an edit that changes nothing is no retry"."hover after the edit"]
+hover = {}
+
+["an edit that changes nothing is no retry"."crashes after the edit"]
+value = 1

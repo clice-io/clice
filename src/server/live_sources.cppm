@@ -2,7 +2,7 @@ module clice:server.live_sources;
 
 import :index.query;
 import :project.project;
-import :sched.families.pch;
+import :sched.builders.pch;
 import :server.document_compile;
 import :server.session_store;
 import :support.prelude;
@@ -15,7 +15,7 @@ namespace clice {
 class ServerLiveSources final : public index::LiveSources {
 public:
     ServerLiveSources(Project& project,
-                      PCHFamily& pch,
+                      PCHBuilder& pch,
                       const SessionStore& sessions,
                       const DocumentCompiles& compiles) :
         project(project), pch(pch), sessions(sessions), compiles(compiles) {}
@@ -47,7 +47,7 @@ private:
                                      const index::Shard& shard) const;
 
     Project& project;
-    PCHFamily& pch;
+    PCHBuilder& pch;
     const SessionStore& sessions;
     const DocumentCompiles& compiles;
 };

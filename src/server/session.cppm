@@ -1,6 +1,5 @@
 module clice:server.session;
 
-import :server.quarantine;
 import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
@@ -90,13 +89,6 @@ struct Session {
     /// Used to detect stale compilation results (ABA prevention).
     std::uint64_t generation = 0;
 
-    /// What this document's worker crashes bar it from, and when it may
-    /// try again. All transitions go through the type; see server/quarantine.cppm.
-    /// Shared with the store's parked table across a close, so work still
-    /// in flight on a closed session books into the records a reopen
-    /// restores.
-    std::shared_ptr<Quarantine> quarantine = std::make_shared<Quarantine>();
-
     /// The store closed or replaced this session: nothing of it is
     /// published any more, its crash notes included.
     bool closed = false;
@@ -117,19 +109,6 @@ struct Session {
     /// result re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
-
-    /// The PCH pair a crash of this document's compile was put on: the
-    /// retraction rebuilds it, and a crash on it again is the document's
-    /// own. Cleared by a compile that finishes.
-    std::string crashed_pch;
-
-    /// A worker death under this document's compile with clang-tidy on,
-    /// held while the compile retries without the pass: finishing blames
-    /// the pass, another crash the compile.
-    /// FIXME: held on the session, the suspicion is lost when the document
-    /// closes during the retry (its next open crashes once more), and a retry
-    /// finishing on edited text books the crash there: the pass waits one more edit.
-    std::optional<ipc::Error> tidy_crash;
 };
 
 /// A request's hold on the buffer it was asked about: the generation

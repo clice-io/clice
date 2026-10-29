@@ -1,13 +1,14 @@
 module clice;
 
-import :sched.families.build_common;
-import :sched.families.pcm;
+import :sched.builders.build_common;
+import :sched.builders.pcm;
 import :support.anomaly;
 import :support.logging;
 import :syntax.header_context;
 import :syntax.preamble;
 import :syntax.scan;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 import :worker.protocol;
 
@@ -38,20 +39,20 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
     });
 }
 
-PCMFamily::PCMFamily(TaskGraph& graph,
-                     Project& project,
-                     CommandResolver& commands,
-                     PCHFamily& pch,
-                     WorkerPool& pool) :
+PCMBuilder::PCMBuilder(TaskGraph& graph,
+                       Project& project,
+                       CommandResolver& commands,
+                       PCHBuilder& pch,
+                       WorkerPool& pool) :
     graph(graph), project(project), commands(commands), pch(pch), pool(pool) {}
 
-void PCMFamily::register_runner() {
+void PCMBuilder::register_runner() {
     graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
         return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
 
-kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id) {
+kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
@@ -67,11 +68,11 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id) {
     co_return co_await direct_deps(path_id, resolution, argv, directory, std::nullopt);
 }
 
-kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
-                                                         const Resolution& resolution,
-                                                         llvm::ArrayRef<const char*> arguments,
-                                                         llvm::StringRef directory,
-                                                         std::optional<llvm::StringRef> content) {
+kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id,
+                                                           const Resolution& resolution,
+                                                           llvm::ArrayRef<const char*> arguments,
+                                                           llvm::StringRef directory,
+                                                           std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
@@ -169,29 +170,29 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     co_return deps;
 }
 
-llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
+llvm::SmallVector<NodeId> PCMBuilder::provider_appeared(llvm::StringRef name) {
     return graph.update(unresolved_node(name));
 }
 
-void PCMFamily::declare_deps(Fid path_id, llvm::ArrayRef<NodeId> deps) {
+void PCMBuilder::declare_deps(Fid path_id, llvm::ArrayRef<NodeId> deps) {
     graph.declare(node(path_id), deps);
 }
 
-void PCMFamily::retire_blob(PCMBuild& build) {
+void PCMBuilder::retire_blob(PCMBuild& build) {
     if(build.blob.empty()) {
         return;
     }
-    if(!build.superseded.empty()) {
-        project.store->invalidate("pcm", build.superseded);
+    if(!build.previous.empty()) {
+        project.store->invalidate("pcm", build.previous);
     }
-    build.superseded = std::exchange(build.blob, {});
+    build.previous = std::exchange(build.blob, {});
 }
 
-kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
+kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
-    if(auto it = project.pcm_builds.find(path_id);
-       it != project.pcm_builds.end() && deps_changed(project.file_table, it->second.deps)) {
+    if(auto* inputs = project.build_inputs(path_id);
+       inputs && deps_changed(project.file_table, *inputs)) {
         disk_scans.erase(path_id);
     }
 
@@ -252,10 +253,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                 case DependResult::Failed: {
                     auto& build = project.pcm_builds[path_id];
                     retire_blob(build);
-                    build = {
-                        .superseded = std::move(build.superseded),
-                        .failure = PCMBuild::Failure{.import = dep},
-                    };
+                    build = {.previous = std::move(build.previous)};
+                    project.failures.pcm_builds.commit(path_id, {.import = dep}, {});
                     co_return RoundOutcome::Failed;
                 }
                 case DependResult::Cancelled: co_return RoundOutcome::Stale;
@@ -328,7 +327,23 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // The last build stands while its key and inputs do, failed or not: a
     // failed build rebuilt on unchanged inputs would make every compile
-    // and completion of every importer pay for it first.
+    // and completion of every importer pay for it first, and one that
+    // crashed a worker would burn a worker of every importer. A crash's
+    // inputs hold the module's own text, which pcm_key leaves out: the
+    // refusal lifts the moment the poison is edited, and only then — a
+    // rebuild of the PCH renames the key on the same bytes.
+    if(auto* failed = project.failures.pcm_builds.lookup(project.file_table, path_id)) {
+        if(failed->result.key == pcm_key || failed->result.record.crashed()) {
+            if(failed->result.record.crashed()) {
+                LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
+            } else {
+                LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs",
+                          module_name);
+            }
+            co_return RoundOutcome::Failed;
+        }
+        project.failures.pcm_builds.forget(path_id);
+    }
     llvm::StringRef pcm_miss = "no_entry";
     if(auto it = project.pcm_builds.find(path_id); it != project.pcm_builds.end()) {
         auto& build = it->second;
@@ -336,9 +351,6 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             pcm_miss = "key_changed";
         } else if(deps_changed(project.file_table, build.deps)) {
             pcm_miss = "deps_changed";
-        } else if(build.failure) {
-            LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs", module_name);
-            co_return RoundOutcome::Failed;
         } else if(build.path.empty() || !project.store->lookup("pcm", build.blob)) {
             pcm_miss = "evicted";
         } else {
@@ -350,22 +362,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         // while this build runs, or after it fails, must not read the
         // previous interface from it. Its PCM stays in the store until the
         // next one replaces it — a compile may still be reading it.
-        build = {.blob = std::move(build.blob), .superseded = std::move(build.superseded)};
+        build = {.blob = std::move(build.blob), .previous = std::move(build.previous)};
     }
     LOG_PERF("cache",
              "ns=pcm event=miss reason={} key={} module={}",
              pcm_miss,
              pcm_key,
              module_name);
-
-    // Same shared-artifact refusal as the PCH, but keyed with the
-    // module's current content: unlike pch_key (which embeds the
-    // preamble text), pcm_key is content-free, and the refusal must lift
-    // the moment the poison is edited.
-    if(crashed(path_id)) {
-        LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
-        co_return RoundOutcome::Failed;
-    }
 
     bp.module_name = module_name;
     std::random_device random;
@@ -386,15 +389,22 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // frame keeps awaiting the real reply (contract 2 — the slot frees
     // only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
-    // Sampled before the build reads it: a save arriving mid-build is not
-    // what crashed.
-    auto content = content_hash(path_id);
+    // What a build that crashes is known to read, sampled before it runs: a
+    // save arriving mid-build is not what crashed.
+    auto known = imported;
+    merge_deps(known, {&precompiled});
+    if(auto own = current_dep(project.file_table, path_id)) {
+        known.push_back(*own);
+    }
     auto result = co_await deliver(
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const ipc::Error& error) {
-            build_crashes.insert_or_assign(path_id, Crash{content, error});
+            project.failures.pcm_builds.commit(
+                path_id,
+                {.key = pcm_key, .record = failed_build(worker::death_of(error), error.message)},
+                std::move(known));
         });
 
     // A foreground reclaim or an advisory cancel is no decision on the
@@ -420,9 +430,10 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             // A round overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
             if(result.has_value()) {
-                build.key = pcm_key;
-                build.deps = inputs();
-                build.failure = PCMBuild::Failure{.error = result.value().first_error};
+                project.failures.pcm_builds.commit(
+                    path_id,
+                    {.key = pcm_key, .record = failed_build({}, result.value().first_error)},
+                    inputs());
             }
         } else {
             LOG_ANOMALY(PCMBuildFail,
@@ -458,7 +469,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     co_return RoundOutcome::Success;
 }
 
-std::optional<PCMFamily::BuildFailure> PCMFamily::build_failure(Fid module) const {
+std::optional<PCMBuilder::BuildFailure> PCMBuilder::build_failure(Fid module) const {
     BuildFailure failure;
     for(auto current = module;;) {
         if(auto seen = ranges::find(failure.chain, current); seen != failure.chain.end()) {
@@ -466,28 +477,23 @@ std::optional<PCMFamily::BuildFailure> PCMFamily::build_failure(Fid module) cons
             return failure;
         }
         failure.chain.push_back(current);
-        auto it = project.pcm_builds.find(current);
-        if(it == project.pcm_builds.end() || !it->second.failure) {
+        auto* failed = project.failures.pcm_builds.find(current);
+        if(!failed || failed->result.record.crashed()) {
             return std::nullopt;
         }
-        if(!it->second.failure->import.valid()) {
-            failure.error = it->second.failure->error;
+        if(!failed->result.import.valid()) {
+            failure.error = failed->result.record.cause;
             return failure;
         }
-        current = it->second.failure->import;
+        current = failed->result.import;
     }
 }
 
-bool PCMFamily::forget_failure(Fid module) {
-    auto it = project.pcm_builds.find(module);
-    if(it == project.pcm_builds.end() || !it->second.failure) {
-        return false;
-    }
-    it->second.failure.reset();
-    return true;
+bool PCMBuilder::forget_failure(Fid module) {
+    return project.failures.pcm_builds.forget(module);
 }
 
-llvm::SetVector<Fid> PCMFamily::closure(llvm::ArrayRef<Fid> modules) const {
+llvm::SetVector<Fid> PCMBuilder::closure(llvm::ArrayRef<Fid> modules) const {
     llvm::SetVector<Fid> read(modules.begin(), modules.end());
     for(std::size_t i = 0; i < read.size(); i += 1) {
         auto it = project.pcm_builds.find(read[i]);
@@ -503,27 +509,15 @@ llvm::SetVector<Fid> PCMFamily::closure(llvm::ArrayRef<Fid> modules) const {
     return read;
 }
 
-std::uint64_t PCMFamily::content_hash(Fid module) {
-    auto seen = project.file_table.disk.current(module);
-    return seen ? seen->hash : 0;
+const FailureRecord* PCMBuilder::crashed(Fid module) {
+    // FIXME: what a crash is known to read leaves out the headers the module
+    // includes: a fix there waits for an importer's edit or save, and its
+    // importers fail to index until then.
+    auto* failed = project.failures.pcm_builds.lookup(project.file_table, module);
+    return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
 }
 
-const ipc::Error* PCMFamily::crashed(Fid module) {
-    auto it = build_crashes.find(module);
-    if(it == build_crashes.end()) {
-        return nullptr;
-    }
-    // FIXME: only the module's own text lifts the refusal: a fix in a header it
-    // includes waits for an importer's edit or save, and its importers fail to
-    // index until then.
-    if(content_hash(module) != it->second.content) {
-        build_crashes.erase(it);
-        return nullptr;
-    }
-    return &it->second.error;
-}
-
-bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
+bool PCMBuilder::drop_evicted(Fid module, PCMBuild& build) {
     if(build.path.empty()) {
         return false;
     }
@@ -543,7 +537,7 @@ bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
     return true;
 }
 
-bool PCMFamily::revalidate_blobs() {
+bool PCMBuilder::revalidate_blobs() {
     bool evicted = false;
     for(auto& [pid, build]: project.pcm_builds) {
         if(drop_evicted(pid, build)) {
@@ -575,12 +569,12 @@ bool PCMFamily::revalidate_blobs() {
     return true;
 }
 
-kota::task<std::optional<PCMFamily::ModuleDeps>>
-    PCMFamily::prepare_deps(Fid path_id,
-                            const Resolution& resolution,
-                            llvm::ArrayRef<const char*> arguments,
-                            llvm::StringRef directory,
-                            llvm::StringRef content) {
+kota::task<std::optional<PCMBuilder::ModuleDeps>>
+    PCMBuilder::prepare_deps(Fid path_id,
+                             const Resolution& resolution,
+                             llvm::ArrayRef<const char*> arguments,
+                             llvm::StringRef directory,
+                             llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a
@@ -626,11 +620,11 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
     co_return deps;
 }
 
-bool PCMFamily::tracks(Fid path_id) const {
+bool PCMBuilder::tracks(Fid path_id) const {
     return graph.has_node(node(path_id));
 }
 
-llvm::SmallVector<Fid> PCMFamily::invalidate(Fid path_id) {
+llvm::SmallVector<Fid> PCMBuilder::invalidate(Fid path_id) {
     llvm::SmallVector<Fid> dirtied;
     for(auto id: graph.update(node(path_id))) {
         dirtied.push_back(Fid{static_cast<std::uint32_t>(id.key)});

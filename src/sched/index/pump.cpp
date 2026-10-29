@@ -3,7 +3,7 @@ module clice;
 import :index.project_index;
 import :project.project;
 import :project.save;
-import :sched.families.turun;
+import :sched.builders.turun;
 import :sched.graph;
 import :sched.index.pump;
 import :support.environment;
@@ -57,7 +57,7 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     }
     // New debt voids the running round's freshness memos: debt taken
     // after this recording must re-judge against the disk, or its skip
-    // would finish the fresh ticket on a result memoized before the
+    // would finish the fresh sequence number on a result memoized before the
     // change and the file would never re-index.
     project.index.begin_round();
     if(pending_table.record(server_path_id, reason)) {
@@ -105,12 +105,11 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     if(!pending) {
         co_return;
     }
-    auto ticket = pending->ticket;
+    auto seq = pending->seq;
     auto& waits = attempt_waits[server_path_id];
-    auto it =
-        ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
+    auto it = ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.seq == seq; });
     if(it == waits.end()) {
-        waits.push_back({ticket, std::make_shared<kota::event>()});
+        waits.push_back({seq, std::make_shared<kota::event>()});
         it = waits.end() - 1;
     }
     // Hold the shared_ptr across the await: the wake moves the event out
@@ -120,20 +119,19 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     co_await event->wait();
 }
 
-void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
+void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t seq) {
     auto it = attempt_waits.find(server_path_id);
     if(it == attempt_waits.end()) {
         return;
     }
     llvm::SmallVector<std::shared_ptr<kota::event>, 2> woken;
     for(auto& wait: it->second) {
-        if(wait.ticket <= ticket) {
+        if(wait.seq <= seq) {
             woken.push_back(std::move(wait.event));
         }
     }
     it->second.erase(
-        ranges::remove_if(it->second,
-                          [&](const AttemptWait& wait) { return wait.ticket <= ticket; })
+        ranges::remove_if(it->second, [&](const AttemptWait& wait) { return wait.seq <= seq; })
             .begin(),
         it->second.end());
     if(it->second.empty()) {
@@ -368,7 +366,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
             case TURunFamily::Result::Completed: {
                 record_indexed(server_path_id, std::move(outcome.errors));
                 if(auto pending = pending_table.peek(server_path_id);
-                   skipped && pending && pending->ticket == taken.ticket) {
+                   skipped && pending && pending->seq == taken.seq) {
                     on_skipped_diagnostics(server_path_id,
                                            outcome.text_hash,
                                            std::move(outcome.skipped_diagnostics));
@@ -491,12 +489,12 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     if(on_attempt_finished && !pending_table.contains(server_path_id)) {
         on_attempt_finished(server_path_id);
     }
-    // Wake the waiters parked on this attempt (and older tickets it
+    // Wake the waiters parked on this attempt (and older sequence numbers it
     // covers) after the escalation above, so they re-derive their route
     // against the finished state. Waiters of a requeue made during the
-    // flight bound the fresh ticket and stay parked for that newer
+    // flight bound the fresh sequence number and stay parked for that newer
     // attempt.
-    wake_attempt_waits(server_path_id, taken.ticket);
+    wake_attempt_waits(server_path_id, taken.seq);
     round.completed += 1;
     round.inflight -= 1;
     round.task_done.set();

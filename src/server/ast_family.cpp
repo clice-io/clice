@@ -7,12 +7,14 @@ import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.command_resolver;
-import :sched.families.build_common;
+import :sched.builders.build_common;
 import :server.ast_family;
 import :server.context_service;
+import :server.document_failures;
 import :server.editor_context;
 import :support.anomaly;
 import :support.bytes;
+import :support.failure_record;
 import :support.json;
 import :support.logging;
 import :support.text;
@@ -25,68 +27,6 @@ import :worker.protocol;
 
 namespace clice {
 
-namespace {
-
-/// What crashed, as the note words it: the work, and the feature it
-/// pauses.
-struct CrashSubject {
-    llvm::StringRef work;
-    llvm::StringRef paused;
-};
-
-CrashSubject crash_subject(std::uint8_t kind) {
-    switch(static_cast<EvidenceKind>(kind)) {
-        case EvidenceKind::Compile: return {"compiling", "Semantic features are"};
-        case EvidenceKind::Tidy: return {"running clang-tidy on", "clang-tidy is"};
-        case EvidenceKind::PCH:
-            return {"building the precompiled preamble of", "Semantic features are"};
-        case EvidenceKind::PCM: return {"building a module imported by", "The module is"};
-        case EvidenceKind::DocumentLink:
-            return {"computing document links for", "Document links are"};
-        case EvidenceKind::FoldingRange:
-            return {"computing folding ranges for", "Folding ranges are"};
-        case EvidenceKind::DocumentSymbol:
-            return {"computing document symbols for", "Document symbols are"};
-        case EvidenceKind::InlayHint: return {"computing inlay hints for", "Inlay hints are"};
-        case EvidenceKind::CodeAction: return {"computing code actions for", "Code actions are"};
-        case EvidenceKind::SelectionRange:
-            return {"computing selection ranges for", "Selection ranges are"};
-        case EvidenceKind::Completion: return {"completing code in", "Code completion is"};
-        case EvidenceKind::SignatureHelp:
-            return {"computing signature help in", "Signature help is"};
-        case EvidenceKind::Format: return {"formatting", "Formatting is"};
-        case EvidenceKind::SemanticTokens:
-            return {"computing semantic highlighting for", "Semantic highlighting is"};
-        case EvidenceKind::Hover: return {"computing hover for", "Hover is"};
-        case EvidenceKind::Count: break;
-    }
-    std::unreachable();
-}
-
-}  // namespace
-
-void append_crash_notes(const Session& session, std::vector<feature::FileDiagnostic>& diagnostics) {
-    if(session.closed) {
-        return;
-    }
-    for(auto& note: session.quarantine->notes()) {
-        auto subject = crash_subject(note.kind);
-        llvm::StringRef retry =
-            note.save_only
-                ? "until you save this file"
-                : "until this file or a header it includes changes, or until you save it";
-        auto repeats =
-            note.strikes > 1 ? std::format(" {} times in a row", note.strikes) : std::string();
-        diagnostics.push_back(feature::file_warning(
-            std::format("clice's worker crashed{} while {} this file ({}). {} paused here {}.",
-                        repeats,
-                        subject.work,
-                        note.cause,
-                        subject.paused,
-                        retry)));
-    }
-}
-
 /// The diagnostics the PCH's build raised in the preamble.
 static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
     std::vector<feature::FileDiagnostic> diagnostics;
@@ -97,7 +37,7 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
 
 /// Why each import that failed to build did not, named by module.
 static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
-                                                           const PCMFamily& pcm,
+                                                           const PCMBuilder& pcm,
                                                            const DependencyGraph& graph) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
@@ -115,14 +55,14 @@ static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> i
 }
 
 /// The imports of a module several units provide, each resolved to the
-/// nearest of them (PCMFamily::direct_deps).
-static std::vector<feature::ModuleChoice> module_choices(const PCMFamily::ModuleDeps& imports,
+/// nearest of them (PCMBuilder::direct_deps).
+static std::vector<feature::ModuleChoice> module_choices(const PCMBuilder::ModuleDeps& imports,
                                                          const Project& project) {
     auto& graph = project.dep_graph;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
     std::vector<feature::ModuleChoice> choices;
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             continue;
         }
         auto chosen = Fid{static_cast<std::uint32_t>(dep.key)};
@@ -145,9 +85,9 @@ static std::vector<feature::ModuleChoice> module_choices(const PCMFamily::Module
     return choices;
 }
 
-std::optional<PCHFamily::Request> ASTFamily::declared_pch(Fid path_id,
-                                                          const Resolution& resolution,
-                                                          const PCMFamily::ModuleDeps& imports) {
+std::optional<PCHBuilder::Request> ASTFamily::declared_pch(Fid path_id,
+                                                           const Resolution& resolution,
+                                                           const PCMBuilder::ModuleDeps& imports) {
     auto unit = contexts.commands.pch_unit(path_id, resolution);
     if(!unit) {
         return std::nullopt;
@@ -162,7 +102,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        const Resolution& resolution,
-                                       const PCMFamily::ModuleDeps& imports,
+                                       const PCMBuilder::ModuleDeps& imports,
                                        llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
     auto* synthesized = resolution.synthesized.get();
@@ -213,7 +153,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
             continue;
         }
         imported = true;
-        if(!PCMFamily::is_unresolved(dep)) {
+        if(!PCMBuilder::is_unresolved(dep)) {
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
             if(auto it = project.pcm_builds.find(module);
                it != project.pcm_builds.end() && !it->second.path.empty()) {
@@ -288,12 +228,13 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
 ASTFamily::ASTFamily(Project& project,
                      EditorContext& contexts,
                      TaskGraph& graph,
-                     PCMFamily& pcm,
-                     PCHFamily& pch,
+                     PCMBuilder& pcm,
+                     PCHBuilder& pch,
                      WorkerPool& pool,
-                     SessionStore& sessions) :
+                     SessionStore& sessions,
+                     DocumentFailures& failures) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions) {}
+    sessions(sessions), failures(failures) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
@@ -308,42 +249,78 @@ kota::task<RoundOutcome> ASTFamily::run_round(RoundContext& ctx, Fid path_id) {
 }
 
 void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
-                             std::uint8_t kind,
-                             const ipc::Error& error) {
-    LOG_WARN("{} crashed a worker while serving {}: {}",
-             project.file_table.resolve(session->path_id),
-             crash_subject(kind).work,
-             error.message);
-    session->quarantine->on_crash(kind,
-                                  worker::death_of(error),
-                                  error.message,
-                                  Quarantine::Clock::now());
+                             feature::RequestKind kind,
+                             llvm::StringRef death,
+                             std::string cause) {
+    auto path_id = session->path_id;
+    bool shown =
+        failures.crashed(path_id, kind, death, std::move(cause), DocumentFailures::Clock::now());
+    auto* record = failures.find(path_id, kind);
+    LOG_WARN("{} crashed a worker: {}",
+             project.file_table.resolve(path_id),
+             feature::crash_note({.kind = kind,
+                                  .cause = record->cause,
+                                  .count = record->count,
+                                  .save_only = record->save_only(DocumentFailures::policy)})
+                 .message);
     // A silent first crash leaves the published state alone (see
-    // Quarantine invariant 4).
-    if(!session->quarantine->shows(kind)) {
+    // DocumentFailures invariant 4).
+    if(!shown) {
         return;
     }
-    // A closed session publishes nothing; a reopen sharing its records
-    // shows the note.
+    // A closed session publishes nothing; a reopen shows the note.
     if(session->closed) {
-        if(auto open = sessions.find(session->path_id);
-           open && open->quarantine == session->quarantine) {
+        if(auto open = sessions.find(path_id)) {
             republish(open);
         }
         return;
     }
-    // A barred compile leaves no AST behind the old diagnostics: they go,
+    // A stopped compile leaves no AST behind the old diagnostics: they go,
     // and the note says why.
-    auto previous = compiles.latest(session->path_id);
+    auto previous = compiles.latest(path_id);
     if(previous && previous->output.has_value() &&
-       (kind == evidence_kind(EvidenceKind::Compile) || kind == evidence_kind(EvidenceKind::PCH))) {
-        compiles.set_output(session->path_id,
+       (kind == feature::RequestKind::Compile || kind == feature::RequestKind::PCH)) {
+        compiles.set_output(path_id,
                             CompileOutput{
                                 .text = session->source,
                                 .diagnostics = {.source = previous->output->diagnostics.source},
                             });
     }
     republish(session);
+}
+
+bool ASTFamily::attribute_crash(const std::shared_ptr<Session>& session,
+                                bool tidy,
+                                const std::optional<std::string>& consumed,
+                                const ipc::Error& error) {
+    auto path_id = session->path_id;
+    auto file = project.file_table.resolve(path_id);
+    auto& suspects = failures.suspects(path_id);
+    // The checks run in the parse (their preprocessor callbacks) and after
+    // it: they are the first suspect, tried by a compile without them. One
+    // that crashes as well clears them.
+    if(tidy) {
+        LOG_WARN("Compile crashed with clang-tidy on for {}; retrying without it", file);
+        suspects.tidy = error;
+        return true;
+    }
+    suspects.tidy.reset();
+    // A death while reading a prebuilt pair may be the pair's fault: deep
+    // corruption aborts the AST reader (report_fatal_error in the bitstream
+    // reader) before any diagnostic can anchor, so the pch_suspect gate
+    // never gets a say. The first such death retracts the pair and the
+    // round runs again on a rebuilt one; a death on the rebuilt pair is the
+    // document's own.
+    if(consumed && suspects.pch != *consumed) {
+        LOG_WARN("Compile crashed reading PCH pair {} for {}; retracting the pair",
+                 *consumed,
+                 file);
+        suspects.pch = *consumed;
+        pch.consume_failed(*consumed);
+        return true;
+    }
+    record_crash(session, feature::RequestKind::Compile, worker::death_of(error), error.message);
+    return false;
 }
 
 void ASTFamily::republish(const std::shared_ptr<Session>& session) {
@@ -354,19 +331,20 @@ void ASTFamily::republish(const std::shared_ptr<Session>& session) {
     on_output.emit(session);
 }
 
-bool ASTFamily::compile_barred(const Session& session) {
-    auto now = Quarantine::Clock::now();
-    return session.quarantine->barred(evidence_kind(EvidenceKind::Compile), now) ||
-           session.quarantine->barred(evidence_kind(EvidenceKind::PCH), now);
+bool ASTFamily::compile_stopped(Fid path_id) const {
+    auto now = DocumentFailures::Clock::now();
+    return failures.stops(path_id, feature::RequestKind::Compile, now) ||
+           failures.stops(path_id, feature::RequestKind::PCH, now);
 }
 
 void ASTFamily::saved(Session& session) {
-    session.quarantine->on_save();
-    // An AST compiled while a clang-tidy crash barred the pass stays
+    auto path_id = session.path_id;
+    failures.saved(path_id);
+    // An AST compiled while a clang-tidy crash stopped the pass stays
     // current until the next edit: the save that retries the pass
     // recompiles.
-    if(session.quarantine->crashed(evidence_kind(EvidenceKind::Tidy))) {
-        invalidate(session.path_id);
+    if(failures.find(path_id, feature::RequestKind::Tidy)) {
+        invalidate(path_id);
     }
     // Typing never re-runs the self-containment trial, yet an edit can
     // make a header lean on its includer: a save showing what an includer
@@ -381,18 +359,17 @@ void ASTFamily::saved(Session& session) {
         }
     }
     // The modules it is and imports, directly or through other modules,
-    // retry with it: a crashed build is refused until a consumer holds a
-    // license (see depend_modules), a failed one until what it read or
-    // looked for changes. A failed build's inputs miss a lookup in a
-    // directory that did not exist yet, so a save retries its failed
-    // preamble too. Either refusal leaves the compile standing, so only a
-    // fresh round asks for the artifact again.
-    bool retry = session.quarantine->crashed(evidence_kind(EvidenceKind::PCM));
+    // retry with it: a build that crashed or failed is otherwise refused
+    // until what it read, or is known to have read, changes. A failed
+    // build's inputs miss a lookup in a directory that did not exist yet,
+    // so a save retries its failed preamble too. Either refusal leaves the
+    // compile standing, so only a fresh round asks for the artifact again.
+    bool retry = failures.find(path_id, feature::RequestKind::PCM) != nullptr;
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
         for(auto dep: graph.dependencies(importer)) {
-            if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
+            if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
                 continue;
             }
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
@@ -403,17 +380,15 @@ void ASTFamily::saved(Session& session) {
     };
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        pcm.forgive(modules[i]);
         retry |= pcm.forget_failure(modules[i]);
         add_imports({Family::PCM, modules[i].raw});
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
-    if(auto compiled = compiles.latest(session.path_id)) {
-        if(compiled->failed_pch_key) {
-            retry |= pch.forget_failure(*compiled->failed_pch_key);
-        } else if(auto preamble =
-                      compiled->pch_key ? pch.preamble_state(*compiled->pch_key) : nullptr;
+    if(auto compiled = compiles.latest(path_id); compiled && compiled->pch_key) {
+        if(compiled->pch_failed) {
+            retry |= pch.forget_failure(*compiled->pch_key);
+        } else if(auto preamble = pch.preamble_state(*compiled->pch_key);
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
@@ -423,7 +398,7 @@ void ASTFamily::saved(Session& session) {
         }
     }
     if(retry) {
-        invalidate(session.path_id);
+        invalidate(path_id);
     }
 }
 
@@ -485,13 +460,14 @@ void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapsh
     if(auto* header_context = contexts.header_context(path_id)) {
         visit(header_context->deps);
     }
-    if(auto compiled = compiles.latest(path_id); compiled && compiled->pch_key) {
-        if(auto it = project.pch_cache.find(*compiled->pch_key); it != project.pch_cache.end()) {
+    if(auto compiled = compiles.latest(path_id); compiled && compiled->loaded_pch()) {
+        if(auto it = project.pch_cache.find(*compiled->loaded_pch());
+           it != project.pch_cache.end()) {
             visit(it->second.deps);
         }
     }
     for(auto dep: graph.dependencies(node(path_id))) {
-        if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
+        if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
             continue;
         }
         if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
@@ -553,13 +529,14 @@ void ASTFamily::switch_identity(Session& session) {
     // identity.
     session.generation += 1;
     session.trial_done = false;
-    session.quarantine->on_change(Quarantine::Clock::now());
+    failures.changed(session.path_id, DocumentFailures::Clock::now());
     auto& entry = compiles.entries[session.path_id];
     if(entry.latest) {
         // The TU index describes the buffer under the old identity, though
         // it compiled the same bytes.
         auto next = DocumentCompile(*entry.latest);
         next.pch_key.reset();
+        next.pch_failed = false;
         next.base_pch_key.reset();
         next.index.reset();
         entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
@@ -618,8 +595,8 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     // A document whose compile keeps killing workers waits for a change
     // or a save instead of feeding the same content to one more worker;
     // the crash note was published when the crash was recorded.
-    if(compile_barred(*session)) {
-        LOG_DEBUG("ensure_compiled: {} is barred by a crash", project.file_table.resolve(path_id));
+    if(compile_stopped(path_id)) {
+        LOG_DEBUG("ensure_compiled: {} is stopped by a crash", project.file_table.resolve(path_id));
         co_return false;
     }
 
@@ -652,13 +629,14 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<std::optional<PCMFamily::ModuleDeps>>
+kota::task<std::optional<PCMBuilder::ModuleDeps>>
     ASTFamily::depend_modules(RoundContext& ctx,
-                              const std::shared_ptr<Session>& session,
+                              const Ticket& ticket,
                               const Resolution& resolution,
                               llvm::StringRef directory,
                               const std::vector<std::string>& arguments,
                               llvm::StringRef text) {
+    auto& session = ticket.session;
     auto path_id = session->path_id;
     // Imports come from the round's buffer snapshot under the round's own
     // resolved command — the same text and flags the parse will consume,
@@ -693,52 +671,53 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
     // replaces the declaration with them, and a declare-only edge would
     // vanish with it.
     for(auto dep: deps.declared) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             ctx.reference(dep);
         }
     }
+    auto kind = feature::RequestKind::PCM;
     if(deps.resolved.empty()) {
-        session->quarantine->on_success(evidence_kind(EvidenceKind::PCM));
+        failures.succeeded(ticket, kind);
         co_return deps;
     }
 
     // A module whose build crashed a worker is refused to every importer
-    // until one holds a license to retry it: a change to its inputs, or a
-    // save (see Quarantine).
-    auto kind = evidence_kind(EvidenceKind::PCM);
-    // FIXME: an edit within retry_spacing of the module's crash is spent here:
+    // until the record of one lets it retry: a change to its inputs, or a
+    // save (see DocumentFailures).
+    // FIXME: an edit within the spacing of the module's crash is spent here:
     // the round runs without the module and finishes current, so the module waits
     // for the next edit or save, not for the spacing to pass.
-    bool licensed = session->quarantine->crashed(kind) &&
-                    !session->quarantine->barred(kind, Quarantine::Clock::now());
-    Quarantine::Attempt license(*session->quarantine, kind);
+    bool retry = failures.find(path_id, kind) &&
+                 !failures.stops(path_id, kind, DocumentFailures::Clock::now());
+    DocumentFailures::Attempt attempt(failures, path_id, kind);
     bool crashed = false;
 
     // Building a dependency can itself evict another clean module's PCM
-    // under budget pressure, reopening the window the previous attempt's
+    // under budget pressure, reopening the window the previous pass's
     // revalidation closed — hence the bounded retry until the set is
     // stable. Past the bound the parse fails visibly on the missing file.
-    for(int attempt = 0; attempt < 3; attempt += 1) {
+    for(int pass = 0; pass < 3; pass += 1) {
         bool any_evicted = pcm.revalidate_blobs();
-        if(attempt > 0 && !any_evicted) {
+        if(pass > 0 && !any_evicted) {
             break;
         }
 
         for(auto dep: deps.resolved) {
             if(auto* crash = pcm.crashed(dep)) {
-                if(!licensed) {
+                if(!retry) {
                     // Booked once: a round on unchanged inputs is no new
                     // crash.
-                    if(!session->quarantine->crashed(kind)) {
-                        record_crash(session, kind, *crash);
+                    if(!failures.find(path_id, kind)) {
+                        record_crash(session, kind, crash->death, crash->cause);
                     }
                     crashed = true;
                     // Still an input: a later build of it, by an importer
-                    // holding a license, must re-dirty this document.
+                    // whose record lets it retry, must re-dirty this
+                    // document.
                     ctx.reference({Family::PCM, dep.raw});
                     continue;
                 }
-                pcm.forgive(dep);
+                pcm.forget_failure(dep);
             }
             switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
@@ -747,9 +726,9 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
                     if(auto* crash = pcm.crashed(dep)) {
-                        record_crash(session, kind, *crash);
+                        record_crash(session, kind, crash->death, crash->cause);
                         crashed = true;
-                        licensed = false;
+                        retry = false;
                     }
                     break;
                 case DependResult::Cancelled: co_return std::nullopt;
@@ -757,7 +736,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
         }
     }
     if(!crashed) {
-        session->quarantine->on_success(kind);
+        failures.succeeded(ticket, kind);
     }
     co_return deps;
 }
@@ -828,44 +807,43 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // didChange or session replacement makes every product describe text
     // that no longer exists, so the commit discards wholesale, while a
     // Lost invalidation (generation unchanged) still publishes salvage.
-    auto gen = session->generation;
+    auto ticket = Ticket::take(session);
 
     // Covers every spawn path, including waiter-driven respawns: content
     // that just crashed a worker must not reach one more.
-    if(compile_barred(*session)) {
+    if(compile_stopped(path_id)) {
         co_return RoundOutcome::Failed;
     }
 
     ScopedTimer timer;
     auto file_path = std::string(project.file_table.resolve(path_id));
 
-    LOG_INFO("compile round: starting path_id={} gen={}", path_id, gen);
+    LOG_INFO("compile round: starting path_id={} gen={}", path_id, ticket.generation);
     on_phase.emit(path_id, CompilePhase::Command);
 
     // A round past the gate on a crashed compile or preamble is its retry,
-    // and holds the license until its outcome (Quarantine invariant 2).
-    auto compile_kind = evidence_kind(EvidenceKind::Compile);
-    auto pch_kind = evidence_kind(EvidenceKind::PCH);
-    Quarantine::Attempt compile_attempt(*session->quarantine, compile_kind);
-    bool pch_licensed = session->quarantine->crashed(pch_kind);
-    Quarantine::Attempt pch_attempt(*session->quarantine, pch_kind);
+    // and stops the others until its outcome (DocumentFailures invariant 2).
+    using enum feature::RequestKind;
+    DocumentFailures::Attempt compile_attempt(failures, path_id, Compile);
+    bool pch_retry = failures.find(path_id, PCH) != nullptr;
+    DocumentFailures::Attempt pch_attempt(failures, path_id, PCH);
 
     // clang-tidy runs where `clice lint` checks, unless its configuration
-    // does not parse, which `clice lint` refuses too, a crash of its is on
-    // trial or bars it, or the compile retries a crash it is acquitted of
+    // does not parse, which `clice lint` refuses too, a crash of its is
+    // suspected or stops it, or the compile retries a crash it is cleared of
     // (on a retracted preamble, or after the document's own). The places
     // resolving its configuration looked at join the deps either way: a
-    // fix there is a change that retries a barred pass.
-    auto tidy_kind = evidence_kind(EvidenceKind::Tidy);
+    // fix there is a change that retries a stopped pass.
     std::optional<tidy::TidyResolution> tidy_config;
-    std::optional<Quarantine::Attempt> tidy_attempt;
+    std::optional<DocumentFailures::Attempt> tidy_attempt;
     if(project.config.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
-        if(tidy_config->error.empty() && !session->tidy_crash && session->crashed_pch.empty() &&
-           !session->quarantine->crashed(compile_kind) &&
-           !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {
-            tidy_attempt.emplace(*session->quarantine, tidy_kind);
+        auto& suspects = failures.suspects(path_id);
+        if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
+           !failures.find(path_id, Compile) &&
+           !failures.stops(path_id, Tidy, DocumentFailures::Clock::now())) {
+            tidy_attempt.emplace(failures, path_id, Tidy);
         }
     }
 
@@ -911,7 +889,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 }
             }
             contexts.drop_header_context(path_id);
-            if(session->generation != gen) {
+            if(!ticket.fresh()) {
                 co_return RoundOutcome::Stale;
             }
             params.directory.clear();
@@ -937,7 +915,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         on_phase.emit(path_id, CompilePhase::Modules);
         auto imports = co_await depend_modules(ctx,
-                                               session,
+                                               ticket,
                                                resolution,
                                                params.directory,
                                                params.arguments,
@@ -946,7 +924,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded before PCH for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -988,18 +966,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                  base_pch.value_or(""));
             switch(plan.decision) {
                 // No PCH build left to crash on.
-                case PCHPlan::Decision::None: session->quarantine->on_success(pch_kind); break;
+                case PCHPlan::Decision::None: failures.succeeded(ticket, PCH); break;
                 case PCHPlan::Decision::Acquire: {
                     auto pch_key = plan.request.pch_key;
                     // A preamble whose build crashed a worker — for this
                     // document or another sharing it — is refused until
-                    // this one holds a license to retry it.
+                    // this one's record lets it retry.
                     if(auto* crash = pch.crashed(pch_key)) {
-                        if(!pch_licensed) {
-                            record_crash(session, pch_kind, *crash);
+                        if(!pch_retry) {
+                            record_crash(session, PCH, crash->death, crash->cause);
                             co_return RoundOutcome::Failed;
                         }
-                        pch.forgive(pch_key);
+                        pch.forget_failure(pch_key);
                     }
                     auto dep = pch.prepare(std::move(plan.request));
                     switch(co_await ctx.depend(dep)) {
@@ -1008,15 +986,15 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                             // this round's own validity: a supersede or a
                             // Lost-type invalidation while we waited means
                             // the resolved command may describe nothing —
-                            // neither the key nor the evidence wash belongs
-                            // to this round anymore.
-                            if(session->generation == gen && ctx.current()) {
+                            // neither the key nor the record it clears
+                            // belongs to this round anymore. Adopting a
+                            // proven-good artifact clears the document's
+                            // PCH record as surely as building one — but
+                            // only its own; every consumer clears for
+                            // itself.
+                            if(ctx.current() && ticket.fresh()) {
                                 adopted_pch = pch_key;
-                                // Adopting a proven-good artifact clears
-                                // the session's PCH record as surely as
-                                // building one — but only its own; every
-                                // consumer clears for itself.
-                                session->quarantine->on_success(pch_kind);
+                                failures.succeeded(ticket, PCH);
                             }
                             break;
                         case DependResult::Failed:
@@ -1024,13 +1002,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                             // stops before the parse, which would feed the
                             // same preamble to one more worker.
                             if(auto* crash = pch.crashed(pch_key)) {
-                                record_crash(session, pch_kind, *crash);
+                                record_crash(session, PCH, crash->death, crash->cause);
                                 co_return RoundOutcome::Failed;
                             }
                             // A build that failed without a crash answered:
                             // the preamble no longer crashes.
-                            if(session->generation == gen && ctx.current()) {
-                                session->quarantine->on_success(pch_kind);
+                            if(ctx.current()) {
+                                failures.succeeded(ticket, PCH);
                             }
                             failed_pch = pch_key;
                             break;
@@ -1062,7 +1040,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         project.fill_pcm_deps(params.pcms, pcm.closure(imports->resolved).getArrayRef());
 
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded before send for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -1097,18 +1075,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         //
         // Crash accounting runs even for superseded rounds: the crash came
         // from content this document dispatched, and skipping it would let a
-        // poison file dodge its bar by being edited between dispatch and the
-        // crash response (contract 12).
-        //
-        // A death while consuming a prebuilt pair may be the pair's fault:
-        // deep corruption aborts the AST reader (report_fatal_error in the
-        // bitstream reader) before any diagnostic can anchor, so the
-        // pch_suspect gate below never gets a say. The first such death
-        // retracts the pair and the round respawns on a rebuilt one; a
-        // death on the rebuilt pair is the document's own.
+        // poison file dodge its stop by being edited between dispatch and
+        // the crash response (contract 12).
         bool consuming_pch = consumed_pch.has_value();
-        bool pch_crashed = false;
-        bool tidy_crashed = false;
+        bool retry_without_suspect = false;
         auto interrupt = std::make_unique<kota::cancellation_source>();
         auto interrupt_token = interrupt->token();
         auto* own_interrupt = interrupt.get();
@@ -1128,7 +1098,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             pool,
             true,
             [&]() -> RequestResult<worker::CompileParams> {
-                if(session->generation != gen) {
+                if(!ticket.fresh()) {
                     co_await kota::fail(
                         ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
@@ -1137,38 +1107,14 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                                       {.token = interrupt_token});
             },
             [&](const ipc::Error& error) {
-                // The checks run in the parse (their preprocessor
-                // callbacks) and after it: they are the first suspect,
-                // tried by a compile without them. One that crashes as
-                // well acquits them.
-                if(params.tidy) {
-                    tidy_crashed = true;
-                    session->tidy_crash = error;
-                    return;
-                }
-                session->tidy_crash.reset();
-                if(consuming_pch && session->crashed_pch != *consumed_pch) {
-                    pch_crashed = true;
-                } else {
-                    record_crash(session, compile_kind, error);
-                }
+                retry_without_suspect =
+                    attribute_crash(session, params.tidy.has_value(), consumed_pch, error);
             });
-
-        if(tidy_crashed) {
-            LOG_WARN("Compile crashed with clang-tidy on for {}; retrying without it", file_path);
+        if(retry_without_suspect) {
             co_return RoundOutcome::Stale;
         }
 
-        if(pch_crashed) {
-            LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
-                     *consumed_pch,
-                     file_path);
-            session->crashed_pch = *consumed_pch;
-            pch.blame(*consumed_pch);
-            co_return RoundOutcome::Stale;
-        }
-
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded reply for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -1194,7 +1140,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         // The artifact quality gate: a failed parse whose diagnostics name
         // the consumed PCH (worker-side pch_suspect — setup failure and
-        // fatal error alike). The family validated the pair fresh via its
+        // fatal error alike). The builder validated the pair fresh via its
         // deps, yet the frontend could not read it — the bytes on disk
         // are the suspect. Retract the pair (store + cache) and rerun the
         // round once; the next attempt misses and rebuilds both halves.
@@ -1206,16 +1152,16 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // someone else's failure would rebuild it on every request for as
         // long as that failure persists.
         if(result.value().pch_suspect && consuming_pch) {
-            LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair",
+            LOG_WARN("Compile could not read PCH pair {} for {}; retracting the pair",
                      *consumed_pch,
                      file_path);
-            // Retract unconditionally — a blamed pair never survives, even
-            // when the retry budget is spent — but rerun only once. The
-            // strike table bounds the cross-round shape: this round finishes
-            // Stale (the retract re-dirties the key its candidate edge
-            // points at), the waiter respawns it, and without the parked
-            // key each respawn would rebuild and blame forever.
-            pch.blame(*consumed_pch);
+            // Retract unconditionally — an unreadable pair never survives,
+            // even when its consumption is stopped — but rerun only once.
+            // The consumption's record bounds the cross-round shape: this
+            // round finishes Stale (the retract re-dirties the key its
+            // candidate edge points at), the waiter respawns it, and without
+            // the stopped key each respawn would rebuild and fail forever.
+            pch.consume_failed(*consumed_pch);
             if(!artifact_retried) {
                 artifact_retried = true;
                 // Rerun the same attempt so the trial semantics are
@@ -1224,7 +1170,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 attempt -= 1;
                 continue;
             }
-            // The rebuilt pair is blamed again: the storage itself is
+            // The rebuilt pair is unreadable again: the storage itself is
             // failing, and another rebuild would fare no better. The
             // round proceeds — a Done reply publishes its real fatal
             // diagnostics, a non-Done one falls to the honest gap below.
@@ -1326,21 +1272,21 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // waiters drive the recompile.
         bool current = ctx.current();
 
-        // The parse consumed the pair and completed without blaming it —
-        // and the round still describes live inputs: the key's strikes
-        // were transient, not the storage. A voided round earns no
-        // acquittal: the void may BE a fresh blame from another consumer
-        // of the shared key, and clearing here would reset the strike
-        // count it just paid for.
+        // The parse read the pair and completed without finding it
+        // unreadable — and the round still describes live inputs: the
+        // key's consumption failures were transient, not the storage. A
+        // voided round clears nothing: the void may BE another consumer's
+        // fresh failure to read the shared key, and clearing here would
+        // reset the count it just paid for.
         if(current && consuming_pch && !result.value().pch_suspect) {
-            pch.consumed_ok(*consumed_pch);
+            pch.consume_succeeded(*consumed_pch);
         }
 
         auto& index_data = result.value().tu_index_data;
         auto next = std::make_shared<DocumentCompile>();
-        next->pch_key = consumed_pch;
+        next->pch_key = failed_pch ? failed_pch : consumed_pch;
+        next->pch_failed = failed_pch.has_value();
         next->base_pch_key = base_pch;
-        next->failed_pch_key = failed_pch;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (no AST, or an index it could
@@ -1391,28 +1337,32 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
-        // failure: only the preamble's consumers would ever retry it.
+        // failure: only the preamble's consumers would ever retry it. A
+        // crash stays, for the next consumer to book without a build.
         // FIXME: released even while another open document still fails on that
         // preamble: its next compile runs the failing build once more.
-        if(entry.latest && entry.latest->failed_pch_key &&
-           entry.latest->failed_pch_key != failed_pch) {
-            pch.forget_failure(*entry.latest->failed_pch_key);
+        if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
+           !pch.crashed(*entry.latest->pch_key)) {
+            pch.forget_failure(*entry.latest->pch_key);
         }
         entry.latest = std::move(next);
         if(tidy_config) {
             result.value().deps.append_range(tidy_config->files);
         }
+        // A compile that finishes clears its suspects: the pair it read
+        // was at fault, or the pass it ran without.
+        auto& suspects = failures.suspects(path_id);
+        suspects.pch.clear();
+        auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
         if(tidy_attempt) {
-            session->quarantine->on_success(tidy_kind);
-        } else if(session->tidy_crash) {
-            record_crash(session, tidy_kind, *session->tidy_crash);
-            session->tidy_crash.reset();
+            failures.succeeded(ticket, Tidy);
+        } else if(tidy_crash) {
+            record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
         }
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;
-        session->quarantine->on_success(compile_kind);
-        session->crashed_pch.clear();
+        failures.succeeded(ticket, Compile);
         on_output.emit(session);
         // The push above told clients to re-pull what the fresh AST now
         // answers better; one refresh per commit.
@@ -1428,19 +1378,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 }
 
 kota::task<std::optional<std::string>>
-    ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
+    ASTFamily::ensure_pch(const Ticket& ticket,
+                          std::uint64_t epoch,
                           llvm::StringRef text,
                           std::optional<std::uint32_t> point,
-                          std::uint64_t license_generation,
-                          std::uint64_t license_epoch,
                           const std::string& directory,
                           const std::vector<std::string>& arguments,
                           const Resolution& resolution,
-                          const PCMFamily::ModuleDeps& imports) {
+                          const PCMBuilder::ModuleDeps& imports) {
+    auto& session = ticket.session;
     auto path_id = session->path_id;
-    auto license = [&] {
-        return session->generation == license_generation &&
-               compiles.epoch(path_id) == license_epoch;
+    auto current = [&] {
+        return ticket.fresh() && compiles.epoch(path_id) == epoch;
     };
 
     // The precompiled header the build declares for the command, as a
@@ -1448,7 +1397,7 @@ kota::task<std::optional<std::string>>
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
-        if(co_await pch.acquire(std::move(*request)) == PCHFamily::Outcome::Ready &&
+        if(co_await pch.acquire(std::move(*request)) == PCHBuilder::Outcome::Ready &&
            !pch.reads(key, path_id)) {
             base = key;
         }
@@ -1464,44 +1413,45 @@ kota::task<std::optional<std::string>>
                          base.value_or(""));
     switch(plan.decision) {
         case PCHPlan::Decision::None:
-            if(license() && !plan.partial) {
+            if(current() && !plan.partial) {
                 compiles.set_pch_keys(path_id, base, base);
-                session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
+                failures.succeeded(ticket, feature::RequestKind::PCH);
             }
             co_return base;
         case PCHPlan::Decision::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
 
-    // A preamble that crashed a worker bars the document's content builds
-    // (the caller checks); only a compile round's license forgives it.
-    auto pch_kind = evidence_kind(EvidenceKind::PCH);
+    // A preamble that crashed a worker stops the document's content builds
+    // (the caller checks); only a compile round the document's record lets
+    // retry builds it again.
+    auto kind = feature::RequestKind::PCH;
     if(auto* crash = pch.crashed(pch_key)) {
         // Booked once: a request on unchanged inputs is no new crash.
-        if(!session->quarantine->crashed(pch_kind)) {
-            record_crash(session, pch_kind, *crash);
+        if(!failures.find(path_id, kind)) {
+            record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
     }
-    if(co_await pch.acquire(std::move(plan.request)) != PCHFamily::Outcome::Ready) {
+    if(co_await pch.acquire(std::move(plan.request)) != PCHBuilder::Outcome::Ready) {
         if(auto* crash = pch.crashed(pch_key)) {
-            record_crash(session, pch_kind, *crash);
+            record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
     }
 
     // Adoption is gated on the round outcome, never on leftover cache
-    // paths, and on this request's own license: a supersede or a
-    // Lost-type invalidation while we waited means the resolved command
-    // may describe nothing — neither the key write nor the evidence
-    // wash belongs to this request anymore. The request itself still
-    // compiles against the artifact: it was planned from the text it sends.
-    if(license() && !plan.partial) {
+    // paths, and on the buffer and compile this request was taken on: a
+    // supersede or a Lost-type invalidation while we waited means the
+    // resolved command may describe nothing — neither the key write nor
+    // the record it clears belongs to this request anymore. The request
+    // itself still compiles against the artifact: it was planned from the
+    // text it sends. Adopting a proven-good artifact clears the document's
+    // PCH record as surely as building one — but only its own; every
+    // consumer clears for itself.
+    if(current() && !plan.partial) {
         compiles.set_pch_keys(path_id, pch_key, base);
-        // Adopting a proven-good artifact clears the session's PCH record as
-        // surely as building one — but only its own; every consumer clears
-        // for itself.
-        session->quarantine->on_success(pch_kind);
+        failures.succeeded(ticket, kind);
     }
     co_return pch_key;
 }
@@ -1514,9 +1464,8 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                                      const Resolution& resolution,
                                                      StatelessInputs& inputs) {
     auto* synthesized = resolution.synthesized.get();
-    auto& session = ticket.session;
-    auto path_id = session->path_id;
-    auto license_epoch = compiles.epoch(path_id);
+    auto path_id = ticket.session->path_id;
+    auto epoch = compiles.epoch(path_id);
 
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse
@@ -1532,11 +1481,10 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     }
 
     if(readonly != ReadonlyMode::On) {
-        auto pch_key = co_await ensure_pch(session,
+        auto pch_key = co_await ensure_pch(ticket,
+                                           epoch,
                                            text,
                                            point,
-                                           ticket.generation,
-                                           license_epoch,
                                            directory,
                                            arguments,
                                            resolution,

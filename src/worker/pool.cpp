@@ -520,6 +520,7 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         // without touching the crash budget.
         LOG_INFO("Worker {} killed on purpose, respawning", workers[index].name);
         workers[index].state = SlotState::Respawning;
+        mark_done.death->done.set();
         worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
         co_return;
     }
@@ -539,7 +540,12 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
             co_return;
     }
 
-    if(process_crash(index, stateful, exit_code, exit_signal)) {
+    bool restart = process_crash(index, stateful, exit_code, exit_signal);
+    // The dead incarnation's senders learn what became of their requests
+    // before a replacement takes the work waiting in the queue: a crash they
+    // book stops the requests like theirs among it.
+    mark_done.death->done.set();
+    if(restart) {
         workers[index].state = SlotState::Respawning;
         worker_tasks.spawn(
             respawn_after(index, stateful, backoff_delay(workers[index].crash_streak)));
@@ -550,7 +556,25 @@ void WorkerPool::reset_streak_if_healthy(WorkerProcess& w) {
     auto now = std::chrono::steady_clock::now();
     if(w.spawn_time != std::chrono::steady_clock::time_point{} &&
        now - w.spawn_time >= options.healthy_uptime) {
-        w.crash_streak = 0;
+        w.fresh_budget();
+    }
+}
+
+void WorkerPool::exempt_death(const ipc::Error& error) {
+    // The identity worker::death_identity wrote: "sf" or "sl", the slot,
+    // the incarnation.
+    llvm::SmallVector<llvm::StringRef, 3> parts;
+    llvm::StringRef(worker::death_of(error)).split(parts, ':');
+    assert(parts.size() == 3 && "a worker death carries its identity");
+    std::size_t index = 0;
+    unsigned generation = 0;
+    [[maybe_unused]] bool malformed =
+        parts[1].getAsInteger(10, index) || parts[2].getAsInteger(10, generation);
+    assert(!malformed);
+    auto& w = (parts[0] == "sf" ? stateful_workers : stateless_workers)[index];
+    if(auto it = ranges::find(w.counted_deaths, generation); it != w.counted_deaths.end()) {
+        w.counted_deaths.erase(it);
+        w.crash_streak -= 1;
     }
 }
 
@@ -652,6 +676,7 @@ bool WorkerPool::process_crash(std::size_t index,
     bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && w.lost_documents.empty();
     if(death.culprits.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
+        w.counted_deaths.push_back(w.generation - 1);
     }
 
     WorkerCrashInfo info;
@@ -790,7 +815,7 @@ kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     // still around, the budget bounds the damage again and the next revival
     // is one cooldown away.
     LOG_INFO("Worker {} reviving after cooldown", w.name);
-    w.crash_streak = 0;
+    w.fresh_budget();
     w.state = SlotState::Respawning;
     worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
 }
@@ -1038,7 +1063,7 @@ bool WorkerPool::scale_up_worker() {
     if(vacant != stateless_workers.end()) {
         auto index = static_cast<std::size_t>(vacant - stateless_workers.begin());
         auto& w = *vacant;
-        w.crash_streak = 0;
+        w.fresh_budget();
         w.state = SlotState::Respawning;
         if(!respawn_worker(index, false)) {
             // Dead with a fresh cooldown revival armed, so a failed refill

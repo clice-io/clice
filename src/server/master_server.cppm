@@ -3,6 +3,7 @@ module clice:server.master_server;
 import :feature.semantic_tokens;
 import :sched.index.pump;
 import :server.ast_family;
+import :server.document_failures;
 import :server.extension;
 import :server.project_server;
 import :server.session;
@@ -210,6 +211,9 @@ public:
 
     /// The workers every project compiles and indexes on.
     WorkerPool pool;
+
+    /// What crashed on the documents, whichever project serves them.
+    DocumentFailures failures;
 
     /// The projects served, in folder order; never empty. The first also
     /// serves files no project covers. Shared with the requests running in

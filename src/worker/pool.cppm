@@ -133,9 +133,9 @@ struct WorkerPoolOptions {
     std::chrono::milliseconds healthy_uptime{30'000};
 
     /// Cooldown before a slot that gave up is revived with a fresh crash
-    /// budget. The pool must never stay at zero workers forever: document
-    /// quarantine isolates the poison, and this bounds how long a fully
-    /// burnt pool stays dark. 0 disables revival.
+    /// budget. The pool must never stay at zero workers forever: the
+    /// documents' failure records stop the poison, and this bounds how long
+    /// a fully burnt pool stays dark. 0 disables revival.
     std::chrono::milliseconds revive_after{30'000};
 
     /// A request running past its deadline is taken for a hung worker: the
@@ -239,13 +239,17 @@ public:
     /// crash accounting keeps observing the real outcome. A cancelled
     /// result is reported as dispatch_errc::cancelled. `cost` is what the
     /// request is expected to take; a finished request reports what it took
-    /// into `report`.
+    /// into `report`. `admitted` is asked once the request has its slot,
+    /// right before it reaches the worker: a request that waited in the
+    /// queue while a request like it crashed is not sent, and reports
+    /// dispatch_errc::cancelled.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
                                          kota::cancellation_token cancel = {},
                                          RequestCost cost = {},
-                                         StatelessReport* report = nullptr);
+                                         StatelessReport* report = nullptr,
+                                         llvm::function_ref<bool()> admitted = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -303,6 +307,11 @@ public:
     /// spinning dispatch attempts against a pool with no schedulable worker.
     Signal<> on_stateless_capacity;
 
+    /// The death `error` reports, which named no request, was its request's
+    /// doing after all (see deliver): like a death that names its request,
+    /// it spends none of its slot's budget.
+    void exempt_death(const ipc::Error& error);
+
     /// Callback invoked when a worker process crashes.
     std::function<void(const WorkerCrashInfo&)> on_crash;
 
@@ -338,6 +347,11 @@ private:
     };
 
     struct WorkerProcess {
+        void fresh_budget() {
+            crash_streak = 0;
+            counted_deaths.clear();
+        }
+
         kota::process proc;
 
         /// Shared with every coroutine that awaits on it (request senders,
@@ -371,6 +385,11 @@ private:
         /// Consecutive fast deaths that count against the slot's budget
         /// (see process_crash); resets after healthy uptime.
         unsigned crash_streak = 0;
+
+        /// The incarnations (generations) whose deaths the streak counts, so
+        /// a death found later to be its request's doing gives its count
+        /// back (exempt_death).
+        llvm::SmallVector<unsigned, 4> counted_deaths;
 
         /// The death record of the current incarnation, fresh at every
         /// spawn; senders hold it across their await.
@@ -626,6 +645,7 @@ private:
                                              kota::cancellation_token cancel,
                                              RequestCost cost,
                                              StatelessReport* report,
+                                             llvm::function_ref<bool()> admitted,
                                              bool& sent);
 
     friend struct testing::WorkerPoolFixture;
@@ -741,10 +761,16 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
                                                  kota::cancellation_token cancel,
                                                  RequestCost cost,
-                                                 StatelessReport* report) {
+                                                 StatelessReport* report,
+                                                 llvm::function_ref<bool()> admitted) {
     bool sent = false;
-    auto result =
-        co_await dispatch_stateless(params, priority, std::move(cancel), cost, report, sent);
+    auto result = co_await dispatch_stateless(params,
+                                              priority,
+                                              std::move(cancel),
+                                              cost,
+                                              report,
+                                              admitted,
+                                              sent);
     if(auto build = ran_build(params, result, sent); build && probe) {
         co_await probe->returned(build->first, build->second);
     }
@@ -822,6 +848,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
                                                      kota::cancellation_token cancel,
                                                      RequestCost cost,
                                                      StatelessReport* report,
+                                                     llvm::function_ref<bool()> admitted,
                                                      bool& sent) {
     using worker::dispatch_errc::cancelled;
     using worker::dispatch_errc::worker_unavailable;
@@ -864,6 +891,9 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // costs nothing.
         if(request.preempt.cancelled()) {
             co_await kota::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+        }
+        if(admitted && !admitted()) {
+            co_await kota::fail(ipc::Error{cancelled, "Request stopped by a crash"});
         }
 
         auto peer = stateless_workers[idx].peer;
@@ -931,20 +961,20 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the
-/// culprit of the first death is barred from running again by then. A
+/// culprit of the first death is stopped from running again by then. A
 /// request that dies naming no request twice, alone on its worker both
 /// times, is taken for the killer — an OOM kill, a stack overflow the
 /// crash report cannot run on.
 ///
-/// `blame` fires once, when the request is found to have killed its
-/// worker: its own crash, or the second worker_died. The result is the
-/// last attempt's.
-template <typename Send, typename Blame>
-auto deliver(WorkerPool& pool, bool stateful, Send send, Blame blame)
+/// `crashed` fires once, when the request is found to have killed its
+/// worker: its own crash, or the second worker_died, whose two deaths then
+/// spend no slot budget. The result is the last attempt's.
+template <typename Send, typename Crashed>
+auto deliver(WorkerPool& pool, bool stateful, Send send, Crashed crashed)
     -> std::invoke_result_t<Send&> {
     namespace errc = worker::dispatch_errc;
     bool resent = false;
-    bool nameless = false;
+    std::optional<ipc::Error> nameless;
     while(true) {
         auto result = co_await send();
         if(result.has_value()) {
@@ -959,12 +989,18 @@ auto deliver(WorkerPool& pool, bool stateful, Send send, Blame blame)
         }
         bool died = code == errc::worker_died;
         if(code == errc::worker_crashed || (died && nameless)) {
-            blame(result.error());
+            if(died) {
+                pool.exempt_death(*nameless);
+                pool.exempt_death(result.error());
+            }
+            crashed(result.error());
             co_return std::move(result);
         }
         if((died || code == errc::worker_lost || code == errc::out_of_memory) && !resent) {
             resent = true;
-            nameless = died;
+            if(died) {
+                nameless = result.error();
+            }
             continue;
         }
         co_return std::move(result);

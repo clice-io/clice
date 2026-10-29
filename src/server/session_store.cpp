@@ -16,7 +16,7 @@ std::shared_ptr<Session> SessionStore::open(Fid path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
-        park(*it->second);
+        it->second->closed = true;
     }
     sessions[path_id] = session;
     return session;
@@ -26,14 +26,9 @@ void SessionStore::close(Fid path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
-        park(*it->second);
+        it->second->closed = true;
         sessions.erase(it);
     }
-}
-
-void SessionStore::park(Session& session) {
-    session.closed = true;
-    parked[session.path_id] = {session.quarantine, session.hash};
 }
 
 void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const {
@@ -49,19 +44,9 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.version = version;
     session.set_text(std::move(text));
     session.generation++;
-    if(auto it = parked.find(session.path_id); it != parked.end()) {
-        session.quarantine = std::move(it->second.quarantine);
-        // FIXME: only the document's own text is compared: a header it includes,
-        // fixed while it was closed, leaves its crashed kinds barred until an edit
-        // or save, though the crash note says a header change lifts them.
-        if(it->second.hash != session.hash) {
-            session.quarantine->on_change(Quarantine::Clock::now());
-        }
-        parked.erase(it);
-    }
 }
 
-void SessionStore::apply_change(Session& session,
+bool SessionStore::apply_change(Session& session,
                                 llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                                 int version,
                                 PositionEncoding encoding) {
@@ -112,13 +97,8 @@ void SessionStore::apply_change(Session& session,
             change);
     }
 
-    // A real content change lets crashed kinds retry; a no-op edit leaves
-    // the crashing bytes in place.
-    if(applied) {
-        session.quarantine->on_change(Quarantine::Clock::now());
-    }
-
     session.generation++;
+    return applied;
 }
 
 }  // namespace clice

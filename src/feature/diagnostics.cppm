@@ -210,6 +210,48 @@ FileDiagnostic invalid_tidy_config(llvm::StringRef error);
 /// over.
 FileDiagnostic index_unavailable(llvm::StringRef cause);
 
+/// The kinds of work done for a document on a worker, each with a failure
+/// record of its own: a crashing hover stops hover alone.
+enum class RequestKind : std::uint8_t {
+    Compile,
+    /// The compile's clang-tidy pass: a crash under it retries the compile
+    /// without the pass.
+    Tidy,
+    /// Building the document's preamble.
+    PCH,
+    /// Building a module the document imports.
+    PCM,
+    DocumentLink,
+    FoldingRange,
+    DocumentSymbol,
+    InlayHint,
+    CodeAction,
+    SelectionRange,
+    Completion,
+    SignatureHelp,
+    Format,
+    SemanticTokens,
+    Hover,
+};
+
+/// A crash that stops work on a document.
+struct CrashNote {
+    RequestKind kind;
+
+    /// How the worker died.
+    llvm::StringRef cause;
+
+    /// Crashes in a row.
+    unsigned count = 0;
+
+    /// Only a save retries: the crashes in a row ran out.
+    bool save_only = false;
+};
+
+/// The warning at a file's top telling what of it a crash stopped, and what
+/// brings it back.
+FileDiagnostic crash_note(const CrashNote& note);
+
 /// The LSP form of `diagnostic`, shown on the file at `path` whose
 /// compiled text `positions` maps, its positions counted in `encoding`; a
 /// note in another file is placed in the text `note_positions` reads of it,

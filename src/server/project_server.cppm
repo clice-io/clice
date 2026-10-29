@@ -126,7 +126,8 @@ public:
     /// session-side policy — unservable escalation, serving-index refresh —
     /// lives on this class and is installed into the pump's hooks at
     /// construction. The AST family is assembled here in the project's
-    /// server: its rounds capture sessions, quarantine and publishing.
+    /// server: its rounds capture sessions, the documents' failure records
+    /// and publishing.
     SchedulingStack sched;
     EditorContext contexts{project, commands, project.contexts};
     ASTFamily ast;
@@ -157,6 +158,10 @@ public:
 private:
     /// A fresh session for the document, replacing a live one.
     std::shared_ptr<Session> create_session(Fid path_id);
+
+    /// A file the open document reads changed on disk: its compile, its
+    /// self-containment trial and its stopped request kinds start over.
+    void start_over(Session& session);
 
     /// Decide a freshly opened index-only buffer's serving: escalate one that
     /// already diverged from its shard, or boost the file's background

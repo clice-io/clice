@@ -2,7 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // Half-typed code crashing the compiler is the common case while editing:
 // the first crash stays silent, each later edit earns one spaced retry, and
-// after three strikes in a row only a save retries.
+// after three crashes in a row only a save retries.
 
 const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
 

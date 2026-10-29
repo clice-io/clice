@@ -95,12 +95,12 @@ void ServerLiveSources::for_each_session_index(
 
 std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
     auto compiled = compiles.latest(file);
-    if(!compiled || !compiled->pch_key) {
+    if(!compiled || !compiled->loaded_pch()) {
         return nullptr;
     }
     // Returned by value: a reference into the map value would not survive
     // a rehash.
-    return pch.preamble_state(*compiled->pch_key);
+    return pch.preamble_state(*compiled->loaded_pch());
 }
 
 void ServerLiveSources::for_each_preamble(
@@ -143,13 +143,14 @@ void ServerLiveSources::for_each_overlay(
     };
     sessions.for_each([&](Fid file, const Session&) -> bool {
         auto compiled = compiles.latest(file);
-        if(!compiled || !compiled->pch_key) {
+        if(!compiled || !compiled->loaded_pch()) {
             return true;
         }
-        if(!visit_key(*compiled->pch_key)) {
+        auto& key = *compiled->loaded_pch();
+        if(!visit_key(key)) {
             return false;
         }
-        auto it = project.pch_cache.find(*compiled->pch_key);
+        auto it = project.pch_cache.find(key);
         return it == project.pch_cache.end() || visit_key(std::string(it->second.base));
     });
 }

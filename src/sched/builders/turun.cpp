@@ -3,9 +3,9 @@ module clice;
 import :compile.tidy;
 import :index.project_index;
 import :project.command_snapshot;
-import :sched.families.pch;
-import :sched.families.pcm;
-import :sched.families.turun;
+import :sched.builders.pch;
+import :sched.builders.pcm;
+import :sched.builders.turun;
 import :support.bytes;
 import :support.logging;
 import :support.timer;
@@ -18,8 +18,8 @@ namespace clice {
 TURunFamily::TURunFamily(TaskGraph& graph,
                          Project& project,
                          CommandResolver& commands,
-                         PCMFamily& pcm,
-                         PCHFamily& pch,
+                         PCMBuilder& pcm,
+                         PCHBuilder& pch,
                          WorkerPool& pool) :
     graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), pool(pool) {}
 
@@ -132,7 +132,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // (ProjectIndex::importers).
     graph.declare(node(path_id), deps.declared);
     for(auto dep: deps.declared) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             ctx.reference(dep);
         }
     }
@@ -162,6 +162,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // unit's own parse, as the command alone does; a builder left out of
     // the index does too, but for a modular unit (ModuleDeps::modular).
     DepsSnapshot precompiled;
+    std::string consumed_pch;
+    std::string left_out_pch;
     if(auto unit =
            commands.pch_unit(path_id,
                              resolved,
@@ -169,19 +171,25 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
        unit && (deps.modular() || project.build.indexed(project.file_table.resolve(unit->file)))) {
         auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
-        switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
-            case DependResult::Ready:
-                if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
-                                                          !it->second.path.empty() &&
-                                                          !pch.reads(key, path_id)) {
-                    params.pch = it->second.path;
-                    precompiled = it->second.deps;
-                }
-                break;
-            case DependResult::Failed: break;
-            case DependResult::Cancelled:
-                finished[path_id] = {.result = Result::Preempted};
-                co_return RoundOutcome::Stale;
+        if(auto crashed = crashed_over_pch.find(path_id);
+           crashed != crashed_over_pch.end() && crashed->second == key) {
+            left_out_pch = key;
+        } else {
+            switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
+                case DependResult::Ready:
+                    if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
+                                                              !it->second.path.empty() &&
+                                                              !pch.reads(key, path_id)) {
+                        params.pch = it->second.path;
+                        precompiled = it->second.deps;
+                        consumed_pch = key;
+                    }
+                    break;
+                case DependResult::Failed: break;
+                case DependResult::Cancelled:
+                    finished[path_id] = {.result = Result::Preempted};
+                    co_return RoundOutcome::Stale;
+            }
         }
     }
 
@@ -220,6 +228,17 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         costs[path_id] = {.peak = peak};
     }
     if(reply.has_value() && reply.value().success) {
+        // A voided round's success clears nothing: the void may be another
+        // consumer's failure to read the pair.
+        if(!consumed_pch.empty() && ctx.current()) {
+            pch.consume_succeeded(consumed_pch);
+        }
+        // The unit parses without the precompiled header it crashed over:
+        // that header is what crashed it.
+        if(!left_out_pch.empty()) {
+            pch.consume_failed(left_out_pch);
+        }
+        crashed_over_pch.erase(path_id);
         auto run_ms = timer.ms();
         auto& value = reply.value();
         llvm::StringRef index_bytes = as_chars(value.tu_index_data);
@@ -298,6 +317,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     if(reply.has_value()) {
+        crashed_over_pch.erase(path_id);
         finished[path_id] = {
             .result = Result::Failed,
             .tidy_diagnostics = std::move(reply.value().tidy_diagnostics),
@@ -310,6 +330,21 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
+        // The precompiled header it read may be what crashed it, as for a
+        // compile (ASTFamily::attribute_crash): the next run parses without
+        // it, and only that run's success counts against it. Retracting
+        // the pair at once would fail every unit of the target queued on
+        // it, for each unit that crashes on its own code.
+        if(!consumed_pch.empty()) {
+            crashed_over_pch[path_id] = consumed_pch;
+            finished[path_id] = {.result = Result::Preempted,
+                                 .error =
+                                     "it crashed the worker over its target's precompiled "
+                                     "header, which its next run leaves out: " +
+                                     reply.error().message};
+            co_return RoundOutcome::Stale;
+        }
+        crashed_over_pch.erase(path_id);
         finished[path_id] = {.result = Result::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
         co_return RoundOutcome::Stale;

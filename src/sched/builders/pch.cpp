@@ -1,23 +1,24 @@
 module clice;
 
-import :sched.families.build_common;
-import :sched.families.pch;
+import :sched.builders.build_common;
+import :sched.builders.pch;
 import :support.anomaly;
 import :support.logging;
 import :vfs.file_table;
+import :vfs.path;
 import :worker.protocol;
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool) :
+PCHBuilder::PCHBuilder(TaskGraph& graph, Project& project, WorkerPool& pool) :
     graph(graph), project(project), pool(pool) {}
 
-void PCHFamily::register_runner() {
+void PCHBuilder::register_runner() {
     graph.register_family(Family::PCH,
                           [this](RoundContext& ctx, NodeId id) { return run(ctx, id.key); });
 }
 
-std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
+std::uint64_t PCHBuilder::intern(llvm::StringRef pch_key) {
     auto [it, inserted] = ids.try_emplace(pch_key, states.size());
     if(inserted) {
         states.emplace_back();
@@ -25,7 +26,7 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool skip_bodies) {
+PCHBuilder::Request PCHBuilder::precompiled_header(const CommandRef& unit, bool skip_bodies) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     Request request{.file = std::string(project.file_table.resolve(unit.file)),
@@ -44,14 +45,14 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool sk
     return request;
 }
 
-bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
+bool PCHBuilder::reads(llvm::StringRef key, Fid file) const {
     auto it = project.pch_cache.find(key);
     return it != project.pch_cache.end() &&
            ranges::any_of(it->second.deps,
                           [&](const DepState& dep) { return dep.path_id == file; });
 }
 
-NodeId PCHFamily::prepare(Request request) {
+NodeId PCHBuilder::prepare(Request request) {
     auto key_id = intern(request.pch_key);
     auto id = node(key_id);
 
@@ -75,7 +76,7 @@ NodeId PCHFamily::prepare(Request request) {
     return id;
 }
 
-kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
+kota::task<PCHBuilder::Outcome> PCHBuilder::acquire(Request request) {
     auto id = prepare(std::move(request));
 
     switch(co_await graph.request(id, {.kind = JoinKind::OneAttempt, .foreground = true})) {
@@ -88,7 +89,7 @@ kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
     std::unreachable();
 }
 
-kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id) {
+kota::task<RoundOutcome> PCHBuilder::run(RoundContext& ctx, std::uint64_t key_id) {
     auto outcome = co_await attempt(ctx, key_id);
     // A stale round's replacement respawns through join_node without
     // passing prepare(), so attempt() copies the stash instead of
@@ -102,7 +103,7 @@ kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id)
     co_return outcome;
 }
 
-kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key_id) {
+kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t key_id) {
     // Copy the dispatch owner's stash: a stale round's retry re-reads it,
     // and the interned-key vector may grow while this frame is suspended,
     // so never hold references into it.
@@ -149,33 +150,33 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         co_return RoundOutcome::Failed;
     }
 
-    // A preamble whose PCH build killed a worker is refused before the
-    // dispatch: the artifact is shared, so one document's quarantine
-    // cannot contain it — every session with this preamble would burn a
-    // worker of its own. A preamble's key is content-derived: editing the
-    // poison starts a fresh key. A precompiled header the build declares
-    // is keyed by its command alone, so its refusal lasts the session:
-    // its consumers parse the header it holds instead. Consumption strikes
-    // park the key the same way: rebuilding a pair whose every rebuild gets
-    // blamed again would fare no better (see blame).
-    if(build_crashes.contains(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
-        co_return RoundOutcome::Failed;
-    }
-    if(consume_blames.blocked(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} keeps getting blamed by its consumers",
-                 request.file,
-                 pch_key);
-        co_return RoundOutcome::Failed;
-    }
-    if(auto it = build_failures.find(pch_key); it != build_failures.end()) {
-        if(!deps_changed(project.file_table, it->second)) {
+    // A build that failed stands while its inputs do: one that crashed a
+    // worker is refused before the dispatch, since the artifact is shared
+    // and every document with this preamble would burn a worker of its own,
+    // and one that failed on the user's code would fail the same way, every
+    // compile of every consumer paying for it first. A preamble's key is
+    // content-derived: editing the poison starts a fresh key. A
+    // precompiled header the build declares is keyed by its command alone:
+    // its crash stands until its own file changes, its consumers parsing
+    // the header it holds meanwhile. A key whose pairs its consumers keep
+    // failing to read stops the same way: rebuilding one would fare no
+    // better (see consume_failed).
+    if(auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key)) {
+        if(failed->result.crashed()) {
+            LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
+        } else {
             LOG_DEBUG("PCH build for {} skipped: key {} failed on these inputs",
                       request.file,
                       pch_key);
-            co_return RoundOutcome::Failed;
         }
-        build_failures.erase(it);
+        co_return RoundOutcome::Failed;
+    }
+    if(auto* consumes = project.failures.pch_consumes.find(pch_key);
+       consumes && consumes->result.stops(consume_policy, FailureRecord::Clock::now())) {
+        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
+                 request.file,
+                 pch_key);
+        co_return RoundOutcome::Failed;
     }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
@@ -219,6 +220,17 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         merge_deps(deps, {&imported, &base});
         return deps;
     };
+    // What a build that crashes is known to read, sampled before it runs:
+    // the modules and the PCH it builds over, and a whole file's own text,
+    // which its key leaves out.
+    DepsSnapshot known;
+    merge_deps(known, {&imported, &base});
+    if(bp.whole_file) {
+        if(auto own = current_dep(project.file_table,
+                                  project.file_table.intern(Spelling::absolute(bp.file)))) {
+            known.push_back(*own);
+        }
+    }
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
@@ -233,7 +245,11 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
-        [&](const ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
+        [&](const ipc::Error& error) {
+            project.failures.pch_builds.commit(pch_key,
+                                               failed_build(worker::death_of(error), error.message),
+                                               std::move(known));
+        });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("PCH build preempted for {}, will retry", bp.file);
@@ -243,7 +259,9 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
             if(result.has_value()) {
-                build_failures.insert_or_assign(pch_key, inputs(result.value()));
+                project.failures.pch_builds.commit(pch_key,
+                                                   failed_build({}, result.value().error),
+                                                   inputs(result.value()));
             }
         } else {
             LOG_ANOMALY(PCHBuildFail,
@@ -316,10 +334,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     }
 
     auto& st = project.pch_cache[pch_key];
-    if(!st.superseded.empty()) {
-        project.store->invalidate("pch", st.superseded);
+    if(!st.previous.empty()) {
+        project.store->invalidate("pch", st.previous);
     }
-    st.superseded = std::exchange(st.blob, std::move(blob));
+    st.previous = std::exchange(st.blob, std::move(blob));
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
     st.base = request.base;
@@ -338,7 +356,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     co_return RoundOutcome::Success;
 }
 
-bool PCHFamily::fresh(llvm::StringRef pch_key) {
+bool PCHBuilder::fresh(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end() || it->second.path.empty() || it->second.index_path.empty()) {
         return false;
@@ -351,14 +369,14 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
     return !deps_changed(project.file_table, st.deps);
 }
 
-bool PCHFamily::building(llvm::StringRef pch_key) const {
+bool PCHBuilder::building(llvm::StringRef pch_key) const {
     auto it = ids.find(pch_key);
     return it != ids.end() && graph.is_compiling(node(it->second));
 }
 
-void PCHFamily::drop(llvm::StringMap<PCHState>::iterator entry) {
+void PCHBuilder::drop(llvm::StringMap<PCHState>::iterator entry) {
     if(project.store) {
-        for(auto& blob: {entry->second.blob, entry->second.superseded}) {
+        for(auto& blob: {entry->second.blob, entry->second.previous}) {
             if(!blob.empty()) {
                 project.store->invalidate("pch", blob);
             }
@@ -367,7 +385,7 @@ void PCHFamily::drop(llvm::StringMap<PCHState>::iterator entry) {
     project.pch_cache.erase(entry);
 }
 
-void PCHFamily::invalidate(llvm::StringRef pch_key) {
+void PCHBuilder::invalidate(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
         return;
@@ -385,17 +403,25 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
     }
 }
 
-void PCHFamily::blame(llvm::StringRef pch_key) {
+const FailureRecord* PCHBuilder::crashed(llvm::StringRef pch_key) {
+    auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key);
+    return failed && failed->result.crashed() ? &failed->result : nullptr;
+}
+
+void PCHBuilder::consume_failed(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     bool gone = it == project.pch_cache.end() ||
                 (project.store && !project.store->lookup("pch", it->second.blob));
     if(!gone) {
-        consume_blames.on_blame(pch_key);
+        project.failures.pch_consumes.entry(pch_key).result.fail(consume_policy,
+                                                                  {},
+                                                                  {},
+                                                                  FailureRecord::Clock::now());
     }
     invalidate(pch_key);
 }
 
-std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_key) {
+std::shared_ptr<index::TUIndex> PCHBuilder::preamble_state(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
         return nullptr;
@@ -420,7 +446,7 @@ std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_ke
     return state;
 }
 
-void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
+void PCHBuilder::touch_loaded_state(llvm::StringRef pch_key) {
     auto it = ranges::find(loaded_state_lru, pch_key);
     if(it != loaded_state_lru.end()) {
         loaded_state_lru.erase(it);
@@ -428,7 +454,7 @@ void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
     loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
 }
 
-void PCHFamily::enforce_loaded_budget() {
+void PCHBuilder::enforce_loaded_budget() {
     // Two keys per open document — its preamble's and the build's
     // precompiled header that preamble is built over — and two extra
     // slots: a closed file's recently used state survives a quick

@@ -16,6 +16,7 @@ import :index.project_index;
 import :index.shard;
 import :project.save;
 import :server.context_service;
+import :server.document_failures;
 import :server.editor_context;
 import :server.extension;
 import :server.file_tracker;
@@ -781,10 +782,14 @@ void LSPClient::register_document_sync() {
                      params.text_document.version);
         }
 
-        project->sessions.apply_change(*session,
-                                       params.content_changes,
-                                       params.text_document.version,
-                                       srv.position_encoding);
+        // A real content change lets crashed kinds retry; a no-op edit leaves
+        // the crashing bytes in place.
+        if(project->sessions.apply_change(*session,
+                                          params.content_changes,
+                                          params.text_document.version,
+                                          srv.position_encoding)) {
+            srv.failures.changed(path_id, DocumentFailures::Clock::now());
+        }
         publish_aliases(path_id);
 
         // The edit just made any in-flight compile stale. Supersede it now

@@ -151,7 +151,7 @@ defending against ghosts.
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
-- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTFamily`, `TUIndex` — never `PcmFamily`, `AstFamily`.
+- **Acronyms stay uppercase in type names**: `PCHBuilder`, `ASTFamily`, `TUIndex` — never `PchBuilder`, `AstFamily`.
 - **A file-local type is named by its role in the file**, without the
   words of the file's own subject: in an anonymous namespace,
   `FoldingRangeCollector` in `folding_ranges.cpp` is `Builder`, `ScanOptions`
@@ -201,6 +201,16 @@ These were renamed out of the codebase; don't bring them back:
 | `Features` (the server's request entry points) | `Requests`: the server routes requests; the features are `src/feature`'s                                                                                                                                                                                      |
 | projection                                     | what it is: a document's latest compile (`DocumentCompile`), a result computed from the index (the `SourceText` overloads of `semantic_tokens`), the LSP form; only the indexer's step from the semantic map to entries is a projection (`project_semantics`) |
 | `switch_source_header` (the feature)           | `counterparts`: the files a file pairs with; only the editor command keeps the action's name (`clice.switchSourceHeader`)                                                                                                                                     |
+| quarantine, barred                             | the documents' failure records (`DocumentFailures`, one `FailureRecord` per document and request kind); a record `stops` its operation                                                                                                                        |
+| strikes                                        | the failure count (`FailureRecord::count`)                                                                                                                                                                                                                    |
+| license (to retry)                             | the retry a change or a save allows; the `Attempt` holding it                                                                                                                                                                                                 |
+| overtaken (an attempt)                         | `crashed_meanwhile`; a task-graph round overtaken by new content keeps the word                                                                                                                                                                               |
+| parked (crash records)                         | nothing: the records are process-wide and outlive a close; a reply a test hook holds, or a waiter on an event, is still parked                                                                                                                                |
+| `BlameBudget`, blaming a PCH pair              | a failure of its consumption (`PCHBuilder::consume_failed`), a record with a cooldown policy                                                                                                                                                                  |
+| evidence (kind)                                | `feature::RequestKind`                                                                                                                                                                                                                                        |
+| ticket (outside a request)                     | a sequence number (`ContextChoices::save_seq`, `PendingTable`'s `seq`); `Ticket` is a request's hold on its buffer                                                                                                                                            |
+| superseded (a blob)                            | `previous`                                                                                                                                                                                                                                                    |
+| `PCHFamily`, `PCMFamily`                       | `PCHBuilder`, `PCMBuilder` (`sched/builders`)                                                                                                                                                                                                                 |
 
 Domain words with one meaning each — use them only in that meaning:
 

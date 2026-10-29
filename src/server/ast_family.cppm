@@ -3,10 +3,11 @@ module clice:server.ast_family;
 import :feature.diagnostics;
 import :project.command_resolver;
 import :project.project;
-import :sched.families.pch;
-import :sched.families.pcm;
+import :sched.builders.pch;
+import :sched.builders.pcm;
 import :sched.graph;
 import :server.document_compile;
+import :server.document_failures;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
@@ -41,8 +42,8 @@ enum class CompilePhase : std::uint8_t {
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
 /// one round = one compile (up to two worker sends for the
 /// self-containment trial). Assembled server-side: the closure captures
-/// the session store, crash quarantine and publishing — state the sched
-/// layer must not see.
+/// the session store, the documents' failure records and publishing —
+/// state the sched layer must not see.
 ///
 /// The family owns the whole compile lifecycle the retired Compiler ran:
 /// dependency preparation (through RoundContext::depend, the only wait
@@ -61,10 +62,11 @@ public:
     ASTFamily(Project& project,
               EditorContext& contexts,
               TaskGraph& graph,
-              PCMFamily& pcm,
-              PCHFamily& pch,
+              PCMBuilder& pcm,
+              PCHBuilder& pch,
               WorkerPool& pool,
-              SessionStore& sessions);
+              SessionStore& sessions,
+              DocumentFailures& failures);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic runner register their own under Family::AST.
@@ -114,10 +116,10 @@ public:
         std::unordered_map<std::string, std::string> pcms;
     };
 
-    /// `ticket` is the pch_key write license together with the compile
-    /// table's epoch snapshotted here, before the first suspension: a supersede
-    /// bumps the generation, a Lost-type invalidation bumps only the
-    /// epoch — either way the resolved command may describe a command
+    /// The PCH key is adopted only while `ticket` and the compile table's
+    /// epoch snapshotted here, before the first suspension, hold: a
+    /// supersede bumps the generation, a Lost-type invalidation bumps only
+    /// the epoch — either way the resolved command may describe a command
     /// that no longer exists, and adopting the key would hand the
     /// document's preamble features and staleness checks a PCH of another
     /// command. This path runs no graph round it could ask instead. The
@@ -194,22 +196,23 @@ public:
     /// compile the new content.
     std::function<void(Fid path_id)> on_stale;
 
-    /// A dispatch of `kind` killed a worker on the document's content —
-    /// `error` carries the death (worker::death_of, the cause in the
-    /// message). Records it in the session's quarantine and republishes, so
-    /// the crash note shows.
+    /// A dispatch of `kind` killed a worker on the document's content:
+    /// `death` is the death's identity (worker::death_of), `cause` how it
+    /// died. Records it in the document's failure records and republishes,
+    /// so the crash note shows.
     void record_crash(const std::shared_ptr<Session>& session,
-                      std::uint8_t kind,
-                      const ipc::Error& error);
+                      feature::RequestKind kind,
+                      llvm::StringRef death,
+                      std::string cause);
 
     /// Push the document's output again: its crash notes changed with no
     /// compile to carry them. A document that never compiled gets an empty
     /// versionless output to hang them on.
     void republish(const std::shared_ptr<Session>& session);
 
-    /// The compile, or the preamble it consumes, crashed a worker and has
-    /// no license to try again: the document has no AST to offer.
-    static bool compile_barred(const Session& session);
+    /// The compile, or the preamble it consumes, crashed a worker and may
+    /// not retry now: the document has no AST to offer.
+    bool compile_stopped(Fid path_id) const;
 
     /// Whether a round of the document is live: it will send a compile of
     /// its own, so a lost worker-side AST needs no invalidation.
@@ -276,11 +279,11 @@ private:
     /// import through depend. Returns the imports, none when cancelled: an
     /// import whose build failed is left to the parse, which reports it on
     /// the import next to the file's own diagnostics; one whose build
-    /// crashed a worker also goes into the session's quarantine, and is
-    /// refused until the session holds a license to retry it.
-    kota::task<std::optional<PCMFamily::ModuleDeps>>
+    /// crashed a worker also goes into the document's records, and is
+    /// refused until the document's record lets it retry.
+    kota::task<std::optional<PCMBuilder::ModuleDeps>>
         depend_modules(RoundContext& ctx,
-                       const std::shared_ptr<Session>& session,
+                       const Ticket& ticket,
                        const Resolution& resolution,
                        llvm::StringRef directory,
                        const std::vector<std::string>& arguments,
@@ -295,6 +298,16 @@ private:
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
+    /// Whose fault a worker death under the document's compile is, tried
+    /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
+    /// `consumed` the parse read, else the document's own code. Returns
+    /// whether the compile retries without the suspect: the pass left out,
+    /// the pair retracted and rebuilt.
+    bool attribute_crash(const std::shared_ptr<Session>& session,
+                         bool tidy,
+                         const std::optional<std::string>& consumed,
+                         const ipc::Error& error);
+
     /// What a buffer state owes the PCH family: nothing (an empty
     /// preamble with no injected prefix, or a module unit's global module
     /// fragment that imports — a previously adopted key must be cleared,
@@ -304,7 +317,7 @@ private:
 
         Decision decision = Decision::None;
 
-        PCHFamily::Request request;
+        PCHBuilder::Request request;
 
         /// The preamble ends before the text's own, at a completion's point:
         /// what the request loads is its own, not the document's.
@@ -315,9 +328,9 @@ private:
     /// command `resolution` gave the document: the editor's build, skipping
     /// function bodies, but for a modular parse (ModuleDeps::modular), which
     /// reads the index's, the one every PCM is built over.
-    std::optional<PCHFamily::Request> declared_pch(Fid path_id,
-                                                   const Resolution& resolution,
-                                                   const PCMFamily::ModuleDeps& imports);
+    std::optional<PCHBuilder::Request> declared_pch(Fid path_id,
+                                                    const Resolution& resolution,
+                                                    const PCMBuilder::ModuleDeps& imports);
 
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none. `point` is where a
@@ -329,24 +342,23 @@ private:
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const Resolution& resolution,
-                     const PCMFamily::ModuleDeps& imports,
+                     const PCMBuilder::ModuleDeps& imports,
                      llvm::StringRef base);
 
-    /// Revalidate or build the preamble PCH of `text` through the family,
+    /// Revalidate or build the preamble PCH of `text` through the builder,
     /// over the precompiled header the build declares for the command, and
-    /// adopt the key of what the request loads under its license (see
-    /// prepare_stateless_inputs), but for a partial plan's. Returns the key
-    /// the request compiles against, adopted or not; none when it compiles
-    /// without a PCH.
-    kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
+    /// adopt the key of what the request loads while the ticket and the
+    /// compile table's `epoch` hold (see prepare_stateless_inputs), but for
+    /// a partial plan's. Returns the key the request compiles against,
+    /// adopted or not; none when it compiles without a PCH.
+    kota::task<std::optional<std::string>> ensure_pch(const Ticket& ticket,
+                                                      std::uint64_t epoch,
                                                       llvm::StringRef text,
                                                       std::optional<std::uint32_t> point,
-                                                      std::uint64_t license_generation,
-                                                      std::uint64_t license_epoch,
                                                       const std::string& directory,
                                                       const std::vector<std::string>& arguments,
                                                       const Resolution& resolution,
-                                                      const PCMFamily::ModuleDeps& imports);
+                                                      const PCMBuilder::ModuleDeps& imports);
 
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation kind.
@@ -375,13 +387,15 @@ private:
 
     TaskGraph& graph;
 
-    PCMFamily& pcm;
+    PCMBuilder& pcm;
 
-    PCHFamily& pch;
+    PCHBuilder& pch;
 
     WorkerPool& pool;
 
     SessionStore& sessions;
+
+    DocumentFailures& failures;
 
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
@@ -394,35 +408,5 @@ private:
     /// The last background run's diagnostics of every file, open or not.
     llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
 };
-
-/// Discriminators for Quarantine's per-kind records.
-enum class EvidenceKind : std::uint8_t {
-    Compile,
-    /// The compile's clang-tidy pass: a crash under it retries the compile
-    /// without the pass.
-    Tidy,
-    PCH,
-    PCM,
-    DocumentLink,
-    FoldingRange,
-    DocumentSymbol,
-    InlayHint,
-    CodeAction,
-    SelectionRange,
-    Completion,
-    SignatureHelp,
-    Format,
-    SemanticTokens,
-    Hover,
-    Count,
-};
-
-constexpr std::uint8_t evidence_kind(EvidenceKind kind) {
-    return static_cast<std::uint8_t>(kind);
-}
-
-/// The diagnostics telling what of the document is paused by crashes, and
-/// how it comes back; appended to every publish of the document.
-void append_crash_notes(const Session& session, std::vector<feature::FileDiagnostic>& diagnostics);
 
 }  // namespace clice

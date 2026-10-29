@@ -1,0 +1,11 @@
+[test.hover]
+hover = {}
+
+[test.crashes]
+value = 1
+
+[test."other hover"]
+hover = {}
+
+[test."crashes after the import changed"]
+value = 2

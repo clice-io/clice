@@ -555,6 +555,49 @@ FileDiagnostic index_unavailable(llvm::StringRef cause) {
         cause));
 }
 
+FileDiagnostic crash_note(const CrashNote& note) {
+    // The work that crashed, and the feature it stops.
+    auto [work, stopped] = [&]() -> std::pair<llvm::StringRef, llvm::StringRef> {
+        switch(note.kind) {
+            case RequestKind::Compile: return {"compiling", "Semantic features are"};
+            case RequestKind::Tidy: return {"running clang-tidy on", "clang-tidy is"};
+            case RequestKind::PCH:
+                return {"building the precompiled preamble of", "Semantic features are"};
+            case RequestKind::PCM: return {"building a module imported by", "The module is"};
+            case RequestKind::DocumentLink:
+                return {"computing document links for", "Document links are"};
+            case RequestKind::FoldingRange:
+                return {"computing folding ranges for", "Folding ranges are"};
+            case RequestKind::DocumentSymbol:
+                return {"computing document symbols for", "Document symbols are"};
+            case RequestKind::InlayHint: return {"computing inlay hints for", "Inlay hints are"};
+            case RequestKind::CodeAction: return {"computing code actions for", "Code actions are"};
+            case RequestKind::SelectionRange:
+                return {"computing selection ranges for", "Selection ranges are"};
+            case RequestKind::Completion: return {"completing code in", "Code completion is"};
+            case RequestKind::SignatureHelp:
+                return {"computing signature help in", "Signature help is"};
+            case RequestKind::Format: return {"formatting", "Formatting is"};
+            case RequestKind::SemanticTokens:
+                return {"computing semantic highlighting for", "Semantic highlighting is"};
+            case RequestKind::Hover: return {"computing hover for", "Hover is"};
+        }
+        std::unreachable();
+    }();
+    llvm::StringRef retry = note.save_only
+                                ? "until you save this file"
+                                : "until this file or a header it includes changes, or until you "
+                                  "save it";
+    auto repeats = note.count > 1 ? std::format(" {} times in a row", note.count) : std::string();
+    return file_warning(
+        std::format("clice's worker crashed{} while {} this file ({}). {} paused here {}.",
+                    repeats,
+                    work,
+                    note.cause,
+                    stopped,
+                    retry));
+}
+
 protocol::Diagnostic to_protocol(
     const FileDiagnostic& diagnostic,
     bool related_information,

@@ -8,6 +8,7 @@ import :command.toolchain;
 import :command.toolchain_query;
 import :command.toolchains.clang;
 import :command.toolchains.nvcc;
+import :support.failure_record;
 import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
@@ -224,7 +225,7 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
 Toolchain::Toolchain(CommandTable& commands,
                      FileTable& files,
                      std::chrono::steady_clock::duration failed_retry) :
-    commands(commands), files(files), failed_retry(failed_retry) {}
+    commands(commands), files(files), query_policy{.cooldown = failed_retry} {}
 
 Toolchain::~Toolchain() = default;
 
@@ -492,13 +493,13 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
         return admission;
     }
     if(auto failed_it = failed.find(admission.key); failed_it != failed.end()) {
-        if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry) {
+        if(failed_it->second.stops(query_policy, FailureRecord::Clock::now())) {
             admission.kind = QueryAdmission::Kind::CoolingDown;
-            admission.error = failed_it->second.first;
+            admission.error = failed_it->second.cause;
             return admission;
         }
         // Cooldown over: the failure may have been transient — retry the
-        // real query (cf. BlameBudget's bounded-burn revival).
+        // real query.
         failed.erase(failed_it);
     }
 
@@ -517,7 +518,7 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
 
 void Toolchain::commit_query(llvm::StringRef key, const std::expected<Job, std::string>& job) {
     if(!job) {
-        failed.try_emplace(key, std::pair{job.error(), std::chrono::steady_clock::now()});
+        failed[key].fail(query_policy, {}, job.error(), FailureRecord::Clock::now());
         return;
     }
     queries.try_emplace(key, frontend(*job));

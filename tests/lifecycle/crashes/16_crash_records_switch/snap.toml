@@ -1,0 +1,59 @@
+["switch to another project".hover]
+hover = {}
+
+["switch to another project"."hover while paused".hover]
+markdown = '''
+**function** `lib_fn`
+
+```cpp
+int lib_fn()
+```
+'''
+range = "int ⟦lib_fn⟧();"
+
+["switch to another project".crashes]
+value = 1
+
+["switch to another project".pushes]
+pushes = [
+    [],
+    [
+        {
+            at = "⟦⟧#pragma once",
+            severity = "warning",
+            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+    ],
+    [
+        {
+            at = "⟦⟧#pragma once",
+            severity = "warning",
+            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+    ],
+    [],
+    [
+        {
+            at = "⟦⟧#pragma once",
+            severity = "warning",
+            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+    ],
+    [
+        {
+            at = "⟦⟧#pragma once",
+            severity = "warning",
+            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+    ],
+]
+
+["switch to another project"."hover after the switch"]
+hover = {}
+
+["switch to another project"."crashes after the switch"]
+value = 2

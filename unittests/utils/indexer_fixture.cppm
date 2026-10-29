@@ -10,9 +10,9 @@ import :project.command_resolver;
 import :project.load;
 import :project.project;
 import :project.save;
-import :sched.families.pch;
-import :sched.families.pcm;
-import :sched.families.turun;
+import :sched.builders.pch;
+import :sched.builders.pcm;
+import :sched.builders.turun;
 import :sched.graph;
 import :sched.index.pending_table;
 import :sched.index.pump;
@@ -42,8 +42,8 @@ struct IndexerFixture {
     WorkerPool pool{loop};
     CommandResolver commands{project};
     TaskGraph graph;
-    PCHFamily pch{graph, project, pool};
-    PCMFamily pcm{graph, project, commands, pch, pool};
+    PCHBuilder pch{graph, project, pool};
+    PCMBuilder pcm{graph, project, commands, pch, pool};
     TURunFamily turun{graph, project, commands, pcm, pch, pool};
     IndexPump pump{loop, project, commands, turun, pool};
 
@@ -91,20 +91,20 @@ struct IndexerFixture {
         pump.failed_ids.insert(id);
     }
 
-    /// Fail the entry's current dispatch: the launch ticket matches.
+    /// Fail the entry's current dispatch: the launch sequence number matches.
     Decision fail(Fid id, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, ticket(id)}, failure);
+        return pump.note_dispatch_failure({id, seq(id)}, failure);
     }
 
-    /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Decision fail_at(Fid id, std::uint64_t ticket, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, ticket}, failure);
+    /// Fail a dispatch launched with an explicit (possibly stale) sequence number.
+    Decision fail_at(Fid id, std::uint64_t seq, PendingTable::Failure failure) {
+        return pump.note_dispatch_failure({id, seq}, failure);
     }
 
-    std::uint64_t ticket(Fid id) {
+    std::uint64_t seq(Fid id) {
         auto it = pump.pending_table.entries.find(id);
         return it == pump.pending_table.entries.end() ? std::numeric_limits<std::uint64_t>::max()
-                                                      : it->second.ticket;
+                                                      : it->second.seq;
     }
 
     unsigned attempts(Fid id) {
@@ -122,11 +122,11 @@ struct IndexerFixture {
         pump.pending_table.queued.erase(id);
     }
 
-    /// Complete an attempt for `ticket` on the loop, as run_index_task's
+    /// Complete an attempt for `seq` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
-    void wake_waiters(Fid id, std::uint64_t ticket) {
+    void wake_waiters(Fid id, std::uint64_t seq) {
         auto body = [&]() -> kota::task<> {
-            pump.wake_attempt_waits(id, ticket);
+            pump.wake_attempt_waits(id, seq);
             co_return;
         };
         auto task = body();

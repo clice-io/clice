@@ -1,0 +1,9 @@
+# Two folders, two projects: the header lives in the library's, and the
+# application's source is a host on offer from the other.
+[units]
+"lib/src/lib.cpp" = ["-Ilib/include"]
+"app/main.cpp" = ["-Ilib/include"]
+
+[databases]
+lib = ["lib/src/lib.cpp"]
+app = ["app/main.cpp"]
