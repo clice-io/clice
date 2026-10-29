@@ -6,7 +6,7 @@ module clice:analysis.module_graph;
 
 import :analysis.annotation;
 import :index.symbol;
-import :project.command_resolver;
+import :project.index_reader;
 import :project.project;
 import :semantic.symbol;
 import :vfs.path;
@@ -294,8 +294,7 @@ struct LoadError {
 
 /// Changes the facts while the index they were read from is still open,
 /// for what only the index can resolve: the symbols a locator names.
-using FactsEdit =
-    llvm::function_ref<std::expected<void, std::string>(Project&, CommandResolver&, Facts&)>;
+using FactsEdit = llvm::function_ref<std::expected<void, std::string>(IndexReader&, Facts&)>;
 
 /// The facts of the files the `scope` globs select out of the index of
 /// `workspace` (default: the workspace's own files outside dot

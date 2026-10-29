@@ -10,12 +10,9 @@ import :analysis.annotation;
 import :analysis.module_graph;
 import :analysis.wrapping;
 import :driver.driver;
-import :index.query;
+import :feature.query;
 import :index.symbol_query;
-import :project.command_resolver;
-import :project.project;
-import :server.editor_context;
-import :server.query_commands;
+import :project.index_reader;
 import :vfs.path;
 
 namespace clice::driver {
@@ -183,15 +180,11 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     if(!spec) {
         return fail(spec.error());
     }
-    std::vector<query::SymbolEntry> candidates;
+    std::vector<feature::query::SymbolEntry> candidates;
     std::vector<std::string> unindexed;
-    auto move_declarations = [&](Project& project,
-                                 CommandResolver& commands,
+    auto move_declarations = [&](IndexReader& reader,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
-        ContextChoices saved;
-        EditorContext contexts{project, commands, saved};
-        index::IndexQuery index_query(project.index, project.file_table, nullptr, nullptr);
-        query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
+        auto ctx = reader.context();
         for(llvm::StringRef move: model.move_entity.value_or(std::vector<std::string>{})) {
             auto [text, path] = move.rsplit('=');
             if(text.empty() || path.empty()) {
@@ -203,7 +196,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
                 return std::unexpected(
                     std::format("--move-entity {}: {}", std::string_view(move), locator.error()));
             }
-            auto symbols = query::declaration(ctx, std::move(*locator));
+            auto symbols = feature::query::declaration(ctx, std::move(*locator));
             if(!symbols) {
                 candidates = std::move(ctx.candidates);
                 unindexed = std::move(ctx.unindexed);

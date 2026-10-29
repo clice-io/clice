@@ -4,13 +4,13 @@ module;
 
 module clice;
 
-import :config.config;
 import :driver.driver;
+import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
-import :project.configuration;
-import :project.open_index;
-import :server.query_commands;
+import :project.build;
+import :project.index_reader;
+import :project.queries;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -46,8 +46,9 @@ struct RenameOptions {
 
 /// The renames a list asks for: `<locator> => <new name>` a line, blank
 /// lines and lines starting with `//` aside.
-std::expected<std::vector<query::RenameRequest>, std::string> parse_renames(llvm::StringRef text) {
-    std::vector<query::RenameRequest> requests;
+std::expected<std::vector<feature::query::RenameRequest>, std::string>
+    parse_renames(llvm::StringRef text) {
+    std::vector<feature::query::RenameRequest> requests;
     llvm::SmallVector<llvm::StringRef> lines;
     text.split(lines, '\n');
     for(std::size_t i = 0; i < lines.size(); i += 1) {
@@ -81,7 +82,8 @@ std::expected<std::vector<query::RenameRequest>, std::string> parse_renames(llvm
 }
 
 /// The renames a --spec list asks for.
-std::expected<std::vector<query::RenameRequest>, std::string> read_renames(llvm::StringRef spec) {
+std::expected<std::vector<feature::query::RenameRequest>, std::string>
+    read_renames(llvm::StringRef spec) {
     if(spec == "-") {
         auto input = llvm::MemoryBuffer::getSTDIN();
         if(!input) {
@@ -99,14 +101,14 @@ std::expected<std::vector<query::RenameRequest>, std::string> read_renames(llvm:
 }
 
 /// The rename `<LOCATOR> <NEW-NAME>` asks for.
-std::expected<std::vector<query::RenameRequest>, std::string>
+std::expected<std::vector<feature::query::RenameRequest>, std::string>
     one_rename(llvm::ArrayRef<std::string> args) {
     auto& text = args[0];
     auto locator = index::SymbolQuery::parse(text);
     if(!locator) {
         return std::unexpected(locator.error());
     }
-    std::vector<query::RenameRequest> requests;
+    std::vector<feature::query::RenameRequest> requests;
     requests.push_back({.text = text, .locator = std::move(*locator), .new_name = args[1]});
     return requests;
 }
@@ -174,7 +176,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
 }
 
 int run_rename(const RenameOptions& opts) {
-    std::expected<std::vector<query::RenameRequest>, std::string> requests;
+    std::expected<std::vector<feature::query::RenameRequest>, std::string> requests;
     if(opts.spec) {
         if(opts.inputs) {
             return usage_error(Errors::JSON,
@@ -189,72 +191,45 @@ int run_rename(const RenameOptions& opts) {
     if(!requests) {
         return fail(std::move(requests.error()));
     }
-    auto spelling = opts.where.root();
-    auto config = Config::load_from_workspace(CanonicalPath(spelling));
-    auto configuration = opts.where.configuration.tag();
-    if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        return fail(std::move(checked.error()));
-    }
-    std::vector<std::string> failed;
-    if(opts.fresh.fresh) {
-        auto refreshed = refresh(spelling, config, configuration);
-        if(!refreshed) {
-            return fail(refreshed.error());
-        }
-        failed = std::move(*refreshed);
-    }
-
     // The build tells a unit the index never reached from a file outside
     // the build, so the writer's load restores it.
-    FileTable files;
-    files.spell_root(spelling);
-    Project project{files};
-    CommandResolver commands{project};
-    ContextChoices saved;
-    EditorContext contexts{project, commands, saved};
-    auto loaded =
-        load_index(project, commands, std::move(config), configuration, /*with_build=*/true);
-    if(!loaded) {
-        return fail(
-            "the index could not be opened (the log above says why); run `clice index` or pass --fresh");
+    auto opened = open_index(opts.where, opts.fresh, {.load = IndexLoad::Build});
+    if(!opened) {
+        return fail(std::move(opened.error()));
     }
-    saved.bytes = std::move(loaded->contexts);
-    contexts.load();
-
-    index::FreshnessGate gate(files, {.check_disk = true});
-    index::IndexQuery index_query(project.index, files, &gate, nullptr);
-    query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
-
-    auto stale = [&](llvm::ArrayRef<std::string> listed) {
-        std::vector<std::string> all(listed.begin(), listed.end());
-        for(auto file: gate.withheld()) {
-            all.emplace_back(files.display(file));
-        }
-        all.insert(all.end(), ctx.unindexed.begin(), ctx.unindexed.end());
-        all.insert(all.end(), failed.begin(), failed.end());
-        ranges::sort(all);
-        auto duplicates = ranges::unique(all);
-        all.erase(duplicates.begin(), duplicates.end());
-        return all;
+    auto& reader = *opened->reader;
+    auto& failed = opened->failed;
+    auto ctx = reader.context();
+    EditableWorkspace workspace(reader.project.config);
+    auto editable = [&](llvm::StringRef path) {
+        return workspace.editable(path);
     };
-
-    auto planned = query::rename(ctx, *requests);
-    if(project.index.damaged()) {
-        return fail(damaged_index_error(project));
+    auto planned = feature::query::rename(ctx,
+                                          *requests,
+                                          {
+                                              .files = workspace.sources(),
+                                              .editable = editable,
+                                              .units_pending = units_pending(reader.project),
+                                          });
+    if(reader.project.index.damaged()) {
+        return fail(damaged_index_error(reader.project));
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.
     bool blocked = planned.blocked() || !failed.empty();
     if(!blocked && !opts.dry_run && !planned.plan.edits.empty()) {
-        if(auto applied = apply(files, planned.plan); !applied) {
+        if(auto applied = apply(reader.files, planned.plan); !applied) {
             result.conflicts.push_back(applied.error());
             blocked = true;
         } else {
             result.applied = true;
         }
     }
-    auto withheld = stale(result.stale);
-    print_json(Answer{.result = std::move(result), .stale = std::move(withheld)});
+    auto listed = result.stale;
+    listed.append_range(ctx.unindexed);
+    listed.append_range(failed);
+    auto stale = reader.stale(std::move(listed));
+    print_json(Answer{.result = std::move(result), .stale = std::move(stale)});
     return blocked ? 1 : 0;
 }
 

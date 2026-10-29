@@ -653,4 +653,22 @@ bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file
     return inside;
 }
 
+EditableWorkspace::EditableWorkspace(const Config& config) : root(config.workspace_root) {
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+}
+
+std::vector<std::string> EditableWorkspace::sources() const {
+    std::vector<std::string> files;
+    for(auto& source: workspace_sources(root, cache_dir)) {
+        files.push_back(std::move(source).str());
+    }
+    return files;
+}
+
+bool EditableWorkspace::editable(llvm::StringRef path) const {
+    return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+}
+
 }  // namespace clice

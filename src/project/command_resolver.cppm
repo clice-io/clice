@@ -74,6 +74,14 @@ std::optional<CommandRef> host_command(Project& project,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
 
+/// The dialect a file's text is lexed in, `pin` the user's context choice
+/// for it and `host` the source whose context it is read in, either absent
+/// for none: an explicit -x in the file's own database entry decides
+/// outright; else the host's command; else C when the file is a C source
+/// or every TU contributing its indexed entries is one, C++ else (mixed
+/// inclusion favors the superset).
+const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host);
+
 /// How a file's command was resolved.
 struct Resolution {
     CommandSource source = CommandSource::Fallback;

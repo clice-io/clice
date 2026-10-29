@@ -13,9 +13,8 @@ import :index.query;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
-import :project.command_resolver;
 import :project.configuration;
-import :project.open_index;
+import :project.index_reader;
 import :project.project;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -1371,23 +1370,20 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
         return std::unexpected(LoadError{.message = std::move(checked.error())});
     }
-    FileTable files;
-    files.spell_root(workspace);
-    Project project{files};
-    CommandResolver commands{project};
-    auto loaded =
-        load_index(project, commands, std::move(config), configuration, /*with_build=*/false);
-    if(!loaded) {
+    auto reader =
+        IndexReader::open(workspace, std::move(config), configuration, {.load = IndexLoad::Saved});
+    if(!reader) {
         return std::unexpected(LoadError{.message = "no usable index; run `clice index` first"});
     }
+    auto& project = reader->project;
+    auto& files = reader->files;
     // A file written since it was indexed (as `clice refactor rename`
     // leaves the files it edits) would give facts about text that is gone.
-    index::FreshnessGate gate(files, {.check_disk = true});
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
     project.index.for_each_indexed_file([&](Fid file) {
         if(auto* shard = project.index.shard(file);
-           shard && gate.stale(file, shard->content_hash())) {
+           shard && reader->gate.stale(file, shard->content_hash())) {
             stale.dropped.emplace_back(files.display(file));
         }
     });
@@ -1410,7 +1406,7 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         return std::unexpected(LoadError{.message = damaged_index_error(project)});
     }
     if(edit) {
-        if(auto edited = edit(project, commands, facts); !edited) {
+        if(auto edited = edit(*reader, facts); !edited) {
             return std::unexpected(LoadError{.message = std::move(edited.error())});
         }
     }

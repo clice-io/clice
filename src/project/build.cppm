@@ -340,4 +340,20 @@ std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cac
 /// the directories workspace_sources leaves out, whatever its suffix.
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
+/// What a refactoring may edit of the workspace `config` roots, outside its
+/// cache directory (feature::RenameScope).
+struct EditableWorkspace {
+    explicit EditableWorkspace(const Config& config);
+
+    /// workspace_sources, as absolute paths: the files a rename's scan reads.
+    std::vector<std::string> sources() const;
+
+    /// workspace_file of an absolute path.
+    bool editable(llvm::StringRef path) const;
+
+    CanonicalPath root;
+
+    CanonicalPath cache_dir;
+};
+
 }  // namespace clice

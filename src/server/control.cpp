@@ -9,22 +9,52 @@ module clice;
 import :index.project_index;
 import :index.shard;
 import :project.save;
+import :index.writer_lock;
 import :server.control;
-import :server.control_server;
 import :server.file_tracker;
 import :server.project_server;
 import :support.logging;
 
-namespace clice {
+namespace clice::control {
 
 namespace {
 
 using ipc::RequestResult;
 using RequestContext = ipc::JSONPeer::RequestContext;
 
-void register_control(ProjectServer& srv, ipc::JSONPeer& peer) {
-    peer.on_request([&srv](RequestContext&, const control::IndexParams& params)
-                        -> RequestResult<control::IndexParams> {
+kota::task<> exchange(ipc::JSONPeer& peer,
+                      IndexParams params,
+                      std::expected<IndexResult, std::string>& out) {
+    auto result = co_await peer.send_request(std::move(params));
+    if(result) {
+        out = std::move(*result);
+    } else {
+        out = std::unexpected(std::format("request failed: {}", result.error().message));
+    }
+    peer.close();
+}
+
+kota::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpoint& endpoint,
+                                                        IndexParams params) {
+    auto& loop = kota::event_loop::current();
+    auto transport = co_await ipc::StreamTransport::connect_tcp(endpoint.host, endpoint.port, loop);
+    if(!transport) {
+        co_return std::unexpected(
+            std::format("cannot connect to the clice server (pid {}) at {}:{}",
+                        endpoint.pid,
+                        endpoint.host,
+                        endpoint.port));
+    }
+    ipc::JSONPeer peer(loop, std::move(*transport));
+    std::expected<IndexResult, std::string> out =
+        std::unexpected(std::string("the clice server closed the connection"));
+    co_await kota::when_all(peer.run(), exchange(peer, std::move(params), out));
+    co_return out;
+}
+
+void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
+    peer.on_request([&srv](RequestContext&,
+                           const IndexParams& params) -> RequestResult<IndexParams> {
         auto active = srv.project.build.active_configuration();
         if(params.configuration != active) {
             co_await kota::fail(ipc::Error{
@@ -56,7 +86,7 @@ void register_control(ProjectServer& srv, ipc::JSONPeer& peer) {
             co_await kota::fail(ipc::Error{
                 "nothing to index: the running clice server's build has no translation units"});
         }
-        control::IndexResult result;
+        IndexResult result;
         llvm::SmallVector<Fid> files;
         for(auto member: members) {
             if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
@@ -105,7 +135,13 @@ kota::task<> run_connection(ipc::JSONPeer* peer,
 
 }  // namespace
 
-kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) {
+std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint,
+                                                      llvm::StringRef configuration) {
+    auto [ended] = kota::run(ask(endpoint, IndexParams{.configuration = configuration.str()}));
+    return std::move(*ended);
+}
+
+kota::task<> serve(ProjectServer& server, kota::tcp::acceptor acceptor) {
     kota::task_group<> group;
     Connections connections;
     group.spawn([](ProjectServer& server,
@@ -121,7 +157,7 @@ kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) 
             LOG_DEBUG("Control client connected");
             auto transport = std::make_unique<ipc::StreamTransport>(std::move(*conn));
             auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
-            register_control(server, *peer);
+            register_requests(server, *peer);
             auto* peer_ptr = peer.get();
             auto it = connections.emplace(connections.end(), std::move(peer));
             group.spawn(run_connection(peer_ptr, connections, it));
@@ -130,4 +166,4 @@ kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) 
     co_await group.join();
 }
 
-}  // namespace clice
+}  // namespace clice::control

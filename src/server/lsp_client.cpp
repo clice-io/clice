@@ -11,20 +11,20 @@ module clice;
 import :command.file_kind;
 import :compile.diagnostic;
 import :feature.code_actions;
+import :feature.counterparts;
 import :feature.diagnostics;
 import :feature.protocol;
+import :feature.query;
 import :feature.semantic_tokens;
 import :index.project_index;
 import :index.shard;
 import :project.save;
 import :server.context_service;
-import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
 import :server.file_tracker;
 import :server.lsp_client;
 import :server.master_server;
-import :server.query_commands;
 import :support.anomaly;
 import :support.json;
 import :support.logging;
@@ -1441,11 +1441,16 @@ void LSPClient::register_extensions() {
             if(resolved.path.empty()) {
                 co_return to_raw(result);
             }
-            auto& project = *resolved.project;
-            query::Context context{.project = project.project,
-                                   .contexts = project.contexts,
-                                   .query = project.index_query};
-            auto found = query::counterparts(context, Spelling::absolute(resolved.path));
+            auto& project = resolved.project->project;
+            feature::query::Context context{
+                .query = resolved.project->index_query,
+                .root = project.config.workspace_root,
+                .documentation = project.config.documentation,
+            };
+            auto found = feature::counterparts(context,
+                                               project.dep_graph,
+                                               project.build.members(),
+                                               Spelling::absolute(resolved.path));
             // A buffer not on disk yet has no counterparts to offer.
             if(!found) {
                 co_return to_raw(result);

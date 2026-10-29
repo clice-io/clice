@@ -9,11 +9,12 @@ module;
 module clice:driver.driver;
 
 import :config.config;
+import :feature.query;
 import :index.writer_lock;
 import :project.configuration;
+import :project.index_reader;
 import :sched.batch;
-import :server.control_client;
-import :server.query_commands;
+import :server.control;
 import :support.json;
 import :support.logging;
 import :support.process;
@@ -289,7 +290,7 @@ struct Answer {
 /// wanted lists them.
 struct Failure {
     std::string error;
-    protocol::optional<std::vector<query::SymbolEntry>> candidates;
+    protocol::optional<std::vector<feature::query::SymbolEntry>> candidates;
     std::vector<std::string> stale;
 };
 
@@ -476,6 +477,43 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
             "index` rebuilds the index");
     }
     return std::move(result.failed);
+}
+
+/// The persisted index an answer in JSON reads.
+struct OpenedIndex {
+    std::unique_ptr<IndexReader> reader;
+
+    /// The units a --fresh refresh could not index, whose shards are as
+    /// absent as a withheld file's.
+    std::vector<std::string> failed;
+};
+
+/// Open the persisted index of the workspace `where` names, as `options`
+/// say, brought up to date with the disk first under --fresh (refresh). The
+/// error is the answer's.
+inline std::expected<OpenedIndex, std::string> open_index(const WorkspaceOptions& where,
+                                                          const FreshOption& fresh,
+                                                          ReadOptions options) {
+    auto spelling = where.root();
+    auto config = Config::load_from_workspace(CanonicalPath(spelling));
+    auto configuration = where.configuration.tag();
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        return std::unexpected(std::move(checked.error()));
+    }
+    OpenedIndex opened;
+    if(fresh.fresh) {
+        auto refreshed = refresh(spelling, config, configuration);
+        if(!refreshed) {
+            return std::unexpected(std::move(refreshed.error()));
+        }
+        opened.failed = std::move(*refreshed);
+    }
+    opened.reader = IndexReader::open(spelling, std::move(config), configuration, options);
+    if(!opened.reader) {
+        return std::unexpected(
+            "the index could not be opened (the log above says why); run `clice index` or pass --fresh");
+    }
+    return opened;
 }
 
 }  // namespace clice::driver

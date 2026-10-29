@@ -2,16 +2,20 @@ module;
 
 #include "support/prelude.h"
 
-module clice:server.counterparts;
+module clice:feature.counterparts;
 
-import :server.query_commands;
+import :feature.query;
+import :syntax.dependency_graph;
+import :vfs.file_table;
+import :vfs.path;
 
-namespace clice::query {
+namespace clice::feature {
 
-/// What pairs a file with one of its counterparts: a file on the other side
-/// of the split between what declares (headers, module interfaces) and what
-/// defines (sources, module implementation units).
-struct Evidence {
+/// A file that may be a counterpart of another, and what pairs the two: it
+/// lies on the other side of the split between what declares (headers,
+/// module interfaces) and what defines (sources, module implementation
+/// units).
+struct CounterpartCandidate {
     std::string path;
 
     /// The same file name but for the extension.
@@ -31,8 +35,8 @@ struct Evidence {
 
 /// The candidates best first, and whether the first is decisive: a client
 /// goes to it without asking.
-struct Ranking {
-    std::vector<Evidence> candidates;
+struct CounterpartRanking {
+    std::vector<CounterpartCandidate> candidates;
     bool decisive = false;
 };
 
@@ -44,7 +48,7 @@ struct Ranking {
 /// many shared declarations; and it has one of those the other lacks, twice
 /// its shared declarations, or — neither sharing any — a module pairing
 /// the other lacks.
-Ranking rank_counterparts(std::vector<Evidence> candidates);
+CounterpartRanking rank_counterparts(std::vector<CounterpartCandidate> candidates);
 
 struct CounterpartEntry {
     std::string path;
@@ -64,9 +68,12 @@ struct CounterpartsResult {
 
 /// The files `path` pairs with — a header's sources, a source's headers, a
 /// module's interface and implementation units — from what the build and
-/// the index already know: the same name among the project's files,
-/// declarations and their definitions across the two, and module
-/// declarations. Needs the build.
-Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path);
+/// the index already know: the same name among the files of `graph`, the
+/// build's dependency graph, declarations and their definitions across the
+/// two, and the module declarations of `members`, the build's units.
+query::Outcome<CounterpartsResult> counterparts(query::Context& ctx,
+                                                const DependencyGraph& graph,
+                                                llvm::ArrayRef<Fid> members,
+                                                const Spelling& path);
 
-}  // namespace clice::query
+}  // namespace clice::feature

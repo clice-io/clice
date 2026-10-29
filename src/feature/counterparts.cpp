@@ -5,18 +5,20 @@ module;
 module clice;
 
 import :command.file_kind;
+import :feature.counterparts;
+import :feature.query;
 import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.symbol;
-import :project.project;
 import :semantic.symbol;
-import :server.counterparts;
 import :syntax.dependency_graph;
 import :syntax.scan;
+import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
-namespace clice::query {
+namespace clice::feature {
 
 namespace {
 
@@ -32,8 +34,8 @@ enum class Side : std::uint8_t {
     Fragment,
 };
 
-Side classify(const Project& project, Fid file) {
-    llvm::StringRef path = project.file_table.resolve(file);
+Side classify(FileTable& files, const DependencyGraph& graph, Fid file) {
+    llvm::StringRef path = files.resolve(file);
     auto extension = path::extension(path);
     if(extension == ".inc" || extension == ".def") {
         return Side::Fragment;
@@ -41,26 +43,10 @@ Side classify(const Project& project, Fid file) {
     if(is_context_header_path(path)) {
         return Side::Implementation;
     }
-    if(is_header_path(path) || !project.dep_graph.module_of(file).empty()) {
+    if(is_header_path(path) || !graph.module_of(file).empty()) {
         return Side::Interface;
     }
     return Side::Implementation;
-}
-
-/// The kinds whose declaration and definition can sit in separate files.
-bool separable(SymbolKind kind) {
-    return kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union ||
-           kind == SymbolKind::Enum || kind == SymbolKind::Function || kind == SymbolKind::Method ||
-           kind == SymbolKind::Operator || kind == SymbolKind::Variable;
-}
-
-/// Directory steps from one directory to another.
-std::uint32_t steps(llvm::StringRef from, llvm::StringRef to) {
-    auto from_parts = path::components(from);
-    auto to_parts = path::components(to);
-    auto [a, b] = ranges::mismatch(from_parts, to_parts);
-    return static_cast<std::uint32_t>(ranges::distance(a, from_parts.end()) +
-                                      ranges::distance(b, to_parts.end()));
 }
 
 constexpr unsigned shared_bit = 4;
@@ -69,20 +55,25 @@ constexpr unsigned module_bit = 1;
 
 /// The kinds of evidence a candidate has as bits, a stronger kind a higher
 /// bit.
-unsigned signals(const Evidence& candidate) {
+unsigned signals(const CounterpartCandidate& candidate) {
     return (candidate.overlap > 0 ? shared_bit : 0) | (candidate.same_name ? name_bit : 0) |
            (candidate.module.empty() ? 0 : module_bit);
 }
 
+/// The search for a file's counterparts: each way of pairing adds the
+/// candidates it finds to `found`, with what pairs them.
 struct Pairing {
-    Context& ctx;
+    query::Context& ctx;
+    FileTable& files;
+    const DependencyGraph& graph;
+    llvm::ArrayRef<Fid> members;
     Fid file;
     CanonicalRef self;
     Side side;
 
     llvm::DenseMap<Fid, Side> sides{};
     llvm::DenseMap<Fid, const index::Shard*> shards{};
-    llvm::DenseMap<Fid, Evidence> found{};
+    llvm::DenseMap<Fid, CounterpartCandidate> found{};
 
     /// How many of the file's declarations (on the interface side) or
     /// definitions (on the implementation side) some candidate shares.
@@ -91,7 +82,7 @@ struct Pairing {
     Side side_of(Fid other) {
         auto [it, inserted] = sides.try_emplace(other);
         if(inserted) {
-            it->second = classify(ctx.project, other);
+            it->second = classify(files, graph, other);
         }
         return it->second;
     }
@@ -106,17 +97,22 @@ struct Pairing {
 
     /// The module declaration of a unit's text as the build last saw it.
     const ScanResult* declaration_of(Fid unit) {
-        auto hash = ctx.project.file_table.disk.seen_hash(unit);
+        auto hash = files.disk.seen_hash(unit);
         if(!hash) {
             return nullptr;
         }
-        auto& scans = ctx.project.dep_graph.quick_scans.results;
+        auto& scans = graph.quick_scans.results;
         auto it = scans.find({unit, *hash});
         return it != scans.end() ? it->second.get() : nullptr;
     }
 
+    /// Directory steps from the file's directory to `other`'s.
     std::uint32_t distance_to(CanonicalRef other) const {
-        return steps(path::parent(self), path::parent(other));
+        auto from = path::components(path::parent(self));
+        auto to = path::components(path::parent(other));
+        auto [a, b] = ranges::mismatch(from, to);
+        return static_cast<std::uint32_t>(ranges::distance(a, from.end()) +
+                                          ranges::distance(b, to.end()));
     }
 
     /// The files on the other side sharing the file's declarations and
@@ -139,9 +135,21 @@ struct Pairing {
             }
             return true;
         });
+        // The kinds whose declaration and definition can sit in separate
+        // files.
+        constexpr SymbolKind separable[] = {
+            SymbolKind::Class,
+            SymbolKind::Struct,
+            SymbolKind::Union,
+            SymbolKind::Enum,
+            SymbolKind::Function,
+            SymbolKind::Method,
+            SymbolKind::Operator,
+            SymbolKind::Variable,
+        };
         for(auto [hash, bits]: written) {
             auto symbol = ctx.query.symbol_info(hash, file);
-            if(!symbol || !separable(symbol->kind)) {
+            if(!symbol || !ranges::contains(separable, symbol->kind)) {
                 continue;
             }
             if(side == Side::Interface) {
@@ -167,7 +175,7 @@ struct Pairing {
                     declaring.insert(other);
                 }
             });
-            ctx.project.index.for_each_reference_file(hash, [&](Fid other) {
+            ctx.query.project().for_each_reference_file(hash, [&](Fid other) {
                 auto* other_shard = consider(other) ? shard_of(other) : nullptr;
                 if(!other_shard) {
                     return;
@@ -189,7 +197,6 @@ struct Pairing {
     /// A module implementation unit pairs with the interface of its module,
     /// a primary module interface with every unit implementing it.
     void pair_by_module() {
-        auto& graph = ctx.project.dep_graph;
         if(auto* own = declaration_of(file); own && own->is_implementation_unit()) {
             for(auto interface: graph.lookup_module(own->module_name)) {
                 found[interface].module = own->module_name;
@@ -200,7 +207,7 @@ struct Pairing {
         if(provided.empty() || provided.contains(':')) {
             return;
         }
-        for(auto unit: ctx.project.build.members()) {
+        for(auto unit: members) {
             auto* declared = declaration_of(unit);
             if(declared && declared->is_implementation_unit() &&
                declared->module_name == provided) {
@@ -216,14 +223,13 @@ struct Pairing {
     /// name, nor a system header and a project source. Of those the
     /// nearest, and any other the evidence so far already holds.
     void pair_by_name() {
-        auto& graph = ctx.project.dep_graph;
         auto stem = path::stem(self);
         auto directory = path::parent(self);
-        CanonicalRef root = ctx.project.config.workspace_root;
+        auto root = ctx.root;
         bool rooted = !root.empty() && path::is_within(self, root);
         llvm::SmallVector<std::pair<Fid, std::uint32_t>> named;
         for(auto other: graph.all_files()) {
-            auto other_path = ctx.project.file_table.resolve(other);
+            auto other_path = files.resolve(other);
             if(other == file || !llvm::StringRef(path::stem(other_path)).equals_insensitive(stem)) {
                 continue;
             }
@@ -257,8 +263,8 @@ struct Pairing {
 
 }  // namespace
 
-Ranking rank_counterparts(std::vector<Evidence> candidates) {
-    ranges::sort(candidates, [](const Evidence& a, const Evidence& b) {
+CounterpartRanking rank_counterparts(std::vector<CounterpartCandidate> candidates) {
+    ranges::sort(candidates, [](const CounterpartCandidate& a, const CounterpartCandidate& b) {
         if(signals(a) != signals(b)) {
             return signals(a) > signals(b);
         }
@@ -270,7 +276,7 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
         }
         return a.path < b.path;
     });
-    auto beats = [](const Evidence& a, const Evidence& b) {
+    auto beats = [](const CounterpartCandidate& a, const CounterpartCandidate& b) {
         auto has = signals(a) & ~module_bit;
         auto other = signals(b) & ~module_bit;
         if((has & other) != other || a.overlap < b.overlap) {
@@ -284,45 +290,52 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
         }
         return !a.module.empty() && b.module.empty();
     };
-    bool decisive = !candidates.empty() &&
-                    ranges::all_of(views::drop(candidates, 1), [&](const Evidence& candidate) {
-                        return beats(candidates.front(), candidate);
-                    });
+    bool decisive =
+        !candidates.empty() &&
+        ranges::all_of(views::drop(candidates, 1), [&](const CounterpartCandidate& candidate) {
+            return beats(candidates.front(), candidate);
+        });
     return {.candidates = std::move(candidates), .decisive = decisive};
 }
 
-Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
+query::Outcome<CounterpartsResult> counterparts(query::Context& ctx,
+                                                const DependencyGraph& graph,
+                                                llvm::ArrayRef<Fid> members,
+                                                const Spelling& path) {
     if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
-    auto& files = ctx.project.file_table;
+    auto& files = ctx.query.file_table();
     auto file = files.intern(path);
     CounterpartsResult result{.file = files.display(file)};
     Pairing pairing{
         .ctx = ctx,
+        .files = files,
+        .graph = graph,
+        .members = members,
         .file = file,
         .self = files.resolve(file),
-        .side = classify(ctx.project, file),
+        .side = classify(files, graph, file),
     };
     if(pairing.side == Side::Fragment) {
         return result;
     }
-    if(!ctx.project.index.shard(file)) {
+    if(!ctx.query.indexes(file)) {
         ctx.unindexed.push_back(result.file);
     }
     pairing.pair_by_declarations();
     pairing.pair_by_module();
     pairing.pair_by_name();
 
-    std::vector<Evidence> candidates;
-    for(auto& [other, evidence]: pairing.found) {
+    std::vector<CounterpartCandidate> candidates;
+    for(auto& [other, candidate]: pairing.found) {
         auto other_path = files.resolve(other);
         if(!fs::is_file(other_path)) {
             continue;
         }
-        evidence.path = files.display(other);
-        evidence.distance = pairing.distance_to(other_path);
-        candidates.push_back(std::move(evidence));
+        candidate.path = files.display(other);
+        candidate.distance = pairing.distance_to(other_path);
+        candidates.push_back(std::move(candidate));
     }
     auto ranking = rank_counterparts(std::move(candidates));
     bool interface = pairing.side == Side::Interface;
@@ -352,4 +365,4 @@ Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
     return result;
 }
 
-}  // namespace clice::query
+}  // namespace clice::feature
