@@ -1,0 +1,87 @@
+[hover.step.hover]
+markdown = '''
+**macro** `GLOBAL_STEP`
+
+```cpp
+#define GLOBAL_STEP 2
+```
+Expands to:
+```cpp
+2
+```
+'''
+range = "return count += ⟦GLOBAL_STEP⟧;"
+
+[hover.interface.hover]
+markdown = '''
+**method** `next` · struct `pch::Counter`
+
+```cpp
+int next()
+```
+'''
+range = "counter.⟦next⟧();"
+
+[hover.plain.hover]
+markdown = '''
+**struct** `Counter` · namespace `pch`
+
+```cpp
+struct Counter {
+  int count = 0;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "pch::⟦Counter⟧ counter;"
+
+["the units lint"."$ clice lint"]
+stdout = "Linted 4 translation units in #s: 0 findings."
+exit = 0
+
+["the index"."$ clice index"]
+stdout = '''
+Indexed 4 translation units in #s: 6 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["the index"."$ clice query references src/plain.cpp:2:10 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "Counter",
+    "kind": "Struct",
+    "symbol": "#39f190c87dd1791c",
+    "references": [
+      {
+        "file": "${WS}/include/counter.h",
+        "line": 9,
+        "context": "struct Counter {",
+        "function": null
+      },
+      {
+        "file": "${WS}/src/counting.cppm",
+        "line": 4,
+        "context": "    pch::Counter counter;",
+        "function": "twice"
+      },
+      {
+        "file": "${WS}/src/main.cpp",
+        "line": 4,
+        "context": "    pch::Counter counter;",
+        "function": "main"
+      },
+      {
+        "file": "${WS}/src/plain.cpp",
+        "line": 2,
+        "context": "    pch::Counter counter;",
+        "function": "plain"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0

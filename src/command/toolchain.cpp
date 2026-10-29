@@ -219,6 +219,22 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
     std::unreachable();
 }
 
+/// Where among a job's arguments the values of the command's -Xclang
+/// options start: the driver passes them on verbatim, in one run. The end
+/// of `tokens` when the command has none.
+std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& command) {
+    llvm::SmallVector<llvm::StringRef> values;
+    for(auto& arg: command.args) {
+        if(is_xclang_option(arg.opt_id) && in_query_view(arg, command.family)) {
+            values.push_back(arg.values[0]);
+        }
+    }
+    auto run = ranges::find_end(tokens, values, [](llvm::StringRef a, llvm::StringRef b) {
+        return a == b;
+    });
+    return run.begin() - tokens.begin();
+}
+
 }  // namespace
 
 Toolchain::Toolchain(CommandTable& commands,
@@ -328,8 +344,9 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
     return out;
 }
 
-Toolchain::Frontend Toolchain::frontend(const Job& job) {
+Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) {
     std::vector<std::string> tokens(job.args.begin() + 2, job.args.end());
+    auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
     auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
@@ -381,7 +398,11 @@ Toolchain::Frontend Toolchain::frontend(const Job& job) {
     auto builtin_headers = path::join(resource_dir(), "include");
     std::vector<std::string> shadowed = job.shadowed;
     std::vector<LocalArg> staged;
+    std::optional<std::size_t> first_forwarded;
     for(auto& arg: kept) {
+        if(arg.index >= forwarded_from && !first_forwarded) {
+            first_forwarded = staged.size();
+        }
         if(!arg.values.empty() && !names.knows(arg.id, arg.values[0])) {
             LOG_INFO("clang's target {} knows no CPU or ABI named {} ({}): its default stands in",
                      triple,
@@ -410,6 +431,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job) {
         }
     }
     staged.push_back({.opt_id = option::OPT_fsyntax_only, .cls = ArgClass::Semantic});
+    result.forwarded = first_forwarded.value_or(staged.size());
     result.args = commands.persist(staged);
     if(!shadowed.empty()) {
         auto base = Spelling::cwd();
@@ -447,12 +469,18 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
         };
     };
     std::vector<LocalArg> staged;
-    for(auto& arg: query.args) {
-        if(!(full_bmi && arg.opt_id == option::OPT_fmodules_reduced_bmi)) {
-            staged.push_back(local(arg));
+    auto stage = [&](llvm::ArrayRef<Arg> args) {
+        for(auto& arg: args) {
+            if(!(full_bmi && arg.opt_id == option::OPT_fmodules_reduced_bmi)) {
+                staged.push_back(local(arg));
+            }
         }
-    }
-    /// The command's own user content never fed the query.
+    };
+    stage(query.args.take_front(query.forwarded));
+    /// The command's own user content never fed the query. It goes where
+    /// the driver puts it, before what -Xclang passes on: CMake's
+    /// `-Xclang -include -Xclang cmake_pch.hxx` follows the -includes of
+    /// the command's flags.
     for(auto& arg: command.args) {
         if(arg.cls != ArgClass::UserContent) {
             continue;
@@ -466,6 +494,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
             }
         }
     }
+    stage(query.args.drop_front(query.forwarded));
 
     resolved_configs.push_back({.driver = query.driver,
                                 .args = commands.persist(staged),
@@ -515,12 +544,14 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
     return admission;
 }
 
-void Toolchain::commit_query(llvm::StringRef key, const std::expected<Job, std::string>& job) {
+void Toolchain::commit_query(llvm::StringRef key,
+                             CommandID id,
+                             const std::expected<Job, std::string>& job) {
     if(!job) {
         failed.try_emplace(key, std::pair{job.error(), std::chrono::steady_clock::now()});
         return;
     }
-    queries.try_emplace(key, frontend(*job));
+    queries.try_emplace(key, frontend(*job, commands.get(id)));
 }
 
 std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(CommandID id,
@@ -544,7 +575,7 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
 
         auto [ended] = kota::run(query_one(admission.spec));
         auto& result = *ended;
-        commit_query(admission.key, result);
+        commit_query(admission.key, id, result);
         if(!result) {
             if(runs_compiler) {
                 LOG_WARN(
@@ -582,6 +613,7 @@ std::expected<Toolchain::ResolvedCommand, std::string>
 void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     struct Pending {
         std::string key;
+        CommandID command;
         QuerySpec spec;
     };
 
@@ -594,7 +626,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
            !seen.try_emplace(admission.key, true).second) {
             continue;
         }
-        pending.push_back({std::move(admission.key), std::move(admission.spec)});
+        pending.push_back({std::move(admission.key), ref.command, std::move(admission.spec)});
     }
 
     if(pending.empty()) {
@@ -608,6 +640,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     // stays synchronous: block until all complete, then fill the cache here.
     struct QueryOutcome {
         std::string key;
+        CommandID command;
         std::expected<Job, std::string> result;
     };
 
@@ -616,7 +649,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     auto make_task = [](Pending p, kota::semaphore& drivers) -> kota::task<QueryOutcome> {
         auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
-        co_return QueryOutcome{std::move(p.key), std::move(result)};
+        co_return QueryOutcome{std::move(p.key), p.command, std::move(result)};
     };
 
     auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
@@ -640,7 +673,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         } else {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
         }
-        commit_query(o.key, o.result);
+        commit_query(o.key, o.command, o.result);
     }
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);

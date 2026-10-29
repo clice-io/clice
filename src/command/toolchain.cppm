@@ -153,6 +153,10 @@ private:
         /// The job's arguments as clice's frontend takes them.
         llvm::ArrayRef<Arg> args;
 
+        /// Where among `args` those the command's -Xclang options pass on
+        /// start; `args.size()` for none.
+        std::size_t forwarded = 0;
+
         /// The job's resource directory, whose builtin headers the command's
         /// own paths may name too.
         llvm::StringRef job_resource_dir;
@@ -173,12 +177,13 @@ private:
         std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
 
-    /// The frontend of a query's job (the program, -cc1, its arguments):
-    /// what only the query asked for goes (its action, input and outputs),
+    /// The frontend of a query's job (the program, -cc1, its arguments),
+    /// queried for `command` or another command of its key: what only the
+    /// query asked for goes (its action, input and outputs),
     /// and so does what clice's frontend cannot take — flags our cc1 does
     /// not know, codegen flags, CPU and ABI names clang's target does not
     /// know. Another clang's builtin headers go behind ours.
-    Frontend frontend(const Job& job);
+    Frontend frontend(const Job& job, const Command& command);
 
     /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& query);
@@ -196,9 +201,12 @@ private:
     struct QueryAdmission;
     QueryAdmission admit_query(CommandID id, InputKind input);
 
-    /// Commits a query's outcome: the job's frontend into the query cache, a
-    /// failure into the negative cache with its time.
-    void commit_query(llvm::StringRef key, const std::expected<Job, std::string>& job);
+    /// Commits the outcome of the query for the command `id`: the job's
+    /// frontend into the query cache, a failure into the negative cache with
+    /// its time.
+    void commit_query(llvm::StringRef key,
+                      CommandID id,
+                      const std::expected<Job, std::string>& job);
 
 private:
     CommandTable& commands;
