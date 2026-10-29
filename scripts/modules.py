@@ -71,13 +71,6 @@ CONFIGURATIONS = {
     ),
 }
 
-HOSTS = {
-    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
-    ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
-    ("darwin", "arm64"): "aarch64-apple-darwin",
-    ("darwin", "x86_64"): "x86_64-apple-darwin",
-}
-
 
 def bazel(*args, capture=False):
     command = ["npx", "bazel", *args]
@@ -132,8 +125,6 @@ def partition(output_base, clice):
                     f"{xclang}/**",
                     f"{libclang}/lib/clang/**",
                     f"{os.path.dirname(os.path.dirname(clice))}/lib/clang/**",
-                    "/Applications/**",
-                    "/Library/Developer/**",
                 ],
                 "textual": True,
                 "provides": "std.compat",
@@ -145,9 +136,8 @@ def partition(output_base, clice):
 
 def generate(name, clice):
     build_type, triple, _ = CONFIGURATIONS[name]
-    host = HOSTS[(sys.platform, os.uname().machine)]
     flags = [f"--config={build_type}"]
-    if triple != host:
+    if triple != "x86_64-unknown-linux-gnu":
         flags.append(f"--platforms=@xclang//platforms:{triple}")
 
     # A configuration's directory exists only after its last generation
@@ -273,6 +263,8 @@ def main():
     args = parser.parse_args()
     clice = os.path.abspath(args.clice)
     if args.command == "generate":
+        if (sys.platform, os.uname().machine) != ("linux", "x86_64"):
+            raise SystemExit("modules.py generates on x64 Linux")
         for name in args.configurations:
             generate(name, clice)
     else:
