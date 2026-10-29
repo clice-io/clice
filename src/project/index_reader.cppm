@@ -33,6 +33,11 @@ struct ReadOptions {
     /// indexed, each file checked on disk once; off, they serve every file
     /// as it was indexed.
     bool check_disk = true;
+
+    /// Whether there is nothing to read without an index; off, a workspace
+    /// whose index is missing or unusable opens with an empty one — for a
+    /// reader that only consults the index, as `clice inspect` does.
+    bool required = true;
 };
 
 /// A workspace's persisted index, opened read-only for one command-line
@@ -45,7 +50,7 @@ public:
     /// check_requested_configuration): the cache store and the blob
     /// database read-only, the index over the database's read snapshot
     /// (pinned for the reader's lifetime). Null, with the cause logged,
-    /// when there is no usable index.
+    /// when there is no usable index and one is required.
     static std::unique_ptr<IndexReader> open(const Spelling& workspace,
                                              Config config,
                                              llvm::StringRef configuration,

@@ -2,6 +2,8 @@ module clice;
 
 import :command.table;
 import :project.command_resolver;
+import :project.hosting;
+import :project.project;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -40,7 +42,8 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     ZEXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
     ZEXPECT(
         ranges::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
-    auto header_resolution = resolver.resolve_command(header, directory, arguments);
+    auto header_resolution =
+        resolver.resolve_command(header, directory, arguments, {.preprocess = true});
     ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
     ZEXPECT(header_resolution.host == main);
 }
@@ -65,7 +68,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     project.dep_graph.build_reverse_map();
 
     std::vector<std::string> extras{"-DLINT_EXTRA"};
-    CommandRequest request{.extra_append = extras};
+    CommandRequest request{.extra_append = extras, .preprocess = true};
     auto has_extra = [](llvm::ArrayRef<std::string> arguments) {
         return ranges::any_of(arguments,
                               [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
@@ -80,129 +83,11 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     ZEXPECT(has_extra(arguments));
 }
 
-ZEST_CASE(UnboundModeStaysLocal) {
-    // A NeedsContext result scored with no disk observation has no hash
-    // to validate on load: it serves this session but must neither
-    // persist nor, if found in a blob, bypass the content gate — the next
-    // session's bytes never earned it.
-    TempDir tmp;
-    FileTable files;
-    Project project{files};
-    CommandResolver resolver(project);
-    tmp.touch("h.h", "int x;\n");
-    auto path = tmp.path("h.h");
-    auto id = project.file_table.intern(Spelling::absolute(path));
-
-    resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    ZASSERT(resolver.header_mode(id) == HeaderMode::NeedsContext);
-
-    std::vector<ContextHeaderEntry> headers;
-    resolver.dump_context_headers(headers, [](Fid fid) { return fid.raw; });
-    ZASSERT(headers.empty());
-
-    CommandResolver restarted(project);
-    headers.push_back({id.raw, 0});
-    restarted.load_context_headers(headers,
-                                   [&](std::uint32_t) -> std::optional<Fid> { return id; });
-    ZASSERT(restarted.header_mode(id) == HeaderMode::Unknown);
-}
-
-ZEST_CASE(ContextHeaderContentGate) {
-    // A content-bound result survives a restart only while the disk
-    // still holds the bytes it was scored on.
-    TempDir tmp;
-    FileTable files;
-    Project project{files};
-    CommandResolver resolver(project);
-    tmp.touch("h.h", "int x;\n");
-    auto path = tmp.path("h.h");
-    auto id = project.file_table.intern(Spelling::absolute(path));
-    auto disk = project.file_table.disk.current(id);
-    ZASSERT(disk);
-
-    resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
-    std::vector<ContextHeaderEntry> headers;
-    resolver.dump_context_headers(headers, [](Fid fid) { return fid.raw; });
-    ZASSERT(headers.size() == 1u);
-
-    auto resolve = [&](std::uint32_t) -> std::optional<Fid> {
-        return id;
-    };
-    CommandResolver same_disk(project);
-    same_disk.load_context_headers(headers, resolve);
-    ZASSERT(same_disk.header_mode(id) == HeaderMode::NeedsContext);
-
-    tmp.touch("h.h", "int y;\n");
-    CommandResolver edited(project);
-    edited.load_context_headers(headers, resolve);
-    ZASSERT(edited.header_mode(id) == HeaderMode::Unknown);
-}
-
-ZEST_CASE(ModePersistenceMarksDirty) {
-    // The persisted context headers and the artifact records move together: any
-    // transition of a content-bound NeedsContext — earned, downgraded by
-    // a trial, or reset by a dependency change — must rewrite the blob,
-    // or a restart resurrects the dropped result (the header's own hash
-    // still matches). Session-local transitions must not thrash it.
-    FileTable files;
-    Project project{files};
-    CommandResolver resolver(project);
-    auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
-
-    resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    ZASSERT(project.artifacts_dirty);
-
-    project.artifacts_dirty = false;
-    resolver.reset_header_mode(id);
-    ZASSERT(project.artifacts_dirty);
-
-    // Unbound results and self-contained impressions are never persisted.
-    project.artifacts_dirty = false;
-    resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    resolver.record_header_mode(id, HeaderMode::SelfContained);
-    resolver.reset_header_mode(id);
-    ZASSERT(!project.artifacts_dirty);
-
-    // A trial downgrading a persisted result drops it from the blob.
-    resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    project.artifacts_dirty = false;
-    resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ZASSERT(project.artifacts_dirty);
-}
-
-ZEST_CASE(SelfContainedFlipBumpsEpoch) {
-    // A self-contained header's listing merges hosts the others list one
-    // by one: entering or leaving that result changes the listing, and
-    // nothing else does.
-    FileTable files;
-    Project project{files};
-    CommandResolver resolver(project);
-    auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
-    auto epoch = project.context_epoch;
-
-    resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    ZEXPECT(project.context_epoch == epoch);
-    resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ZEXPECT(project.context_epoch == epoch + 1);
-    resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ZEXPECT(project.context_epoch == epoch + 1);
-    resolver.forget_self_contained(id);
-    ZEXPECT(project.context_epoch == epoch + 2);
-    resolver.forget_self_contained(id);
-    ZEXPECT(project.context_epoch == epoch + 2);
-
-    resolver.record_header_mode(id, HeaderMode::SelfContained);
-    resolver.reset_header_mode(id);
-    ZEXPECT(project.context_epoch == epoch + 4);
-    resolver.reset_header_mode(id);
-    ZEXPECT(project.context_epoch == epoch + 4);
-}
-
-ZEST_CASE(UnmatchedChainWantsTree) {
+ZEST_CASE(TreeSkipsFirstHost) {
     /// The scan resolved shared.h's include under b.cpp's directories;
     /// a.cpp ranks first, but under its directories the include reaches
-    /// another config.h. The resolution names the host whose chain it
-    /// could not follow, and asks for that host's include tree.
+    /// another config.h. The search waits for a.cpp's include tree, which
+    /// rules it out, and b.cpp's compile enters the header.
     TempDir tmp;
     tmp.touch("common/shared.h", "#pragma once\n#include <config.h>\n");
     tmp.touch("config_a/config.h", "#pragma once\n");
@@ -227,12 +112,20 @@ ZEST_CASE(UnmatchedChainWantsTree) {
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("config_b/config.h")));
     auto a = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
-    resolver.record_header_mode(header, HeaderMode::NeedsContext);
+    auto b = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     std::string directory;
     std::vector<std::string> arguments;
-    auto resolution = resolver.resolve_command(header, directory, arguments);
-    ZEXPECT(resolution.unmatched_host == a);
-    ZEXPECT(resolution.tree_wanted == a);
+    auto waiting = resolver.resolve_command(header, directory, arguments);
+    ZASSERT(waiting.missing_tree);
+    ZEXPECT(waiting.missing_tree->key.first == a);
+    ZEXPECT(!waiting.host.valid());
+    // Meanwhile the header stands on a.cpp's command.
+    ZEXPECT(waiting.source == CommandSource::IncludeGraph);
+    ZEXPECT(ranges::any_of(arguments,
+                           [](llvm::StringRef argument) { return argument.contains("config_a"); }));
+    auto resolution = resolver.resolve_command(header, directory, arguments, {.preprocess = true});
+    ZEXPECT(!resolution.missing_tree);
+    ZEXPECT(resolution.host == b);
 }
 
 ZEST_CASE(ForcedChainDropsIncludes) {
@@ -282,7 +175,8 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     auto forced = [&](Fid file) {
         std::string directory;
         std::vector<std::string> arguments;
-        auto resolution = resolver.resolve_command(file, directory, arguments);
+        auto resolution =
+            resolver.resolve_command(file, directory, arguments, {.preprocess = true});
         std::vector<std::string> names;
         for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
             if(arguments[i] == "-include") {
@@ -299,7 +193,13 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     ZEXPECT(forced(part).second == std::vector<std::string>{"config.h"});
     ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
 
-    resolver.record_header_mode(part, HeaderMode::NeedsContext);
+    // Its trial found it needs its includer's context.
+    auto trial = forced(part).first.trial;
+    ZASSERT(trial);
+    auto version = current_dep(project.file_table, part)->version;
+    project.hosting.trials.commit(*trial,
+                                  {.self_contained = false, .text = version, .disk = version},
+                                  {});
     auto [resolution, names] = forced(part);
     ZASSERT(resolution.synthesized);
     ZEXPECT(resolution.forced == pch);

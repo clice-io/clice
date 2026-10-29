@@ -150,7 +150,7 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 
     // The dropped name's consumers hold edges to this provider's real
     // node, and their builds embed a module the file no longer declares.
-    // The close path has no other probe for this: an evicted PCM leaves
+    // Nothing else on the close path finds this: an evicted PCM leaves
     // no cache entry for its staleness check to see.
     if(!old_module.empty()) {
         cascade_compile_graph(path_id, dirty);
@@ -168,14 +168,6 @@ void Invalidator::cascade_providers(llvm::StringRef module_name, Fid except, Dir
 }
 
 void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
-    // A header's result was scored on the bytes it compiled: the disk's
-    // while closed, its buffer while open — which a save of that buffer
-    // leaves as they were, and a change from elsewhere does not.
-    auto session = store.find(path_id);
-    if(!session || project.file_table.disk.seen_hash(path_id) != session->hash) {
-        dirty.reset_header_mode.push_back(path_id);
-    }
-
     // Taken before the rescan below, which rewrites only the file's own
     // outgoing edges, never the includers this walks. A file the scan did
     // not know is new: its readers looked for it and failed, and their
@@ -200,32 +192,6 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // staleness check filters TUs whose dependencies did not actually
     // change, and the idle/priority scheduling throttles the rest.
     mark_readers(dependents, dirty);
-
-    // Headers whose resolved context was derived from the file through its
-    // include chain resolve it again: the synthesized context copies the
-    // chain files' content, so neither the dependents cascade above nor
-    // clang's own dependency tracking catches this.
-    // FIXME: only the chain: a file the host reads before it that gains an
-    // include of the header, or changes a macro deciding one, leaves the cached
-    // occurrence until a chain file or the command changes.
-    for(auto header_id: contexts.chain_dependents(path_id)) {
-        dirty.drop_context.push_back(header_id);
-        // The chain change may have made the header self-contained (e.g. a
-        // dependency now provides the missing declarations); drop the
-        // persisted result so the trial can downgrade it.
-        dirty.reset_header_mode.push_back(header_id);
-        if(store.find(header_id)) {
-            dirty.mark_ast_dirty.push_back(header_id);
-        }
-        // Contexts outlive their sessions: a closed header's shard
-        // was indexed under the old chain and only a background reindex
-        // can refresh it. The header's own content did not change, so
-        // its shard keeps serving meanwhile. An open session its compile
-        // does not serve is in the same boat.
-        if(!compiled_by_session(header_id)) {
-            dirty.add_reindex_deps_only(header_id);
-        }
-    }
 
     // A content change can remove the include edge a user's context choice
     // depends on; the include graph was already rescanned above.
@@ -350,38 +316,15 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // PCMs (no-op for files the compile graph doesn't know).
                     cascade_compile_graph(path_id, dirty);
 
-                    // The file's own resolved header context was built on a
-                    // command that no longer exists in that form (a header
-                    // gaining its first exact entry included), and so was
-                    // every header context hosted by this file. Drop them
-                    // so the next use re-resolves.
-                    if(contexts.header_context(path_id)) {
-                        dirty.drop_context.push_back(path_id);
-                    }
-                    // A standalone-indexed header borrowed the changed
-                    // command too, open or not: its manifest is as stale as
-                    // the host's (no-op for headers indexed only via TUs).
-                    auto borrowers = project.command_snapshot.hosted_by(path_id);
-                    for(auto& [header_id, context]: contexts.header_contexts) {
-                        if(context.host_path_id != path_id) {
-                            continue;
-                        }
-                        dirty.drop_context.push_back(header_id);
-                        if(store.find(header_id)) {
+                    // An open header borrowing the changed command compiled
+                    // under one that no longer exists; one whose first
+                    // compile is still in flight may be borrowing it.
+                    for(auto header_id: views::transform(store.sessions, [](auto& entry) -> auto& {
+                            return entry.first;
+                        })) {
+                        auto compiled = ast.compiles.latest(header_id);
+                        if(compiled ? compiled->host == path_id : !project.build.unit(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
-                        }
-                        if(!ranges::contains(borrowers, header_id)) {
-                            borrowers.push_back(header_id);
-                        }
-                    }
-                    for(auto header_id: borrowers) {
-                        dirty.drop_index.push_back(header_id);
-                        // An index-only session just lost its serving shard
-                        // with the drop; only a reindex under the new
-                        // command brings it back. An open session its
-                        // compile serves is reindexed when it closes.
-                        if(!compiled_by_session(header_id)) {
-                            dirty.add_reindex_content_changed(header_id);
                         }
                     }
                 };
@@ -432,11 +375,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
 
     dedup(dirty.mark_ast_dirty);
     dedup(dirty.mark_lost);
-    dedup(dirty.reset_header_mode);
     dedup(dirty.reindex_content_changed);
     dedup(dirty.reindex_deps_only);
     dedup(dirty.drop_index);
-    dedup(dirty.drop_context);
     return dirty;
 }
 

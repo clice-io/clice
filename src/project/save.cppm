@@ -2,7 +2,6 @@ module clice:project.save;
 
 import :index.database;
 import :index.project_index;
-import :project.command_resolver;
 import :project.project;
 import :support.prelude;
 
@@ -15,14 +14,13 @@ namespace clice {
 /// save; a database the write finds corrupt is replaced by a fresh one.
 ///
 /// `debt` is the pump's immutable debt snapshot at call time: the command
-/// snapshot persists its standalone entries so a dropped header's repair
-/// debt survives a process exit. Owner debt the compaction discovers before
+/// snapshot persists the entries of units without database entries so a
+/// dropped one's repair debt survives a process exit. Owner debt the compaction discovers before
 /// serializing joins the same snapshot; debt that shows up after it
 /// (write-time corruption recovery) comes back in the report with
 /// owes_retry set.
 kota::task<index::IndexReport>
     save_project(Project& project,
-                 CommandResolver& commands,
                  kota::event_loop& loop,
                  llvm::SmallVector<Fid> debt,
                  index::SearchRebuild search = index::SearchRebuild::Behind);

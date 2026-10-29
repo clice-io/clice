@@ -132,13 +132,8 @@ struct SynthesizedContext {
 /// `#include_next` resumes. Returns nullopt when a chain step cannot be
 /// matched.
 ///
-/// `occurrence` selects among multiple includes of the target in a direct
-/// includer (the last chain entry) without a line: a file without include guards
-/// can be included several times with different preprocessor states, and
-/// each occurrence is a distinct context. It indexes the candidate list in
-/// directive order (0-based); out of range fails the synthesis. When
-/// unset, unconditional candidates are preferred over ones inside #if
-/// blocks.
+/// Among several directives resolving to the next file, an unconditional
+/// one is preferred over ones inside #if blocks.
 ///
 /// `target_content`: the header's disk content, snapshotted next to it
 /// for includes of the header itself (other occurrences along the chain).
@@ -151,7 +146,6 @@ std::optional<SynthesizedContext>
     synthesize_context(llvm::ArrayRef<ChainEntry> chain,
                        llvm::StringRef target_path,
                        IncludeResolver resolve,
-                       std::optional<std::uint32_t> occurrence = {},
                        std::optional<llvm::StringRef> target_content = {});
 
 /// The suffix among `files`, the file the focus file's text goes on to

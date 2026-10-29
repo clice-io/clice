@@ -1,7 +1,10 @@
 module clice;
 
+import :compile.diagnostic;
+import :feature.diagnostics;
 import :index.database;
 import :index.format;
+import :project.hosting;
 import :project.project;
 import :support.bytes;
 import :unittests.utils.indexer_fixture;
@@ -80,6 +83,55 @@ ZEST_CASE(StaleFormatDropsPch) {
     ZASSERT(f.project.pch_cache.empty());
 }
 
+ZEST_CASE(OlderRecordsLoad) {
+    // Records an older binary wrote have no trials, but its header modes:
+    // the PCH and PCM entries beside them still load.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.project.store->begin_store("pch", "k");
+        ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
+        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
+        auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
+        auto& st = f.project.pch_cache["k"];
+        st.blob = "k";
+        st.path = "k.pch";
+        st.deps.push_back(
+            {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
+        f.project.mark_artifacts_dirty();
+        f.save();
+
+        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        ZASSERT(bool(blob));
+        std::string artifacts = blob.buffer->getBuffer().str();
+        auto trials = std::string_view(R"("trials":[])");
+        auto pos = artifacts.find(trials);
+        ZASSERT(pos != std::string::npos);
+        artifacts.replace(pos, trials.size(), R"("header_modes":[])");
+        index::BlobDatabase::Blob older{index::BlobKind::ArtifactRecords,
+                                        "artifacts",
+                                        copy_bytes(artifacts)};
+        ZASSERT(f.project.database->write(older, {}));
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ZASSERT(f.project.pch_cache.size() == std::size_t(1));
+}
+
 ZEST_CASE(DeplessPcmDropped) {
     // A dep-less PCM entry is an unvalidatable snapshot (the key embeds
     // no content): trusted, it would blindly serve a stale PCM after an
@@ -120,80 +172,55 @@ ZEST_CASE(DeplessPcmDropped) {
     ZASSERT(f.project.pcm_builds.empty());
 }
 
-ZEST_CASE(HeaderModePersisted) {
-    // The NeedsContext result rides the artifact records: a restart with
-    // unchanged disk content adopts it instead of re-running the trial.
+ZEST_CASE(TrialsPersisted) {
+    // A trial's result rides the artifact records, either outcome, with
+    // what it read: a restart over unchanged files adopts it instead of
+    // running the trial again; one over a changed file it read does not.
     TempDir tmp;
     tmp.touch("utils.h", "inline int f();\n");
+    tmp.touch("dep.h", "int x;\n");
+    tmp.touch("alone.h", "int y;\n");
     auto path = tmp.path("utils.h");
+    auto dep_path = tmp.path("dep.h");
+    auto alone_path = tmp.path("alone.h");
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto id = f.project.file_table.intern(Spelling::absolute(path));
-        auto disk = f.project.file_table.disk.current(id);
-        ZASSERT(disk);
-        f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
-        f.project.mark_artifacts_dirty();
+        auto& files = f.project.file_table;
+        auto id = files.intern(Spelling::absolute(path));
+        auto dep = files.intern(Spelling::absolute(dep_path));
+        auto alone = files.intern(Spelling::absolute(alone_path));
+        feature::FileDiagnostic missing{
+            .level = DiagnosticLevel::Error,
+            .id = clang::diag::err_unknown_typename,
+        };
+        commit_trial(f.project,
+                     {id, 1},
+                     {missing},
+                     current_dep(files, id)->version,
+                     {*current_dep(files, dep)});
+        commit_trial(f.project, {alone, 1}, {}, current_dep(files, alone)->version, {});
         f.save();
     }
 
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        f.load();
+        auto& files = f.project.file_table;
+        auto id = files.intern(Spelling::absolute(path));
+        auto alone = files.intern(Spelling::absolute(alone_path));
+        ZEXPECT(self_contained(f.project, {id, 1}, false) == false);
+        ZEXPECT(self_contained(f.project, {alone, 1}, false) == true);
+    }
+
+    tmp.touch("dep.h", "int z;\n");
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
     auto id = f.project.file_table.intern(Spelling::absolute(path));
-    ZASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
-}
-
-ZEST_CASE(HeaderModesOfOlderRecords) {
-    // Records an older binary wrote name each header's mode beside it, and
-    // still load whole.
-    TempDir tmp;
-    tmp.touch("utils.h", "inline int f();\n");
-    auto path = tmp.path("utils.h");
-    std::string artifacts;
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto id = f.project.file_table.intern(Spelling::absolute(path));
-        auto disk = f.project.file_table.disk.current(id);
-        ZASSERT(disk);
-        f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
-        f.project.mark_artifacts_dirty();
-        f.save();
-        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
-        ZASSERT(bool(blob));
-        artifacts = blob.buffer->getBuffer().str();
-    }
-
-    {
-        // The records as the older binary wrote them, under the path this
-        // one stored.
-        auto begin = artifacts.find(R"("paths":[)");
-        ZASSERT(begin != std::string::npos);
-        auto end = artifacts.find(']', begin);
-        auto hash = artifacts.find(R"("content_hash":)");
-        ZASSERT(hash != std::string::npos);
-        auto hash_end = artifacts.find('}', hash);
-        auto older = std::format(
-            R"({{{},"pch_index_format":{},"pch":[],"pcm":[],"header_modes":[{{"file":0,"mode":2,{}}}]}})",
-            artifacts.substr(begin, end + 1 - begin),
-            index::index_format_version,
-            artifacts.substr(hash, hash_end - hash));
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
-                                       "artifacts",
-                                       copy_bytes(older)};
-        ZASSERT(f.project.database->write(blob, {}));
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load();
-    auto id = f.project.file_table.intern(Spelling::absolute(path));
-    ZASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
+    ZEXPECT(!self_contained(f.project, {id, 1}, false).has_value());
 }
 
 };  // ZEST_SUITE(ArtifactRecords)

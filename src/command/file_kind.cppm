@@ -11,8 +11,10 @@ clang::driver::types::ID suffix_type(llvm::StringRef path);
 
 /// The clang language name of a file by its extension ("c++", "cuda",
 /// ...), a C source or header taken as C++ under a C++ driver (`cxx`);
-/// `.cuh`, missing from clang's table, is CUDA; the raw extension itself
-/// when nothing maps it.
+/// `.cuh`, missing from clang's table, is CUDA; a file with no extension,
+/// which only an include reads (the standard library's `vector`), a header
+/// of the driver's language; the raw extension itself when nothing maps
+/// it.
 llvm::StringRef extension_language(llvm::StringRef path, bool cxx);
 
 /// Whether the extension names a header — or nothing clang knows, which a

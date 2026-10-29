@@ -289,9 +289,6 @@ struct TURunParams {
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
-    /// Files the command names that exist only in memory (path, content):
-    /// a header context's synthesized fragments.
-    SynthesizedFiles synthesized;
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
@@ -485,7 +482,7 @@ struct TURunResult {
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each
-/// file (see HostTree).
+/// file (see PreprocessedTree).
 struct IncludeTreeParams {
     std::string file;
     std::string directory;
@@ -508,8 +505,12 @@ struct IncludeTreeResult {
     /// The tree, each node's file an index into `paths`.
     std::vector<index::IncludeNode> nodes;
 
-    /// The places the run's failed lookups looked that held no file.
-    std::vector<std::string> absent;
+    /// Every file the run read or looked for: its includes, what its
+    /// `__has_include` checks found, the places its failed lookups looked.
+    std::vector<DepFile> deps;
+
+    /// Milliseconds since epoch, sampled before the run started.
+    std::int64_t build_at = 0;
 };
 
 /// Request the document links of an open file's AST. Only the focus file's

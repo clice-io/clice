@@ -3,9 +3,11 @@ module clice;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.command_snapshot;
+import :project.hosting;
 import :sched.builders.pcm;
 import :sched.builders.turun;
 import :sched.graph;
+import :server.include_trees;
 import :server.ast_family;
 import :server.context_service;
 import :server.document_failures;
@@ -42,14 +44,16 @@ struct Harness {
     kota::event_loop loop;
     TaskGraph graph;
     WorkerPool pool{loop};
+    IncludeTrees trees;
     PCHBuilder pch;
     PCMBuilder pcm;
     DocumentFailures failures;
     ASTFamily ast;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
-        pch(graph, project, pool), pcm(graph, project, resolver.commands, pch, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store, failures) {
+        trees(project, pool), pch(graph, project, pool),
+        pcm(graph, project, resolver.commands, pch, pool),
+        ast(project, resolver, graph, trees, pcm, pch, pool, store, failures) {
         project.config.project.skip_header_bodies = false;
     }
 };
@@ -200,37 +204,11 @@ ZEST_CASE(DiskChangeSparesSession) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // The open file's own compile reads its buffer, never its disk: it is
-    // not stale, nor is the self-containment result scored on that buffer,
-    // while its disk index is.
-    ZASSERT(dirty.reset_header_mode.empty());
+    // not stale, while its disk index is.
     ZASSERT(dirty.mark_ast_dirty.empty());
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
-    ZASSERT(dirty.drop_context.empty());
     ZASSERT(dirty.recheck_contexts);
     ZASSERT(dirty.reschedule_indexing);
-}
-
-ZEST_CASE(DiskChangeBesideBuffer) {
-    TempDir tmp;
-    tmp.touch("a.h", "int y;");
-
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto changed = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
-    auto session = store.open(changed);
-    store.apply_open(*session, "int x;", 1);
-    project.file_table.disk.read(changed);
-
-    CommandResolver commands(project);
-    ContextChoices blob;
-    EditorContext resolver(project, commands, blob);
-    Harness ph(project, resolver, store);
-    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
-    auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
-
-    // Bytes from elsewhere replace the buffer the result was scored on.
-    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{changed});
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {
@@ -274,33 +252,23 @@ ZEST_CASE(ChainHitAndMiss) {
     auto other = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     auto hit = project.file_table.intern(Spelling::absolute("/proj/hit.h"));
     auto miss = project.file_table.intern(Spelling::absolute("/proj/miss.h"));
-
-    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     store.open(hit);
     store.open(miss);
 
     CommandResolver commands(project);
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
-    resolver.header_contexts[hit].chain = {saved};
-    resolver.header_contexts[miss].chain = {other};
-    resolver.header_contexts[closed].chain = {saved};
     Harness ph(project, resolver, store);
+    // The chain files a header's context embeds are inputs of its compile.
+    ph.ast.compiles.entries[hit].deps = DepsSnapshot{DepState{.path_id = saved}};
+    ph.ast.compiles.entries[miss].deps = DepsSnapshot{DepState{.path_id = other}};
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // Every context derived through the saved file resolves again and
-    // drops its decision; an open one recompiles, a closed one reindexes in
-    // the background — its shard was built under the old chain.
-    llvm::SmallVector<Fid> dropped{hit, closed};
-    ranges::sort(dropped);
-    ZASSERT(dirty.drop_context == dropped);
+    // The header whose context embeds the saved file recompiles; no header
+    // has an index of its own to rebuild.
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
-    llvm::SmallVector<Fid> reset{saved, hit, closed};
-    ranges::sort(reset);
-    ZASSERT(dirty.reset_header_mode == reset);
-    // The closed header's own content did not change — only its chain did.
-    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.reindex_deps_only.empty());
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 
@@ -532,9 +500,8 @@ ZEST_CASE(CrashMarksLostDirty) {
     llvm::SmallVector<Fid> expected{first, second};
     ranges::sort(expected);
     ZASSERT(dirty.mark_lost == expected);
-    // A crash loses build products, not compile inputs: no result reset.
+    // A crash loses build products, not compile inputs.
     ZASSERT(dirty.mark_ast_dirty.empty());
-    ZASSERT(dirty.reset_header_mode.empty());
 }
 
 ZEST_CASE(EvictionMarksLost) {
@@ -554,7 +521,6 @@ ZEST_CASE(EvictionMarksLost) {
     // Same loss as a crash, scoped to one document.
     ZASSERT(dirty.mark_lost == llvm::SmallVector<Fid>{file});
     ZASSERT(dirty.mark_ast_dirty.empty());
-    ZASSERT(dirty.reset_header_mode.empty());
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {
@@ -600,7 +566,6 @@ ZEST_CASE(DiskChangeClosedCascades) {
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
     ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
-    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{header});
     ZASSERT(dirty.recheck_contexts);
     ZASSERT(dirty.reschedule_indexing);
 }
@@ -977,96 +942,29 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     SessionStore store;
     auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
     auto open_header = project.file_table.intern(Spelling::absolute("/proj/open.h"));
-    auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
-    IndexInternals::plant_shard(project.index, closed_header, shard_of(""));
 
     CommandResolver commands(project);
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
-    resolver.header_contexts[open_header].host_path_id = host;
-    resolver.header_contexts[closed_header].host_path_id = host;
-    resolver.header_contexts[other_header].host_path_id = Fid{};
     Harness ph(project, resolver, store);
+    ph.ast.compiles.entries[open_header].latest =
+        std::make_shared<DocumentCompile>(DocumentCompile{.host = host});
+    store.open(other_header);
+    ph.ast.compiles.entries[other_header].latest = std::make_shared<DocumentCompile>();
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    // Headers borrowing the changed entry re-resolve their context; the
-    // open one recompiles, the closed one reindexes. Any standalone index
-    // of theirs borrowed the changed command too, so it is dropped along
-    // with the host's. Unrelated contexts are untouched.
-    llvm::SmallVector<Fid> dropped{open_header, closed_header};
-    ranges::sort(dropped);
-    ZASSERT(dirty.drop_context == dropped);
-    llvm::SmallVector<Fid> evicted{host, open_header, closed_header};
-    ranges::sort(evicted);
-    auto drop = dirty.drop_index;
-    ranges::sort(drop);
-    ZASSERT(drop == evicted);
+    // The open header borrowing the changed entry compiled under a command
+    // that no longer exists: it recompiles. Only the host's index is
+    // dropped — no header has one of its own. Unrelated headers are
+    // untouched.
     ZASSERT(ranges::contains(dirty.mark_ast_dirty, open_header));
-    ZASSERT(ranges::contains(dirty.reindex_content_changed, closed_header));
-    ZASSERT(project.index.shard(closed_header) != nullptr);
-}
-
-ZEST_CASE(CDBDropsBorrowedIndex) {
-    // A header indexed standalone in an earlier session borrowed its
-    // host's command without ever being opened in this one: the host's
-    // command change drops and rebuilds its index all the same.
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
-    auto header = project.file_table.intern(Spelling::absolute("/proj/header.h"));
-
-    CommandResolver commands(project);
-    ContextChoices blob;
-    EditorContext resolver(project, commands, blob);
-    Harness ph(project, resolver, store);
-    project.command_snapshot.record_host(header, host);
-    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
-    CDBDiff delta;
-    delta.changed = {host};
-    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
-
-    ZASSERT(dirty.drop_context.empty());
-    ZASSERT(ranges::contains(dirty.drop_index, header));
-    ZASSERT(ranges::contains(dirty.reindex_content_changed, header));
-    ZASSERT(!ranges::contains(dirty.mark_ast_dirty, header));
-}
-
-ZEST_CASE(CDBBorrowersByServing) {
-    // Open borrowers the command snapshot names: an index-only session loses
-    // its serving index with the drop and reindexes now; a compiling one
-    // reindexes when it closes. Neither recompiles — no context borrows.
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
-    auto served = project.file_table.intern(Spelling::absolute("/proj/served.h"));
-    auto compiled = project.file_table.intern(Spelling::absolute("/proj/compiled.h"));
-    store.open(served)->serving = ServingMode::IndexOnly;
-    store.open(compiled);
-
-    CommandResolver commands(project);
-    ContextChoices blob;
-    EditorContext resolver(project, commands, blob);
-    Harness ph(project, resolver, store);
-    project.command_snapshot.record_host(served, host);
-    project.command_snapshot.record_host(compiled, host);
-    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
-    CDBDiff delta;
-    delta.changed = {host};
-    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
-
-    ZASSERT(ranges::contains(dirty.drop_index, served));
-    ZASSERT(ranges::contains(dirty.drop_index, compiled));
-    ZASSERT(ranges::contains(dirty.reindex_content_changed, served));
-    ZASSERT(!ranges::contains(dirty.reindex_content_changed, compiled));
-    ZASSERT(!ranges::contains(dirty.mark_ast_dirty, served));
-    ZASSERT(!ranges::contains(dirty.mark_ast_dirty, compiled));
+    ZASSERT(!ranges::contains(dirty.mark_ast_dirty, other_header));
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{host});
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
@@ -1276,7 +1174,8 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     Harness harness(project, resolver, store);
-    ZASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(!ContextService{project, resolver, harness.ast, harness.trees}.drop_orphaned_choices(
+        store));
     ZASSERT(resolver.selections.contains(header));
 }
 
@@ -1302,17 +1201,15 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
     project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    session->trial_done = true;
-    resolver.header_contexts[header] = HeaderContext{};
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto generation = session->generation;
+    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
     Harness harness(project, resolver, store);
     harness.ast.compiles.entries[header].current = true;
-    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
-    ZASSERT(!resolver.header_contexts.contains(header));
+    ZASSERT(
+        ContextService{project, resolver, harness.ast, harness.trees}.drop_orphaned_choices(store));
     ZASSERT(!harness.ast.compiles.current(header));
-    ZASSERT(!session->trial_done);
     ZASSERT(session->generation == generation + 1);
     ZASSERT(!resolver.selections.contains(header));
 }
@@ -1341,9 +1238,11 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
 
     store.open(header);
     resolver.selections[header] = Selection{host, 1, ""};
+    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
     Harness harness(project, resolver, store);
-    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(
+        ContextService{project, resolver, harness.ast, harness.trees}.drop_orphaned_choices(store));
     ZASSERT(!resolver.selections.contains(header));
 }
 

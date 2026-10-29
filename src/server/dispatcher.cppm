@@ -7,6 +7,7 @@ import :feature.folding_ranges;
 import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
+import :server.include_trees;
 import :server.ast_family;
 import :server.document_failures;
 import :server.editor_context;
@@ -50,6 +51,7 @@ public:
     Dispatcher(Project& project,
                EditorContext& contexts,
                ASTFamily& ast,
+               IncludeTrees& trees,
                WorkerPool& pool,
                DocumentFailures& failures,
                const PositionEncoding& encoding);
@@ -202,6 +204,7 @@ private:
     Project& project;
     EditorContext& contexts;
     ASTFamily& ast;
+    IncludeTrees& trees;
     WorkerPool& pool;
     DocumentFailures& failures;
 

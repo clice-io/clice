@@ -1,3 +1,3 @@
 # `__has_embed`
 
-The checked path links to the probed resource
+The checked path links to the resource it looks for

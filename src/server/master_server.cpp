@@ -774,21 +774,29 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     auto owner = owner_of(path_id).shared_from_this();
     // The listing spells the URIs the server's way, not the client's.
     auto context_uri = feature::to_uri(files.display(context_path_id));
-    auto offers = [&](ProjectServer& project) {
-        return ranges::any_of(project.context_service.contexts(path_id),
-                              [&](const ext::ContextItem& item) {
-                                  return item.uri == context_uri &&
-                                         item.occurrence == params.occurrence &&
-                                         item.command_hash == params.command_hash;
-                              });
+    auto offers = [&](ProjectServer& project) -> kota::task<bool> {
+        co_await project.context_service.take_tree(path_id, context_path_id);
+        co_return ranges::any_of(project.context_service.contexts(path_id),
+                                 [&](const ext::ContextItem& item) {
+                                     return item.uri == context_uri &&
+                                            item.occurrence == params.occurrence &&
+                                            item.command_hash == params.command_hash;
+                                 });
     };
     auto target = owner;
-    if(!offers(*owner)) {
-        auto it = ranges::find_if(projects, [&](auto& project) { return offers(*project); });
-        if(it == projects.end()) {
+    if(!co_await offers(*owner)) {
+        target.reset();
+        // Copied: a project may come or go while a tree is taken.
+        auto candidates = projects;
+        for(auto& project: candidates) {
+            if(co_await offers(*project)) {
+                target = project;
+                break;
+            }
+        }
+        if(!target) {
             co_return result;
         }
-        target = *it;
     }
     // A choice applies to an open document; one closed meanwhile keeps the
     // choice it had.
@@ -819,11 +827,11 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     co_return result;
 }
 
-ext::CurrentContextResult MasterServer::current_context(ProjectServer& project,
-                                                        const Session* session) {
-    auto result = project.context_service.current_context(session);
+kota::task<ext::CurrentContextResult> MasterServer::current_context(ProjectServer& project,
+                                                                    const Session* session) {
+    auto result = co_await project.context_service.current_context(session);
     result.epoch = context_epoch();
-    return result;
+    co_return result;
 }
 
 ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {

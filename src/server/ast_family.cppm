@@ -6,6 +6,7 @@ import :project.project;
 import :sched.builders.pch;
 import :sched.builders.pcm;
 import :sched.graph;
+import :server.include_trees;
 import :server.document_compile;
 import :server.document_failures;
 import :server.editor_context;
@@ -62,6 +63,7 @@ public:
     ASTFamily(Project& project,
               EditorContext& contexts,
               TaskGraph& graph,
+              IncludeTrees& trees,
               PCMBuilder& pcm,
               PCHBuilder& pch,
               WorkerPool& pool,
@@ -289,12 +291,6 @@ private:
                        const std::vector<std::string>& arguments,
                        llvm::StringRef text);
 
-    /// Preprocess `host` for its include tree (Project::include_trees), so
-    /// a header context it lends follows the directives its compile really
-    /// enters. False when no tree came: the worker failed the run, which
-    /// the tree records, or never answered.
-    kota::task<bool> fetch_include_tree(Fid host);
-
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
@@ -386,6 +382,8 @@ private:
     EditorContext& contexts;
 
     TaskGraph& graph;
+
+    IncludeTrees& trees;
 
     PCMBuilder& pcm;
 

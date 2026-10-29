@@ -3,7 +3,6 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :project.artifact_records;
-import :project.command_resolver;
 import :project.command_snapshot;
 import :project.project;
 import :project.save;
@@ -66,7 +65,6 @@ bool has_unsaved_state(const Project& project) {
 }
 
 kota::task<index::IndexReport> save_project(Project& project,
-                                            CommandResolver& commands,
                                             kota::event_loop& loop,
                                             llvm::SmallVector<Fid> debt,
                                             index::SearchRebuild search) {
@@ -131,7 +129,7 @@ kota::task<index::IndexReport> save_project(Project& project,
     bool carries_contexts = false;
     bool contexts_ok = true;
     if(project.artifacts_dirty) {
-        if(auto bytes = serialize_artifact_records(project, commands); !bytes.empty()) {
+        if(auto bytes = serialize_artifact_records(project); !bytes.empty()) {
             carries_artifacts = true;
             blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
         }

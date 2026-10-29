@@ -1,9 +1,9 @@
 module clice;
 
+import :command.file_kind;
 import :index.database;
 import :index.project_index;
 import :project.command_snapshot;
-import :project.hosting;
 import :project.project;
 import :support.json;
 import :support.logging;
@@ -27,9 +27,9 @@ std::string selected_hash(Project& project, Fid file) {
 /// JSON layout of the persisted command snapshot (blob kind
 /// CommandSnapshot): per source file, the sorted canonical command hashes of
 /// its entries and a hash of its matched config rules when the index state
-/// was last saved. A standalone-indexed header gets an entry too (empty
-/// hashes): its own matched rules plus the host source whose command its
-/// index borrowed. Paths are the database's names (ProjectIndex::portable).
+/// was last saved. A unit without entries gets an entry too (empty
+/// hashes): the command covering it and its matched rules. Paths are the
+/// database's names (ProjectIndex::portable).
 struct Entry {
     std::string file;
 
@@ -46,13 +46,6 @@ struct Entry {
     std::vector<std::string> sources;
 
     std::string rules;
-
-    std::string host;
-
-    /// Command hash of the host's default selection. A host that is not
-    /// itself indexed (a default-command unit under `index = false`) has
-    /// no entry of its own to record its command in.
-    std::string host_selected;
 };
 
 struct Blob {
@@ -68,9 +61,7 @@ struct Blob {
 /// candidates that a rule's default command covers records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
-Blob build_snapshot(Project& project,
-                    const llvm::DenseMap<Fid, Fid>& header_hosts,
-                    llvm::ArrayRef<Fid> standalone_debt) {
+Blob build_snapshot(Project& project, llvm::ArrayRef<Fid> unlisted_debt) {
     Blob snapshot;
     for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
@@ -108,40 +99,26 @@ Blob build_snapshot(Project& project,
             .rules = std::move(rules),
         });
     }
-    // Standalone-indexed TUs have no CDB entry, yet their effective command
-    // depends on the default command covering them or the host they borrow
-    // from, and on the rules matching them and that host — all of it must
-    // be snapshot to detect offline changes.
-    auto add_standalone = [&](Fid tu) {
+    // TUs no database lists: their effective command depends on the
+    // default command covering them and on the rules matching them — all
+    // of it must be snapshot to detect offline changes.
+    auto add_unlisted = [&](Fid tu) {
         auto file = project.file_table.resolve(tu);
         if(!project.build.entries(tu).empty()) {
             return;
         }
-        std::string host;
-        std::string host_selected;
-        llvm::SmallVector<CanonicalRef, 2> edit_paths;
-        if(auto host_it = header_hosts.find(tu); host_it != header_hosts.end()) {
-            auto host_path = project.file_table.resolve(host_it->second);
-            host = project.index.portable(host_path);
-            host_selected = selected_hash(project, host_it->second);
-            edit_paths.push_back(host_path);
-        }
-        edit_paths.push_back(file);
-        auto rules = project.build.edit_hash(edit_paths);
         snapshot.entries.push_back({
             .file = project.index.portable(file),
             .selected = selected_hash(project, tu),
-            .rules = std::move(rules),
-            .host = std::move(host),
-            .host_selected = std::move(host_selected),
+            .rules = project.build.edit_hash(file),
         });
     };
-    project.index.for_each_unit([&](Fid tu) { add_standalone(tu); });
-    // A dropped standalone TU whose rebuild has not finished keeps its entry:
+    project.index.for_each_unit([&](Fid tu) { add_unlisted(tu); });
+    // A dropped unlisted TU whose rebuild has not finished keeps its entry:
     // with no manifest and no CDB entry, the snapshot is the only
     // record that an index is owed (reconcile's debt pass retries it).
-    for(auto tu: standalone_debt) {
-        add_standalone(tu);
+    for(auto tu: unlisted_debt) {
+        add_unlisted(tu);
     }
     for(auto file: project.build.recorded()) {
         snapshot.provisional.push_back(project.index.portable(project.file_table.resolve(file)));
@@ -152,15 +129,22 @@ Blob build_snapshot(Project& project,
     return snapshot;
 }
 
-/// The debt candidates the snapshot must record: standalone TUs with no
-/// manifest and no CDB entry, for which the snapshot is the only record
-/// that an index is owed.
-llvm::SmallVector<Fid> standalone_of(Project& project, llvm::ArrayRef<Fid> candidates) {
+/// Whether `file` is a header the build compiles as no unit of its own:
+/// the units reading it index it, while an older clice indexed one on its
+/// own when it was opened before them.
+bool lone_header(Project& project, Fid file) {
+    return !project.build.unit(file) && is_header_path(project.file_table.resolve(file));
+}
+
+/// The debt candidates the snapshot must record: TUs with no manifest and
+/// no CDB entry, for which the snapshot is the only record that an index
+/// is owed.
+llvm::SmallVector<Fid> unlisted_of(Project& project, llvm::ArrayRef<Fid> candidates) {
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
         if(project.index.indexed(id) || !project.build.entries(id).empty() ||
-           !seen.insert(id).second) {
+           lone_header(project, id) || !seen.insert(id).second) {
             continue;
         }
         debt.push_back(id);
@@ -194,24 +178,14 @@ CommandSnapshot::Remembered CommandSnapshot::remembered(const Project& project) 
     return result;
 }
 
-llvm::SmallVector<Fid> CommandSnapshot::hosted_by(Fid host) const {
-    llvm::SmallVector<Fid> headers;
-    for(auto& [header, recorded]: header_hosts) {
-        if(recorded == host) {
-            headers.push_back(header);
-        }
-    }
-    return headers;
-}
-
 bool CommandSnapshot::owes_save(const Project& project) const {
     return dirty || project.build.recorded_generation() != serialized_records;
 }
 
 std::optional<std::string> CommandSnapshot::serialize(Project& project, llvm::ArrayRef<Fid> debt) {
     serialized_records = project.build.recorded_generation();
-    auto json = json::to_string<PathJsonConfig>(
-        build_snapshot(project, header_hosts, standalone_of(project, debt)));
+    auto json =
+        json::to_string<PathJsonConfig>(build_snapshot(project, unlisted_of(project, debt)));
     if(!json) {
         LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
     }
@@ -257,15 +231,12 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     auto file_of = [&](llvm::StringRef name) {
         return project.file_table.intern(project_index.local(name));
     };
-    llvm::DenseSet<Fid> cdb_ids;
-    llvm::SmallVector<Fid> changed_ids;
-    auto snapshot = build_snapshot(project, header_hosts, {});
+    auto snapshot = build_snapshot(project, {});
     for(auto& entry: snapshot.entries) {
         if(entry.hashes.empty()) {
             continue;
         }
         auto server_id = file_of(entry.file);
-        cdb_ids.insert(server_id);
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
         // can survive a reload that still changes which entry is the
@@ -277,7 +248,6 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             dirty = dirty || it->second->sources != entry.sources;
             continue;
         }
-        changed_ids.push_back(server_id);
         if(!project_index.indexed(server_id)) {
             continue;
         }
@@ -286,28 +256,20 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         rebuild(server_id);
     }
 
-    // A standalone-indexed header borrowed a host source's command and
-    // applied its own matched rules on top, so an offline change to either
-    // staled its index exactly like the live CDB path's hosted-header
-    // invalidation. A header whose recorded host survives unchanged and
-    // still includes it is pinned fresh; one with no recorded host (older
-    // snapshot) falls back to the include-reachability approximation below.
-    llvm::DenseSet<Fid> pinned_fresh;
+    // A TU without entries is stale when the command covering it — a
+    // rule's default command, or the one a provisional member borrows — or
+    // its rules changed offline; one whose command is gone leaves the
+    // index rather than being rebuilt under the builtin fallback, and so
+    // does a header an older clice indexed on its own.
     llvm::DenseSet<Fid> retired;
+    const Entry unknown;
     for(auto& entry: snapshot.entries) {
         if(!entry.hashes.empty()) {
             continue;
         }
         auto it = before.find(entry.file);
-        if(it == before.end()) {
-            // Not in the persisted snapshot: the next save adopts it, and
-            // offline changes against an unknown baseline are undetectable
-            // anyway.
-            continue;
-        }
-        auto& old = *it->second;
         auto server_id = file_of(entry.file);
-        if(!old.hashes.empty()) {
+        if(it != before.end() && !it->second->hashes.empty()) {
             // Its entries vanished. A default command that still covers it
             // is a command change; otherwise the retirement pass below
             // decides whether the index leaves.
@@ -318,68 +280,26 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             }
             continue;
         }
-        // Hosts are only known once a header has been resolved this
-        // session; until then the recorded host stands in, or every host
-        // edit would read as a rule change at each start.
-        std::string rules = entry.rules;
-        std::string host_selected = entry.host_selected;
-        if(entry.host.empty() && !old.host.empty()) {
-            auto host_id = file_of(old.host);
-            CanonicalRef paths[] = {project.file_table.resolve(host_id),
-                                    project.file_table.resolve(server_id)};
-            rules = project.build.edit_hash(paths);
-            host_selected = selected_hash(project, host_id);
+        auto& old = it != before.end() ? *it->second : unknown;
+        bool dropped = !old.selected.empty() && entry.selected.empty();
+        if(dropped || lone_header(project, server_id)) {
+            LOG_INFO("The build no longer compiles {}; dropping its index",
+                     project.file_table.resolve(server_id));
+            project_index.drop(server_id, report);
+            retired.insert(server_id);
+            continue;
         }
-        if(old.rules != rules || old.selected != entry.selected) {
-            // The command that covered it — a rule's default command, or the
-            // one a provisional member borrowed — is gone and no host
-            // confirms it: the build stopped compiling it, so its index
-            // leaves rather than being rebuilt under the builtin fallback.
-            if(!old.selected.empty() && entry.selected.empty() && old.host.empty()) {
-                LOG_INFO("The build no longer compiles {}; dropping its index",
-                         project.file_table.resolve(server_id));
-                project_index.drop(server_id, report);
-                retired.insert(server_id);
-                continue;
-            }
+        // Not in the persisted snapshot: the next save adopts it, and
+        // offline changes against an unknown baseline are undetectable
+        // anyway.
+        if(it == before.end()) {
+            continue;
+        }
+        if(old.rules != entry.rules || old.selected != entry.selected) {
             LOG_INFO("Compile command or rules changed since the last session; reindexing {}",
                      project.file_table.resolve(server_id));
             rebuild(server_id);
-            changed_ids.push_back(server_id);
-            continue;
         }
-        if(old.host.empty()) {
-            continue;
-        }
-        auto host_id = file_of(old.host);
-        if(project.build.commands(host_id).empty() || ranges::contains(changed_ids, host_id) ||
-           old.host_selected != host_selected) {
-            LOG_INFO("Host compile command changed since the last session; reindexing {}",
-                     project.file_table.resolve(server_id));
-            rebuild(server_id);
-            continue;
-        }
-        // The dependency scan preceding this load saw the offline edits, so
-        // a recorded host that the build no longer ranks first — it stopped
-        // including the header, or a rule change moved another database
-        // ahead — cannot confirm the borrowed command any more. Keep the
-        // index serving (last known good, like the vanished-entry case
-        // above) while a rebuild re-selects a host; a Fallback resolution
-        // then changes nothing. The retained index was still built through
-        // the old host, so keep that association until a finished rebuild
-        // overwrites it — an empty host persisted after a Fallback or
-        // failed rebuild would hit the `old.host.empty()` gate next session
-        // and never retry.
-        auto current = default_host(project, server_id);
-        if(!current || current->file != host_id) {
-            LOG_INFO("Default host of {} changed since the last session; reindexing",
-                     project.file_table.resolve(server_id));
-            header_hosts[server_id] = host_id;
-            report.add_reindex(server_id);
-            continue;
-        }
-        header_hosts[server_id] = host_id;
-        pinned_fresh.insert(server_id);
     }
 
     // A file no database lists any more: when every database that listed
@@ -415,43 +335,23 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         project_index.drop(server_id, report);
     }
 
-    // A persisted standalone entry whose file has no manifest is recorded
-    // debt: its index was dropped for a command or rule change and no
-    // rebuild has finished since — with no manifest and no CDB entry,
-    // nothing else would ever retry it. Re-enqueue while the file exists;
-    // a vanished file's debt dies with its entry at the next save.
+    // A persisted entry of a TU without entries whose file has no manifest
+    // is recorded debt: its index was dropped for a command or rule change
+    // and no rebuild has finished since — with no manifest and no CDB
+    // entry, nothing else would ever retry it. Re-enqueue while the file
+    // exists; a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
         if(!old.hashes.empty() || !project.build.entries(file_of(old.file)).empty()) {
             continue;
         }
         auto server_id = file_of(old.file);
-        if(retired.contains(server_id) || project_index.indexed(server_id) ||
-           !fs::exists(project.file_table.resolve(server_id))) {
+        if(retired.contains(server_id) || lone_header(project, server_id) ||
+           project_index.indexed(server_id) || !fs::exists(project.file_table.resolve(server_id))) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}",
                  project.file_table.resolve(server_id));
         report.add_reindex(server_id);
-    }
-    if(changed_ids.empty()) {
-        return;
-    }
-
-    llvm::SmallVector<Fid> hosted;
-    project_index.for_each_unit([&](Fid tu) {
-        if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
-            return;
-        }
-        if(ranges::any_of(changed_ids, [&](Fid host) {
-               return !project.dep_graph.find_include_chain(host, tu).empty();
-           })) {
-            hosted.push_back(tu);
-        }
-    });
-    for(auto header_id: hosted) {
-        LOG_INFO("Host compile command changed since the last session; reindexing {}",
-                 project.file_table.resolve(header_id));
-        rebuild(header_id);
     }
 }
 

@@ -164,7 +164,8 @@ public:
 
     /// clice/currentContext: the context the document of `session`
     /// compiles under in `project`, the one serving it.
-    ext::CurrentContextResult current_context(ProjectServer& project, const Session* session);
+    kota::task<ext::CurrentContextResult> current_context(ProjectServer& project,
+                                                          const Session* session);
 
     /// clice/resetContext: drop the file's choice in every project and
     /// serve it under the automatic context — moving it back to the project

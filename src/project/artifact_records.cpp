@@ -2,7 +2,7 @@ module clice;
 
 import :index.format;
 import :project.artifact_records;
-import :project.command_resolver;
+import :project.hosting;
 import :project.project;
 import :support.json;
 import :support.logging;
@@ -14,8 +14,8 @@ namespace clice {
 namespace {
 
 /// The artifact records: a JSON document in the index database, the
-/// persisted form of PCH/PCM validity metadata and header-mode results
-/// (the cache.json successor). Paths are
+/// persisted form of PCH/PCM validity metadata and self-containment
+/// trials (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
 /// stable across sessions; deps persist as (spelling, content hash), so
 /// the records reference no version ids and self-heal against any index
@@ -58,6 +58,24 @@ struct CachePCMEntry {
     std::vector<CacheDepEntry> deps;
 };
 
+struct TrialEntry {
+    /// index into the blob's paths table
+    std::uint32_t header;
+
+    /// The command the header borrows (CommandTable::command_hash).
+    std::uint64_t command;
+
+    bool self_contained;
+
+    /// The header's text the trial compiled.
+    std::uint64_t text;
+
+    /// The header's disk content when the trial ran.
+    std::uint64_t disk;
+
+    std::vector<CacheDepEntry> deps;
+};
+
 struct ArtifactRecords {
     std::vector<std::string> paths;
 
@@ -71,14 +89,14 @@ struct ArtifactRecords {
 
     std::vector<CachePCMEntry> pcm;
 
-    /// The headers that need a context, named for the modes older records
-    /// stored beside each one, so those records still load.
-    std::vector<ContextHeaderEntry> header_modes;
+    /// Absent from the records a binary older than the trials wrote.
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::vector<TrialEntry>> trials;
 };
 
 }  // namespace
 
-std::string serialize_artifact_records(Project& project, CommandResolver& commands) {
+std::string serialize_artifact_records(Project& project) {
     ArtifactRecords data;
     data.pch_index_format = index::index_format_version;
     llvm::StringMap<std::uint32_t> index_map;
@@ -131,7 +149,17 @@ std::string serialize_artifact_records(Project& project, CommandResolver& comman
         data.pcm.push_back(std::move(entry));
     }
 
-    commands.dump_context_headers(data.header_modes, intern);
+    project.hosting.trials.for_each([&](const TrialKey& key, const auto& entry) {
+        TrialEntry trial{
+            .header = intern(key.first),
+            .command = key.second,
+            .self_contained = entry.result.self_contained,
+            .text = project.file_table.version(entry.result.text).content_hash,
+            .disk = project.file_table.version(entry.result.disk).content_hash,
+        };
+        dump_deps(entry.trace, trial.deps);
+        data.trials.push_back(std::move(trial));
+    });
 
     auto json = json::to_string<PathJsonConfig>(data);
     if(!json) {
@@ -141,7 +169,7 @@ std::string serialize_artifact_records(Project& project, CommandResolver& comman
     return std::move(*json);
 }
 
-void load_artifact_records(Project& project, CommandResolver& commands, llvm::StringRef bytes) {
+void load_artifact_records(Project& project, llvm::StringRef bytes) {
     if(bytes.empty() || !project.store) {
         return;
     }
@@ -224,7 +252,18 @@ void load_artifact_records(Project& project, CommandResolver& commands, llvm::St
         st.deps = load_deps(entry.deps);
     }
 
-    commands.load_context_headers(data.header_modes, file_of);
+    for(auto& trial: data.trials) {
+        auto header = file_of(trial.header);
+        if(!header) {
+            continue;
+        }
+        project.hosting.trials.commit(
+            {*header, trial.command},
+            {.self_contained = trial.self_contained,
+             .text = project.file_table.intern_version(*header, trial.text),
+             .disk = project.file_table.intern_version(*header, trial.disk)},
+            load_deps(trial.deps));
+    }
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              project.pch_cache.size(),

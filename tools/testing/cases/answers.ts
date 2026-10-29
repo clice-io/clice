@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../../client/workspace.ts";
+import { runCommand } from "../cli/run.ts";
 import { withTimeout } from "../../promise.ts";
 import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
@@ -163,6 +164,14 @@ async function onInspect(
     });
     const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
+        // inspect reads an index where one was built, as every process
+        // resolving a header does.
+        if (options.indexing === true) {
+            const indexed = await runCommand(root, ["index"]);
+            if (indexed.status !== 0) {
+                throw new Error(`clice index failed:\n${indexed.stderr}`);
+            }
+        }
         await fn(contextOf(c, client, root, shows));
         // FIXME: importers are left out of inspect's errors: a case whose only
         // errors sit in importers fails here under compiles: false as compiling

@@ -1,7 +1,6 @@
 module clice:project.load;
 
 import :index.project_index;
-import :project.command_resolver;
 import :project.project;
 import :support.prelude;
 import :syntax.dependency_graph;
@@ -77,7 +76,7 @@ struct SavedLoad {
 /// (CommandSnapshot::reconcile). A database of another format or found
 /// corrupt is replaced by a fresh one; one whose header cannot be read is
 /// left untouched, and persistence is off for the session.
-SavedLoad load_saved(Project& project, CommandResolver& commands);
+SavedLoad load_saved(Project& project);
 
 /// What load_project found and did.
 struct ProjectLoad {
@@ -113,7 +112,6 @@ struct ProjectLoad {
 /// reconciliation or removal writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
 ProjectLoad load_project(Project& project,
-                         CommandResolver& commands,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index = false);

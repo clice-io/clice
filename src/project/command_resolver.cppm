@@ -1,22 +1,12 @@
 module clice:project.command_resolver;
 
 import :command.table;
+import :project.hosting;
 import :project.project;
 import :support.prelude;
 import :vfs.file_system;
 
 namespace clice {
-
-/// A header the artifact records persist as needing an includer's context.
-/// Mirrors the on-disk JSON layout field for field — changing it changes
-/// the format.
-struct ContextHeaderEntry {
-    /// Index into the records' path table.
-    std::uint32_t file;
-
-    /// The header contents the result was scored on.
-    std::uint64_t content_hash;
-};
 
 /// What one resolution asks for beyond the file itself. The editor fields
 /// are filled by EditorContext for editor-facing compiles of open files;
@@ -34,9 +24,13 @@ struct CommandRequest {
     /// The user's pin for the file (clice/switchContext).
     const Selection* selection = nullptr;
 
-    /// Resolved header contexts to reuse and to fill: a still-valid entry
-    /// is reused, a stale one replaced.
-    llvm::DenseMap<Fid, HeaderContext>* header_contexts = nullptr;
+    /// The file is open in the editor (see self_contained).
+    bool open = false;
+
+    /// Take the include trees the host search misses with preprocess runs
+    /// in this process (take_tree): the command line's way, which runs no
+    /// workers; the server takes them through its pool (IncludeTrees).
+    bool preprocess = false;
 };
 
 /// Pick the candidate matching a pinned command (multi-configuration files
@@ -60,9 +54,16 @@ CommandRef lent_command(Project& project,
                         llvm::ArrayRef<std::string> extra_prepend = {},
                         llvm::ArrayRef<std::string> extra_append = {});
 
-/// The command `host` lends `header`: of the host's commands fit for the
-/// header, the pinned one (else the first), as lent_command lends it;
-/// nullopt when no command fits.
+/// Of `host`'s commands fit for `header`, the pinned one, else the first;
+/// nullopt when none fits.
+std::optional<Candidate> pinned_host_command(Project& project,
+                                             Fid header,
+                                             Fid host,
+                                             llvm::StringRef pinned_hash,
+                                             llvm::StringRef pinned_base);
+
+/// The command `host` lends `header`: pinned_host_command, as lent_command
+/// lends it.
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
@@ -87,12 +88,19 @@ struct Resolution {
     /// invalid for every other source.
     Fid host;
 
+    /// The place among the ones the host's compile enters the header at
+    /// that the header compiles as (see include_chains).
+    std::uint32_t occurrence = 0;
+
     /// The unit whose command an Inferred resolution borrowed; invalid for
     /// every other source.
     Fid lender;
 
-    /// The file the host's command forces in that the header context
-    /// enters the header through (HeaderContext::forced).
+    /// The file the host's command forces in that the compile enters the
+    /// header through, where the chain starts — the header itself when the
+    /// command forces it in; invalid for a chain from the host's text. The
+    /// header's compile leaves out that -include and the ones after it,
+    /// which the host's compile enters after the header.
     Fid forced;
 
     /// The command selection behind the rendered arguments, for
@@ -104,9 +112,29 @@ struct Resolution {
     /// served its files. Null when nothing was synthesized.
     std::shared_ptr<const SynthesizedContext> synthesized;
 
+    /// The files the header's context rests on, at the versions read: the
+    /// chain the host enters it by, whose text a synthesized context
+    /// embeds. Inputs of every compile under the arguments that clang never
+    /// reads from disk.
+    DepsSnapshot embedded;
+
     /// The host whose includer context the header needed but whose include
     /// chain the synthesis could not follow: the command fell back past it.
     Fid unmatched_host;
+
+    /// The include tree the header's host search needs and no run took: the
+    /// command is that host's, without its includer's context, until it is
+    /// taken.
+    std::optional<TreeRequest> missing_tree;
+
+    /// The self-containment trial deciding whether the header compiles in
+    /// its includer's context; none for a header pinned to a host, which
+    /// always does, or one its host's command forces in itself.
+    std::optional<TrialKey> trial;
+
+    /// What the trial found; nullopt while no result stands: a compile
+    /// under the arguments, without the includer's context, is the trial.
+    std::optional<bool> self_contained;
 
     /// Why the compiler of the command could not be queried, which leaves
     /// the arguments clang's own reading of the command; empty when it
@@ -115,64 +143,20 @@ struct Resolution {
 
     /// The files on disk every compile under the arguments must not see.
     vfs::HiddenFiles hidden;
-
-    /// The host whose include tree could change this resolution: the
-    /// synthesis followed the lexical chain from it, for want of a tree
-    /// telling where its compile enters the header (see enterings), or
-    /// could not follow the chain at all.
-    Fid tree_wanted;
 };
 
 /// Composes a file's final compile command from the project on disk.
 ///
-/// The build (`Build`) says what a file compiles as; the hosting layer
-/// (`default_host`) says which unit stands in for a header without a
-/// command of its own. `resolve_command` applies them in order — own
-/// entry, host, default command, lender, builtin — then the rule edits
-/// and a run's extras; an editor request layers the user's pin and its
-/// cached header contexts on top. Around the host branch it owns the
-/// header-context synthesis (in-memory files restoring the includer's
-/// preprocessor state, see SynthesizedContext) and the self-containment
-/// results that decide it, persisted in the artifact records.
+/// The build (`Build`) says what a file compiles as; hosting (`find_host`)
+/// says which unit stands in for a header without a command of its own,
+/// whether the header compiles alone, and the context restoring its
+/// includer's preprocessor state when it does not. `resolve_command`
+/// applies them in order — own entry, host, default command, lender,
+/// builtin — then the rule edits and a run's extras; an editor request
+/// layers the user's pin on top.
 class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
-
-    /// Effective self-containment mode for a header. X-macro style
-    /// extensions are non-self-contained by construction; otherwise use
-    /// the persisted result. Entering or leaving SelfContained moves
-    /// Project::context_epoch: the header's context listing merges hosts
-    /// only then (ContextService::contexts). Only NeedsContext is ever persisted — a
-    /// "self-contained" impression is session-local and re-evaluated when
-    /// compile inputs change, so it can never go stale.
-    HeaderMode header_mode(Fid path_id) const;
-
-    /// Drop an in-memory SelfContained result (never a persisted
-    /// NeedsContext) so the next compile re-runs the trial.
-    void forget_self_contained(Fid path_id);
-
-    /// Record a header trial's result. NeedsContext carries the content
-    /// hash it was scored on so a stale result is dropped on cache load;
-    /// scored with no disk observation (hash 0) it stays session-local.
-    /// Marks the artifact records dirty when the persisted slice changes.
-    void record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash = 0);
-
-    /// Drop a header's result entirely (its content changed); the next
-    /// compile re-earns it. Marks the artifact records dirty when a
-    /// persisted result is dropped.
-    void reset_header_mode(Fid path_id);
-
-    /// Fill the artifact records' headers that need a context (content-hash
-    /// gated at load). @param intern_id maps a runtime path id into the
-    /// blob's path table; interning order is part of the on-disk format.
-    void dump_context_headers(std::vector<ContextHeaderEntry>& headers,
-                              llvm::function_ref<std::uint32_t(Fid)> intern_id) const;
-
-    /// Restore the headers that need a context. @param file_of maps a path
-    /// table index back to the file it names (nullopt when the index is
-    /// invalid).
-    void load_context_headers(llvm::ArrayRef<ContextHeaderEntry> headers,
-                              llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of);
 
     /// Fill compile arguments for a file and report where they came from.
     /// Tries, in order: the pinned host, the file's own command, a header
@@ -192,46 +176,20 @@ public:
                                        const CommandRequest& request = {});
 
 private:
-    /// A header's self-containment result. NeedsContext carries the
-    /// content hash it was scored on — persisted so a stale result is
-    /// dropped on cache load; 0 means scored with no disk observation,
-    /// which keeps the result session-local.
-    struct HeaderResult {
-        HeaderMode mode = HeaderMode::Unknown;
+    /// resolve_command, the trees the host search misses left missing.
+    Resolution resolve(Fid path_id,
+                       std::string& directory,
+                       std::vector<std::string>& arguments,
+                       const CommandRequest& request);
 
-        std::uint64_t content_hash = 0;
-    };
-
-    /// A header's command borrowed from a host source found through the
-    /// include graph, with a synthesized preamble prefix when the header
-    /// needs includer context (in `resolution`); nullopt when no usable
-    /// host context exists.
+    /// A header's command borrowed from its host, with the includer's
+    /// context when the header needs it (in `resolution`); nullopt when no
+    /// host stands in for it, or its context cannot be synthesized.
     std::optional<CommandRef> resolve_through_host(Fid path_id,
                                                    const CommandRequest& request,
                                                    Resolution& resolution);
 
-    /// The header's context under the request's pinned host while it
-    /// still includes the header, else the default host. Fails with the
-    /// host whose include chain the synthesis cannot follow under its
-    /// command — invalid when no unit includes the header at all.
-    std::expected<HeaderContext, Fid> resolve_header_context(Fid header_path_id,
-                                                             const CommandRequest& request,
-                                                             bool synthesize);
-
-    /// What dump_context_headers would emit for this file (0 = nothing) — the
-    /// before/after probe record and reset compare to mark the artifacts
-    /// blob dirty exactly when the persisted slice changes. A persisted
-    /// result must not outlive its in-memory drop: the header's own
-    /// content hash still matches on restart even though a dependency
-    /// change deliberately reset the result.
-    std::uint64_t persisted_mode_hash(Fid path_id) const;
-
 private:
-    /// Self-containment results for headers, persisted in the artifacts
-    /// blob. Reset when a closed header or a file along its include chain
-    /// changes on disk.
-    llvm::DenseMap<Fid, HeaderResult> header_results;
-
     Project& project;
 };
 

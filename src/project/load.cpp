@@ -4,7 +4,6 @@ import :index.database;
 import :index.project_index;
 import :project.artifact_records;
 import :project.build;
-import :project.command_resolver;
 import :project.command_snapshot;
 import :project.configuration;
 import :project.load;
@@ -35,7 +34,7 @@ static void retire_excluded(Project& project, index::IndexReport& report) {
     }
 }
 
-SavedLoad load_saved(Project& project, CommandResolver& commands) {
+SavedLoad load_saved(Project& project) {
     SavedLoad result;
     auto& report = result.report;
     if(!project.database) {
@@ -50,7 +49,7 @@ SavedLoad load_saved(Project& project, CommandResolver& commands) {
     // load (and self-validate) beside any index state.
     auto load_metadata = [&] {
         if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
-            load_artifact_records(project, commands, artifacts.buffer->getBuffer());
+            load_artifact_records(project, artifacts.buffer->getBuffer());
         }
         if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
             project.contexts.bytes = choices.buffer->getBuffer().str();
@@ -111,7 +110,6 @@ SavedLoad load_saved(Project& project, CommandResolver& commands) {
 }
 
 ProjectLoad load_project(Project& project,
-                         CommandResolver& commands,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index) {
@@ -186,7 +184,7 @@ ProjectLoad load_project(Project& project,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    report.index = load_saved(project, commands);
+    report.index = load_saved(project);
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     llvm::SmallVector<Fid> units;

@@ -200,3 +200,13 @@ range = "int ⟦add⟧(int a, int b);"
 
 ["header served read-only".pushed]
 pushes = []
+
+["unindexed header compiles".hover.hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b);"

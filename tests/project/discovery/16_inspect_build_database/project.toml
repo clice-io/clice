@@ -1,0 +1,7 @@
+# Only the database under build/ defines VALUE: a client that missed it
+# compiles with the fallback command and fails.
+[units]
+"src/main.cpp" = ["-DVALUE=3"]
+
+[databases]
+build = ["src/main.cpp"]

@@ -25,59 +25,6 @@ Spelling argument_path(const Project& project, llvm::StringRef argument) {
     return Spelling(argument, Spelling(project.config.workspace_root));
 }
 
-namespace {
-
-/// Resolve the configuration and open the store and database read-only.
-bool open_database(Project& project, Config config, llvm::StringRef requested_configuration) {
-    auto configuration = resolve_configuration(config, requested_configuration);
-    // Read-only: the default cache directory exists as soon as the config
-    // resolves it, so only the versioned store inside it proves an index
-    // was ever built — and a live server (even one on an older layout)
-    // must not lose blobs to a stats reader.
-    auto store =
-        CacheStore::open(config.project.cache_dir, cache_format_version, /*read_only=*/true);
-    if(!store) {
-        if(store.error() == std::errc::no_such_file_or_directory) {
-            LOG_ERROR("No index cache at {}; run `clice index` first",
-                      std::string_view(config.project.cache_dir));
-        } else {
-            LOG_ERROR("Failed to open cache store at {}: {}",
-                      std::string_view(config.project.cache_dir),
-                      store.error().message());
-        }
-        return false;
-    }
-    project.config = std::move(config);
-    project.index.workspace = project.config.workspace_root;
-    project.store.emplace(std::move(*store));
-    project.build.reset_active(configuration);
-    project.resolved_databases = resolved_databases(project.config, configuration);
-    project.database_key = database_key(project.config, configuration, project.resolved_databases);
-    auto& key = project.database_key;
-    project.database = index::open_database(*project.store, key, /*read_only=*/true);
-    if(!project.database) {
-        // A database that exists but did not open said why as it failed.
-        if(!index::database_exists(*project.store, key)) {
-            LOG_ERROR("No index cache at {}; run `clice index` first",
-                      index::database_directory(*project.store, key));
-        }
-        return false;
-    }
-    return true;
-}
-
-void log_unusable_format(const Project& project) {
-    LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-              std::string_view(project.config.project.cache_dir));
-}
-
-void log_unreadable(const Project& project) {
-    LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-              std::string_view(project.config.project.cache_dir));
-}
-
-}  // namespace
-
 IndexReader::IndexReader(ReadOptions options) :
     query(project.index, files, options.check_disk ? &gate : nullptr, nullptr) {}
 
@@ -88,32 +35,86 @@ std::unique_ptr<IndexReader> IndexReader::open(const Spelling& workspace,
     std::unique_ptr<IndexReader> reader(new IndexReader(options));
     reader->files.spell_root(workspace);
     auto& project = reader->project;
-    if(!open_database(project, std::move(config), configuration)) {
-        return nullptr;
+    auto active = resolve_configuration(config, configuration);
+    project.config = std::move(config);
+    project.index.workspace = project.config.workspace_root;
+    project.build.reset_active(active);
+    auto& cache_dir = project.config.project.cache_dir;
+
+    // Without an index the answers are none; a reader that only consults
+    // one opens with an empty index instead. Empty `why`: the cause was
+    // logged where it failed.
+    auto none = [&](std::string why) -> std::unique_ptr<IndexReader> {
+        if(options.required) {
+            if(!why.empty()) {
+                LOG_ERROR("{}", why);
+            }
+            return nullptr;
+        }
+        if(!why.empty()) {
+            LOG_INFO("{}", why);
+        }
+        project.index.clear();
+        project.database.reset();
+        project.store.reset();
+        return std::move(reader);
+    };
+    auto absent = [&](llvm::StringRef where) {
+        return none(std::format("No index cache at {}; run `clice index` first", where));
+    };
+    auto unusable = [&] {
+        return none(std::format(
+            "Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
+            std::string_view(cache_dir)));
+    };
+    auto unreadable = [&] {
+        return none(
+            std::format("Failed to read the index cache at {}; the cache was left untouched",
+                        std::string_view(cache_dir)));
+    };
+
+    // Read-only: the default cache directory exists as soon as the config
+    // resolves it, so only the versioned store inside it proves an index
+    // was ever built — and a live server (even one on an older layout)
+    // must not lose blobs to a stats reader.
+    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
+    if(!store) {
+        if(store.error() == std::errc::no_such_file_or_directory) {
+            return absent(cache_dir);
+        }
+        return none(std::format("Failed to open cache store at {}: {}",
+                                std::string_view(cache_dir),
+                                store.error().message()));
+    }
+    project.store.emplace(std::move(*store));
+    project.resolved_databases = resolved_databases(project.config, active);
+    project.database_key = database_key(project.config, active, project.resolved_databases);
+    auto& key = project.database_key;
+    project.database = index::open_database(*project.store, key, /*read_only=*/true);
+    if(!project.database) {
+        // A database that exists but did not open said why as it failed.
+        if(!index::database_exists(*project.store, key)) {
+            return absent(index::database_directory(*project.store, key));
+        }
+        return none({});
     }
     if(options.load == IndexLoad::Tables) {
         switch(project.index.open(*project.database)) {
             case index::LoadOutcome::Loaded: return reader;
-            case index::LoadOutcome::Empty:
-                LOG_ERROR("No index cache at {}; run `clice index` first",
-                          std::string_view(project.config.project.cache_dir));
-                return nullptr;
-            case index::LoadOutcome::Undecodable: log_unusable_format(project); return nullptr;
-            case index::LoadOutcome::Unreadable: log_unreadable(project); return nullptr;
+            case index::LoadOutcome::Empty: return absent(cache_dir);
+            case index::LoadOutcome::Undecodable: return unusable();
+            case index::LoadOutcome::Unreadable: return unreadable();
         }
         std::unreachable();
     }
     // The writer's load, read-only: it never saves on a read-only database.
-    CommandResolver commands{project};
-    if(!load_saved(project, commands).decoded) {
-        log_unusable_format(project);
-        return nullptr;
+    if(!load_saved(project).decoded) {
+        return unusable();
     }
     // load_saved detaches the database when the header exists but cannot
     // be read — a transient IO error, not an empty index.
     if(project.database == nullptr) {
-        log_unreadable(project);
-        return nullptr;
+        return unreadable();
     }
     if(options.load == IndexLoad::Build) {
         auto remembered = CommandSnapshot::remembered(project);
@@ -135,8 +136,7 @@ feature::query::Context IndexReader::context() const {
 }
 
 const clang::LangOptions& IndexReader::dialect(Fid file) {
-    auto hosts = ranked_hosts(project, file);
-    return clice::dialect(project, file, nullptr, hosts.empty() ? Fid() : hosts.front());
+    return clice::dialect(project, file, nullptr, host_of(project, file));
 }
 
 std::vector<std::string> IndexReader::stale(std::vector<std::string> listed) const {

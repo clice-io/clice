@@ -69,7 +69,7 @@ enum class BlobKind : std::uint8_t {
     /// changes that happened while no server was running.
     CommandSnapshot,
     /// The single artifact records blob (PCH/PCM records with their deps,
-    /// header-mode results), key "artifacts".
+    /// self-containment trials), key "artifacts".
     ArtifactRecords,
     /// The single context choices blob (saved context choices, synthesized
     /// artifact hosts), key "contexts" — sovereignty records, never

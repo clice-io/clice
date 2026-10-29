@@ -3,7 +3,7 @@
   "topic": "document_links",
   "subtopic": "include_directives",
   "title": "`__has_include`",
-  "summary": "The checked path links to the file it probes",
+  "summary": "The checked path links to the file it looks for",
   "prose": "",
   "status": "supported",
   "issues": [],

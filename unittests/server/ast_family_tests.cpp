@@ -2,9 +2,11 @@ module clice;
 
 import :command.table;
 import :feature.diagnostics;
+import :project.hosting;
 import :sched.builders.pch;
 import :sched.builders.pcm;
 import :sched.graph;
+import :server.include_trees;
 import :server.ast_family;
 import :server.dispatcher;
 import :server.document_failures;
@@ -66,9 +68,10 @@ struct Stack {
     PCMBuilder pcm{graph, project, commands, pch, pool};
     SessionStore sessions;
     DocumentFailures failures;
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, failures};
+    IncludeTrees trees{project, pool};
+    ASTFamily ast{project, contexts, graph, trees, pcm, pch, pool, sessions, failures};
     PositionEncoding encoding = PositionEncoding::UTF16;
-    Dispatcher dispatcher{project, contexts, ast, pool, failures, encoding};
+    Dispatcher dispatcher{project, contexts, ast, trees, pool, failures, encoding};
 
     Stack() {
         pcm.register_runner();
@@ -176,7 +179,6 @@ ZEST_CASE(SwitchIdentityResets) {
     Stack stack;
     auto session = stack.open("/proj/h.h", "int x;\n");
     auto pid = session->path_id;
-    session->trial_done = true;
     auto& entry = stack.ast.compiles.entries[pid];
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
@@ -194,7 +196,6 @@ ZEST_CASE(SwitchIdentityResets) {
     // until the next compile overwrites it (same as the old world's
     // session fields).
     ZASSERT(session->generation == generation + 1);
-    ZASSERT(!session->trial_done);
     ZASSERT(!stack.ast.compiles.current(pid));
     ZASSERT(!stack.ast.compiles.entries[pid].deps.has_value());
     auto after = stack.ast.compiles.latest(pid);
@@ -745,7 +746,7 @@ ZEST_CASE(HostImportRecorded) {
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
-        opts.stateless_count = 0;
+        opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
 
@@ -761,8 +762,8 @@ ZEST_CASE(HostImportRecorded) {
     stack.loop.run();
     ZEXPECT(done);
 
-    auto* context = stack.contexts.header_context(session->path_id);
-    ZASSERT((context != nullptr && context->synthesized != nullptr));
+    auto* context = stack.project.hosting.contexts.find(session->path_id);
+    ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
@@ -793,7 +794,7 @@ ZEST_CASE(SuffixImportRecorded) {
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
-        opts.stateless_count = 0;
+        opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
 
@@ -809,8 +810,8 @@ ZEST_CASE(SuffixImportRecorded) {
     stack.loop.run();
     ZEXPECT(done);
 
-    auto* context = stack.contexts.header_context(session->path_id);
-    ZASSERT((context != nullptr && context->synthesized != nullptr));
+    auto* context = stack.project.hosting.contexts.find(session->path_id);
+    ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
@@ -843,7 +844,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
-        opts.stateless_count = 0;
+        opts.stateless_count = 1;
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
 
@@ -862,7 +863,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
 
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
-    ZEXPECT(stack.contexts.header_context(header->path_id) != nullptr);
+    ZEXPECT(stack.ast.compiles.latest(header->path_id)->host == unit->path_id);
     ZEXPECT(stack.pcm.import_scans == 0u);
 }
 

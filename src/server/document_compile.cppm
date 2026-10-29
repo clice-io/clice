@@ -54,6 +54,9 @@ struct DocumentCompile {
     /// under its preamble's PCH, or as pch_key itself.
     std::optional<std::string> base_pch_key;
 
+    /// The host whose command the compile borrowed; invalid for none.
+    Fid host;
+
     /// The key of the PCH the parse loaded.
     const std::optional<std::string>& loaded_pch() const {
         return pch_failed ? base_pch_key : pch_key;

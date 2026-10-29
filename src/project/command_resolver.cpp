@@ -40,7 +40,7 @@ void log_command_decision(llvm::StringRef path,
 
 /// How many of `ref`'s `-include`s come before the one naming `forced`:
 /// what a header context entered through that forced file keeps
-/// (HeaderContext::forced). All of them for none.
+/// (Resolution::forced). All of them for none.
 std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
@@ -154,6 +154,26 @@ CommandRef lent_command(Project& project,
                                  extra_append);
 }
 
+std::optional<Candidate> pinned_host_command(Project& project,
+                                             Fid header,
+                                             Fid host,
+                                             llvm::StringRef pinned_hash,
+                                             llvm::StringRef pinned_base) {
+    auto commands = host_commands(project, header, host);
+    if(commands.empty()) {
+        return std::nullopt;
+    }
+    auto host_path = project.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
+    return pick_pinned_command(project,
+                               header,
+                               commands,
+                               edit_paths,
+                               host_path,
+                               pinned_hash,
+                               pinned_base);
+}
+
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
@@ -161,20 +181,11 @@ std::optional<CommandRef> host_command(Project& project,
                                        llvm::StringRef pinned_base,
                                        llvm::ArrayRef<std::string> extra_prepend,
                                        llvm::ArrayRef<std::string> extra_append) {
-    auto commands = host_commands(project, header, host);
-    if(commands.empty()) {
+    auto picked = pinned_host_command(project, header, host, pinned_hash, pinned_base);
+    if(!picked) {
         return std::nullopt;
     }
-    auto host_path = project.file_table.resolve(host);
-    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    auto picked = pick_pinned_command(project,
-                                      header,
-                                      commands,
-                                      edit_paths,
-                                      host_path,
-                                      pinned_hash,
-                                      pinned_base);
-    return lent_command(project, header, host, picked.command, extra_prepend, extra_append);
+    return lent_command(project, header, host, picked->command, extra_prepend, extra_append);
 }
 
 const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host) {
@@ -212,175 +223,105 @@ const clang::LangOptions& dialect(Project& project, Fid file, const Selection* p
     return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 
-HeaderMode CommandResolver::header_mode(Fid path_id) const {
-    if(is_context_header_path(project.file_table.resolve(path_id))) {
-        return HeaderMode::NeedsContext;
-    }
-    if(auto it = header_results.find(path_id); it != header_results.end()) {
-        return it->second.mode;
-    }
-    return HeaderMode::Unknown;
-}
-
-void CommandResolver::forget_self_contained(Fid path_id) {
-    if(header_mode(path_id) == HeaderMode::SelfContained) {
-        reset_header_mode(path_id);
-    }
-}
-
-std::uint64_t CommandResolver::persisted_mode_hash(Fid path_id) const {
-    auto it = header_results.find(path_id);
-    if(it == header_results.end() || it->second.mode != HeaderMode::NeedsContext) {
-        return 0;
-    }
-    return it->second.content_hash;
-}
-
-void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
-    auto persisted = persisted_mode_hash(path_id);
-    if((header_mode(path_id) == HeaderMode::SelfContained) != (mode == HeaderMode::SelfContained)) {
-        project.context_epoch += 1;
-    }
-    header_results[path_id] = {
-        .mode = mode,
-        .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
-    };
-    if(persisted_mode_hash(path_id) != persisted) {
-        project.mark_artifacts_dirty();
-    }
-}
-
-void CommandResolver::reset_header_mode(Fid path_id) {
-    if(persisted_mode_hash(path_id) != 0) {
-        project.mark_artifacts_dirty();
-    }
-    if(header_mode(path_id) == HeaderMode::SelfContained) {
-        project.context_epoch += 1;
-    }
-    header_results.erase(path_id);
-}
-
-void CommandResolver::dump_context_headers(std::vector<ContextHeaderEntry>& headers,
-                                           llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
-    for(auto& [path_id, result]: header_results) {
-        // A result scored with no disk observation (hash 0) cannot be
-        // validated on load, so it stays in memory: persisted, it would
-        // skip the self-containment trial for whatever bytes the next
-        // session finds on disk.
-        if(result.mode != HeaderMode::NeedsContext || result.content_hash == 0)
-            continue;
-        headers.push_back({intern_id(path_id), result.content_hash});
-    }
-}
-
-void CommandResolver::load_context_headers(
-    llvm::ArrayRef<ContextHeaderEntry> headers,
-    llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of) {
-    for(auto& entry: headers) {
-        // The writer never emits unbound (hash 0) results; an entry
-        // carrying one is corrupt and must not bypass the content gate.
-        if(entry.content_hash == 0)
-            continue;
-        auto id = file_of(entry.file);
-        if(!id)
-            continue;
-        // The result is tied to the header's contents — a file edited
-        // while the server was down must re-earn its trial.
-        auto disk = project.file_table.disk.current(*id);
-        if(!disk || disk->hash != entry.content_hash)
-            continue;
-        header_results[*id] = {.mode = HeaderMode::NeedsContext,
-                               .content_hash = entry.content_hash};
-    }
-}
-
 std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
                                                                 const CommandRequest& request,
                                                                 Resolution& resolution) {
-    // Self-containment routing: an Unknown or SelfContained header borrows
-    // the host command without a prefix; NeedsContext synthesizes one.
-    // ASTFamily::run() flips Unknown to NeedsContext when the trial compile's
-    // diagnostics indicate missing includer state. A host the user chose
-    // is chosen for its preprocessor state, so it always synthesizes.
-    auto path = project.file_table.resolve(path_id);
-    const Selection* choice = request.selection;
-    bool has_host_choice = choice && choice->host_path_id.valid();
-    bool synthesize = has_host_choice || header_mode(path_id) == HeaderMode::NeedsContext;
-
-    // Use cached context if it is still valid; otherwise resolve. The cache
-    // is dropped when an active context override points to a different host
-    // or include occurrence, when the routing mode changed, or when any
-    // chain file changed on disk (the synthesized context embeds their
-    // content, so it must be rebuilt). Only editor-facing compiles consult
-    // the cache; background indexing must stay independent of per-editor
-    // context state, so it resolves fresh every time.
-    auto* cache = request.header_contexts;
-    const HeaderContext* ctx_ptr = nullptr;
-    if(cache) {
-        if(auto cached = cache->find(path_id); cached != cache->end()) {
-            auto& context = cached->second;
-            bool override_mismatch =
-                has_host_choice && (context.host_path_id != choice->host_path_id ||
-                                    context.occurrence != choice->occurrence.value_or(0) ||
-                                    context.host_command_hash != choice->command_hash ||
-                                    context.host_base_hash != choice->base_hash);
-            bool mode_mismatch =
-                (context.synthesized != nullptr) != (synthesize && !context.chain.empty());
-            if(override_mismatch || mode_mismatch ||
-               deps_changed(project.file_table, context.deps)) {
-                cache->erase(cached);
-            } else {
-                ctx_ptr = &context;
-            }
-        }
-    }
-
-    std::optional<HeaderContext> local_ctx;
-    if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id, request, synthesize);
-        if(!resolved) {
-            resolution.unmatched_host = resolved.error();
-            resolution.tree_wanted = resolved.error();
-            return std::nullopt;
-        }
-        if(cache) {
-            ctx_ptr = &((*cache)[path_id] = std::move(*resolved));
-        } else {
-            local_ctx = std::move(*resolved);
-            ctx_ptr = &*local_ctx;
-        }
-    }
-    if(ctx_ptr->synthesized && ctx_ptr->lexical) {
-        resolution.tree_wanted = ctx_ptr->host_path_id;
-    }
-
-    auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);
-    auto ref = host_command(project,
-                            path_id,
-                            ctx_ptr->host_path_id,
-                            ctx_ptr->host_command_hash,
-                            ctx_ptr->host_base_hash,
-                            request.extra_prepend,
-                            request.extra_append);
-    if(!ref) {
-        LOG_WARN("resolve_through_host: host {} has no compile command", host_path);
+    auto search = find_host(project, path_id, request.selection);
+    if(search.missing) {
+        resolution.missing_tree = std::move(search.missing);
         return std::nullopt;
     }
-    resolution.host = ctx_ptr->host_path_id;
-    resolution.forced = ctx_ptr->forced;
-    resolution.synthesized = ctx_ptr->synthesized;
+    if(!search.host) {
+        return std::nullopt;
+    }
+    auto& host = *search.host;
+    auto* pin = request.selection;
+    bool pinned = pin && pin->host_path_id == host.file;
+    llvm::StringRef pinned_hash = pinned ? llvm::StringRef(pin->command_hash) : "";
+    llvm::StringRef pinned_base = pinned ? llvm::StringRef(pin->base_hash) : "";
+    // The host search ranks only hosts with a command fitting the header.
+    auto ref = *host_command(project,
+                             path_id,
+                             host.file,
+                             pinned_hash,
+                             pinned_base,
+                             request.extra_prepend,
+                             request.extra_append);
+    auto path = project.file_table.resolve(path_id);
+    auto host_path = project.file_table.resolve(host.file);
+    auto borrow = [&] {
+        // The chain decides the host as a synthesized context's text does:
+        // a change of a file on it may take the header elsewhere.
+        if(!resolution.synthesized) {
+            for(auto file: host.chain) {
+                if(file == path_id) {
+                    continue;
+                }
+                if(auto dep = current_dep(project.file_table, file)) {
+                    resolution.embedded.push_back(*dep);
+                }
+            }
+        }
+        resolution.host = host.file;
+        resolution.occurrence = search.occurrence;
+        resolution.forced = host.chain.front() != host.file ? host.chain.front() : Fid{};
+        LOG_INFO("resolve_command: {} borrows the command of {} (synthesized={})",
+                 path,
+                 host_path,
+                 resolution.synthesized != nullptr);
+        return ref;
+    };
+    // A header the command forces in itself has nothing to cut: the
+    // -includes ahead of it are its context.
+    if(host.chain.size() == 1) {
+        return borrow();
+    }
 
-    LOG_INFO("resolve_command: header context for {} (host={}, synthesized={})",
-             path,
-             host_path,
-             ctx_ptr->synthesized != nullptr);
-    return ref;
+    // What the header borrows is the host's command whatever a run adds.
+    auto lent = *host_command(project, path_id, host.file, pinned_hash, pinned_base);
+    // A host the user chose is chosen for its preprocessor state, so the
+    // header always compiles in its context.
+    std::optional<TrialKey> trial;
+    std::optional<bool> alone = false;
+    if(!pinned) {
+        trial = TrialKey{path_id, project.commands.command_hash(lent.command)};
+        alone = self_contained(project, *trial, request.open);
+    }
+    if(alone == false) {
+        auto context = synthesize(project, path_id, host, lent);
+        if(!context.result.synthesized) {
+            resolution.unmatched_host = host.file;
+            return std::nullopt;
+        }
+        resolution.synthesized = std::move(context.result.synthesized);
+        resolution.embedded = std::move(context.trace);
+    }
+    if(trial) {
+        resolution.trial = trial;
+        resolution.self_contained = alone;
+    }
+    return borrow();
 }
 
 Resolution CommandResolver::resolve_command(Fid path_id,
                                             std::string& directory,
                                             std::vector<std::string>& arguments,
                                             const CommandRequest& request) {
+    auto resolution = resolve(path_id, directory, arguments, request);
+    llvm::SmallVector<UnitCommand, 2> taken;
+    while(request.preprocess && resolution.missing_tree &&
+          !ranges::contains(taken, resolution.missing_tree->key)) {
+        taken.push_back(resolution.missing_tree->key);
+        take_tree(project, *resolution.missing_tree);
+        resolution = resolve(path_id, directory, arguments, request);
+    }
+    return resolution;
+}
+
+Resolution CommandResolver::resolve(Fid path_id,
+                                    std::string& directory,
+                                    std::vector<std::string>& arguments,
+                                    const CommandRequest& request) {
     auto path = project.file_table.resolve(path_id);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
@@ -465,6 +406,23 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         }
     }
 
+    // Until the host's include tree the search waits on is taken, the
+    // header stands on that host's command, without its includer's
+    // context: a compile takes the tree and resolves again.
+    if(auto& missing = resolution.missing_tree) {
+        auto host = missing->key.first;
+        bool pinned = has_host_choice && choice->host_path_id == host;
+        if(auto ref = host_command(project,
+                                   path_id,
+                                   host,
+                                   pinned ? llvm::StringRef(choice->command_hash) : "",
+                                   pinned ? llvm::StringRef(choice->base_hash) : "",
+                                   request.extra_prepend,
+                                   request.extra_append)) {
+            return finish(*ref);
+        }
+    }
+
     // 4. A rule's default command for a file the build does not compile as
     //    a unit (a header under a default-command rule).
     if(!commands.empty()) {
@@ -504,181 +462,6 @@ std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
                                   paths,
                                   request.extra_prepend,
                                   request.extra_append);
-}
-
-std::expected<HeaderContext, Fid>
-    CommandResolver::resolve_header_context(Fid header_path_id,
-                                            const CommandRequest& request,
-                                            bool synthesize) {
-    const Selection* choice = request.selection;
-    // A pinned host (and its chosen include occurrence) wins while it
-    // still compiles and still includes the header; otherwise the build's
-    // default host.
-    std::optional<Host> host;
-    std::optional<std::uint32_t> occurrence;
-    bool has_host_choice = choice && choice->host_path_id.valid();
-    if(has_host_choice) {
-        auto preferred = choice->host_path_id;
-        if(!project.build.commands(preferred).empty()) {
-            if(auto found = enterings(project, preferred, header_path_id)) {
-                auto n = choice->occurrence.value_or(0);
-                if(n < found->size()) {
-                    host = std::move((*found)[n]);
-                    occurrence = n;
-                }
-            } else if(auto chain = lexical_chain(project, preferred, header_path_id);
-                      !chain.empty()) {
-                host = Host{.file = preferred, .chain = std::move(chain), .lexical = true};
-                occurrence = choice->occurrence;
-            }
-        }
-    }
-    if(!host) {
-        host = default_host(project, header_path_id);
-        if(!host) {
-            return std::unexpected(Fid{});
-        }
-    }
-    auto host_path_id = host->file;
-    auto& chain = host->chain;
-
-    // Self-contained route: borrow the host's command, no prefix needed.
-    // The chain is kept so a didSave along it still invalidates the session.
-    std::string host_command_hash;
-    std::string host_base_hash;
-    if(has_host_choice) {
-        host_command_hash = choice->command_hash;
-        host_base_hash = choice->base_hash;
-    }
-
-    bool lexical = host->lexical;
-    Fid forced = chain.front() != host_path_id ? chain.front() : Fid{};
-    // A header the command forces in itself has nothing to cut: the
-    // -includes ahead of it are its context.
-    if(!synthesize || chain.size() == 1) {
-        return HeaderContext{.host_path_id = host_path_id,
-                             .occurrence = occurrence.value_or(0),
-                             .host_command_hash = std::move(host_command_hash),
-                             .host_base_hash = std::move(host_base_hash),
-                             .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
-                             .forced = forced,
-                             .lexical = lexical};
-    }
-
-    // Include directives along the chain are resolved with the host's real
-    // search configuration, so same-named headers in different directories
-    // cannot be confused.
-    auto host_ref = host_command(project,
-                                 chain.back(),
-                                 host_path_id,
-                                 host_command_hash,
-                                 host_base_hash,
-                                 request.extra_prepend,
-                                 request.extra_append);
-    if(!host_ref) {
-        return std::unexpected(host_path_id);
-    }
-    auto host_path = project.file_table.resolve(host_path_id);
-    auto target_path = project.file_table.resolve(chain.back());
-
-    auto search_config = project.toolchain.search_config(*host_ref);
-    vfs::Scope scope(project.file_table.dirs);
-    auto resolved_config = resolve_search_config(search_config, scope);
-
-    auto resolver =
-        [&](const ScanResult::IncludeInfo& include,
-            llvm::StringRef includer_dir,
-            std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
-        auto result = resolve_include(include.path,
-                                      include.is_angled,
-                                      &scope.list(includer_dir),
-                                      includer_dir,
-                                      include.is_include_next,
-                                      includer_found_dir,
-                                      resolved_config,
-                                      scope);
-        if(!result) {
-            return std::nullopt;
-        }
-        // Chain files are named by the build's spelling of each, so a
-        // resolution matches the next one exactly when it is that file.
-        auto found = project.file_table.intern(Spelling::absolute(result->path));
-        result->path = project.file_table.spelling(found).str();
-        return result;
-    };
-
-    // Read the chain files (all but the target) from disk. The synthesized
-    // context deliberately reflects disk state, never open-document buffers:
-    // open files must not be depended upon by other files. The versions
-    // name the bytes just read — the bytes the synthesized context embeds.
-    std::vector<std::string> chain_contents;
-    std::vector<Spelling> chain_paths;
-    llvm::SmallVector<ChainEntry> chain_entries;
-    DepsSnapshot deps;
-    chain_contents.reserve(chain.size() - 1);
-    chain_paths.reserve(chain.size() - 1);
-    chain_entries.reserve(chain.size() - 1);
-    deps.reserve(chain.size());
-    for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
-        auto cur_path = project.file_table.resolve(chain[i]);
-        auto observed = vfs::read_observed(cur_path);
-        if(!observed) {
-            LOG_WARN("resolve_header_context: cannot read {}", cur_path);
-            return std::unexpected(host_path_id);
-        }
-        chain_contents.push_back(std::move(observed->text));
-        chain_paths.push_back(project.file_table.spelling(chain[i]));
-        chain_entries.push_back({
-            .path = chain_paths.back(),
-            .content = chain_contents.back(),
-            .line = host->lines.empty() ? 0 : host->lines[i],
-        });
-        project.file_table.disk.observe(chain[i], observed->obs);
-        deps.push_back(
-            {.path_id = chain[i],
-             .version = project.file_table.intern_version(chain[i], observed->obs.hash)});
-    }
-
-    // Snapshot the header itself for other occurrences along the chain:
-    // its real path is remapped to the open buffer at compile time, so
-    // includes of it inside the context must point at a copy. The snapshot
-    // mirrors the header's disk state; a context embedding it re-synthesizes
-    // when it changes so other-occurrence expansions stay current.
-    std::optional<llvm::StringRef> target_content;
-    auto target_observed = vfs::read_observed(target_path);
-    if(target_observed) {
-        target_content = target_observed->text;
-        project.file_table.disk.observe(chain.back(), target_observed->obs);
-    }
-
-    auto target_spelling = project.file_table.spelling(chain.back());
-    auto synthesized = synthesize_context(chain_entries,
-                                          target_spelling,
-                                          resolver,
-                                          host->lines.empty() ? occurrence : std::nullopt,
-                                          target_content);
-    if(!synthesized) {
-        LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
-                 target_path,
-                 host_path);
-        return std::unexpected(host_path_id);
-    }
-    if(synthesized->snapshot) {
-        deps.push_back({.path_id = chain.back(),
-                        .version = project.file_table.intern_version(chain.back(),
-                                                                     target_observed->obs.hash)});
-    }
-
-    return HeaderContext{.host_path_id = host_path_id,
-                         .synthesized =
-                             std::make_shared<const SynthesizedContext>(std::move(*synthesized)),
-                         .occurrence = occurrence.value_or(0),
-                         .host_command_hash = std::move(host_command_hash),
-                         .host_base_hash = std::move(host_base_hash),
-                         .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
-                         .forced = forced,
-                         .deps = std::move(deps),
-                         .lexical = lexical};
 }
 
 }  // namespace clice

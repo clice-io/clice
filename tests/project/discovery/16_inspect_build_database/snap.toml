@@ -1,0 +1,10 @@
+[answers.value.hover]
+markdown = '''
+**variable** `value`
+
+```cpp
+int value = VALUE
+```
+Value: `3`
+'''
+range = "int ⟦value⟧ = VALUE;"

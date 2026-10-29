@@ -56,7 +56,7 @@ tests/document_links/include_directives/04_include_next
 
 **`__has_include`**
 
-The checked path links to the file it probes
+The checked path links to the file it looks for
 
 ```case
 tests/document_links/include_directives/05_has_include
@@ -88,7 +88,7 @@ tests/document_links/embed_directives/01_embed
 
 **`__has_embed`**
 
-The checked path links to the probed resource
+The checked path links to the resource it looks for
 
 ```case
 tests/document_links/embed_directives/02_has_embed

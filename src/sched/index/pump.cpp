@@ -17,10 +17,8 @@ namespace clice {
 
 IndexPump::IndexPump(kota::event_loop& loop,
                      Project& project,
-                     CommandResolver& commands,
                      TURunFamily& turun,
-                     WorkerPool& pool) :
-    loop(loop), project(project), commands(commands), turun(turun), pool(pool) {
+                     WorkerPool& pool) : loop(loop), project(project), turun(turun), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -85,7 +83,7 @@ llvm::SmallVector<Fid> IndexPump::save_debt() const {
 kota::task<> IndexPump::persist(index::SearchRebuild search) {
     bool retry = true;
     while(retry) {
-        auto report = co_await save_project(project, commands, loop, save_debt(), search);
+        auto report = co_await save_project(project, loop, save_debt(), search);
         retry = report.owes_retry;
         apply_report(report);
         // No more indexing is queued, so no save is due for a while: the

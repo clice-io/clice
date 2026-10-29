@@ -26,15 +26,22 @@ namespace clice {
 
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
-    sched(loop, project, commands, server.pool), ast(project,
-                                                     contexts,
-                                                     sched.graph,
-                                                     sched.pcm,
-                                                     sched.pch,
-                                                     server.pool,
-                                                     sessions,
-                                                     server.failures),
-    dispatcher(project, contexts, ast, server.pool, server.failures, server.position_encoding),
+    sched(loop, project, commands, server.pool), trees(project, server.pool), ast(project,
+                                                                                  contexts,
+                                                                                  sched.graph,
+                                                                                  trees,
+                                                                                  sched.pcm,
+                                                                                  sched.pch,
+                                                                                  server.pool,
+                                                                                  sessions,
+                                                                                  server.failures),
+    dispatcher(project,
+               contexts,
+               ast,
+               trees,
+               server.pool,
+               server.failures,
+               server.position_encoding),
     live_sources(project, sched.pch, sessions, ast.compiles),
     index_query(project.index, project.file_table, &freshness, &live_sources),
     requests(ast,
@@ -101,7 +108,6 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
         if(auto session = sessions.find(path_id)) {
             start_over(*session);
         }
-        commands.forget_self_contained(path_id);
     };
 }
 
@@ -191,8 +197,7 @@ void ProjectServer::configure(const std::optional<codec::dyn::Value>& init_optio
 void ProjectServer::start() {
     started = true;
     if(!root.empty()) {
-        auto report =
-            bootstrap_project(project, commands, sched.pump, root, server.requested_configuration);
+        auto report = bootstrap_project(project, sched.pump, root, server.requested_configuration);
         contexts.load();
         if(report.opened_store) {
             bg_tasks.spawn(checkpoint_task());
@@ -246,7 +251,7 @@ kota::task<> ProjectServer::shutdown() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(sched.pump.stop(), ast.stop());
+    co_await kota::when_all(sched.pump.stop(), ast.stop(), trees.stop());
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass.
     co_await sched.shutdown();
@@ -334,11 +339,12 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
         return;
     }
     // Nothing indexed yet: reading this file is the reason to index it
-    // first — unless indexing is disabled, in which case no shard will
-    // ever arrive and only an AST can serve the document. A boost the
-    // pump cannot fulfill escalates through the adapter's attempt-finished
-    // check.
-    if(project.config.project.enable_indexing.value) {
+    // first — unless indexing is disabled or the file is no unit of the
+    // build (a header, which only the units reading it index), in which
+    // case no shard will arrive soon and only an AST can serve the
+    // document. A boost the pump cannot fulfill escalates through the
+    // adapter's attempt-finished check.
+    if(project.config.project.enable_indexing.value && project.build.unit(session->path_id)) {
         sched.pump.boost(session->path_id);
     } else {
         ast.escalate(*session);
@@ -347,7 +353,6 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
 
 void ProjectServer::start_over(Session& session) {
     ast.invalidate(session.path_id);
-    session.trial_done = false;
     server.failures.changed(session.path_id, DocumentFailures::Clock::now());
 }
 
@@ -482,10 +487,6 @@ void ProjectServer::tick_databases() {
 void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     auto dirty = invalidator.apply(events);
 
-    for(auto path_id: dirty.reset_header_mode) {
-        commands.reset_header_mode(path_id);
-    }
-
     // The Lost invalidation voids the latest compile's currency (and any
     // in-flight round's commit-as-current) without touching generation —
     // the buffer is still the same buffer, and the round still publishes
@@ -496,7 +497,6 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
             start_over(*session);
             inputs_changed |= session->serving == ServingMode::Escalated;
         }
-        commands.forget_self_contained(path_id);
     }
     if(inputs_changed) {
         server.on_inputs_changed.emit();
@@ -509,14 +509,6 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(sessions.find(path_id) && !ast.compiling(path_id)) {
             ast.invalidate(path_id);
         }
-    }
-
-    // The header's resolved context was derived from what changed — its
-    // borrowed compile command, a file along its include chain — so the
-    // next use must re-resolve. Session dirtying arrives in the same
-    // DirtySet via mark_ast_dirty.
-    for(auto path_id: dirty.drop_context) {
-        contexts.drop_header_context(path_id);
     }
 
     for(auto path_id: dirty.drop_index) {

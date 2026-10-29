@@ -349,7 +349,7 @@ ZEST_CASE(RuleChangeReindexed) {
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(HostChangeDropsHeader) {
+ZEST_CASE(HeaderIndexedAloneLeaves) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
@@ -359,206 +359,58 @@ ZEST_CASE(HostChangeDropsHeader) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
-        // A standalone pass over the header, as a borrowed-context index
-        // produces it; the host source itself was never indexed.
+        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        // A pass over the header alone, as an older clice ran one for a
+        // header opened before its host was indexed.
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
-    // The host's command changed while no server ran: the header has no
-    // CDB entry of its own, so only include reachability from the changed
-    // source can catch its borrowed-command manifest.
+    // Only units are indexed: the header's own index leaves, and nothing
+    // queues it, its host's run indexes it.
     IndexerFixture f;
     open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
-    auto src_id = f.project.file_table.intern(Spelling::absolute(src));
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    f.project.dep_graph.set_includes(src_id, 0, {{header_id}});
-    f.project.dep_graph.build_reverse_map();
+    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
 
+    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
     ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.pump.pending_reason(header_id).has_value());
 }
 
-ZEST_CASE(HeaderRuleChangeReindexed) {
+ZEST_CASE(UnitRuleChangeReindexed) {
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    auto header = tmp.path("dep.h");
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto indexed = index_file(tmp, header);
+        f.project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -c")});
+        f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
-    // A clice.toml rule matching the header itself changed offline: the
-    // header has no CDB entry, so only its own snapshot entry can see it.
+    // A clice.toml rule matching the unit changed offline: the unit has no
+    // CDB entry, so only its own snapshot entry can see it.
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -c")});
     f.project.config.rules.push_back(ConfigRule{
-        .patterns = {"**/*.h"},
+        .patterns = {"**/*.cpp"},
         .append = {"-DFOO=1"},
     });
     f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     f.load();
 
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(RecordedHostChangeDrops) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "int use() { return 0; }\n");
-    auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
-        auto indexed = index_file(tmp, header);
-        ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
-        f.save();
-    }
-
-    // The host's command changed offline AND the new command no longer
-    // includes the header, so the rebuilt include graph cannot reach it —
-    // only the recorded host association can catch the stale borrow.
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
-    f.load();
-
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(ExcludedHostChangeDrops) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
-    auto add_default_rule = [&](IndexerFixture& f, std::string command) {
-        f.project.config.rules.push_back(ConfigRule{.patterns = {"**/*.cpp"},
-                                                    .default_command = std::move(command),
-                                                    .index = false});
-        f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    };
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        add_default_rule(f, "clang++ -DFOO=1 -c");
-        auto indexed = index_file(tmp, header);
-        ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
-        f.save();
-    }
-
-    // The host compiles under a rule's default command and stays out of
-    // the index itself, so no entry of its own records that command: the
-    // header's snapshot must carry it for the offline change to be seen,
-    // even while the host still includes the header.
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    add_default_rule(f, "clang++ -DFOO=2 -c");
-    auto src_id = f.project.file_table.intern(Spelling::absolute(src));
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    f.project.dep_graph.set_includes(src_id, 0, {{header_id}});
-    f.project.dep_graph.build_reverse_map();
-    f.load();
-
-    ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(PinnedHostKeepsHeader) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    tmp.touch("other.cpp", "#include \"dep.h\"\nint more() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
-    auto other = tmp.path("other.cpp");
-    auto header = tmp.path("dep.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-        f.project.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -c other.cpp"));
-        auto indexed = index_file(tmp, header);
-        ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
-        f.save();
-    }
-
-    // Another includer's command changed, but the header borrowed the
-    // unchanged host's — the recorded association beats the reachability
-    // approximation's over-drop.
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    f.project.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -DBAR=1 -c other.cpp"));
-    auto src_id = f.project.file_table.intern(Spelling::absolute(src));
-    auto other_id = f.project.file_table.intern(Spelling::absolute(other));
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    f.project.dep_graph.set_includes(src_id, 0, {{header_id}});
-    f.project.dep_graph.set_includes(other_id, 0, {{header_id}});
-    f.project.dep_graph.build_reverse_map();
-    f.load();
-
-    ZASSERT(f.project.index.indexed(header_id));
-    ZASSERT(!f.pump.pending_reason(header_id).has_value());
-}
-
-ZEST_CASE(UnreachableHostRebuilds) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "int use() { return 0; }\n");
-    auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-        auto indexed = index_file(tmp, header);
-        ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
-        f.save();
-    }
-
-    // The host's command is untouched but an offline edit removed its
-    // include of the header: the index keeps serving while a queued rebuild
-    // re-selects a host.
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    f.load();
-
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(CDBWriteFailureRetried) {
@@ -633,105 +485,111 @@ ZEST_CASE(MissingSnapshotRewritten) {
     ZASSERT(!has_unsaved_state(f.project));
 }
 
-ZEST_CASE(DroppedHeaderDebtRetried) {
+ZEST_CASE(DroppedUnitDebtRetried) {
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
+    auto add_default_rule = [&](IndexerFixture& f, std::string command) {
+        f.project.config.rules.push_back(ConfigRule{.default_command = std::move(command)});
+        f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    };
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
-        auto indexed = index_file(tmp, header);
+        add_default_rule(f, "clang++ -DFOO=1 -c");
+        auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
     }
 
     {
-        // The host's command changed offline: the header's index is dropped
-        // and queued — but the rebuild never finishes this session. The saved
-        // snapshot must keep recording the header, or nothing would ever
-        // retry it.
+        // The default command changed offline: the unit's index is dropped
+        // and queued — but the rebuild never finishes this session. The
+        // saved snapshot must keep recording the unit, or nothing would
+        // ever retry it.
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+        add_default_rule(f, "clang++ -DFOO=2 -c");
         f.load();
-        auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        ZASSERT(!f.project.index.indexed(header_id));
-        ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+        auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+        ZASSERT(!f.project.index.indexed(tu_id));
+        ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
         f.save();
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    add_default_rule(f, "clang++ -DFOO=2 -c");
     f.load();
 
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(VanishedHeaderDebtDies) {
+ZEST_CASE(VanishedUnitDebtDies) {
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
+    auto add_default_rule = [&](IndexerFixture& f, std::string command) {
+        f.project.config.rules.push_back(ConfigRule{.default_command = std::move(command)});
+        f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    };
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
-        auto indexed = index_file(tmp, header);
+        add_default_rule(f, "clang++ -DFOO=1 -c");
+        auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
-        f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
-                          f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
     }
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+        add_default_rule(f, "clang++ -DFOO=2 -c");
         f.load();
         f.save();
     }
 
-    // The header was deleted while its debt entry sat in the snapshot: a
+    // The unit was deleted while its debt entry sat in the snapshot: a
     // retry could never succeed, so the debt dies instead of keeping every
     // later run partial forever.
-    ZASSERT(fs::remove(header));
+    ZASSERT(fs::remove(src));
     IndexerFixture f;
     open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    add_default_rule(f, "clang++ -DFOO=2 -c");
     f.load();
-    ZASSERT(!f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header)))
-                 .has_value());
+    ZASSERT(
+        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(src))).has_value());
 }
 
-ZEST_CASE(FailedStandaloneInSnapshot) {
-    // A standalone header whose index attempt failed terminally is
-    // recorded nowhere but the pump's failed set; the save's debt
-    // snapshot must persist it, or the repair debt dies with the process
-    // and nothing ever retries the header.
+ZEST_CASE(FailedUnitInSnapshot) {
+    // A unit without entries whose index attempt failed terminally is
+    // recorded nowhere but the pump's failed set; the save's debt snapshot
+    // must persist it, or the repair debt dies with the process and
+    // nothing ever retries the unit.
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "int use() { return 0; }\n");
+    tmp.touch("other.cpp", "int other() { return 0; }\n");
     auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
+    auto other = tmp.path("other.cpp");
+    auto add_default_rule = [&](IndexerFixture& f) {
+        f.project.config.rules.push_back(
+            ConfigRule{.patterns = {"**/other.cpp"}, .default_command = std::string("clang++ -c")});
+        f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    };
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-        f.mark_failed(f.project.file_table.intern(Spelling::absolute(header)));
+        add_default_rule(f);
+        f.mark_failed(f.project.file_table.intern(Spelling::absolute(other)));
         // Something dirty so the save writes at all; the snapshot rides
         // the same batch.
         auto indexed = index_file(tmp, src);
@@ -743,8 +601,9 @@ ZEST_CASE(FailedStandaloneInSnapshot) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    add_default_rule(f);
     f.load();
-    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header))) ==
+    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(other))) ==
             ReindexReason::ContentChanged);
 }
 
@@ -752,7 +611,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     // Debt showing up after the save serialized its snapshot (write-time
     // corruption recovery) comes back with snapshot_stale set; the
     // shutdown's one metadata retry must commit it to the fresh database,
-    // or a dropped standalone header's repair debt is lost for good.
+    // or a dropped unit's repair debt is lost for good.
     struct CorruptOnWrite final : ForwardingDatabase {
         using ForwardingDatabase::ForwardingDatabase;
 
@@ -770,19 +629,22 @@ ZEST_CASE(LateDebtShutdownRetry) {
 
     IndexerFixture f;
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("other.cpp", "int other() { return 0; }\n");
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     open_store(tmp, f.project);
+    f.project.config.rules.push_back(
+        ConfigRule{.patterns = {"**/other.cpp"}, .default_command = std::string("clang++ -c")});
+    f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
 
-    f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
+    f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("other.cpp"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
     index::IndexReport report;
     auto body = [&]() -> kota::task<> {
-        report = co_await save_project(f.project, f.commands, f.loop, f.pump.save_debt());
+        report = co_await save_project(f.project, f.loop, f.pump.save_debt());
     };
     auto task = body();
     f.loop.schedule(task);
@@ -796,7 +658,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.save();
     auto blob = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     ZASSERT(bool(blob));
-    ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
+    ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("other.cpp"));
 }
 
 };  // ZEST_SUITE(CommandSnapshot)

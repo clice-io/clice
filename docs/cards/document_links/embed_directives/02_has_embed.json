@@ -3,7 +3,7 @@
   "topic": "document_links",
   "subtopic": "embed_directives",
   "title": "`__has_embed`",
-  "summary": "The checked path links to the probed resource",
+  "summary": "The checked path links to the resource it looks for",
   "prose": "",
   "status": "supported",
   "issues": [],

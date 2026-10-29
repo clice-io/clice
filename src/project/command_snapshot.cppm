@@ -12,12 +12,11 @@ struct Project;
 /// What the index database records of the commands the index was built
 /// with (blob kind CommandSnapshot): per source file, the sorted canonical
 /// command hashes of its entries and a hash of its matched config rules when
-/// the index was last saved; per standalone-indexed header, its own matched
-/// rules and the host source whose command its index borrowed. A load diffs
-/// it against the live build to drop the index of every TU whose command
-/// changed while no server ran — content-based freshness cannot see command
-/// changes — and the next save rewrites it when the live build serializes
-/// differently.
+/// the index was last saved; per unit without entries, the command covering
+/// it and its matched rules. A load diffs it against the live build to drop
+/// the index of every TU whose command changed while no server ran —
+/// content-based freshness cannot see command changes — and the next save
+/// rewrites it when the live build serializes differently.
 class CommandSnapshot {
 public:
     /// What the persisted snapshot remembers of the build, as absolute
@@ -35,23 +34,6 @@ public:
     /// The build the persisted snapshot of `project`'s database remembers.
     static Remembered remembered(const Project& project);
 
-    /// Record the host source whose command a standalone-indexed header's
-    /// retained index borrowed. Written when a merge commits, persisted in
-    /// the snapshot for the offline diff.
-    void record_host(Fid header, Fid host) {
-        header_hosts[header] = host;
-    }
-
-    /// The header's retained index no longer borrows a host's command: it
-    /// was merged under its own, or a guessed one.
-    void forget_host(Fid header) {
-        header_hosts.erase(header);
-    }
-
-    /// The standalone-indexed headers whose retained index borrowed
-    /// `host`'s command.
-    llvm::SmallVector<Fid> hosted_by(Fid host) const;
-
     /// Diff the persisted snapshot against the live build and drop the
     /// index of every TU whose compile command changed while no server was
     /// running, with its reindex owed in `report`. A TU the build stopped
@@ -67,8 +49,8 @@ public:
     /// provisional member was recorded since it serialized.
     bool owes_save(const Project& project) const;
 
-    /// The snapshot of the live build for the next save, with the
-    /// standalone TUs among `debt` recorded as owed; nullopt when it
+    /// The snapshot of the live build for the next save, with the units
+    /// without entries among `debt` recorded as owed; nullopt when it
     /// serializes as the persisted one does, or fails to serialize.
     std::optional<std::string> serialize(Project& project, llvm::ArrayRef<Fid> debt);
 
@@ -91,14 +73,6 @@ public:
     }
 
 private:
-    /// Host source whose command each standalone-indexed header's retained
-    /// index borrowed, recorded when a merge commits and persisted in the
-    /// snapshot. The offline diff checks the recorded host directly — the
-    /// include graph is rebuilt from the new commands before the load, so
-    /// reachability alone cannot see a change that removed or redirected
-    /// the very include edge the header's context came through.
-    llvm::DenseMap<Fid, Fid> header_hosts;
-
     /// The persisted snapshot's bytes as last read or written; empty when
     /// none exists.
     std::string persisted_bytes;

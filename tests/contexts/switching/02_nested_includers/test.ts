@@ -43,16 +43,8 @@ test("a switch publishes again", async (t) => {
     await t.show("current", s.currentContext("utils.h"));
 });
 
-answers(
-    "names in the includer's context",
-    {
-        paths: {
-            server: "clice inspect compiles a header alone, without the declarations its includer makes before including it",
-        },
-    },
-    async (a) => {
-        for (const m of a.markers()) {
-            await a.show(m.name, a.highlights(m));
-        }
-    },
-);
+answers("names in the includer's context", async (a) => {
+    for (const m of a.markers()) {
+        await a.show(m.name, a.highlights(m));
+    }
+});

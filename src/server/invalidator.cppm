@@ -75,27 +75,18 @@ llvm::SmallVector<FileEvent> take_disk_events(FileTable& files);
 /// these; MasterServer::dispatch() executes them against the mutable
 /// services (sessions, editor context, background indexer).
 ///
-/// Effect algebra: the sets are not disjoint, and stronger effects subsume
-/// weaker ones on the same file — mark_ast_dirty implies forgetting the
-/// self-containment impression, which reset_header_mode extends to a
-/// persisted result — and one event may push a file into several sets.
-/// Execution is idempotent per effect, so the overlap is harmless; what
-/// matters is that each set can also occur ALONE (reset_header_mode for a
-/// closed header has no AST to dirty), which is why they are separate
-/// vocabulary rather than severity levels of one list.
+/// Effect algebra: the sets are not disjoint — one event may push a file
+/// into several sets. Execution is idempotent per effect, so the overlap is
+/// harmless; what matters is that each set can also occur ALONE, which is
+/// why they are separate vocabulary rather than severity levels of one
+/// list.
 struct DirtySet {
-    /// Compile inputs changed: ast_dirty + trial_done=false + forget the
-    /// cached self-containment result.
+    /// Compile inputs changed: the AST is dirty, and a crash record of the
+    /// document may retry.
     llvm::SmallVector<Fid> mark_ast_dirty;
     /// Built AST lost (worker crash) but compile inputs did not change:
-    /// recompile only, without re-running the header trial or touching the
-    /// self-containment result.
+    /// recompile only.
     llvm::SmallVector<Fid> mark_lost;
-    /// A header's content other than its open buffer, or its include chain,
-    /// changed: drop its self-containment result so the next compile
-    /// re-earns it.
-    /// Executed by the command resolver, which owns the results.
-    llvm::SmallVector<Fid> reset_header_mode;
     /// Closed files whose own content changed: their index describes
     /// text that no longer exists. Enqueue for background reindexing as
     /// ReindexReason::ContentChanged — queries skip these files'
@@ -171,11 +162,6 @@ public:
     /// Follows the later-event rule above: a later removal's clear cancels
     /// the drop, since the deleted file's index stays behind.
     llvm::SmallVector<Fid> drop_index;
-    /// Headers whose resolved context was derived from something that
-    /// changed — the host's CDB entry, a file along the include chain:
-    /// drop the context so the next use re-resolves. Executed by the
-    /// editor context.
-    llvm::SmallVector<Fid> drop_context;
     /// Include edges changed: context choices may now be orphaned; run the
     /// editor context's orphan cleanup.
     bool recheck_contexts = false;
@@ -183,9 +169,8 @@ public:
     bool reschedule_indexing = false;
 
     bool empty() const {
-        return mark_ast_dirty.empty() && mark_lost.empty() && reset_header_mode.empty() &&
-               reindex_content_changed.empty() && reindex_deps_only.empty() &&
-               clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
+        return mark_ast_dirty.empty() && mark_lost.empty() && reindex_content_changed.empty() &&
+               reindex_deps_only.empty() && clear_reindex.empty() && drop_index.empty() &&
                !recheck_contexts && !reschedule_indexing;
     }
 };
@@ -194,13 +179,12 @@ public:
 /// derived-state invalidation.
 ///
 /// Ownership charter:
-///   - reads the session store, the editor context, the AST family's
-///     record of what open documents read and the command snapshot's
-///     recorded header hosts, never mutates them;
+///   - reads the session store, the editor context and the AST family's
+///     record of what open documents read, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
-///   - anything touching Sessions, context-domain state (header results, choices,
-///     header contexts), the index queue, or cache persistence is returned
+///   - anything touching Sessions, context choices, the index queue, or
+///     cache persistence is returned
 ///     as a DirtySet effect and executed by the dispatcher, so the engine
 ///     stays testable with plain data structures.
 ///
@@ -229,10 +213,11 @@ public:
     /// answer to "who read this": the root TUs the lexical scan sees
     /// including it, the TUs whose index records reading, looking for or
     /// importing a module built from it, the open documents whose inputs
-    /// (ASTFamily::each_input) name it, and the module units whose last
-    /// PCM build read it, failed builds included — the scan cannot resolve
-    /// a macro include, never follows an import, and never sees a file
-    /// before it exists.
+    /// (ASTFamily::each_input) name it, the module units whose last PCM
+    /// build read it, failed builds included, and the headers whose
+    /// remembered context embeds it — the scan cannot resolve a macro
+    /// include, never follows an import, and never sees a file before it
+    /// exists.
     llvm::SmallVector<Fid> readers(Fid path_id) const;
 
     /// Whether an open document's own compile serves the file's index

@@ -45,7 +45,7 @@ struct IndexerFixture {
     PCHBuilder pch{graph, project, pool};
     PCMBuilder pcm{graph, project, commands, pch, pool};
     TURunFamily turun{graph, project, commands, pcm, pch, pool};
-    IndexPump pump{loop, project, commands, turun, pool};
+    IndexPump pump{loop, project, turun, pool};
 
     IndexerFixture() {
         turun.register_runner();
@@ -63,13 +63,13 @@ struct IndexerFixture {
     /// One save with the pump's debt snapshot, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     kota::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        pump.apply_report(co_await save_project(project, commands, loop, pump.save_debt(), search));
+        pump.apply_report(co_await save_project(project, loop, pump.save_debt(), search));
     }
 
     /// Load and take the report, as the workspace load does. Returns the
     /// decode result (false = a header of another format, or corrupt).
     bool load() {
-        auto result = load_saved(project, commands);
+        auto result = load_saved(project);
         pump.apply_report(result.report);
         return result.decoded;
     }
@@ -149,12 +149,6 @@ struct IndexerFixture {
     /// Judge staleness inside the current round (see begin_round).
     bool needs_reindex(llvm::StringRef path) {
         return project.index.needs_reindex(project.file_table.intern(Spelling::absolute(path)));
-    }
-
-    /// Record a standalone header's borrowed host, as the TURun round does
-    /// after its merge commits (these tests merge worker results directly).
-    void set_header_host(Fid header_id, Fid host_id) {
-        project.command_snapshot.record_host(header_id, host_id);
     }
 
     /// Run one save() to completion on the fixture's loop.

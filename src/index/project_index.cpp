@@ -703,6 +703,7 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu) {
 }
 
 llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUManifest> manifest) {
+    manifests_changed += 1;
     // A new manifest stores what the unit contributes; none owes nothing.
     header_changed = owed.erase(tu) || header_changed;
     auto unit = path_id(tu);

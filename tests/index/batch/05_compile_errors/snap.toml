@@ -24,7 +24,6 @@ stdout = '''
   "interrupted": false,
   "completed": true,
   "indexedTus": 6,
-  "standaloneHeaders": 0,
   "shardCount": 7,
   "shardBytes": "#",
   "symbolCount": 8,
