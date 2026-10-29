@@ -128,6 +128,26 @@ ZEST_CASE(CodegenKeptInFull) {
     ZEXPECT(llvm::StringRef(full).contains("-fdata-sections"));
 };
 
+ZEST_CASE(ModuleEmbeddingDiscarded) {
+    /// A module embedding its sources, as Bazel's module rules ask cc1 to,
+    /// would override them in its importers: clice builds its modules from
+    /// the files on disk, whichever spelling asks.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake",
+                         "a.cppm",
+                         "clang++ -std=c++20 -Xclang -fmodules-embed-all-files a.cppm"sv);
+    database.add_command("/fake",
+                         "b.cppm",
+                         "clang++ -std=c++20 -fmodules-embed-all-files b.cppm"sv);
+    for(auto file: {"a.cppm", "b.cppm"}) {
+        auto argv = render_entry(database, fake(file));
+        ZASSERT(argv.size() == 3U);
+        ZEXPECT(argv[1] == "-std=c++20"sv);
+    }
+};
+
 };  // ZEST_SUITE(Normalize)
 
 }  // namespace

@@ -1,0 +1,5 @@
+# Bazel's module rules embed a module's sources in it, which an importer's
+# sandbox needs.
+[units]
+"a.cppm" = ["-Xclang", "-fmodules-embed-all-files"]
+"main.cpp" = []
