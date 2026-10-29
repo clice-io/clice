@@ -113,3 +113,7 @@ stdout = '''
 }
 '''
 exit = 0
+
+["inspect takes an include"."$ clice inspect document-symbols list.def --host main.cpp --occurrence 5"]
+stderr = "error: --host: the compile of ${WS}/main.cpp enters ${WS}/list.def fewer than 6 times"
+exit = 1

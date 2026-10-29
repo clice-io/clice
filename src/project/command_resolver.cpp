@@ -254,7 +254,10 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
         // a change of a file on it may take the header elsewhere.
         if(!resolution.synthesized) {
             for(auto file: host.chain) {
-                if(auto dep = current_dep(project.file_table, file); dep && file != path_id) {
+                if(file == path_id) {
+                    continue;
+                }
+                if(auto dep = current_dep(project.file_table, file)) {
                     resolution.embedded.push_back(*dep);
                 }
             }
