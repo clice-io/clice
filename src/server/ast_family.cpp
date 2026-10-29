@@ -355,14 +355,13 @@ void ASTFamily::saved(Session& session) {
     std::string directory;
     std::vector<std::string> arguments;
     auto resolution = contexts.resolve_command(path_id, directory, arguments);
-    if(resolution.trial && resolution.self_contained) {
+    if(resolution.trial) {
         auto compiled = compiles.latest_at(path_id, session.version);
         bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
-        saved_trial(project,
-                    *resolution.trial,
-                    project.file_table.intern_version(path_id, session.hash),
-                    leans);
-        if(*resolution.self_contained && leans) {
+        if(saved_trial(project,
+                       *resolution.trial,
+                       project.file_table.intern_version(path_id, session.hash),
+                       leans)) {
             invalidate(path_id);
         }
     }

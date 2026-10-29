@@ -409,9 +409,15 @@ std::optional<bool> self_contained(Project& project, const TrialKey& key, bool o
     if(!entry) {
         return std::nullopt;
     }
-    // A result the other side does not take is kept for it.
-    auto version = open ? entry->result.disk : entry->result.text;
-    if(files.check_version(version) != vfs::DiskState::CheckResult::Fresh) {
+    // A result the other side does not take is kept for it. The editor's
+    // resolutions look at the disk through what the tracker saw last, as
+    // they read the buffer, not the file.
+    if(open) {
+        auto seen = files.disk.seen_hash(key.first);
+        if(!seen || *seen != files.version(entry->result.disk).content_hash) {
+            return std::nullopt;
+        }
+    } else if(files.check_version(entry->result.text) != vfs::DiskState::CheckResult::Fresh) {
         return std::nullopt;
     }
     return entry->result.self_contained;
@@ -453,7 +459,8 @@ void commit_trial(Project& project,
                                   {
                                       .self_contained = missing_context_errors(diagnostics) == 0,
                                       .text = text,
-                                      .disk = disk ? disk->version : VersionID{},
+                                      // A header gone from disk holds no result.
+                                      .disk = disk ? disk->version : text,
                                   },
                                   std::move(trace));
     // A header found self-contained lists hosts lending the same command
@@ -462,19 +469,20 @@ void commit_trial(Project& project,
     project.mark_artifacts_dirty();
 }
 
-void saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans) {
+bool saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans) {
     auto* entry = project.hosting.trials.find(key);
     if(!entry) {
-        return;
+        return false;
     }
+    project.mark_artifacts_dirty();
     if(entry->result.self_contained && leans) {
         project.hosting.trials.forget(key);
         project.context_epoch += 1;
-    } else {
-        entry->result.text = text;
-        entry->result.disk = text;
+        return true;
     }
-    project.mark_artifacts_dirty();
+    entry->result.text = text;
+    entry->result.disk = text;
+    return false;
 }
 
 void commit_tree(Project& project,

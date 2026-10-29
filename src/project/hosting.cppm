@@ -227,8 +227,8 @@ void commit_trial(Project& project,
 /// The header's buffer was saved as `text`: the trial of `key`, when one
 /// found it self-contained and `leans` says the compile of that text shows
 /// what an includer provides, is forgotten, to run again; any other result
-/// holds for the saved text.
-void saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans);
+/// holds for the saved text. Whether it was forgotten.
+bool saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans);
 
 /// Remember the tree a preprocess run under `request` took: the files it
 /// read (`paths` with the hashes of the bytes read, the unit's own last),

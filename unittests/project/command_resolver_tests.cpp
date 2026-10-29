@@ -196,10 +196,10 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     // Its trial found it needs its includer's context.
     auto trial = forced(part).first.trial;
     ZASSERT(trial);
-    project.hosting.trials.commit(
-        *trial,
-        {.self_contained = false, .text = current_dep(project.file_table, part)->version},
-        {});
+    auto version = current_dep(project.file_table, part)->version;
+    project.hosting.trials.commit(*trial,
+                                  {.self_contained = false, .text = version, .disk = version},
+                                  {});
     auto [resolution, names] = forced(part);
     ZASSERT(resolution.synthesized);
     ZEXPECT(resolution.forced == pch);

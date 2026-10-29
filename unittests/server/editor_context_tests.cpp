@@ -41,10 +41,10 @@ struct HostedHeader {
         std::vector<std::string> arguments;
         auto first = commands.resolve_command(header, directory, arguments, {.preprocess = true});
         ZASSERT(first.trial);
-        project.hosting.trials.commit(
-            *first.trial,
-            {.self_contained = false, .text = current_dep(project.file_table, header)->version},
-            {});
+        auto version = current_dep(project.file_table, header)->version;
+        project.hosting.trials.commit(*first.trial,
+                                      {.self_contained = false, .text = version, .disk = version},
+                                      {});
     }
 };
 
