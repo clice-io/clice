@@ -323,8 +323,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                             return entry.first;
                         })) {
                         auto compiled = ast.compiles.latest(header_id);
-                        if(compiled ? compiled->host == path_id
-                                    : !project.build.unit(header_id)) {
+                        if(compiled ? compiled->host == path_id : !project.build.unit(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         }
                     }

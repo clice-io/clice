@@ -1001,7 +1001,11 @@ ZEST_CASE(TrialFollowsItsInputs) {
     ZEXPECT(!self_contained(p.project, buffer, true).has_value());
 
     TrialKey other{header, 10};
-    commit_trial(p.project, other, {}, current_dep(files, header)->version, {*current_dep(files, dep)});
+    commit_trial(p.project,
+                 other,
+                 {},
+                 current_dep(files, header)->version,
+                 {*current_dep(files, dep)});
     p.write("dep.h", "struct Widget {};\n");
     files.disk.end_turn();
     ZEXPECT(!self_contained(p.project, other, true).has_value());

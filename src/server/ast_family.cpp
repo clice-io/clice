@@ -357,8 +357,7 @@ void ASTFamily::saved(Session& session) {
     auto resolution = contexts.resolve_command(path_id, directory, arguments);
     if(resolution.trial && resolution.self_contained) {
         auto compiled = compiles.latest_at(path_id, session.version);
-        bool leans =
-            !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
+        bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
         saved_trial(project,
                     *resolution.trial,
                     project.file_table.intern_version(path_id, session.hash),

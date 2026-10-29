@@ -658,8 +658,9 @@ std::string build_pch(Project& project,
 /// synthesizes and the precompiled header the build declares, built
 /// (build_pch). An error when `pin` names a host whose compile does not
 /// enter the file where it says.
-std::expected<CompilationInput, std::string>
-    project_input(const SourceFile& file, Project& project, const Selection* pin) {
+std::expected<CompilationInput, std::string> project_input(const SourceFile& file,
+                                                           Project& project,
+                                                           const Selection* pin) {
     CommandResolver commands(project);
     CompilationInput input{.workspace = project.config.workspace_root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));

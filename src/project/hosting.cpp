@@ -328,7 +328,9 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         });
     };
     // A source another one includes still compiles on its own.
-    auto unit = [&](Fid file) { return project.build.unit(file); };
+    auto unit = [&](Fid file) {
+        return project.build.unit(file);
+    };
     for(auto candidate: project.dep_graph.find_readers(header, unit)) {
         add(candidate);
     }
