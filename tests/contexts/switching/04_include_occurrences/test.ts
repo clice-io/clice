@@ -31,3 +31,9 @@ test("an include past the last is refused", async (t) => {
     expect(switched.success).toBe(false);
     await t.show("current", s.currentContext("list.def"));
 });
+
+test("inspect takes an include", async (t) => {
+    // `--host` and `--occurrence` choose the context as switchContext does.
+    await t.cli("inspect document-symbols list.def --host main.cpp --occurrence 0");
+    await t.cli("inspect document-symbols list.def --host main.cpp --occurrence 1");
+});

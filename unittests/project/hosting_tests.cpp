@@ -970,11 +970,14 @@ ZEST_CASE(TrialHoldsWhileInputsHold) {
         .level = DiagnosticLevel::Error,
         .id = clang::diag::err_unknown_typename,
     };
+    // The result changes what the listing folds: one taken before is stale.
+    auto epoch = p.project.context_epoch;
     commit_trial(p.project,
                  key,
                  {missing},
                  current_dep(p.project.file_table, header)->version,
                  {*current_dep(p.project.file_table, dep)});
+    ZEXPECT(p.project.context_epoch != epoch);
     ZEXPECT(self_contained(p.project, key, false) == false);
     ZEXPECT(!self_contained(p.project, {header, 8}, false).has_value());
 

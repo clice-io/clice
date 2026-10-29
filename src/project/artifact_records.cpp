@@ -86,7 +86,9 @@ struct ArtifactRecords {
 
     std::vector<CachePCMEntry> pcm;
 
-    std::vector<TrialEntry> trials;
+    /// Absent from the records a binary older than the trials wrote.
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::vector<TrialEntry>> trials;
 };
 
 }  // namespace

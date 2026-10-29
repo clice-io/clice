@@ -83,6 +83,55 @@ ZEST_CASE(StaleFormatDropsPch) {
     ZASSERT(f.project.pch_cache.empty());
 }
 
+ZEST_CASE(OlderRecordsLoad) {
+    // Records an older binary wrote have no trials, but its header modes:
+    // the PCH and PCM entries beside them still load.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.project.store->begin_store("pch", "k");
+        ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
+        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
+        auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
+        auto& st = f.project.pch_cache["k"];
+        st.blob = "k";
+        st.path = "k.pch";
+        st.deps.push_back(
+            {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
+        f.project.mark_artifacts_dirty();
+        f.save();
+
+        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        ZASSERT(bool(blob));
+        std::string artifacts = blob.buffer->getBuffer().str();
+        auto trials = std::string_view(R"("trials":[])");
+        auto pos = artifacts.find(trials);
+        ZASSERT(pos != std::string::npos);
+        artifacts.replace(pos, trials.size(), R"("header_modes":[])");
+        index::BlobDatabase::Blob older{index::BlobKind::ArtifactRecords,
+                                        "artifacts",
+                                        copy_bytes(artifacts)};
+        ZASSERT(f.project.database->write(older, {}));
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ZASSERT(f.project.pch_cache.size() == std::size_t(1));
+}
+
 ZEST_CASE(DeplessPcmDropped) {
     // A dep-less PCM entry is an unvalidatable snapshot (the key embeds
     // no content): trusted, it would blindly serve a stale PCM after an
