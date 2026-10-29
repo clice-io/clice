@@ -2,9 +2,9 @@ module;
 
 #include "support/prelude.h"
 
-/// The command line's answers about the loaded build: its files, their
-/// include dependencies and what a change to one reaches, and whether the
-/// index has caught up with its units.
+/// Answers about the loaded build: its files, their include dependencies
+/// and what a change to one reaches, and whether the index has caught up
+/// with its units.
 
 module clice:project.queries;
 

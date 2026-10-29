@@ -11,7 +11,7 @@ import :feature.index_entries;
 import :feature.navigation;
 import :feature.query;
 import :feature.rename;
-import :index.project_index;
+import :index.symbol;
 import :index.search;
 import :index.shard;
 import :index.text;

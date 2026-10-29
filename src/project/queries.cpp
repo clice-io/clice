@@ -10,7 +10,6 @@ import :project.build;
 import :project.project;
 import :project.queries;
 import :syntax.dependency_graph;
-import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 

@@ -14,7 +14,6 @@ import :index.symbol;
 import :semantic.symbol;
 import :syntax.dependency_graph;
 import :syntax.scan;
-import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 

@@ -64,23 +64,23 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
     return std::numeric_limits<std::size_t>::max();
 }
 
-/// The command a file compiles with — among a multi-configuration
-/// file's or host's entries the pinned one, else the first, or the default
-/// command covering it — rules applied, like the resolve path's effective
-/// command: whether it compiles the file as C, whether an -x forces that
-/// (the driver override beats every suffix heuristic), and the last -std
-/// value.
-struct CommandLang {
+/// The language of the command a file compiles with — among a
+/// multi-configuration file's or host's entries the pinned one, else the
+/// first, or the default command covering it — rules applied, like the
+/// resolve path's effective command: whether it compiles the file as C,
+/// whether an -x forces that (the driver override beats every suffix
+/// heuristic), and the last -std value.
+struct Language {
     CommandSource source;
     bool is_c = false;
     bool language_forced = false;
     std::string standard;
 };
 
-std::optional<CommandLang> command_lang(Project& project,
-                                        Fid file,
-                                        llvm::ArrayRef<CanonicalRef> paths,
-                                        const Selection* pin) {
+std::optional<Language> language_of(Project& project,
+                                    Fid file,
+                                    llvm::ArrayRef<CanonicalRef> paths,
+                                    const Selection* pin) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
@@ -96,7 +96,7 @@ std::optional<CommandLang> command_lang(Project& project,
     auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
 
     llvm::StringRef language = ref.input.value;
-    CommandLang result{
+    Language result{
         .source = candidate.source,
         .is_c = language == "c" || language == "c-header",
         .language_forced = !project.commands.forced_language(ref.command).empty(),
@@ -186,7 +186,7 @@ std::optional<CommandRef> host_command(Project& project,
 const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host) {
     auto path = project.file_table.resolve(file);
     bool host_pin = pin && pin->host_path_id.valid();
-    auto own = command_lang(project, file, path, host_pin ? nullptr : pin);
+    auto own = language_of(project, file, path, host_pin ? nullptr : pin);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->language_forced && own->source == CommandSource::CDBExact) {
@@ -198,7 +198,7 @@ const clang::LangOptions& dialect(Project& project, Fid file, const Selection* p
     // contributor union the way it does for the AST after an escalation.
     if(host.valid()) {
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
+        auto host_lang = language_of(project, host, edit_paths, host_pin ? pin : nullptr);
         if(host_lang) {
             return dialect_of("", host_lang->is_c, host_lang->standard);
         }

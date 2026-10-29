@@ -9,7 +9,6 @@ import :analysis.text;
 import :command.file_kind;
 import :config.config;
 import :index.project_index;
-import :index.query;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;

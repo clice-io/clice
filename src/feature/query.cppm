@@ -11,7 +11,9 @@ module clice:feature.query;
 import :feature.documentation;
 import :feature.rename;
 import :index.query;
+import :index.symbol;
 import :index.symbol_query;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice::feature::query {

@@ -612,32 +612,6 @@ static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
            fs::exists(path::join(dir, "build.ninja"));
 }
 
-std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
-    std::vector<CanonicalPath> found;
-    auto entries = fs::walk(root);
-    for(auto& entry: entries) {
-        if(!entry) {
-            vfs::warn_unreadable(entry.error());
-            continue;
-        }
-        if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(root.entry(entry->path), cache_dir)) {
-                entries.skip();
-            }
-            continue;
-        }
-        if(entry->type != fs::FileType::Regular) {
-            continue;
-        }
-        auto path = root.entry(entry->path);
-        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
-           is_context_header_path(path) || path.str().ends_with(".cuh")) {
-            found.push_back(std::move(path));
-        }
-    }
-    return found;
-}
-
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
     if(!path::is_within(file, root) || file == root) {
         return false;
@@ -660,11 +634,30 @@ EditableWorkspace::EditableWorkspace(const Config& config) : root(config.workspa
 }
 
 std::vector<std::string> EditableWorkspace::sources() const {
-    std::vector<std::string> files;
-    for(auto& source: workspace_sources(root, cache_dir)) {
-        files.push_back(std::move(source).str());
+    CanonicalRef workspace = root;
+    std::vector<std::string> found;
+    auto entries = fs::walk(workspace);
+    for(auto& entry: entries) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+            continue;
+        }
+        if(entry->type == fs::FileType::Directory) {
+            if(outside_sources(workspace.entry(entry->path), cache_dir)) {
+                entries.skip();
+            }
+            continue;
+        }
+        if(entry->type != fs::FileType::Regular) {
+            continue;
+        }
+        auto path = workspace.entry(entry->path);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path).str());
+        }
     }
-    return files;
+    return found;
 }
 
 bool EditableWorkspace::editable(llvm::StringRef path) const {

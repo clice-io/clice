@@ -6,7 +6,7 @@ module clice:feature.counterparts;
 
 import :feature.query;
 import :syntax.dependency_graph;
-import :vfs.file_table;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice::feature {

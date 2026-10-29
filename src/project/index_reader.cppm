@@ -9,6 +9,7 @@ import :feature.query;
 import :index.query;
 import :project.project;
 import :vfs.file_table;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice {
@@ -51,7 +52,7 @@ public:
     static std::unique_ptr<IndexReader> open(const Spelling& workspace,
                                              Config config,
                                              llvm::StringRef configuration,
-                                             ReadOptions options = {});
+                                             ReadOptions options);
 
     /// What the answers about symbols and files read (feature::query).
     feature::query::Context context() const;

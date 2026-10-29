@@ -13,7 +13,6 @@ import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
 import :index.project_records;
-import :index.query;
 import :index.search_index;
 import :index.shard;
 import :index.symbol_query;
