@@ -470,9 +470,16 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                                   : std::pair{qualified.take_front(separator),
                                                               qualified.drop_front(separator + 2)};
     };
-    // Adds the using-declarations exporting `names`; whether one names an
-    // enumeration without a name.
-    auto export_names = [&](Exports& exports, llvm::ArrayRef<InterfaceExport> names) {
+    // Adds the alias declarations and the using-declarations exporting
+    // `names`; whether one names an enumeration without a name.
+    auto export_names = [&](Exports& exports,
+                            llvm::ArrayRef<InterfaceAlias> aliases,
+                            llvm::ArrayRef<InterfaceExport> names) {
+        for(auto& alias: aliases) {
+            auto [scope, alias_name] = scope_of(alias.name);
+            exports[scope.str()].aliases.insert(
+                std::format("namespace {} = {};", alias_name.str(), alias.target));
+        }
         bool unnamed = false;
         for(auto& entry: names) {
             auto& lines = exports[scope_of(entry.name).first.str()].names;
@@ -522,7 +529,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
         ranges::sort(entry.include_roots);
         Exports exports;
-        auto unnamed = export_names(exports, module->kept_exports);
+        auto unnamed = export_names(exports, module->aliases, module->kept_exports);
         result.files.push_back({entry.source, unit_text(unit, entry.name, exports, unnamed)});
     }
 
@@ -588,12 +595,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         ranges::sort(module.include_roots);
 
         Exports exports;
-        for(auto& alias: interface.aliases) {
-            auto [scope, alias_name] = scope_of(alias.name);
-            exports[scope.str()].aliases.insert(
-                std::format("namespace {} = {};", alias_name.str(), alias.target));
-        }
-        auto unnamed = export_names(exports, interface.exports);
+        auto unnamed = export_names(exports, interface.aliases, interface.exports);
         result.files.push_back({module.source, unit_text(unit, name, exports, unnamed)});
         result.files.push_back({std::format("{}.macros.h", name), macro_header(interface, false)});
         result.plan.mirrors.push_back(std::format("mirror/{}", name));
@@ -615,10 +617,14 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     // A translation unit that is no module unit imports the modules through
     // the prelude, and includes itself the headers no unit can export.
     std::string prelude = "#pragma once\n\n";
+    std::set<std::string> local_includes;
     for(auto* module: given) {
-        for(auto& header: module->locals) {
-            prelude += std::format("#include {}\n", operand(header));
+        for(auto& local: module->locals) {
+            local_includes.insert(operand(local.entry));
         }
+    }
+    for(auto& include: local_includes) {
+        prelude += std::format("#include {}\n", include);
     }
     if(libcxx) {
         prelude += "import std.compat;\n";

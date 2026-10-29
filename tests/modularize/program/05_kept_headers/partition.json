@@ -1,0 +1,8 @@
+{
+  "modules": [
+    { "name": "kit", "files": ["third/kit/**"], "textual": true },
+    { "name": "alpha", "files": ["third/alpha/**"] },
+    { "name": "app.core", "files": ["app/core/**"], "rewrite": true, "primary": "app/core.cppm" },
+    { "name": "app.tool", "files": ["app/tool/**"], "rewrite": true, "primary": "app/tool.cppm" }
+  ]
+}

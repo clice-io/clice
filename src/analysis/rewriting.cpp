@@ -43,6 +43,15 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
     return llvm::join(names, ".");
 }
 
+/// The interface partition through which every unit of a rewritten module
+/// imports the wrapped modules: beside the primary interface and named
+/// after it, as two modules' primaries may share a directory.
+std::string prelude_path(llvm::StringRef primary) {
+    std::string path(path::parent(primary, posix));
+    path::push(path, std::format("{}_prelude.cppm", path::stem(primary, posix).str()), posix);
+    return path;
+}
+
 std::string with_extension(llvm::StringRef path, llvm::StringRef extension) {
     std::string result(path);
     path::set_extension(result, extension, posix);
@@ -94,8 +103,13 @@ struct Rewriter {
     const Partition& partition;
     llvm::ArrayRef<Unit> units;
 
-    /// Headers of wrapped modules that stay textual where they are included.
+    /// Headers of wrapped modules, and kept modules' headers of
+    /// internal-linkage entities, that stay textual where they are included.
     llvm::DenseSet<std::uint32_t> kept;
+
+    /// A kept module's header holding an internal-linkage entity -> the
+    /// header files naming the entity include for it.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> local_entries;
 
     /// Include operand -> the one rewritten header includers name by it,
     /// for a directive the index did not see, in a branch this configuration
@@ -129,6 +143,17 @@ struct Rewriter {
     std::string partition_of(std::uint32_t file) const {
         auto& primary = partition.primaries[partition.module_of[file]];
         return partition_name(facts.files[file].path, path::parent(primary, posix));
+    }
+
+    /// The header a file using what `file` declares includes.
+    std::uint32_t included_for(std::uint32_t file) const {
+        auto it = local_entries.find(file);
+        return it == local_entries.end() ? file : it->second;
+    }
+
+    std::string prelude_of(std::uint32_t file) const {
+        auto& primary = partition.primaries[partition.module_of[file]];
+        return partition_name(prelude_path(primary), path::parent(primary, posix));
     }
 
     /// How `user` names the file: the most common spelling of its includers
@@ -288,12 +313,17 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
-        auto kind = partition.kinds[module];
-        auto& headers = kind == ModuleKind::Wrapped   ? interfaces[module].textual
-                        : kind == ModuleKind::Textual ? interfaces[module].locals
-                                                      : std::vector<InterfaceHeader>{};
-        for(auto& header: headers) {
-            rewriter.kept.insert(facts.file_ids.lookup(header.file));
+        if(partition.kinds[module] == ModuleKind::Wrapped) {
+            for(auto& header: interfaces[module].textual) {
+                rewriter.kept.insert(facts.file_ids.lookup(header.file));
+            }
+        }
+        for(auto& local: interfaces[module].locals) {
+            auto file = facts.file_ids.lookup(local.file);
+            auto entry = facts.file_ids.lookup(local.entry.file);
+            rewriter.kept.insert(file);
+            rewriter.kept.insert(entry);
+            rewriter.local_entries[file] = entry;
         }
     }
     llvm::StringSet<> ambiguous;
@@ -499,9 +529,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             auto action = rewriter.classify(file, named);
             if(action == Action::Import) {
                 draft.modules.insert(partition.modules[partition.module_of[named]]);
-            } else if(action == Action::Keep && rewriter.textual(named) &&
-                      !ranges::contains(info.includes, named)) {
-                draft.needed.insert(named);
+            } else if(action == Action::Keep && rewriter.textual(named)) {
+                if(auto included = rewriter.included_for(named);
+                   !ranges::contains(info.includes, included)) {
+                    draft.needed.insert(included);
+                }
             }
         }
         // Imports carry no macros: a rewritten header's reach its users
@@ -510,8 +542,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
             } else if(rewriter.textual(defining)) {
-                if(!ranges::contains(info.includes, defining)) {
-                    draft.needed.insert(defining);
+                if(auto included = rewriter.included_for(defining);
+                   !ranges::contains(info.includes, included)) {
+                    draft.needed.insert(included);
                 }
             } else if(partition.kinds[partition.module_of[defining]] != ModuleKind::Program) {
                 draft.library_macros = true;
@@ -627,7 +660,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             // An implementation unit imports it through the primary
             // interface.
             if(rewriter.header(file) && !wrapped.imports.empty()) {
-                lines.push_back("import :prelude;");
+                lines.push_back(std::format("import :{};", rewriter.prelude_of(file)));
             }
         }
         for(auto& imported: draft.modules) {
@@ -689,13 +722,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         // The wrapped modules, imported for every unit of the module but for
         // its importers.
         if(!wrapped.imports.empty()) {
-            std::string path(path::parent(entry.primary, posix));
-            path::push(path, "prelude.cppm", posix);
+            auto path = prelude_path(entry.primary);
             if(auto taken = reserve(path, std::format("module {}", entry.name))) {
                 return std::unexpected(*taken);
             }
-            std::vector<std::string> lines{std::format("export module {}:prelude;", entry.name),
-                                           ""};
+            std::vector<std::string> lines{
+                std::format("export module {}:{};",
+                            entry.name,
+                            partition_name(path, path::parent(entry.primary, posix))),
+                ""};
             for(auto& imported: wrapped.imports) {
                 lines.push_back(std::format("import {};", imported));
             }

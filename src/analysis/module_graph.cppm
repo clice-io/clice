@@ -835,6 +835,15 @@ struct InterfaceSharedLocal {
     std::vector<std::string> modules;
 };
 
+/// A kept module's header holding an internal-linkage entity files of other
+/// modules name, which no unit can export.
+struct InterfaceLocal {
+    std::string file;
+
+    /// The header of `textual` those files include for it.
+    InterfaceHeader entry;
+};
+
 /// A module as an interface unit wrapping its headers whole, as a
 /// third-party library's module does: the global module fragment imports
 /// what its headers need and includes its entries, the purview exports its
@@ -869,10 +878,9 @@ struct Interface {
     /// modules name: what its own unit exports over those headers.
     std::vector<InterfaceExport> kept_exports;
 
-    /// For a kept module, the headers of `textual` holding an
-    /// internal-linkage entity files of other modules name: no unit exports
-    /// one, so a file naming it includes the header itself.
-    std::vector<InterfaceHeader> locals;
+    /// For a kept module, its headers holding an internal-linkage entity
+    /// files of other modules name.
+    std::vector<InterfaceLocal> locals;
 
     /// Textual headers of other wrapped modules its headers name entities
     /// of: what the fragment includes beside the imports.

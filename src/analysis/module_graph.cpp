@@ -3541,7 +3541,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             interface.entries.push_back(header_of(module, file, {}));
         }
         ranges::sort(interface.entries, {}, &InterfaceHeader::file);
-        std::map<std::uint32_t, std::string> included, local;
+        std::map<std::uint32_t, std::string> included;
         for(auto header: textual[module]) {
             if(partition.kinds[module] != ModuleKind::Textual) {
                 included.try_emplace(header);
@@ -3553,17 +3553,15 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             auto entry = entry_of(module, header, user);
             included.try_emplace(entry, reason);
             if(locals[module].contains(header)) {
-                local.try_emplace(entry, reason);
+                interface.locals.push_back(
+                    {.file = facts.files[header].path, .entry = header_of(module, entry, reason)});
             }
         }
         for(auto& [file, reason]: included) {
             interface.textual.push_back(header_of(module, file, reason));
         }
         ranges::sort(interface.textual, {}, &InterfaceHeader::file);
-        for(auto& [file, reason]: local) {
-            interface.locals.push_back(header_of(module, file, reason));
-        }
-        ranges::sort(interface.locals, {}, &InterfaceHeader::file);
+        ranges::sort(interface.locals, {}, &InterfaceLocal::file);
         for(auto& [name, file, form]: kept_exports[module]) {
             interface.kept_exports.push_back(
                 {.name = name, .file = facts.files[file].path, .used = true, .form = form});
@@ -3615,10 +3613,28 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             interface.exports.push_back(
                 {.name = name, .file = facts.files[file].path, .used = used, .form = form});
         }
+        // A kept module's unit redeclares the aliases of the headers its
+        // global module fragment includes, as no emptied header does.
+        llvm::DenseSet<std::uint32_t> fragment;
+        if(partition.kinds[module] == ModuleKind::Textual) {
+            llvm::SmallVector<std::uint32_t> pending;
+            for(auto& [file, reason]: included) {
+                pending.push_back(file);
+            }
+            while(!pending.empty()) {
+                auto file = pending.pop_back_val();
+                if(module_of(file) == module && fragment.insert(file).second) {
+                    pending.append(facts.files[file].includes.begin(),
+                                   facts.files[file].includes.end());
+                }
+            }
+        }
+        auto& unit_files =
+            partition.kinds[module] == ModuleKind::Textual ? fragment : reached[module];
         for(auto& alias: facts.aliases) {
             auto charged = charged_files(facts, alias.file);
             if(ranges::any_of(charged, [&](std::uint32_t file) {
-                   return module_of(file) == module && reached[module].contains(file);
+                   return module_of(file) == module && unit_files.contains(file);
                })) {
                 interface.aliases.push_back({.name = alias.name, .target = alias.target});
             }
