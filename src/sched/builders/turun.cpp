@@ -3,9 +3,9 @@ module clice;
 import :compile.tidy;
 import :index.project_index;
 import :project.command_snapshot;
-import :sched.families.pch;
-import :sched.families.pcm;
-import :sched.families.turun;
+import :sched.builders.pch;
+import :sched.builders.pcm;
+import :sched.builders.turun;
 import :support.bytes;
 import :support.logging;
 import :support.timer;
@@ -18,8 +18,8 @@ namespace clice {
 TURunFamily::TURunFamily(TaskGraph& graph,
                          Project& project,
                          CommandResolver& commands,
-                         PCMFamily& pcm,
-                         PCHFamily& pch,
+                         PCMBuilder& pcm,
+                         PCHBuilder& pch,
                          WorkerPool& pool) :
     graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), pool(pool) {}
 
@@ -132,7 +132,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // (ProjectIndex::importers).
     graph.declare(node(path_id), deps.declared);
     for(auto dep: deps.declared) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             ctx.reference(dep);
         }
     }

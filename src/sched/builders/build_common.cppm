@@ -1,4 +1,4 @@
-module clice:sched.families.build_common;
+module clice:sched.builders.build_common;
 
 import :support.prelude;
 import :worker.protocol;

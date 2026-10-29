@@ -21,7 +21,7 @@ ZEST_SUITE(ContextChoices) {
 ZEST_CASE(ContextsBlobRoundTrip) {
     // The editor's choices and artifact hosts ride the context choices: a
     // restart attaching an editor gets them back, and the save that
-    // committed them resolves the durability ticket taken before it.
+    // committed them makes the change numbered before it durable.
     TempDir tmp;
     tmp.touch("host.cpp", "#include \"h.h\"\n");
     tmp.touch("h.h", "int x;\n");
@@ -38,10 +38,10 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         auto header = f.project.file_table.intern(Spelling::absolute(header_path));
         editor.selections[header] = Selection{host, 1, "applied", "base"};
         editor.mark_dirty();
-        auto ticket = f.project.contexts.ticket;
+        auto seq = f.project.contexts.save_seq;
         f.save();
         ZASSERT(!f.project.contexts.dirty);
-        ZASSERT(f.project.contexts.committed_ticket == ticket);
+        ZASSERT(f.project.contexts.committed_seq == seq);
     }
 
     IndexerFixture f;
@@ -60,9 +60,9 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     ZASSERT(!f.project.contexts.dirty);
 }
 
-ZEST_CASE(CorruptSaveKeepsTicket) {
+ZEST_CASE(CorruptSaveKeepsPending) {
     // A write that commits the context choices into a database it then
-    // finds corrupt made nothing durable: the ticket stays open until the
+    // finds corrupt made nothing durable: the change stays pending until the
     // database opened in its place takes them.
     struct CorruptAfterWrite final : ForwardingDatabase {
         using ForwardingDatabase::ForwardingDatabase;
@@ -86,15 +86,15 @@ ZEST_CASE(CorruptSaveKeepsTicket) {
     f.project.database = std::make_unique<CorruptAfterWrite>(std::move(f.project.database));
     f.project.contexts.bytes = "choices";
     f.project.contexts.dirty = true;
-    f.project.contexts.ticket += 1;
-    auto ticket = f.project.contexts.ticket;
+    f.project.contexts.save_seq += 1;
+    auto seq = f.project.contexts.save_seq;
 
     f.save();
-    ZASSERT(f.project.contexts.committed_ticket < ticket);
+    ZASSERT(f.project.contexts.committed_seq < seq);
     ZASSERT(f.project.contexts.dirty);
 
     f.save();
-    ZASSERT(f.project.contexts.committed_ticket == ticket);
+    ZASSERT(f.project.contexts.committed_seq == seq);
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZASSERT(kept.buffer->getBuffer() == "choices");

@@ -3,8 +3,8 @@ module clice;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.command_snapshot;
-import :sched.families.pcm;
-import :sched.families.turun;
+import :sched.builders.pcm;
+import :sched.builders.turun;
 import :sched.graph;
 import :server.ast_family;
 import :server.context_service;
@@ -40,8 +40,8 @@ struct Harness {
     kota::event_loop loop;
     TaskGraph graph;
     WorkerPool pool{loop};
-    PCHFamily pch;
-    PCMFamily pcm;
+    PCHBuilder pch;
+    PCMBuilder pcm;
     ASTFamily ast;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
@@ -99,8 +99,8 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
-    ph.graph.declare({Family::AST, open.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::TURun, closed.raw}, {PCMBuilder::unresolved_node("m")});
+    ph.graph.declare({Family::AST, open.raw}, {PCMBuilder::unresolved_node("m")});
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
@@ -140,7 +140,7 @@ ZEST_CASE(ReloadProviderCascades) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::TURun, retired.raw}, {PCMBuilder::unresolved_node("m")});
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
 
     CDBDiff delta;

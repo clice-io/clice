@@ -68,8 +68,8 @@ struct ContextService {
     /// lists — as the file's compilation context and persist the choice
     /// across sessions. When persistence is available, success is
     /// acknowledged only once the choice is durably committed: the request
-    /// marks the context choices dirty and awaits the write pipeline's
-    /// ticket. Sessions without a writable database (read-only, caching
+    /// marks the context choices dirty and awaits a save covering the
+    /// mark. Sessions without a writable database (read-only, caching
     /// disabled, open failure) apply the choice in memory and acknowledge
     /// immediately.
     kota::task<ext::SwitchContextResult> switch_context(Session& session,

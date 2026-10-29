@@ -151,7 +151,7 @@ defending against ghosts.
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
-- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTFamily`, `TUIndex` — never `PcmFamily`, `AstFamily`.
+- **Acronyms stay uppercase in type names**: `PCHBuilder`, `ASTFamily`, `TUIndex` — never `PchBuilder`, `AstFamily`.
 - **A file-local type is named by its role in the file**, without the
   words of the file's own subject: in an anonymous namespace,
   `FoldingRangeCollector` in `folding_ranges.cpp` is `Builder`, `ScanOptions`

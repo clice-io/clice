@@ -1,4 +1,4 @@
-module clice:sched.families.pch;
+module clice:sched.builders.pch;
 
 import :project.project;
 import :sched.blame_budget;
@@ -24,9 +24,9 @@ namespace clice {
 /// cancellation. The adoption side stays with the server: which session
 /// points at the key and per-document quarantine — every consumer reads a
 /// failed acquisition's crash from crashed() and books it for itself.
-class PCHFamily {
+class PCHBuilder {
 public:
-    PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool);
+    PCHBuilder(TaskGraph& graph, Project& project, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under

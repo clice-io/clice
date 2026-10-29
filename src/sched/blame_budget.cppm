@@ -5,7 +5,7 @@ import :support.prelude;
 namespace clice {
 
 /// Content-keyed budget for shared PCH pairs whose consumers keep blaming
-/// them (see PCHFamily::blame).
+/// them (see PCHBuilder::blame).
 ///
 /// The pair is shared, so one consumer's decision cannot contain it: every
 /// session with the same preamble would rebuild and blame it again. The

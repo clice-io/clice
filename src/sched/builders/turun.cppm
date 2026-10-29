@@ -1,12 +1,12 @@
-module clice:sched.families.turun;
+module clice:sched.builders.turun;
 
 import :compile.compilation;
 import :feature.diagnostics;
 import :project.command_resolver;
 import :index.project_index;
 import :project.project;
-import :sched.families.pch;
-import :sched.families.pcm;
+import :sched.builders.pch;
+import :sched.builders.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
 import :support.prelude;
@@ -34,8 +34,8 @@ public:
     TURunFamily(TaskGraph& graph,
                 Project& project,
                 CommandResolver& commands,
-                PCMFamily& pcm,
-                PCHFamily& pch,
+                PCMBuilder& pcm,
+                PCHBuilder& pch,
                 WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the pump against a
@@ -161,9 +161,9 @@ private:
 
     CommandResolver& commands;
 
-    PCMFamily& pcm;
+    PCMBuilder& pcm;
 
-    PCHFamily& pch;
+    PCHBuilder& pch;
 
     WorkerPool& pool;
 

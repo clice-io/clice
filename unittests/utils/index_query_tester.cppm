@@ -5,7 +5,7 @@ import :index.query;
 import :index.search;
 import :index.symbol_query;
 import :project.project;
-import :sched.families.pch;
+import :sched.builders.pch;
 import :sched.graph;
 import :server.document_compile;
 import :server.live_sources;
@@ -29,7 +29,7 @@ struct IndexQueryTester : Tester {
     WorkerPool pool{loop};
     TaskGraph graph;
     DocumentCompiles compiles;
-    PCHFamily pch{graph, project, pool};
+    PCHBuilder pch{graph, project, pool};
     ServerLiveSources live{project, pch, store, compiles};
     index::FreshnessGate gate{project.file_table};
     index::IndexQuery query{project.index, project.file_table, &gate, &live};

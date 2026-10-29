@@ -15,22 +15,22 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
     // was consumed is new debt of its own kind — the in-flight (or
     // finished) pass already covers the earlier content change, and
     // keeping ContentChanged would suppress the file's index past that
-    // pass. The fresh ticket invalidates the finish of any attempt
+    // pass. The fresh sequence number invalidates the finish of any attempt
     // already in flight for this file.
-    ticket += 1;
+    seq += 1;
     auto [it, inserted] = entries.try_emplace(id,
                                               reason,
-                                              ticket,
-                                              reason == ReindexReason::ContentChanged ? ticket : 0);
+                                              seq,
+                                              reason == ReindexReason::ContentChanged ? seq : 0);
     if(!inserted) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
-            it->second.content_ticket = ticket;
+            it->second.content_seq = seq;
             it->second.requeue_attempts = 0;
         } else if(fresh_slot) {
             it->second.reason = ReindexReason::DepsOnly;
         }
-        it->second.ticket = ticket;
+        it->second.seq = seq;
     }
 
     return fresh_slot;
@@ -42,7 +42,7 @@ std::optional<PendingTable::TakenDebt> PendingTable::take(Fid id) {
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return TakenDebt{id, it->second.ticket};
+    return TakenDebt{id, it->second.seq};
 }
 
 std::optional<PendingTable::TakenDebt> PendingTable::peek(Fid id) const {
@@ -50,18 +50,18 @@ std::optional<PendingTable::TakenDebt> PendingTable::peek(Fid id) const {
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return TakenDebt{id, it->second.ticket};
+    return TakenDebt{id, it->second.seq};
 }
 
 void PendingTable::finish(const TakenDebt& taken) {
-    if(auto it = entries.find(taken.id); it != entries.end() && it->second.ticket == taken.ticket) {
+    if(auto it = entries.find(taken.id); it != entries.end() && it->second.seq == taken.seq) {
         entries.erase(it);
     }
 }
 
 bool PendingTable::superseded(const TakenDebt& taken) const {
     auto it = entries.find(taken.id);
-    return it == entries.end() || it->second.content_ticket > taken.ticket;
+    return it == entries.end() || it->second.content_seq > taken.seq;
 }
 
 PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& taken,
@@ -77,16 +77,16 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
     // since replaced: its crash says nothing about the fixed content, so
     // it neither spends the fresh budget nor requeues — the newer
     // content's own booking redoes the work.
-    if(it->second.content_ticket > taken.ticket) {
+    if(it->second.content_seq > taken.seq) {
         return {FailureDecision::Superseded};
     }
 
     if(failure == Failure::Crashed ||
        (failure == Failure::Lost && it->second.requeue_attempts >= max_requeue_attempts)) {
         // Giving up accepts the staleness, so clear the table state
-        // here rather than relying on the attempt's ticket-guarded
+        // here rather than relying on the attempt's sequence-guarded
         // finish: a deps-only recording that arrived mid-flight bumped
-        // the ticket, and the guard would leave that downgraded entry
+        // the sequence number, and the guard would leave that downgraded entry
         // booked — a doomed retry that spends one more worker.
         clear(taken.id);
         return {FailureDecision::GaveUp};
@@ -99,7 +99,7 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
     // restore the table entry afterwards.
-    auto reason = it->second.content_ticket == taken.ticket ? ReindexReason::ContentChanged
+    auto reason = it->second.content_seq == taken.seq ? ReindexReason::ContentChanged
                                                             : it->second.reason;
     auto attempts = it->second.requeue_attempts;
     bool needs_slot = record(taken.id, reason);

@@ -2,8 +2,8 @@ module clice;
 
 import :command.table;
 import :feature.diagnostics;
-import :sched.families.pch;
-import :sched.families.pcm;
+import :sched.builders.pch;
+import :sched.builders.pcm;
 import :sched.graph;
 import :server.ast_family;
 import :server.dispatcher;
@@ -62,8 +62,8 @@ struct Stack {
     BuildProbe probe;
     WorkerPool pool{loop};
     TaskGraph graph;
-    PCHFamily pch{graph, project, pool};
-    PCMFamily pcm{graph, project, commands, pch, pool};
+    PCHBuilder pch{graph, project, pool};
+    PCMBuilder pcm{graph, project, commands, pch, pool};
     SessionStore sessions;
     ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     PositionEncoding encoding = PositionEncoding::UTF16;
@@ -668,7 +668,7 @@ ZEST_CASE(BufferImportRecorded) {
 
     // The sentinel edge survives the commit: a first provider's update
     // must reach this document's node.
-    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -715,7 +715,7 @@ ZEST_CASE(IncludeImportRecorded) {
     stack.loop.run();
     ZEXPECT(done);
 
-    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -763,7 +763,7 @@ ZEST_CASE(HostImportRecorded) {
 
     auto* context = stack.contexts.header_context(session->path_id);
     ZASSERT((context != nullptr && context->synthesized != nullptr));
-    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -811,7 +811,7 @@ ZEST_CASE(SuffixImportRecorded) {
 
     auto* context = stack.contexts.header_context(session->path_id);
     ZASSERT((context != nullptr && context->synthesized != nullptr));
-    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    auto dirtied = stack.graph.update(PCMBuilder::unresolved_node("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();

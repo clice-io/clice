@@ -1,8 +1,8 @@
-module clice:sched.families.pcm;
+module clice:sched.builders.pcm;
 
 import :project.command_resolver;
 import :project.project;
-import :sched.families.pch;
+import :sched.builders.pch;
 import :sched.graph;
 import :support.prelude;
 import :worker.pool;
@@ -20,12 +20,12 @@ namespace clice {
 /// response to advisory cancellation (a voided round tells its worker to
 /// stop and still reports the real outcome — contract 2). The graph owns
 /// identity, edges, rounds and interest.
-class PCMFamily {
+class PCMBuilder {
 public:
-    PCMFamily(TaskGraph& graph,
+    PCMBuilder(TaskGraph& graph,
               Project& project,
               CommandResolver& commands,
-              PCHFamily& pch,
+              PCHBuilder& pch,
               WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
@@ -209,7 +209,7 @@ private:
     /// the last build while it holds, else dispatch a new one.
     kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
 
-    /// Move the build's PCM to `superseded`, removing the one it replaced.
+    /// Move the build's PCM to `previous`, removing the one it replaced.
     void retire_blob(PCMBuild& build);
 
     /// The build's PCM, or the PCH it was built over, left the store: forget
@@ -238,7 +238,7 @@ private:
     TaskGraph& graph;
     Project& project;
     CommandResolver& commands;
-    PCHFamily& pch;
+    PCHBuilder& pch;
     WorkerPool& pool;
 
     /// The scans of open buffers, and of units' disk text: kept while the

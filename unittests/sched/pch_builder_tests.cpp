@@ -1,6 +1,6 @@
 module clice;
 
-import :sched.families.pch;
+import :sched.builders.pch;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.temp_dir;
@@ -14,7 +14,7 @@ namespace {
 /// exactly once, whatever happens to the joiners or to the owner's own
 /// frame, and the key is refused until a consumer forgives it. Real
 /// workers, poisoned via the crash pragma.
-ZEST_SUITE(PCHFamilyAcquisition, kota::zest::LoopFixture) {
+ZEST_SUITE(PCHBuilderAcquisition, kota::zest::LoopFixture) {
 
 TempDir tmp;
 std::string src;
@@ -22,9 +22,9 @@ FileTable files;
 Project project{files};
 WorkerPool pool{loop};
 TaskGraph graph;
-PCHFamily pch{graph, project, pool};
+PCHBuilder pch{graph, project, pool};
 
-PCHFamilyAcquisitionTEST() {
+PCHBuilderAcquisitionTEST() {
     // Hang detection: real workers build here, slowly on a loaded machine.
     watchdog = std::chrono::seconds(45);
     tmp.touch("a.cpp", "");
@@ -38,7 +38,7 @@ PCHFamilyAcquisitionTEST() {
     pch.register_runner();
 }
 
-PCHFamily::Request request(llvm::StringRef text) {
+PCHBuilder::Request request(llvm::StringRef text) {
     return {
         .pch_key = "shared-key",
         .file = src,
@@ -78,7 +78,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHFamily::Outcome> a, b;
+    std::optional<PCHBuilder::Outcome> a, b;
 
     execute([&]() -> kota::task<> {
         auto poison = "#pragma clang __debug crash\n";
@@ -91,8 +91,8 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHFamily::Outcome::Failed);
-    ZEXPECT(b == PCHFamily::Outcome::Failed);
+    ZEXPECT(a == PCHBuilder::Outcome::Failed);
+    ZEXPECT(b == PCHBuilder::Outcome::Failed);
     ZEXPECT(deaths == 1);
     auto* crash = pch.crashed("shared-key");
     ZASSERT(crash != nullptr);
@@ -108,7 +108,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
     // round's crashes still count).
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
-    std::optional<PCHFamily::Outcome> joined;
+    std::optional<PCHBuilder::Outcome> joined;
     kota::cancellation_source owner_scope;
 
     execute([&]() -> kota::task<> {
@@ -128,7 +128,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
         co_await kota::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
     });
 
-    ZEXPECT(joined == PCHFamily::Outcome::Failed);
+    ZEXPECT(joined == PCHBuilder::Outcome::Failed);
     ZEXPECT(pch.crashed("shared-key") != nullptr);
 
     logging::reset_anomaly_for_testing();
@@ -141,7 +141,7 @@ ZEST_CASE(ForgiveLiftsRefusal) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHFamily::Outcome> refused, retried;
+    std::optional<PCHBuilder::Outcome> refused, retried;
 
     execute([&]() -> kota::task<> {
         auto poison = "#pragma clang __debug crash\n";
@@ -154,8 +154,8 @@ ZEST_CASE(ForgiveLiftsRefusal) {
         retried = co_await pch.acquire(request(poison));
     });
 
-    ZEXPECT(refused == PCHFamily::Outcome::Failed);
-    ZEXPECT(retried == PCHFamily::Outcome::Failed);
+    ZEXPECT(refused == PCHBuilder::Outcome::Failed);
+    ZEXPECT(retried == PCHBuilder::Outcome::Failed);
     ZEXPECT(deaths == 2);
 
     logging::reset_anomaly_for_testing();
@@ -164,7 +164,7 @@ ZEST_CASE(ForgiveLiftsRefusal) {
 ZEST_CASE(SharedBuildBothReady) {
     // The success half of the matrix: one build serves every joiner, no
     // crash is recorded, and the pair ends up registered under the key.
-    std::optional<PCHFamily::Outcome> a, b;
+    std::optional<PCHBuilder::Outcome> a, b;
 
     execute([&]() -> kota::task<> {
         auto text = "#define X 1\n";
@@ -177,8 +177,8 @@ ZEST_CASE(SharedBuildBothReady) {
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHFamily::Outcome::Ready);
-    ZEXPECT(b == PCHFamily::Outcome::Ready);
+    ZEXPECT(a == PCHBuilder::Outcome::Ready);
+    ZEXPECT(b == PCHBuilder::Outcome::Ready);
     ZEXPECT(pch.crashed("shared-key") == nullptr);
     auto it = project.pch_cache.find("shared-key");
     ZASSERT(it != project.pch_cache.end());
@@ -192,11 +192,11 @@ ZEST_CASE(BlameParksKey) {
     // gets blamed again would rebuild forever without one. A clean
     // consumption clears the strikes; consecutive blames park the key
     // and acquisition fails fast, before any dispatch.
-    std::optional<PCHFamily::Outcome> cleared, parked;
+    std::optional<PCHBuilder::Outcome> cleared, parked;
     execute([&]() -> kota::task<> {
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         pch.blame("shared-key");
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         pch.consumed_ok("shared-key");
         pch.blame("shared-key");
         cleared = co_await pch.acquire(request("#define X 1\n"));
@@ -204,33 +204,33 @@ ZEST_CASE(BlameParksKey) {
         pch.blame("shared-key");
         parked = co_await pch.acquire(request("#define X 1\n"));
     });
-    ZEXPECT(cleared == PCHFamily::Outcome::Ready);
-    ZEXPECT(parked == PCHFamily::Outcome::Failed);
+    ZEXPECT(cleared == PCHBuilder::Outcome::Ready);
+    ZEXPECT(parked == PCHBuilder::Outcome::Failed);
 }
 
 ZEST_CASE(SharedPairStrikesOnce) {
     // Two parses consumed the same pair and both blame it: the second blame
     // finds it retracted already, and the key keeps building.
-    std::optional<PCHFamily::Outcome> rebuilt;
+    std::optional<PCHBuilder::Outcome> rebuilt;
     execute([&]() -> kota::task<> {
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         pch.blame("shared-key");
         pch.blame("shared-key");
         rebuilt = co_await pch.acquire(request("#define X 1\n"));
     });
-    ZEXPECT(rebuilt == PCHFamily::Outcome::Ready);
+    ZEXPECT(rebuilt == PCHBuilder::Outcome::Ready);
 }
 
 ZEST_CASE(EvictedPairNotBlamed) {
     // A pair the store evicted while a parse read it says nothing of its
     // bytes: its consumers' blames book no strike, and the key keeps
     // building however often that happens.
-    std::optional<PCHFamily::Outcome> first, second;
+    std::optional<PCHBuilder::Outcome> first, second;
     execute([&]() -> kota::task<> {
         auto evict = [&] {
             project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
         };
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         evict();
         pch.blame("shared-key");
         first = co_await pch.acquire(request("#define X 1\n"));
@@ -238,11 +238,11 @@ ZEST_CASE(EvictedPairNotBlamed) {
         pch.blame("shared-key");
         second = co_await pch.acquire(request("#define X 1\n"));
     });
-    ZEXPECT(first == PCHFamily::Outcome::Ready);
-    ZEXPECT(second == PCHFamily::Outcome::Ready);
+    ZEXPECT(first == PCHBuilder::Outcome::Ready);
+    ZEXPECT(second == PCHBuilder::Outcome::Ready);
 }
 
-};  // ZEST_SUITE(PCHFamilyAcquisition)
+};  // ZEST_SUITE(PCHBuilderAcquisition)
 
 }  // namespace
 }  // namespace clice::testing

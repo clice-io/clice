@@ -3,8 +3,8 @@ module clice:server.ast_family;
 import :feature.diagnostics;
 import :project.command_resolver;
 import :project.project;
-import :sched.families.pch;
-import :sched.families.pcm;
+import :sched.builders.pch;
+import :sched.builders.pcm;
 import :sched.graph;
 import :server.document_compile;
 import :server.editor_context;
@@ -61,8 +61,8 @@ public:
     ASTFamily(Project& project,
               EditorContext& contexts,
               TaskGraph& graph,
-              PCMFamily& pcm,
-              PCHFamily& pch,
+              PCMBuilder& pcm,
+              PCHBuilder& pch,
               WorkerPool& pool,
               SessionStore& sessions);
 
@@ -278,7 +278,7 @@ private:
     /// the import next to the file's own diagnostics; one whose build
     /// crashed a worker also goes into the session's quarantine, and is
     /// refused until the session holds a license to retry it.
-    kota::task<std::optional<PCMFamily::ModuleDeps>>
+    kota::task<std::optional<PCMBuilder::ModuleDeps>>
         depend_modules(RoundContext& ctx,
                        const std::shared_ptr<Session>& session,
                        const Resolution& resolution,
@@ -304,7 +304,7 @@ private:
 
         Decision decision = Decision::None;
 
-        PCHFamily::Request request;
+        PCHBuilder::Request request;
 
         /// The preamble ends before the text's own, at a completion's point:
         /// what the request loads is its own, not the document's.
@@ -315,9 +315,9 @@ private:
     /// command `resolution` gave the document: the editor's build, skipping
     /// function bodies, but for a modular parse (ModuleDeps::modular), which
     /// reads the index's, the one every PCM is built over.
-    std::optional<PCHFamily::Request> declared_pch(Fid path_id,
+    std::optional<PCHBuilder::Request> declared_pch(Fid path_id,
                                                    const Resolution& resolution,
-                                                   const PCMFamily::ModuleDeps& imports);
+                                                   const PCMBuilder::ModuleDeps& imports);
 
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none. `point` is where a
@@ -329,7 +329,7 @@ private:
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const Resolution& resolution,
-                     const PCMFamily::ModuleDeps& imports,
+                     const PCMBuilder::ModuleDeps& imports,
                      llvm::StringRef base);
 
     /// Revalidate or build the preamble PCH of `text` through the family,
@@ -346,7 +346,7 @@ private:
                                                       const std::string& directory,
                                                       const std::vector<std::string>& arguments,
                                                       const Resolution& resolution,
-                                                      const PCMFamily::ModuleDeps& imports);
+                                                      const PCMBuilder::ModuleDeps& imports);
 
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation kind.
@@ -375,9 +375,9 @@ private:
 
     TaskGraph& graph;
 
-    PCMFamily& pcm;
+    PCMBuilder& pcm;
 
-    PCHFamily& pch;
+    PCHBuilder& pch;
 
     WorkerPool& pool;
 

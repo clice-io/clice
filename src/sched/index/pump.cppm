@@ -4,7 +4,7 @@ import :feature.diagnostics;
 import :index.project_index;
 import :project.command_resolver;
 import :project.project;
-import :sched.families.turun;
+import :sched.builders.turun;
 import :sched.graph;
 import :sched.index.pending_table;
 import :support.prelude;
@@ -262,7 +262,7 @@ private:
     constexpr static unsigned max_requeue_attempts = 3;
 
     struct AttemptWait {
-        std::uint64_t ticket;
+        std::uint64_t seq;
 
         std::shared_ptr<kota::event> event;
     };
@@ -273,11 +273,11 @@ private:
     PendingTable::FailureDecision note_dispatch_failure(const PendingTable::TakenDebt& taken,
                                                         PendingTable::Failure failure);
 
-    /// Wake the file's await_attempt waiters whose observed ticket the
-    /// finished attempt covers (`ticket` and older) and drop their events.
+    /// Wake the file's await_attempt waiters whose observed sequence number the
+    /// finished attempt covers (`seq` and older) and drop their events.
     /// The default wakes every waiter — for the paths where no further
     /// attempt will come (entry cleared, shutdown).
-    void wake_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
+    void wake_attempt_waits(Fid server_path_id, std::uint64_t seq = -1);
 
     /// What a file's latest attempt left, kept by these three alone: an
     /// index, with the errors its compile reported, or a failure for good,
@@ -344,7 +344,7 @@ private:
     /// next round and may be a file the running round has in flight.
     std::size_t round_end = 0;
 
-    /// The pending-reindex debt: take/finish bookkeeping, tickets and
+    /// The pending-reindex debt: take/finish bookkeeping, sequence numbers and
     /// the crash-requeue budget live in the pending table. The pump-side rules
     /// on top of it, each born from a concrete bug:
     /// 1. The freshness check inside the index task is the ONLY place
@@ -366,8 +366,8 @@ private:
     std::size_t indexed_total = 0;
 
     /// The events await_attempt waiters park on, per file and per pending
-    /// ticket observed at wait time; each fires when an attempt covering
-    /// its ticket finishes (or wholesale at stop()). Keyed by ticket so a
+    /// sequence number observed at wait time; each fires when an attempt
+    /// covering it finishes (or wholesale at stop()). Keyed by it so a
     /// requeue during an attempt's flight cannot extend earlier waits —
     /// await_attempt promises one attempt, not an idle file.
     llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;

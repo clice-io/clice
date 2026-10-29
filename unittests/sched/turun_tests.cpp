@@ -1,7 +1,7 @@
 module clice;
 
 import :compile.compilation;
-import :sched.families.turun;
+import :sched.builders.turun;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;

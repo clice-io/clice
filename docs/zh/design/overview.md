@@ -110,7 +110,7 @@ LSP 功能的具体实现。每个功能根据传给它的输入——`Compilati
 任务图引擎，负责决定构建哪些内容、何时构建，并共享构建结果。
 
 - `TaskGraph`：共享构建图。每个计算开销较大的产物都是一个节点；对同一节点的并发请求会汇入同一轮构建，避免重复工作；取消采用协作式机制；图中的边会按依赖关系驱动失效处理
-- `PCHFamily` / `PCMFamily` / `TURunFamily`：分别用于 Preamble PCH（以内容为键）、C++20 模块 PCM（包含导入边和提供方跟踪）以及索引与 lint 共用的一次性翻译单元运行的节点族
+- `PCHBuilder` / `PCMBuilder` / `TURunFamily`：分别用于 Preamble PCH（以内容为键）、C++20 模块 PCM（包含导入边和提供方跟踪）以及索引与 lint 共用的一次性翻译单元运行的节点族
 - `IndexPump`：后台调度器，通过 worker 处理需要更新的文件，并采用感知前台负载的预算机制
 - `SchedulingStack`：worker 池、任务图及其节点族，以及项目的后台索引调度器；服务器和批处理驱动程序都以相同方式组装它们
 - 引导与批处理驱动程序：负责服务器的冷启动编排，以及 `clice index` / `clice lint` 所使用的无头执行模式

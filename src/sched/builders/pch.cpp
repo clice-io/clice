@@ -1,7 +1,7 @@
 module clice;
 
-import :sched.families.build_common;
-import :sched.families.pch;
+import :sched.builders.build_common;
+import :sched.builders.pch;
 import :support.anomaly;
 import :support.logging;
 import :vfs.file_table;
@@ -9,15 +9,15 @@ import :worker.protocol;
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool) :
+PCHBuilder::PCHBuilder(TaskGraph& graph, Project& project, WorkerPool& pool) :
     graph(graph), project(project), pool(pool) {}
 
-void PCHFamily::register_runner() {
+void PCHBuilder::register_runner() {
     graph.register_family(Family::PCH,
                           [this](RoundContext& ctx, NodeId id) { return run(ctx, id.key); });
 }
 
-std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
+std::uint64_t PCHBuilder::intern(llvm::StringRef pch_key) {
     auto [it, inserted] = ids.try_emplace(pch_key, states.size());
     if(inserted) {
         states.emplace_back();
@@ -25,7 +25,7 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool skip_bodies) {
+PCHBuilder::Request PCHBuilder::precompiled_header(const CommandRef& unit, bool skip_bodies) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     Request request{.file = std::string(project.file_table.resolve(unit.file)),
@@ -44,14 +44,14 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit, bool sk
     return request;
 }
 
-bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
+bool PCHBuilder::reads(llvm::StringRef key, Fid file) const {
     auto it = project.pch_cache.find(key);
     return it != project.pch_cache.end() &&
            ranges::any_of(it->second.deps,
                           [&](const DepState& dep) { return dep.path_id == file; });
 }
 
-NodeId PCHFamily::prepare(Request request) {
+NodeId PCHBuilder::prepare(Request request) {
     auto key_id = intern(request.pch_key);
     auto id = node(key_id);
 
@@ -75,7 +75,7 @@ NodeId PCHFamily::prepare(Request request) {
     return id;
 }
 
-kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
+kota::task<PCHBuilder::Outcome> PCHBuilder::acquire(Request request) {
     auto id = prepare(std::move(request));
 
     switch(co_await graph.request(id, {.kind = JoinKind::OneAttempt, .foreground = true})) {
@@ -88,7 +88,7 @@ kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
     std::unreachable();
 }
 
-kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id) {
+kota::task<RoundOutcome> PCHBuilder::run(RoundContext& ctx, std::uint64_t key_id) {
     auto outcome = co_await attempt(ctx, key_id);
     // A stale round's replacement respawns through join_node without
     // passing prepare(), so attempt() copies the stash instead of
@@ -102,7 +102,7 @@ kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id)
     co_return outcome;
 }
 
-kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key_id) {
+kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t key_id) {
     // Copy the dispatch owner's stash: a stale round's retry re-reads it,
     // and the interned-key vector may grow while this frame is suspended,
     // so never hold references into it.
@@ -316,10 +316,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     }
 
     auto& st = project.pch_cache[pch_key];
-    if(!st.superseded.empty()) {
-        project.store->invalidate("pch", st.superseded);
+    if(!st.previous.empty()) {
+        project.store->invalidate("pch", st.previous);
     }
-    st.superseded = std::exchange(st.blob, std::move(blob));
+    st.previous = std::exchange(st.blob, std::move(blob));
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
     st.base = request.base;
@@ -338,7 +338,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     co_return RoundOutcome::Success;
 }
 
-bool PCHFamily::fresh(llvm::StringRef pch_key) {
+bool PCHBuilder::fresh(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end() || it->second.path.empty() || it->second.index_path.empty()) {
         return false;
@@ -351,14 +351,14 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
     return !deps_changed(project.file_table, st.deps);
 }
 
-bool PCHFamily::building(llvm::StringRef pch_key) const {
+bool PCHBuilder::building(llvm::StringRef pch_key) const {
     auto it = ids.find(pch_key);
     return it != ids.end() && graph.is_compiling(node(it->second));
 }
 
-void PCHFamily::drop(llvm::StringMap<PCHState>::iterator entry) {
+void PCHBuilder::drop(llvm::StringMap<PCHState>::iterator entry) {
     if(project.store) {
-        for(auto& blob: {entry->second.blob, entry->second.superseded}) {
+        for(auto& blob: {entry->second.blob, entry->second.previous}) {
             if(!blob.empty()) {
                 project.store->invalidate("pch", blob);
             }
@@ -367,7 +367,7 @@ void PCHFamily::drop(llvm::StringMap<PCHState>::iterator entry) {
     project.pch_cache.erase(entry);
 }
 
-void PCHFamily::invalidate(llvm::StringRef pch_key) {
+void PCHBuilder::invalidate(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
         return;
@@ -385,7 +385,7 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
     }
 }
 
-void PCHFamily::blame(llvm::StringRef pch_key) {
+void PCHBuilder::blame(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     bool gone = it == project.pch_cache.end() ||
                 (project.store && !project.store->lookup("pch", it->second.blob));
@@ -395,7 +395,7 @@ void PCHFamily::blame(llvm::StringRef pch_key) {
     invalidate(pch_key);
 }
 
-std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_key) {
+std::shared_ptr<index::TUIndex> PCHBuilder::preamble_state(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
         return nullptr;
@@ -420,7 +420,7 @@ std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_ke
     return state;
 }
 
-void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
+void PCHBuilder::touch_loaded_state(llvm::StringRef pch_key) {
     auto it = ranges::find(loaded_state_lru, pch_key);
     if(it != loaded_state_lru.end()) {
         loaded_state_lru.erase(it);
@@ -428,7 +428,7 @@ void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
     loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
 }
 
-void PCHFamily::enforce_loaded_budget() {
+void PCHBuilder::enforce_loaded_budget() {
     // Two keys per open document — its preamble's and the build's
     // precompiled header that preamble is built over — and two extra
     // slots: a closed file's recently used state survives a quick

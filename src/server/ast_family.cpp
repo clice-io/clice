@@ -7,7 +7,7 @@ import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.command_resolver;
-import :sched.families.build_common;
+import :sched.builders.build_common;
 import :server.ast_family;
 import :server.context_service;
 import :server.editor_context;
@@ -97,7 +97,7 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
 
 /// Why each import that failed to build did not, named by module.
 static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
-                                                           const PCMFamily& pcm,
+                                                           const PCMBuilder& pcm,
                                                            const DependencyGraph& graph) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
@@ -115,14 +115,14 @@ static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> i
 }
 
 /// The imports of a module several units provide, each resolved to the
-/// nearest of them (PCMFamily::direct_deps).
-static std::vector<feature::ModuleChoice> module_choices(const PCMFamily::ModuleDeps& imports,
+/// nearest of them (PCMBuilder::direct_deps).
+static std::vector<feature::ModuleChoice> module_choices(const PCMBuilder::ModuleDeps& imports,
                                                          const Project& project) {
     auto& graph = project.dep_graph;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
     std::vector<feature::ModuleChoice> choices;
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             continue;
         }
         auto chosen = Fid{static_cast<std::uint32_t>(dep.key)};
@@ -145,9 +145,9 @@ static std::vector<feature::ModuleChoice> module_choices(const PCMFamily::Module
     return choices;
 }
 
-std::optional<PCHFamily::Request> ASTFamily::declared_pch(Fid path_id,
+std::optional<PCHBuilder::Request> ASTFamily::declared_pch(Fid path_id,
                                                           const Resolution& resolution,
-                                                          const PCMFamily::ModuleDeps& imports) {
+                                                          const PCMBuilder::ModuleDeps& imports) {
     auto unit = contexts.commands.pch_unit(path_id, resolution);
     if(!unit) {
         return std::nullopt;
@@ -162,7 +162,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        const Resolution& resolution,
-                                       const PCMFamily::ModuleDeps& imports,
+                                       const PCMBuilder::ModuleDeps& imports,
                                        llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
     auto* synthesized = resolution.synthesized.get();
@@ -213,7 +213,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
             continue;
         }
         imported = true;
-        if(!PCMFamily::is_unresolved(dep)) {
+        if(!PCMBuilder::is_unresolved(dep)) {
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
             if(auto it = project.pcm_builds.find(module);
                it != project.pcm_builds.end() && !it->second.path.empty()) {
@@ -288,8 +288,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
 ASTFamily::ASTFamily(Project& project,
                      EditorContext& contexts,
                      TaskGraph& graph,
-                     PCMFamily& pcm,
-                     PCHFamily& pch,
+                     PCMBuilder& pcm,
+                     PCHBuilder& pch,
                      WorkerPool& pool,
                      SessionStore& sessions) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
@@ -392,7 +392,7 @@ void ASTFamily::saved(Session& session) {
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
         for(auto dep: graph.dependencies(importer)) {
-            if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
+            if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
                 continue;
             }
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
@@ -491,7 +491,7 @@ void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapsh
         }
     }
     for(auto dep: graph.dependencies(node(path_id))) {
-        if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
+        if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
             continue;
         }
         if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
@@ -652,7 +652,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<std::optional<PCMFamily::ModuleDeps>>
+kota::task<std::optional<PCMBuilder::ModuleDeps>>
     ASTFamily::depend_modules(RoundContext& ctx,
                               const std::shared_ptr<Session>& session,
                               const Resolution& resolution,
@@ -693,7 +693,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
     // replaces the declaration with them, and a declare-only edge would
     // vanish with it.
     for(auto dep: deps.declared) {
-        if(PCMFamily::is_unresolved(dep)) {
+        if(PCMBuilder::is_unresolved(dep)) {
             ctx.reference(dep);
         }
     }
@@ -1436,7 +1436,7 @@ kota::task<std::optional<std::string>>
                           const std::string& directory,
                           const std::vector<std::string>& arguments,
                           const Resolution& resolution,
-                          const PCMFamily::ModuleDeps& imports) {
+                          const PCMBuilder::ModuleDeps& imports) {
     auto path_id = session->path_id;
     auto license = [&] {
         return session->generation == license_generation &&
@@ -1448,7 +1448,7 @@ kota::task<std::optional<std::string>>
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
-        if(co_await pch.acquire(std::move(*request)) == PCHFamily::Outcome::Ready &&
+        if(co_await pch.acquire(std::move(*request)) == PCHBuilder::Outcome::Ready &&
            !pch.reads(key, path_id)) {
             base = key;
         }
@@ -1483,7 +1483,7 @@ kota::task<std::optional<std::string>>
         }
         co_return base;
     }
-    if(co_await pch.acquire(std::move(plan.request)) != PCHFamily::Outcome::Ready) {
+    if(co_await pch.acquire(std::move(plan.request)) != PCHBuilder::Outcome::Ready) {
         if(auto* crash = pch.crashed(pch_key)) {
             record_crash(session, pch_kind, *crash);
         }

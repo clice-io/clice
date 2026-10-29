@@ -110,7 +110,7 @@ A project is what one set of compilation databases and one cache directory descr
 The task-graph engine that decides what gets built, when, and shares the results.
 
 - `TaskGraph`: The shared build graph. Every expensive product is a node; concurrent requests for the same node join one build round instead of duplicating work, cancellation is cooperative, and edges drive dependency-aware invalidation
-- `PCHFamily` / `PCMFamily` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
+- `PCHBuilder` / `PCMBuilder` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
 - `IndexPump`: The background scheduler that feeds stale files through workers with foreground-aware budgeting
 - `SchedulingStack`: The worker pool, the task graph with its families, and a project's indexing pump, assembled the same way for the server and the batch drivers
 - Bootstrap and batch drivers: cold-start orchestration for the server, and the headless execution mode behind `clice index` / `clice lint`

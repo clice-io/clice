@@ -2,7 +2,7 @@ module clice;
 
 import :index.project_index;
 import :project.command_snapshot;
-import :sched.families.pcm;
+import :sched.builders.pcm;
 import :server.invalidator;
 import :vfs.file_table;
 
@@ -12,7 +12,7 @@ Invalidator::Invalidator(Project& project,
                          const SessionStore& store,
                          const EditorContext& contexts,
                          const ASTFamily& ast,
-                         PCMFamily& pcm) :
+                         PCMBuilder& pcm) :
     project(project), store(store), contexts(contexts), ast(ast), pcm(pcm) {}
 
 llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
@@ -104,7 +104,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     // rebuild replaces the shards, and a unit that can no longer build keeps
     // its last-known one (queries withhold a deleted file's).
     for(auto id: pcm.provider_appeared(module_name)) {
-        if(PCMFamily::is_unresolved(id)) {
+        if(PCMBuilder::is_unresolved(id)) {
             continue;
         }
         auto path_id = Fid{static_cast<std::uint32_t>(id.key)};

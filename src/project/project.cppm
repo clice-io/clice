@@ -122,7 +122,7 @@ struct PCHState {
     /// The pair the latest build replaced, kept for one more build: a
     /// consumer that took its path just before the replacement may not
     /// have opened it yet.
-    std::string superseded;
+    std::string previous;
 
     std::string path;
     std::uint32_t bound = 0;
@@ -164,7 +164,7 @@ struct PCMBuild {
     std::string blob;
 
     /// The PCM the latest build replaced, kept for one more build.
-    std::string superseded;
+    std::string previous;
 
     /// The built PCM; empty while a rebuild runs, after a failure, and once
     /// it or the PCH it was built over left the store.
@@ -197,8 +197,8 @@ struct PCMBuild {
 /// serializes into them when it changes and parses them after a load (see
 /// EditorContext), so a process without that state writes back the bytes it
 /// loaded, and only into a database replacing a corrupt one. Only this blob has a durability waiter
-/// (switchContext), so only it hands out tickets: a ticket resolves once a
-/// save whose snapshot covers it commits the blob — independent of the
+/// (switchContext), so only it numbers its changes: a change is durable once a
+/// save whose snapshot covers its number commits the blob — independent of the
 /// artifact records, whose failures retry through the dirty flag alone and
 /// must not hold a context ack hostage. `committed` pulses after every
 /// attempt, failed ones included, so waiters can give up on a disk that
@@ -210,10 +210,10 @@ struct ContextChoices {
 
     bool dirty = false;
 
-    /// The last ticket handed out, and the last one a save committed.
-    std::uint64_t ticket = 0;
+    /// The number of the latest change, and of the latest one a save committed.
+    std::uint64_t save_seq = 0;
 
-    std::uint64_t committed_ticket = 0;
+    std::uint64_t committed_seq = 0;
 
     kota::event committed;
 };
@@ -344,7 +344,7 @@ struct Project {
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the invalidator's job (PCMFamily::invalidate).
+    /// the invalidator's job (PCMBuilder::invalidate).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
