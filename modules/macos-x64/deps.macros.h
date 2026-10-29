@@ -3,6 +3,17 @@
 #define CLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS 0
 #define LLVM_DEFAULT_TARGET_TRIPLE "x86_64-apple-darwin"
 # define LLVM_BUILTIN_TRAP __builtin_trap()
+#define MDB_NOSUBDIR	0x4000
+#define MDB_RDONLY		0x20000
+#define MDB_NOTLS		0x200000
+#define MDB_CP_COMPACT	0x01
+#define MDB_NOTFOUND	(-30798)
+#define MDB_PAGE_NOTFOUND	(-30797)
+#define MDB_CORRUPTED	(-30796)
+#define MDB_VERSION_MISMATCH	(-30794)
+#define MDB_INVALID	(-30793)
+#define MDB_MAP_FULL	(-30792)
+#define MDB_MAP_RESIZED	(-30785)
 #define KOTATSU_CONCAT_IMPL(a, b) a##b
 #define KOTATSU_CONCAT(a, b) KOTATSU_CONCAT_IMPL(a, b)
 #define KOTATSU_ANNOTATION(name, ...)                                                                  struct name {                                                                                          constexpr static auto spec = [] {                                                                      using ::kota::meta::dsl::rename;                                                                   using ::kota::meta::dsl::description;                                                              using ::kota::meta::dsl::alias;                                                                    using ::kota::meta::dsl::idx;                                                                      using ::kota::meta::dsl::skip;                                                                     using ::kota::meta::dsl::flatten;                                                                  using ::kota::meta::dsl::defaulted;                                                                using ::kota::meta::dsl::skip_if;                                                                  using ::kota::meta::dsl::as;                                                                       using ::kota::meta::dsl::with;                                                                     using ::kota::meta::dsl::enum_string;                                                              using ::kota::meta::dsl::schema_default;                                                           using ::kota::meta::dsl::minimum;                                                                  using ::kota::meta::dsl::maximum;                                                                  using ::kota::meta::dsl::choices;                                                                  using ::kota::meta::dsl::rename_all;                                                               using ::kota::meta::dsl::deny_unknown_fields;                                                      using ::kota::meta::dsl::defaulted_fields;                                                         using ::kota::meta::dsl::tagged;                                                                   using ::kota::meta::dsl::tag;                                                                      using ::kota::meta::dsl::content;                                                                  using ::kota::meta::dsl::tag_names;                                                                using ::kota::meta::dsl::type;                                                                     using ::kota::meta::skip_when;                                                                     using ::kota::naming::Casing;                                                                      return ::kota::meta::make_annotation(__VA_ARGS__);                                             }();                                                                                           }
@@ -33,14 +44,3 @@
 #define ZEST_CHECK(checker, ...)                                                                       do {                                                                                                   ZEST_SPLIT_BEGIN                                                                                   ::kota::zest::detail::checker(::kota::zest::detail::Decomposer{} << __VA_ARGS__,                                                 #__VA_ARGS__);                                                       ZEST_SPLIT_END                                                                                 } while(0)
 #define ZEXPECT(...) ZEST_CHECK(check, __VA_ARGS__)
 #define ZASSERT(...) ZEST_CHECK(check_fatal, __VA_ARGS__)
-#define MDB_NOSUBDIR	0x4000
-#define MDB_RDONLY		0x20000
-#define MDB_NOTLS		0x200000
-#define MDB_CP_COMPACT	0x01
-#define MDB_NOTFOUND	(-30798)
-#define MDB_PAGE_NOTFOUND	(-30797)
-#define MDB_CORRUPTED	(-30796)
-#define MDB_VERSION_MISMATCH	(-30794)
-#define MDB_INVALID	(-30793)
-#define MDB_MAP_FULL	(-30792)
-#define MDB_MAP_RESIZED	(-30785)

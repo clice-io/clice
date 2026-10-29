@@ -9,7 +9,7 @@ The compiler clice builds with and the LLVM/Clang libraries it links both come f
 
 **Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records the platform pitfalls that still apply (symptom, cause, fix, how to check). Every new one is added there in the same shape; a toolchain change without an entry is not finished.
 
-The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which also cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
+The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which regenerates `modules/` for every configuration and cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
 
 ## Step 1: The xclang Release
 
@@ -23,7 +23,7 @@ Every target clice builds needs its `libclang-<VERSION>-<triple>.tar.xz`, and th
 
 ## Step 2: A clice to Regenerate With
 
-On both boxes, build clice from this tree before any pin moves, and keep it aside:
+On the Linux box, build clice from this tree before any pin moves, and keep it aside:
 
 ```bash
 pixi run build RelWithDebInfo
@@ -44,22 +44,15 @@ Every file of the toolchain and of libclang is an input of the actions that read
 
 ## Step 4: Regenerate `modules/`
 
-`modules/demand.cpp` records what clice takes from the libraries; `scripts/modules.py` builds it for a configuration, indexes it with clice and wraps the libraries' headers with `clice modularize`, then merges the eight configurations into `modules/`. Push the pinned tree to both boxes, then:
+`modules/demand.cpp` records what clice takes from the libraries; `scripts/modules.py` builds it for a configuration, indexes it with clice and wraps the libraries' headers with `clice modularize`, then merges the eight configurations into `modules/`. Push the pinned tree to the Linux box, then:
 
 ```bash
-# Linux box
-pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice generate \
-    linux-x64 linux-x64-debug linux-arm64 windows-x64 windows-arm64
-# macOS box
-pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice generate \
-    macos-arm64 macos-arm64-debug macos-x64
-# here: the macOS wrappings to the Linux box, the merge, the result back
-box cp $mac $linux build/modules/macos-arm64 build/modules/macos-arm64-debug build/modules/macos-x64
+box run $linux 'pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice generate'
 box run $linux 'pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice merge'
 box cp $linux . modules
 ```
 
-Each configuration takes about half a minute. Nothing under `modules/` but `demand.cpp`, `BUILD.bazel` and `modules.bzl` is edited by hand; a wrong result is fixed in its inputs and regenerated:
+Each configuration takes about half a minute. The macOS ones compile against Apple's SDK, which the first of them fetches (`MODULE.bazel` accepts its license). Nothing under `modules/` but `demand.cpp`, `BUILD.bazel` and `modules.bzl` is edited by hand; a wrong result is fixed in its inputs and regenerated:
 
 - `generate` compiles `demand.cpp` first, so a header that moved or went upstream stops it there: fix the include in `demand.cpp`, as the API adaptation of Step 5 would in clice's own files.
 - A warning from `clice modularize` stops it too: a header the partition leaves to the program means a library's include directory moved (the partition's globs are in `scripts/modules.py`).

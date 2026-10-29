@@ -1,16 +1,17 @@
 """Regenerate modules/ from modules/demand.cpp and the libraries' headers.
 
-Each configuration CI builds is generated on a machine that builds it (Linux
-makes its own, arm64 Linux and both Windows; macOS arm64 its own and x64),
-then all of them are merged into modules/:
+Every configuration CI builds is generated on one x64 Linux machine, which
+cross-compiles the others (macOS against Apple's SDK, which MODULE.bazel
+accepts the license of), then all of them are merged into modules/:
 
-  python scripts/modules.py [--clice PATH] generate <configuration>...
+  python scripts/modules.py [--clice PATH] generate [<configuration>...]
   python scripts/modules.py [--clice PATH] merge
 
-A configuration's wrapping lands in build/modules/<configuration>; merge
-reads every one of them there. Any clice runs it, by default the one the
-tree builds; after a library's upgrade, one built before it, as the new
-headers need not build the old modules/.
+generate without a configuration generates every one. A configuration's
+wrapping lands in build/modules/<configuration>; merge reads every one of
+them there. Any clice runs it, by default the one the tree builds; after a
+library's upgrade, one built before it, as the new headers need not build
+the old modules/.
 """
 
 import argparse
@@ -70,13 +71,6 @@ CONFIGURATIONS = {
     ),
 }
 
-HOSTS = {
-    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
-    ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
-    ("darwin", "arm64"): "aarch64-apple-darwin",
-    ("darwin", "x86_64"): "x86_64-apple-darwin",
-}
-
 
 def bazel(*args, capture=False):
     command = ["npx", "bazel", *args]
@@ -131,8 +125,6 @@ def partition(output_base, clice):
                     f"{xclang}/**",
                     f"{libclang}/lib/clang/**",
                     f"{os.path.dirname(os.path.dirname(clice))}/lib/clang/**",
-                    "/Applications/**",
-                    "/Library/Developer/**",
                 ],
                 "textual": True,
                 "provides": "std.compat",
@@ -144,9 +136,8 @@ def partition(output_base, clice):
 
 def generate(name, clice):
     build_type, triple, _ = CONFIGURATIONS[name]
-    host = HOSTS[(sys.platform, os.uname().machine)]
     flags = [f"--config={build_type}"]
-    if triple != host:
+    if triple != "x86_64-unknown-linux-gnu":
         flags.append(f"--platforms=@xclang//platforms:{triple}")
 
     # A configuration's directory exists only after its last generation
@@ -161,8 +152,9 @@ def generate(name, clice):
         "build",
         *flags,
         "--aspects=@compdb//:compdb.bzl%compdb",
-        # Compiled for real: clice indexes a unit that does not compile.
-        "--output_groups=+compdb",
+        # demand.cpp compiled for real, as clice indexes a unit that does not
+        # compile; the libraries' own sources not at all.
+        "--output_groups=compdb,compilation_outputs",
         f"--build_event_json_file={events}",
         "//modules:demand",
     )
@@ -265,12 +257,14 @@ def main():
     )
     commands = parser.add_subparsers(dest="command", required=True)
     generating = commands.add_parser("generate")
-    generating.add_argument("configurations", nargs="+", choices=CONFIGURATIONS)
+    generating.add_argument("configurations", nargs="*", choices=CONFIGURATIONS)
     commands.add_parser("merge")
     args = parser.parse_args()
     clice = os.path.abspath(args.clice)
     if args.command == "generate":
-        for name in args.configurations:
+        if (sys.platform, os.uname().machine) != ("linux", "x86_64"):
+            raise SystemExit("modules.py generates on x64 Linux")
+        for name in args.configurations or CONFIGURATIONS:
             generate(name, clice)
     else:
         merge(clice)

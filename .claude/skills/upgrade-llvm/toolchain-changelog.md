@@ -13,21 +13,27 @@ names the directory, `--repo_env=XCLANG_THINLTO_CACHE`), `-oso_prefix` on
 macOS (`--keep-icf-stabs` only on the links that make a dSYM), stripping by
 object format, the choice of the ASan libclang (`@libclang` follows
 `--features=asan`), the Windows system libraries of `@libclang`,
-`clang-tidy-config.h`, the resource directory (`xclang_resource_dir`) and a
-program's GSYM and dSYM (`xclang_debug_symbols`). `compile_commands.json`
-comes from the `compdb` module of the same registry. Windows builds target
-MinGW (`*-w64-mingw32`), the one Windows ABI xclang has. A problem in any of
-these is fixed in xclang and arrives with a new release; clice-side
-workarounds for them do not belong in clice's Bazel files.
+`clang-tidy-config.h`, the resource directory (`xclang_resource_dir`), a
+program's GSYM and dSYM (`xclang_debug_symbols`), module interfaces that
+embed their sources (`-fmodules-embed-all-files`, which an importer's
+sandbox needs) and Apple's SDK for the macOS targets off macOS hosts.
+`compile_commands.json` comes from the `compdb` module of the same
+registry. Windows builds target MinGW (`*-w64-mingw32`), the one Windows ABI
+xclang has. A problem in any of these is fixed in xclang and arrives with a
+new release; clice-side workarounds for them do not belong in clice's Bazel
+files.
 
 ## Bazel and CI
 
-- **A build for macOS on a Linux or Windows host fails: "xclang builds for
-  macOS on macOS hosts only".** xclang's macOS toolchains need a macOS host.
-  CI cross-builds arm64 Linux and both Windows targets on x64 Linux, x64
-  macOS on arm64 macOS (`build_os` in `test.yml`), and tests on the target's
-  runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-unknown-linux-gnu //:bin/clice`
-  on x64 Linux; `file` names aarch64.
+- **A build for a macOS target on Linux prints Apple's license terms and
+  stops.** Off a macOS host the macOS targets build against Apple's SDK,
+  which xclang's module fetches only once the root module accepts its
+  license: `MODULE.bazel`'s `xclang.macos_sdk(accept_license = True)`, for
+  `scripts/modules.py`, which generates every configuration of `modules/`
+  on x64 Linux. CI cross-builds arm64 Linux and both Windows targets on x64
+  Linux, x64 macOS on arm64 macOS (`build_os` in `test.yml`), and tests on
+  the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
+  on x64 Linux.
 - **Every link of clice takes minutes.** The libclang archives hold ThinLTO
   bitcode; lld redoes its code generation on every link unless its cache has
   it. The cache directory is one path per OS (`.bazelrc`: the path is in the
@@ -100,6 +106,14 @@ workarounds for them do not belong in clice's Bazel files.
   `patches/0004` builds it on MinGW until llvm/llvm-project#226794 lands.
   Check: xclang's Windows smoke test, `clang++ --target=<arch>-pc-windows-msvc -###`
   naming `VC\Tools\MSVC\` with no Visual Studio environment.
+- **`clice.exe` does not link: `SysFreeString` is an undefined symbol,
+  referenced by `MSVCPaths.cpp`.** That lookup calls oleaut32, which CMake
+  links into every Windows program by default, so LLVM's export never names
+  it, and xclang 23.1.3.5's `@libclang` for MinGW links what the export
+  names. `-loleaut32` on `//bazel:llvm` until xclang 23.1.3.6, which links
+  CMake's default Windows libraries itself. Check:
+  `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-w64-mingw32`
+  on x64 Linux links.
 - **An `llvm.exe clang++ ...` process left suspended forever** (0 CPU, one
   suspended thread, parent gone), holding its working directory, so a case
   fails deleting its workspace (`EPERM`) and the runner never exits; seen
