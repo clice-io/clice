@@ -18,10 +18,8 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
     // pass. The fresh sequence number invalidates the finish of any attempt
     // already in flight for this file.
     seq += 1;
-    auto [it, inserted] = entries.try_emplace(id,
-                                              reason,
-                                              seq,
-                                              reason == ReindexReason::ContentChanged ? seq : 0);
+    auto [it, inserted] =
+        entries.try_emplace(id, reason, seq, reason == ReindexReason::ContentChanged ? seq : 0);
     if(!inserted) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
@@ -99,8 +97,8 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
     // restore the table entry afterwards.
-    auto reason = it->second.content_seq == taken.seq ? ReindexReason::ContentChanged
-                                                            : it->second.reason;
+    auto reason =
+        it->second.content_seq == taken.seq ? ReindexReason::ContentChanged : it->second.reason;
     auto attempts = it->second.requeue_attempts;
     bool needs_slot = record(taken.id, reason);
     entries.find(taken.id)->second.requeue_attempts = attempts;

@@ -75,6 +75,11 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             add(unit);
         }
     }
+    project.failures.pcm_builds.for_each([&](Fid unit, const auto& failed) {
+        if(names(failed.trace)) {
+            add(unit);
+        }
+    });
     return result;
 }
 

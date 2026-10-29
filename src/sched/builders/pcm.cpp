@@ -8,6 +8,7 @@ import :syntax.header_context;
 import :syntax.preamble;
 import :syntax.scan;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 import :worker.protocol;
 
@@ -190,8 +191,8 @@ void PCMBuilder::retire_blob(PCMBuild& build) {
 kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
-    if(auto it = project.pcm_builds.find(path_id);
-       it != project.pcm_builds.end() && deps_changed(project.file_table, it->second.deps)) {
+    if(auto* inputs = project.build_inputs(path_id);
+       inputs && deps_changed(project.file_table, *inputs)) {
         disk_scans.erase(path_id);
     }
 
@@ -252,10 +253,8 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
                 case DependResult::Failed: {
                     auto& build = project.pcm_builds[path_id];
                     retire_blob(build);
-                    build = {
-                        .previous = std::move(build.previous),
-                        .failure = PCMBuild::Failure{.import = dep},
-                    };
+                    build = {.previous = std::move(build.previous)};
+                    project.failures.pcm_builds.commit(path_id, {.import = dep}, {});
                     co_return RoundOutcome::Failed;
                 }
                 case DependResult::Cancelled: co_return RoundOutcome::Stale;
@@ -328,7 +327,22 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
 
     // The last build stands while its key and inputs do, failed or not: a
     // failed build rebuilt on unchanged inputs would make every compile
-    // and completion of every importer pay for it first.
+    // and completion of every importer pay for it first, and one that
+    // crashed a worker would burn a worker of every importer. A crash's
+    // inputs hold the module's own text, which pcm_key leaves out: the
+    // refusal lifts the moment the poison is edited.
+    if(auto* failed = project.failures.pcm_builds.lookup(project.file_table, path_id)) {
+        if(failed->result.key == pcm_key) {
+            if(failed->result.record.crashed()) {
+                LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
+            } else {
+                LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs",
+                          module_name);
+            }
+            co_return RoundOutcome::Failed;
+        }
+        project.failures.pcm_builds.forget(path_id);
+    }
     llvm::StringRef pcm_miss = "no_entry";
     if(auto it = project.pcm_builds.find(path_id); it != project.pcm_builds.end()) {
         auto& build = it->second;
@@ -336,9 +350,6 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
             pcm_miss = "key_changed";
         } else if(deps_changed(project.file_table, build.deps)) {
             pcm_miss = "deps_changed";
-        } else if(build.failure) {
-            LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs", module_name);
-            co_return RoundOutcome::Failed;
         } else if(build.path.empty() || !project.store->lookup("pcm", build.blob)) {
             pcm_miss = "evicted";
         } else {
@@ -357,15 +368,6 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
              pcm_miss,
              pcm_key,
              module_name);
-
-    // Same shared-artifact refusal as the PCH, but keyed with the
-    // module's current content: unlike pch_key (which embeds the
-    // preamble text), pcm_key is content-free, and the refusal must lift
-    // the moment the poison is edited.
-    if(crashed(path_id)) {
-        LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
-        co_return RoundOutcome::Failed;
-    }
 
     bp.module_name = module_name;
     std::random_device random;
@@ -386,15 +388,22 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // frame keeps awaiting the real reply (contract 2 — the slot frees
     // only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
-    // Sampled before the build reads it: a save arriving mid-build is not
-    // what crashed.
-    auto content = content_hash(path_id);
+    // What a build that crashes is known to read, sampled before it runs: a
+    // save arriving mid-build is not what crashed.
+    auto known = imported;
+    merge_deps(known, {&precompiled});
+    if(auto own = current_dep(project.file_table, path_id)) {
+        known.push_back(*own);
+    }
     auto result = co_await deliver(
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const ipc::Error& error) {
-            build_crashes.insert_or_assign(path_id, Crash{content, error});
+            project.failures.pcm_builds.commit(
+                path_id,
+                {.key = pcm_key, .record = failed_build(worker::death_of(error), error.message)},
+                std::move(known));
         });
 
     // A foreground reclaim or an advisory cancel is no decision on the
@@ -420,9 +429,10 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
             // A round overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
             if(result.has_value()) {
-                build.key = pcm_key;
-                build.deps = inputs();
-                build.failure = PCMBuild::Failure{.error = result.value().first_error};
+                project.failures.pcm_builds.commit(
+                    path_id,
+                    {.key = pcm_key, .record = failed_build({}, result.value().first_error)},
+                    inputs());
             }
         } else {
             LOG_ANOMALY(PCMBuildFail,
@@ -466,25 +476,20 @@ std::optional<PCMBuilder::BuildFailure> PCMBuilder::build_failure(Fid module) co
             return failure;
         }
         failure.chain.push_back(current);
-        auto it = project.pcm_builds.find(current);
-        if(it == project.pcm_builds.end() || !it->second.failure) {
+        auto* failed = project.failures.pcm_builds.find(current);
+        if(!failed || failed->result.record.crashed()) {
             return std::nullopt;
         }
-        if(!it->second.failure->import.valid()) {
-            failure.error = it->second.failure->error;
+        if(!failed->result.import.valid()) {
+            failure.error = failed->result.record.cause;
             return failure;
         }
-        current = it->second.failure->import;
+        current = failed->result.import;
     }
 }
 
 bool PCMBuilder::forget_failure(Fid module) {
-    auto it = project.pcm_builds.find(module);
-    if(it == project.pcm_builds.end() || !it->second.failure) {
-        return false;
-    }
-    it->second.failure.reset();
-    return true;
+    return project.failures.pcm_builds.forget(module);
 }
 
 llvm::SetVector<Fid> PCMBuilder::closure(llvm::ArrayRef<Fid> modules) const {
@@ -503,24 +508,12 @@ llvm::SetVector<Fid> PCMBuilder::closure(llvm::ArrayRef<Fid> modules) const {
     return read;
 }
 
-std::uint64_t PCMBuilder::content_hash(Fid module) {
-    auto seen = project.file_table.disk.current(module);
-    return seen ? seen->hash : 0;
-}
-
-const ipc::Error* PCMBuilder::crashed(Fid module) {
-    auto it = build_crashes.find(module);
-    if(it == build_crashes.end()) {
-        return nullptr;
-    }
-    // FIXME: only the module's own text lifts the refusal: a fix in a header it
-    // includes waits for an importer's edit or save, and its importers fail to
-    // index until then.
-    if(content_hash(module) != it->second.content) {
-        build_crashes.erase(it);
-        return nullptr;
-    }
-    return &it->second.error;
+const FailureRecord* PCMBuilder::crashed(Fid module) {
+    // FIXME: what a crash is known to read leaves out the headers the module
+    // includes: a fix there waits for an importer's edit or save, and its
+    // importers fail to index until then.
+    auto* failed = project.failures.pcm_builds.lookup(project.file_table, module);
+    return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
 }
 
 bool PCMBuilder::drop_evicted(Fid module, PCMBuild& build) {

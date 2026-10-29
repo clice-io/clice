@@ -96,8 +96,8 @@ std::string crash_tag(const Params& params) {
 
 /// Identity of the worker incarnation a crashed request died with, carried
 /// in Error::data. One process death fails every request in flight on it;
-/// per-content blame (Quarantine) dedups by this identity so a single death
-/// is counted at most once per document.
+/// a failure record (FailureRecord) counts each identity once, and the pool
+/// finds the slot it names again (WorkerPool::exempt_death).
 inline codec::dyn::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }

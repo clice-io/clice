@@ -38,21 +38,26 @@ struct CompileOutput {
 struct DocumentCompile {
     /// Content key into Project.pch_cache for the PCH the document's parse
     /// loads, if any: its preamble's, else the precompiled header the build
-    /// declares for its command. The PCH itself is owned by Project
-    /// (shared, content-addressed); whether its preamble-derived state
-    /// still describes the buffer is checked against the blob's stored
-    /// preamble text at the point of use.
+    /// declares for its command — or the preamble's whose build failed
+    /// (pch_failed). The PCH itself is owned by Project (shared,
+    /// content-addressed); whether its preamble-derived state still
+    /// describes the buffer is checked against the blob's stored preamble
+    /// text at the point of use.
     std::optional<std::string> pch_key;
+
+    /// The build of pch_key failed, and the parse loaded the declared one
+    /// alone, if any: what a save of the document retries.
+    bool pch_failed = false;
 
     /// Content key into Project.pch_cache for the precompiled header the
     /// build declares for the document's command, when the parse loads it:
     /// under its preamble's PCH, or as pch_key itself.
     std::optional<std::string> base_pch_key;
 
-    /// The preamble key whose build failed for the latest compilation,
-    /// which then compiled without one: what a save of the document
-    /// retries.
-    std::optional<std::string> failed_pch_key;
+    /// The key of the PCH the parse loaded.
+    const std::optional<std::string>& loaded_pch() const {
+        return pch_failed ? base_pch_key : pch_key;
+    }
 
     /// The latest compilation's TU index; null until a compile
     /// commits index data. NOT merged into Project.index — that
@@ -93,9 +98,9 @@ struct DocumentCompiles {
 
         /// Bumped by every invalidation of this document. The stateless
         /// build path snapshots it before its PCH acquisition and may
-        /// adopt the key only if it is unchanged — the dirty_epoch half
-        /// of the retired pch_key write license (a Lost-type invalidation
-        /// means the resolved command may describe nothing).
+        /// adopt the key only if it is unchanged, beside the buffer's
+        /// generation (a Lost-type invalidation means the resolved command
+        /// may describe nothing).
         std::uint64_t epoch = 0;
     };
 
@@ -151,6 +156,7 @@ struct DocumentCompiles {
         auto& entry = entries[path_id];
         auto next = entry.latest ? DocumentCompile(*entry.latest) : DocumentCompile();
         next.pch_key = std::move(pch_key);
+        next.pch_failed = false;
         next.base_pch_key = std::move(base_pch_key);
         entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
     }

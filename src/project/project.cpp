@@ -282,6 +282,16 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
     return snap;
 }
 
+std::optional<DepState> current_dep(FileTable& files, Fid file) {
+    if(auto seen = files.disk.current(file)) {
+        return DepState{.path_id = file, .version = files.intern_version(file, seen->hash)};
+    }
+    if(files.disk.seen_missing(file)) {
+        return DepState{.path_id = file, .missing = true};
+    }
+    return std::nullopt;
+}
+
 void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
     auto key = [](const DepState& dep) {
         return std::tuple(dep.path_id.raw, dep.version.raw, std::uint8_t(dep.missing));
@@ -297,25 +307,6 @@ void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
             }
         }
     }
-}
-
-bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
-    auto changed = [&](const DepState& dep) {
-        // Gone at build time: reappearing is the change; still-missing
-        // stays unchanged (see the capture).
-        if(dep.missing) {
-            return files.disk.present(dep.path_id);
-        }
-        // No version names the consumed bytes: rebuild once to converge.
-        if(!dep.version.valid()) {
-            return true;
-        }
-        // Missing means gone now — a change, since the build saw the file.
-        // Unreadable cannot prove the disk unchanged and counts as changed
-        // — conservative, retried by the rebuild's capture.
-        return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
-    };
-    return ranges::count_if(snap, changed) != 0;
 }
 
 std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
@@ -359,16 +350,16 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
 const DepsSnapshot* Project::build_inputs(Fid module) const {
     llvm::SmallVector<Fid, 4> chain;
     for(auto current = module; !ranges::contains(chain, current);) {
-        auto it = pcm_builds.find(current);
-        if(it == pcm_builds.end()) {
-            return nullptr;
+        auto* failed = failures.pcm_builds.find(current);
+        if(!failed) {
+            auto it = pcm_builds.find(current);
+            return it != pcm_builds.end() ? &it->second.deps : nullptr;
         }
-        auto& build = it->second;
-        if(!build.failure || !build.failure->import.valid()) {
-            return &build.deps;
+        if(!failed->result.import.valid()) {
+            return &failed->trace;
         }
         chain.push_back(current);
-        current = build.failure->import;
+        current = failed->result.import;
     }
     return nullptr;
 }

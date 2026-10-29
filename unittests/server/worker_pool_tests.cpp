@@ -1005,6 +1005,31 @@ ZEST_CASE(HealthyUptimeResetsStreak) {
     ZEXPECT(f.crash_streak(0) == 1u);
 }
 
+ZEST_CASE(ExemptDeathGivesBack) {
+    // A death that named no request counts against its slot, until deliver
+    // finds the request dying alone twice: then it was the request's doing
+    // and spends no budget, once.
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.simulate_crash(0, true);
+    ZEXPECT(f.crash_streak(0, true) == 1u);
+
+    ipc::Error died{worker::dispatch_errc::worker_died,
+                    "killed by signal 9 (SIGKILL)",
+                    worker::death_identity(0, 0, true)};
+    f.pool.exempt_death(died);
+    ZEXPECT(f.crash_streak(0, true) == 0u);
+    f.pool.exempt_death(died);
+    ZEXPECT(f.crash_streak(0, true) == 0u);
+
+    // A death the streak did not count gives nothing back.
+    f.set_crash_streak(0, true, 2);
+    f.pool.exempt_death(ipc::Error{worker::dispatch_errc::worker_died,
+                                   "killed",
+                                   worker::death_identity(0, 7, true)});
+    ZEXPECT(f.crash_streak(0, true) == 2u);
+}
+
 ZEST_CASE(NamedCrashKeepsBudget) {
     WorkerPoolFixture f;
     f.add_stateful(true);

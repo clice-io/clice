@@ -160,4 +160,10 @@ struct FileTable {
     vfs::DiskState::CheckResult check_version(VersionID vid);
 };
 
+/// Whether any consumed version stopped matching the disk; see
+/// FileTable::check_version and DepState for the
+/// per-reference missing policy. Every dependency is looked at, so the
+/// changes one check finds cascade together.
+bool deps_changed(FileTable& files, const DepsSnapshot& snap);
+
 }  // namespace clice

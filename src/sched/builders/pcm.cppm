@@ -4,6 +4,7 @@ import :project.command_resolver;
 import :project.project;
 import :sched.builders.pch;
 import :sched.graph;
+import :support.failure_record;
 import :support.prelude;
 import :worker.pool;
 
@@ -15,11 +16,11 @@ namespace clice {
 /// consumers touch — serve and batch never speak to the graph about PCM
 /// nodes directly.
 ///
-/// The family owns the PCM policy: cache key computation and hit checks,
-/// store commits, the shared-artifact crash budget, and the cooperative
-/// response to advisory cancellation (a voided round tells its worker to
-/// stop and still reports the real outcome — contract 2). The graph owns
-/// identity, edges, rounds and interest.
+/// The builder owns the PCM policy: cache key computation and hit checks,
+/// store commits, the modules' build failures (Project::failures), and the
+/// cooperative response to advisory cancellation (a voided round tells its
+/// worker to stop and still reports the real outcome — contract 2). The
+/// graph owns identity, edges, rounds and interest.
 class PCMBuilder {
 public:
     PCMBuilder(TaskGraph& graph,
@@ -129,16 +130,10 @@ public:
         return {Family::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
     }
 
-    /// The death the module's last build caused, while the module's
-    /// content is still what crashed: every importer that finds it books
-    /// it against its own document instead of burning a worker of its own.
-    const ipc::Error* crashed(Fid module);
-
-    /// An importer holding a license to retry (see server/quarantine.cppm)
-    /// lifts the module's refusal.
-    void forgive(Fid module) {
-        build_crashes.erase(module);
-    }
+    /// The crash of the module's last build, while what it is known to
+    /// have read holds: every importer that finds it books it against its
+    /// own document instead of burning a worker of its own.
+    const FailureRecord* crashed(Fid module);
 
     /// Why a module did not build: `chain` runs from it through the
     /// imports that failed in turn to the module whose own build failed,
@@ -150,12 +145,14 @@ public:
         std::optional<std::size_t> cycle;
     };
 
-    /// Why the module's last round failed, when the user's code is to
-    /// blame; nullopt for any other failure (a crash, an outage).
+    /// Why the module's last round failed, when it failed on the user's
+    /// code; nullopt for any other failure (a crash, an outage).
     std::optional<BuildFailure> build_failure(Fid module) const;
 
-    /// An importer's save retries the module's failed build: a failed
-    /// build is otherwise kept until its key or one of its inputs changes.
+    /// Forget the module's failed build, a crash or errors in the user's
+    /// code, so the next round builds it again: an importer whose own
+    /// record lets it retry, or that was saved, retries it. A failed build
+    /// is otherwise kept until its key or one of its inputs changes.
     /// Returns whether it had failed.
     bool forget_failure(Fid module);
 
@@ -247,21 +244,6 @@ private:
     /// importer waits on it again, and each wait would preprocess it again.
     llvm::DenseMap<Fid, ScanMemo> buffer_scans;
     llvm::DenseMap<Fid, ScanMemo> disk_scans;
-
-    /// A module build that killed a worker: the content it was built from
-    /// and the death.
-    struct Crash {
-        std::uint64_t content = 0;
-        ipc::Error error;
-    };
-
-    std::uint64_t content_hash(Fid module);
-
-    /// The modules whose build killed a worker (see crashed): refused
-    /// until an importer forgives them or their content changes. One
-    /// document's quarantine cannot contain it alone: every importer would
-    /// burn a worker of its own.
-    llvm::DenseMap<Fid, Crash> build_crashes;
 };
 
 }  // namespace clice

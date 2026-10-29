@@ -26,8 +26,8 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges
 /// The links of `file` from its manifest's include edges, read in
 /// `source`; none unless `source` is the text the file's shard indexed.
 /// Unlike the entries the other results computed from the index serve,
-/// the edges are disk truth: a buffer edited since (the quarantine
-/// fallback, its own index current) must not get them — an edited
+/// the edges are disk truth: a buffer edited since (its compile stopped by
+/// a crash, its own index current) must not get them — an edited
 /// directive would get the old target, confidently wrong.
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink>;

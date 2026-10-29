@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :sched.builders.turun;
+import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;
@@ -205,6 +206,89 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     auto build = f.project.pcm_builds.find(id("m.cppm"));
     ZASSERT(build != f.project.pcm_builds.end());
     ZEXPECT(!build->second.path.empty());
+}
+
+ZEST_CASE(CrashCountsAgainstTargetPCH) {
+    // A unit that crashes the worker over the target's precompiled header
+    // counts against reading it, as a compile does: the header is built
+    // again for the next unit, and two such crashes stop it, leaving the
+    // header to the units' own parses.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    TempDir tmp;
+    tmp.touch("pch.hxx", "#pragma once\nint shared();\n");
+    tmp.touch("pch.hxx.cxx", "");
+    tmp.touch("main.cpp", "#pragma clang __debug crash\nint x = shared();\n");
+
+    IndexerFixture f;
+    auto header = tmp.path("pch.hxx");
+    auto pch = tmp.path("pch.hxx.pch");
+    write_cdb(
+        tmp,
+        f.project.cdb,
+        build_cdb_json({
+            {tmp.root,
+             tmp.path("pch.hxx.cxx"),
+             {"-Xclang",
+              "-emit-pch",
+              "-Xclang",
+              "-include",
+              "-Xclang",
+              header,
+              "-x",
+              "c++-header",
+              "-o",
+              pch}                                                                                },
+            {tmp.root,
+             tmp.path("main.cpp"),
+             {"-Xclang", "-include-pch", "-Xclang", pch, "-Xclang", "-include", "-Xclang", header}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace(
+        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+    f.pch.register_runner();
+
+    auto consume_failures = [&] {
+        unsigned count = 0;
+        f.project.failures.pch_consumes.for_each(
+            [&](auto&, auto& entry) { count += entry.result.count; });
+        return count;
+    };
+    auto main_id = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    std::vector<TURunFamily::Result> results;
+    std::vector<unsigned> counts;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(int run = 0; run < 3; run += 1) {
+            TURunFamily::Plan plan;
+            plan.index = true;
+            results.push_back((co_await f.turun.run(main_id, std::move(plan), {})).result);
+            counts.push_back(consume_failures());
+        }
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum TURunFamily::Result;
+    ZEXPECT(results == (std::vector<TURunFamily::Result>{Crashed, Crashed, Crashed}));
+    ZEXPECT(counts == (std::vector<unsigned>{1, 2, 2}));
+    logging::reset_anomaly_for_testing();
 }
 
 };  // ZEST_SUITE(TURunIndex)

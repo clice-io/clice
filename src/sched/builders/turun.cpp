@@ -162,6 +162,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // unit's own parse, as the command alone does; a builder left out of
     // the index does too, but for a modular unit (ModuleDeps::modular).
     DepsSnapshot precompiled;
+    std::string consumed_pch;
     if(auto unit =
            commands.pch_unit(path_id,
                              resolved,
@@ -176,6 +177,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                                           !pch.reads(key, path_id)) {
                     params.pch = it->second.path;
                     precompiled = it->second.deps;
+                    consumed_pch = key;
                 }
                 break;
             case DependResult::Failed: break;
@@ -220,6 +222,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         costs[path_id] = {.peak = peak};
     }
     if(reply.has_value() && reply.value().success) {
+        // A voided round's success clears nothing: the void may be another
+        // consumer's failure to read the pair.
+        if(!consumed_pch.empty() && ctx.current()) {
+            pch.consume_succeeded(consumed_pch);
+        }
         auto run_ms = timer.ms();
         auto& value = reply.value();
         llvm::StringRef index_bytes = as_chars(value.tu_index_data);
@@ -310,6 +317,12 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
+        // The precompiled header it read may be what crashed it, as for a
+        // compile (ASTFamily::attribute_crash): retracted, the PCH is
+        // rebuilt for the next unit, and enough such crashes stop it.
+        if(!consumed_pch.empty()) {
+            pch.consume_failed(consumed_pch);
+        }
         finished[path_id] = {.result = Result::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
         co_return RoundOutcome::Stale;

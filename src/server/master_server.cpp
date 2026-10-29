@@ -430,13 +430,6 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         owners[path_id] = &to;
         to.open_session(path_id, session->text().str(), session->version);
         auto moved = to.sessions.find(path_id);
-        // The crash records move with the document; work still in flight
-        // under the old project books into them.
-        moved->quarantine = session->quarantine;
-        from.sessions.parked.erase(path_id);
-        if(!moved->quarantine->empty()) {
-            to.ast.republish(moved);
-        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
@@ -809,9 +802,6 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
             project->contexts.forget_selection(path_id);
         }
     }
-    // FIXME: unlike rehome_sessions, this move leaves the crash records behind:
-    // the note and the strike count are lost, and the old project's parked copy
-    // comes back if the document returns there.
     if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();

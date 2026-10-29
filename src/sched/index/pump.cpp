@@ -107,8 +107,7 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     }
     auto seq = pending->seq;
     auto& waits = attempt_waits[server_path_id];
-    auto it =
-        ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.seq == seq; });
+    auto it = ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.seq == seq; });
     if(it == waits.end()) {
         waits.push_back({seq, std::make_shared<kota::event>()});
         it = waits.end() - 1;
@@ -132,8 +131,7 @@ void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t seq) {
         }
     }
     it->second.erase(
-        ranges::remove_if(it->second,
-                          [&](const AttemptWait& wait) { return wait.seq <= seq; })
+        ranges::remove_if(it->second, [&](const AttemptWait& wait) { return wait.seq <= seq; })
             .begin(),
         it->second.end());
     if(it->second.empty()) {

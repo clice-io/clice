@@ -23,7 +23,7 @@ Master Process (MasterServer)
 ├── Event loop (kota)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
-├── Compile scheduling (task graph: PCH / PCM / AST / TU-run families)
+├── Compile scheduling (task graph: PCH and PCM builders, AST and TU-run families)
 ├── Background indexing (project index + pump)
 │
 ├── Stateful Worker Processes × N
@@ -129,8 +129,9 @@ Blame is recorded per document and per kind of work: the compile, the precompile
 - A crashed module build is refused to every importer, which still compiles, reports the missing module and carries the warning.
 - A preamble shared by several documents crashes once: the others show the warning without a crash of their own.
 - A compile that crashes while reading its precompiled preamble first rebuilds the preamble, since a corrupted cache file crashes the same way: a corrupted file heals without a warning, and only a crash on the rebuilt preamble is blamed on the document.
+- A request waiting for a worker when one like it crashes on the same content is not sent: it answers empty instead of crashing a worker once more.
 
-A request the workers cannot serve answers empty rather than with an error; the warning on the file explains the gap.
+A request the workers cannot serve answers empty rather than with an error; the warning on the file explains the gap. The pauses belong to the document, not to the project serving it: a document that moves to another project, as when its context is switched to a file there, keeps them.
 
 ### When It Retries
 
@@ -141,7 +142,9 @@ A paused kind of work is never retried while its document sits still: asking aga
 
 A first crash right after an edit stays silent, since it most likely comes from half-typed code that the next edit retries. Closing and reopening a document keeps its pauses, and reopening it with different content counts as a change. An answer from the paused work clears the pause and its warning.
 
-Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes.
+Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes. A run that crashes while reading the precompiled header its target's build declares counts against that header, as a compile's crash on its preamble does: a corrupted one is rebuilt for the next file, and one that keeps crashing its readers is left out for a while, each file parsing the header itself.
+
+A precompiled header the build declares that crashes the worker building it is not built again until the header changes; its readers parse the header themselves meanwhile.
 
 A module whose build fails on errors in the code is not built again while nothing it read or looked for has changed: the documents importing it compile without it and report the errors. It is built again once one of those files changes, once the compile flags change, and whenever a document importing it is saved.
 
@@ -155,7 +158,7 @@ A precompiled preamble is built in spite of errors in the code, and the document
 
 ### Crash Budget and Revival
 
-Each worker slot has a crash budget with exponential backoff between restarts. Only deaths that name no request count against it, and of those neither a terminated session (SIGTERM, SIGINT or SIGHUP) nor a SIGKILL of an idle worker, one running no request and holding no document: a crash a request caused is that request's document's doing, and the document's pause already contains it; an idle worker the OOM killer or a user killed says nothing about whether the worker can stay up. A worker killed while running requests or holding documents does count: when several requests were in flight, or none, no request is blamed, and only the budget slows a load that keeps getting killed. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown period its budget is restored and the slot can be revived on demand. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
+Each worker slot has a crash budget with exponential backoff between restarts. Only deaths that name no request count against it, and of those neither a terminated session (SIGTERM, SIGINT or SIGHUP) nor a SIGKILL of an idle worker, one running no request and holding no document: a crash a request caused is that request's document's doing, and the document's pause already contains it; an idle worker the OOM killer or a user killed says nothing about whether the worker can stay up. A worker killed while running requests or holding documents does count: when several requests were in flight, or none, no request is blamed, and only the budget slows a load that keeps getting killed. A request found to have died alone twice is blamed after all, and its two deaths give their count back. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown period its budget is restored and the slot can be revived on demand. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
 
 ### Hangs and Oversized Results
 

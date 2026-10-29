@@ -7,6 +7,7 @@ import :sched.builders.pcm;
 import :sched.graph;
 import :server.ast_family;
 import :server.dispatcher;
+import :server.document_failures;
 import :server.editor_context;
 import :support.anomaly;
 import :syntax.dependency_graph;
@@ -26,19 +27,18 @@ namespace clice::testing {
 struct ASTFamilyFixture {
     static kota::task<bool> ensure_pch(ASTFamily& ast,
                                        const std::shared_ptr<Session>& session,
-                                       std::uint64_t license_generation,
-                                       std::uint64_t license_epoch,
+                                       std::uint64_t generation,
+                                       std::uint64_t epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
         auto& project = ast.project;
         Resolution resolution{
             .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},
         };
-        auto key = co_await ast.ensure_pch(session,
+        auto key = co_await ast.ensure_pch(Ticket{session, generation},
+                                           epoch,
                                            session->text(),
                                            std::nullopt,
-                                           license_generation,
-                                           license_epoch,
                                            directory,
                                            arguments,
                                            resolution,
@@ -65,9 +65,10 @@ struct Stack {
     PCHBuilder pch{graph, project, pool};
     PCMBuilder pcm{graph, project, commands, pch, pool};
     SessionStore sessions;
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
+    DocumentFailures failures;
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, failures};
     PositionEncoding encoding = PositionEncoding::UTF16;
-    Dispatcher dispatcher{project, contexts, ast, pool, encoding};
+    Dispatcher dispatcher{project, contexts, ast, pool, failures, encoding};
 
     Stack() {
         pcm.register_runner();
@@ -216,19 +217,18 @@ ZEST_CASE(CrashPublishesNote) {
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
-    stack.ast.record_crash(
-        session,
-        evidence_kind(EvidenceKind::Compile),
-        ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
+    stack.ast.record_crash(session,
+                           feature::RequestKind::Compile,
+                           "d1",
+                           "killed by signal 11 (SIGSEGV)");
     ZEXPECT(emits == 1);
     auto compiled = stack.ast.compiles.latest(session->path_id);
     ZASSERT((compiled && compiled->output.has_value()));
     ZEXPECT(compiled->output->diagnostics.own.empty());
 
-    std::vector<feature::FileDiagnostic> notes;
-    append_crash_notes(*session, notes);
+    auto notes = stack.failures.notes(session->path_id);
     ZASSERT(notes.size() == 1u);
-    auto& message = notes[0].message;
+    auto message = feature::crash_note(notes[0]).message;
     ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
     ZEXPECT(message.contains("save it"));
 
@@ -870,20 +870,21 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
 
 ZEST_SUITE(DispatcherGuards) {
 
-ZEST_CASE(CrashedCompileBarsBuilds) {
-    // A barred compile bars the stateless builds of the same content too —
-    // completion parses what the compile crashed on — and they answer
+ZEST_CASE(CrashedCompileStopsBuilds) {
+    // A stopped compile stops the stateless builds of the same content
+    // too — completion parses what the compile crashed on — and they answer
     // empty: the crash note says why, an error would only be a popup.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine->on_crash(evidence_kind(EvidenceKind::Compile),
-                                  "d1",
-                                  "cause",
-                                  Quarantine::Clock::now());
+    stack.failures.crashed(session->path_id,
+                           feature::RequestKind::Compile,
+                           "d1",
+                           "cause",
+                           DocumentFailures::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        // With no worker at all, only the bar can answer without an error.
+        // With no worker at all, only the stop can answer without an error.
         auto result =
             co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
         ZASSERT(result);
@@ -896,13 +897,14 @@ ZEST_CASE(CrashedCompileBarsBuilds) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(CrashedFormatBarsFormat) {
+ZEST_CASE(CrashedFormatStopsFormat) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine->on_crash(evidence_kind(EvidenceKind::Format),
-                                  "d1",
-                                  "cause",
-                                  Quarantine::Clock::now());
+    stack.failures.crashed(session->path_id,
+                           feature::RequestKind::Format,
+                           "d1",
+                           "cause",
+                           DocumentFailures::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -954,10 +956,10 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     ZEXPECT(*compiled->pch_key == std::string("key"));
 }
 
-ZEST_CASE(PCHCrashBarsDocument) {
-    // A PCH build that kills its stateless worker bars the document: the
+ZEST_CASE(PCHCrashStopsDocument) {
+    // A PCH build that kills its stateless worker stops the document: the
     // preamble is its content too. The worker names the build, so the
-    // death is blamed at once and the build is not resent.
+    // death is attributed to it at once and the build is not resent.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -987,11 +989,11 @@ ZEST_CASE(PCHCrashBarsDocument) {
                                                   directory,
                                                   arguments);
         ZEXPECT(!built);
-        ZEXPECT(ASTFamily::compile_barred(*session));
-        auto notes = session->quarantine->notes();
+        ZEXPECT(stack.ast.compile_stopped(session->path_id));
+        auto notes = stack.failures.notes(session->path_id);
         ZASSERT(notes.size() == 1u);
-        ZEXPECT(notes[0].kind == evidence_kind(EvidenceKind::PCH));
-        ZEXPECT(notes[0].strikes == 1u);
+        ZEXPECT(notes[0].kind == feature::RequestKind::PCH);
+        ZEXPECT(notes[0].count == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -1005,7 +1007,7 @@ ZEST_CASE(PCHCrashBarsDocument) {
 }
 
 ZEST_CASE(PCHCrashStopsBuild) {
-    // A PCH crash inside a completion build's dependency prep bars the
+    // A PCH crash inside a completion build's dependency prep stops the
     // document after the entry gate: the build stops instead of
     // dispatching the same content to one more worker.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
@@ -1034,9 +1036,65 @@ ZEST_CASE(PCHCrashStopsBuild) {
                                                            false);
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
-        auto notes = session->quarantine->notes();
+        auto notes = stack.failures.notes(session->path_id);
         ZASSERT(notes.size() == 1u);
-        ZEXPECT(notes[0].strikes == 1u);
+        ZEXPECT(notes[0].count == 1u);
+
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    ZEXPECT(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+ZEST_CASE(QueuedRequestStops) {
+    // Two completions of the same content: the first crashes its worker
+    // while the second waits in the queue for that only worker. The second
+    // is checked where it would reach the worker, after its wait, and the
+    // crash of its kind on its content stops it there: no second death.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    Stack stack;
+    stack.register_pch_store(tmp);
+    auto session = stack.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
+
+    int deaths = 0;
+    stack.pool.on_crash = [&](const WorkerCrashInfo&) {
+        deaths += 1;
+    };
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        opts.max_stateless = 1;
+        ZASSERT(stack.pool.start(opts));
+
+        auto complete = [&]() -> kota::task<> {
+            auto result = co_await stack.dispatcher.completion(Ticket::take(session),
+                                                               {.line = 2, .character = 0},
+                                                               {},
+                                                               {},
+                                                               false);
+            ZASSERT(result);
+            ZEXPECT(result.value().list.data == "null");
+        };
+        co_await kota::when_all(complete(), complete());
+        ZEXPECT(deaths == 1);
+        auto notes = stack.failures.notes(session->path_id);
+        ZASSERT(notes.size() == 1u);
+        ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
+        ZEXPECT(notes[0].count == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -1172,8 +1230,8 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(HarmlessKindKeepsBar) {
-    // A crash of one query kind bars only that kind: a hover on a document
+ZEST_CASE(HarmlessKindKeepsStop) {
+    // A crash of one query kind stops only that kind: a hover on a document
     // whose semantic tokens crashed is ordinary work — it is answered, and
     // the tokens record stays as it was.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
@@ -1184,8 +1242,12 @@ ZEST_CASE(HarmlessKindKeepsBar) {
 
     Stack stack;
     auto session = stack.open(src, "int x;\n");
-    constexpr auto tokens_kind = evidence_kind(EvidenceKind::SemanticTokens);
-    session->quarantine->on_crash(tokens_kind, "w-1", "cause", Quarantine::Clock::now());
+    auto tokens = feature::RequestKind::SemanticTokens;
+    stack.failures.crashed(session->path_id,
+                           tokens,
+                           "w-1",
+                           "cause",
+                           DocumentFailures::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -1198,7 +1260,7 @@ ZEST_CASE(HarmlessKindKeepsBar) {
         auto result =
             co_await stack.dispatcher.hover(Ticket::take(session), protocol::Position{0, 4});
         ZEXPECT(result);
-        ZEXPECT(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
+        ZEXPECT(stack.failures.stops(session->path_id, tokens, DocumentFailures::Clock::now()));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1214,32 +1276,30 @@ ZEST_CASE(HarmlessKindKeepsBar) {
 }
 
 ZEST_CASE(PoisonPreambleShared) {
-    // One document's quarantine cannot contain a poison preamble alone: the
-    // PCH is shared, so every session with the same preamble would
+    // One document's records cannot contain a poison preamble alone: the
+    // PCH is shared, so every document with the same preamble would
     // re-trigger the build and burn a worker of its own. After one crashed
-    // build the key is refused before any dispatch, and every other session
-    // books the same death instead of a fresh one.
+    // build the key is refused before any dispatch, and every other
+    // document books the same death instead of a fresh one.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
-    tmp.touch("a.cpp", "");
-    auto src = tmp.path("a.cpp");
-
     Stack stack;
     stack.register_pch_store(tmp);
 
-    auto make_session = [&] {
+    auto make_session = [&](llvm::StringRef name) {
+        tmp.touch(name, "");
         auto session = std::make_shared<Session>();
-        session->path_id = stack.project.file_table.intern(Spelling::absolute(src));
+        session->path_id = stack.project.file_table.intern(Spelling::absolute(tmp.path(name)));
         session->set_text("#pragma clang __debug crash\n");
         return session;
     };
-    auto first = make_session();
-    auto second = make_session();
-    auto third = make_session();
+    auto first = make_session("a.cpp");
+    auto second = make_session("b.cpp");
+    auto third = make_session("c.cpp");
 
     std::string directory = tmp.path(".");
-    auto arguments = make_args(src);
+    auto arguments = make_args(tmp.path("a.cpp"));
 
     int deaths = 0;
     stack.pool.on_crash = [&](const WorkerCrashInfo&) {
@@ -1262,17 +1322,19 @@ ZEST_CASE(PoisonPreambleShared) {
                                                 directory,
                                                 arguments);
         };
-        auto pch = evidence_kind(EvidenceKind::PCH);
+        auto crashed = [&](const std::shared_ptr<Session>& session) {
+            return stack.failures.find(session->path_id, feature::RequestKind::PCH) != nullptr;
+        };
         ZASSERT(!co_await build(first));
-        ZASSERT(first->quarantine->crashed(pch));
+        ZASSERT(crashed(first));
         ZEXPECT(deaths == 1);
 
-        // Refused without touching a worker, each session barred by the
+        // Refused without touching a worker, each document stopped by the
         // same death.
         ZASSERT(!co_await build(second));
-        ZEXPECT(second->quarantine->crashed(pch));
+        ZEXPECT(crashed(second));
         ZASSERT(!co_await build(third));
-        ZEXPECT(third->quarantine->crashed(pch));
+        ZEXPECT(crashed(third));
         ZEXPECT(deaths == 1);
 
         co_await stack.pool.stop();
@@ -1286,11 +1348,11 @@ ZEST_CASE(PoisonPreambleShared) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(EpochGuardsPCHWash) {
-    // A successful build whose license epoch moved mid-flight must not
-    // clear the session's PCH record: the crash belongs to content the
-    // request no longer describes, and clearing it would let a poison
-    // preamble dodge its bar behind an old round's commit.
+ZEST_CASE(EpochGuardsPCHClear) {
+    // A successful build whose epoch moved mid-flight must not clear the
+    // document's PCH record: the crash belongs to content the request no
+    // longer describes, and clearing it would let a poison preamble dodge
+    // its stop behind an old round's commit.
     TempDir tmp;
     tmp.touch("a.cpp", "");
     auto src = tmp.path("a.cpp");
@@ -1299,8 +1361,14 @@ ZEST_CASE(EpochGuardsPCHWash) {
     stack.register_pch_store(tmp);
     auto session = stack.open(src, "#define X 1\nint x;\n");
     // One prior crash on the PCH record.
-    auto pch = evidence_kind(EvidenceKind::PCH);
-    session->quarantine->on_crash(pch, "w-1", "cause", Quarantine::Clock::now());
+    auto crashed = [&] {
+        return stack.failures.find(session->path_id, feature::RequestKind::PCH) != nullptr;
+    };
+    stack.failures.crashed(session->path_id,
+                           feature::RequestKind::PCH,
+                           "w-1",
+                           "cause",
+                           DocumentFailures::Clock::now());
 
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
@@ -1338,10 +1406,10 @@ ZEST_CASE(EpochGuardsPCHWash) {
         ZEXPECT(built);
         auto compiled = stack.ast.compiles.latest(session->path_id);
         ZEXPECT((!compiled || !compiled->pch_key.has_value()));
-        ZEXPECT(session->quarantine->crashed(pch));
+        ZEXPECT(crashed());
 
         // A current request adopts the cached pair and only then clears
-        // this session's record.
+        // this document's record.
         built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                       session,
                                                       session->generation,
@@ -1351,7 +1419,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
         ZEXPECT(built);
         compiled = stack.ast.compiles.latest(session->path_id);
         ZEXPECT((compiled && compiled->pch_key.has_value()));
-        ZEXPECT(!session->quarantine->crashed(pch));
+        ZEXPECT(!crashed());
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1540,9 +1608,9 @@ ZEST_CASE(AnswerClearsQueryRecord) {
 
     Stack stack;
     auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
-    auto hover = evidence_kind(EvidenceKind::Hover);
-    a->quarantine->on_crash(hover, "d1", "cause", Quarantine::Clock::now());
-    a->quarantine->on_save();
+    auto hover = feature::RequestKind::Hover;
+    stack.failures.crashed(a->path_id, hover, "d1", "cause", DocumentFailures::Clock::now());
+    stack.failures.saved(a->path_id);
     int published = 0;
     auto connection =
         stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { published += 1; });
@@ -1560,7 +1628,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().has_value());
-        ZEXPECT(!a->quarantine->crashed(hover));
+        ZEXPECT(!stack.failures.find(a->path_id, hover));
         ZEXPECT(published == before + 1);
 
         co_await stack.ast.stop();

@@ -116,4 +116,23 @@ vfs::DiskState::CheckResult FileTable::check_version(VersionID vid) {
     return disk.check(version.fid, version.content_hash);
 }
 
+bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
+    auto changed = [&](const DepState& dep) {
+        // Gone at build time: reappearing is the change; still-missing
+        // stays unchanged (see capture_deps_snapshot).
+        if(dep.missing) {
+            return files.disk.present(dep.path_id);
+        }
+        // No version names the consumed bytes: rebuild once to converge.
+        if(!dep.version.valid()) {
+            return true;
+        }
+        // Missing means gone now — a change, since the build saw the file.
+        // Unreadable cannot prove the disk unchanged and counts as changed
+        // — conservative, retried by the rebuild's capture.
+        return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
+    };
+    return ranges::count_if(snap, changed) != 0;
+}
+
 }  // namespace clice

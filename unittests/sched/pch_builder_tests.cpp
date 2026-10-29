@@ -12,8 +12,8 @@ namespace {
 
 /// The acquisition crash matrix: a build's worker death is recorded on the key
 /// exactly once, whatever happens to the joiners or to the owner's own
-/// frame, and the key is refused until a consumer forgives it. Real
-/// workers, poisoned via the crash pragma.
+/// frame, and the key is refused until a consumer retries it. Real workers,
+/// poisoned via the crash pragma.
 ZEST_SUITE(PCHBuilderAcquisition, kota::zest::LoopFixture) {
 
 TempDir tmp;
@@ -70,7 +70,7 @@ void execute(F&& fn) {
 
 ZEST_CASE(PoisonKeyRecordsOnce) {
     // Two acquires of one poisoned key observe the same Failed round; the
-    // worker names the build, so its one death is blamed at once — no
+    // worker names the build, so its one death is attributed to it at once — no
     // resend — and recorded on the key.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
@@ -96,7 +96,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     ZEXPECT(deaths == 1);
     auto* crash = pch.crashed("shared-key");
     ZASSERT(crash != nullptr);
-    ZEXPECT(crash->code == worker::dispatch_errc::worker_crashed);
+    ZEXPECT(!crash->cause.empty());
 
     logging::reset_anomaly_for_testing();
 }
@@ -134,7 +134,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(ForgiveLiftsRefusal) {
+ZEST_CASE(ForgetLiftsRefusal) {
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     int deaths = 0;
@@ -150,13 +150,52 @@ ZEST_CASE(ForgiveLiftsRefusal) {
         refused = co_await pch.acquire(request(poison));
         ZASSERT(deaths == 1);
 
-        pch.forgive("shared-key");
+        pch.forget_failure("shared-key");
         retried = co_await pch.acquire(request(poison));
     });
 
     ZEXPECT(refused == PCHBuilder::Outcome::Failed);
     ZEXPECT(retried == PCHBuilder::Outcome::Failed);
     ZEXPECT(deaths == 2);
+
+    logging::reset_anomaly_for_testing();
+}
+
+ZEST_CASE(WholeFileCrashLiftsOnEdit) {
+    // A precompiled header the build declares is keyed by its command, not
+    // by the header's text: its crash is known to have read the header,
+    // and a fix there builds it again.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    int deaths = 0;
+    pool.on_crash = [&](const WorkerCrashInfo&) {
+        deaths += 1;
+    };
+    tmp.touch("a.h", "#pragma clang __debug crash\n");
+    auto header = tmp.path("a.h");
+    auto whole = [&] {
+        return PCHBuilder::Request{
+            .pch_key = "declared-key",
+            .file = header,
+            .directory = tmp.path("."),
+            .arguments = make_args(header, "-xc++-header"),
+            .whole_file = true,
+        };
+    };
+    std::optional<PCHBuilder::Outcome> refused, fixed;
+
+    execute([&]() -> kota::task<> {
+        co_await pch.acquire(whole());
+        refused = co_await pch.acquire(whole());
+        ZASSERT(deaths == 1);
+
+        tmp.touch("a.h", "#define FIXED 1\n");
+        fixed = co_await pch.acquire(whole());
+    });
+
+    ZEXPECT(refused == PCHBuilder::Outcome::Failed);
+    ZEXPECT(fixed == PCHBuilder::Outcome::Ready);
+    ZEXPECT(deaths == 1);
 
     logging::reset_anomaly_for_testing();
 }
@@ -186,44 +225,44 @@ ZEST_CASE(SharedBuildBothReady) {
     ZEXPECT(!it->second.index_path.empty());
 }
 
-ZEST_CASE(BlameParksKey) {
-    // Consumption strikes keep their own table: the build-side budget
-    // clears on every successful rebuild, so a pair whose every rebuild
-    // gets blamed again would rebuild forever without one. A clean
-    // consumption clears the strikes; consecutive blames park the key
-    // and acquisition fails fast, before any dispatch.
-    std::optional<PCHBuilder::Outcome> cleared, parked;
+ZEST_CASE(ConsumeFailuresStopKey) {
+    // Consumption keeps a record of its own: the build's failure clears on
+    // every successful rebuild, so a pair whose every rebuild fails to be
+    // read would rebuild forever without one. A clean consumption clears
+    // the record; failures in a row stop the key and acquisition fails
+    // fast, before any dispatch.
+    std::optional<PCHBuilder::Outcome> cleared, stopped;
     execute([&]() -> kota::task<> {
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.blame("shared-key");
+        pch.consume_failed("shared-key");
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.consumed_ok("shared-key");
-        pch.blame("shared-key");
+        pch.consume_succeeded("shared-key");
+        pch.consume_failed("shared-key");
         cleared = co_await pch.acquire(request("#define X 1\n"));
 
-        pch.blame("shared-key");
-        parked = co_await pch.acquire(request("#define X 1\n"));
+        pch.consume_failed("shared-key");
+        stopped = co_await pch.acquire(request("#define X 1\n"));
     });
     ZEXPECT(cleared == PCHBuilder::Outcome::Ready);
-    ZEXPECT(parked == PCHBuilder::Outcome::Failed);
+    ZEXPECT(stopped == PCHBuilder::Outcome::Failed);
 }
 
-ZEST_CASE(SharedPairStrikesOnce) {
-    // Two parses consumed the same pair and both blame it: the second blame
-    // finds it retracted already, and the key keeps building.
+ZEST_CASE(SharedPairFailsOnce) {
+    // Two parses read the same pair and both fail to: the second finds it
+    // retracted already, and the key keeps building.
     std::optional<PCHBuilder::Outcome> rebuilt;
     execute([&]() -> kota::task<> {
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.blame("shared-key");
-        pch.blame("shared-key");
+        pch.consume_failed("shared-key");
+        pch.consume_failed("shared-key");
         rebuilt = co_await pch.acquire(request("#define X 1\n"));
     });
     ZEXPECT(rebuilt == PCHBuilder::Outcome::Ready);
 }
 
-ZEST_CASE(EvictedPairNotBlamed) {
+ZEST_CASE(EvictedPairNotCounted) {
     // A pair the store evicted while a parse read it says nothing of its
-    // bytes: its consumers' blames book no strike, and the key keeps
+    // bytes: its consumers' failures count nothing, and the key keeps
     // building however often that happens.
     std::optional<PCHBuilder::Outcome> first, second;
     execute([&]() -> kota::task<> {
@@ -232,10 +271,10 @@ ZEST_CASE(EvictedPairNotBlamed) {
         };
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         evict();
-        pch.blame("shared-key");
+        pch.consume_failed("shared-key");
         first = co_await pch.acquire(request("#define X 1\n"));
         evict();
-        pch.blame("shared-key");
+        pch.consume_failed("shared-key");
         second = co_await pch.acquire(request("#define X 1\n"));
     });
     ZEXPECT(first == PCHBuilder::Outcome::Ready);

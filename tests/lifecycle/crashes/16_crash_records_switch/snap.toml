@@ -1,0 +1,21 @@
+["switch to another project".hover]
+hover = {}
+
+["switch to another project"."hover while paused".hover]
+markdown = '''
+**function** `lib_fn`
+
+```cpp
+int lib_fn()
+```
+'''
+range = "int ⟦lib_fn⟧();"
+
+["switch to another project".crashes]
+value = 1
+
+["switch to another project"."hover after the switch"]
+hover = {}
+
+["switch to another project"."crashes after the switch"]
+value = 1

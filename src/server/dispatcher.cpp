@@ -39,27 +39,41 @@ Dispatcher::Dispatcher(Project& project,
                        EditorContext& contexts,
                        ASTFamily& ast,
                        WorkerPool& pool,
+                       DocumentFailures& failures,
                        const PositionEncoding& encoding) :
-    project(project), contexts(contexts), ast(ast), pool(pool), encoding(encoding) {}
+    project(project), contexts(contexts), ast(ast), pool(pool), failures(failures),
+    encoding(encoding) {}
+
+bool Dispatcher::admits(Fid path_id,
+                        feature::RequestKind kind,
+                        const DocumentFailures::Attempt* attempt,
+                        bool parses) const {
+    auto now = DocumentFailures::Clock::now();
+    if(attempt ? attempt->crashed_meanwhile() : failures.stops(path_id, kind, now)) {
+        return false;
+    }
+    return !parses || !ast.compile_stopped(path_id);
+}
 
 template <typename Params>
 RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
-                                      std::uint8_t evidence,
+                                      feature::RequestKind kind,
                                       const Params& params,
                                       kota::cancellation_token token,
                                       bool& unanswered) {
+    auto path_id = ticket.session->path_id;
     auto unsent = [&] {
         unanswered = true;
         return kota::outcome_error(ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
     };
     // The caller's compile gave a crash of the kind time to be booked.
-    if(ticket.session->quarantine->barred(evidence, Quarantine::Clock::now())) {
+    if(!admits(path_id, kind, nullptr, false)) {
         co_return unsent();
     }
     // A query that kills the worker is this document's doing even though
     // its compile finished: per-kind record, since only this query kind
-    // answering clears it (see Quarantine).
-    Quarantine::Attempt attempt(*ticket.session->quarantine, evidence);
+    // answering clears it (see DocumentFailures).
+    DocumentFailures::Attempt attempt(failures, path_id, kind);
     bool compile = false;
     co_return co_await deliver(
         pool,
@@ -69,7 +83,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                 if(std::exchange(compile, true) && !co_await ast.ensure_compiled(ticket.session)) {
                     co_return unsent();
                 }
-                if(attempt.overtaken()) {
+                if(!admits(path_id, kind, &attempt, false)) {
                     co_return unsent();
                 }
                 auto result = co_await pool.send_stateful(ticket.session->path_id.raw,
@@ -87,15 +101,17 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                 // Compile it there again. Each eviction takes another request
                 // arriving in that window, so the retries end with the work in
                 // flight.
-                ast.invalidate(ticket.session->path_id);
+                ast.invalidate(path_id);
             }
         },
-        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
+        [&](const ipc::Error& error) {
+            ast.record_crash(ticket.session, kind, worker::death_of(error), error.message);
+        });
 }
 
 template <typename Outcome>
 Outcome Dispatcher::finish(const Ticket& ticket,
-                           std::uint8_t kind,
+                           feature::RequestKind kind,
                            llvm::StringRef label,
                            Outcome result,
                            bool snapshot) {
@@ -130,8 +146,7 @@ Outcome Dispatcher::finish(const Ticket& ticket,
     // crashes were counted per attempt regardless of staleness, a success
     // clears only when fresh. Clearing a record republishes: no compile
     // runs to drop its note.
-    if(ticket.fresh() && session.quarantine->crashed(kind)) {
-        session.quarantine->on_success(kind);
+    if(failures.succeeded(ticket, kind)) {
         ast.republish(ticket.session);
     }
     return result;
@@ -140,16 +155,14 @@ Outcome Dispatcher::finish(const Ticket& ticket,
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Dispatcher::ast_request(const Ticket& ticket,
-                            EvidenceKind kind,
+                            feature::RequestKind kind,
                             llvm::StringRef label,
                             Params params,
                             kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
-    auto& session = *ticket.session;
-    auto path_id = session.path_id;
-    auto evidence = evidence_kind(kind);
+    auto path_id = ticket.session->path_id;
 
-    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
+    if(!admits(path_id, kind, nullptr, false)) {
         co_return Result{};
     }
 
@@ -166,14 +179,14 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     auto wait_ms = timer.ms_f();
 
     bool unanswered = false;
-    auto result = co_await ask(ticket, evidence, params, token, unanswered);
+    auto result = co_await ask(ticket, kind, params, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
             co_await kota::fail(content_modified());
         }
         co_return Result{};
     }
-    result = finish(ticket, evidence, label, std::move(result));
+    result = finish(ticket, kind, label, std::move(result));
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -193,7 +206,7 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(
         ticket,
-        EvidenceKind::Hover,
+        feature::RequestKind::Hover,
         "Hover",
         worker::HoverParams{.path = std::move(path), .offset = offset, .config = project.config},
         std::move(token));
@@ -209,7 +222,7 @@ kota::task<std::vector<feature::InlayHint>, ipc::Error>
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(
         ticket,
-        EvidenceKind::InlayHint,
+        feature::RequestKind::InlayHint,
         "InlayHint",
         worker::InlayHintParams{std::move(path), offsets, project.config},
         std::move(token));
@@ -219,7 +232,7 @@ kota::task<std::vector<index::DocumentLink>, ipc::Error>
     Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(ticket,
-                                   EvidenceKind::DocumentLink,
+                                   feature::RequestKind::DocumentLink,
                                    "DocumentLink",
                                    worker::DocumentLinkParams{std::move(path)},
                                    std::move(token));
@@ -229,7 +242,7 @@ kota::task<std::optional<std::vector<feature::FoldingRange>>, ipc::Error>
     Dispatcher::folding_ranges(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(ticket,
-                                   EvidenceKind::FoldingRange,
+                                   feature::RequestKind::FoldingRange,
                                    "FoldingRange",
                                    worker::FoldingRangeParams{std::move(path)},
                                    std::move(token));
@@ -239,7 +252,7 @@ kota::task<std::optional<std::vector<feature::DocumentSymbol>>, ipc::Error>
     Dispatcher::document_symbols(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(ticket,
-                                   EvidenceKind::DocumentSymbol,
+                                   feature::RequestKind::DocumentSymbol,
                                    "DocumentSymbol",
                                    worker::DocumentSymbolParams{std::move(path), project.config},
                                    std::move(token));
@@ -249,7 +262,7 @@ kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>
     Dispatcher::semantic_tokens(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(ticket,
-                                   EvidenceKind::SemanticTokens,
+                                   feature::RequestKind::SemanticTokens,
                                    "SemanticTokens",
                                    worker::SemanticTokensParams{std::move(path), project.config},
                                    std::move(token));
@@ -262,7 +275,7 @@ kota::task<std::vector<std::vector<LocalSourceRange>>, ipc::Error>
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(
         ticket,
-        EvidenceKind::SelectionRange,
+        feature::RequestKind::SelectionRange,
         "SelectionRange",
         worker::SelectionRangeParams{std::move(path), std::move(offsets)},
         std::move(token));
@@ -277,15 +290,40 @@ kota::task<std::vector<feature::CodeAction>, ipc::Error>
     auto selection = ticket.session->positions().offset_range(range, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await ast_request(ticket,
-                                   EvidenceKind::CodeAction,
+                                   feature::RequestKind::CodeAction,
                                    "CodeAction",
                                    worker::CodeActionParams{std::move(path), selection},
                                    std::move(token));
 }
 
 template <typename Params>
+RequestResult<Params> Dispatcher::send(const Ticket& ticket,
+                                       feature::RequestKind kind,
+                                       const Params& params,
+                                       const DocumentFailures::Attempt& attempt,
+                                       bool parses,
+                                       kota::cancellation_token token,
+                                       bool& refused) {
+    auto path_id = ticket.session->path_id;
+    auto admitted = [&] {
+        refused = !admits(path_id, kind, &attempt, parses);
+        return !refused;
+    };
+    co_return co_await deliver(
+        pool,
+        false,
+        [&] {
+            return pool
+                .send_stateless(params, worker::Priority::High, token, {}, nullptr, admitted);
+        },
+        [&](const ipc::Error& error) {
+            ast.record_crash(ticket.session, kind, worker::death_of(error), error.message);
+        });
+}
+
+template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    Dispatcher::interactive(std::uint8_t evidence,
+    Dispatcher::interactive(feature::RequestKind kind,
                             llvm::StringRef label,
                             const Ticket& ticket,
                             protocol::Position position,
@@ -296,15 +334,12 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
     // This build parses the same content as the compile: a compile or
-    // preamble that crashed bars it as well as its own crashes do.
-    auto barred = [&] {
-        return session.quarantine->barred(evidence, Quarantine::Clock::now()) ||
-               ASTFamily::compile_barred(session);
-    };
-    if(barred()) {
-        LOG_DEBUG("{}: {} is barred by a crash", label, path);
+    // preamble that crashed stops it as well as its own crashes do.
+    if(!admits(path_id, kind, nullptr, true)) {
+        LOG_DEBUG("{}: {} is stopped by a crash", label, path);
         co_return empty_value<Result>();
     }
+    DocumentFailures::Attempt attempt(failures, path_id, kind);
 
     wp.file = path;
     wp.text = session.text().str();
@@ -329,12 +364,6 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     wp.pch = std::move(inputs.pch);
     wp.pcms = std::move(inputs.pcms);
-    // A preamble crash inside the preparation bars the content: stop
-    // before dispatching it again.
-    if(barred()) {
-        LOG_DEBUG("{}: {} was barred during dependency prep", label, path);
-        co_return empty_value<Result>();
-    }
     auto wait_ms = timer.ms_f();
 
     // A completion reply stays useful after edits at or past the cursor:
@@ -354,13 +383,19 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     wp.hidden = std::move(resolution.hidden);
 
-    Quarantine::Attempt attempt(*session.quarantine, evidence);
-    auto result = co_await deliver(
-        pool,
-        false,
-        [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
-        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    result = finish(ticket, evidence, label, std::move(result), snapshot());
+    // A preamble crash inside the preparation, or a crash of a request like
+    // this one while it was prepared or waited for a worker, stops the
+    // content: it is not dispatched again.
+    bool refused = false;
+    auto result = co_await send(ticket, kind, wp, attempt, true, token, refused);
+    if(refused) {
+        LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
+        if(!ticket.fresh() && !snapshot()) {
+            co_await kota::fail(content_modified());
+        }
+        co_return empty_value<Result>();
+    }
+    result = finish(ticket, kind, label, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -379,7 +414,7 @@ kota::task<worker::CompletionResult, ipc::Error>
                            std::vector<feature::ScopeCandidate> candidates,
                            bool more_candidates,
                            kota::cancellation_token token) {
-    return interactive(evidence_kind(EvidenceKind::Completion),
+    return interactive(feature::RequestKind::Completion,
                        "Completion",
                        ticket,
                        position,
@@ -394,7 +429,7 @@ Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                                                  const protocol::Position& position,
                                                  std::string selected,
                                                  kota::cancellation_token token) {
-    return interactive(evidence_kind(EvidenceKind::SignatureHelp),
+    return interactive(feature::RequestKind::SignatureHelp,
                        "SignatureHelp",
                        ticket,
                        position,
@@ -408,12 +443,13 @@ kota::task<std::optional<worker::FormatResult>, ipc::Error>
                        kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path = std::string(project.file_table.resolve(session.path_id));
-    auto evidence = evidence_kind(EvidenceKind::Format);
+    auto kind = feature::RequestKind::Format;
 
-    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
-        LOG_DEBUG("Format: {} is barred by a crash", path);
+    if(!admits(session.path_id, kind, nullptr, false)) {
+        LOG_DEBUG("Format: {} is stopped by a crash", path);
         co_return std::nullopt;
     }
+    DocumentFailures::Attempt attempt(failures, session.path_id, kind);
 
     worker::FormatParams wp;
     wp.file = project.file_table.display(session.path_id);
@@ -424,13 +460,16 @@ kota::task<std::optional<worker::FormatResult>, ipc::Error>
     }
 
     ScopedTimer timer;
-    Quarantine::Attempt attempt(*session.quarantine, evidence);
-    auto result = co_await deliver(
-        pool,
-        false,
-        [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
-        [&](const ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    result = finish(ticket, evidence, "Format", std::move(result));
+    bool refused = false;
+    auto result = co_await send(ticket, kind, wp, attempt, false, token, refused);
+    if(refused) {
+        LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
+        if(!ticket.fresh()) {
+            co_await kota::fail(content_modified());
+        }
+        co_return std::nullopt;
+    }
+    result = finish(ticket, kind, "Format", std::move(result));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));
     }

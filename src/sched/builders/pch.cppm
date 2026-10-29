@@ -1,8 +1,8 @@
 module clice:sched.builders.pch;
 
 import :project.project;
-import :sched.blame_budget;
 import :sched.graph;
+import :support.failure_record;
 import :support.prelude;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -17,13 +17,14 @@ namespace clice {
 /// declares (Build::pch_unit) are built here too, a whole file each, and
 /// a preamble's PCH is built over the one its command reads.
 ///
-/// The family owns the shared side of the policy: the pair-atomic store
+/// The builder owns the shared side of the policy: the pair-atomic store
 /// commit and cache metadata (a round runs to a real reply, so no
-/// cancellation can split blob from metadata), the keys whose build
-/// crashed a worker, and the cooperative response to advisory
-/// cancellation. The adoption side stays with the server: which session
-/// points at the key and per-document quarantine — every consumer reads a
-/// failed acquisition's crash from crashed() and books it for itself.
+/// cancellation can split blob from metadata), the failures of the keys'
+/// builds and consumption (Project::failures), and the cooperative
+/// response to advisory cancellation. The adoption side stays with the
+/// server: which session points at the key and the documents' failure
+/// records — every consumer reads a failed acquisition's crash from
+/// crashed() and books it for itself.
 class PCHBuilder {
 public:
     PCHBuilder(TaskGraph& graph, Project& project, WorkerPool& pool);
@@ -99,26 +100,20 @@ public:
     /// on the returned node — the only wait form a family round may use.
     NodeId prepare(Request request);
 
-    /// The death a build of the key caused, while the key is refused: a
-    /// round's crash is recorded whatever became of the request that
-    /// spawned it (contract 12), and every consumer that finds it books it
-    /// against its own document instead of burning a worker of its own.
-    const ipc::Error* crashed(llvm::StringRef pch_key) const {
-        auto it = build_crashes.find(pch_key);
-        return it != build_crashes.end() ? &it->second : nullptr;
-    }
+    /// The crash of the key's last build, while the inputs it is known to
+    /// have read hold: a round's crash is recorded whatever became of the
+    /// request that spawned it (contract 12), and every consumer that finds
+    /// it books it against its own document instead of burning a worker of
+    /// its own. One document's records cannot contain it alone: the
+    /// artifact is shared.
+    const FailureRecord* crashed(llvm::StringRef pch_key);
 
-    /// A consumer holding a license to retry (see server/quarantine.cppm)
-    /// lifts the key's refusal.
-    void forgive(llvm::StringRef pch_key) {
-        build_crashes.erase(pch_key);
-    }
-
-    /// Forget the key's failed build (see build_failures), so the next
-    /// request builds it again: a consumer's save retries it, a consumer
-    /// moving to another key releases it. Returns whether it had failed.
+    /// Forget the key's failed build, a crash or errors in the user's code,
+    /// so the next request builds it again: a consumer whose own record lets
+    /// it retry, or that was saved, retries it, and one moving to another
+    /// key releases it. Returns whether it had failed.
     bool forget_failure(llvm::StringRef pch_key) {
-        return build_failures.erase(pch_key);
+        return project.failures.pch_builds.forget(pch_key);
     }
 
     /// A complete, store-backed, deps-current pair is registered under
@@ -136,20 +131,33 @@ public:
     /// the life of the store.
     void invalidate(llvm::StringRef pch_key);
 
-    /// A parse consuming the pair died or blamed it: retract it AND book a
-    /// strike against the key — unless the pair was gone from the store by
-    /// then: evicted under the parse, which says nothing of its bytes, or
-    /// retracted by a blame that struck already. Each successful rebuild
-    /// clears the build side, so consumption strikes keep their own table;
-    /// enough of them park the key and acquisitions fail fast, so consumers
-    /// fall back to compiling without a PCH instead of looping
-    /// rebuild/blame forever over failing storage.
-    void blame(llvm::StringRef pch_key);
+    /// When reading a key's pairs stops it from building: two failures in a
+    /// row within the cooldown. A stop must never be final: what fails may
+    /// live in content the key cannot see (a header the preamble includes),
+    /// so editing it cannot unlock the key. After the cooldown the key
+    /// builds again, and stops again only after `limit` more failures —
+    /// bounded burn, never a permanent decision, like slot revival.
+    constexpr static FailurePolicy consume_policy{
+        .limit = 2,
+        .cooldown = std::chrono::minutes(5),
+    };
 
-    /// A parse consumed the key's pair and completed without blaming it:
-    /// clear its consumption strikes (cf. BlameBudget::on_success).
-    void consumed_ok(llvm::StringRef pch_key) {
-        consume_blames.on_success(pch_key);
+    /// A parse reading the pair died or found it unreadable: retract it AND
+    /// count a failure of its consumption — unless the pair was gone from
+    /// the store by then: evicted under the parse, which says nothing of
+    /// its bytes, or retracted by a failure counted already. Each
+    /// successful rebuild clears the build's failure, so the consumption
+    /// keeps a record of its own; enough failures stop the key and
+    /// acquisitions fail fast, so consumers fall back to compiling without
+    /// a PCH instead of rebuilding and failing forever over failing
+    /// storage.
+    void consume_failed(llvm::StringRef pch_key);
+
+    /// A parse read the key's pair and completed: its consumption failures
+    /// were transient — without this, two unrelated hiccups far apart
+    /// would stop a key that rebuilds fine in between.
+    void consume_succeeded(llvm::StringRef pch_key) {
+        project.failures.pch_consumes.forget(pch_key);
     }
 
     /// Open the pch.idx index of a cached PCH. The single consumption
@@ -217,25 +225,6 @@ private:
     /// Move a pch key to the front of the loaded-state LRU. Called
     /// whenever an entry's pch.idx index is opened or replaced.
     void touch_loaded_state(llvm::StringRef pch_key);
-
-    /// The keys whose build killed a worker, with the death (see
-    /// crashed): refused until a consumer forgives the key or its content —
-    /// and therefore the key — changes. One document's quarantine cannot
-    /// contain it alone: the artifact is shared, so every session with the
-    /// same preamble would burn a worker of its own.
-    llvm::StringMap<ipc::Error> build_crashes;
-
-    /// The keys whose build failed on errors in the user's code, with what
-    /// that build read and looked for: refused until one of those files
-    /// changes, and forgotten when a consumer is saved or moves to another
-    /// key. The key covers the preamble text and
-    /// the flags, so the same inputs fail the same way — rebuilt, every
-    /// compile of every consumer would pay for the failing build first.
-    llvm::StringMap<DepsSnapshot> build_failures;
-
-    /// Consumption strikes per key (see blame); separate from the build
-    /// side, which every successful rebuild clears.
-    BlameBudget consume_blames;
 
     /// Keys of pch_cache entries whose pch.idx index is currently loaded,
     /// most recently used first (see enforce_loaded_budget).

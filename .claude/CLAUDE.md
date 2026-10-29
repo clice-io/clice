@@ -30,7 +30,7 @@ Distilled from real correction history — these mistakes keep recurring:
 
 `src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `compile` ← `semantic` ← `index` ← `feature`) ← `config` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
 
-- `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching
+- `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching, failure records and their policies
 - `src/vfs/` — clice's view of the disk over `kota::fs`: source text and its change stamps, the file table and its freshness checks, the file system a compile sees, the on-disk cache store, finding a Cygwin or MSYS2 runtime's mount table
 - `src/command/` — compile commands: the option table and argument model, file kinds, the command table, normalizing raw commands, the compilation database, rule edits, header search configurations, the clang invocation, the toolchain and its queries, one file per compiler kind under `toolchains/` (GCC-style, cl, nvcc, clang)
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
@@ -39,10 +39,10 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, and the reads every index-backed feature builds on (`IndexQuery` over all index sources, symbol search, declared text)
 - `src/feature/` — the language features, one interface each with its options, its result type and its protocol form, its answer from one file's AST, and what the index adds: AST only (diagnostics, signature help, selection ranges; formatting reads the text alone), index only (navigation, hierarchy, rename, workspace symbols, counterparts, and `query`: the command line's answers about symbols and files), both — the index answering while the AST is not current (hover, semantic tokens, folding, outline, document links) or completing what the AST answers (completion, code actions, inlay hint targets); which source answers is the server's call
 - `src/config/` — the `clice.toml` configuration
-- `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the command snapshot and artifact records, saving and loading the project's database, the persisted index opened for one command-line run (`IndexReader`), and the answers about the build (`queries`: its files, include dependencies, a change's reach)
+- `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the command snapshot and artifact records, results remembered with the files they read (the artifacts' failures among them), saving and loading the project's database, the persisted index opened for one command-line run (`IndexReader`), and the answers about the build (`queries`: its files, include dependencies, a change's reach)
 - `src/worker/` — the stateless and stateful worker processes, their pool and protocol
-- `src/sched/` — the task graph (PCH, PCM, AST and TU nodes), batch runs, the indexing pump
-- `src/server/` — the LSP server: master server, sessions, the requests (each routed to the source that answers it now, its inputs gathered for the feature that answers), dispatch to the workers, the control channel
+- `src/sched/` — the task graph (PCH, PCM, AST and TU nodes), the PCH and PCM builders, batch runs, the indexing pump
+- `src/server/` — the LSP server: master server, sessions, the requests (each routed to the source that answers it now, its inputs gathered for the feature that answers), dispatch to the workers and the documents' failure records that admit it, the control channel
 - `src/analysis/` — the analyses behind `clice analyze` and `clice modularize`: module graph, rewriting, wrapping
 - `src/driver/` — the CLI: `driver.cppm` and one self-registering file per subcommand (serve, worker, index, inspect, command, scan, format, lint, query, refactor, analyze, modularize)
 

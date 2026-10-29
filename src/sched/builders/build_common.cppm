@@ -1,5 +1,6 @@
 module clice:sched.builders.build_common;
 
+import :support.failure_record;
 import :support.prelude;
 import :worker.protocol;
 
@@ -30,6 +31,14 @@ inline bool expected_build_failure(const auto& result) {
 /// the dispatch error otherwise.
 const inline std::string& build_failure_message(const auto& result) {
     return result.has_value() ? result.value().error : result.error().message;
+}
+
+/// The record of a build that failed with `cause`: `death` is the identity
+/// of the worker death it crashed, empty for errors in the user's code.
+inline FailureRecord failed_build(llvm::StringRef death, std::string cause) {
+    FailureRecord record;
+    record.fail({}, death, std::move(cause), FailureRecord::Clock::now());
+    return record;
 }
 
 }  // namespace clice

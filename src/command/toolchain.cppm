@@ -4,6 +4,7 @@ import :command.argument;
 import :command.search_config;
 import :command.table;
 import :command.toolchains.clang;
+import :support.failure_record;
 import :support.prelude;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -43,9 +44,9 @@ public:
     };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
-    /// once the cooldown passes (cf. BlameBudget), so a transient driver
-    /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
-    /// cannot poison the key for the rest of the session.
+    /// once the cooldown passes, so a transient driver failure — an upgrade
+    /// replacing the binary mid-stat, a full tmpfs — cannot poison the key
+    /// for the rest of the session.
     Toolchain(CommandTable& commands,
               FileTable& files,
               std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
@@ -117,7 +118,7 @@ public:
     }
 
     void set_failed_retry(std::chrono::steady_clock::duration retry) {
-        failed_retry = retry;
+        query_policy.cooldown = retry;
     }
 
     std::size_t query_count() const {
@@ -208,11 +209,14 @@ private:
     /// Query layer: key → the frontend its job sets up.
     llvm::StringMap<Frontend> queries;
 
-    /// Negative cache: keys whose query failed, mapped to the error message
-    /// and when it was recorded. Avoids re-spawning the same failing driver
-    /// query for every file that shares the key (see clangd's
-    /// SystemIncludeExtractor for precedent); expires after `failed_retry`.
-    llvm::StringMap<std::pair<std::string, std::chrono::steady_clock::time_point>> failed;
+    /// Negative cache: keys whose query failed, the error message as the
+    /// record's cause. Avoids re-spawning the same failing driver query for
+    /// every file that shares the key (see clangd's SystemIncludeExtractor
+    /// for precedent); a key is queried again once query_policy's cooldown
+    /// passes.
+    llvm::StringMap<FailureRecord> failed;
+
+    FailurePolicy query_policy;
 
     /// Synthesis layer: (command, input language) → resolved entry.
     llvm::DenseMap<std::pair<std::uint32_t, const char*>, ResolvedID> synth_cache;
@@ -220,8 +224,6 @@ private:
     std::vector<Resolved> resolved_configs;
 
     llvm::DenseMap<std::uint32_t, SearchConfig> search_configs;
-
-    std::chrono::steady_clock::duration failed_retry;
 };
 
 }  // namespace clice

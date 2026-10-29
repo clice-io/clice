@@ -5,6 +5,7 @@ import :sched.builders.pch;
 import :support.anomaly;
 import :support.logging;
 import :vfs.file_table;
+import :vfs.path;
 import :worker.protocol;
 
 namespace clice {
@@ -149,33 +150,33 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
         co_return RoundOutcome::Failed;
     }
 
-    // A preamble whose PCH build killed a worker is refused before the
-    // dispatch: the artifact is shared, so one document's quarantine
-    // cannot contain it — every session with this preamble would burn a
-    // worker of its own. A preamble's key is content-derived: editing the
-    // poison starts a fresh key. A precompiled header the build declares
-    // is keyed by its command alone, so its refusal lasts the session:
-    // its consumers parse the header it holds instead. Consumption strikes
-    // park the key the same way: rebuilding a pair whose every rebuild gets
-    // blamed again would fare no better (see blame).
-    if(build_crashes.contains(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
-        co_return RoundOutcome::Failed;
-    }
-    if(consume_blames.blocked(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} keeps getting blamed by its consumers",
-                 request.file,
-                 pch_key);
-        co_return RoundOutcome::Failed;
-    }
-    if(auto it = build_failures.find(pch_key); it != build_failures.end()) {
-        if(!deps_changed(project.file_table, it->second)) {
+    // A build that failed stands while its inputs do: one that crashed a
+    // worker is refused before the dispatch, since the artifact is shared
+    // and every document with this preamble would burn a worker of its own,
+    // and one that failed on the user's code would fail the same way, every
+    // compile of every consumer paying for it first. A preamble's key is
+    // content-derived: editing the poison starts a fresh key. A
+    // precompiled header the build declares is keyed by its command alone:
+    // its crash stands until its own file changes, its consumers parsing
+    // the header it holds meanwhile. A key whose pairs its consumers keep
+    // failing to read stops the same way: rebuilding one would fare no
+    // better (see consume_failed).
+    if(auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key)) {
+        if(failed->result.crashed()) {
+            LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
+        } else {
             LOG_DEBUG("PCH build for {} skipped: key {} failed on these inputs",
                       request.file,
                       pch_key);
-            co_return RoundOutcome::Failed;
         }
-        build_failures.erase(it);
+        co_return RoundOutcome::Failed;
+    }
+    if(auto* consumes = project.failures.pch_consumes.find(pch_key);
+       consumes && consumes->result.stops(consume_policy, FailureRecord::Clock::now())) {
+        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
+                 request.file,
+                 pch_key);
+        co_return RoundOutcome::Failed;
     }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
@@ -219,6 +220,17 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
         merge_deps(deps, {&imported, &base});
         return deps;
     };
+    // What a build that crashes is known to read, sampled before it runs:
+    // the modules and the PCH it builds over, and a whole file's own text,
+    // which its key leaves out.
+    DepsSnapshot known;
+    merge_deps(known, {&imported, &base});
+    if(bp.whole_file) {
+        if(auto own = current_dep(project.file_table,
+                                  project.file_table.intern(Spelling::absolute(bp.file)))) {
+            known.push_back(*own);
+        }
+    }
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
@@ -233,7 +245,11 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
-        [&](const ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
+        [&](const ipc::Error& error) {
+            project.failures.pch_builds.commit(pch_key,
+                                               failed_build(worker::death_of(error), error.message),
+                                               std::move(known));
+        });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("PCH build preempted for {}, will retry", bp.file);
@@ -243,7 +259,9 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
             if(result.has_value()) {
-                build_failures.insert_or_assign(pch_key, inputs(result.value()));
+                project.failures.pch_builds.commit(pch_key,
+                                                   failed_build({}, result.value().error),
+                                                   inputs(result.value()));
             }
         } else {
             LOG_ANOMALY(PCHBuildFail,
@@ -385,12 +403,20 @@ void PCHBuilder::invalidate(llvm::StringRef pch_key) {
     }
 }
 
-void PCHBuilder::blame(llvm::StringRef pch_key) {
+const FailureRecord* PCHBuilder::crashed(llvm::StringRef pch_key) {
+    auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key);
+    return failed && failed->result.crashed() ? &failed->result : nullptr;
+}
+
+void PCHBuilder::consume_failed(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     bool gone = it == project.pch_cache.end() ||
                 (project.store && !project.store->lookup("pch", it->second.blob));
     if(!gone) {
-        consume_blames.on_blame(pch_key);
+        project.failures.pch_consumes.entry(pch_key).result.fail(consume_policy,
+                                                                  {},
+                                                                  {},
+                                                                  FailureRecord::Clock::now());
     }
     invalidate(pch_key);
 }

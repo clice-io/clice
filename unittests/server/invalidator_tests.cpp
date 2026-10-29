@@ -8,9 +8,11 @@ import :sched.builders.turun;
 import :sched.graph;
 import :server.ast_family;
 import :server.context_service;
+import :server.document_failures;
 import :server.editor_context;
 import :server.invalidator;
 import :support.bytes;
+import :support.failure_record;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
@@ -31,7 +33,7 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
-/// The inert family stack an Invalidator reads through: no worker ever
+/// The inert builder stack an Invalidator reads through: no worker ever
 /// starts, so no round dispatches. The open files' compiles parse the
 /// bodies of their headers and serve their index, so that a dependency
 /// change splits open files from closed ones (SkippedBodiesReindexOpen
@@ -42,11 +44,12 @@ struct Harness {
     WorkerPool pool{loop};
     PCHBuilder pch;
     PCMBuilder pcm;
+    DocumentFailures failures;
     ASTFamily ast;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
         pch(graph, project, pool), pcm(graph, project, resolver.commands, pch, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store) {
+        ast(project, resolver, graph, pcm, pch, pool, store, failures) {
         project.config.project.skip_header_bodies = false;
     }
 };
@@ -696,7 +699,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
 
 ZEST_CASE(FailedModuleHeaderCascades) {
     // The module's build failed on the header: it is no less an input, and
-    // its importers hear of its change through the same record.
+    // its importers hear of its change through its failure record.
     FileTable files;
     Project project{files};
     SessionStore store;
@@ -714,9 +717,9 @@ ZEST_CASE(FailedModuleHeaderCascades) {
             user.raw
     },
         {NodeId{Family::PCM, mod.raw}});
-    auto& build = project.pcm_builds[mod];
-    build.deps.push_back({.path_id = header});
-    build.failure = PCMBuild::Failure{.error = "use of undeclared identifier 'x'"};
+    FailureRecord error;
+    error.cause = "use of undeclared identifier 'x'";
+    project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
 
     ZASSERT(ranges::contains(invalidator.readers(header), mod));

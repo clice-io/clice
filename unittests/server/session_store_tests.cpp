@@ -286,108 +286,33 @@ ZEST_CASE(ForEachVisitsAll) {
     ZASSERT(visited == 1);
 }
 
-ZEST_CASE(EditLetsCrashRetry) {
-    // The state machine itself is pinned by quarantine_tests; this pins
-    // that apply_change feeds real edits into it.
+ZEST_CASE(NoopEditUnchanged) {
+    // Only a real content change lets a crashed kind retry (see
+    // DocumentFailures::changed): an out-of-range deletion clamps to an
+    // empty range at the end of the document, an empty change list and a
+    // no-op replacement change nothing.
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
-    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
-    ZASSERT(session->quarantine->barred(0, later));
-    store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2, PositionEncoding::UTF16);
-    ZASSERT(!session->quarantine->barred(0, later));
-}
-
-ZEST_CASE(NoopEditNoRetry) {
-    SessionStore store;
-    auto session = store.open(Fid{1});
-    store.apply_open(*session, "int a;\n", 1);
-    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
-
-    // A retry needs a real content change: an out-of-range deletion clamps
-    // to an empty range at the end of the document, an empty change list
-    // and a no-op replacement change nothing — none may send the unchanged
-    // crashing bytes to another worker.
-    store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2, PositionEncoding::UTF16);
-    ZASSERT(session->quarantine->barred(0, later));
-
-    store.apply_change(*session, {}, 3, PositionEncoding::UTF16);
-    ZASSERT(session->quarantine->barred(0, later));
-
-    store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4, PositionEncoding::UTF16);
-    ZASSERT(session->quarantine->barred(0, later));
+    ZASSERT(!store.apply_change(*session,
+                                partial_change(99, 0, 99, 1, ""),
+                                2,
+                                PositionEncoding::UTF16));
+    ZASSERT(!store.apply_change(*session, {}, 3, PositionEncoding::UTF16));
+    ZASSERT(
+        !store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4, PositionEncoding::UTF16));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text().str();
-    store.apply_change(*session,
-                       protocol::TextDocumentContentChangeEvent(whole),
-                       5,
-                       PositionEncoding::UTF16);
-    ZASSERT(session->quarantine->barred(0, later));
+    ZASSERT(!store.apply_change(*session,
+                                protocol::TextDocumentContentChangeEvent(whole),
+                                5,
+                                PositionEncoding::UTF16));
 
-    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6, PositionEncoding::UTF16);
-    ZASSERT(!session->quarantine->barred(0, later));
-}
-
-ZEST_CASE(ReopenKeepsCrashes) {
-    SessionStore store;
-    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    auto session = store.open(Fid{1});
-    store.apply_open(*session, "int a;\n", 1);
-    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
-    store.close(Fid{1});
-    ZASSERT(session->closed);
-
-    // Closing and reopening the same bytes is no retry.
-    session = store.open(Fid{1});
-    store.apply_open(*session, "int a;\n", 1);
-    ZASSERT(session->quarantine->barred(0, later));
-
-    // Reopened on other bytes, the difference counts as a change.
-    store.close(Fid{1});
-    session = store.open(Fid{1});
-    store.apply_open(*session, "int b;\n", 1);
-    ZASSERT(session->quarantine->crashed(0));
-    ZASSERT(!session->quarantine->barred(0, later));
-}
-
-ZEST_CASE(InFlightAcrossClose) {
-    SessionStore store;
-    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    auto closed = store.open(Fid{1});
-    store.apply_open(*closed, "int a;\n", 1);
-    closed->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
-    closed->quarantine->on_change(Quarantine::Clock::now());
-
-    // The retry's license, taken before the close, comes back to the
-    // reopened document when the retry ends without an outcome.
-    std::shared_ptr<Session> reopened;
-    {
-        Quarantine::Attempt attempt(*closed->quarantine, 0);
-        store.close(Fid{1});
-        reopened = store.open(Fid{1});
-        store.apply_open(*reopened, "int a;\n", 1);
-        ZASSERT(reopened->quarantine->barred(0, later));
-    }
-    ZASSERT(!reopened->quarantine->barred(0, later));
-
-    // A crash of work still in flight on the closed session bars the
-    // reopened one.
-    closed->quarantine->on_crash(1, "d2", "cause", Quarantine::Clock::now());
-    ZASSERT(reopened->quarantine->barred(1, later));
-
-    // Even when the document had no record at the close.
-    auto clean = store.open(Fid{2});
-    store.apply_open(*clean, "int b;\n", 1);
-    store.close(Fid{2});
-    clean->quarantine->on_crash(0, "d3", "cause", Quarantine::Clock::now());
-    auto again = store.open(Fid{2});
-    store.apply_open(*again, "int b;\n", 1);
-    ZASSERT(again->quarantine->barred(0, later));
+    ZASSERT(
+        store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6, PositionEncoding::UTF16));
 }
 
 };  // ZEST_SUITE(SessionStore)

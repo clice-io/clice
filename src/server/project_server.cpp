@@ -26,9 +26,15 @@ namespace clice {
 
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
-    sched(loop, project, commands, server.pool),
-    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
-    dispatcher(project, contexts, ast, server.pool, server.position_encoding),
+    sched(loop, project, commands, server.pool), ast(project,
+                                                     contexts,
+                                                     sched.graph,
+                                                     sched.pcm,
+                                                     sched.pch,
+                                                     server.pool,
+                                                     sessions,
+                                                     server.failures),
+    dispatcher(project, contexts, ast, server.pool, server.failures, server.position_encoding),
     live_sources(project, sched.pch, sessions, ast.compiles),
     index_query(project.index, project.file_table, &freshness, &live_sources),
     requests(ast,
@@ -38,6 +44,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
              contexts,
              sched.pump,
              sessions,
+             server.failures,
              server.position_encoding),
     invalidator(project, sessions, contexts, ast, sched.pcm) {
     ast.register_runner();
@@ -92,8 +99,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     ast.on_stale = [this](Fid path_id) {
         this->server.drain_disk_changes();
         if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
+            start_over(*session);
         }
         commands.forget_self_contained(path_id);
     };
@@ -336,6 +342,12 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
     }
 }
 
+void ProjectServer::start_over(Session& session) {
+    ast.invalidate(session.path_id);
+    session.trial_done = false;
+    server.failures.changed(session.path_id, DocumentFailures::Clock::now());
+}
+
 void ProjectServer::close_session(Fid path_id) {
     // Retract the document's published diagnostics through the standard
     // output path: materialize an empty output and signal the transports
@@ -346,7 +358,8 @@ void ProjectServer::close_session(Fid path_id) {
     if(auto session = sessions.find(path_id)) {
         // The crash records stay with the file for a reopen; the
         // retraction must not carry their notes.
-        sessions.park(*session);
+        session->closed = true;
+        server.failures.closed(path_id, session->hash);
         ast.publish_output(session, CompileOutput{.text = session->source});
     }
     // Route the eviction notification before dropping ownership:
@@ -396,9 +409,10 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     }
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
-    // A reopened document still barred by a crash says so at once: its
+    server.failures.opened(path_id, session->hash, DocumentFailures::Clock::now());
+    // A reopened document still stopped by a crash says so at once: its
     // requests answer empty, and no compile will run to publish the note.
-    if(!session->quarantine->empty()) {
+    if(server.failures.any(path_id)) {
         ast.republish(session);
     }
     // What the disk holds under the buffer: a later save or outside
@@ -476,9 +490,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     bool inputs_changed = false;
     for(auto path_id: dirty.mark_ast_dirty) {
         if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
-            session->quarantine->on_change(Quarantine::Clock::now());
+            start_over(*session);
             inputs_changed |= session->serving == ServingMode::Escalated;
         }
         commands.forget_self_contained(path_id);

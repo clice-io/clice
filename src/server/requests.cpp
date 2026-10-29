@@ -52,7 +52,7 @@ static ipc::Error request_failed(std::string message) {
 constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
 
 bool Requests::ast_answerable(const Session& session) const {
-    return ast.compiles.index_current(session.path_id) && !ASTFamily::compile_barred(session);
+    return ast.compiles.index_current(session.path_id) && !ast.compile_stopped(session.path_id);
 }
 
 kota::task<Requests::Route> Requests::pick_route(const Ticket& ticket,
@@ -72,8 +72,9 @@ kota::task<Requests::Route> Requests::pick_route(const Ticket& ticket,
         // index up serve at any size.
         bool capped = options.full_lex && session.text().size() > full_lex_cap;
         if(!capped) {
-            // The session's own index when current (the quarantine fallback
-            // — the worker cannot be asked, the index is still true), else
+            // The session's own index when current (the answer while a
+            // crash stops the compile — the worker cannot be asked, the
+            // index is still true), else
             // the disk shard admitted by freshness clause 4.
             auto serving = query.serving(session.path_id);
             // The disk shard merges every context the file compiles in, or
@@ -249,20 +250,22 @@ std::vector<feature::FileDiagnostic> Requests::finished_diagnostics(const Sessio
     if(session.closed) {
         return {};
     }
-    // A compile that failed or is barred left an output of an older
+    // A compile that failed or is stopped left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
     if(auto compiled = ast.compiles.latest_at(session.path_id, session.version)) {
         return shown_diagnostics(session, *compiled->output);
     }
-    std::vector<feature::FileDiagnostic> diagnostics;
-    append_crash_notes(session, diagnostics);
-    return diagnostics;
+    return shown_diagnostics(session, {});
 }
 
 std::vector<feature::FileDiagnostic>
     Requests::shown_diagnostics(const Session& session, const CompileOutput& output) const {
     auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.config.diagnostics);
-    append_crash_notes(session, diagnostics);
+    if(!session.closed) {
+        for(auto& note: failures.notes(session.path_id)) {
+            diagnostics.push_back(feature::crash_note(note));
+        }
+    }
     return diagnostics;
 }
 
@@ -385,14 +388,14 @@ Requests::RawResult Requests::definition(Ticket ticket,
     // An index-only session never owes the compile the worker dispatch
     // implies, a session served under freshness clause 4 (escalated,
     // compile still in flight) already routed to the index, and a session
-    // whose compile a crash bars cannot reach a worker at all. What the
+    // whose compile a crash stops cannot reach a worker at all. What the
     // worker leg covers — include directives, which have no symbol
     // occurrence — the manifest edges answer instead, under the same
     // content gate as the index's links: manifest lines are meaningless
     // against a buffer the index never described.
     auto serving = query.serving(path_id);
     bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
-    if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
+    if(session->serving == ServingMode::IndexOnly || ast.compile_stopped(session->path_id) ||
        (shard_served && !cursor_at(path_id, position))) {
         if(offset) {
             auto links = feature::document_links(text_of(*session), query, session->path_id);
@@ -407,7 +410,7 @@ Requests::RawResult Requests::definition(Ticket ticket,
     // A symbol the shard names and no index places waits for the compile:
     // a module's declaration before the module's unit is indexed is in the
     // compile's own index alone. Awaited here, as the links dispatch skips
-    // the compile while a crash bars link queries.
+    // the compile while a crash stops link queries.
     if(shard_served) {
         if(auto stop = co_await await_compile(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
@@ -483,7 +486,8 @@ Requests::RawResult Requests::hover(Ticket ticket,
             // after an imported interface changed): while a compile can
             // run, the AST's card is worth the wait.
             if(info->definition.empty() && info->file.empty() &&
-               session->serving == ServingMode::Escalated && !ASTFamily::compile_barred(*session)) {
+               session->serving == ServingMode::Escalated &&
+               !ast.compile_stopped(session->path_id)) {
                 break;
             }
             session->index_served = true;
