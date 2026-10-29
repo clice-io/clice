@@ -14,7 +14,7 @@ bool DocumentFailures::crashed(Fid document,
     bool editing = !entry.saved_since_change && now - entry.changed_at < policy.editing_window;
     if(record.failure.fail(policy, death, std::move(cause), now, editing)) {
         crashes += 1;
-        record.serial = crashes;
+        record.seq = crashes;
     }
     return record.failure.shown;
 }
@@ -66,12 +66,8 @@ bool DocumentFailures::stops(Fid document, feature::RequestKind kind, Clock::tim
 }
 
 const FailureRecord* DocumentFailures::find(Fid document, feature::RequestKind kind) const {
-    auto it = documents.find(document);
-    if(it == documents.end()) {
-        return nullptr;
-    }
-    auto record = it->second.records.find(kind);
-    return record != it->second.records.end() ? &record->second.failure : nullptr;
+    auto* record = const_cast<DocumentFailures&>(*this).find_record(document, kind);
+    return record ? &record->failure : nullptr;
 }
 
 bool DocumentFailures::any(Fid document) const {
@@ -115,7 +111,7 @@ DocumentFailures::Attempt::Attempt(DocumentFailures& failures,
     changes = it != failures.documents.end() ? it->second.changes : 0;
     if(auto* record = failures.find_record(document, kind)) {
         auto& failure = record->failure;
-        serial = record->serial;
+        seq = record->seq;
         retrying = !failure.trying && (failure.changed || failure.saved);
         failure.trying = failure.trying || retrying;
     }
@@ -126,7 +122,7 @@ DocumentFailures::Attempt::~Attempt() {
     if(!record) {
         return;
     }
-    if(record->serial != serial) {
+    if(record->seq != seq) {
         auto& entry = failures.documents.find(document)->second;
         record->failure.changed = record->failure.changed || entry.changes != changes;
         return;
@@ -138,7 +134,7 @@ DocumentFailures::Attempt::~Attempt() {
 
 bool DocumentFailures::Attempt::crashed_meanwhile() const {
     auto* record = failures.find_record(document, kind);
-    return record && record->serial != serial;
+    return record && record->seq != seq;
 }
 
 }  // namespace clice

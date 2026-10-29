@@ -142,7 +142,7 @@ A paused kind of work is never retried while its document sits still: asking aga
 
 A first crash right after an edit stays silent, since it most likely comes from half-typed code that the next edit retries. Closing and reopening a document keeps its pauses, and reopening it with different content counts as a change. An answer from the paused work clears the pause and its warning.
 
-Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes. A run that crashes while reading the precompiled header its target's build declares counts against that header, as a compile's crash on its preamble does: a corrupted one is rebuilt for the next file, and one that keeps crashing its readers is left out for a while, each file parsing the header itself.
+Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes. A run that crashes while reading the precompiled header its target's build declares runs again without it, the file parsing the header itself. If that run succeeds, the crash counts against the header, as a compile's crash on its preamble does: a corrupted one is rebuilt for the next file, and one that keeps crashing its readers is left out for a while. If it crashes again, the crash is the file's own.
 
 A precompiled header the build declares that crashes the worker building it is not built again until the header changes; its readers parse the header themselves meanwhile.
 

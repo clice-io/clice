@@ -1,6 +1,7 @@
 module clice;
 
 import :compile.compilation;
+import :sched.builders.build_common;
 import :sched.builders.turun;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
@@ -208,39 +209,113 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     ZEXPECT(!build->second.path.empty());
 }
 
-ZEST_CASE(CrashCountsAgainstTargetPCH) {
-    // A unit that crashes the worker over the target's precompiled header
-    // counts against reading it, as a compile does: the header is built
-    // again for the next unit, and two such crashes stop it, leaving the
-    // header to the units' own parses.
+ZEST_CASE(CrashedModuleStaysRefused) {
+    // A module whose build crashed a worker stays refused while what that
+    // build read holds, whatever its key: a rebuild of the PCH it reads
+    // renames the key on the same bytes.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("use.cpp", "import m;\nint u() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),  {}},
+                  {tmp.root, tmp.path("use.cpp"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+    f.pcm.register_runner();
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    auto m = id("m.cppm");
+    auto read = current_dep(f.project.file_table, m);
+    ZASSERT(read.has_value());
+    f.project.failures.pcm_builds.commit(
+        m,
+        {.key = "an-earlier-key", .record = failed_build("sl:0:0", "killed by signal 11")},
+        {*read});
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        TURunFamily::Plan plan;
+        plan.index = true;
+        co_await f.turun.run(id("use.cpp"), std::move(plan), {});
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZEXPECT(f.project.failures.pcm_builds.find(m) != nullptr);
+    auto build = f.project.pcm_builds.find(m);
+    ZEXPECT((build == f.project.pcm_builds.end() || build->second.path.empty()));
+}
+
+ZEST_CASE(CrashCountsOnPCH) {
+    // A unit that crashes the worker over its target's precompiled header
+    // runs again without it: one that parses then counts against the
+    // header, one that crashes again crashed on its own code, and a unit
+    // reading the header fine clears the count. Only the header's build
+    // finds marker.h, so only main.cpp's parse over it crashes.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
     TempDir tmp;
-    tmp.touch("pch.hxx", "#pragma once\nint shared();\n");
+    tmp.touch("poison/marker.h", "");
+    tmp.touch("pch.hxx",
+              "#pragma once\n"
+              "#if __has_include(\"marker.h\")\n"
+              "#define POISON _Pragma(\"clang __debug crash\")\n"
+              "#else\n"
+              "#define POISON\n"
+              "#endif\n"
+              "int shared();\n");
     tmp.touch("pch.hxx.cxx", "");
-    tmp.touch("main.cpp", "#pragma clang __debug crash\nint x = shared();\n");
+    tmp.touch("main.cpp", "POISON\nint x = shared();\n");
+    tmp.touch("self.cpp", "#pragma clang __debug crash\nint y = shared();\n");
+    tmp.touch("ok.cpp", "int z = shared();\n");
 
     IndexerFixture f;
     auto header = tmp.path("pch.hxx");
     auto pch = tmp.path("pch.hxx.pch");
-    write_cdb(
-        tmp,
-        f.project.cdb,
-        build_cdb_json({
-            {tmp.root,
-             tmp.path("pch.hxx.cxx"),
-             {"-Xclang",
-              "-emit-pch",
-              "-Xclang",
-              "-include",
-              "-Xclang",
-              header,
-              "-x",
-              "c++-header",
-              "-o",
-              pch}                                                                                },
-            {tmp.root,
-             tmp.path("main.cpp"),
-             {"-Xclang", "-include-pch", "-Xclang", pch, "-Xclang", "-include", "-Xclang", header}},
+    std::vector<std::string> builds = {"-I",
+                                       tmp.path("poison"),
+                                       "-Xclang",
+                                       "-emit-pch",
+                                       "-Xclang",
+                                       "-include",
+                                       "-Xclang",
+                                       header,
+                                       "-x",
+                                       "c++-header",
+                                       "-o",
+                                       pch};
+    std::vector<std::string> reads =
+        {"-Xclang", "-include-pch", "-Xclang", pch, "-Xclang", "-include", "-Xclang", header};
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("pch.hxx.cxx"), builds},
+                  {tmp.root, tmp.path("main.cpp"),    reads },
+                  {tmp.root, tmp.path("self.cpp"),    reads },
+                  {tmp.root, tmp.path("ok.cpp"),      reads },
     }));
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
@@ -258,7 +333,9 @@ ZEST_CASE(CrashCountsAgainstTargetPCH) {
             [&](auto&, auto& entry) { count += entry.result.count; });
         return count;
     };
-    auto main_id = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
     std::vector<TURunFamily::Result> results;
     std::vector<unsigned> counts;
     bool done = false;
@@ -269,10 +346,11 @@ ZEST_CASE(CrashCountsAgainstTargetPCH) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        for(int run = 0; run < 3; run += 1) {
+        for(auto name:
+            {"self.cpp", "self.cpp", "main.cpp", "main.cpp", "ok.cpp", "main.cpp", "main.cpp"}) {
             TURunFamily::Plan plan;
             plan.index = true;
-            results.push_back((co_await f.turun.run(main_id, std::move(plan), {})).result);
+            results.push_back((co_await f.turun.run(id(name), std::move(plan), {})).result);
             counts.push_back(consume_failures());
         }
 
@@ -286,8 +364,14 @@ ZEST_CASE(CrashCountsAgainstTargetPCH) {
     ZEXPECT(done);
 
     using enum TURunFamily::Result;
-    ZEXPECT(results == (std::vector<TURunFamily::Result>{Crashed, Crashed, Crashed}));
-    ZEXPECT(counts == (std::vector<unsigned>{1, 2, 2}));
+    ZEXPECT(results == (std::vector<TURunFamily::Result>{Preempted,
+                                                         Crashed,
+                                                         Preempted,
+                                                         Completed,
+                                                         Completed,
+                                                         Preempted,
+                                                         Completed}));
+    ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
     logging::reset_anomaly_for_testing();
 }
 

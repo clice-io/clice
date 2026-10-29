@@ -161,7 +161,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(WholeFileCrashLiftsOnEdit) {
+ZEST_CASE(DeclaredCrashLifts) {
     // A precompiled header the build declares is keyed by its command, not
     // by the header's text: its crash is known to have read the header,
     // and a fix there builds it again.

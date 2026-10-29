@@ -16,6 +16,10 @@ test("switch to another project", async (t) => {
     await t.show("crashes", await s.crashes());
     expect((await s.switchContext("lib/include/lib.h", "app/main.cpp")).success).toBe(true);
     await s.sync();
+    // The application's project says at once what crashed in the library's.
+    await t.show("pushes", s.pushes("lib/include/lib.h"));
+    // The new context is a change, retried after the pause.
+    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     await t.show("hover after the switch", s.hover(at));
     await t.show("crashes after the switch", await s.crashes());
 });

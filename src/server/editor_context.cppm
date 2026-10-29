@@ -119,8 +119,8 @@ struct EditorContext {
                    const Selection& saved) const;
 
     /// Mark the choices changed: they reserialize into the blob, the next
-    /// save persists them, and a durability ticket taken now resolves once
-    /// it has.
+    /// save persists them, and a wait on the `save_seq` read now resolves
+    /// once it has.
     void mark_dirty();
 
     /// Restore the choices from the blob as loaded.

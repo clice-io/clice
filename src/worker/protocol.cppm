@@ -184,14 +184,14 @@ enum class CompileStatus : uint8_t {
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
-    /// PCH is to blame is a separate signal (pch_suspect).
+    /// PCH is suspect is a separate signal (pch_suspect).
     SetupFail,
 };
 
 struct CompileResult {
     CompileStatus status = CompileStatus::Done;
 
-    /// The parse failed and its diagnostics blame the consumed PCH — they
+    /// The parse failed and its diagnostics point at the consumed PCH — they
     /// name the blob's path, or they are AST-deserialization errors naming
     /// no other prebuilt input. Holds whether the reader rejected the blob
     /// at setup or hit a fatal error past it (a Done status with real,

@@ -297,7 +297,10 @@ void ProjectServer::saved(Fid path_id) {
 std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
     // latest compile describing the old session's; the fresh session
-    // starts with none.
+    // starts with none, and its text is a change from the old one's.
+    if(auto replaced = sessions.find(path_id)) {
+        server.failures.closed(path_id, replaced->hash);
+    }
     ast.drop(path_id);
     auto session = sessions.open(path_id);
     // The serving mode's creation write point; the only other write is

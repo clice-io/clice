@@ -693,12 +693,12 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
     bool crashed = false;
 
     // Building a dependency can itself evict another clean module's PCM
-    // under budget pressure, reopening the window the previous attempt's
+    // under budget pressure, reopening the window the previous pass's
     // revalidation closed — hence the bounded retry until the set is
     // stable. Past the bound the parse fails visibly on the missing file.
-    for(int round = 0; round < 3; round += 1) {
+    for(int pass = 0; pass < 3; pass += 1) {
         bool any_evicted = pcm.revalidate_blobs();
-        if(round > 0 && !any_evicted) {
+        if(pass > 0 && !any_evicted) {
             break;
         }
 
@@ -807,8 +807,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // didChange or session replacement makes every product describe text
     // that no longer exists, so the commit discards wholesale, while a
     // Lost invalidation (generation unchanged) still publishes salvage.
-    auto gen = session->generation;
-    Ticket ticket{session, gen};
+    auto ticket = Ticket::take(session);
 
     // Covers every spawn path, including waiter-driven respawns: content
     // that just crashed a worker must not reach one more.
@@ -819,7 +818,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     ScopedTimer timer;
     auto file_path = std::string(project.file_table.resolve(path_id));
 
-    LOG_INFO("compile round: starting path_id={} gen={}", path_id, gen);
+    LOG_INFO("compile round: starting path_id={} gen={}", path_id, ticket.generation);
     on_phase.emit(path_id, CompilePhase::Command);
 
     // A round past the gate on a crashed compile or preamble is its retry,
@@ -890,7 +889,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 }
             }
             contexts.drop_header_context(path_id);
-            if(session->generation != gen) {
+            if(!ticket.fresh()) {
                 co_return RoundOutcome::Stale;
             }
             params.directory.clear();
@@ -925,7 +924,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded before PCH for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -1041,7 +1040,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         project.fill_pcm_deps(params.pcms, pcm.closure(imports->resolved).getArrayRef());
 
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded before send for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -1099,7 +1098,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             pool,
             true,
             [&]() -> RequestResult<worker::CompileParams> {
-                if(session->generation != gen) {
+                if(!ticket.fresh()) {
                     co_await kota::fail(
                         ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
@@ -1115,7 +1114,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
-        if(session->generation != gen) {
+        if(!ticket.fresh()) {
             LOG_INFO("compile round: superseded reply for {}", file_path);
             co_return RoundOutcome::Stale;
         }
@@ -1338,10 +1337,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
-        // failure: only the preamble's consumers would ever retry it.
+        // failure: only the preamble's consumers would ever retry it. A
+        // crash stays, for the next consumer to book without a build.
         // FIXME: released even while another open document still fails on that
         // preamble: its next compile runs the failing build once more.
-        if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key) {
+        if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
+           !pch.crashed(*entry.latest->pch_key)) {
             pch.forget_failure(*entry.latest->pch_key);
         }
         entry.latest = std::move(next);

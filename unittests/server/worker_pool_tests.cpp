@@ -204,9 +204,19 @@ struct WorkerPoolFixture {
         bool answered = false;
     };
 
-    /// deliver() over sends that fail with `codes` in turn and answer once
-    /// the codes run out.
+    /// deliver() over sends that fail with `codes` in turn, each death of
+    /// stateful slot 0 in an incarnation its streak never counted.
     Delivery deliver_through(std::vector<protocol::integer> codes) {
+        std::vector<protocol::Error> errors;
+        for(auto code: codes) {
+            errors.push_back({code, "scripted", worker::death_identity(0, 0, true)});
+        }
+        return deliver_failing(std::move(errors));
+    }
+
+    /// deliver() over sends that fail with `errors` in turn and answer once
+    /// the errors run out.
+    Delivery deliver_failing(std::vector<protocol::Error> errors) {
         Delivery delivery;
         run([&]() -> kota::task<> {
             auto result = co_await deliver(
@@ -215,8 +225,8 @@ struct WorkerPoolFixture {
                 [&]() -> RequestResult<worker::HoverParams> {
                     auto attempt = static_cast<std::size_t>(delivery.sends);
                     delivery.sends += 1;
-                    if(attempt < codes.size()) {
-                        co_return kota::outcome_error(protocol::Error{codes[attempt], "scripted"});
+                    if(attempt < errors.size()) {
+                        co_return kota::outcome_error(errors[attempt]);
                     }
                     co_return std::nullopt;
                 },
@@ -1030,6 +1040,25 @@ ZEST_CASE(ExemptDeathGivesBack) {
     ZEXPECT(f.crash_streak(0, true) == 2u);
 }
 
+ZEST_CASE(TwiceNamelessGivesBack) {
+    // A request found dying alone twice was the killer: the two deaths it
+    // took spend nothing of its slot's budget.
+    using namespace worker::dispatch_errc;
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.simulate_crash(0, false);
+    f.respawn(0);
+    f.simulate_crash(0, false);
+    ZEXPECT(f.crash_streak(0) == 2u);
+
+    auto delivery = f.deliver_failing({
+        {worker_died, "killed by signal 9 (SIGKILL)", worker::death_identity(0, 0, false)},
+        {worker_died, "killed by signal 9 (SIGKILL)", worker::death_identity(0, 1, false)},
+    });
+    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(f.crash_streak(0) == 0u);
+}
+
 ZEST_CASE(NamedCrashKeepsBudget) {
     WorkerPoolFixture f;
     f.add_stateful(true);
@@ -1185,6 +1214,7 @@ ZEST_CASE(DeliverResendsVictimsOnce) {
         ZEXPECT(!delivery.answered);
     }
     WorkerPoolFixture f;
+    f.add_stateful(true);
     auto delivery = f.deliver_through({worker_died, worker_died});
     ZEXPECT(delivery.sends == 2);
     ZEXPECT(delivery.blames == 1);
@@ -1544,6 +1574,35 @@ ZEST_CASE(DeadSlotRevives) {
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
         co_await f.serves(0);
+        ZEXPECT(f.crash_streak(0) == 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+}
+
+ZEST_CASE(RevivalGivesNothingBack) {
+    // A revived slot starts a fresh budget: a death counted before the
+    // revival, found later to be its request's doing, has nothing to give
+    // back.
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(1, 0));
+        f.set_revive_after(std::chrono::milliseconds(300));
+        f.set_max_crash_streak(0);
+
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
+        ZEXPECT(f.slot_dead(0));
+        co_await f.serves(0);
+
+        f.pool.exempt_death(ipc::Error{worker::dispatch_errc::worker_died,
+                                       "killed",
+                                       worker::death_identity(0, 0, false)});
         ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();

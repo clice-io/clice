@@ -523,8 +523,8 @@ Requests::RawResult Requests::hover(Ticket ticket,
     // declined on purpose (a lambda's auto parameter must not hover, and
     // the index would happily name it `auto:1`).
     if(auto compiled = ast.compiles.current(path_id) ? ast.compiles.latest(path_id) : nullptr;
-       compiled && compiled->pch_key) {
-        if(auto it = project.pch_cache.find(*compiled->pch_key);
+       compiled && compiled->loaded_pch()) {
+        if(auto it = project.pch_cache.find(*compiled->loaded_pch());
            it != project.pch_cache.end() && offset && *offset < it->second.bound) {
             if(auto info = index_hover_card(*session, position)) {
                 co_return card(*info);

@@ -181,6 +181,10 @@ private:
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
 
+    /// TUs whose last run crashed its worker over their target's
+    /// precompiled header, with its key: the next run leaves it out.
+    llvm::DenseMap<Fid, std::string> crashed_over_pch;
+
     /// What each TU's runs in this session measured: the peak of the last
     /// finished one, at least what a run killed for memory before it
     /// reached, and the memory one killed since reached.

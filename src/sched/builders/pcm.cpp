@@ -40,10 +40,10 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
 }
 
 PCMBuilder::PCMBuilder(TaskGraph& graph,
-                     Project& project,
-                     CommandResolver& commands,
-                     PCHBuilder& pch,
-                     WorkerPool& pool) :
+                       Project& project,
+                       CommandResolver& commands,
+                       PCHBuilder& pch,
+                       WorkerPool& pool) :
     graph(graph), project(project), commands(commands), pch(pch), pool(pool) {}
 
 void PCMBuilder::register_runner() {
@@ -69,10 +69,10 @@ kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
 }
 
 kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id,
-                                                         const Resolution& resolution,
-                                                         llvm::ArrayRef<const char*> arguments,
-                                                         llvm::StringRef directory,
-                                                         std::optional<llvm::StringRef> content) {
+                                                           const Resolution& resolution,
+                                                           llvm::ArrayRef<const char*> arguments,
+                                                           llvm::StringRef directory,
+                                                           std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
@@ -330,9 +330,10 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // and completion of every importer pay for it first, and one that
     // crashed a worker would burn a worker of every importer. A crash's
     // inputs hold the module's own text, which pcm_key leaves out: the
-    // refusal lifts the moment the poison is edited.
+    // refusal lifts the moment the poison is edited, and only then — a
+    // rebuild of the PCH renames the key on the same bytes.
     if(auto* failed = project.failures.pcm_builds.lookup(project.file_table, path_id)) {
-        if(failed->result.key == pcm_key) {
+        if(failed->result.key == pcm_key || failed->result.record.crashed()) {
             if(failed->result.record.crashed()) {
                 LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
             } else {
@@ -570,10 +571,10 @@ bool PCMBuilder::revalidate_blobs() {
 
 kota::task<std::optional<PCMBuilder::ModuleDeps>>
     PCMBuilder::prepare_deps(Fid path_id,
-                            const Resolution& resolution,
-                            llvm::ArrayRef<const char*> arguments,
-                            llvm::StringRef directory,
-                            llvm::StringRef content) {
+                             const Resolution& resolution,
+                             llvm::ArrayRef<const char*> arguments,
+                             llvm::StringRef directory,
+                             llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a

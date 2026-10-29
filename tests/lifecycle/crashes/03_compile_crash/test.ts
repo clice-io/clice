@@ -44,6 +44,21 @@ test("a fix retries after a pause", async (t) => {
     await t.show("crashes after the fix", await s.crashes());
 });
 
+test("an open resent with other text retries", async (t) => {
+    const s = await t.start({ config: QUIET, crash: CRASH });
+    s.open("main.cpp");
+    await t.show("hover", s.hover(t.marker("add")));
+    await t.show("crashes", await s.crashes());
+    // An editor may send didOpen again over the open document, with the
+    // buffer it holds now.
+    s.open("main.cpp", {
+        text: t.disk.read("main.cpp").replace("#pragma clang __debug crash\n", ""),
+    });
+    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
+    await t.show("hover after the resent open", s.hover(t.at("main.cpp", "int |add")));
+    await t.show("crashes after the resent open", await s.crashes());
+});
+
 test("reopening keeps the bar", async (t) => {
     const s = await t.start({ config: QUIET, crash: CRASH });
     const add = t.marker("add");
@@ -52,10 +67,24 @@ test("reopening keeps the bar", async (t) => {
     await t.show("crashes", await s.crashes());
     s.close("main.cpp");
     s.open("main.cpp");
+    // The same bytes again are no change, however long the wait.
+    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     await t.show("hover after a reopen", s.hover(add));
     await t.show("pushes", s.pushes("main.cpp"));
     await t.show("crashes after a reopen", await s.crashes());
     s.save("main.cpp");
     await t.show("hover after a save", s.hover(add));
     await t.show("crashes after a save", await s.crashes());
+});
+
+test("an edit that changes nothing is no retry", async (t) => {
+    const s = await t.start({ config: QUIET, crash: CRASH });
+    const add = t.marker("add");
+    s.open("main.cpp");
+    await t.show("hover", s.hover(add));
+    await t.show("crashes", await s.crashes());
+    s.edit("main.cpp", { text: t.disk.read("main.cpp") });
+    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
+    await t.show("hover after the edit", s.hover(add));
+    await t.show("crashes after the edit", await s.crashes());
 });

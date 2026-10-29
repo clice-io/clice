@@ -347,6 +347,11 @@ private:
     };
 
     struct WorkerProcess {
+        void fresh_budget() {
+            crash_streak = 0;
+            counted_deaths.clear();
+        }
+
         kota::process proc;
 
         /// Shared with every coroutine that awaits on it (request senders,
@@ -956,7 +961,7 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the
-/// culprit of the first death is barred from running again by then. A
+/// culprit of the first death is stopped from running again by then. A
 /// request that dies naming no request twice, alone on its worker both
 /// times, is taken for the killer — an OOM kill, a stack overflow the
 /// crash report cannot run on.

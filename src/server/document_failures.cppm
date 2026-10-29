@@ -126,11 +126,11 @@ public:
 
         feature::RequestKind kind;
 
-        /// The document's change count and the kind's crash serial as the
-        /// attempt started.
+        /// The document's change count and the kind's crash sequence number
+        /// as the attempt started.
         std::uint64_t changes;
 
-        std::uint64_t serial = 0;
+        std::uint64_t seq = 0;
 
         /// This attempt retries the kind (FailureRecord::trying).
         bool retrying = false;
@@ -140,8 +140,8 @@ private:
     struct Record {
         FailureRecord failure;
 
-        /// The serial of its last crash (see crashes).
-        std::uint64_t serial = 0;
+        /// The sequence number of its last crash (see crashes).
+        std::uint64_t seq = 0;
     };
 
     struct Document {
@@ -166,6 +166,7 @@ private:
 
     Record* find_record(Fid document, feature::RequestKind kind);
 
+private:
     /// Grows by one entry per document closed, edited or crashed.
     llvm::DenseMap<Fid, Document> documents;
 
