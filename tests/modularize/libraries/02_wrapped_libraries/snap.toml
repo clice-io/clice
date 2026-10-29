@@ -94,6 +94,8 @@ stdout = '''
         "because": ""
       }
     ],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [
@@ -170,6 +172,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [
       {
         "file": "third/alpha/alpha/local.h",
@@ -315,6 +319,21 @@ stdout = '''
         "because": "fake_vprint in app/third.cpp"
       }
     ],
+    "keptExports": [
+      {
+        "name": "fake_stdout",
+        "file": "third/libc/cio.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_vprint",
+        "file": "third/libc/cvp.h",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [
@@ -371,6 +390,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [],
@@ -396,6 +417,15 @@ stdout = '''
       "stdmod/std.compat.cppm"
     ],
     "modules": [
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
       {
         "name": "alpha",
         "source": "alpha.cppm",
@@ -428,6 +458,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -449,6 +480,7 @@ exit = 0
 +libc.macros.h
 +mirror/std/fakecstdio
 +mirror/std/fakevector
++libc.cppm
 +mirror/alpha/alpha/alpha.h
 +mirror/alpha/alpha/limits.h
 +alpha.cppm
@@ -456,6 +488,7 @@ exit = 0
 +mirror/beta/beta/beta.h
 +beta.cppm
 +beta.macros.h
++macros.h
 +prelude.h
 '''
 "wrap/alpha.cppm" = '''
@@ -516,11 +549,31 @@ exit = 0
 +}
 '''
 "wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
 "wrap/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
+'''
+"wrap/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
 '''
 "wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
@@ -530,15 +583,11 @@ exit = 0
 "wrap/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
@@ -551,6 +600,15 @@ stdout = '''
       "stdmod/std.compat.cppm"
     ],
     "modules": [
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
       {
         "name": "alpha",
         "source": "alpha.cppm",
@@ -583,6 +641,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -608,6 +667,15 @@ stdout = '''
     ],
     "modules": [
       {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
+      {
         "name": "alpha",
         "source": "alpha.cppm",
         "imports": [],
@@ -630,6 +698,7 @@ stdout = '''
       }
     ],
     "mirrors": [],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -649,10 +718,12 @@ exit = 0
 "bare/.modularize" = '''
 +std.macros.h
 +libc.macros.h
++libc.cppm
 +alpha.cppm
 +alpha.macros.h
 +beta.cppm
 +beta.macros.h
++macros.h
 +prelude.h
 '''
 "bare/alpha.cppm" = '''
@@ -713,24 +784,40 @@ exit = 0
 +}
 '''
 "bare/beta.macros.h" = "+#pragma once"
+"bare/libc.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
 "bare/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare/std.macros.h" = "+#pragma once"
 
@@ -743,6 +830,15 @@ stdout = '''
       "stdmod/std.compat.cppm"
     ],
     "modules": [
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
       {
         "name": "alpha",
         "source": "alpha.cppm",
@@ -759,6 +855,7 @@ stdout = '''
       "mirror/std",
       "mirror/alpha"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -781,6 +878,7 @@ exit = 0
 -mirror/beta/beta/beta.h
 -beta.cppm
 -beta.macros.h
+ macros.h
  prelude.h
 '''
 "wrap/beta.cppm" = "(removed)"
@@ -790,13 +888,17 @@ exit = 0
  #define fake_stdout fake_stdout
 -#define fassert(x) ((void)(x))
 '''
-"wrap/mirror/beta/beta/beta.h" = "(removed)"
-"wrap/prelude.h" = '''
+"wrap/macros.h" = '''
  #include "libc.macros.h"
- import alpha;
--import beta;
  #include "alpha.macros.h"
 -#include "beta.macros.h"
+'''
+"wrap/mirror/beta/beta/beta.h" = "(removed)"
+"wrap/prelude.h" = '''
+ import libc;
+ import alpha;
+-import beta;
+ #include "macros.h"
 '''
 
 ["merges configurations"."$ clice index --jobs 1"]
@@ -815,6 +917,15 @@ stdout = '''
       "stdmod/std.compat.cppm"
     ],
     "modules": [
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
       {
         "name": "alpha",
         "source": "alpha.cppm",
@@ -847,6 +958,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -868,6 +980,7 @@ exit = 0
 +libc.macros.h
 +mirror/std/fakecstdio
 +mirror/std/fakevector
++libc.cppm
 +mirror/alpha/alpha/alpha.h
 +mirror/alpha/alpha/limits.h
 +alpha.cppm
@@ -875,6 +988,7 @@ exit = 0
 +mirror/beta/beta/beta.h
 +beta.cppm
 +beta.macros.h
++macros.h
 +prelude.h
 '''
 "wrap/alpha.cppm" = '''
@@ -935,11 +1049,31 @@ exit = 0
 +}
 '''
 "wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
 "wrap/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
+'''
+"wrap/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
 '''
 "wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
@@ -949,15 +1083,11 @@ exit = 0
 "wrap/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
@@ -987,6 +1117,15 @@ stdout = '''
           "mirror/std",
           "mirror/alpha"
         ]
+      },
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std"
+        ]
       }
     ],
     "mirrors": [
@@ -994,6 +1133,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -1013,26 +1153,32 @@ exit = 0
 "merged/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
++one/libc.fragment.h
 +one/alpha.fragment.h
 +one/alpha.macros.h
 +one/beta.fragment.h
 +one/beta.macros.h
++one/macros.h
 +one/prelude.h
 +two/std.macros.h
 +two/libc.macros.h
++two/libc.fragment.h
 +two/alpha.fragment.h
 +two/alpha.macros.h
 +two/beta.fragment.h
 +two/beta.macros.h
++two/macros.h
 +two/prelude.h
 +alpha.cppm
 +beta.cppm
++libc.cppm
 +mirror/alpha/alpha/alpha.h
 +mirror/alpha/alpha/limits.h
 +mirror/alpha/alpha/wide.h
 +mirror/beta/beta/beta.h
 +mirror/std/fakecstdio
 +mirror/std/fakevector
++macros.h
 +prelude.h
 '''
 "merged/alpha.cppm" = '''
@@ -1094,6 +1240,33 @@ exit = 0
 +using ::beta::wrap;
 +}
 '''
+"merged/libc.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/libc.fragment.h"
++#elif defined(TWO)
++#include "two/libc.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
+"merged/macros.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/macros.h"
++#elif defined(TWO)
++#include "two/macros.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
 "merged/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "merged/mirror/alpha/alpha/limits.h" = "(created empty)"
 "merged/mirror/alpha/alpha/wide.h" = "(created empty)"
@@ -1130,24 +1303,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "merged/one/beta.macros.h" = "+#pragma once"
+"merged/one/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "merged/one/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"merged/one/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "merged/one/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "merged/one/std.macros.h" = "+#pragma once"
 "merged/prelude.h" = '''
@@ -1192,24 +1374,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "merged/two/beta.macros.h" = "+#pragma once"
+"merged/two/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "merged/two/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"merged/two/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "merged/two/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "merged/two/std.macros.h" = "+#pragma once"
 
@@ -1234,9 +1425,17 @@ stdout = '''
         ],
         "includeRoots": [],
         "mirrors": []
+      },
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": []
       }
     ],
     "mirrors": [],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -1256,20 +1455,26 @@ exit = 0
 "bare/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
++one/libc.fragment.h
 +one/alpha.fragment.h
 +one/alpha.macros.h
 +one/beta.fragment.h
 +one/beta.macros.h
++one/macros.h
 +one/prelude.h
 +two/std.macros.h
 +two/libc.macros.h
++two/libc.fragment.h
 +two/alpha.fragment.h
 +two/alpha.macros.h
 +two/beta.fragment.h
 +two/beta.macros.h
++two/macros.h
 +two/prelude.h
 +alpha.cppm
 +beta.cppm
++libc.cppm
++macros.h
 +prelude.h
 '''
 "bare/alpha.cppm" = '''
@@ -1331,6 +1536,33 @@ exit = 0
 +using ::beta::wrap;
 +}
 '''
+"bare/libc.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/libc.fragment.h"
++#elif defined(TWO)
++#include "two/libc.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
+"bare/macros.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/macros.h"
++#elif defined(TWO)
++#include "two/macros.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
 "bare/one/alpha.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
@@ -1361,24 +1593,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "bare/one/beta.macros.h" = "+#pragma once"
+"bare/one/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "bare/one/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare/one/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare/one/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare/one/std.macros.h" = "+#pragma once"
 "bare/prelude.h" = '''
@@ -1423,24 +1664,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "bare/two/beta.macros.h" = "+#pragma once"
+"bare/two/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "bare/two/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare/two/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare/two/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare/two/std.macros.h" = "+#pragma once"
 
@@ -1470,6 +1720,15 @@ stdout = '''
           "mirror/std",
           "mirror/alpha"
         ]
+      },
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std"
+        ]
       }
     ],
     "mirrors": [
@@ -1477,6 +1736,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -1494,14 +1754,16 @@ exit = 0
 
 ["merges configurations"."$ clice modularize merge merges/three.json --out merged".files]
 "merged/.modularize" = '''
- two/beta.macros.h
+ two/macros.h
  two/prelude.h
 +three/std.macros.h
 +three/libc.macros.h
++three/libc.fragment.h
 +three/alpha.fragment.h
 +three/alpha.macros.h
 +three/beta.fragment.h
 +three/beta.macros.h
++three/macros.h
 +three/prelude.h
  alpha.cppm
  beta.cppm
@@ -1546,6 +1808,22 @@ exit = 0
  #else
  #error "no configuration merged matches this compilation"
 '''
+"merged/libc.cppm" = '''
+ #elif defined(TWO)
+ #include "two/libc.fragment.h"
++#elif defined(THREE)
++#include "three/libc.fragment.h"
+ #else
+ #error "no configuration merged matches this compilation"
+'''
+"merged/macros.h" = '''
+ #elif defined(TWO)
+ #include "two/macros.h"
++#elif defined(THREE)
++#include "three/macros.h"
+ #else
+ #error "no configuration merged matches this compilation"
+'''
 "merged/prelude.h" = '''
  #elif defined(TWO)
  #include "two/prelude.h"
@@ -1585,24 +1863,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "merged/three/beta.macros.h" = "+#pragma once"
+"merged/three/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "merged/three/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"merged/three/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "merged/three/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "merged/three/std.macros.h" = "+#pragma once"
 
@@ -1645,9 +1932,17 @@ stdout = '''
         ],
         "includeRoots": [],
         "mirrors": []
+      },
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": []
       }
     ],
     "mirrors": [],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -1667,27 +1962,35 @@ exit = 0
 "bare3/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
++one/libc.fragment.h
 +one/alpha.fragment.h
 +one/alpha.macros.h
 +one/beta.fragment.h
 +one/beta.macros.h
++one/macros.h
 +one/prelude.h
 +two/std.macros.h
 +two/libc.macros.h
++two/libc.fragment.h
 +two/alpha.fragment.h
 +two/alpha.macros.h
 +two/beta.fragment.h
 +two/beta.macros.h
++two/macros.h
 +two/prelude.h
 +three/std.macros.h
 +three/libc.macros.h
++three/libc.fragment.h
 +three/alpha.fragment.h
 +three/alpha.macros.h
 +three/beta.fragment.h
 +three/beta.macros.h
++three/macros.h
 +three/prelude.h
 +alpha.cppm
 +beta.cppm
++libc.cppm
++macros.h
 +prelude.h
 '''
 "bare3/alpha.cppm" = '''
@@ -1753,6 +2056,37 @@ exit = 0
 +using ::beta::wrap;
 +}
 '''
+"bare3/libc.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/libc.fragment.h"
++#elif defined(TWO)
++#include "two/libc.fragment.h"
++#elif defined(THREE)
++#include "three/libc.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
+"bare3/macros.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/macros.h"
++#elif defined(TWO)
++#include "two/macros.h"
++#elif defined(THREE)
++#include "three/macros.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
 "bare3/one/alpha.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
@@ -1783,24 +2117,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "bare3/one/beta.macros.h" = "+#pragma once"
+"bare3/one/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "bare3/one/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare3/one/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare3/one/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare3/one/std.macros.h" = "+#pragma once"
 "bare3/prelude.h" = '''
@@ -1847,24 +2190,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "bare3/three/beta.macros.h" = "+#pragma once"
+"bare3/three/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "bare3/three/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare3/three/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare3/three/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare3/three/std.macros.h" = "+#pragma once"
 "bare3/two/alpha.fragment.h" = '''
@@ -1898,24 +2250,33 @@ exit = 0
 +#include <beta/beta.h>
 '''
 "bare3/two/beta.macros.h" = "+#pragma once"
+"bare3/two/libc.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
+'''
 "bare3/two/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
 '''
+"bare3/two/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
 "bare3/two/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "bare3/two/std.macros.h" = "+#pragma once"
 

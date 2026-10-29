@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.semantic_tokens.stream;
 
 import :compile.compilation;
 import :feature.semantic_tokens;
 import :semantic.token_class;
+import :support.prelude;
 import :syntax.source_text;
 
 namespace clice::feature {

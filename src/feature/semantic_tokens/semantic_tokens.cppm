@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.semantic_tokens;
 
 import :compile.compilation;
@@ -9,6 +5,7 @@ import :feature.index_entries;
 import :index.query;
 import :index.tu_index;
 import :semantic.token_class;
+import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
 

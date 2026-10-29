@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.header_context;
 
+import :support.prelude;
 import :syntax.include_resolver;
 import :syntax.scan;
 

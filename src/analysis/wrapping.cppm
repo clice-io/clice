@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:analysis.wrapping;
 
 import :analysis.module_graph;
+import :support.prelude;
 
 namespace clice::analysis {
 
@@ -34,10 +31,12 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
                                                          const std::optional<StdModules>& libcxx);
 
 /// The wrapped modules of a partition as interface units over their
-/// headers, and what the build needs to compile the program against them:
-/// the program's sources stay as they are, a directory first on their
-/// include path empties the wrapped headers unless mirrors are off, and a
-/// force-included prelude imports the modules and replays their macros.
+/// headers, each kept module's names its emptied headers no longer bring in
+/// as a unit too, and what the build needs to compile the program against
+/// them: a directory first on the include path empties the wrapped headers
+/// unless mirrors are off, a header replays the modules' macros and nothing
+/// else, and a prelude imports the modules for a translation unit that is no
+/// module unit.
 struct Wrapping {
     struct File {
         /// Relative to the output directory.
@@ -74,8 +73,14 @@ struct Wrapping {
         std::vector<Module> modules;
 
         /// What every compilation of the program puts first on its include
-        /// path, and the header it force-includes.
+        /// path.
         std::vector<std::string> mirrors;
+
+        /// The header replaying the modules' macros, which declares nothing.
+        std::string macros;
+
+        /// The header importing the modules and replaying their macros, for
+        /// a translation unit that is no module unit.
         std::string prelude;
 
         /// Imports of modules the partition leaves to the program, dropped:
@@ -110,8 +115,9 @@ struct Configuration {
 
 /// The wrappings of several configurations as one, for a build whose
 /// compilations differ by platform or by configuration. A configuration's
-/// global module fragments, macro headers and prelude move into its
-/// directory; each module unit and the prelude pick them by its condition.
+/// global module fragments, macro headers, macros header and prelude move
+/// into its directory; each module unit, the macros header and the prelude
+/// pick them by its condition.
 /// A module unit exports what every configuration exports, the rest under
 /// the conditions of the configurations exporting it; the mirrors hold the
 /// headers any configuration empties, none without `mirrors`. The plan

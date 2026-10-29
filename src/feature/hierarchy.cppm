@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The call graph and the type hierarchy around a symbol, and the functions
 /// enclosing sites.
 
@@ -11,6 +9,7 @@ import :index.peer_queries;
 import :index.query;
 import :index.site;
 import :index.symbol;
+import :support.prelude;
 import :syntax.position;
 
 namespace clice::feature {

@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The name search index: the project's symbols laid out for lookup by
 /// name — quality-ordered entries, a posting list per name token (the
 /// matcher's paths through a name, see support/fuzzy_matcher.cppm), and
@@ -25,6 +23,7 @@ import :index.symbol;
 import :index.symbol_query;
 import :support.bitmap;
 import :support.fuzzy_matcher;
+import :support.prelude;
 
 namespace clice::index {
 

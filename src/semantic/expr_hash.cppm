@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Expression profiling for declaration identity: a port of clang's
 /// StmtProfiler (clang/lib/AST/StmtProfile.cpp, LLVM 23.1.1) restricted to
 /// the canonical profile Sema uses to decide template equivalence
@@ -21,6 +19,8 @@ module;
 /// versions, not by diffing the files.
 
 module clice:semantic.expr_hash;
+
+import :support.prelude;
 
 namespace clice {
 

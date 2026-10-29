@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.lexer;
 
+import :support.prelude;
 import :syntax.token;
 
 namespace clice {

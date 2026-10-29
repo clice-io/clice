@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:vfs.file_table;
 
+import :support.prelude;
 import :vfs.dir_cache;
 import :vfs.disk_state;
 import :vfs.file_system;

@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.save;
 
 import :index.database;
 import :index.project_index;
 import :project.command_resolver;
 import :project.project;
+import :support.prelude;
 
 namespace clice {
 

@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.index_check;
 
 import :compile.compilation;
 import :feature.document_symbols;
 import :feature.semantic_tokens;
+import :support.prelude;
 
 /// Where what the index computes of a file — its semantic tokens, its
 /// outline — differs from what its AST gives: the server answers from the

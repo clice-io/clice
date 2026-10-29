@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:worker.probe;
 
+import :support.prelude;
 import :support.signal;
 
 namespace clice {

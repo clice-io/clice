@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.source_text;
 
+import :support.prelude;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;

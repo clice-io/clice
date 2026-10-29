@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:vfs.cygwin;
+
+import :support.prelude;
 
 namespace clice {
 

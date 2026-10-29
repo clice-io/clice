@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.editor_context;
 
 import :project.command_resolver;
 import :project.project;
+import :support.prelude;
 
 namespace clice {
 

@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Symbols by name: the ranked search over the search index, what
 /// unqualified completion may offer, and the symbols a locator names.
 
@@ -10,6 +8,7 @@ module clice:index.search;
 import :index.query;
 import :index.symbol;
 import :index.symbol_query;
+import :support.prelude;
 
 namespace clice::index {
 

@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :analysis.rewriting;
@@ -45,6 +41,15 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
         names.push_back(std::move(name));
     }
     return llvm::join(names, ".");
+}
+
+/// The interface partition through which every unit of a rewritten module
+/// imports the wrapped modules: beside the primary interface and named
+/// after it, as two modules' primaries may share a directory.
+std::string prelude_path(llvm::StringRef primary) {
+    std::string path(path::parent(primary, posix));
+    path::push(path, std::format("{}_prelude.cppm", path::stem(primary, posix)), posix);
+    return path;
 }
 
 std::string with_extension(llvm::StringRef path, llvm::StringRef extension) {
@@ -98,8 +103,13 @@ struct Rewriter {
     const Partition& partition;
     llvm::ArrayRef<Unit> units;
 
-    /// Headers of wrapped modules that stay textual where they are included.
+    /// Headers of wrapped modules, and kept modules' headers of
+    /// internal-linkage entities, that stay textual where they are included.
     llvm::DenseSet<std::uint32_t> kept;
+
+    /// A kept module's header holding an internal-linkage entity -> the
+    /// header files naming the entity include for it.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> local_entries{};
 
     /// Include operand -> the one rewritten header includers name by it,
     /// for a directive the index did not see, in a branch this configuration
@@ -133,6 +143,17 @@ struct Rewriter {
     std::string partition_of(std::uint32_t file) const {
         auto& primary = partition.primaries[partition.module_of[file]];
         return partition_name(facts.files[file].path, path::parent(primary, posix));
+    }
+
+    /// The header a file using what `file` declares includes.
+    std::uint32_t included_for(std::uint32_t file) const {
+        auto it = local_entries.find(file);
+        return it == local_entries.end() ? file : it->second;
+    }
+
+    std::string prelude_of(std::uint32_t file) const {
+        auto& primary = partition.primaries[partition.module_of[file]];
+        return partition_name(prelude_path(primary), path::parent(primary, posix));
     }
 
     /// How `user` names the file: the most common spelling of its includers
@@ -245,6 +266,13 @@ struct Draft {
     llvm::DenseSet<std::uint32_t> textual_lines;
 
     std::set<std::uint32_t> macro_headers;
+
+    /// Its preamble keeps more than comments, which the global module
+    /// fragment holds.
+    bool fragment_code = false;
+
+    /// It uses macros of modules the rewrite leaves as they are.
+    bool library_macros = false;
 };
 
 }  // namespace
@@ -252,7 +280,7 @@ struct Draft {
 std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                               Partition partition,
                                               llvm::ArrayRef<Interface> interfaces,
-                                              llvm::StringRef prelude,
+                                              const WrappedModules& wrapped,
                                               llvm::StringRef root) {
     Rewriting result;
     auto& plan = result.plan;
@@ -285,11 +313,17 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
-        if(partition.kinds[module] != ModuleKind::Wrapped) {
-            continue;
+        if(partition.kinds[module] == ModuleKind::Wrapped) {
+            for(auto& header: interfaces[module].textual) {
+                rewriter.kept.insert(facts.file_ids.lookup(header.file));
+            }
         }
-        for(auto& header: interfaces[module].textual) {
-            rewriter.kept.insert(facts.file_ids.lookup(header.file));
+        for(auto& local: interfaces[module].locals) {
+            auto file = facts.file_ids.lookup(local.file);
+            auto entry = facts.file_ids.lookup(local.entry.file);
+            rewriter.kept.insert(file);
+            rewriter.kept.insert(entry);
+            rewriter.local_entries[file] = entry;
         }
     }
     llvm::StringSet<> ambiguous;
@@ -410,6 +444,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 }
                 if(auto declaration = drop(foreign.line)) {
                     auto [scope, name] = llvm::StringRef(foreign.name).rsplit("::");
+                    draft.fragment_code = true;
                     draft.fragment.push_back(
                         name.empty() ? *declaration
                                      : std::format("namespace {} {{ {} }}", scope, *declaration));
@@ -470,6 +505,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                             for(auto part = line; part <= last; part += 1) {
                                 draft.fragment.push_back(text.lines[part].str());
                             }
+                            draft.fragment_code = true;
                             line = last;
                             continue;
                         }
@@ -483,6 +519,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(main && text.line_of(*main) == line) {
                 text_line.insert(*main - text.starts[line], R"(extern "C++" )");
             }
+            if(line < end && text.kinds[line] != Text::Line::Blank) {
+                draft.fragment_code = true;
+            }
             out.push_back(std::move(text_line));
         }
 
@@ -490,9 +529,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             auto action = rewriter.classify(file, named);
             if(action == Action::Import) {
                 draft.modules.insert(partition.modules[partition.module_of[named]]);
-            } else if(action == Action::Keep && rewriter.textual(named) &&
-                      !ranges::contains(info.includes, named)) {
-                draft.needed.insert(named);
+            } else if(action == Action::Keep && rewriter.textual(named)) {
+                if(auto included = rewriter.included_for(named);
+                   !ranges::contains(info.includes, included)) {
+                    draft.needed.insert(included);
+                }
             }
         }
         // Imports carry no macros: a rewritten header's reach its users
@@ -500,8 +541,13 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto defining: units[file].macros) {
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
-            } else if(rewriter.textual(defining) && !ranges::contains(info.includes, defining)) {
-                draft.needed.insert(defining);
+            } else if(rewriter.textual(defining)) {
+                if(auto included = rewriter.included_for(defining);
+                   !ranges::contains(info.includes, included)) {
+                    draft.needed.insert(included);
+                }
+            } else if(partition.kinds[partition.module_of[defining]] != ModuleKind::Program) {
+                draft.library_macros = true;
             }
         }
         draft.partitions.erase(file);
@@ -571,19 +617,27 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto module = partition.module_of[file];
         std::vector<std::string> lines;
         auto module_unit = rewriter.rewritten(file);
-        if(module_unit) {
-            lines.push_back("module;");
-            lines.emplace_back();
-        }
-        lines.push_back(std::format(R"(#include "{}")", prelude.str()));
-        lines.append_range(draft.fragment);
-        for(auto needed: draft.needed) {
-            lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
-        }
+        auto prelude = std::format(R"(#include "{}")", wrapped.prelude);
+        auto macros = std::format(R"(#include "{}")", wrapped.macros);
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
             macro_headers.insert(defining);
             macro_includes.insert(macro_include(defining, file));
+        }
+        // A module unit opens a global module fragment only for what stays
+        // included or moves there, which may name what the wrapped modules
+        // declare and test their macros: the prelude comes first.
+        auto fragment = draft.fragment_code || !draft.needed.empty() || !macro_includes.empty();
+        if(!module_unit) {
+            lines.push_back(prelude);
+        } else if(fragment) {
+            lines.push_back("module;");
+            lines.emplace_back();
+            lines.push_back(prelude);
+        }
+        lines.append_range(draft.fragment);
+        for(auto needed: draft.needed) {
+            lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
         }
         lines.append_range(macro_includes);
 
@@ -600,6 +654,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 lines.push_back(std::format("module {};", name));
             }
             lines.emplace_back();
+            if(!fragment && draft.library_macros) {
+                lines.push_back(macros);
+                lines.emplace_back();
+            }
+            // An implementation unit imports it through the primary
+            // interface.
+            if(rewriter.header(file) && !wrapped.imports.empty()) {
+                lines.push_back(std::format("import :{};", rewriter.prelude_of(file)));
+            }
         }
         for(auto& imported: draft.modules) {
             lines.push_back(std::format("import {};", imported));
@@ -611,7 +674,8 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto& name: partitions) {
             lines.push_back(std::format("import :{};", name));
         }
-        if(!draft.modules.empty() || !partitions.empty()) {
+        if(!draft.modules.empty() || !partitions.empty() ||
+           (module_unit && rewriter.header(file) && !wrapped.imports.empty())) {
             lines.emplace_back();
         }
         if(interface) {
@@ -656,6 +720,24 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     for(auto& [module, entry]: modules) {
         entry.name = partition.modules[module];
         entry.primary = partition.primaries[module];
+        // The wrapped modules, imported for every unit of the module but for
+        // its importers.
+        if(!wrapped.imports.empty()) {
+            auto path = prelude_path(entry.primary);
+            if(auto taken = reserve(path, std::format("module {}", entry.name))) {
+                return std::unexpected(*taken);
+            }
+            std::vector<std::string> lines{
+                std::format("export module {}:{};",
+                            entry.name,
+                            partition_name(path, path::parent(entry.primary, posix))),
+                ""};
+            for(auto& imported: wrapped.imports) {
+                lines.push_back(std::format("import {};", imported));
+            }
+            result.files.push_back({.path = path, .content = assemble(lines)});
+            entry.interfaces.push_back(std::move(path));
+        }
         ranges::sort(entry.interfaces);
         ranges::sort(entry.partitions);
         ranges::sort(entry.sources);

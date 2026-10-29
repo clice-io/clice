@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.database;
 
+import :support.prelude;
 import :vfs.cache_store;
 
 namespace clice::index {

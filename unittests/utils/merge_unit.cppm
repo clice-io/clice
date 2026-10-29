@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.merge_unit;
 
 import :compile.compilation;
@@ -10,6 +6,7 @@ import :index.project_index;
 import :index.tu_index;
 import :project.project;
 import :support.bytes;
+import :support.prelude;
 import :unittests.utils;
 
 namespace clice::testing {

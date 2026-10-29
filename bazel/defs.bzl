@@ -18,8 +18,12 @@ COPTS = [
 ]
 
 # What clice's module units compile with, with a dependency on //modules and
-# the cpp_modules feature.
-CLICE_COPTS = COPTS + MODULE_COPTS
+# the cpp_modules feature: no module carries a macro, so every compilation
+# reads them ahead of its first line.
+CLICE_COPTS = COPTS + MODULE_COPTS + [
+    "-include",
+    "support/macros.h",
+]
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++

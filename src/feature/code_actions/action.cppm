@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The inside of the code action layer: what an action reads, how the
 /// table anchors it, and the floor every action stands on. An action is a
 /// function from a selection to CodeAction values, computed to completion
@@ -12,6 +10,7 @@ module clice:feature.code_actions.action;
 
 import :feature.code_actions;
 import :semantic.selection;
+import :support.prelude;
 import :support.text;
 
 namespace clice::feature::action {

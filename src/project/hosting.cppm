@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.hosting;
 
 import :command.table;
 import :index.symbol;
 import :project.build;
+import :support.prelude;
 import :vfs.file_table;
 
 namespace clice {

@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 #if defined(__linux__)
 #include <link.h>
 #elif defined(__APPLE__)
@@ -14,7 +12,6 @@ module;
 #endif
 
 #include "version.h"
-#include "support/logging.macros.h"
 
 module clice;
 

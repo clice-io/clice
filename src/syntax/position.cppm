@@ -1,12 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
-#include "support/anomaly.macros.h"
-
 module clice:syntax.position;
 
 import :support.anomaly;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice {

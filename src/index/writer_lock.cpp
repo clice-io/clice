@@ -1,9 +1,6 @@
 module;
 
-#include "support/prelude.h"
-
 #include "version.h"
-#include "support/logging.macros.h"
 
 module clice;
 

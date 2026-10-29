@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.completion;
 
 import :command.search_config;
+import :support.prelude;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :syntax.token;

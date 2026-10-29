@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.annotation;
 
+import :support.prelude;
 import :syntax.token;
 
 namespace clice::testing {

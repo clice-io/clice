@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :analysis.module_graph;
@@ -3150,6 +3146,10 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     /// A kept module's textual header -> an (entity, user file) needing it.
     std::vector<llvm::DenseMap<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>>> because(
         count);
+    /// A kept module's names its unit exports, and its headers holding an
+    /// internal-linkage entity of those files of other modules name.
+    std::vector<std::set<std::tuple<std::string, std::uint32_t, ExportForm>>> kept_exports(count);
+    std::vector<std::set<std::uint32_t>> locals(count);
     std::vector<std::map<std::tuple<std::string, std::uint32_t, ExportForm>, bool>> exports(count);
     /// Per header, the modules it names or includes and the macros of other
     /// modules it reads; a fragment's are its includers'.
@@ -3237,6 +3237,15 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             if(kept && outside && !partition.provides[module].contains(info.export_name)) {
                 textual[module].insert(info.owner);
                 because[module].try_emplace(info.owner, entity, *user);
+                auto& enumeration = facts.entities[info.top];
+                if(info.kind != SymbolKind::EnumMember || enumeration.kind != SymbolKind::Enum) {
+                    kept_exports[module].insert({info.export_name, info.owner, ExportForm::Name});
+                } else if(!enumeration.export_name.empty()) {
+                    kept_exports[module].insert(
+                        {enumeration.export_name, info.owner, ExportForm::Enum});
+                } else {
+                    kept_exports[module].insert({info.export_name, info.owner, ExportForm::EnumOf});
+                }
             }
         } else if(outside || (!kept && info.kind == SymbolKind::Variable && !info.constant &&
                               info.linkage == InternalLinkage::Static &&
@@ -3247,6 +3256,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             textual[module].insert(info.owner);
             if(kept) {
                 because[module].try_emplace(info.owner, entity, *user);
+                locals[module].insert(info.owner);
             }
         }
     }
@@ -3540,12 +3550,46 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             auto [entity, user] = because[module].lookup(header);
             auto reason =
                 std::format("{} in {}", facts.entities[entity].name, facts.files[user].path);
-            included.try_emplace(entry_of(module, header, user), reason);
+            auto entry = entry_of(module, header, user);
+            included.try_emplace(entry, reason);
+            if(locals[module].contains(header)) {
+                interface.locals.push_back(
+                    {.file = facts.files[header].path, .entry = header_of(module, entry, reason)});
+            }
         }
         for(auto& [file, reason]: included) {
             interface.textual.push_back(header_of(module, file, reason));
         }
         ranges::sort(interface.textual, {}, &InterfaceHeader::file);
+        ranges::sort(interface.locals, {}, &InterfaceLocal::file);
+        // A kept module's unit also redeclares what the headers its global
+        // module fragment includes declare by another name, the aliases and
+        // the using-declarations, as no emptied header does.
+        llvm::DenseSet<std::uint32_t> fragment;
+        if(partition.kinds[module] == ModuleKind::Textual) {
+            llvm::SmallVector<std::uint32_t> pending;
+            for(auto& [file, reason]: included) {
+                pending.push_back(file);
+            }
+            while(!pending.empty()) {
+                auto file = pending.pop_back_val();
+                if(module_of(file) == module && fragment.insert(file).second) {
+                    pending.append(facts.files[file].includes.begin(),
+                                   facts.files[file].includes.end());
+                }
+            }
+            for(auto& declaration: facts.usings) {
+                if(ranges::any_of(including_files(facts, declaration.file, true),
+                                  [&](std::uint32_t file) { return fragment.contains(file); })) {
+                    kept_exports[module].insert(
+                        {declaration.name, declaration.file, ExportForm::Name});
+                }
+            }
+        }
+        for(auto& [name, file, form]: kept_exports[module]) {
+            interface.kept_exports.push_back(
+                {.name = name, .file = facts.files[file].path, .used = true, .form = form});
+        }
         if(partition.kinds[module] == ModuleKind::Wrapped) {
             // The internal-linkage entities of another wrapped module its
             // headers name: their headers no emptied entry brings in.
@@ -3593,10 +3637,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             interface.exports.push_back(
                 {.name = name, .file = facts.files[file].path, .used = used, .form = form});
         }
+        auto& unit_files =
+            partition.kinds[module] == ModuleKind::Textual ? fragment : reached[module];
         for(auto& alias: facts.aliases) {
             auto charged = charged_files(facts, alias.file);
             if(ranges::any_of(charged, [&](std::uint32_t file) {
-                   return module_of(file) == module && reached[module].contains(file);
+                   return module_of(file) == module && unit_files.contains(file);
                })) {
                 interface.aliases.push_back({.name = alias.name, .target = alias.target});
             }

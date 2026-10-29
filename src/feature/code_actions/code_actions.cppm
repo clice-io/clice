@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.code_actions;
 
 import :compile.compilation;
 import :index.query;
 import :index.site;
+import :support.prelude;
 import :syntax.source_text;
 import :syntax.token;
 import :vfs.ids;

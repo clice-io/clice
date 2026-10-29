@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.toolchains.clang;
 
 import :command.argument;
+import :support.prelude;
 
 namespace clice {
 

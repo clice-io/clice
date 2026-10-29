@@ -22,7 +22,8 @@ cc_library(
 # libclang's headers; the programs link its libraries. All of clice is one
 # C++20 module, clice: each header is a partition (<stem>.cppm beside its
 # source) and each source an implementation unit; the primary interface,
-# src/module.cppm, exports nothing and sits in the lowest library.
+# src/module.cppm, re-exports only the prelude, which exports nothing, and
+# sits in the lowest library.
 CORE = [
     "support",
     "vfs",

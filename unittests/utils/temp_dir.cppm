@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.temp_dir;
 
+import :support.prelude;
 import :vfs.file_system;
 import :vfs.path;
 

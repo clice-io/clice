@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:worker.scheduler;
+
+import :support.prelude;
 
 namespace clice::worker {
 

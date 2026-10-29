@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.scan;
 
+import :support.prelude;
 import :vfs.ids;
 
 namespace clice {

@@ -108,6 +108,8 @@ stdout = '''
         "because": ""
       }
     ],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [
       {
@@ -227,6 +229,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [
       {
         "file": "third/alpha/alpha/local.h",
@@ -291,6 +295,8 @@ stdout = '''
     "exports": [],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [
@@ -403,6 +409,8 @@ stdout = '''
         "because": ""
       }
     ],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [
       {
@@ -515,6 +523,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [
       {
         "file": "third/alpha/alpha/local.h",
@@ -705,6 +715,21 @@ stdout = '''
         "because": "fake_vprint in app/third.cpp"
       }
     ],
+    "keptExports": [
+      {
+        "name": "fake_stdout",
+        "file": "third/libc/cio.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_vprint",
+        "file": "third/libc/cvp.h",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [
@@ -754,6 +779,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [],
@@ -786,6 +813,8 @@ stdout = '''
     ],
     "aliases": [],
     "textual": [],
+    "keptExports": [],
+    "locals": [],
     "textualUses": [],
     "sharedLocals": [],
     "macros": [],
@@ -804,6 +833,15 @@ stdout = '''
       "stdmod/std.compat.cppm"
     ],
     "modules": [
+      {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
       {
         "name": "alpha",
         "source": "alpha.cppm",
@@ -836,6 +874,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": [
       "alpha and beta both use TU-local fake_seed (third/libc/cseed.h); fake_deep, fake_simd (third/libc/csimd.h); fake_value (third/libc/cvalue.h): an importer using the code of both can define each twice under one name; wrap them as one module"
@@ -859,6 +898,7 @@ exit = 0
 +libc.macros.h
 +mirror/std/fakecstdio
 +mirror/std/fakevector
++libc.cppm
 +mirror/alpha/alpha/alpha.h
 +mirror/alpha/alpha/limits.h
 +mirror/alpha/alpha/simd.h
@@ -868,6 +908,7 @@ exit = 0
 +mirror/beta/beta/simd.h
 +beta.cppm
 +beta.macros.h
++macros.h
 +prelude.h
 '''
 "wrap/alpha.cppm" = '''
@@ -932,11 +973,31 @@ exit = 0
 +}
 '''
 "wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
 "wrap/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
+'''
+"wrap/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
 '''
 "wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
@@ -948,14 +1009,10 @@ exit = 0
 "wrap/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "wrap/std.macros.h" = "+#pragma once"

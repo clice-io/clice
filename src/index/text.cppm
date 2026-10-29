@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// What the source says at a symbol: its definition and declaration text,
 /// its documentation comment, and the lines its sites lie on.
 
@@ -11,6 +9,7 @@ import :index.query;
 import :index.site;
 import :index.symbol;
 import :semantic.symbol;
+import :support.prelude;
 
 namespace clice::index {
 

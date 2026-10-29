@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.database;
 
 import :command.normalize;
 import :command.table;
+import :support.prelude;
 import :vfs.file_table;
 import :vfs.path;
 

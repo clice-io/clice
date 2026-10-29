@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.inlay_hints;
 
 import :compile.compilation;
 import :index.peer_queries;
 import :index.symbol;
+import :support.prelude;
 import :syntax.position;
 import :vfs.ids;
 

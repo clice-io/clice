@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.indexer_fixture;
 
 import :command.table;
@@ -21,6 +17,7 @@ import :sched.graph;
 import :sched.index.pending_table;
 import :sched.index.pump;
 import :support.bytes;
+import :support.prelude;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;

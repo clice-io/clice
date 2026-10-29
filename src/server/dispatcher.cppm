@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.dispatcher;
 
 import :feature.code_actions;
@@ -14,6 +10,7 @@ import :feature.semantic_tokens;
 import :server.ast_family;
 import :server.editor_context;
 import :server.session;
+import :support.prelude;
 import :worker.pool;
 import :worker.protocol;
 

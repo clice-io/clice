@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.writer_lock;
+
+import :support.prelude;
 
 namespace clice::index {
 

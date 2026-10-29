@@ -1,14 +1,15 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(":modules.bzl", "LIBRARIES", "MODULE_COPTS")
 
-# The third-party libraries as one named module over their headers, written
-# by `clice modularize` once for each configuration CI builds and merged:
-# deps.cppm includes the libraries' headers in its global module fragment,
-# <configuration>/deps.fragment.h of the configuration whose condition
-# holds, and exports what they declare. prelude.h, which every module unit
-# of clice includes first, imports it and replays the macros its headers
-# define. scripts/modules.py writes all of it from demand.cpp; nothing it
-# writes is edited by hand.
+# The third-party libraries and the C library as named modules over their
+# headers, written by `clice modularize` once for each configuration CI
+# builds and merged: third_party.cppm includes the libraries' headers in its
+# global module fragment, <configuration>/third_party.fragment.h of the
+# configuration whose condition holds, and exports what they declare;
+# libc.cppm exports the C library's names the standard library leaves out.
+# macros.h replays the macros their headers define, and every unit of clice
+# includes it ahead of everything else. scripts/modules.py writes all of it
+# from demand.cpp; nothing it writes is edited by hand.
 
 # The fragments, the macro headers and the preludes.
 cc_library(
@@ -17,10 +18,18 @@ cc_library(
 )
 
 cc_library(
-    name = "deps",
+    name = "libc",
     copts = MODULE_COPTS,
     features = ["cpp_modules"],
-    module_interfaces = ["deps.cppm"],
+    module_interfaces = ["libc.cppm"],
+    deps = [":headers"],
+)
+
+cc_library(
+    name = "third_party",
+    copts = MODULE_COPTS,
+    features = ["cpp_modules"],
+    module_interfaces = ["third_party.cppm"],
     deps = [
         ":headers",
         "@xclang//bazel:std",
@@ -30,7 +39,10 @@ cc_library(
 cc_library(
     name = "modules",
     visibility = ["//visibility:public"],
-    deps = [":deps"],
+    deps = [
+        ":libc",
+        ":third_party",
+    ],
 )
 
 # What clice takes from the libraries, the program scripts/modules.py

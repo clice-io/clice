@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.include_resolver;
 
 import :command.search_config;
+import :support.prelude;
 import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.path;

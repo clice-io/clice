@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.logging;
 
 import :support.format;
+import :support.prelude;
 
 /// # Logging & error-feedback design
 ///

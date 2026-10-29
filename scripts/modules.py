@@ -129,7 +129,7 @@ def partition(output_base, clice):
                 "textual": True,
                 "provides": "std.compat",
             },
-            {"name": "deps", "files": deps},
+            {"name": "third_party", "files": deps},
         ]
     }
 

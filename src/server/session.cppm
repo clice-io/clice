@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.session;
 
 import :server.quarantine;
+import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
 import :vfs.file_table;

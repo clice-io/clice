@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.toolchains.nvcc;
 
 import :command.argument;
 import :command.normalize;
 import :command.toolchains.clang;
+import :support.prelude;
 import :vfs.path;
 
 namespace clice {

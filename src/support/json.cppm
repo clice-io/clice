@@ -1,12 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
-#include "support/logging.macros.h"
-
 module clice:support.json;
 
 import :support.logging;
+import :support.prelude;
 
 namespace clice {
 

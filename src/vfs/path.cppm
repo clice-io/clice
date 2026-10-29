@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:vfs.path;
 
 import :support.format;
+import :support.prelude;
 
 namespace clice {
 namespace path {

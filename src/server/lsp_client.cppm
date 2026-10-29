@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.lsp_client;
 
 import :feature.code_completion;
@@ -14,6 +10,7 @@ import :server.extension;
 import :server.master_server;
 import :server.project_server;
 import :server.session;
+import :support.prelude;
 import :support.signal;
 import :syntax.position;
 import :vfs.file_table;

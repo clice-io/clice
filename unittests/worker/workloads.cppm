@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.worker.workloads;
+
+import :support.prelude;
 
 namespace clice::testing {
 

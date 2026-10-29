@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.diagnostics;
 
 import :command.table;
 import :compile.compilation;
 import :compile.diagnostic;
+import :support.prelude;
 import :syntax.position;
 import :syntax.token;
 

@@ -56,7 +56,7 @@ Each configuration takes about half a minute. The macOS ones compile against App
 
 - `generate` compiles `demand.cpp` first, so a header that moved or went upstream stops it there: fix the include in `demand.cpp`, as the API adaptation of Step 5 would in clice's own files.
 - A warning from `clice modularize` stops it too: a header the partition leaves to the program means a library's include directory moved (the partition's globs are in `scripts/modules.py`).
-- What only some configurations export lands under their conditions in `deps.cppm`; what clice uses on one platform alone is written under that platform's `#ifdef` in `demand.cpp` (`llvm/Support/WindowsError.h` under `_WIN32`).
+- What only some configurations export lands under their conditions in `third_party.cppm` and `libc.cppm`; what clice uses on one platform alone is written under that platform's `#ifdef` in `demand.cpp` (`llvm/Support/WindowsError.h` under `_WIN32`).
 
 The diff of `modules/` is part of the upgrade's review: names the libraries dropped or renamed, and macros that changed.
 

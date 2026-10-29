@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.master_server;
 
 import :feature.semantic_tokens;
@@ -11,6 +7,7 @@ import :server.extension;
 import :server.project_server;
 import :server.session;
 import :support.anomaly;
+import :support.prelude;
 import :support.signal;
 import :syntax.position;
 import :worker.pool;

@@ -3,8 +3,9 @@
 // clice defines ahead of them, the standard headers it reaches C library
 // names through, the libraries' headers it uses and the ones it still
 // includes itself, the C library names only those headers bring, and the
-// macros it uses, an #ifdef each. What clice starts to use that none of
-// these brings goes here first, then modules/ is regenerated.
+// macros it uses: expanded when the expansion names the C library, an
+// #ifdef each otherwise. What clice starts to use that none of these brings
+// goes here first, then modules/ is regenerated.
 
 #define ROARING_EXCEPTIONS 0
 #define ROARING_TERMINATE(message) std::abort()
@@ -272,7 +273,10 @@
 using kota::ipc::default_max_payload;
 
 using ::fileno;
-#ifndef _WIN32
+#ifdef _WIN32
+using ::_putenv_s;
+using ::localtime_s;
+#else
 using ::kill;
 using ::localtime_r;
 using ::off_t;
@@ -281,6 +285,15 @@ using ::putenv;
 using ::setenv;
 using ::ssize_t;
 #endif
+
+[[maybe_unused]] static void expand() {
+    std::signal(SIGINT, SIG_IGN);
+    std::signal(SIGINT, SIG_DFL);
+    errno = 0;
+    std::fputs("", stdout);
+    std::fputs("", stderr);
+    assert(true);
+}
 
 #ifdef DecoFlag
 #endif
@@ -330,6 +343,8 @@ using ::ssize_t;
 #endif
 #ifdef SIGCONT
 #endif
+#ifdef SIGHUP
+#endif
 #ifdef SIGINT
 #endif
 #ifdef SIGPIPE
@@ -339,10 +354,6 @@ using ::ssize_t;
 #ifdef SIGTERM
 #endif
 #ifdef SIGXFSZ
-#endif
-#ifdef SIG_DFL
-#endif
-#ifdef SIG_IGN
 #endif
 #ifdef SIZE_MAX
 #endif
@@ -357,14 +368,6 @@ using ::ssize_t;
 #ifdef ZEXPECT
 #endif
 #ifdef __GLIBC__
-#endif
-#ifdef assert
-#endif
-#ifdef errno
-#endif
-#ifdef stderr
-#endif
-#ifdef stdout
 #endif
 #ifdef va_start
 #endif

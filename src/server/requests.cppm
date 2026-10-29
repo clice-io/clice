@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.requests;
 
 import :command.search_config;
@@ -23,6 +19,7 @@ import :server.document_compile;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
+import :support.prelude;
 import :syntax.source_text;
 
 namespace clice {

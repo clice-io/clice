@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.command_snapshot;
 
 import :index.project_index;
+import :support.prelude;
 import :vfs.ids;
 import :vfs.path;
 

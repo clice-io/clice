@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The inside of hover its two sources share: the card of the file a
 /// directive names, which the AST and the index's document links both
 /// show.
@@ -10,6 +8,7 @@ module clice:feature.hover.card;
 
 import :feature.hover;
 import :semantic.symbol;
+import :support.prelude;
 import :support.text;
 import :syntax.token;
 

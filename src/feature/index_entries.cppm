@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.index_entries;
 
 import :index.shard;
 import :index.symbol;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice::feature {

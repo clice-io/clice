@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 # define alloca(size)	__builtin_alloca (size)
 #define	EPERM		 1	/* Operation not permitted */
 #define	ESRCH		 3	/* No such process */
@@ -27,6 +28,7 @@
 # define __PTHREAD_SPINS             0, 0
 #define SIG_DFL	((__sighandler_t) 0)		/* Default action.  */
 #define SIG_IGN	((__sighandler_t) 1)		/* Ignore signal.  */
+#define	SIGHUP		1	/* Hangup (POSIX).  */
 #define	SIGINT		2	/* Interrupt (ANSI).  */
 #define	SIGPIPE		13	/* Broken pipe (POSIX).  */
 #define	SIGTERM		15	/* Termination (ANSI).  */

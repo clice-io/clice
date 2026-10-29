@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.configuration;
 
 import :config.config;
 import :index.database;
+import :support.prelude;
 
 namespace clice {
 

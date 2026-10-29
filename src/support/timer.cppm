@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.timer;
+
+import :support.prelude;
 
 namespace clice {
 

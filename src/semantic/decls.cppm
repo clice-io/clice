@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.decls;
+
+import :support.prelude;
 
 /// Declaration-centric AST helpers: template predicates, instantiation
 /// navigation and call/parameter analysis. Type queries live in types.h,

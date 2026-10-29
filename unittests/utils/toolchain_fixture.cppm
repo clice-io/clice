@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.toolchain_fixture;
 
 import :command.database;
 import :command.edit;
 import :command.table;
 import :command.toolchain;
+import :support.prelude;
 import :unittests.utils.temp_dir;
 import :vfs.file_system;
 import :vfs.file_table;

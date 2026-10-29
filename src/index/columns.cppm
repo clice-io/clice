@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The column encodings the blobs share: entry ranges in whichever
 /// encoding the side and the content size pick (shard and instantiation
 /// blobs), id columns in whichever width their table picks, and the
@@ -15,6 +13,7 @@ module clice:index.columns;
 
 import :index.format;
 import :support.bitmap;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice::index {

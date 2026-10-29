@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.document_symbols;
 
 import :compile.compilation;
 import :feature.index_entries;
 import :index.query;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.source_text;

@@ -1,9 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
-#include "support/logging.macros.h"
-
 #include "clang-tidy/ClangTidyForceLinker.h"
 
 module clice;

@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.cdb_watcher;
 
 import :command.database;
 import :project.project;
+import :support.prelude;
 
 namespace clice {
 

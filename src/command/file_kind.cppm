@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.file_kind;
+
+import :support.prelude;
 
 namespace clice {
 

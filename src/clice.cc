@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 #include "version.h"
 
 #ifdef _WIN32

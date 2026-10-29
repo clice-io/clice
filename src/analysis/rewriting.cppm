@@ -1,12 +1,23 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:analysis.rewriting;
 
 import :analysis.module_graph;
+import :support.prelude;
 
 namespace clice::analysis {
+
+/// What a wrapping gives the files a partition rewrites, paths
+/// workspace-relative.
+struct WrappedModules {
+    /// The modules a rewritten module's prelude partition imports, in order.
+    std::vector<std::string> imports;
+
+    /// The header replaying their macros, which declares nothing.
+    std::string macros;
+
+    /// The header a translation unit that stays one includes first, as
+    /// does a module unit's global module fragment.
+    std::string prelude;
+};
 
 /// The program modules a partition rewrites, as the units of named modules.
 /// A header becomes a partition: an interface partition its module's primary
@@ -63,12 +74,14 @@ struct Rewriting {
 
 /// Rewrite the partition's rewritten modules out of the files under `root`.
 /// `interfaces` are the partition's, whose wrapped modules' textual headers
-/// stay included; `prelude` is the header each rewritten file includes first,
-/// workspace-relative.
+/// and kept modules' headers of internal-linkage entities stay included. A
+/// rewritten module's prelude partition imports the `wrapped` modules for
+/// all its units; a unit with a global module fragment includes the prelude
+/// there, one without includes the macro header where it uses their macros.
 std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                               Partition partition,
                                               llvm::ArrayRef<Interface> interfaces,
-                                              llvm::StringRef prelude,
+                                              const WrappedModules& wrapped,
                                               llvm::StringRef root);
 
 }  // namespace clice::analysis

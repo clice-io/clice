@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.resolver;
 
 import :compile.compilation;
+import :support.prelude;
 
 namespace clice::types {
 

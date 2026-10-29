@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.index_reader;
 
 import :config.config;
 import :feature.query;
 import :index.query;
 import :project.project;
+import :support.prelude;
 import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;

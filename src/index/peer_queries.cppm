@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.peer_queries;
 
 import :index.query;
 import :index.site;
 import :index.symbol;
+import :support.prelude;
 import :vfs.ids;
 
 namespace clice::index {

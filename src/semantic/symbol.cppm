@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.symbol;
+
+import :support.prelude;
 
 namespace clice {
 

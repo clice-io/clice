@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.format;
+
+import :support.prelude;
 
 template <>
 struct std::formatter<llvm::StringRef> : std::formatter<std::string_view> {

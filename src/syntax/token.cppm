@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.token;
+
+import :support.prelude;
 
 namespace std {
 

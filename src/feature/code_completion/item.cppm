@@ -1,13 +1,12 @@
 module;
 
-#include "support/prelude.h"
-
 /// The inside of code completion its two sides share: what a compile
 /// completes (compile.cpp) and what the server completes without one
 /// (project.cpp) match, rank and spell their items alike.
 
 module clice:feature.code_completion.item;
 
+import :support.prelude;
 import :syntax.lexer;
 import :syntax.token;
 

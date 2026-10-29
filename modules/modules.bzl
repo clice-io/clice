@@ -10,7 +10,7 @@ MODULE_COPTS = [
     "-fno-modules-reduced-bmi",
 ]
 
-# The libraries whose headers deps.cppm wraps, as `clice modularize` found
+# The libraries whose headers third_party.cppm wraps, as `clice modularize` found
 # them; which target provides an include root is the build's knowledge.
 LIBRARIES = [
     "@croaring",

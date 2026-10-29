@@ -38,14 +38,15 @@
         {
           "label": "$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap",
           "value": {
-            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [\n      {\n        \"name\": \"alpha\",\n        \"source\": \"alpha.cppm\",\n        \"imports\": [],\n        \"includeRoots\": [\n          \"${WS}/third/alpha\"\n        ],\n        \"mirrors\": []\n      }\n    ],\n    \"mirrors\": [\n      \"mirror/alpha\"\n    ],\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [],\n    \"importers\": [],\n    \"macros\": [],\n    \"removed\": [],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
+            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [\n      {\n        \"name\": \"alpha\",\n        \"source\": \"alpha.cppm\",\n        \"imports\": [],\n        \"includeRoots\": [\n          \"${WS}/third/alpha\"\n        ],\n        \"mirrors\": []\n      }\n    ],\n    \"mirrors\": [\n      \"mirror/alpha\"\n    ],\n    \"macros\": \"macros.h\",\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [],\n    \"importers\": [],\n    \"macros\": [],\n    \"removed\": [],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
             "exit": 0,
             "files": {
-              "wrap/.modularize": "+mirror/alpha/alpha/alpha.h\n+alpha.cppm\n+alpha.macros.h\n+prelude.h",
+              "wrap/.modularize": "+mirror/alpha/alpha/alpha.h\n+alpha.cppm\n+alpha.macros.h\n+macros.h\n+prelude.h",
               "wrap/alpha.cppm": "+module;\n+\n+\n+#include <alpha/alpha.h>\n+\n+export module alpha;\n+\n+export namespace alpha {\n+using ::alpha::Thing;\n+using ::alpha::make;\n+}",
               "wrap/alpha.macros.h": "+#pragma once\n+#define ALPHA_VERSION 3",
+              "wrap/macros.h": "+#pragma once\n+\n+#include \"alpha.macros.h\"",
               "wrap/mirror/alpha/alpha/alpha.h": "(created empty)",
-              "wrap/prelude.h": "+#pragma once\n+\n+import alpha;\n+#include \"alpha.macros.h\""
+              "wrap/prelude.h": "+#pragma once\n+\n+import alpha;\n+#include \"macros.h\""
             }
           }
         }

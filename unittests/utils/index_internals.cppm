@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.index_internals;
 
 import :index.project_index;
 import :index.shard;
+import :support.prelude;
 import :vfs.ids;
 
 namespace clice::testing {

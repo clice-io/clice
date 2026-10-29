@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:config.config;
 
 import :feature.code_completion;
@@ -12,6 +8,7 @@ import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :feature.signature_help;
+import :support.prelude;
 
 namespace clice {
 

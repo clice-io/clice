@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:analysis.annotation;
+
+import :support.prelude;
 
 namespace clice::analysis {
 

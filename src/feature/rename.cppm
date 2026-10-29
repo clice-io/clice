@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
 /// of it — no recompile: a rename is the entries of a symbol group, each
@@ -11,6 +9,7 @@ module;
 module clice:feature.rename;
 
 import :index.query;
+import :support.prelude;
 import :syntax.position;
 
 namespace clice::feature {

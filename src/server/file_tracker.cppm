@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.file_tracker;
 
 import :project.cdb_watcher;
 import :project.project;
 import :server.invalidator;
 import :server.session_store;
+import :support.prelude;
 
 namespace clice {
 

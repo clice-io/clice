@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.process;
+
+import :support.prelude;
 
 namespace clice {
 

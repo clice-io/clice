@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.index.pump;
 
 import :feature.diagnostics;
@@ -11,6 +7,7 @@ import :project.project;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pending_table;
+import :support.prelude;
 import :support.signal;
 import :worker.pool;
 import :worker.protocol;

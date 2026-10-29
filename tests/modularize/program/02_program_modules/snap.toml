@@ -15,6 +15,15 @@ stdout = '''
     ],
     "modules": [
       {
+        "name": "libc",
+        "source": "libc.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/libc"
+        ],
+        "mirrors": []
+      },
+      {
         "name": "alpha",
         "source": "alpha.cppm",
         "imports": [],
@@ -46,6 +55,7 @@ stdout = '''
       "mirror/alpha",
       "mirror/beta"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -55,6 +65,7 @@ stdout = '''
         "name": "app.core",
         "primary": "app/core/core.cppm",
         "interfaces": [
+          "app/core/core_prelude.cppm",
           "app/core/sink.cppm",
           "app/core/text.cppm"
         ],
@@ -72,6 +83,7 @@ stdout = '''
         "name": "app.tool",
         "primary": "app/tool/module.cppm",
         "interfaces": [
+          "app/tool/module_prelude.cppm",
           "app/tool/tool.cppm"
         ],
         "partitions": [],
@@ -111,20 +123,26 @@ exit = 0
 
 ["rewrites program modules"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/program.json".files]
 "app/core/all.cppm" = '''
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +module app.core:all;
 +
++import :core_prelude;
 +import :detail;
 '''
 "app/core/all.h" = "(removed)"
 "app/core/core.cppm" = '''
 +export module app.core;
 +
++export import :core_prelude;
 +export import :sink;
 +export import :text;
+'''
+"app/core/core_prelude.cppm" = '''
++export module app.core:core_prelude;
++
++import std.compat;
++import libc;
++import alpha;
++import beta;
 '''
 "app/core/detail.cppm" = '''
 +module;
@@ -134,6 +152,8 @@ exit = 0
 +#include "cfg/config.h"
 +
 +module app.core:detail;
++
++import :core_prelude;
 +
 +namespace core {
 +inline int hidden() { return 1; }
@@ -145,11 +165,9 @@ exit = 0
 '''
 "app/core/detail.h" = "(removed)"
 "app/core/sink.cppm" = '''
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +export module app.core:sink;
++
++import :core_prelude;
 +
 +export {
 +namespace core {
@@ -194,6 +212,8 @@ exit = 0
 +
 +export module app.core:text;
 +
++import :core_prelude;
++
 +export {
 +namespace core {
 +struct Sink;
@@ -236,10 +256,6 @@ exit = 0
 "app/tool/cli.cpp" = '''
 -#include "tool/tool.h"
 -signed int main() {
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +module app.tool;
 +
 +import app.core;
@@ -250,10 +266,6 @@ exit = 0
 '''
 "app/tool/hook.cpp" = '''
 -﻿#include "core/text.h"
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +module app.core;
 +
  int core::hook() { return 7; }
@@ -261,7 +273,16 @@ exit = 0
 "app/tool/module.cppm" = '''
 +export module app.tool;
 +
++export import :module_prelude;
 +export import :tool;
+'''
+"app/tool/module_prelude.cppm" = '''
++export module app.tool:module_prelude;
++
++import std.compat;
++import libc;
++import alpha;
++import beta;
 '''
 "app/tool/tool.cpp" = '''
 -#include "tool/tool.h"
@@ -280,12 +301,9 @@ exit = 0
      return text.size() + sink->lines + CORE_TWICE(1) + (box ? box->value : 0);
 '''
 "app/tool/tool.cppm" = '''
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +export module app.tool:tool;
 +
++import :module_prelude;
 +import app.core;
 +
 +export {
@@ -303,6 +321,7 @@ exit = 0
 +libc.macros.h
 +mirror/std/fakecstdio
 +mirror/std/fakevector
++libc.cppm
 +mirror/alpha/alpha/alpha.h
 +mirror/alpha/alpha/limits.h
 +alpha.cppm
@@ -310,6 +329,7 @@ exit = 0
 +mirror/beta/beta/beta.h
 +beta.cppm
 +beta.macros.h
++macros.h
 +prelude.h
 '''
 "wrap/alpha.cppm" = '''
@@ -370,11 +390,31 @@ exit = 0
 +}
 '''
 "wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++
++export module libc;
++
++export using ::fake_stdout;
++export using ::fake_vprint;
+'''
 "wrap/libc.macros.h" = '''
 +#pragma once
++#pragma clang system_header
 +#define FAKE_EOF (-1)
 +#define fake_stdout fake_stdout
 +#define fassert(x) ((void)(x))
+'''
+"wrap/macros.h" = '''
++#pragma once
++
++#include "std.macros.h"
++#include "libc.macros.h"
++#include "alpha.macros.h"
++#include "beta.macros.h"
 '''
 "wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
@@ -384,15 +424,11 @@ exit = 0
 "wrap/prelude.h" = '''
 +#pragma once
 +
-+#include <cio.h>
-+#include <cva.h>
 +import std.compat;
-+#include "std.macros.h"
-+#include "libc.macros.h"
++import libc;
 +import alpha;
 +import beta;
-+#include "alpha.macros.h"
-+#include "beta.macros.h"
++#include "macros.h"
 '''
 "wrap/std.macros.h" = "+#pragma once"
 

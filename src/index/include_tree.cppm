@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.include_tree;
 
 import :compile.compilation;
 import :index.symbol;
+import :support.prelude;
 
 namespace clice::index {
 

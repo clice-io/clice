@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.tu_index;
 
 import :index.instantiation_shard;
 import :index.search_index;
 import :index.shard;
 import :index.symbol;
+import :support.prelude;
 
 namespace clice::index {
 

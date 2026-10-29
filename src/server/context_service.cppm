@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.context_service;
 
 import :feature.diagnostics;
@@ -10,6 +6,7 @@ import :server.editor_context;
 import :server.extension;
 import :server.session;
 import :server.session_store;
+import :support.prelude;
 
 namespace clice {
 

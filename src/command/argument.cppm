@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.argument;
+
+import :support.prelude;
 
 namespace clice {
 

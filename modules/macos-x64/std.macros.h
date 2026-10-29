@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #  define _LIBCPP_VERSION 230103
 #    define _NOEXCEPT noexcept
 #  define _LIBCPP_PREFERRED_OVERLOAD __attribute__((__enable_if__(true, "")))

@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.query;
 
 import :index.instantiation_shard;
@@ -12,6 +8,7 @@ import :index.symbol_query;
 import :index.tu_index;
 import :index.tu_manifest;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.position;
 import :vfs.file_table;
 

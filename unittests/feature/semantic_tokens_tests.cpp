@@ -1,6 +1,5 @@
 module;
 
-#include "support/prelude.h"
 /// Primary semantic-tokens coverage lives in the cases
 /// (tests/semantic_tokens/), which pin both the inspect and the
 /// server path. This file drives the feature layer directly: preamble

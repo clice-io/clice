@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.families.pch;
 
 import :project.project;
 import :sched.blame_budget;
 import :sched.graph;
+import :support.prelude;
 import :vfs.file_system;
 import :vfs.file_table;
 import :worker.pool;

@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:vfs.dir_cache;
+
+import :support.prelude;
 
 namespace clice::vfs {
 

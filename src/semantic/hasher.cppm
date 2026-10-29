@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.hasher;
+
+import :support.prelude;
 
 namespace clice {
 

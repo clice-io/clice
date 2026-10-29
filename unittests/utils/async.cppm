@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.async;
 
+import :support.prelude;
 import :unittests.utils;
 
 namespace clice::testing {

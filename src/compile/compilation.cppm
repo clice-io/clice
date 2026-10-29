@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:compile.compilation;
 
 import :compile.diagnostic;
 import :compile.directive;
 import :compile.tokens;
+import :support.prelude;
 import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;

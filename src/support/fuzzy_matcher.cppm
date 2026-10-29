@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Name matching for symbol search and completion: how identifiers split
 /// into words, the matcher that scores a typed pattern against a name,
 /// and the tokens a search index keys names by. The three are one
@@ -11,6 +9,8 @@ module;
 /// posting lists (fuzzy_matcher_tests pins this as a property).
 
 module clice:support.fuzzy_matcher;
+
+import :support.prelude;
 
 namespace clice {
 
