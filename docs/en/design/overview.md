@@ -103,7 +103,7 @@ A project is what one set of compilation databases and one cache directory descr
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
 - `CommandSnapshot`: The commands the index was built with, as the index database records them; loading diffs them against the build to drop the index of files whose command changed while no server ran
 - Saving and loading: one transaction writes the index's changes with what the database carries beside it — the command snapshot, the PCH and PCM records, the editor's context choices — and the load reads them back
-- `Memo`: Results remembered by request with the trace of the files each read, checked on lookup; it holds the failures of the artifacts — a PCH or module build that failed or crashed a worker, a PCH its readers keep failing to read — each standing until the files it is known to have read change
+- `Memo`: Results remembered by request with the trace of the files each read, checked on lookup; it holds the failures of the artifacts: a PCH or module build that failed or crashed a worker, standing until the files it is known to have read change, and a PCH its readers keep failing to read, left out for a while
 - `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
 - Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
