@@ -4,7 +4,7 @@ hover = {}
 [test.crashes]
 value = 1
 
-[test."hover after the import changed"]
+[test."other hover"]
 hover = {}
 
 [test."crashes after the import changed"]
