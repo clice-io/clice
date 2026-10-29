@@ -225,7 +225,7 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
 std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& command) {
     llvm::SmallVector<llvm::StringRef> values;
     for(auto& arg: command.args) {
-        if(is_xclang_option(arg.opt_id) && in_query_view(arg, command.family)) {
+        if(is_xclang_option(arg.opt_id)) {
             values.push_back(arg.values[0]);
         }
     }
