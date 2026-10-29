@@ -2,6 +2,17 @@
 
 Breaking changes encountered during each LLVM upgrade, with upstream commit references.
 
+## LLVM 23.1.2 → 23.1.3
+
+A point release: no API clice uses changed, and nothing needed adapting. `StmtProfile.cpp` did not change, so `expr_hash.cpp` stands.
+
+### Behavior changes (no API break)
+
+| Change | Commit | PR | Impact on clice |
+| --- | --- | --- | --- |
+| C++20 modules: ADL loads a class's friends from its module file before looking them up; a hidden friend of an imported class was not found. | `dfb1297f7c3f` | [#219094](https://github.com/llvm/llvm-project/pull/219094) | Calls through ADL into imported classes resolve in clice as in the compiler. |
+| `ASTReader::checkTargetOptions` compares target features in the order it sorted them in. | `0d261d1ca552` | [#219053](https://github.com/llvm/llvm-project/pull/219053) | None: the mismatch only crashed under `LLVM_ENABLE_EXPENSIVE_CHECKS`. |
+
 ## LLVM 22 → 23
 
 ### ADT / Support

@@ -152,8 +152,9 @@ def generate(name, clice):
         "build",
         *flags,
         "--aspects=@compdb//:compdb.bzl%compdb",
-        # Compiled for real: clice indexes a unit that does not compile.
-        "--output_groups=+compdb",
+        # demand.cpp compiled for real, as clice indexes a unit that does not
+        # compile; the libraries' own sources not at all.
+        "--output_groups=compdb,compilation_outputs",
         f"--build_event_json_file={events}",
         "//modules:demand",
     )
