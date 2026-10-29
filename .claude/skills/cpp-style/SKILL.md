@@ -50,20 +50,23 @@ defending against ghosts.
   its implementation units and the internal partitions they share
   (`feature.hover.card`). Sources are implementation units `.cpp`, entry
   points `.cc` (`clice.cc`, `src/driver/*.cc`).
-- Every module unit but the primary interface (`src/module.cppm`, which
-  exports nothing) opens with `module;` and `#include "support/prelude.h"`:
-  it includes the generated `modules/prelude.h`, which imports the
-  third-party module (`modules/`) and `std.compat` and replays their
-  macros, and gives the namespaces clice uses everywhere their short names
-  in `clice` — `ranges`, `views`, `ipc`, `lsp`, `protocol`, `codec`,
-  `json`, `fs`, `sys`. Code inside `clice` writes those names (`ranges::sort`,
-  `protocol::Range`), never `std::ranges::` or `kota::ipc::protocol::`, and
-  no file declares them again. Then come the macro headers the unit uses,
-  the module declaration, and one `import :<partition>;` per partition it
-  names.
-- `.h` is left for what a module cannot carry — the prelude, macros
-  (`*.macros.h`) and platform headers — with `#pragma once`, never
-  include guards.
+- A module unit opens with its module declaration, then one
+  `import :<partition>;` per partition it names. The partition
+  `:support.prelude` imports `std.compat`, the C library's names past it
+  (`libc`) and the third-party module (`modules/`), and gives the namespaces
+  clice uses everywhere their short names in `clice` — `ranges`, `views`,
+  `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`. The primary
+  interface (`src/module.cppm`) re-exports it, which brings it to every
+  implementation unit; every partition imports it. Code inside `clice`
+  writes those names (`ranges::sort`, `protocol::Range`), never
+  `std::ranges::` or `kota::ipc::protocol::`, and no file declares them
+  again.
+- No module carries a macro: every compilation force-includes
+  `support/macros.h`, the libraries' (`modules/macros.h`) and clice's own
+  (`*.macros.h`). A unit opens a global module fragment (`module;`) only
+  for a header no module carries, a platform header or `version.h`.
+- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
+  platform headers — with `#pragma once`, never include guards.
 - File names are `snake_case`.
 - Every file sees the names of all it imports: a file-local helper can
   clash with a name of another partition or lose overload resolution and

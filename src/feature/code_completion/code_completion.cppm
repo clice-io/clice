@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.code_completion;
 
 import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
+import :support.prelude;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.position;

@@ -12,6 +12,7 @@ stdout = '''
     "stdSources": [],
     "modules": [],
     "mirrors": [],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -56,10 +57,6 @@ exit = 0
 +export import :text;
 '''
 "app/core/size.cppm" = '''
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +export module app.core:size;
 +
 +export {
@@ -84,20 +81,11 @@ exit = 0
 '''
 "app/core/text.cpp" = '''
 -#include "core/text.h"
-+module;
-
-+#include "wrap/prelude.h"
-+
 +module app.core;
-+
+
  int core::Text::size() const {
-     return 1;
 '''
 "app/core/text.cppm" = '''
-+module;
-+
-+#include "wrap/prelude.h"
-+
 +export module app.core:text;
 +
 +export {
@@ -124,8 +112,16 @@ exit = 0
 
  int main() {
 '''
-"wrap/.modularize" = "+prelude.h"
+"wrap/.modularize" = '''
++macros.h
++prelude.h
+'''
+"wrap/macros.h" = '''
++#pragma once
++
+'''
 "wrap/prelude.h" = '''
 +#pragma once
 +
++#include "macros.h"
 '''

@@ -1,26 +1,26 @@
 module;
 
 #if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
-#include "linux-x64/deps.fragment.h"
+#include "linux-x64/third_party.fragment.h"
 #elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
-#include "linux-x64-debug/deps.fragment.h"
+#include "linux-x64-debug/third_party.fragment.h"
 #elif defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)
-#include "linux-arm64/deps.fragment.h"
+#include "linux-arm64/third_party.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
-#include "macos-arm64/deps.fragment.h"
+#include "macos-arm64/third_party.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
-#include "macos-arm64-debug/deps.fragment.h"
+#include "macos-arm64-debug/third_party.fragment.h"
 #elif defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)
-#include "macos-x64/deps.fragment.h"
+#include "macos-x64/third_party.fragment.h"
 #elif defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)
-#include "windows-x64/deps.fragment.h"
+#include "windows-x64/third_party.fragment.h"
 #elif defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG)
-#include "windows-arm64/deps.fragment.h"
+#include "windows-arm64/third_party.fragment.h"
 #else
 #error "no configuration merged matches this compilation"
 #endif
 
-export module deps;
+export module third_party;
 
 template <class T> using unnamed_enum = T;
 

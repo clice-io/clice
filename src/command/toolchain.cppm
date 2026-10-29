@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.toolchain;
 
 import :command.argument;
 import :command.search_config;
 import :command.table;
 import :command.toolchains.clang;
+import :support.prelude;
 import :vfs.file_system;
 import :vfs.file_table;
 

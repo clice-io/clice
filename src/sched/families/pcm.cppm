@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.families.pcm;
 
 import :project.command_resolver;
 import :project.project;
 import :sched.families.pch;
 import :sched.graph;
+import :support.prelude;
 import :worker.pool;
 
 namespace clice {

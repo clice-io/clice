@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.batch;
 
 import :config.config;
+import :support.prelude;
 import :worker.protocol;
 
 namespace clice {

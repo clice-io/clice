@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.designators;
+
+import :support.prelude;
 
 namespace clice::designators {
 

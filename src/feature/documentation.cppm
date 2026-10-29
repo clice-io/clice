@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.documentation;
 
 import :compile.compilation;
 import :index.query;
 import :index.symbol;
 import :support.markup;
+import :support.prelude;
 import :syntax.documentation;
 import :vfs.ids;
 

@@ -1,9 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
-#include "support/logging.macros.h"
-
 /// The persisted index format: every blob layout the index writes, to the
 /// database or between processes, and the version gating them. Writers,
 /// load-time validation and the hand-built blobs of corruption tests share
@@ -14,6 +10,7 @@ module clice:index.format;
 import :index.symbol;
 import :support.bytes;
 import :support.logging;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice::index {

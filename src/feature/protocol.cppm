@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.protocol;
 
 import :index.site;
 import :index.symbol;
+import :support.prelude;
 import :syntax.position;
 import :syntax.token;
 import :vfs.path;

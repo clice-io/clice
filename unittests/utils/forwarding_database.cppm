@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.forwarding_database;
 
 import :index.database;
+import :support.prelude;
 
 namespace clice::testing {
 

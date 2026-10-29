@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.documentation;
 
 import :compile.compilation;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice {

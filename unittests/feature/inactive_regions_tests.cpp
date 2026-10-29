@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :feature.inactive_regions;

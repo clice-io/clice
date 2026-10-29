@@ -1,11 +1,10 @@
 module;
 
-#include "support/prelude.h"
-
 /// Positions in a text version and the sites index entries resolve to.
 
 module clice:index.site;
 
+import :support.prelude;
 import :syntax.position;
 import :syntax.token;
 import :vfs.file_table;

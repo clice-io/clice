@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.instantiation_shard;
 
 import :index.symbol;
+import :support.prelude;
 
 namespace clice::index {
 

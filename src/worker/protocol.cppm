@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:worker.protocol;
 
 import :compile.compilation;
@@ -15,6 +11,7 @@ import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :index.symbol;
+import :support.prelude;
 import :syntax.header_context;
 import :syntax.position;
 import :syntax.token;

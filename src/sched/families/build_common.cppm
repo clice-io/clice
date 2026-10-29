@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.families.build_common;
 
+import :support.prelude;
 import :worker.protocol;
 
 namespace clice {

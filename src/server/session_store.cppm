@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.session_store;
 
 import :server.session;
+import :support.prelude;
 import :syntax.position;
 import :vfs.file_table;
 

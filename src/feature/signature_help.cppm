@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.signature_help;
 
 import :compile.compilation;
 import :feature.documentation;
+import :support.prelude;
 
 namespace clice::feature {
 

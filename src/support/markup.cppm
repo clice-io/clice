@@ -1,11 +1,12 @@
 module;
 
-#include "support/prelude.h"
 /// Ported from clangd's support/Markup.h (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
 module clice:support.markup;
+
+import :support.prelude;
 
 /// A model of formatted text that can be rendered to plaintext or markdown.
 namespace clice::markup {

@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.display;
+
+import :support.prelude;
 
 /// The rendering side of the AST helpers: everything that turns an AST
 /// entity into a human-facing string lives in this namespace, so that

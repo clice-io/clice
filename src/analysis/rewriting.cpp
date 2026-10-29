@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :analysis.rewriting;
@@ -245,6 +241,13 @@ struct Draft {
     llvm::DenseSet<std::uint32_t> textual_lines;
 
     std::set<std::uint32_t> macro_headers;
+
+    /// Its preamble keeps more than comments, which the global module
+    /// fragment holds.
+    bool fragment_code = false;
+
+    /// It uses macros of modules the rewrite leaves as they are.
+    bool library_macros = false;
 };
 
 }  // namespace
@@ -252,7 +255,7 @@ struct Draft {
 std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                               Partition partition,
                                               llvm::ArrayRef<Interface> interfaces,
-                                              llvm::StringRef prelude,
+                                              const WrappedModules& wrapped,
                                               llvm::StringRef root) {
     Rewriting result;
     auto& plan = result.plan;
@@ -285,10 +288,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
-        if(partition.kinds[module] != ModuleKind::Wrapped) {
-            continue;
-        }
-        for(auto& header: interfaces[module].textual) {
+        auto kind = partition.kinds[module];
+        auto& headers = kind == ModuleKind::Wrapped   ? interfaces[module].textual
+                        : kind == ModuleKind::Textual ? interfaces[module].locals
+                                                      : std::vector<InterfaceHeader>{};
+        for(auto& header: headers) {
             rewriter.kept.insert(facts.file_ids.lookup(header.file));
         }
     }
@@ -410,6 +414,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 }
                 if(auto declaration = drop(foreign.line)) {
                     auto [scope, name] = llvm::StringRef(foreign.name).rsplit("::");
+                    draft.fragment_code = true;
                     draft.fragment.push_back(
                         name.empty() ? *declaration
                                      : std::format("namespace {} {{ {} }}", scope, *declaration));
@@ -470,6 +475,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                             for(auto part = line; part <= last; part += 1) {
                                 draft.fragment.push_back(text.lines[part].str());
                             }
+                            draft.fragment_code = true;
                             line = last;
                             continue;
                         }
@@ -482,6 +488,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             auto text_line = text.lines[line].str();
             if(main && text.line_of(*main) == line) {
                 text_line.insert(*main - text.starts[line], R"(extern "C++" )");
+            }
+            if(line < end && text.kinds[line] != Text::Line::Blank) {
+                draft.fragment_code = true;
             }
             out.push_back(std::move(text_line));
         }
@@ -500,8 +509,12 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto defining: units[file].macros) {
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
-            } else if(rewriter.textual(defining) && !ranges::contains(info.includes, defining)) {
-                draft.needed.insert(defining);
+            } else if(rewriter.textual(defining)) {
+                if(!ranges::contains(info.includes, defining)) {
+                    draft.needed.insert(defining);
+                }
+            } else if(partition.kinds[partition.module_of[defining]] != ModuleKind::Program) {
+                draft.library_macros = true;
             }
         }
         draft.partitions.erase(file);
@@ -571,19 +584,26 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto module = partition.module_of[file];
         std::vector<std::string> lines;
         auto module_unit = rewriter.rewritten(file);
-        if(module_unit) {
-            lines.push_back("module;");
-            lines.emplace_back();
-        }
-        lines.push_back(std::format(R"(#include "{}")", prelude.str()));
-        lines.append_range(draft.fragment);
-        for(auto needed: draft.needed) {
-            lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
-        }
+        auto macros = std::format(R"(#include "{}")", wrapped.macros);
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
             macro_headers.insert(defining);
             macro_includes.insert(macro_include(defining, file));
+        }
+        // A module unit opens a global module fragment only for what stays
+        // included; what it holds may test the libraries' macros, which
+        // come first.
+        auto fragment = draft.fragment_code || !draft.needed.empty() || !macro_includes.empty();
+        if(!module_unit) {
+            lines.push_back(std::format(R"(#include "{}")", wrapped.prelude));
+        } else if(fragment) {
+            lines.push_back("module;");
+            lines.emplace_back();
+            lines.push_back(macros);
+        }
+        lines.append_range(draft.fragment);
+        for(auto needed: draft.needed) {
+            lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
         }
         lines.append_range(macro_includes);
 
@@ -600,6 +620,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 lines.push_back(std::format("module {};", name));
             }
             lines.emplace_back();
+            if(!fragment && draft.library_macros) {
+                lines.push_back(macros);
+                lines.emplace_back();
+            }
+            // An implementation unit imports it through the primary
+            // interface.
+            if(rewriter.header(file) && !wrapped.imports.empty()) {
+                lines.push_back("import :prelude;");
+            }
         }
         for(auto& imported: draft.modules) {
             lines.push_back(std::format("import {};", imported));
@@ -611,7 +640,8 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto& name: partitions) {
             lines.push_back(std::format("import :{};", name));
         }
-        if(!draft.modules.empty() || !partitions.empty()) {
+        if(!draft.modules.empty() || !partitions.empty() ||
+           (module_unit && rewriter.header(file) && !wrapped.imports.empty())) {
             lines.emplace_back();
         }
         if(interface) {
@@ -656,6 +686,22 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     for(auto& [module, entry]: modules) {
         entry.name = partition.modules[module];
         entry.primary = partition.primaries[module];
+        // The wrapped modules, imported for every unit of the module but for
+        // its importers.
+        if(!wrapped.imports.empty()) {
+            std::string path(path::parent(entry.primary, posix));
+            path::push(path, "prelude.cppm", posix);
+            if(auto taken = reserve(path, std::format("module {}", entry.name))) {
+                return std::unexpected(*taken);
+            }
+            std::vector<std::string> lines{std::format("export module {}:prelude;", entry.name),
+                                           ""};
+            for(auto& imported: wrapped.imports) {
+                lines.push_back(std::format("import {};", imported));
+            }
+            result.files.push_back({.path = path, .content = assemble(lines)});
+            entry.interfaces.push_back(std::move(path));
+        }
         ranges::sort(entry.interfaces);
         ranges::sort(entry.partitions);
         ranges::sort(entry.sources);

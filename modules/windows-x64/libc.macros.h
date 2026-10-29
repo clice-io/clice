@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #define _MT
 #  define _M_AMD64 100
 #  define _M_X64 100

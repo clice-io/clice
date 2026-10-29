@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.tu_index_blob;
 
 import :index.format;
 import :index.symbol;
 import :index.tu_index;
 import :support.bytes;
+import :support.prelude;
 import :unittests.utils;
 
 namespace clice::testing {

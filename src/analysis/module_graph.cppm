@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:analysis.module_graph;
 
 import :analysis.annotation;
@@ -9,6 +5,7 @@ import :index.symbol;
 import :project.index_reader;
 import :project.project;
 import :semantic.symbol;
+import :support.prelude;
 import :vfs.path;
 
 namespace clice::analysis {
@@ -867,6 +864,15 @@ struct Interface {
     /// headers to include for what files of other modules name but reach
     /// only through emptied headers, no imported module providing it.
     std::vector<InterfaceHeader> textual;
+
+    /// For a kept module, the names of its `textual` headers files of other
+    /// modules name: what its own unit exports over those headers.
+    std::vector<InterfaceExport> kept_exports;
+
+    /// For a kept module, the headers of `textual` holding an
+    /// internal-linkage entity files of other modules name: no unit exports
+    /// one, so a file naming it includes the header itself.
+    std::vector<InterfaceHeader> locals;
 
     /// Textual headers of other wrapped modules its headers name entities
     /// of: what the fragment includes beside the imports.

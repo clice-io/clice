@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.object_pool;
+
+import :support.prelude;
 
 namespace clice {
 

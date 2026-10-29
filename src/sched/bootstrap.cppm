@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.bootstrap;
 
 import :project.command_resolver;
 import :project.load;
 import :sched.index.pump;
+import :support.prelude;
 
 namespace clice {
 

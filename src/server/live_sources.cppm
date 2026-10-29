@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.live_sources;
 
 import :index.query;
@@ -9,6 +5,7 @@ import :project.project;
 import :sched.families.pch;
 import :server.document_compile;
 import :server.session_store;
+import :support.prelude;
 
 namespace clice {
 

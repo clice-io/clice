@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The questions an editor asks at a cursor: where a symbol is defined and
 /// declared, its references, highlights, type definition and implementations.
 
@@ -14,6 +12,7 @@ import :index.shard;
 import :index.site;
 import :index.symbol;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.position;
 
 namespace clice::feature {

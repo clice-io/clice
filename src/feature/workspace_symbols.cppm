@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.workspace_symbols;
 
 import :index.peer_queries;
 import :index.site;
 import :index.symbol;
+import :support.prelude;
 import :syntax.position;
 import :vfs.path;
 

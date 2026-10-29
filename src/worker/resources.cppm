@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:worker.resources;
+
+import :support.prelude;
 
 namespace clice {
 

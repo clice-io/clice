@@ -1,12 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
-#include "support/logging.macros.h"
-
 module clice:worker.pool;
 
 import :support.logging;
+import :support.prelude;
 import :support.signal;
 import :worker.probe;
 import :worker.protocol;

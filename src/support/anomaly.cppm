@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.anomaly;
+
+import :support.prelude;
 
 /// Anomaly and guidance reporting — the policy layer on top of the logging
 /// transport. The full channel design (which situation goes to which

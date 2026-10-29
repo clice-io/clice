@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.hover;
 
 import :compile.compilation;
@@ -12,6 +8,7 @@ import :index.symbol;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
+import :support.prelude;
 import :syntax.documentation;
 import :syntax.position;
 import :vfs.file_table;

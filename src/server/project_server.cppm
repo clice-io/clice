@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.project_server;
 
 import :config.config;
@@ -18,6 +14,7 @@ import :server.invalidator;
 import :server.live_sources;
 import :server.session;
 import :server.session_store;
+import :support.prelude;
 import :support.signal;
 
 namespace clice {

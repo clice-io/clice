@@ -1,13 +1,12 @@
 module;
 
-#include "support/prelude.h"
-
 /// Shared utilities for stateful and stateless worker processes.
 
 module clice:worker.common;
 
 import :compile.compilation;
 import :support.bytes;
+import :support.prelude;
 import :support.timer;
 import :vfs.file_system;
 import :worker.protocol;

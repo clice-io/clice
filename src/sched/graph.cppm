@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.graph;
+
+import :support.prelude;
 
 namespace clice {
 

@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.tu_manifest;
 
 import :index.symbol;
+import :support.prelude;
 import :vfs.file_table;
 
 namespace clice::index {

@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.invalidator;
 
 import :project.project;
@@ -9,6 +5,7 @@ import :sched.families.pcm;
 import :server.ast_family;
 import :server.editor_context;
 import :server.session_store;
+import :support.prelude;
 
 namespace clice {
 

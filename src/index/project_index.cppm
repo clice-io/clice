@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.project_index;
 
 import :index.database;
@@ -12,6 +8,7 @@ import :index.search_index;
 import :index.shard;
 import :index.tu_index;
 import :index.tu_manifest;
+import :support.prelude;
 import :vfs.file_table;
 
 namespace clice::testing {

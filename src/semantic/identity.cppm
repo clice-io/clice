@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Declaration identity: the entity hash that keys the symbol index, equal
 /// across translation units and processes for declarations the compiler
 /// would merge as one entity (ASTContext::isSameEntity), and different for
@@ -12,6 +10,7 @@ module;
 module clice:semantic.identity;
 
 import :compile.compilation;
+import :support.prelude;
 
 namespace clice {
 

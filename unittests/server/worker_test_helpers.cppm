@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 #ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
@@ -10,6 +8,7 @@ module;
 module clice:unittests.server.worker_test_helpers;
 
 import :command.table;
+import :support.prelude;
 import :support.process;
 import :unittests.utils.temp_dir;
 import :vfs.path;

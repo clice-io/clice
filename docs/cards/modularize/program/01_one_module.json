@@ -43,16 +43,17 @@
         {
           "label": "$ clice modularize --scope \"app/**\" --partition partition.json --out wrap",
           "value": {
-            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [],\n    \"mirrors\": [],\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [\n      {\n        \"name\": \"app.core\",\n        \"primary\": \"app/core/module.cppm\",\n        \"interfaces\": [\n          \"app/core/text.cppm\"\n        ],\n        \"partitions\": [],\n        \"sources\": [\n          \"app/core/text.cpp\"\n        ],\n        \"imports\": []\n      }\n    ],\n    \"importers\": [\n      \"app/main.cpp\"\n    ],\n    \"macros\": [],\n    \"removed\": [\n      \"app/core/text.h\"\n    ],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
+            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [],\n    \"mirrors\": [],\n    \"macros\": \"macros.h\",\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [\n      {\n        \"name\": \"app.core\",\n        \"primary\": \"app/core/module.cppm\",\n        \"interfaces\": [\n          \"app/core/text.cppm\"\n        ],\n        \"partitions\": [],\n        \"sources\": [\n          \"app/core/text.cpp\"\n        ],\n        \"imports\": []\n      }\n    ],\n    \"importers\": [\n      \"app/main.cpp\"\n    ],\n    \"macros\": [],\n    \"removed\": [\n      \"app/core/text.h\"\n    ],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
             "exit": 0,
             "files": {
               "app/core/module.cppm": "+export module app.core;\n+\n+export import :text;",
-              "app/core/text.cpp": "-#include \"core/text.h\"\n+module;\n\n+#include \"wrap/prelude.h\"\n+\n+module app.core;\n+\n int core::Text::size() const {\n     return 1;",
-              "app/core/text.cppm": "+module;\n+\n+#include \"wrap/prelude.h\"\n+\n+export module app.core:text;\n+\n+export {\n+\n+namespace core {\n+\n+struct Text {\n+    int size() const;\n+};\n+\n+}  // namespace core\n+}",
+              "app/core/text.cpp": "-#include \"core/text.h\"\n+module app.core;\n\n int core::Text::size() const {",
+              "app/core/text.cppm": "+export module app.core:text;\n+\n+export {\n+\n+namespace core {\n+\n+struct Text {\n+    int size() const;\n+};\n+\n+}  // namespace core\n+}",
               "app/core/text.h": "(removed)",
               "app/main.cpp": "-#include \"core/text.h\"\n+#include \"wrap/prelude.h\"\n+import app.core;\n\n int main() {",
-              "wrap/.modularize": "+prelude.h",
-              "wrap/prelude.h": "+#pragma once\n+"
+              "wrap/.modularize": "+macros.h\n+prelude.h",
+              "wrap/macros.h": "+#pragma once\n+",
+              "wrap/prelude.h": "+#pragma once\n+\n+#include \"macros.h\""
             }
           }
         }

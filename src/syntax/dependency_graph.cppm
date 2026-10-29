@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.dependency_graph;
 
 import :command.database;
 import :command.table;
 import :command.toolchain;
+import :support.prelude;
 import :syntax.include_resolver;
 import :syntax.scan;
 import :vfs.file_table;

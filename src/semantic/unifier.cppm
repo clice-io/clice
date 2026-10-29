@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
 /// for pseudo-instantiation.
@@ -17,6 +15,8 @@ module;
 ///     doesn't match", which degrades to an unresolved name.
 
 module clice:semantic.unifier;
+
+import :support.prelude;
 
 namespace clice::types {
 

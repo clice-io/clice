@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #  define _LIBCPP_VERSION 230103
 #    define _LIBCPP_MSVCRT_LIKE
 #    define _NOEXCEPT noexcept

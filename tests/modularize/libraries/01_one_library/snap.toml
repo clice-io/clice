@@ -24,6 +24,7 @@ stdout = '''
     "mirrors": [
       "mirror/alpha"
     ],
+    "macros": "macros.h",
     "prelude": "prelude.h",
     "warnings": []
   },
@@ -44,6 +45,7 @@ exit = 0
 +mirror/alpha/alpha/alpha.h
 +alpha.cppm
 +alpha.macros.h
++macros.h
 +prelude.h
 '''
 "wrap/alpha.cppm" = '''
@@ -63,10 +65,15 @@ exit = 0
 +#pragma once
 +#define ALPHA_VERSION 3
 '''
+"wrap/macros.h" = '''
++#pragma once
++
++#include "alpha.macros.h"
+'''
 "wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
 "wrap/prelude.h" = '''
 +#pragma once
 +
 +import alpha;
-+#include "alpha.macros.h"
++#include "macros.h"
 '''

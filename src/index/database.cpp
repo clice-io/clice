@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/resource.h>
@@ -12,7 +10,6 @@ module;
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include "support/logging.macros.h"
 
 module clice;
 

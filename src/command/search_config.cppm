@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.search_config;
 
+import :support.prelude;
 import :vfs.file_system;
 
 namespace clice {

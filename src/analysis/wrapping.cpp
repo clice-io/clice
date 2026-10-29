@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :analysis.wrapping;
@@ -421,15 +417,22 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         base += std::format("#include \"{}.macros.h\"\n", module->module);
     }
 
-    auto macro_header = [](const Interface& interface) {
+    // The C and C++ libraries' headers are system headers, whose macros
+    // clang takes without a word where they redefine its own (glibc's
+    // __INT64_C, spaced unlike clang's): so are their replays.
+    auto macro_header = [](const Interface& interface, bool system) {
         std::string text = "#pragma once\n";
+        if(system && !interface.macros.empty()) {
+            text += "#pragma clang system_header\n";
+        }
         for(auto& macro: interface.macros) {
             text += macro.directive + "\n";
         }
         return text;
     };
     for(auto* module: given) {
-        result.files.push_back({std::format("{}.macros.h", module->module), macro_header(*module)});
+        result.files.push_back(
+            {std::format("{}.macros.h", module->module), macro_header(*module, true)});
     }
     if(libcxx) {
         result.plan.std_sources = libcxx->sources;
@@ -440,6 +443,87 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                 result.files.push_back({std::format("mirror/std/{}", header), ""});
             }
         }
+    }
+
+    // The names a mirror can shadow: inside it, as no `..` or absolute path
+    // is; each also tells the root the header is found under.
+    auto mirrorable = [&](const InterfaceHeader& header, llvm::StringSet<>& roots) {
+        llvm::SmallVector<std::string> names;
+        for(auto& name: header.names) {
+            std::string spelled(name);
+            path::normalize(spelled, path::DotDot::Fold, path::Style::Posix);
+            if(spelled.empty() || spelled.starts_with("../") || spelled.contains('\\') ||
+               path::is_absolute(spelled)) {
+                continue;
+            }
+            auto file = path::join(root, header.file);
+            if(file.ends_with("/" + spelled)) {
+                roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
+            }
+            names.push_back(std::move(spelled));
+        }
+        return names;
+    };
+    auto scope_of = [](llvm::StringRef qualified) {
+        auto separator = qualified.rfind("::");
+        return separator == llvm::StringRef::npos ? std::pair{llvm::StringRef(), qualified}
+                                                  : std::pair{qualified.take_front(separator),
+                                                              qualified.drop_front(separator + 2)};
+    };
+    // Adds the using-declarations exporting `names`; whether one names an
+    // enumeration without a name.
+    auto export_names = [&](Exports& exports, llvm::ArrayRef<InterfaceExport> names) {
+        bool unnamed = false;
+        for(auto& entry: names) {
+            auto& lines = exports[scope_of(entry.name).first.str()].names;
+            switch(entry.form) {
+                case ExportForm::Name: lines.insert(std::format("using ::{};", entry.name)); break;
+                case ExportForm::Enum:
+                    lines.insert(std::format("using enum ::{};", entry.name));
+                    break;
+                case ExportForm::EnumOf:
+                    lines.insert(
+                        std::format("using enum unnamed_enum<decltype(::{})>;", entry.name));
+                    unnamed = true;
+                    break;
+            }
+        }
+        return unnamed;
+    };
+    auto unit_text = [&](std::string unit,
+                         llvm::StringRef name,
+                         const Exports& exports,
+                         bool names_unnamed_enums) {
+        unit += std::format("\nexport module {};\n\n", name.str());
+        if(names_unnamed_enums) {
+            unit += std::format("{}\n\n", unnamed_enum.str());
+        }
+        return unit + export_text(exports);
+    };
+
+    // A kept module's unit exports what files of other modules reach only
+    // through its emptied headers, which its fragment includes. Its
+    // internal-linkage entities stay with the headers holding them.
+    for(auto* module: given) {
+        if(partition.kinds[partition.module_named(module->module)] != ModuleKind::Textual) {
+            continue;
+        }
+        auto& entry = result.plan.modules.emplace_back();
+        entry.name = module->module;
+        entry.source = std::format("{}.cppm", module->module);
+        std::string unit = "module;\n\n";
+        llvm::StringSet<> roots;
+        for(auto& header: module->textual) {
+            unit += std::format("#include {}\n", operand(header));
+            mirrorable(header, roots);
+        }
+        for(auto& root: roots) {
+            entry.include_roots.push_back(root.first().str());
+        }
+        ranges::sort(entry.include_roots);
+        Exports exports;
+        auto unnamed = export_names(exports, module->kept_exports);
+        result.files.push_back({entry.source, unit_text(unit, entry.name, exports, unnamed)});
     }
 
     for(auto& name: *order) {
@@ -467,30 +551,11 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             }
         }
         llvm::StringSet<> roots;
-        // The names a mirror can shadow: inside it, as no `..` or absolute
-        // path is; each also tells the root the header is found under.
-        auto mirrorable = [&](const InterfaceHeader& header) {
-            llvm::SmallVector<std::string> names;
-            for(auto& name: header.names) {
-                std::string spelled(name);
-                path::normalize(spelled, path::DotDot::Fold, path::Style::Posix);
-                if(spelled.empty() || spelled.starts_with("../") || spelled.contains('\\') ||
-                   path::is_absolute(spelled)) {
-                    continue;
-                }
-                auto file = path::join(root, header.file);
-                if(file.ends_with("/" + spelled)) {
-                    roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
-                }
-                names.push_back(std::move(spelled));
-            }
-            return names;
-        };
         // What the imported modules cannot export that its headers name,
         // which the emptied headers no longer bring in.
         for(auto& header: interface.textual_uses) {
             unit += std::format("#include {}\n", operand(header));
-            mirrorable(header);
+            mirrorable(header, roots);
         }
         unit += "\n";
         // By the name other files include an entry with, where one has an
@@ -506,7 +571,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                 spelled_by[include] > 1
                                     ? std::format("\"{}\"", path::join(root, entry.file))
                                     : include);
-            auto names = mirrorable(entry);
+            auto names = mirrorable(entry, roots);
             if(names.empty() && mirrors) {
                 result.plan.warnings.push_back(
                     std::format("{}: {} is included by no name a mirror can empty",
@@ -523,50 +588,45 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         ranges::sort(module.include_roots);
 
         Exports exports;
-        auto scope_of = [](llvm::StringRef qualified) {
-            auto separator = qualified.rfind("::");
-            return separator == llvm::StringRef::npos
-                       ? std::pair{llvm::StringRef(), qualified}
-                       : std::pair{qualified.take_front(separator),
-                                   qualified.drop_front(separator + 2)};
-        };
         for(auto& alias: interface.aliases) {
             auto [scope, alias_name] = scope_of(alias.name);
             exports[scope.str()].aliases.insert(
                 std::format("namespace {} = {};", alias_name.str(), alias.target));
         }
-        bool names_unnamed_enums = false;
-        for(auto& entry: interface.exports) {
-            auto& names = exports[scope_of(entry.name).first.str()].names;
-            switch(entry.form) {
-                case ExportForm::Name: names.insert(std::format("using ::{};", entry.name)); break;
-                case ExportForm::Enum:
-                    names.insert(std::format("using enum ::{};", entry.name));
-                    break;
-                case ExportForm::EnumOf:
-                    names.insert(
-                        std::format("using enum unnamed_enum<decltype(::{})>;", entry.name));
-                    names_unnamed_enums = true;
-                    break;
-            }
-        }
-        unit += std::format("\nexport module {};\n\n", name);
-        if(names_unnamed_enums) {
-            unit += std::format("{}\n\n", unnamed_enum.str());
-        }
-        unit += export_text(exports);
-        result.files.push_back({module.source, std::move(unit)});
-        result.files.push_back({std::format("{}.macros.h", name), macro_header(interface)});
+        auto unnamed = export_names(exports, interface.exports);
+        result.files.push_back({module.source, unit_text(unit, name, exports, unnamed)});
+        result.files.push_back({std::format("{}.macros.h", name), macro_header(interface, false)});
         result.plan.mirrors.push_back(std::format("mirror/{}", name));
     }
 
-    std::string prelude = "#pragma once\n\n" + base;
-    for(auto& name: *order) {
-        prelude += std::format("import {};\n", name);
+    // What every macro header replays, and nothing else: a compilation
+    // force-includes it, or a file includes it anywhere, even ahead of its
+    // module declaration.
+    std::string macros = "#pragma once\n\n";
+    for(auto* module: given) {
+        macros += std::format("#include \"{}.macros.h\"\n", module->module);
     }
     for(auto& name: *order) {
-        prelude += std::format("#include \"{}.macros.h\"\n", name);
+        macros += std::format("#include \"{}.macros.h\"\n", name);
     }
+    result.plan.macros = "macros.h";
+    result.files.push_back({result.plan.macros, std::move(macros)});
+
+    // A translation unit that is no module unit imports the modules through
+    // the prelude, and includes itself the headers no unit can export.
+    std::string prelude = "#pragma once\n\n";
+    for(auto* module: given) {
+        for(auto& header: module->locals) {
+            prelude += std::format("#include {}\n", operand(header));
+        }
+    }
+    if(libcxx) {
+        prelude += "import std.compat;\n";
+    }
+    for(auto& module: result.plan.modules) {
+        prelude += std::format("import {};\n", module.name);
+    }
+    prelude += std::format("#include \"{}\"\n", result.plan.macros);
     result.plan.prelude = "prelude.h";
     result.files.push_back({result.plan.prelude, std::move(prelude)});
     if(!mirrors) {
@@ -619,7 +679,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
                 emptied.insert(file.path);
                 continue;
             }
-            if(path == "prelude.h" || path.ends_with(".macros.h")) {
+            if(path == "prelude.h" || path == "macros.h" || path.ends_with(".macros.h")) {
                 result.files.push_back({std::format("{}/{}", name.str(), file.path), file.content});
                 continue;
             }
@@ -711,7 +771,12 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         for(auto& imported: module.imports) {
             module.mirrors.push_back(std::format("mirror/{}", imported));
         }
-        result.plan.mirrors.push_back(std::format("mirror/{}", name));
+        // A kept module's unit empties none of its headers.
+        auto mirror = std::format("mirror/{}/", name);
+        if(ranges::any_of(emptied,
+                          [&](llvm::StringRef path) { return path.starts_with(mirror); })) {
+            result.plan.mirrors.push_back(mirror.substr(0, mirror.size() - 1));
+        }
 
         // Exported by every configuration first, then by fewer.
         std::map<std::tuple<std::string, bool, std::string>, std::vector<std::size_t>> owners;
@@ -750,6 +815,8 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     for(auto& path: emptied) {
         result.files.push_back({path, ""});
     }
+    result.plan.macros = "macros.h";
+    result.files.push_back({result.plan.macros, "#pragma once\n\n" + dispatch("macros.h")});
     result.plan.prelude = "prelude.h";
     result.files.push_back({result.plan.prelude, "#pragma once\n\n" + dispatch("prelude.h")});
     if(!mirrors) {

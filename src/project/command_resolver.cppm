@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.command_resolver;
 
 import :command.table;
 import :project.project;
+import :support.prelude;
 import :vfs.file_system;
 
 namespace clice {

@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:worker.stateless;
+
+import :support.prelude;
 
 namespace clice {
 

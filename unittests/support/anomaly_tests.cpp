@@ -1,9 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
-#include "support/anomaly.macros.h"
-
 module clice;
 
 import :support.anomaly;

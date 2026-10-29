@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.semantics;
 
 import :compile.compilation;
 import :compile.directive;
 import :semantic.resolver;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.lexical_scan;
 import :syntax.token;
 

@@ -1,10 +1,6 @@
 module;
 
-#include "support/prelude.h"
-
 #include <errno.h>
-
-#include "support/logging.macros.h"
 
 module clice:driver.driver;
 
@@ -17,6 +13,7 @@ import :sched.batch;
 import :server.control;
 import :support.json;
 import :support.logging;
+import :support.prelude;
 import :support.process;
 import :vfs.path;
 

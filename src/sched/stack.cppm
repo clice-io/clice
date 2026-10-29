@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.stack;
 
 import :project.command_resolver;
@@ -11,6 +7,7 @@ import :sched.families.pcm;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
+import :support.prelude;
 import :worker.pool;
 
 namespace clice {

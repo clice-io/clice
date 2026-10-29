@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.families.turun;
 
 import :compile.compilation;
@@ -13,6 +9,7 @@ import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
+import :support.prelude;
 import :worker.pool;
 import :worker.protocol;
 

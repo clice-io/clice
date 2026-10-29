@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:syntax.doc_comment;
 
+import :support.prelude;
 import :syntax.lexical_scan;
 import :syntax.token;
 

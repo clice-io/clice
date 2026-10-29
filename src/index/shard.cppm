@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:index.shard;
 
 import :index.symbol;
 import :support.bitmap;
+import :support.prelude;
 import :syntax.position;
 
 namespace clice::index {

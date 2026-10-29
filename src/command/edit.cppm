@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:command.edit;
 
 import :command.table;
+import :support.prelude;
 import :vfs.file_table;
 import :vfs.path;
 

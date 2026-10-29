@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.index_entries_tester;
 
 import :feature.index_entries;
@@ -9,6 +5,7 @@ import :index.indexer;
 import :index.symbol;
 import :index.tu_index;
 import :support.bytes;
+import :support.prelude;
 import :unittests.utils.tester;
 
 namespace clice::testing {

@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The index of one compiled unit: its AST, semantic map and preprocessor
 /// directives projected into the entries of each file it indexes, the
 /// symbols they name and what its instantiations and macro expansions
@@ -11,6 +9,7 @@ module clice:index.indexer;
 
 import :compile.compilation;
 import :index.symbol;
+import :support.prelude;
 
 namespace clice::index {
 

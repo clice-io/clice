@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.cdb_layouts;
 
+import :support.prelude;
 import :unittests.utils.temp_dir;
 import :vfs.path;
 

@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.document_links;
 
 import :compile.compilation;
 import :index.query;
 import :index.symbol;
 import :index.tu_manifest;
+import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
 import :vfs.file_table;

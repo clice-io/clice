@@ -1,6 +1,5 @@
 module;
 
-#include "support/prelude.h"
 /// Ported from clang-tidy's utils/DesignatedInitializers.cpp
 /// (llvmorg-23.1.2), part of the LLVM project, licensed under Apache
 /// License v2.0 with LLVM Exceptions. See https://llvm.org/LICENSE.txt for

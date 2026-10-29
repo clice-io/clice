@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.cdb_helper;
 
 import :command.database;
 import :command.edit;
 import :command.table;
 import :command.toolchain;
+import :support.prelude;
 import :syntax.dependency_graph;
 import :unittests.utils.temp_dir;
 import :vfs.path;

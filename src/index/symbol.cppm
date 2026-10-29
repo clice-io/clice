@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The index vocabulary: entry and symbol types shared by every layer —
 /// builders accumulate them, blob readers hand them out, the project
 /// table stores them.
@@ -11,6 +9,7 @@ module clice:index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;
 import :support.bitmap;
+import :support.prelude;
 import :syntax.token;
 
 namespace clice::index {

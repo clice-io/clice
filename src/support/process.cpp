@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
@@ -12,8 +10,6 @@ module;
 #include <sys/event.h>
 #include <unistd.h>
 #endif
-
-#include "support/logging.macros.h"
 
 module clice;
 

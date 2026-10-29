@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #define _MT
 #  define _M_ARM64 1
 #define assert(_Expression) ((void)0)

@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.folding_ranges;
 
 import :compile.compilation;
 import :feature.index_entries;
 import :index.query;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
 

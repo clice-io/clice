@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:feature.selection_ranges;
 
 import :compile.compilation;
+import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;
 

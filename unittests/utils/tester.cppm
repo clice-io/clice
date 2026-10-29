@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.tester;
 
 import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
+import :support.prelude;
 import :unittests.utils.annotation;
 import :unittests.utils.temp_dir;
 import :unittests.utils;

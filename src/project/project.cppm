@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.project;
 
 import :command.database;
@@ -18,6 +14,7 @@ import :project.build;
 import :project.command_snapshot;
 import :project.hosting;
 import :semantic.symbol;
+import :support.prelude;
 import :syntax.dependency_graph;
 import :syntax.header_context;
 import :vfs.cache_store;

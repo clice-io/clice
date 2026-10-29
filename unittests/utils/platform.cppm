@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.platform;
 
+import :support.prelude;
 import :vfs.path;
 
 namespace clice::testing {

@@ -1,13 +1,10 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:project.build;
 
 import :command.database;
 import :command.edit;
 import :command.table;
 import :config.config;
+import :support.prelude;
 import :vfs.file_table;
 
 namespace clice {

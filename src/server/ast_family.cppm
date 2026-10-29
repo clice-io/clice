@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.ast_family;
 
 import :feature.diagnostics;
@@ -14,6 +10,7 @@ import :server.document_compile;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
+import :support.prelude;
 import :support.signal;
 import :vfs.file_table;
 import :worker.pool;

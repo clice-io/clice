@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The control channel of a serving writer: what the commands that find
 /// the index writer lock taken by a server ask of it, and the server's side
 /// answering. Paths are absolute filesystem paths.
@@ -9,6 +7,7 @@ module;
 module clice:server.control;
 
 import :index.writer_lock;
+import :support.prelude;
 
 namespace clice {
 

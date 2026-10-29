@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.worker.simulator;
 
+import :support.prelude;
 import :unittests.worker.workloads;
 import :worker.scheduler;
 

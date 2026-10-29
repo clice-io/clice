@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The records the project index keeps in the database besides shards,
 /// instantiation shards and manifests, decoded: the header, a file's
 /// record and its dependents, the internal names it declares, a symbol's
@@ -15,6 +13,7 @@ import :index.format;
 import :index.symbol;
 import :semantic.symbol;
 import :support.bitmap;
+import :support.prelude;
 
 namespace clice::index {
 

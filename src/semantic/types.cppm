@@ -1,10 +1,7 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.types;
 
 import :semantic.resolver;
+import :support.prelude;
 
 /// Type-centric AST helpers: mapping types to the declarations they refer
 /// to (dependent or not), type unwrapping and deduction queries.

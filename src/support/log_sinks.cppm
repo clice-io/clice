@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:support.log_sinks;
+
+import :support.prelude;
 
 namespace clice::logging {
 

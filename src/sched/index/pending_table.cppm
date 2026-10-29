@@ -1,9 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:sched.index.pending_table;
 
+import :support.prelude;
 import :vfs.file_table;
 
 namespace clice {

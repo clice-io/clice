@@ -1,9 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
-#include "support/logging.macros.h"
-
 module clice;
 
 import :project.cdb_watcher;

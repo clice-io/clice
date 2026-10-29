@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The one grammar every symbol lookup speaks: the locators the clice
 /// commands take, and workspace/symbol.
 ///
@@ -28,6 +26,7 @@ module clice:index.symbol_query;
 
 import :index.symbol;
 import :semantic.symbol;
+import :support.prelude;
 import :vfs.path;
 
 namespace clice::index {

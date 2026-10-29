@@ -1,12 +1,9 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:server.document_compile;
 
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.project;
+import :support.prelude;
 import :syntax.source_text;
 import :vfs.file_table;
 

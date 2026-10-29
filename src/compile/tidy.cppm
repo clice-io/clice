@@ -1,11 +1,8 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:compile.tidy;
 
 import :compile.compilation;
 import :compile.diagnostic;
+import :support.prelude;
 
 namespace clice::tidy {
 

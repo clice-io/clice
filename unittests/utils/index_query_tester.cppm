@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:unittests.utils.index_query_tester;
 
 import :compile.compilation;
@@ -14,6 +10,7 @@ import :sched.graph;
 import :server.document_compile;
 import :server.live_sources;
 import :server.session_store;
+import :support.prelude;
 import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;

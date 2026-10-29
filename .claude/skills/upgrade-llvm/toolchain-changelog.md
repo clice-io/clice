@@ -65,7 +65,7 @@ files.
   rules_cc's macOS feature list left the defines to Bazel's legacy feature,
   whose actions are not the C++20 module compiles and scans; xclang
   23.1.2.8 puts `preprocessor_defines_feature` in the list. Check:
-  `npx bazel aquery 'mnemonic("CppCompile", //modules:deps)'` on macOS lists
+  `npx bazel aquery 'mnemonic("CppCompile", //modules:third_party)'` on macOS lists
   `-DSPDLOG_COMPILED_LIB`.
 
 ## macOS

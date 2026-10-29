@@ -1,6 +1,5 @@
 module;
 
-#include "support/prelude.h"
 /// Primary inlay-hint coverage lives in the cases
 /// (tests/inlay_hints/), which pin both the inspect and the server
 /// path. This file drives the feature layer directly: block-end and

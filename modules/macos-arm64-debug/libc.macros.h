@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #define LC_ALL_MASK			(  LC_COLLATE_MASK 					 | LC_CTYPE_MASK 					 | LC_MESSAGES_MASK 					 | LC_MONETARY_MASK 					 | LC_NUMERIC_MASK 					 | LC_TIME_MASK )
 #define LC_COLLATE_MASK			(1 << 0)
 #define LC_CTYPE_MASK			(1 << 1)
@@ -44,6 +45,7 @@
 #define EINVAL          22              /* Invalid argument */
 #define EPIPE           32              /* Broken pipe */
 #define ERANGE          34              /* Result too large */
+#define SIGHUP  1       /* hangup */
 #define SIGINT  2       /* interrupt */
 #define SIGPIPE 13      /* write on a pipe with no one to read it */
 #define SIGTERM 15      /* software termination signal from kill */

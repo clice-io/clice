@@ -1,7 +1,3 @@
-module;
-
-#include "support/prelude.h"
-
 module clice;
 
 import :analysis.module_graph;
@@ -256,15 +252,26 @@ int run_modularize(const Options& opts) {
     llvm::StringRef out = out_spelling;
     std::optional<analysis::Rewriting> rewriting;
     if(ranges::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
-        // The prelude by its path from the workspace root, which the
-        // rewritten files' include path holds.
+        // The wrapping's headers by their paths from the workspace root,
+        // which the rewritten files' include path holds.
         CanonicalPath canonical_out(out_spelling);
-        llvm::StringRef prelude_dir = canonical_out;
-        auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
-        auto prelude =
-            join_path(inside ? prelude_dir : llvm::StringRef(out), wrapping->plan.prelude);
+        llvm::StringRef wrapping_dir = canonical_out;
+        auto inside = wrapping_dir.consume_front(loaded->root) && wrapping_dir.consume_front("/");
+        if(!inside) {
+            wrapping_dir = out;
+        }
+        analysis::WrappedModules wrapped{
+            .macros = join_path(wrapping_dir, wrapping->plan.macros),
+            .prelude = join_path(wrapping_dir, wrapping->plan.prelude),
+        };
+        if(!wrapping->plan.std_sources.empty()) {
+            wrapped.imports.push_back("std.compat");
+        }
+        for(auto& module: wrapping->plan.modules) {
+            wrapped.imports.push_back(module.name);
+        }
         auto rewritten =
-            analysis::rewrite(loaded->facts, *partition, *interfaces, prelude, loaded->root);
+            analysis::rewrite(loaded->facts, *partition, *interfaces, wrapped, loaded->root);
         if(!rewritten) {
             return fail(rewritten.error());
         }

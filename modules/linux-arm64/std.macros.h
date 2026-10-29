@@ -1,4 +1,5 @@
 #pragma once
+#pragma clang system_header
 #define _LIBCPP_ABI_NAMESPACE __1
 #define _LIBCPP_HAS_MUSL_LIBC 0
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1

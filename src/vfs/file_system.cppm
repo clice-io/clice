@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:vfs.file_system;
+
+import :support.prelude;
 
 namespace clice {
 

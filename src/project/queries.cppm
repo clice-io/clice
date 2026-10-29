@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// Answers about the loaded build: its files, their include dependencies
 /// and what a change to one reaches, and whether the index has caught up
 /// with its units.
@@ -9,6 +7,7 @@ module;
 module clice:project.queries;
 
 import :project.project;
+import :support.prelude;
 import :vfs.path;
 
 namespace clice {

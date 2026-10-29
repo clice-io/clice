@@ -1,8 +1,6 @@
-module;
-
-#include "support/prelude.h"
-
 module clice:semantic.token_class;
+
+import :support.prelude;
 
 namespace clice {
 

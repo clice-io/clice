@@ -1,7 +1,5 @@
 module;
 
-#include "support/prelude.h"
-
 /// The command line's answers about symbols and files, from the index
 /// alone: what `clice query` prints, the renames `clice refactor` plans, the
 /// symbols `clice analyze` and `clice index` look up.
@@ -13,6 +11,7 @@ import :feature.rename;
 import :index.query;
 import :index.symbol;
 import :index.symbol_query;
+import :support.prelude;
 import :vfs.ids;
 import :vfs.path;
 
