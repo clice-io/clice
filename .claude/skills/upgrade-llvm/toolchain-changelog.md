@@ -15,12 +15,13 @@ object format, the choice of the ASan libclang (`@libclang` follows
 `--features=asan`), the Windows system libraries of `@libclang`,
 `clang-tidy-config.h`, the resource directory (`xclang_resource_dir`), a
 program's GSYM and dSYM (`xclang_debug_symbols`), module interfaces that
-embed their sources (`-fmodules-embed-all-files`, which an importer's sandbox
-needs) and Apple's SDK for the macOS targets off macOS hosts. `compile_commands.json`
-comes from the `compdb` module of the same registry. Windows builds target
-MinGW (`*-w64-mingw32`), the one Windows ABI xclang has. A problem in any of
-these is fixed in xclang and arrives with a new release; clice-side
-workarounds for them do not belong in clice's Bazel files.
+embed their sources (`-fmodules-embed-all-files`, which an importer's
+sandbox needs) and Apple's SDK for the macOS targets off macOS hosts.
+`compile_commands.json` comes from the `compdb` module of the same
+registry. Windows builds target MinGW (`*-w64-mingw32`), the one Windows ABI
+xclang has. A problem in any of these is fixed in xclang and arrives with a
+new release; clice-side workarounds for them do not belong in clice's Bazel
+files.
 
 ## Bazel and CI
 
