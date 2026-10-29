@@ -6,10 +6,9 @@ import :support.prelude;
 
 namespace clice {
 
-/// The editor's side of command resolution: the user's context choices and
-/// the header contexts resolved for open files. Editor-facing compiles
-/// resolve through here, layering this state over the project's
-/// CommandResolver; background compiles never see it. The choices are
+/// The editor's side of command resolution: the user's context choices.
+/// Editor-facing compiles resolve through here, layering them over the
+/// project's CommandResolver; background compiles never see them. The choices are
 /// what the context choices encodes: every change reserializes them into it,
 /// and a load parses them back (switchContext waits on its durability).
 /// The protocol handlers (clice/queryContext,
@@ -28,34 +27,21 @@ struct EditorContext {
     /// didOpen. The single source of truth for a file's active context.
     llvm::DenseMap<Fid, Selection> selections;
 
-    /// Resolved compilation contexts of header files, keyed by the header.
-    /// Entries outlive their sessions: closing a header keeps its
-    /// synthesized context, so reopening reuses it instead of
-    /// re-synthesizing. Entries are re-validated at use (deps_changed) and
-    /// dropped when a file along their include chain changes on disk. An
-    /// automatic (not
-    /// user-chosen) host sticks until such an invalidation — reuse
-    /// deliberately wins over re-ranking hosts on reopen.
-    /// TODO: entries for headers never reopened accumulate for the server's
-    /// lifetime; add eviction if observation shows it matters.
-    llvm::DenseMap<Fid, HeaderContext> header_contexts;
-
     /// The files whose last resolution borrowed or synthesized a command
     /// (Inferred, Fallback). A database change may give one a real command
     /// or change its lender's, which the change's own delta cannot tell;
     /// the invalidator recompiles them on every change.
     llvm::DenseSet<Fid> guessed_commands;
 
-    /// Resolve an open file's command: its pin and cached header context
-    /// layered over the project's resolution.
+    /// Resolve an open file's command: its pin layered over the project's
+    /// resolution.
     Resolution resolve_command(Fid path_id,
                                std::string& directory,
                                std::vector<std::string>& arguments);
 
-    /// The host source of a header: the user's persisted choice, else the
-    /// resolved header context, else its best-ranked includer; invalid for
-    /// a file without any.
-    Fid host_of(Fid path_id) const;
+    /// The host source of a header: the user's persisted choice, else
+    /// clice::host_of.
+    Fid host_of(Fid path_id);
 
     /// The dialect the server lexes an open file's text in, for the results
     /// computed from its index, hover's directive lookup and completion's
@@ -68,40 +54,18 @@ struct EditorContext {
         return it != selections.end() ? &it->second : nullptr;
     }
 
-    /// Drop the file's selection and the header context resolved under it,
-    /// persisting the absence: the choice moved to another project.
+    /// Drop the file's selection, persisting the absence: the choice moved
+    /// to another project.
     void forget_selection(Fid path_id) {
         if(selections.erase(path_id)) {
-            drop_header_context(path_id);
             mark_dirty();
         }
     }
 
-    /// The file's resolved header context, or nullptr.
-    HeaderContext* header_context(Fid path_id) {
-        auto it = header_contexts.find(path_id);
-        return it != header_contexts.end() ? &it->second : nullptr;
-    }
-
-    const HeaderContext* header_context(Fid path_id) const {
-        auto it = header_contexts.find(path_id);
-        return it != header_contexts.end() ? &it->second : nullptr;
-    }
-
-    /// Discard the file's resolved header context so the next compile
-    /// re-resolves (and possibly re-synthesizes) it.
-    void drop_header_context(Fid path_id) {
-        header_contexts.erase(path_id);
-    }
-
-    /// Headers whose resolved context was derived through `path_id` — a
-    /// file along its include chain.
-    llvm::SmallVector<Fid> chain_dependents(Fid path_id) const;
-
     /// Whether the file's selection still holds against the current CDB
     /// and include graph: its host still compiles and includes the file,
     /// its pinned command still exists.
-    bool holds_choice(Fid path_id) const;
+    bool holds_choice(Fid path_id);
 
     /// Validate a context choice persisted from an earlier run, dropping it
     /// when it no longer holds (holds_choice). Called on didOpen; a

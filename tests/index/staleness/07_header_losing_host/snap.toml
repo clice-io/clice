@@ -11,22 +11,16 @@ workspace_symbols = [
 [test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
-1 translation unit failed to index (see the log); the index is partial:
-  ${WS}/a.h
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: [2/2] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered"
-exit = 1
+exit = 0
 
 [test."$ clice index --jobs 2 #2"]
 stdout = '''
 Indexed 0 translation units in #s: 1 file shard (# B), 3 symbols.
-1 translation unit failed to index (see the log); the index is partial:
-  ${WS}/a.h
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: [1/1] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered"
-exit = 1
+exit = 0
 
 [test."$ clice index --jobs 2 #3"]
 stdout = '''

@@ -17,6 +17,9 @@ llvm::StringRef extension_language(llvm::StringRef path, bool cxx) {
     auto type = suffix_type(path);
     if(type == types::TY_INVALID) {
         llvm::StringRef ext = path::extension(path);
+        if(ext.empty()) {
+            return cxx ? "c++-header" : "c-header";
+        }
         ext.consume_front(".");
         return ext == "cuh" ? "cuda" : ext;
     }

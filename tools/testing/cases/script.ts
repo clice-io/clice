@@ -24,7 +24,8 @@ export interface AnswersOptions {
     /// Options shaped as clice.toml: the server takes them all, inspect the
     /// table of each feature it runs.
     config?: Record<string, unknown>;
-    /// Background indexing on the server.
+    /// The clients index first: the server in the background, inspect by a
+    /// `clice index` over its copy.
     indexing?: boolean;
     /// The server's client offers this encoding before UTF-16, and the
     /// server must take it; it answers in UTF-16 otherwise.

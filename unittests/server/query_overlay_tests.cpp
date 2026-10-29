@@ -42,7 +42,7 @@ PCMBuilder pcm{graph, project, resolver, pch, pool};
 DocumentCompiles compiles;
 
 TURunFamily turun{graph, project, resolver, pcm, pch, pool};
-IndexPump indexer{loop, project, resolver, turun, pool};
+IndexPump indexer{loop, project, turun, pool};
 ServerLiveSources live{project, pch, session_store, compiles};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.index, project.file_table, &gate, &live};

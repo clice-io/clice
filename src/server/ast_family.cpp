@@ -7,9 +7,10 @@ import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.command_resolver;
+import :project.hosting;
+import :project.project;
 import :sched.builders.build_common;
 import :server.ast_family;
-import :server.context_service;
 import :server.document_failures;
 import :server.editor_context;
 import :support.anomaly;
@@ -228,13 +229,14 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
 ASTFamily::ASTFamily(Project& project,
                      EditorContext& contexts,
                      TaskGraph& graph,
+                     IncludeTrees& trees,
                      PCMBuilder& pcm,
                      PCHBuilder& pch,
                      WorkerPool& pool,
                      SessionStore& sessions,
                      DocumentFailures& failures) :
-    project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions), failures(failures) {}
+    project(project), contexts(contexts), graph(graph), trees(trees), pcm(pcm), pch(pch),
+    pool(pool), sessions(sessions), failures(failures) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
@@ -349,13 +351,21 @@ void ASTFamily::saved(Session& session) {
     // Typing never re-runs the self-containment trial, yet an edit can
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
-    // runs it again.
-    if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
-        if(auto compiled = compiles.latest_at(session.path_id, session.version);
-           !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0) {
-            contexts.commands.forget_self_contained(session.path_id);
-            session.trial_done = false;
-            invalidate(session.path_id);
+    // runs it again. A result that stands holds for the text saved.
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto resolution = contexts.resolve_command(path_id, directory, arguments);
+    if(resolution.trial && resolution.self_contained) {
+        auto& trials = project.hosting.trials;
+        auto compiled = compiles.latest_at(path_id, session.version);
+        if(*resolution.self_contained &&
+           (!compiled || missing_context_errors(compiled->output->diagnostics.own) > 0)) {
+            trials.forget(*resolution.trial);
+            project.mark_artifacts_dirty();
+            invalidate(path_id);
+        } else if(auto* entry = trials.find(*resolution.trial)) {
+            entry->result.text = project.file_table.intern_version(path_id, session.hash);
+            project.mark_artifacts_dirty();
         }
     }
     // The modules it is and imports, directly or through other modules,
@@ -455,11 +465,6 @@ void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapsh
     if(auto it = compiles.entries.find(path_id); it != compiles.entries.end() && it->second.deps) {
         visit(*it->second.deps);
     }
-    // Chain files of a header context are embedded in the synthesized
-    // preamble, invisible to the deps snapshot.
-    if(auto* header_context = contexts.header_context(path_id)) {
-        visit(header_context->deps);
-    }
     if(auto compiled = compiles.latest(path_id); compiled && compiled->loaded_pch()) {
         if(auto it = project.pch_cache.find(*compiled->loaded_pch());
            it != project.pch_cache.end()) {
@@ -528,7 +533,6 @@ void ASTFamily::switch_identity(Session& session) {
     // its commit validity check and publish results for the superseded
     // identity.
     session.generation += 1;
-    session.trial_done = false;
     failures.changed(session.path_id, DocumentFailures::Clock::now());
     auto& entry = compiles.entries[session.path_id];
     if(entry.latest) {
@@ -741,61 +745,6 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
     co_return deps;
 }
 
-kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
-    auto& files = project.file_table;
-    worker::IncludeTreeParams params;
-    params.file = files.resolve(host).str();
-    params.workspace = project.config.workspace_root.str();
-    params.hidden =
-        contexts.commands.resolve_command(host, params.directory, params.arguments).hidden;
-    auto started = std::pair(project.commands_epoch, project.context_epoch);
-    // The tree does not depend on the header's buffer: an edit superseding
-    // the round must not cancel the run, or typing would restart it.
-    auto result = co_await pool.send_stateless(params, worker::Priority::High);
-    if(!result.has_value()) {
-        LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
-        // A host whose preprocessing kills the worker would kill one per
-        // edit; any other failure is not the host's.
-        if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            project.include_trees[host].last_run = started;
-        }
-        co_return false;
-    }
-    if(!result.value().success) {
-        LOG_INFO("No include tree for {}: {}", params.file, result.value().error);
-        project.include_trees[host].last_run = started;
-        co_return false;
-    }
-    auto& tree = result.value();
-    llvm::SmallVector<VersionID> versions;
-    for(std::size_t i = 0; i < tree.paths.size(); i += 1) {
-        auto fid = files.intern(Spelling::absolute(tree.paths[i]));
-        auto hash = tree.content_hashes[i];
-        if(hash != 0) {
-            files.disk.consumed(fid, hash);
-        }
-        versions.push_back(files.intern_version(fid, hash));
-    }
-    for(auto& node: tree.nodes) {
-        node.file = versions[node.file].raw;
-    }
-    std::vector<VersionID> absent;
-    for(auto& place: tree.absent) {
-        absent.push_back(files.intern_version(files.intern(Spelling::absolute(place)), 0));
-    }
-    // The tree can move the host's contexts: the listings it changes are
-    // stale.
-    project.context_epoch += 1;
-    project.include_trees[host] = {
-        .root = versions.back(),
-        .nodes = std::move(tree.nodes),
-        .absent = std::move(absent),
-        .commands_epoch = started.first,
-        .last_run = {started.first, started.second + 1},
-    };
-    co_return true;
-}
-
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // Only a join for an open session spawns a round, and the round gets
     // here before its first suspension: nothing can have closed it.
@@ -852,7 +801,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // includer context, the second send re-compiles with a synthesized
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
-    std::size_t trial_misses = 0;
     auto known_instantiations =
         project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
     for(int attempt = 0; attempt < 2; attempt += 1) {
@@ -868,50 +816,25 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         if(tidy_attempt) {
             params.tidy = tidy_config->params;
         }
-        auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
-        // A context cut along the lexical chain may name directives the
-        // host's compile never enters: once a tree can tell — another
-        // header's run took it, the index caught up — or one is taken,
-        // unless one was since the disk or the commands last changed,
-        // resolve again: under it, another host may come first.
-        llvm::SmallVector<Fid, 2> retried;
-        while(resolution.tree_wanted.valid() &&
-              !ranges::contains(retried, resolution.tree_wanted)) {
-            auto host = resolution.tree_wanted;
-            retried.push_back(host);
-            if(!enterings(project, host, path_id)) {
-                auto it = project.include_trees.find(host);
-                bool ran =
-                    it != project.include_trees.end() &&
-                    it->second.last_run == std::pair(project.commands_epoch, project.context_epoch);
-                if(ran || !co_await fetch_include_tree(host)) {
-                    break;
-                }
-            }
-            contexts.drop_header_context(path_id);
-            if(!ticket.fresh()) {
-                co_return RoundOutcome::Stale;
-            }
-            params.directory.clear();
-            params.arguments.clear();
-            resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
+        // The include trees the header's host search needs are taken first:
+        // a header compiles under the host every process finds for it.
+        auto resolution = co_await trees.resolve(
+            [&] { return contexts.resolve_command(path_id, params.directory, params.arguments); },
+            [&] { return ticket.fresh(); });
+        if(!ticket.fresh()) {
+            co_return RoundOutcome::Stale;
         }
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
-
-        auto* header_context = contexts.header_context(path_id);
         if(synthesized) {
             params.synthesized = synthesized->files;
         }
         params.hidden = resolution.hidden;
 
-        // Whether this round is the self-containment probe: a header
-        // deliberately compiled without its includer prefix to see if it
-        // stands alone. Decided here, where resolve_command chose to omit
-        // the prefix; the commit gates what the probe may write.
-        bool trial_round = attempt == 0 && !session->trial_done && header_context &&
-                           !header_context->synthesized &&
-                           contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
+        // A header no trial says compiles alone compiles without its
+        // includer's context first: this compile is the trial, and the
+        // commit gates what it may write.
+        auto trial = attempt == 0 && !resolution.self_contained ? resolution.trial : std::nullopt;
 
         on_phase.emit(path_id, CompilePhase::Modules);
         auto imports = co_await depend_modules(ctx,
@@ -1165,7 +1088,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             if(!artifact_retried) {
                 artifact_retried = true;
                 // Rerun the same attempt so the trial semantics are
-                // untouched (the loop counter is about probe rounds, not
+                // untouched (the loop counter is about trial rounds, not
                 // artifact retries).
                 attempt -= 1;
                 continue;
@@ -1208,14 +1131,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Failed;
         }
 
-        // A probe invalidated mid-flight is discarded whole: its result is
-        // a conditional write like the latest compile's current flag (dispatch
-        // reset trial_done and the header mode for the recompile to
-        // re-earn), and its diagnostics come from a compile deliberately
-        // run without includer context — they are never published,
-        // including on this path.
-        if(trial_round && !ctx.current()) {
-            LOG_INFO("Discarding invalidated self-containment probe for {}", file_path);
+        // A trial invalidated mid-flight is discarded whole: its result is
+        // a conditional write like the latest compile's current flag, and its
+        // diagnostics come from a compile deliberately run without includer
+        // context — they are never published, including on this path.
+        if(trial && !ctx.current()) {
+            LOG_INFO("Discarding invalidated self-containment trial for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -1234,32 +1155,27 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                feature::invalid_tidy_config(tidy_config->error));
         }
 
-        // Self-containment trial result. Scored once per stable input
-        // state: trial_done is reset whenever compile inputs change for
-        // reasons other than buffer edits, so a dependency change re-runs
-        // the trial while ordinary typing never does. Only NeedsContext is
-        // persisted — SelfContained is recorded in memory alone (dependency
-        // changes erase it) so queryContext can dedup identical-flag hosts
-        // once the result is actually earned, never on a guess.
-        if(trial_round) {
-            session->trial_done = true;
-            trial_misses = missing_context_errors(diagnostics);
-            if(trial_misses == 0) {
-                contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
-            } else {
+        // The trial's result stands for every process while what it read
+        // holds; typing never runs it again (self_contained), a save may.
+        if(trial) {
+            auto trace = capture_deps_snapshot(project.file_table,
+                                               result.value().deps,
+                                               result.value().build_at);
+            // The compile reports nothing it read through the PCH.
+            if(consumed_pch) {
+                if(auto it = project.pch_cache.find(*consumed_pch); it != project.pch_cache.end()) {
+                    trace.append(it->second.deps.begin(), it->second.deps.end());
+                }
+            }
+            commit_trial(project,
+                         *trial,
+                         diagnostics,
+                         project.file_table.intern_version(path_id, session->hash),
+                         std::move(trace));
+            if(missing_context_errors(diagnostics) > 0) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
-                // In memory only until the includer's context proves to
-                // supply what the trial missed.
-                contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext);
                 continue;
             }
-        } else if(synthesized && trial_misses > 0 &&
-                  missing_context_errors(diagnostics) < trial_misses) {
-            // Scored on the buffer: a restart keeps it only for the same
-            // text on disk. A context that misses as much (a database
-            // without the include directories the includer needs too) is
-            // no result to keep.
-            contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext, session->hash);
         }
 
         // The commit: build the whole package off to the side, then
@@ -1287,6 +1203,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         next->pch_key = failed_pch ? failed_pch : consumed_pch;
         next->pch_failed = failed_pch.has_value();
         next->base_pch_key = base_pch;
+        next->host = resolution.host;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (no AST, or an index it could
@@ -1359,8 +1276,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         } else if(tidy_crash) {
             record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
         }
+        // The files the synthesized context embeds are read too, though
+        // clang never opens them.
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+        entry.deps->append(resolution.embedded.begin(), resolution.embedded.end());
         entry.current = current;
         failures.succeeded(ticket, Compile);
         on_output.emit(session);

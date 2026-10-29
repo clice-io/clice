@@ -31,19 +31,13 @@ struct Blob {
 
 }  // namespace
 
-Fid EditorContext::host_of(Fid path_id) const {
+Fid EditorContext::host_of(Fid path_id) {
     if(auto it = selections.find(path_id); it != selections.end()) {
         if(it->second.host_path_id.valid()) {
             return it->second.host_path_id;
         }
     }
-    if(const auto* context = header_context(path_id)) {
-        return context->host_path_id;
-    }
-    // A header compiled under its own entry resolves no context; its
-    // includers still name the source its definitions belong in.
-    auto hosts = ranked_hosts(project, path_id);
-    return hosts.empty() ? Fid{} : hosts.front();
+    return clice::host_of(project, path_id);
 }
 
 const clang::LangOptions& EditorContext::dialect(Fid path_id) {
@@ -58,7 +52,7 @@ Resolution EditorContext::resolve_command(Fid path_id,
                                                arguments,
                                                {
                                                    .selection = selection(path_id),
-                                                   .header_contexts = &header_contexts,
+                                                   .open = true,
                                                });
     if(resolution.source == CommandSource::Inferred ||
        resolution.source == CommandSource::Fallback) {
@@ -67,16 +61,6 @@ Resolution EditorContext::resolve_command(Fid path_id,
         guessed_commands.erase(path_id);
     }
     return resolution;
-}
-
-llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
-    llvm::SmallVector<Fid> result;
-    for(auto& [header_id, context]: header_contexts) {
-        if(ranges::contains(context.chain, path_id)) {
-            result.push_back(header_id);
-        }
-    }
-    return result;
 }
 
 void EditorContext::mark_dirty() {
@@ -170,7 +154,7 @@ bool EditorContext::pin_alive(Fid entry_file,
     return false;
 }
 
-bool EditorContext::holds_choice(Fid path_id) const {
+bool EditorContext::holds_choice(Fid path_id) {
     auto* saved = selection(path_id);
     if(!saved) {
         return false;
@@ -181,13 +165,15 @@ bool EditorContext::holds_choice(Fid path_id) const {
         if(project.build.commands(host).empty()) {
             return false;
         }
+        // No tree telling how often the host's compile enters the header
+        // leaves the choice standing.
         auto occurrences = count_occurrences(project, host, path_id);
         if(occurrences == 0) {
             return false;
         }
         // A pinned occurrence can vanish while other inclusions of the
         // header survive.
-        if(saved->occurrence.has_value() && *saved->occurrence >= occurrences) {
+        if(occurrences && saved->occurrence.has_value() && *saved->occurrence >= *occurrences) {
             return false;
         }
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};

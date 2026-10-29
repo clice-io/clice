@@ -89,6 +89,7 @@ void DependencyGraph::unlink(Fid includer, Fid target) {
 void DependencyGraph::set_includes(Fid path_id,
                                    std::uint32_t config_id,
                                    llvm::SmallVector<IncludeEdge> included) {
+    edges_changed += 1;
     std::pair key{path_id, config_id};
     if(reverse_built) {
         auto old = includes.find(key);
@@ -173,6 +174,7 @@ std::size_t DependencyGraph::edge_count() const {
 }
 
 void DependencyGraph::clear_includes(Fid path_id) {
+    edges_changed += 1;
     auto it = file_configs.find(path_id);
     if(it == file_configs.end()) {
         return;
@@ -193,6 +195,7 @@ void DependencyGraph::clear_includes(Fid path_id) {
 }
 
 void DependencyGraph::build_reverse_map() {
+    edges_changed += 1;
     reverse_built = true;
     reverse_includes.clear();
     for(auto& [key, ids]: includes) {
@@ -269,6 +272,7 @@ std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
 }
 
 void DependencyGraph::add_forced_include(Fid unit, Fid header) {
+    edges_changed += 1;
     if(auto& forced = forced_includes[unit]; !ranges::contains(forced, header)) {
         forced.push_back(header);
     }
@@ -341,8 +345,10 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
 
 void DependencyGraph::reset() {
     auto kept = std::move(quick_scans);
+    auto generation = edges_changed + 1;
     *this = DependencyGraph();
     quick_scans = std::move(kept);
+    edges_changed = generation;
 }
 
 llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {

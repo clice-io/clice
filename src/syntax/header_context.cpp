@@ -57,16 +57,14 @@ std::vector<ScanResult::IncludeInfo> includes_of(const LexicalInfo& lexical,
 
 /// Pick the directive to cut at: the one on `line` when the include tree
 /// names it and the directive does not name another file, else among
-/// those resolving to `next_path`. An explicit
-/// occurrence indexes them in directive order; otherwise unconditional
-/// directives win over ones inside #if blocks, so an include occurrence in
-/// an untaken branch does not shadow the real one.
+/// those resolving to `next_path`, where unconditional directives win over
+/// ones inside #if blocks, so an include occurrence in an untaken branch
+/// does not shadow the real one.
 std::optional<std::size_t> find_match(llvm::StringRef content,
                                       llvm::ArrayRef<ScanResult::IncludeInfo> includes,
                                       llvm::ArrayRef<std::optional<ResolveResult>> resolved,
                                       llvm::StringRef next_path,
-                                      std::uint32_t line,
-                                      std::optional<std::uint32_t> occurrence) {
+                                      std::uint32_t line) {
     // A #line in the file moves what the tree counts lines by: a directive
     // there naming another file leaves the choice to the names.
     if(line != 0) {
@@ -85,12 +83,6 @@ std::optional<std::size_t> find_match(llvm::StringRef content,
     }
     if(candidates.empty()) {
         return std::nullopt;
-    }
-    if(occurrence.has_value()) {
-        if(*occurrence >= candidates.size()) {
-            return std::nullopt;
-        }
-        return candidates[*occurrence];
     }
     for(auto j: candidates) {
         if(!includes[j].conditional) {
@@ -390,7 +382,6 @@ std::optional<SynthesizedContext>
     synthesize_context(llvm::ArrayRef<ChainEntry> chain,
                        llvm::StringRef target_path,
                        IncludeResolver resolve,
-                       std::optional<std::uint32_t> occurrence,
                        std::optional<llvm::StringRef> target_content) {
     SynthesizedContext context;
     std::string snapshot_path;
@@ -424,13 +415,7 @@ std::optional<SynthesizedContext>
             resolved.push_back(resolve(include, includer_dir, found_dir));
         }
 
-        // The occurrence choice applies to the direct includer only.
-        auto match = find_match(entry.content,
-                                includes,
-                                resolved,
-                                next_path,
-                                entry.line,
-                                is_last ? occurrence : std::nullopt);
+        auto match = find_match(entry.content, includes, resolved, next_path, entry.line);
         if(!match) {
             return std::nullopt;
         }

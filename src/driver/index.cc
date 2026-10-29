@@ -193,13 +193,6 @@ int run_indexing(Spelling root, std::string configuration, std::uint32_t workers
             result.symbol_count,
             plural_s(result.symbol_count));
     }
-    if(result.standalone_headers != 0) {
-        driver::println(
-            "The index holds {} header{} indexed standalone under borrowed compile "
-            "commands.",
-            result.standalone_headers,
-            plural_s(result.standalone_headers));
-    }
     if(!result.compiled_with_errors.empty()) {
         driver::println("{} translation unit{} compiled with errors; the index holds what parsed:",
                         result.compiled_with_errors.size(),

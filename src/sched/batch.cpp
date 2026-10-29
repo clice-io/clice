@@ -229,7 +229,6 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
     stack.sched.pump.collect_errors();
 
     auto report = bootstrap_project(project,
-                                    stack.commands,
                                     stack.sched.pump,
                                     project.config.workspace_root,
                                     options.configuration);
@@ -293,11 +292,6 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
 
     result.completed = true;
     result.indexed_tus = stack.sched.pump.indexed_files();
-    project.index.for_each_unit([&](Fid tu) {
-        if(!project.build.unit(tu)) {
-            result.standalone_headers += 1;
-        }
-    });
     auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {
         if(auto it = too_big.find(file); it != too_big.end()) {
@@ -509,7 +503,6 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     project.config.project.enable_indexing.value = false;
 
     auto report = bootstrap_project(project,
-                                    stack.commands,
                                     stack.sched.pump,
                                     project.config.workspace_root,
                                     options.configuration,

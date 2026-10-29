@@ -186,6 +186,12 @@ public:
     /// A TU's current manifest, in the file table's version ids.
     std::optional<TUManifest> manifest(Fid tu) const;
 
+    /// A count that moves whenever a unit's manifest changes, and with it
+    /// what the index says the unit read and contributed.
+    std::uint64_t manifest_generation() const {
+        return manifests_changed;
+    }
+
     /// Every TU with a current manifest — a scan of every file record.
     void for_each_unit(llvm::function_ref<void(Fid tu)> visit) const;
 
@@ -621,6 +627,9 @@ private:
     Header header;
 
     bool header_changed = false;
+
+    /// See manifest_generation.
+    std::uint64_t manifests_changed = 0;
 
     mutable Records<FileRecord> file_records{.kind = BlobKind::File};
 

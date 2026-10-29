@@ -195,7 +195,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         facts.file_ids[path] = it->second;
         facts.files.push_back({
             .path = path,
-            // A header an editor indexed standalone has a manifest too.
+            // A header the database lists has a manifest too.
             .source = index.indexed(fid) && !is_header_path(path),
             .fragment = is_context_header_path(path),
         });

@@ -1,7 +1,5 @@
 module clice;
 
-import :compile.diagnostic;
-import :feature.diagnostics;
 import :feature.protocol;
 import :project.command_resolver;
 import :project.configuration;
@@ -13,32 +11,6 @@ import :support.logging;
 import :vfs.path;
 
 namespace clice {
-
-std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics) {
-    namespace diag = clang::diag;
-    constexpr static unsigned ids[] = {
-        diag::err_unknown_typename,
-        diag::err_unknown_typename_suggest,
-        diag::err_undeclared_var_use,
-        diag::err_undeclared_var_use_suggest,
-        diag::err_undeclared_use,
-        diag::err_undeclared_use_suggest,
-        diag::err_no_member,
-        diag::err_no_member_suggest,
-        diag::err_no_member_template,
-        diag::err_no_member_template_suggest,
-        diag::err_no_template,
-        diag::err_no_template_suggest,
-        diag::err_typename_nested_not_found,
-        diag::err_unknown_nested_typename_suggest,
-        diag::ext_implicit_function_decl_c99,
-        diag::err_pp_hash_error,
-        diag::err_pp_unterminated_conditional,
-    };
-    return ranges::count_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        return diagnostic.level >= DiagnosticLevel::Error && ranges::contains(ids, diagnostic.id);
-    });
-}
 
 /// A source action running `command` with `params`, the parameters of the
 /// request it stands for.
@@ -225,25 +197,26 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
 
     // Contexts that would produce identical compilation results are
     // collapsed: identical canonical flags mean an identical compile
-    // — but only for headers CONFIRMED self-contained. A header that
-    // needs includer context gets a different synthesized prefix per
-    // host, and an un-trialed header may turn out the same way, so
-    // every host stays a distinct context for both.
+    // — but only for a header its trial found self-contained under the
+    // command. One that needs includer context gets a different
+    // synthesized prefix per host, and an un-trialed one may turn out the
+    // same way, so every host stays a distinct context for both.
     llvm::StringSet<> seen_commands;
-    bool dedup_hosts = editor.commands.header_mode(path_id) == HeaderMode::SelfContained;
-
     for(auto host_id: ranked_hosts(ws, path_id)) {
         // A multi-configuration host contributes one context per CDB
         // entry, and a host entering the header more than once one per
         // place it does: each compiles the header under different
-        // preprocessor state.
-        auto occurrences = count_occurrences(ws, host_id, path_id);
+        // preprocessor state. One whose tree no run took yet is listed
+        // once.
+        auto occurrences = count_occurrences(ws, host_id, path_id).value_or(1);
         if(occurrences == 0) {
             continue;
         }
         auto lent = lent_commands(ws, path_id, host_id, host_commands(ws, path_id, host_id));
         for(auto applied: lent) {
-            if(dedup_hosts && !seen_commands.insert(ws.commands.command_hash_hex(applied)).second) {
+            auto hash = ws.commands.command_hash(applied);
+            if(self_contained(ws, {path_id, hash}, true).value_or(false) &&
+               !seen_commands.insert(ws.commands.command_hash_hex(applied)).second) {
                 continue;
             }
             if(occurrences == 1) {
@@ -283,18 +256,19 @@ static std::string_view source_name(CommandSource source) {
     std::unreachable();
 }
 
-ext::CurrentContextResult ContextService::current_context(const Session* session) {
+kota::task<ext::CurrentContextResult> ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
     if(!session) {
-        return result;
+        co_return result;
     }
     auto& ws = project;
     auto path_id = session->path_id;
-    // Resolved first: the resolution fills the header context the item
-    // below is read from.
     auto& command = result.command.emplace();
     std::vector<std::string> resolved;
-    auto resolution = editor.resolve_command(path_id, command.directory, resolved);
+    // As the document's compile does, with the tree of the host it waits
+    // for: the compile in flight takes the same one.
+    auto resolution = co_await trees.resolve(
+        [&] { return editor.resolve_command(path_id, command.directory, resolved); });
     // The command line as its database or rule writes it, the rules
     // applied, rather than the frontend's the compile gets: the one a user
     // recognizes, and could run.
@@ -320,7 +294,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             if(!applied) {
                 return;
             }
-            auto several = count_occurrences(ws, host, path_id) > 1;
+            auto several = count_occurrences(ws, host, path_id).value_or(1) > 1;
             result.context =
                 host_item(ws,
                           host,
@@ -344,7 +318,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
 
     // The choice, else what resolve_command picks: the file's own command
     // — listed only when it is an entry, not a rule's default — then the
-    // host of its resolved context or the default one.
+    // host it borrows a command from.
     if(choice && choice->host_path_id.valid()) {
         // FIXME: reported even when the compile runs elsewhere: the chosen host
         // no longer enters the header (the default host stands in), or its
@@ -359,15 +333,10 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
         if(!ws.build.entries(path_id).empty()) {
             own({}, {});
         }
-    } else if(const auto* context = editor.header_context(path_id)) {
-        // FIXME: a self-contained header's cached host stays when re-ranking puts
-        // another host with the same command first: the listing shows that one,
-        // and no item is the current one.
-        lent(context->host_path_id, {}, {}, context->occurrence);
-    } else if(auto host = default_host(ws, path_id)) {
-        lent(host->file, {}, {}, 0);
+    } else if(resolution.host.valid()) {
+        lent(resolution.host, {}, {}, resolution.occurrence);
     }
-    return result;
+    co_return result;
 }
 
 kota::task<ext::SwitchContextResult>
@@ -442,13 +411,9 @@ kota::task<ext::SwitchContextResult>
 }
 
 void ContextService::leave_context(Session& session) {
-    editor.drop_header_context(session.path_id);
     // The new context is a different compilation identity: supersede any
-    // in-flight compile and drop the state earned under the old one. It
-    // also needs its own self-containment trial — a different host can
-    // change the macro environment.
+    // in-flight compile and drop the state earned under the old one.
     ast.switch_identity(session);
-    editor.commands.forget_self_contained(session.path_id);
 }
 
 ext::ListConfigurationsResult ContextService::list_configurations() const {
@@ -490,7 +455,6 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
         }
         LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
                  project.file_table.resolve(session_id));
-        editor.drop_header_context(session_id);
         ast.switch_identity(*session);
         editor.selections.erase(session_id);
         dropped_saved = true;

@@ -167,7 +167,9 @@ test("completion escalates", async (t) => {
 // A header has no command of its own: read-only, it is answered from the
 // entries its includer's index holds.
 test("header served read-only", async (t) => {
+    // main.cpp indexes the header, which has no index of its own.
     const s = await t.start(AUTO);
+    await s.indexed();
     s.open("header.h", { pull: false });
     await s.sync();
     await t.show("header", {
@@ -177,4 +179,15 @@ test("header served read-only", async (t) => {
     });
     await t.show("pushed", s.pushes("header.h"));
     expect((await s.counts()).pch).toBe(0);
+});
+
+test("unindexed header compiles", async (t) => {
+    // Opened before main.cpp, which indexes it, has run, the header is
+    // compiled at once: it is indexed by no run of its own.
+    const s = await t.start(AUTO);
+    const host = await s.park("index", "main.cpp", { at: "reply" });
+    s.open("header.h", { pull: false });
+    await t.show("hover", s.hover(t.at("header.h", "int |add(")));
+    expect((await s.counts()).pch).toBe(1);
+    await host.release();
 });

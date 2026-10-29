@@ -53,9 +53,8 @@ std::string flatten(const SynthesizedContext& context, llvm::StringRef entry) {
 /// synthesis failed.
 std::optional<std::string> prefix_of(llvm::ArrayRef<ChainEntry> chain,
                                      llvm::StringRef target,
-                                     IncludeResolver resolve,
-                                     std::optional<std::uint32_t> occurrence = {}) {
-    auto context = synthesize_context(chain, target, resolve, occurrence);
+                                     IncludeResolver resolve) {
+    auto context = synthesize_context(chain, target, resolve);
     if(!context) {
         return std::nullopt;
     }
@@ -341,49 +340,6 @@ ZEST_CASE(IncludeNextFollowsChain) {
 
     auto result = prefix_of({host, mid}, "/inc/c/target.h", resolver);
     ZASSERT(result);
-}
-
-ZEST_CASE(OccurrenceSelectsMatch) {
-    // Explicit occurrence indexes the candidate list of the direct
-    // includer, overriding the prefer-unconditional default.
-    llvm::StringMap<std::string> mapping = {
-        {"list.def", "/proj/list.def"},
-    };
-
-    ChainEntry entry{"/proj/main.cpp", R"(#define X(name) int name;
-#include "list.def"
-#undef X
-#define X(name) void get_##name();
-#include "list.def"
-)"};
-
-    auto second = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
-    ZASSERT(second);
-    // The other occurrence of the target is blanked (line kept).
-    ZEXPECT(*second == R"(#line 1 "/proj/main.cpp"
-#define X(name) int name;
-
-#undef X
-#define X(name) void get_##name();
-)");
-
-    auto first = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(0));
-    ZASSERT(first);
-    ZEXPECT(*first == R"(#line 1 "/proj/main.cpp"
-#define X(name) int name;
-)");
-}
-
-ZEST_CASE(OccurrenceOutOfRange) {
-    llvm::StringMap<std::string> mapping = {
-        {"target.h", "/proj/target.h"},
-    };
-
-    ChainEntry entry{"/proj/main.cpp", R"(#include "target.h"
-)"};
-
-    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping), std::uint32_t(1));
-    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(CrlfLineEndings) {
@@ -764,7 +720,6 @@ ZEST_CASE(FragmentsBesideFiles) {
     auto result = synthesize_context({host, mid},
                                      "/proj/lib/target.h",
                                      map_resolver(mapping),
-                                     std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     ZEXPECT(path::parent(result->prefix) == "/proj");
@@ -794,7 +749,6 @@ ZEST_CASE(SnapshotOnlyWhenNamed) {
     auto result = synthesize_context({host},
                                      "/proj/target.h",
                                      map_resolver(mapping),
-                                     std::nullopt,
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     ZEXPECT(!result->snapshot);
@@ -842,7 +796,6 @@ int main() {}
     auto result = synthesize_context({host},
                                      "/proj/target.h",
                                      map_resolver(mapping),
-                                     std::uint32_t(0),
                                      llvm::StringRef("#pragma once\nint t;\n"));
     ZASSERT(result);
     ZEXPECT(!result->snapshot);
@@ -942,7 +895,6 @@ int tail;
     auto result = synthesize_context({host},
                                      "/proj/target.h",
                                      map_resolver(mapping),
-                                     std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     auto path = suffix_path(result->files);

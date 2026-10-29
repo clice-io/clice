@@ -1,0 +1,5 @@
+# Only main.cpp's command defines WIDGET_ID; other.cpp, beside the header,
+# is the unit a file with no host borrows a command from.
+[units]
+"main.cpp" = ["-Iinclude", "-DWIDGET_ID=7"]
+"include/other.cpp" = []

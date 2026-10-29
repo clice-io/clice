@@ -2,7 +2,6 @@ module clice:sched.index.pump;
 
 import :feature.diagnostics;
 import :index.project_index;
-import :project.command_resolver;
 import :project.project;
 import :sched.builders.turun;
 import :sched.graph;
@@ -32,11 +31,7 @@ struct IndexerFixture;
 /// `on_attempt_finished`; a batch driver installs neither.
 class IndexPump {
 public:
-    IndexPump(kota::event_loop& loop,
-              Project& project,
-              CommandResolver& commands,
-              TURunFamily& turun,
-              WorkerPool& pool);
+    IndexPump(kota::event_loop& loop, Project& project, TURunFamily& turun, WorkerPool& pool);
 
     /// Invoked when an index attempt finished with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
@@ -326,8 +321,6 @@ private:
     kota::task_group<> bg_tasks;
 
     Project& project;
-
-    CommandResolver& commands;
 
     TURunFamily& turun;
 

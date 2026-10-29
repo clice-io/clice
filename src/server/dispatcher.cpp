@@ -7,6 +7,7 @@ import :feature.folding_ranges;
 import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
+import :server.include_trees;
 import :server.dispatcher;
 import :server.editor_context;
 import :support.anomaly;
@@ -38,10 +39,11 @@ Value empty_value() {
 Dispatcher::Dispatcher(Project& project,
                        EditorContext& contexts,
                        ASTFamily& ast,
+                       IncludeTrees& trees,
                        WorkerPool& pool,
                        DocumentFailures& failures,
                        const PositionEncoding& encoding) :
-    project(project), contexts(contexts), ast(ast), pool(pool), failures(failures),
+    project(project), contexts(contexts), ast(ast), trees(trees), pool(pool), failures(failures),
     encoding(encoding) {}
 
 bool Dispatcher::admits(Fid path_id,
@@ -347,7 +349,8 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!ast.loaded.is_set()) {
         co_await ast.loaded.wait();
     }
-    auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
+    auto resolution = co_await trees.resolve(
+        [&] { return contexts.resolve_command(path_id, wp.directory, wp.arguments); });
     wp.config = project.config;
 
     ScopedTimer timer;

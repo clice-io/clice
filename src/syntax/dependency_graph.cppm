@@ -176,6 +176,12 @@ public:
     /// so a rebuild over the same files reuses every one still current.
     void reset();
 
+    /// A count that moves with every change of an include edge, forced
+    /// ones included.
+    std::uint64_t generation() const {
+        return edges_changed;
+    }
+
     /// The quick scans the graph was built from.
     QuickScanCache quick_scans;
 
@@ -214,6 +220,9 @@ private:
 
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
     bool reverse_built = false;
+
+    /// See generation.
+    std::uint64_t edges_changed = 0;
 
     /// Drop `includer` from `target`'s includers.
     void unlink(Fid includer, Fid target);

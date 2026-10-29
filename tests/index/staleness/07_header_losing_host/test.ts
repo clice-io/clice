@@ -1,16 +1,16 @@
 import { test } from "@clice/tools/testing";
 
-// A header indexed with a borrowed host, whose host then stops including
-// it: no unit can host it any more, so a batch run reports it uncovered,
-// every run again, until the header is gone.
+// A header is indexed by the units reading it, never on its own: once its
+// only includer stops including it, its entries leave with that unit's
+// next run, and a batch run has nothing to report about it.
 
 test(async (t) => {
     const s = await t.start();
     await s.indexed();
     await t.show("symbols", s.workspaceSymbols("alpha"));
     // Edited on disk while its buffer is open, the closed header no longer
-    // matches its shard: it is indexed again, standalone, main.cpp lending
-    // its command. `beta` can only come from that.
+    // matches its shard: main.cpp, which includes it, indexes it again.
+    // `beta` can only come from that.
     await s.diagnostics("a.h");
     t.disk.edit("a.h", {
         after: "alpha() { return 1; }\n",

@@ -102,13 +102,6 @@ struct Session {
     /// the compile-output push path reads it to tell clients to re-pull
     /// what the AST now answers better (semantic tokens, inlay hints).
     bool index_served = false;
-
-    /// Whether this session's self-containment trial has finished. Reset
-    /// when compile inputs change for reasons other than buffer edits
-    /// (didSave cascades, chain invalidation, mtime staleness), so the
-    /// result re-evaluates on dependency changes but ordinary typing
-    /// errors never trigger a pointless prefix synthesis.
-    bool trial_done = false;
 };
 
 /// A request's hold on the buffer it was asked about: the generation

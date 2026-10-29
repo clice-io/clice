@@ -8,6 +8,7 @@ import :config.config;
 import :driver.driver;
 import :feature.code_actions;
 import :feature.code_completion;
+import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
@@ -25,6 +26,8 @@ import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
 import :project.configuration;
+import :project.hosting;
+import :project.index_reader;
 import :project.load;
 import :project.project;
 import :semantic.symbol;
@@ -54,6 +57,16 @@ struct Options {
                "sections, over the workspace's configuration",
            required = false)
     <std::string> config_overlay;
+
+    DecoKV(help =
+               "Compile the header as included by this source file, as the editor's context "
+               "choice does",
+           required = false)
+    <std::string> host;
+
+    DecoKV(help = "With --host, which place its compile enters the header at, from 0",
+           required = false)
+    <std::uint32_t> occurrence;
 
     ConfigurationOption configuration;
 };
@@ -520,57 +533,69 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     return file;
 }
 
-/// The workspace the inspected file's directory belongs to: itself or the
-/// nearest ancestor holding a configuration file or a compile_commands.json
-/// (the upward lookup clangd does), so a nested tree resolves its commands
-/// as the server would from the project root; `start` itself when none does.
+/// The workspace the inspected file's directory belongs to, as the server
+/// serves it from a workspace folder holding it: the nearest ancestor
+/// holding a configuration file, whose rules may name a database deeper
+/// down (a monorepo's root); else the nearest holding a compile_commands.json,
+/// directly or in its build/ directory; `start` itself when none does.
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
 CanonicalPath workspace_of(CanonicalRef start) {
-    CanonicalPath workspace = start;
+    CanonicalPath configured;
+    CanonicalPath built;
     path::walk_ancestors(start, [&](CanonicalRef dir) {
-        bool marked = ranges::any_of(config_file_names,
-                                     [&](llvm::StringRef marker) {
-                                         return fs::exists(path::join(dir, marker));
-                                     }) ||
-                      fs::exists(path::join(dir, "compile_commands.json"));
-        if(marked) {
-            workspace = dir;
+        if(ranges::any_of(config_file_names, [&](llvm::StringRef marker) {
+               return fs::exists(path::join(dir, marker));
+           })) {
+            configured = dir;
+            return false;
         }
-        return !marked;
+        if(built.empty() && (fs::exists(path::join(dir, "compile_commands.json")) ||
+                             fs::exists(path::join(dir, "build", "compile_commands.json")))) {
+            built = dir;
+        }
+        return true;
     });
-    return workspace;
+    if(!configured.empty()) {
+        return configured;
+    }
+    return built.empty() ? CanonicalPath(start) : built;
 }
 
 /// The project the file in `directory` belongs to, loaded as `clice serve`
 /// loads it: the configuration of the nearest project at or above it with
 /// --config-overlay put in before the rules compile, as initializationOptions
-/// are; the databases the configuration names, else the ones discovered
-/// under its root and those between the root and the file; the dependency
-/// graph.
-auto load_inspected(Project& project, const Options& opts, const Spelling& directory)
-    -> std::expected<void, std::string> {
+/// are; its index when one was built, which tells the server's hosts and
+/// what their trials found; the databases the configuration names, else the
+/// ones discovered under its root and those between the root and the file;
+/// the dependency graph.
+auto load_inspected(const Options& opts, const Spelling& directory)
+    -> std::expected<std::unique_ptr<IndexReader>, std::string> {
     auto identity = CanonicalPath(directory);
     auto root = workspace_of(identity);
-    project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
     if(opts.config_overlay) {
-        if(auto result = json::from_string<StrictJson>(*opts.config_overlay, project.config);
-           !result) {
+        if(auto result = json::from_string<StrictJson>(*opts.config_overlay, config); !result) {
             return std::unexpected(
                 std::format("invalid --config-overlay: {}", result.error().message));
         }
     }
-    project.config.finalize(root);
-    project.config.keep_own_cache_dir();
+    config.finalize(root);
+    config.keep_own_cache_dir();
     auto requested = opts.configuration.tag();
-    if(auto checked = check_requested_configuration(project.config, requested); !checked) {
+    if(auto checked = check_requested_configuration(config, requested); !checked) {
         return std::unexpected(std::move(checked.error()));
     }
+    auto reader = IndexReader::open(Spelling(root),
+                                    std::move(config),
+                                    requested,
+                                    {.load = IndexLoad::Saved, .required = false});
+    auto& project = reader->project;
     load_build(project,
                root,
-               resolve_configuration(project.config, requested),
+               project.build.active_configuration(),
                compile_commands_above(identity, root));
-    return {};
+    return reader;
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -616,15 +641,43 @@ std::string build_pch(Project& project,
 }
 
 /// What the file compiles with in its project: the resolution the server
-/// performs for a background compile — the file's entry, a host's command
-/// for a header, a rule's default command, the builtin fallback — with the
-/// header context it synthesizes and the precompiled header the build
-/// declares, built (build_pch).
-auto project_input(const SourceFile& file, Project& project, CommandResolver& commands)
-    -> CompilationInput {
+/// performs for a background compile, or for the editor under `pin` — the
+/// file's entry, a host's command for a header, a rule's default command,
+/// the builtin fallback — the include trees the host search needs taken
+/// first, and the self-containment trial run when none stands for the
+/// header, both as the server takes them; with the header context it
+/// synthesizes and the precompiled header the build declares, built
+/// (build_pch).
+CompilationInput project_input(const SourceFile& file, Project& project, const Selection* pin) {
+    CommandResolver commands(project);
     CompilationInput input{.workspace = project.config.workspace_root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
-    auto resolution = commands.resolve_command(path_id, input.directory, input.arguments);
+    auto resolve = [&] {
+        return commands.resolve_command(path_id,
+                                        input.directory,
+                                        input.arguments,
+                                        {.selection = pin, .preprocess = true});
+    };
+    auto resolution = resolve();
+    if(resolution.trial && !resolution.self_contained) {
+        auto trial = input;
+        trial.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
+        trial.add_focus(file.path, file.content);
+        auto unit = clice::compile({
+            .kind = CompilationKind::Content,
+            .input = std::move(trial),
+            .skip_bodies = project.config.project.skip_header_bodies,
+        });
+        if(unit->completed()) {
+            auto& files = project.file_table;
+            commit_trial(project,
+                         *resolution.trial,
+                         feature::diagnostics(*unit),
+                         files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
+                         capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
+            resolution = resolve();
+        }
+    }
     input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(resolution.hidden));
     input.add_focus(file.path, file.content);
     if(resolution.synthesized) {
@@ -728,17 +781,23 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    FileTable file_table;
-    Project project{file_table};
-    CommandResolver commands(project);
-    if(auto loaded = load_inspected(project, opts, path.parent()); !loaded) {
-        LOG_ERROR("{}", loaded.error());
+    auto reader = load_inspected(opts, path.parent());
+    if(!reader) {
+        LOG_ERROR("{}", reader.error());
         return 1;
+    }
+    auto& project = (*reader)->project;
+    std::optional<Selection> pin;
+    if(opts.host) {
+        pin = Selection{
+            .host_path_id = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
+            .occurrence = opts.occurrence.as_optional(),
+        };
     }
 
     Output output{.feature = spec.name.str()};
     auto& entry = output.files[std::string(path::filename(file->path))];
-    auto input = project_input(*file, project, commands);
+    auto input = project_input(*file, project, pin ? &*pin : nullptr);
     run_feature(entry, spec, *file, input, project.config);
     if(!input.pch.first.empty()) {
         fs::remove(input.pch.first);

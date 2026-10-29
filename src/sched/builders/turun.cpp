@@ -2,7 +2,6 @@ module clice;
 
 import :compile.tidy;
 import :index.project_index;
-import :project.command_snapshot;
 import :sched.builders.pch;
 import :sched.builders.pcm;
 import :sched.builders.turun;
@@ -63,13 +62,31 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.index = plan.index;
     params.errors = plan.errors;
     params.tidy = std::move(plan.tidy);
-    // Whole-TU runs stick to the build's commands; a synthesized one, or
-    // one borrowed for a file outside the build, would fill the index (and
-    // the lint report) with guesses. A lint plan's extra args join the
-    // driver command here, before toolchain resolution — the driver
-    // interprets them (pass-throughs, --target) when it produces the
-    // resolved line, and every later consumer of params.arguments
-    // (dependency scan, worker parse) sees one truth.
+    // Whole-TU runs stick to the build's units and their commands: a
+    // header, compiled alone under a borrowed command, would fill the
+    // index (and the lint report) with guesses, and the units reading it
+    // index it as their compile sees it. A file the build dropped whose
+    // manifest survives keeps serving its last-known index, and one other
+    // units read — by the scan or by their indexed compiles — is indexed
+    // by theirs: skipping either loses nothing. One with neither (dropped
+    // or never built, read by nothing) stays uncovered — count that as a
+    // failure so a batch run reports the debt instead of exiting clean.
+    if(!project.build.unit(path_id)) {
+        bool read = !project.dep_graph.find_readers(path_id).empty();
+        project.index.for_each_contributor(path_id, [&](Fid) { read = true; });
+        if(!project.index.indexed(path_id) && !read) {
+            finished[path_id] = {.result = Result::Failed,
+                                 .error = "no compile command found; the file stays uncovered"};
+            co_return RoundOutcome::Failed;
+        }
+        finished[path_id] = {.result = Result::Skipped};
+        co_return RoundOutcome::Stale;
+    }
+    // A lint plan's extra args join the driver command here, before
+    // toolchain resolution — the driver interprets them (pass-throughs,
+    // --target) when it produces the resolved line, and every later
+    // consumer of params.arguments (dependency scan, worker parse) sees
+    // one truth.
     tidy::CommandExtraArgs extras;
     if(params.tidy) {
         extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
@@ -79,34 +96,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  params.directory,
                                  params.arguments,
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
-    // A header the compile enters through a forced include is indexed by
-    // the units forcing it in, one a precompiled header holds by the unit
-    // writing it.
-    if(resolved.forced.valid()) {
-        finished[path_id] = {.result = Result::Skipped};
-        co_return RoundOutcome::Stale;
-    }
-    if(resolved.source == CommandSource::Fallback ||
-       (resolved.source == CommandSource::Inferred && !project.build.unit(path_id))) {
-        // A file whose manifest survives keeps serving its last-known index,
-        // and a header other units read — one created where they looked for
-        // it — is indexed by theirs: skipping either loses nothing. One with neither (dropped or
-        // never built, read by nothing) stays uncovered — count that as a failure so a batch run
-        // reports the debt instead of exiting clean.
-        if(!project.index.indexed(path_id) && project.dep_graph.find_readers(path_id).empty()) {
-            finished[path_id] = {.result = Result::Failed,
-                                 .error = "no compile command found; the file stays uncovered"};
-            co_return RoundOutcome::Failed;
-        }
-        finished[path_id] = {.result = Result::Skipped};
-        co_return RoundOutcome::Stale;
-    }
-    if(resolved.synthesized) {
-        params.synthesized = resolved.synthesized->files;
-    }
     params.hidden = resolved.hidden;
-    // A header compiles here in another context than the editor's, which
-    // gives it its includer's.
+    // The editor shows them for a file of its own database entry only
+    // (ASTFamily::shown_skipped).
     params.skipped_diagnostics =
         plan.skipped_diagnostics && resolved.source == CommandSource::CDBExact;
 
@@ -298,16 +290,6 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 finished[path_id] = {.result = Result::Failed,
                                      .error = "the TUIndex result failed verification"};
                 co_return RoundOutcome::Failed;
-            }
-            // Record the borrowed host only for an index that merged: written at
-            // dispatch, a failed rebuild would leave the persisted CDB
-            // snapshot naming the new host while the retained index was
-            // built through the old one — an unchanged new host then pins
-            // that stale index fresh across restarts.
-            if(resolved.source == CommandSource::IncludeGraph) {
-                project.command_snapshot.record_host(path_id, resolved.host);
-            } else {
-                project.command_snapshot.forget_host(path_id);
             }
             outcome.report = std::move(*report);
             outcome.perf.merge_ms = merge_timer.ms();

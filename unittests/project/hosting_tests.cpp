@@ -7,6 +7,8 @@ module;
 module clice;
 
 import :command.table;
+import :compile.diagnostic;
+import :feature.diagnostics;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.hosting;
@@ -41,6 +43,21 @@ struct TreeProject {
     /// The version of the file holding `content`.
     std::uint32_t version(Fid file, llvm::StringRef content) {
         return project.file_table.intern_version(file, llvm::xxh3_64bits(content)).raw;
+    }
+
+    /// The include tree `host`'s first command takes.
+    TreeRequest tree(Fid host) {
+        return tree_request(project, host, project.build.commands(host).front());
+    }
+
+    /// The host find_host finds for `header` with nothing pinned.
+    std::optional<Host> host(Fid header) {
+        return find_host(project, header, nullptr).host;
+    }
+
+    /// include_chains under `host`'s first command.
+    std::optional<llvm::SmallVector<Host>> chains(Fid host, Fid header) {
+        return include_chains(project, tree(host).key, header);
     }
 };
 
@@ -86,10 +103,11 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
     ZASSERT(ranked.size() == 2u);
     ZEXPECT(ranked[0] == far);
     ZEXPECT(ranked[1] == near);
-    auto host = default_host(project, header);
-    ZASSERT(host);
-    ZEXPECT(host->file == far);
-    ZEXPECT(host->chain.back() == header);
+    /// The search waits for the first one's include tree.
+    auto search = find_host(project, header, nullptr);
+    ZEXPECT(!search.host.has_value());
+    ZASSERT(search.missing);
+    ZEXPECT(search.missing->key.first == far);
 };
 
 ZEST_CASE(ProximityWithinSource) {
@@ -469,7 +487,7 @@ ZEST_CASE(ProvisionalMembers) {
     ZEXPECT(project.build.commands(saved).front().source == CommandSource::CDBExact);
 };
 
-ZEST_CASE(EnteringsFollowTree) {
+ZEST_CASE(ChainsFollowTree) {
     /// The unit enters `bar.h` through `foo.h`; its own include of it
     /// comes later and finds the guard: the chain is the one the compile
     /// took, not the shortest.
@@ -494,7 +512,7 @@ ZEST_CASE(EnteringsFollowTree) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto host = default_host(p.project, bar);
+    auto host = p.host(bar);
     ZASSERT(host);
     ZEXPECT(host->chain == std::vector<Fid>{main, foo, bar});
     ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1, 2});
@@ -527,18 +545,34 @@ ZEST_CASE(TreeRulesOutHost) {
     p.project.index.apply_manifest(a, std::move(manifest));
 
     ZEXPECT(count_occurrences(p.project, a, config_b) == 0u);
-    auto host = default_host(p.project, config_b);
+    /// b.cpp's compile may enter it: the search waits for its tree.
+    auto search = find_host(p.project, config_b, nullptr);
+    ZASSERT(search.missing);
+    ZEXPECT(search.missing->key.first == b);
+    llvm::StringRef b_text = "#include \"shared.h\"\n";
+    p.project.hosting.trees.commit(
+        p.tree(b).key,
+        {
+            .root = VersionID{p.version(b, b_text)},
+            .nodes =
+                {
+                              {.file = p.version(shared, shared_text), .line = 1},
+                              {.file = p.version(config_b, ""), .parent = 0, .line = 2},
+                              }
+    },
+        {});
+    auto host = p.host(config_b);
     ZASSERT(host);
     ZEXPECT(host->file == b);
-    ZEXPECT(host->lines.empty());
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1, 2});
 
     /// Once shared.h changes, the tree confirms nothing on its way.
     p.write("common/shared.h", "#pragma once\n#include <config.h>\nint more;\n");
     p.project.file_table.disk.end_turn();
-    ZEXPECT(!enterings(p.project, a, config_b).has_value());
+    ZEXPECT(!p.chains(a, config_b).has_value());
 };
 
-ZEST_CASE(EnteringsInCompileOrder) {
+ZEST_CASE(ChainsInCompileOrder) {
     /// Node numbers follow includers, not the compile: a later directive
     /// of the unit numbered before a nested one still comes after it.
     TreeProject p;
@@ -558,7 +592,7 @@ ZEST_CASE(EnteringsInCompileOrder) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto found = enterings(p.project, main, list);
+    auto found = p.chains(main, list);
     ZASSERT(found);
     ZASSERT(found->size() == 2u);
     ZEXPECT((*found)[0].lines == llvm::SmallVector<std::uint32_t>{1, 1});
@@ -590,17 +624,18 @@ ZEST_CASE(ForcedIncludeEnters) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto found = enterings(p.project, main, t);
+    auto found = p.chains(main, t);
     ZASSERT(found);
     ZASSERT(found->size() == 1u);
     ZEXPECT(found->front().chain == std::vector<Fid>{common, t});
     ZEXPECT(found->front().lines == llvm::SmallVector<std::uint32_t>{2});
 };
 
-ZEST_CASE(PrecompiledHeaderEnters) {
+ZEST_CASE(PrecompiledHeaderHidesWay) {
     /// The forced file is a precompiled header's: the compile took it, a.h
-    /// and t.h from the PCH, and the tree shows only the unit's include of
-    /// a.h, skipped. The chain is the scan's from the forced file.
+    /// and t.h from the PCH, and the manifest's tree shows only the unit's
+    /// include of a.h, skipped. It cannot tell; a preprocess run, which
+    /// reads the forced file as text, does.
     TreeProject p;
     llvm::StringRef main_text = R"(#include "a.h")";
     llvm::StringRef a_text = R"(#pragma once
@@ -623,29 +658,60 @@ ZEST_CASE(PrecompiledHeaderEnters) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto host = default_host(p.project, t);
+    ZEXPECT(!p.chains(main, t).has_value());
+    p.project.hosting.trees.commit(
+        p.tree(main).key,
+        {
+            .root = VersionID{p.version(main, main_text)},
+            .nodes =
+                {
+                              {.file = p.version(pch, R"(#include "a.h")"), .line = 300},
+                              {.file = p.version(a, a_text), .parent = 0, .line = 1},
+                              {.file = p.version(t, "#pragma once\n"), .parent = 1, .line = 2},
+                              {.file = p.version(a, a_text), .line = 1, .skipped = true},
+                              }
+    },
+        {});
+    auto host = p.host(t);
     ZASSERT(host);
     ZEXPECT(host->file == main);
     ZEXPECT(host->chain == std::vector<Fid>{pch, a, t});
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1, 2});
 };
 
 ZEST_CASE(ForcedOnlyHost) {
     /// No unit includes t.h; the command of main.cpp forces in pch.h,
-    /// which does: main.cpp hosts it, and pch.h itself, with no tree.
+    /// which does: main.cpp hosts it, and pch.h itself, once its tree says
+    /// so.
     TreeProject p;
-    auto main = p.write("main.cpp", "int x;\n");
-    auto pch = p.write("pch.h", R"(#include "t.h")");
+    llvm::StringRef main_text = "int x;\n";
+    llvm::StringRef pch_text = R"(#include "t.h")";
+    auto main = p.write("main.cpp", main_text);
+    auto pch = p.write("pch.h", pch_text);
     auto t = p.write("t.h", "#pragma once\n");
     p.project.dep_graph.set_includes(pch, 0, {{t}});
     p.project.dep_graph.add_forced_include(main, pch);
     p.project.dep_graph.build_reverse_map();
 
-    auto host = default_host(p.project, t);
+    ZEXPECT(!p.host(t).has_value());
+    ZEXPECT(!count_occurrences(p.project, main, t).has_value());
+    p.project.hosting.trees.commit(
+        p.tree(main).key,
+        {
+            .root = VersionID{p.version(main, main_text)},
+            .nodes =
+                {
+                              {.file = p.version(pch, pch_text), .line = 1},
+                              {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 1},
+                              }
+    },
+        {});
+    auto host = p.host(t);
     ZASSERT(host);
     ZEXPECT(host->chain == std::vector<Fid>{pch, t});
-    ZEXPECT(host->lexical);
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1});
     ZEXPECT(count_occurrences(p.project, main, t) == 1u);
-    host = default_host(p.project, pch);
+    host = p.host(pch);
     ZASSERT(host);
     ZEXPECT(host->chain == std::vector<Fid>{pch});
     ZEXPECT(count_occurrences(p.project, main, pch) == 1u);
@@ -653,7 +719,7 @@ ZEST_CASE(ForcedOnlyHost) {
 
 ZEST_CASE(ForcedGainsInclude) {
     /// The forced file gained the include of t.h since the tree was taken:
-    /// the tree tells nothing about t.h, and the scan's chain stands.
+    /// the tree tells nothing about t.h, and the search waits for a new one.
     TreeProject p;
     llvm::StringRef main_text = "int x;\n";
     llvm::StringRef old_text = "#pragma once\n";
@@ -675,10 +741,10 @@ ZEST_CASE(ForcedGainsInclude) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    ZEXPECT(!enterings(p.project, main, t).has_value());
-    auto host = default_host(p.project, t);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{prefix, t});
+    ZEXPECT(!p.chains(main, t).has_value());
+    auto search = find_host(p.project, t, nullptr);
+    ZASSERT(search.missing);
+    ZEXPECT(search.missing->key.first == main);
 };
 
 ZEST_CASE(SkippedAloneRulesOut) {
@@ -704,7 +770,7 @@ ZEST_CASE(SkippedAloneRulesOut) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    ZEXPECT(!default_host(p.project, b).has_value());
+    ZEXPECT(!p.host(b).has_value());
 };
 
 ZEST_CASE(ContributorHosts) {
@@ -727,15 +793,15 @@ ZEST_CASE(ContributorHosts) {
     };
     p.project.index.apply_manifest(b, std::move(manifest));
 
-    auto host = default_host(p.project, config_b);
+    auto host = p.host(config_b);
     ZASSERT(host);
     ZEXPECT(host->file == b);
     ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1});
 };
 
-ZEST_CASE(StaleTreeFallsBack) {
-    /// A file on the way changed since the tree was taken: the lexical
-    /// chain stands in.
+ZEST_CASE(StaleTreeWaits) {
+    /// A file on the way changed since the manifest's tree was taken: the
+    /// search waits for a preprocess run's.
     TreeProject p;
     llvm::StringRef main_text = "#include \"foo.h\"\n#include \"bar.h\"\n";
     auto main = p.write("main.cpp", main_text);
@@ -753,17 +819,15 @@ ZEST_CASE(StaleTreeFallsBack) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    ZEXPECT(!enterings(p.project, main, bar).has_value());
-    auto host = default_host(p.project, bar);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, bar});
-    ZEXPECT(host->lines.empty());
+    ZEXPECT(!p.chains(main, bar).has_value());
+    auto search = find_host(p.project, bar, nullptr);
+    ZASSERT(search.missing);
+    ZEXPECT(search.missing->key.first == main);
 };
 
-ZEST_CASE(AppearedFileFallsBack) {
+ZEST_CASE(AppearedFileWaits) {
     /// The tree was taken while part.cpp was missing, so its compile
-    /// entered nothing there; once the file exists the tree cannot tell
-    /// and the lexical chain stands in.
+    /// entered nothing there; once the file exists the tree cannot tell.
     TreeProject p;
     llvm::StringRef unity_text = "#define UNITY\n#include \"part.cpp\"\n";
     auto unity = p.write("unity.cpp", unity_text);
@@ -776,7 +840,7 @@ ZEST_CASE(AppearedFileFallsBack) {
     manifest.tu_version = root;
     manifest.absent = absent;
     p.project.index.apply_manifest(unity, std::move(manifest));
-    auto before = enterings(p.project, unity, part);
+    auto before = p.chains(unity, part);
     ZASSERT(before);
     ZEXPECT(before->empty());
 
@@ -784,19 +848,16 @@ ZEST_CASE(AppearedFileFallsBack) {
     p.project.file_table.disk.end_turn();
     p.project.dep_graph.set_includes(unity, 0, {{part}});
     p.project.dep_graph.build_reverse_map();
-    ZEXPECT(!enterings(p.project, unity, part).has_value());
-    auto host = default_host(p.project, part);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{unity, part});
+    ZEXPECT(!p.chains(unity, part).has_value());
 
-    /// A preprocess run's tree the same.
+    /// A preprocess run's tree the same: its trace names the place.
     p.project.index.remove_manifest(unity);
-    p.project.include_trees[unity] = {
-        .root = root,
-        .absent = absent,
-        .commands_epoch = p.project.commands_epoch,
-    };
-    ZEXPECT(!enterings(p.project, unity, part).has_value());
+    p.project.hosting.trees.commit(p.tree(unity).key,
+                                   {
+                                       .root = root
+    },
+                                   {{.path_id = part, .missing = true}});
+    ZEXPECT(!p.chains(unity, part).has_value());
 };
 
 ZEST_CASE(RepeatedHeaderChangeStales) {
@@ -820,10 +881,134 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    ZEXPECT(!enterings(p.project, main, t).has_value());
-    auto once = enterings(p.project, main, u);
+    ZEXPECT(!p.chains(main, t).has_value());
+    auto once = p.chains(main, u);
     ZASSERT(once);
     ZEXPECT(once->size() == 1u);
+};
+
+ZEST_CASE(RankingSeesContributor) {
+    /// A unit indexed after the ranking was taken names the header in its
+    /// entries: the ranking read the index's manifests, and takes it in.
+    TreeProject p;
+    llvm::StringRef b_text = "#include <config.h>\n";
+    auto a = p.write("a.cpp", "#include \"config.h\"\n");
+    auto b = p.write("b.cpp", b_text);
+    auto header = p.write("config.h", "");
+    p.project.dep_graph.set_includes(a, 0, {{header}});
+    p.project.dep_graph.build_reverse_map();
+    ZEXPECT(ranked_hosts(p.project, header) == llvm::SmallVector<Fid>{a});
+
+    index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = VersionID{p.version(b, b_text)};
+    manifest.contributions = {
+        {VersionID{p.version(header, "")}, 1}
+    };
+    p.project.index.apply_manifest(b, std::move(manifest));
+    ZEXPECT(ranked_hosts(p.project, header) == (llvm::SmallVector<Fid>{a, b}));
+};
+
+ZEST_CASE(TreeHoldsWhileInputsHold) {
+    /// A preprocess run's tree serves the command it ran under while what
+    /// it read holds: a file it read changing, or another command, wants a
+    /// run of its own.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"a.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto a = p.write("a.h", "#pragma once\n");
+    auto other = p.write("other.h", "int x;\n");
+    p.project.dep_graph.set_includes(main, 0, {{a}});
+    p.project.dep_graph.build_reverse_map();
+
+    auto key = p.tree(main).key;
+    p.project.hosting.trees.commit(key,
+                                   {.root = VersionID{p.version(main, main_text)},
+                                    .nodes = {{.file = p.version(a, "#pragma once\n"), .line = 1}}},
+                                   {*current_dep(p.project.file_table, other)});
+    ZEXPECT(p.chains(main, a)->size() == 1u);
+    ZEXPECT(!include_chains(p.project, {main, key.second + 1}, a).has_value());
+
+    p.write("other.h", "int y;\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!p.chains(main, a).has_value());
+};
+
+ZEST_CASE(FailedTreeHostsNothing) {
+    /// A unit whose command cannot preprocess it hosts nothing, and the
+    /// search goes on past it, until the unit changes.
+    TreeProject p;
+    auto a = p.write("a.cpp", "#include \"t.h\"\n");
+    auto b = p.write("b.cpp", "#include \"t.h\"\n");
+    auto t = p.write("t.h", "");
+    p.project.dep_graph.set_includes(a, 0, {{t}});
+    p.project.dep_graph.set_includes(b, 0, {{t}});
+    p.project.dep_graph.build_reverse_map();
+
+    commit_failed_tree(p.project, p.tree(a));
+    ZEXPECT(p.chains(a, t)->empty());
+    auto search = find_host(p.project, t, nullptr);
+    ZASSERT(search.missing);
+    ZEXPECT(search.missing->key.first == b);
+
+    p.write("a.cpp", "#include \"t.h\"\nint a;\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!p.chains(a, t).has_value());
+};
+
+ZEST_CASE(TrialHoldsWhileInputsHold) {
+    /// A trial's result holds while what its compile read holds, and the
+    /// header's text: an open header's moves with every keystroke, and its
+    /// result holds still.
+    TreeProject p;
+    auto header = p.write("t.h", "Widget w;\n");
+    auto dep = p.write("dep.h", "struct Widget;\n");
+    TrialKey key{header, 7};
+    ZEXPECT(!self_contained(p.project, key, false).has_value());
+
+    feature::FileDiagnostic missing{
+        .level = DiagnosticLevel::Error,
+        .id = clang::diag::err_unknown_typename,
+    };
+    commit_trial(p.project,
+                 key,
+                 {missing},
+                 current_dep(p.project.file_table, header)->version,
+                 {*current_dep(p.project.file_table, dep)});
+    ZEXPECT(self_contained(p.project, key, false) == false);
+    ZEXPECT(!self_contained(p.project, {header, 8}, false).has_value());
+
+    p.write("t.h", "Widget w2;\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!self_contained(p.project, key, false).has_value());
+    ZEXPECT(self_contained(p.project, key, true) == false);
+
+    p.write("dep.h", "struct Widget {};\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!self_contained(p.project, key, true).has_value());
+};
+
+ZEST_CASE(FailedContextRemembered) {
+    /// A chain the synthesis cannot follow is remembered as such while its
+    /// files hold, and synthesized again once one changes.
+    TreeProject p;
+    auto main = p.write("main.cpp", "int x;\n");
+    auto t = p.write("t.h", "int t;\n");
+    Host host{
+        .file = main,
+        .chain = {main, t},
+        .lines = {1}
+    };
+    auto command = p.tree(main).command;
+    auto failed = synthesize(p.project, t, host, command);
+    ZEXPECT(failed.result.synthesized == nullptr);
+    ZEXPECT(ranges::contains(failed.trace, main, &DepState::path_id));
+    ZEXPECT(embedding(p.project, main) == llvm::SmallVector<Fid>{t});
+
+    p.write("main.cpp", "#include \"t.h\"\n");
+    p.project.file_table.disk.end_turn();
+    auto context = synthesize(p.project, t, host, command);
+    ZEXPECT(context.result.synthesized != nullptr);
 };
 
 };  // ZEST_SUITE(Hosting)

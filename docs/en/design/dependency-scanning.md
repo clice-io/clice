@@ -110,11 +110,11 @@ A file whose content changes on disk is rescanned by the same per-file step as t
 One of the core uses of dependency scanning is finding host source files for headers. The process is as follows:
 
 1. Starting from the target header, traverse upward via the reverse include index
-2. Find all root files that transitively include the target header (files not included by any other file)
+2. Find the files that transitively include the target header: the roots (files not included by any other file) and the translation units on the way up
 3. Filter for the build's translation units as candidate hosts
 4. Select the first candidate host whose compile enters the header as the default host
 
-Where the candidate's include tree is known — from its index entry, or from preprocessing it in the editor — it tells where the compile enters the header and through which files; otherwise BFS over the lexical graph finds the shortest include chain. The compilation context system then uses that chain to synthesize the header's compilation environment.
+The candidate's include tree — from its index entry, or from preprocessing it — tells where the compile enters the header and through which files. The compilation context system then uses that chain to synthesize the header's compilation environment.
 
 ### Precise Scanning and Background Indexing as Supplements
 

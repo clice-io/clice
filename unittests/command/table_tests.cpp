@@ -101,17 +101,18 @@ ZEST_CASE(IdentityHashes) {
 };
 
 ZEST_CASE(InputKindNoExtension) {
-    /// An extensionless file must yield a real (non-null) empty kind, not
-    /// a null C string.
+    /// A file with no extension is a header only an include reads: it
+    /// compiles as a header of the driver's language, never as linker input.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "noext", "clang++ -std=c++20 noext"sv);
-
-    auto& entry = database.candidate_entries(fake("noext")).front();
-    auto kind = commands.input_kind(entry.command, "noext");
-    ZASSERT(kind.value != nullptr);
-    ZEXPECT(llvm::StringRef(kind.value).empty());
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
+    database.add_command("/fake", "b.c", "clang b.c"sv);
+    auto cxx = database.candidate_entries(fake("a.cpp")).front().command;
+    auto c = database.candidate_entries(fake("b.c")).front().command;
+    ZEXPECT(llvm::StringRef(commands.input_kind(cxx, "/usr/include/c++/vector").value) ==
+            "c++-header");
+    ZEXPECT(llvm::StringRef(commands.input_kind(c, "/fake/config").value) == "c-header");
 };
 
 ZEST_CASE(WorkingDirectoryPCHOutput) {

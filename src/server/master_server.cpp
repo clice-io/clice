@@ -819,11 +819,11 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     co_return result;
 }
 
-ext::CurrentContextResult MasterServer::current_context(ProjectServer& project,
-                                                        const Session* session) {
-    auto result = project.context_service.current_context(session);
+kota::task<ext::CurrentContextResult> MasterServer::current_context(ProjectServer& project,
+                                                                    const Session* session) {
+    auto result = co_await project.context_service.current_context(session);
     result.epoch = context_epoch();
-    return result;
+    co_return result;
 }
 
 ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {

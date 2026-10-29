@@ -396,7 +396,8 @@ static worker::IncludeTreeResult
         .paths = std::move(tree.paths),
         .content_hashes = std::move(tree.content_hashes),
         .nodes = std::move(tree.nodes),
-        .absent = unit->absent(),
+        .deps = unit->deps(),
+        .build_at = unit->build_at().count(),
     };
 }
 
@@ -418,7 +419,6 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         .tidy = params.tidy,
         .stop = stop,
     };
-    cp.input.add_synthesized(params.synthesized);
     use_artifacts(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;

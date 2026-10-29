@@ -1,19 +1,11 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-answers(
-    "hover in the header",
-    {
-        paths: {
-            server: "clice inspect compiles a header with its host's command but without the host's declarations before the include",
-        },
-    },
-    async (a) => {
-        for (const m of a.markers()) {
-            await a.show(m.name, a.hover(m));
-        }
-    },
-);
+answers("hover in the header", async (a) => {
+    for (const m of a.markers()) {
+        await a.show(m.name, a.hover(m));
+    }
+});
 
 // Compiled alone, the header misses what main.cpp declares first: the
 // server compiles it again after those declarations, and only that compile's

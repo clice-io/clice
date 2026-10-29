@@ -1083,7 +1083,7 @@ void LSPClient::register_language_features() {
                 }
                 auto uri = feature::to_uri(server.files.display(path_id));
                 if(feature::admits(only, context_action_kind)) {
-                    auto current = server.current_context(*project, live.get());
+                    auto current = co_await server.current_context(*project, live.get());
                     auto listing = server.query_contexts(path_id, {.uri = uri});
                     result.append_range(context_actions(uri, current, listing));
                 }
@@ -1398,7 +1398,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(this->server.current_context(*project, session.get()));
+            co_return to_raw(co_await this->server.current_context(*project, session.get()));
         });
 
     peer.on_request(
@@ -1632,12 +1632,10 @@ void LSPClient::register_extensions() {
                         static_cast<std::uint32_t>(project.store->pending_tmp_files());
                 }
 
-                stats.header_contexts +=
-                    static_cast<std::uint32_t>(served->contexts.header_contexts.size());
-                stats.synthesized_contexts += static_cast<std::uint32_t>(ranges::count_if(
-                    views::transform(served->contexts.header_contexts,
-                                     [](auto& entry) -> auto& { return entry.second; }),
-                    [](const HeaderContext& context) { return context.synthesized != nullptr; }));
+                project.hosting.contexts.for_each([&](Fid, const auto& entry) {
+                    stats.header_contexts += 1;
+                    stats.synthesized_contexts += entry.result.synthesized != nullptr ? 1 : 0;
+                });
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
                 stats.import_scans += served->sched.pcm.import_scans;
                 stats.index_idle = stats.index_idle && served->sched.pump.is_idle();

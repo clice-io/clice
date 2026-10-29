@@ -1,6 +1,8 @@
 module clice;
 
 import :command.table;
+import :project.hosting;
+import :project.project;
 import :server.editor_context;
 import :support.shell;
 import :unittests.utils.cdb_helper;
@@ -34,17 +36,23 @@ struct HostedHeader {
         project.dep_graph.set_includes(host, 0, {{header}});
         project.dep_graph.build_reverse_map();
 
-        auto disk = project.file_table.disk.current(header);
-        ZASSERT(disk);
-        commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
+        // Its trial found it needs the includer's context.
+        std::string directory;
+        std::vector<std::string> arguments;
+        auto first = commands.resolve_command(header, directory, arguments, {.preprocess = true});
+        ZASSERT(first.trial);
+        project.hosting.trials.commit(
+            *first.trial,
+            {.self_contained = false, .text = current_dep(project.file_table, header)->version},
+            {});
     }
 };
 
 ZEST_SUITE(EditorContext) {
 
-ZEST_CASE(EditorCachesContext) {
-    // Both resolutions synthesize the context in memory; only an editor
-    // resolution keeps it, and reuses it after.
+ZEST_CASE(EditorSharesContext) {
+    // A background and an editor resolution read the one context hosting
+    // synthesized for the header.
     HostedHeader fx;
     ContextChoices blob;
     EditorContext editor{fx.project, fx.commands, blob};
@@ -56,17 +64,11 @@ ZEST_CASE(EditorCachesContext) {
     ZASSERT(background.host == fx.host);
     ZASSERT(background.synthesized != nullptr);
     ZASSERT(ranges::contains(arguments, background.synthesized->prefix));
-    ZASSERT(editor.header_contexts.empty());
 
     auto resolution = editor.resolve_command(fx.header, directory, arguments);
     ZASSERT(resolution.source == CommandSource::IncludeGraph);
-    auto* context = editor.header_context(fx.header);
-    ZASSERT(context != nullptr);
-    ZASSERT(resolution.synthesized == context->synthesized);
+    ZASSERT(resolution.synthesized == background.synthesized);
     ZASSERT(!blob.dirty);
-
-    auto reused = editor.resolve_command(fx.header, directory, arguments);
-    ZASSERT(reused.synthesized == context->synthesized);
 }
 
 ZEST_CASE(GuessedTracksEditorOnly) {
@@ -234,6 +236,11 @@ ZEST_CASE(ValidateDropsGoneOccurrence) {
     project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, 1, ""};
 
+    // No tree tells how often the host's compile enters the header yet:
+    // the choice stands until one does.
+    resolver.validate_saved_context(header);
+    ZASSERT(resolver.selections.contains(header));
+    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
     resolver.validate_saved_context(header);
     ZASSERT(!resolver.selections.contains(header));
 }

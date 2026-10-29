@@ -1,7 +1,7 @@
 module clice:sched.bootstrap;
 
-import :project.command_resolver;
 import :project.load;
+import :project.project;
 import :sched.index.pump;
 import :support.prelude;
 
@@ -12,7 +12,6 @@ namespace clice {
 /// project (load_project), take its index load's report into the pump
 /// and seed the indexing pass. See load_project for the flags.
 ProjectLoad bootstrap_project(Project& project,
-                              CommandResolver& commands,
                               IndexPump& pump,
                               CanonicalRef root,
                               llvm::StringRef requested_configuration,

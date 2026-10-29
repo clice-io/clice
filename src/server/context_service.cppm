@@ -1,23 +1,14 @@
 module clice:server.context_service;
 
-import :feature.diagnostics;
 import :server.ast_family;
 import :server.editor_context;
 import :server.extension;
+import :server.include_trees;
 import :server.session;
 import :server.session_store;
 import :support.prelude;
 
 namespace clice {
-
-/// How many errors name what an includer would have provided: an
-/// undeclared name, a missing member or template of a namespace, a call to
-/// an undeclared C function, an #error guarding against a standalone
-/// compile, a conditional the includer closes. A typo raises the same
-/// ones; the self-containment trial runs when a header opens or its
-/// inputs change, never per edit, so one costs at most a compile under
-/// the includer's context.
-std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
 /// The commands of the source actions switching what a document compiles
 /// under (context_actions, configuration_actions), each standing for the
@@ -55,6 +46,7 @@ struct ContextService {
     Project& project;
     EditorContext& editor;
     ASTFamily& ast;
+    IncludeTrees& trees;
 
     /// The compilation contexts this project offers a file (clice/queryContext):
     /// its host sources and the file's own CDB configurations.
@@ -62,7 +54,7 @@ struct ContextService {
 
     /// clice/currentContext: the listing's item for the context the file
     /// compiles under, whether the user chose it, and its command.
-    ext::CurrentContextResult current_context(const Session* session);
+    kota::task<ext::CurrentContextResult> current_context(const Session* session);
 
     /// clice/switchContext: pin a host source or CDB entry — one contexts()
     /// lists — as the file's compilation context and persist the choice
@@ -77,8 +69,8 @@ struct ContextService {
                                                         const ext::SwitchContextParams& params);
 
     /// Start the document over under another context: nothing it earned
-    /// under the one it leaves — the resolved header context, the compile
-    /// in flight, the self-containment result — carries over.
+    /// under the one it leaves — the compile in flight and what it built —
+    /// carries over.
     void leave_context(Session& session);
 
     /// clice/listConfigurations: the configuration menu with the running,

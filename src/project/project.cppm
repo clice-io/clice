@@ -18,7 +18,6 @@ import :semantic.symbol;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.dependency_graph;
-import :syntax.header_context;
 import :vfs.cache_store;
 import :vfs.file_table;
 
@@ -27,60 +26,6 @@ namespace clice {
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
-
-/// Context for compiling a header file that lacks its own CDB entry.
-struct HeaderContext {
-    Fid host_path_id;  ///< Source file acting as host.
-
-    /// The includer context synthesized for the header, served to its
-    /// compiles from memory; null on the self-contained route, which
-    /// borrows the host's command alone. Content-addressed: equal chain
-    /// text gives equal paths, so the PCH keyed on the -include path
-    /// survives a reopen.
-    std::shared_ptr<const SynthesizedContext> synthesized;
-
-    /// Which place the host's compile enters the header produced the
-    /// preamble (0-based, in the order it does; see enterings).
-    std::uint32_t occurrence = 0;
-
-    /// Canonical hash of the host CDB entry used (multi-configuration
-    /// hosts); empty = the first entry.
-    std::string host_command_hash;
-
-    /// Base command hash of that entry (before rules): stays unique when
-    /// rules collapse two candidates' applied hashes onto one value.
-    std::string host_base_hash;
-
-    /// Include chain from host, or from the file it forces in (forced), to
-    /// the target's direct includer (excludes the target itself). The synthesized context embeds
-    /// these files' content, so clang never opens them — staleness must be tracked here.
-    llvm::SmallVector<Fid> chain;
-
-    /// The file the host's command forces in that the compile enters the
-    /// header through, where the chain starts — the header itself when the
-    /// command forces it in; invalid for a chain from the host's text. The
-    /// header's compile leaves out that -include and the ones after it,
-    /// which the host's compile enters after the header.
-    Fid forced;
-
-    /// The versions of the chain files (and the header's snapshot) the
-    /// synthesis read.
-    DepsSnapshot deps;
-
-    /// Whether the chain is the lexical scan's: no include tree of the host
-    /// could tell where its compile enters the header.
-    bool lexical = false;
-};
-
-/// Whether a header can compile on its own (given a borrowed command)
-/// or needs a synthesized prefix restoring the includer's preprocessor
-/// state. Determined by compiling self-contained first and falling back
-/// when the diagnostics indicate missing context.
-enum class HeaderMode : std::uint32_t {
-    Unknown = 0,
-    SelfContained = 1,
-    NeedsContext = 2,
-};
 
 /// The user's choice for a file in the editor (clice/switchContext): the
 /// host to borrow a command from, or one of the file's own entries.
@@ -347,23 +292,20 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
-    /// Monotonic generation of context-affecting project state (include
-    /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
-    /// tags its results with it and clice/switchContext rejects requests
-    /// made against an older epoch, so a client can never apply a context
-    /// picked from a stale listing without noticing.
+    /// Monotonic generation of context-affecting project state: the include
+    /// graph, the include trees and self-containment results hosting
+    /// learns. clice/queryContext tags its results with it and
+    /// clice/switchContext rejects requests made against an older epoch,
+    /// so a client can never apply a context picked from a stale listing
+    /// without noticing.
     std::uint64_t context_epoch = 1;
 
     /// Generation of the build's commands: bumped when a database reloads
     /// or a member appears, not on saves like context_epoch.
     std::uint64_t commands_epoch = 1;
 
-    /// What a file without a command can borrow (see command_lender).
-    LenderIndex lenders;
-
-    /// The include trees preprocess runs took of hosts a header context
-    /// needed while their index manifests could not tell (see enterings).
-    llvm::DenseMap<Fid, HostTree> include_trees;
+    /// What the project knows of the headers borrowing a unit's command.
+    Hosting hosting;
 
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
@@ -411,9 +353,9 @@ struct Project {
     CDBDiff refresh_provisional();
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM
-    /// records, header modes) the index database carries beyond the index
-    /// itself: producers mark, the single write pipeline (save_project)
-    /// flushes it on its next run.
+    /// records, self-containment results) the index database carries
+    /// beyond the index itself: producers mark, the single write pipeline
+    /// (save_project) flushes it on its next run.
     bool artifacts_dirty = false;
 
     /// Connected by the master to schedule a flush soon after a mark; unset

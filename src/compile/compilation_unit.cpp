@@ -542,7 +542,7 @@ std::vector<DepFile> CompilationUnit::deps() {
     /// Embedded files have no FileID (clang delivers their contents as a
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
-    /// buffer the build consumed; only an existence-only probe whose
+    /// buffer the build consumed; only an existence-only check whose
     /// content was never read loads it here instead. An embedded file's
     /// buffer holds its bytes, hashed as text like every dependency. An
     /// unreadable file hashes as 0 and the snapshot capture falls back to

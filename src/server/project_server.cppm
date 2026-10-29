@@ -10,6 +10,7 @@ import :server.dispatcher;
 import :server.editor_context;
 import :server.requests;
 import :server.file_tracker;
+import :server.include_trees;
 import :server.invalidator;
 import :server.live_sources;
 import :server.session;
@@ -129,11 +130,12 @@ public:
     /// server: its rounds capture sessions, the documents' failure records
     /// and publishing.
     SchedulingStack sched;
+    IncludeTrees trees;
     EditorContext contexts{project, commands, project.contexts};
     ASTFamily ast;
 
     Dispatcher dispatcher;
-    ContextService context_service{project, contexts, ast};
+    ContextService context_service{project, contexts, ast, trees};
 
     ServerLiveSources live_sources;
     index::FreshnessGate freshness{project.file_table};
