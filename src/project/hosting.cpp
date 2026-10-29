@@ -460,7 +460,8 @@ void commit_trial(Project& project,
                                       .self_contained = missing_context_errors(diagnostics) == 0,
                                       .text = text,
                                       // A header gone from disk holds no result.
-                                      .disk = disk ? disk->version : text,
+                                      .disk = disk && disk->version.valid() ? disk->version
+                                                                            : text,
                                   },
                                   std::move(trace));
     // A header found self-contained lists hosts lending the same command
