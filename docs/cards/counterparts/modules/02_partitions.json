@@ -1,6 +1,6 @@
 {
-  "id": "switch_source_header/modules/02_partitions",
-  "topic": "switch_source_header",
+  "id": "counterparts/modules/02_partitions",
+  "topic": "counterparts",
   "subtopic": "modules",
   "title": "Partition beside its implementation",
   "summary": "An internal partition and the implementation unit of the same name defining its declarations switch to each other directly",

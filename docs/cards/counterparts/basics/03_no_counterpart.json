@@ -1,7 +1,7 @@
 {
-  "id": "switch_source_header/counterparts/03_no_counterpart",
-  "topic": "switch_source_header",
-  "subtopic": "counterparts",
+  "id": "counterparts/basics/03_no_counterpart",
+  "topic": "counterparts",
+  "subtopic": "basics",
   "title": "Files without a counterpart",
   "summary": "A header that defines everything it declares, and a `.def` fragment, have no counterpart",
   "prose": "",

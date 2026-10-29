@@ -1,6 +1,6 @@
 {
-  "id": "switch_source_header/modules/01_module_units",
-  "topic": "switch_source_header",
+  "id": "counterparts/modules/01_module_units",
+  "topic": "counterparts",
   "subtopic": "modules",
   "title": "Module interface and implementations",
   "summary": "A module interface unit pairs with the units implementing its module, and each of them with the interface",

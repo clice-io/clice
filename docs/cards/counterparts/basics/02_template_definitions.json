@@ -1,7 +1,7 @@
 {
-  "id": "switch_source_header/counterparts/02_template_definitions",
-  "topic": "switch_source_header",
-  "subtopic": "counterparts",
+  "id": "counterparts/basics/02_template_definitions",
+  "topic": "counterparts",
+  "subtopic": "basics",
   "title": "Template definitions apart",
   "summary": "A header and the `.tpp` file it includes for its template definitions switch to each other",
   "prose": "",

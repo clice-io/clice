@@ -1,7 +1,7 @@
 {
-  "id": "switch_source_header/counterparts/01_header_and_source",
-  "topic": "switch_source_header",
-  "subtopic": "counterparts",
+  "id": "counterparts/basics/01_header_and_source",
+  "topic": "counterparts",
+  "subtopic": "basics",
   "title": "Header and source",
   "summary": "A header pairs with the source defining its declarations, and the source with the header",
   "prose": "",

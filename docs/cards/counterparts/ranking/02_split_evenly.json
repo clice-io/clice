@@ -1,6 +1,6 @@
 {
-  "id": "switch_source_header/ranking/02_split_evenly",
-  "topic": "switch_source_header",
+  "id": "counterparts/ranking/02_split_evenly",
+  "topic": "counterparts",
   "subtopic": "ranking",
   "title": "No clear counterpart",
   "summary": "When no candidate clearly outweighs the others, the editor lists them with their reasons to pick from",

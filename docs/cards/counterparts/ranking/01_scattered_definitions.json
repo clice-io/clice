@@ -1,6 +1,6 @@
 {
-  "id": "switch_source_header/ranking/01_scattered_definitions",
-  "topic": "switch_source_header",
+  "id": "counterparts/ranking/01_scattered_definitions",
+  "topic": "counterparts",
   "subtopic": "ranking",
   "title": "Definitions across several sources",
   "summary": "When several sources define a header's declarations, the one defining clearly the most is taken directly and the others stay listed",
