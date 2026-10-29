@@ -256,6 +256,18 @@ static std::string_view source_name(CommandSource source) {
     std::unreachable();
 }
 
+kota::task<> ContextService::take_tree(Fid header, Fid host) {
+    Selection wanted{.host_path_id = host};
+    std::string directory;
+    std::vector<std::string> arguments;
+    co_await trees.resolve([&] {
+        return editor.commands.resolve_command(header,
+                                               directory,
+                                               arguments,
+                                               {.selection = &wanted});
+    });
+}
+
 kota::task<ext::CurrentContextResult> ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
     if(!session) {

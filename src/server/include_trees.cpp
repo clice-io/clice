@@ -12,13 +12,23 @@ import :worker.scheduler;
 namespace clice {
 
 kota::task<bool> IncludeTrees::take(TreeRequest request) {
-    if(auto it = running.find(request.key); it != running.end()) {
-        auto done = it->second;
-        co_await done->wait();
-        co_return project.hosting.trees.find(request.key) != nullptr;
+    auto key = request.key;
+    std::shared_ptr<kota::event> done;
+    if(auto it = running.find(key); it != running.end()) {
+        done = it->second;
+    } else {
+        done = std::make_shared<kota::event>(false);
+        running.try_emplace(key, done);
+        if(!runs.spawn(run(std::move(request), done))) {
+            running.erase(key);
+            co_return false;
+        }
     }
-    auto done = std::make_shared<kota::event>(false);
-    running[request.key] = done;
+    co_await done->wait();
+    co_return project.hosting.trees.find(key) != nullptr;
+}
+
+kota::task<> IncludeTrees::run(TreeRequest request, std::shared_ptr<kota::event> done) {
     auto finish = llvm::make_scope_exit([&] {
         running.erase(request.key);
         done->set();
@@ -32,24 +42,21 @@ kota::task<bool> IncludeTrees::take(TreeRequest request) {
     auto rendered = project.toolchain.render(command, project.cdb.spelling(command.file));
     params.arguments.assign(rendered.argv.begin(), rendered.argv.end());
     params.hidden = std::move(rendered.hidden);
-    // The tree reads no buffer: an edit superseding the request asking for
-    // it must not cancel the run, or typing would restart it.
     auto result = co_await pool.send_stateless(params, worker::Priority::High);
     if(!result.has_value()) {
         LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
         // A run that kills its worker would kill one per resolution; any
         // other failure is not the unit's.
-        if(result.error().code != worker::dispatch_errc::worker_crashed) {
-            co_return false;
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            commit_failed_tree(project, request);
         }
-        commit_failed_tree(project, request);
-        co_return true;
+        co_return;
     }
     auto& tree = result.value();
     if(!tree.success) {
         LOG_INFO("No include tree for {}: {}", params.file, tree.error);
         commit_failed_tree(project, request);
-        co_return true;
+        co_return;
     }
     commit_tree(project,
                 request,
@@ -58,7 +65,11 @@ kota::task<bool> IncludeTrees::take(TreeRequest request) {
                 std::move(tree.nodes),
                 tree.deps,
                 tree.build_at);
-    co_return true;
+}
+
+kota::task<> IncludeTrees::stop() {
+    runs.cancel();
+    co_await runs.join();
 }
 
 kota::task<Resolution> IncludeTrees::resolve(llvm::function_ref<Resolution()> resolve,

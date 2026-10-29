@@ -52,6 +52,10 @@ struct ContextService {
     /// its host sources and the file's own CDB configurations.
     std::vector<ext::ContextItem> contexts(Fid path_id);
 
+    /// Take the include tree of `host` that contexts() counts the places
+    /// its compile enters `header` by.
+    kota::task<> take_tree(Fid header, Fid host);
+
     /// clice/currentContext: the listing's item for the context the file
     /// compiles under, whether the user chose it, and its command.
     kota::task<ext::CurrentContextResult> current_context(const Session* session);

@@ -356,16 +356,15 @@ void ASTFamily::saved(Session& session) {
     std::vector<std::string> arguments;
     auto resolution = contexts.resolve_command(path_id, directory, arguments);
     if(resolution.trial && resolution.self_contained) {
-        auto& trials = project.hosting.trials;
         auto compiled = compiles.latest_at(path_id, session.version);
-        if(*resolution.self_contained &&
-           (!compiled || missing_context_errors(compiled->output->diagnostics.own) > 0)) {
-            trials.forget(*resolution.trial);
-            project.mark_artifacts_dirty();
+        bool leans =
+            !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
+        saved_trial(project,
+                    *resolution.trial,
+                    project.file_table.intern_version(path_id, session.hash),
+                    leans);
+        if(*resolution.self_contained && leans) {
             invalidate(path_id);
-        } else if(auto* entry = trials.find(*resolution.trial)) {
-            entry->result.text = project.file_table.intern_version(path_id, session.hash);
-            project.mark_artifacts_dirty();
         }
     }
     // The modules it is and imports, directly or through other modules,

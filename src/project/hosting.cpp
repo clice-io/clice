@@ -191,32 +191,6 @@ std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
     return hosts;
 }
 
-/// The files whose compiles read `header` by the lexical scan that the
-/// build compiles as units: the roots above it, a forced header climbing
-/// on to the units forcing it in, and every unit on the way up — a source
-/// another one includes still compiles on its own.
-llvm::SmallVector<Fid> lexical_readers(Project& project, Fid header) {
-    auto& graph = project.dep_graph;
-    llvm::SmallVector<Fid> readers;
-    llvm::DenseSet<Fid> visited{header};
-    llvm::SmallVector<Fid, 16> queue{header};
-    while(!queue.empty()) {
-        auto current = queue.pop_back_val();
-        auto includers = graph.get_includers(current);
-        auto forcing = graph.get_forcing_units(current);
-        if(current != header &&
-           ((includers.empty() && forcing.empty()) || project.build.unit(current))) {
-            readers.push_back(current);
-        }
-        for(auto parent: llvm::concat<const Fid>(includers, forcing)) {
-            if(visited.insert(parent).second) {
-                queue.push_back(parent);
-            }
-        }
-    }
-    return readers;
-}
-
 const LenderIndex& lender_index(Project& project) {
     auto& index = project.hosting.lenders;
     if(index.epoch == project.commands_epoch) {
@@ -353,7 +327,9 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
             candidate
         });
     };
-    for(auto candidate: lexical_readers(project, header)) {
+    // A source another one includes still compiles on its own.
+    auto unit = [&](Fid file) { return project.build.unit(file); };
+    for(auto candidate: project.dep_graph.find_readers(header, unit)) {
         add(candidate);
     }
     project.index.for_each_contributor(header, add);
@@ -385,17 +361,9 @@ HostSearch find_host(Project& project, Fid header, const Selection* pin) {
     // says; otherwise the header compiles as if nothing were pinned.
     if(pin && pin->host_path_id.valid()) {
         auto host = pin->host_path_id;
-        if(auto commands = host_commands(project, header, host); !commands.empty()) {
-            auto host_path = project.file_table.resolve(host);
-            CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-            auto picked = pick_pinned_command(project,
-                                              header,
-                                              commands,
-                                              edit_paths,
-                                              host_path,
-                                              pin->command_hash,
-                                              pin->base_hash);
-            if(auto found = search(host, picked, pin->occurrence.value_or(0))) {
+        if(auto picked =
+               pinned_host_command(project, header, host, pin->command_hash, pin->base_hash)) {
+            if(auto found = search(host, *picked, pin->occurrence.value_or(0))) {
                 return std::move(*found);
             }
         }
@@ -439,8 +407,9 @@ std::optional<bool> self_contained(Project& project, const TrialKey& key, bool o
     if(!entry) {
         return std::nullopt;
     }
-    // Kept for the editor, whose buffer may hold that text still.
-    if(!open && files.check_version(entry->result.text) != vfs::DiskState::CheckResult::Fresh) {
+    // A result the other side does not take is kept for it.
+    auto version = open ? entry->result.disk : entry->result.text;
+    if(files.check_version(version) != vfs::DiskState::CheckResult::Fresh) {
         return std::nullopt;
     }
     return entry->result.self_contained;
@@ -477,13 +446,32 @@ void commit_trial(Project& project,
                   llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                   VersionID text,
                   DepsSnapshot trace) {
-    project.hosting.trials.commit(
-        key,
-        {.self_contained = missing_context_errors(diagnostics) == 0, .text = text},
-        std::move(trace));
+    auto disk = current_dep(project.file_table, key.first);
+    project.hosting.trials.commit(key,
+                                  {
+                                      .self_contained = missing_context_errors(diagnostics) == 0,
+                                      .text = text,
+                                      .disk = disk ? disk->version : VersionID{},
+                                  },
+                                  std::move(trace));
     // A header found self-contained lists hosts lending the same command
     // once (ContextService::contexts).
     project.context_epoch += 1;
+    project.mark_artifacts_dirty();
+}
+
+void saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans) {
+    auto* entry = project.hosting.trials.find(key);
+    if(!entry) {
+        return;
+    }
+    if(entry->result.self_contained && leans) {
+        project.hosting.trials.forget(key);
+        project.context_epoch += 1;
+    } else {
+        entry->result.text = text;
+        entry->result.disk = text;
+    }
     project.mark_artifacts_dirty();
 }
 
@@ -655,16 +643,6 @@ Memo<Fid, HeaderContext>::Entry
     }
     context.synthesized = std::make_shared<const SynthesizedContext>(std::move(*synthesized));
     return commit();
-}
-
-llvm::SmallVector<Fid> embedding(Project& project, Fid file) {
-    llvm::SmallVector<Fid> headers;
-    project.hosting.contexts.for_each([&](Fid header, const auto& entry) {
-        if(ranges::contains(entry.trace, file, &DepState::path_id)) {
-            headers.push_back(header);
-        }
-    });
-    return headers;
 }
 
 std::optional<Lender> command_lender(Project& project, Fid file) {

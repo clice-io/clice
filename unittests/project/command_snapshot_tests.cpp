@@ -380,7 +380,7 @@ ZEST_CASE(HeaderIndexedAloneLeaves) {
     ZASSERT(!f.pump.pending_reason(header_id).has_value());
 }
 
-ZEST_CASE(DefaultUnitRuleChangeReindexed) {
+ZEST_CASE(UnitRuleChangeReindexed) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");

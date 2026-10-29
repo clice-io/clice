@@ -36,4 +36,6 @@ test("inspect takes an include", async (t) => {
     // `--host` and `--occurrence` choose the context as switchContext does.
     await t.cli("inspect document-symbols list.def --host main.cpp --occurrence 0");
     await t.cli("inspect document-symbols list.def --host main.cpp --occurrence 1");
+    // An include past the last is refused, as switchContext refuses it.
+    await t.cli("inspect document-symbols list.def --host main.cpp --occurrence 5");
 });

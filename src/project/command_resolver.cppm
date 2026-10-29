@@ -54,9 +54,16 @@ CommandRef lent_command(Project& project,
                         llvm::ArrayRef<std::string> extra_prepend = {},
                         llvm::ArrayRef<std::string> extra_append = {});
 
-/// The command `host` lends `header`: of the host's commands fit for the
-/// header, the pinned one (else the first), as lent_command lends it;
-/// nullopt when no command fits.
+/// Of `host`'s commands fit for `header`, the pinned one, else the first;
+/// nullopt when none fits.
+std::optional<Candidate> pinned_host_command(Project& project,
+                                             Fid header,
+                                             Fid host,
+                                             llvm::StringRef pinned_hash,
+                                             llvm::StringRef pinned_base);
+
+/// The command `host` lends `header`: pinned_host_command, as lent_command
+/// lends it.
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
@@ -105,8 +112,9 @@ struct Resolution {
     /// served its files. Null when nothing was synthesized.
     std::shared_ptr<const SynthesizedContext> synthesized;
 
-    /// The files the synthesized context embeds, at the versions it
-    /// embeds: inputs of every compile under the arguments that clang never
+    /// The files the header's context rests on, at the versions read: the
+    /// chain the host enters it by, whose text a synthesized context
+    /// embeds. Inputs of every compile under the arguments that clang never
     /// reads from disk.
     DepsSnapshot embedded;
 
@@ -115,7 +123,8 @@ struct Resolution {
     Fid unmatched_host;
 
     /// The include tree the header's host search needs and no run took: the
-    /// command fell back past every host until it is taken.
+    /// command is that host's, without its includer's context, until it is
+    /// taken.
     std::optional<TreeRequest> missing_tree;
 
     /// The self-containment trial deciding whether the header compiles in

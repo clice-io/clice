@@ -83,7 +83,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     ZEXPECT(has_extra(arguments));
 }
 
-ZEST_CASE(TreeRulesOutFirstHost) {
+ZEST_CASE(TreeSkipsFirstHost) {
     /// The scan resolved shared.h's include under b.cpp's directories;
     /// a.cpp ranks first, but under its directories the include reaches
     /// another config.h. The search waits for a.cpp's include tree, which
@@ -119,6 +119,10 @@ ZEST_CASE(TreeRulesOutFirstHost) {
     ZASSERT(waiting.missing_tree);
     ZEXPECT(waiting.missing_tree->key.first == a);
     ZEXPECT(!waiting.host.valid());
+    // Meanwhile the header stands on a.cpp's command.
+    ZEXPECT(waiting.source == CommandSource::IncludeGraph);
+    ZEXPECT(ranges::any_of(arguments,
+                           [](llvm::StringRef argument) { return argument.contains("config_a"); }));
     auto resolution = resolver.resolve_command(header, directory, arguments, {.preprocess = true});
     ZEXPECT(!resolution.missing_tree);
     ZEXPECT(resolution.host == b);

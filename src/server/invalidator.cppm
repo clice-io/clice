@@ -179,9 +179,8 @@ public:
 /// derived-state invalidation.
 ///
 /// Ownership charter:
-///   - reads the session store, the editor context, the AST family's
-///     record of what open documents read and the command snapshot's
-///     recorded header hosts, never mutates them;
+///   - reads the session store, the editor context and the AST family's
+///     record of what open documents read, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context choices, the index queue, or

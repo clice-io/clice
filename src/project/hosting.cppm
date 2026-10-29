@@ -59,6 +59,11 @@ struct Trial {
 
     /// The header's text the trial compiled.
     VersionID text;
+
+    /// The header's disk content when the trial ran, which an open
+    /// header's result holds while: its buffer may differ, by typing or
+    /// from the start.
+    VersionID disk;
 };
 
 /// A header and the command it borrows (CommandTable::command_hash of it,
@@ -196,8 +201,9 @@ std::optional<std::uint32_t> count_occurrences(Project& project, Fid host, Fid h
 
 /// The self-containment trial's result for `key`; nullopt when no trial
 /// stands for it. `open`: the header is a document the user edits, whose
-/// text moves with every keystroke: a result found on other text of it
-/// holds, as typing never runs the trial again.
+/// text moves with every keystroke: a result holds while its disk content
+/// stays as it was when the trial ran, as typing never runs the trial
+/// again; otherwise while the disk holds the text the trial compiled.
 std::optional<bool> self_contained(Project& project, const TrialKey& key, bool open);
 
 /// How many errors name what an includer would have provided: an
@@ -217,6 +223,12 @@ void commit_trial(Project& project,
                   llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                   VersionID text,
                   DepsSnapshot trace);
+
+/// The header's buffer was saved as `text`: the trial of `key`, when one
+/// found it self-contained and `leans` says the compile of that text shows
+/// what an includer provides, is forgotten, to run again; any other result
+/// holds for the saved text.
+void saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans);
 
 /// Remember the tree a preprocess run under `request` took: the files it
 /// read (`paths` with the hashes of the bytes read, the unit's own last),
@@ -247,9 +259,6 @@ void take_tree(Project& project, const TreeRequest& request);
 /// chain files hold.
 Memo<Fid, HeaderContext>::Entry
     synthesize(Project& project, Fid header, const Host& host, const CommandRef& command);
-
-/// The headers whose remembered context embeds `file`.
-llvm::SmallVector<Fid> embedding(Project& project, Fid file);
 
 /// The lender of a file with neither an entry nor a host
 /// (CommandSource::Inferred), among the units the build declares in a

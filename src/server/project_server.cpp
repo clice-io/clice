@@ -251,7 +251,7 @@ kota::task<> ProjectServer::shutdown() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(sched.pump.stop(), ast.stop());
+    co_await kota::when_all(sched.pump.stop(), ast.stop(), trees.stop());
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass.
     co_await sched.shutdown();

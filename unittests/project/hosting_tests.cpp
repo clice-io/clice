@@ -909,7 +909,7 @@ ZEST_CASE(RankingSeesContributor) {
     ZEXPECT(ranked_hosts(p.project, header) == (llvm::SmallVector<Fid>{a, b}));
 };
 
-ZEST_CASE(TreeHoldsWhileInputsHold) {
+ZEST_CASE(TreeFollowsItsInputs) {
     /// A preprocess run's tree serves the command it ran under while what
     /// it read holds: a file it read changing, or another command, wants a
     /// run of its own.
@@ -956,13 +956,14 @@ ZEST_CASE(FailedTreeHostsNothing) {
     ZEXPECT(!p.chains(a, t).has_value());
 };
 
-ZEST_CASE(TrialHoldsWhileInputsHold) {
+ZEST_CASE(TrialFollowsItsInputs) {
     /// A trial's result holds while what its compile read holds, and the
-    /// header's text: an open header's moves with every keystroke, and its
-    /// result holds still.
+    /// header's text: for an open header, whose buffer moves with every
+    /// keystroke, its disk content.
     TreeProject p;
     auto header = p.write("t.h", "Widget w;\n");
     auto dep = p.write("dep.h", "struct Widget;\n");
+    auto& files = p.project.file_table;
     TrialKey key{header, 7};
     ZEXPECT(!self_contained(p.project, key, false).has_value());
 
@@ -975,20 +976,35 @@ ZEST_CASE(TrialHoldsWhileInputsHold) {
     commit_trial(p.project,
                  key,
                  {missing},
-                 current_dep(p.project.file_table, header)->version,
-                 {*current_dep(p.project.file_table, dep)});
+                 current_dep(files, header)->version,
+                 {*current_dep(files, dep)});
     ZEXPECT(p.project.context_epoch != epoch);
     ZEXPECT(self_contained(p.project, key, false) == false);
+    ZEXPECT(self_contained(p.project, key, true) == false);
     ZEXPECT(!self_contained(p.project, {header, 8}, false).has_value());
 
-    p.write("t.h", "Widget w2;\n");
-    p.project.file_table.disk.end_turn();
-    ZEXPECT(!self_contained(p.project, key, false).has_value());
-    ZEXPECT(self_contained(p.project, key, true) == false);
+    // A trial of a buffer the disk does not hold: the editor takes it, a
+    // reader of the disk does not.
+    TrialKey buffer{header, 9};
+    commit_trial(p.project,
+                 buffer,
+                 {},
+                 files.intern_version(header, 42),
+                 {*current_dep(files, dep)});
+    ZEXPECT(self_contained(p.project, buffer, true) == true);
+    ZEXPECT(!self_contained(p.project, buffer, false).has_value());
 
-    p.write("dep.h", "struct Widget {};\n");
-    p.project.file_table.disk.end_turn();
+    p.write("t.h", "Widget w2;\n");
+    files.disk.end_turn();
+    ZEXPECT(!self_contained(p.project, key, false).has_value());
     ZEXPECT(!self_contained(p.project, key, true).has_value());
+    ZEXPECT(!self_contained(p.project, buffer, true).has_value());
+
+    TrialKey other{header, 10};
+    commit_trial(p.project, other, {}, current_dep(files, header)->version, {*current_dep(files, dep)});
+    p.write("dep.h", "struct Widget {};\n");
+    files.disk.end_turn();
+    ZEXPECT(!self_contained(p.project, other, true).has_value());
 };
 
 ZEST_CASE(FailedContextRemembered) {
@@ -1006,7 +1022,6 @@ ZEST_CASE(FailedContextRemembered) {
     auto failed = synthesize(p.project, t, host, command);
     ZEXPECT(failed.result.synthesized == nullptr);
     ZEXPECT(ranges::contains(failed.trace, main, &DepState::path_id));
-    ZEXPECT(embedding(p.project, main) == llvm::SmallVector<Fid>{t});
 
     p.write("main.cpp", "#include \"t.h\"\n");
     p.project.file_table.disk.end_turn();

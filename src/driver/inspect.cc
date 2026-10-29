@@ -21,10 +21,12 @@ import :feature.semantic_tokens;
 import :feature.signature_help;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
+import :project.command_snapshot;
 import :project.configuration;
 import :project.hosting;
 import :project.index_reader;
@@ -595,6 +597,13 @@ auto load_inspected(const Options& opts, const Spelling& directory)
                root,
                project.build.active_configuration(),
                compile_commands_above(identity, root));
+    // A unit whose command changed since it was indexed leaves the index
+    // here as a server's load drops it: its manifest no longer tells where
+    // its compile enters a header.
+    if(project.database) {
+        index::IndexReport changed;
+        project.command_snapshot.reconcile(project, changed);
+    }
     return reader;
 }
 
@@ -647,8 +656,10 @@ std::string build_pch(Project& project,
 /// first, and the self-containment trial run when none stands for the
 /// header, both as the server takes them; with the header context it
 /// synthesizes and the precompiled header the build declares, built
-/// (build_pch).
-CompilationInput project_input(const SourceFile& file, Project& project, const Selection* pin) {
+/// (build_pch). An error when `pin` names a host whose compile does not
+/// enter the file where it says.
+std::expected<CompilationInput, std::string>
+    project_input(const SourceFile& file, Project& project, const Selection* pin) {
     CommandResolver commands(project);
     CompilationInput input{.workspace = project.config.workspace_root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
@@ -677,6 +688,17 @@ CompilationInput project_input(const SourceFile& file, Project& project, const S
                          capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
             resolution = resolve();
         }
+    }
+    if(pin && (resolution.host != pin->host_path_id ||
+               resolution.occurrence != pin->occurrence.value_or(0))) {
+        auto host = project.file_table.resolve(pin->host_path_id);
+        auto times = pin->occurrence.value_or(0) + 1;
+        return std::unexpected(
+            times == 1 ? std::format("the compile of {} does not enter {}", host, file.path)
+                       : std::format("the compile of {} enters {} fewer than {} times",
+                                     host,
+                                     file.path,
+                                     times));
     }
     input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(resolution.hidden));
     input.add_focus(file.path, file.content);
@@ -798,9 +820,13 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     Output output{.feature = spec.name.str()};
     auto& entry = output.files[std::string(path::filename(file->path))];
     auto input = project_input(*file, project, pin ? &*pin : nullptr);
-    run_feature(entry, spec, *file, input, project.config);
-    if(!input.pch.first.empty()) {
-        fs::remove(input.pch.first);
+    if(!input) {
+        LOG_ERROR("--host: {}", input.error());
+        return 1;
+    }
+    run_feature(entry, spec, *file, *input, project.config);
+    if(!input->pch.first.empty()) {
+        fs::remove(input->pch.first);
     }
 
     auto json = json::to_string<JsonConfig>(output);

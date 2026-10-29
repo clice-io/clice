@@ -252,27 +252,23 @@ ZEST_CASE(ChainHitAndMiss) {
     auto other = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     auto hit = project.file_table.intern(Spelling::absolute("/proj/hit.h"));
     auto miss = project.file_table.intern(Spelling::absolute("/proj/miss.h"));
-
-    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     store.open(hit);
     store.open(miss);
 
     CommandResolver commands(project);
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
-    project.hosting.contexts.commit(hit, {}, {{.path_id = saved}});
-    project.hosting.contexts.commit(miss, {}, {{.path_id = other}});
-    project.hosting.contexts.commit(closed, {}, {{.path_id = saved}});
     Harness ph(project, resolver, store);
+    // The chain files a header's context embeds are inputs of its compile.
+    ph.ast.compiles.entries[hit].deps = DepsSnapshot{DepState{.path_id = saved}};
+    ph.ast.compiles.entries[miss].deps = DepsSnapshot{DepState{.path_id = other}};
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // Every context embedding the saved file is a reader of it: an open
-    // header recompiles, a closed one reindexes in the background — its
-    // shard was built under the old chain.
+    // The header whose context embeds the saved file recompiles; no header
+    // has an index of its own to rebuild.
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
-    // The closed header's own content did not change — only its chain did.
-    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.reindex_deps_only.empty());
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 

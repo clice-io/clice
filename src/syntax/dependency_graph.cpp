@@ -351,7 +351,9 @@ void DependencyGraph::reset() {
     edges_changed = generation;
 }
 
-llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {
+llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id,
+                                                     bool through_forced,
+                                                     llvm::function_ref<bool(Fid)> also) const {
     llvm::SmallVector<Fid, 4> result;
     llvm::DenseSet<Fid> visited;
     llvm::SmallVector<Fid, 16> queue;
@@ -370,6 +372,9 @@ llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_
             }
             continue;
         }
+        if(current != path_id && also && also(current)) {
+            result.push_back(current);
+        }
         for(auto parent: llvm::concat<const Fid>(includers, forcing)) {
             if(visited.insert(parent).second) {
                 queue.push_back(parent);
@@ -384,8 +389,9 @@ llvm::SmallVector<Fid, 4> DependencyGraph::find_host_sources(Fid header_path_id)
     return find_roots(header_path_id, false);
 }
 
-llvm::SmallVector<Fid, 4> DependencyGraph::find_readers(Fid path_id) const {
-    return find_roots(path_id, true);
+llvm::SmallVector<Fid, 4> DependencyGraph::find_readers(Fid path_id,
+                                                       llvm::function_ref<bool(Fid)> also) const {
+    return find_roots(path_id, true, also);
 }
 
 std::vector<Fid> DependencyGraph::find_include_chain(Fid host_path_id, Fid target_path_id) const {

@@ -80,9 +80,6 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             add(unit);
         }
     });
-    for(auto header: embedding(project, path_id)) {
-        add(header);
-    }
     return result;
 }
 
@@ -320,12 +317,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     cascade_compile_graph(path_id, dirty);
 
                     // An open header borrowing the changed command compiled
-                    // under one that no longer exists.
+                    // under one that no longer exists; one whose first
+                    // compile is still in flight may be borrowing it.
                     for(auto header_id: views::transform(store.sessions, [](auto& entry) -> auto& {
                             return entry.first;
                         })) {
-                        if(auto compiled = ast.compiles.latest(header_id);
-                           compiled && compiled->host == path_id) {
+                        auto compiled = ast.compiles.latest(header_id);
+                        if(compiled ? compiled->host == path_id
+                                    : !project.build.unit(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         }
                     }

@@ -30,3 +30,86 @@ automatic = true
 label = "main.cpp (#1)"
 description = "${WS}/main.cpp"
 host = "main.cpp"
+
+["inspect takes an include"."$ clice inspect document-symbols list.def --host main.cpp --occurrence 0"]
+stdout = '''
+{
+  "feature": "document-symbols",
+  "files": {
+    "list.def": {
+      "result": [
+        {
+          "name": "alpha",
+          "detail": "int",
+          "kind": "Variable",
+          "range": {
+            "begin": 0,
+            "end": 8
+          },
+          "selection_range": {
+            "begin": 2,
+            "end": 7
+          },
+          "deprecated": false,
+          "children": [],
+          "entity": 7307058137746717000
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+["inspect takes an include"."$ clice inspect document-symbols list.def --host main.cpp --occurrence 1"]
+stdout = '''
+{
+  "feature": "document-symbols",
+  "files": {
+    "list.def": {
+      "result": [
+        {
+          "name": "X(alpha)",
+          "detail": "",
+          "kind": "Macro",
+          "range": {
+            "begin": 0,
+            "end": 8
+          },
+          "selection_range": {
+            "begin": 0,
+            "end": 1
+          },
+          "deprecated": false,
+          "children": [
+            {
+              "name": "get_alpha",
+              "detail": "void ()",
+              "kind": "Function",
+              "range": {
+                "begin": 0,
+                "end": 8
+              },
+              "selection_range": {
+                "begin": 0,
+                "end": 1
+              },
+              "deprecated": false,
+              "children": [],
+              "entity": 13655102910045837000
+            }
+          ],
+          "entity": 0
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0

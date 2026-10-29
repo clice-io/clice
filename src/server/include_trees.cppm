@@ -23,19 +23,27 @@ public:
     kota::task<Resolution> resolve(llvm::function_ref<Resolution()> resolve,
                                    llvm::function_ref<bool()> current = {});
 
-private:
-    /// Take the tree `request` names, or wait for the run taking it.
-    /// False when no run answered: the pool stopped, or the run was
-    /// cancelled.
-    kota::task<bool> take(TreeRequest request);
+    /// Cancel the runs in flight and wait for them to end.
+    kota::task<> stop();
 
 private:
+    /// Take the tree `request` names, or wait for the run taking it. False
+    /// when the run took none: the pool stopped, the run was cancelled, or
+    /// the worker failed for a cause not the unit's.
+    kota::task<bool> take(TreeRequest request);
+
+    /// The run taking the tree, which belongs to no asker: one cancelled
+    /// leaves it to the others waiting on `done`, set when it ends.
+    kota::task<> run(TreeRequest request, std::shared_ptr<kota::event> done);
+
     Project& project;
 
     WorkerPool& pool;
 
     /// The runs in flight, by tree: a second asker waits for the first.
     llvm::DenseMap<UnitCommand, std::shared_ptr<kota::event>> running;
+
+    kota::task_group<> runs;
 };
 
 }  // namespace clice

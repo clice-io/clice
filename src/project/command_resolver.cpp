@@ -40,7 +40,7 @@ void log_command_decision(llvm::StringRef path,
 
 /// How many of `ref`'s `-include`s come before the one naming `forced`:
 /// what a header context entered through that forced file keeps
-/// (HeaderContext::forced). All of them for none.
+/// (Resolution::forced). All of them for none.
 std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
@@ -154,6 +154,26 @@ CommandRef lent_command(Project& project,
                                  extra_append);
 }
 
+std::optional<Candidate> pinned_host_command(Project& project,
+                                             Fid header,
+                                             Fid host,
+                                             llvm::StringRef pinned_hash,
+                                             llvm::StringRef pinned_base) {
+    auto commands = host_commands(project, header, host);
+    if(commands.empty()) {
+        return std::nullopt;
+    }
+    auto host_path = project.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
+    return pick_pinned_command(project,
+                               header,
+                               commands,
+                               edit_paths,
+                               host_path,
+                               pinned_hash,
+                               pinned_base);
+}
+
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
@@ -161,20 +181,11 @@ std::optional<CommandRef> host_command(Project& project,
                                        llvm::StringRef pinned_base,
                                        llvm::ArrayRef<std::string> extra_prepend,
                                        llvm::ArrayRef<std::string> extra_append) {
-    auto commands = host_commands(project, header, host);
-    if(commands.empty()) {
+    auto picked = pinned_host_command(project, header, host, pinned_hash, pinned_base);
+    if(!picked) {
         return std::nullopt;
     }
-    auto host_path = project.file_table.resolve(host);
-    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    auto picked = pick_pinned_command(project,
-                                      header,
-                                      commands,
-                                      edit_paths,
-                                      host_path,
-                                      pinned_hash,
-                                      pinned_base);
-    return lent_command(project, header, host, picked.command, extra_prepend, extra_append);
+    return lent_command(project, header, host, picked->command, extra_prepend, extra_append);
 }
 
 const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host) {
@@ -239,6 +250,15 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
     auto path = project.file_table.resolve(path_id);
     auto host_path = project.file_table.resolve(host.file);
     auto borrow = [&] {
+        // The chain decides the host as a synthesized context's text does:
+        // a change of a file on it may take the header elsewhere.
+        if(!resolution.synthesized) {
+            for(auto file: host.chain) {
+                if(auto dep = current_dep(project.file_table, file); dep && file != path_id) {
+                    resolution.embedded.push_back(*dep);
+                }
+            }
+        }
         resolution.host = host.file;
         resolution.occurrence = search.occurrence;
         resolution.forced = host.chain.front() != host.file ? host.chain.front() : Fid{};
@@ -379,6 +399,23 @@ Resolution CommandResolver::resolve(Fid path_id,
     if(!has_host_choice) {
         tried.push_back("include_graph");
         if(auto ref = resolve_through_host(path_id, request, resolution)) {
+            return finish(*ref);
+        }
+    }
+
+    // Until the host's include tree the search waits on is taken, the
+    // header stands on that host's command, without its includer's
+    // context: a compile takes the tree and resolves again.
+    if(auto& missing = resolution.missing_tree) {
+        auto host = missing->key.first;
+        bool pinned = has_host_choice && choice->host_path_id == host;
+        if(auto ref = host_command(project,
+                                   path_id,
+                                   host,
+                                   pinned ? llvm::StringRef(choice->command_hash) : "",
+                                   pinned ? llvm::StringRef(choice->base_hash) : "",
+                                   request.extra_prepend,
+                                   request.extra_append)) {
             return finish(*ref);
         }
     }

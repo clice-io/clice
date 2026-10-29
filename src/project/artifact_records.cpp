@@ -70,6 +70,9 @@ struct TrialEntry {
     /// The header's text the trial compiled.
     std::uint64_t text;
 
+    /// The header's disk content when the trial ran.
+    std::uint64_t disk;
+
     std::vector<CacheDepEntry> deps;
 };
 
@@ -152,6 +155,7 @@ std::string serialize_artifact_records(Project& project) {
             .command = key.second,
             .self_contained = entry.result.self_contained,
             .text = project.file_table.version(entry.result.text).content_hash,
+            .disk = project.file_table.version(entry.result.disk).content_hash,
         };
         dump_deps(entry.trace, trial.deps);
         data.trials.push_back(std::move(trial));
@@ -256,7 +260,8 @@ void load_artifact_records(Project& project, llvm::StringRef bytes) {
         project.hosting.trials.commit(
             {*header, trial.command},
             {.self_contained = trial.self_contained,
-             .text = project.file_table.intern_version(*header, trial.text)},
+             .text = project.file_table.intern_version(*header, trial.text),
+             .disk = project.file_table.intern_version(*header, trial.disk)},
             load_deps(trial.deps));
     }
 

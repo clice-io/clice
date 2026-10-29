@@ -117,8 +117,10 @@ public:
     llvm::SmallVector<Fid, 4> find_host_sources(Fid header_path_id) const;
 
     /// The roots whose compiles read the file: find_host_sources(), with a
-    /// forced header climbing on to the units that force it in.
-    llvm::SmallVector<Fid, 4> find_readers(Fid path_id) const;
+    /// forced header climbing on to the units that force it in, and every
+    /// file on the way up that `also` accepts.
+    llvm::SmallVector<Fid, 4> find_readers(Fid path_id,
+                                           llvm::function_ref<bool(Fid)> also = {}) const;
 
     /// BFS forward through include edges to find the shortest include chain
     /// from host_path_id to target_path_id.
@@ -228,8 +230,11 @@ private:
     void unlink(Fid includer, Fid target);
 
     /// The roots above `path_id`, climbing from forced headers to their
-    /// units when `through_forced` is set.
-    llvm::SmallVector<Fid, 4> find_roots(Fid path_id, bool through_forced) const;
+    /// units when `through_forced` is set, and the files on the way up
+    /// `also` accepts.
+    llvm::SmallVector<Fid, 4> find_roots(Fid path_id,
+                                         bool through_forced,
+                                         llvm::function_ref<bool(Fid)> also = {}) const;
 
     /// Walk the include closure of `unit` (see include_closure), adding
     /// each file to `seen`, until `stop` holds for one; returns whether it
