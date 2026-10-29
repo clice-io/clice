@@ -1,5 +1,5 @@
 module;
-#include "common.h"
+#include <common.h>
 export module A;
 
 export int a() {
