@@ -23,8 +23,8 @@ regression({
             kind: "disagree",
             request: "hover",
             file: "lldb/source/DataFormatters/TypeCategoryMap.cpp",
-            // That initializer alone differs.
-            detail: /(?<![\s\S])(?=[\s\S]*^-\s+static const Position Last = UINT32_MAX;$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+static const Position Last = (?:UINT32_MAX|\(4294967295U\));$).*$)/m,
+            // That initializer alone differs, expanded on the server.
+            detail: /(?<![\s\S])(?=[\s\S]*^-\s+static const Position Last = UINT32_MAX;$)(?=[\s\S]*^\+\s+static const Position Last = \(4294967295U\);$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+static const Position Last = (?:UINT32_MAX|\(4294967295U\));$).*$)/m,
         },
         {
             issue: "10-28#5",
