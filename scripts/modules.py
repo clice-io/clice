@@ -1,16 +1,17 @@
 """Regenerate modules/ from modules/demand.cpp and the libraries' headers.
 
-Each configuration CI builds is generated on a machine that builds it (Linux
-makes its own, arm64 Linux and both Windows; macOS arm64 its own and x64),
-then all of them are merged into modules/:
+Every configuration CI builds is generated on one x64 Linux machine, which
+cross-compiles the others (macOS against Apple's SDK, which MODULE.bazel
+accepts the license of), then all of them are merged into modules/:
 
-  python scripts/modules.py [--clice PATH] generate <configuration>...
+  python scripts/modules.py [--clice PATH] generate [<configuration>...]
   python scripts/modules.py [--clice PATH] merge
 
-A configuration's wrapping lands in build/modules/<configuration>; merge
-reads every one of them there. Any clice runs it, by default the one the
-tree builds; after a library's upgrade, one built before it, as the new
-headers need not build the old modules/.
+generate without a configuration generates every one. A configuration's
+wrapping lands in build/modules/<configuration>; merge reads every one of
+them there. Any clice runs it, by default the one the tree builds; after a
+library's upgrade, one built before it, as the new headers need not build
+the old modules/.
 """
 
 import argparse
@@ -265,7 +266,9 @@ def main():
     )
     commands = parser.add_subparsers(dest="command", required=True)
     generating = commands.add_parser("generate")
-    generating.add_argument("configurations", nargs="+", choices=CONFIGURATIONS)
+    generating.add_argument(
+        "configurations", nargs="*", choices=CONFIGURATIONS, default=list(CONFIGURATIONS)
+    )
     commands.add_parser("merge")
     args = parser.parse_args()
     clice = os.path.abspath(args.clice)

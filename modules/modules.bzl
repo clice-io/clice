@@ -1,15 +1,12 @@
 """How the third-party libraries' module of modules/ is built and used."""
 
 # What every module unit compiles with: a module loads only into a
-# compilation that matches it in exceptions and RTTI, the sandbox of an
-# importer holds no module sources, so the BMI carries them, and a reduced
-# BMI drops the global module fragment's declarations the purview never
-# names, partial specializations among them.
+# compilation that matches it in exceptions and RTTI, and a reduced BMI
+# drops the global module fragment's declarations the purview never names,
+# partial specializations among them.
 MODULE_COPTS = [
     "-fno-rtti",
     "-fno-exceptions",
-    "-Xclang",
-    "-fmodules-embed-all-files",
     "-fno-modules-reduced-bmi",
 ]
 
