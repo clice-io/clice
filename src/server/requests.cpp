@@ -22,12 +22,13 @@ import :feature.signature_help;
 import :feature.semantic_tokens;
 import :feature.workspace_symbols;
 import :index.peer_queries;
+import :project.build;
+import :project.queries;
 import :sched.index.pump;
 import :semantic.symbol;
 import :server.ast_family;
 import :server.editor_context;
 import :server.requests;
-import :server.query_commands;
 import :support.json;
 import :syntax.include_resolver;
 import :syntax.source_text;
@@ -912,7 +913,6 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
             co_return std::nullopt;
         }
     }
-    auto& config = project.config;
     auto cursor = cursor_at(path_id, position);
     if(!cursor) {
         co_return std::nullopt;
@@ -924,18 +924,10 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
 
     // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
-    CanonicalPath cache_dir;
-    if(!config.project.cache_dir.empty()) {
-        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
-    auto root = config.workspace_root;
+    EditableWorkspace workspace(project.config);
     auto texts = co_await kota::queue(
-        [root, cache_dir, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
-            std::vector<std::string> files;
-            for(auto& source: workspace_sources(root, cache_dir)) {
-                files.push_back(std::move(source).str());
-            }
-            return feature::WorkspaceTexts(std::move(files), names);
+        [workspace, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
+            return feature::WorkspaceTexts(workspace.sources(), names);
         });
     if(ticket.session && !ticket.fresh()) {
         co_await kota::fail(content_modified());
@@ -956,7 +948,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     }
 
     auto editable = [&](llvm::StringRef path) {
-        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+        return workspace.editable(path);
     };
     // Open buffers are read as the editor holds them.
     auto buffer = [&](llvm::StringRef path) -> std::optional<llvm::StringRef> {
@@ -974,7 +966,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
                                      {.files = texts.files,
                                       .editable = editable,
                                       .read = read,
-                                      .units_pending = clice::query::units_pending(project)});
+                                      .units_pending = units_pending(project)});
     if(plan.blocked()) {
         co_await kota::fail(request_failed(feature::refusal(plan)));
     }

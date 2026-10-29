@@ -15,7 +15,7 @@ import :config.config;
 import :driver.driver;
 import :project.configuration;
 import :project.load;
-import :project.open_index;
+import :project.index_reader;
 import :project.project;
 import :support.json;
 import :support.shell;
@@ -262,7 +262,7 @@ int run_file(const FileOptions& opts) {
         return 1;
     }
     auto& project = *workspace->project;
-    auto path = inspected_path(project, *opts.target.path);
+    auto path = argument_path(project, *opts.target.path);
     if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
         return 1;

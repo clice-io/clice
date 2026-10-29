@@ -1,6 +1,6 @@
 {
-  "id": "switch_source_header/layouts/01_split_directories",
-  "topic": "switch_source_header",
+  "id": "counterparts/layouts/01_split_directories",
+  "topic": "counterparts",
   "subtopic": "layouts",
   "title": "Headers apart from sources",
   "summary": "A header under `include/` finds its source under `src/`, ahead of another file of the same name that defines none of its declarations",

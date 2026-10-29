@@ -197,6 +197,7 @@ These were renamed out of the codebase; don't bring them back:
 | collector                                      | `Builder` / `<What>Finder` / `<What>Recorder` (see Naming Conventions)                                                                                                                                                                                        |
 | `Features` (the server's request entry points) | `Requests`: the server routes requests; the features are `src/feature`'s                                                                                                                                                                                      |
 | projection                                     | what it is: a document's latest compile (`DocumentCompile`), a result computed from the index (the `SourceText` overloads of `semantic_tokens`), the LSP form; only the indexer's step from the semantic map to entries is a projection (`project_semantics`) |
+| `switch_source_header` (the feature)           | `counterparts`: the files a file pairs with; only the editor command keeps the action's name (`clice.switchSourceHeader`)                                                                                                                                     |
 
 Domain words with one meaning each — use them only in that meaning:
 

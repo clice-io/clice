@@ -4,26 +4,25 @@ module;
 
 module clice;
 
-import :command.file_kind;
 import :feature.document_symbols;
 import :feature.documentation;
 import :feature.hierarchy;
 import :feature.index_entries;
 import :feature.navigation;
+import :feature.query;
 import :feature.rename;
-import :index.project_index;
+import :index.symbol;
 import :index.search;
 import :index.shard;
 import :index.text;
-import :project.build;
-import :server.query_commands;
 import :support.markup;
 import :syntax.documentation;
 import :syntax.source_text;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
-namespace clice::query {
+namespace clice::feature::query {
 
 namespace {
 
@@ -50,9 +49,10 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     }
     // Interning only names the file; whether the index holds a shard for
     // it is the shard fetch's answer.
-    auto file = ctx.project.file_table.intern(path);
-    if(!ctx.project.index.shard(file)) {
-        ctx.unindexed.emplace_back(ctx.project.file_table.display(file));
+    auto& files = ctx.query.file_table();
+    auto file = files.intern(path);
+    if(!ctx.query.indexes(file)) {
+        ctx.unindexed.emplace_back(files.display(file));
         return std::nullopt;
     }
     return file;
@@ -66,7 +66,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
 /// identity, a relative one from the workspace root.
 Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
     auto anchor = [&](std::string& path) -> Outcome<bool> {
-        Spelling spelled(path, Spelling(ctx.project.config.workspace_root));
+        Spelling spelled(path, Spelling(ctx.root));
         auto file = indexed_file(ctx, spelled);
         if(!file) {
             return std::unexpected(file.error());
@@ -82,7 +82,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         }
         return true;
     }
-    query.resolve_paths(Spelling(ctx.project.config.workspace_root));
+    query.resolve_paths(Spelling(ctx.root));
     return query.position ? anchor(query.position->path) : true;
 }
 
@@ -100,11 +100,11 @@ std::optional<std::string> documentation_of(Context& ctx,
     auto documentation = feature::documentation(ctx.query,
                                                 located.symbol.hash,
                                                 located.site.file,
-                                                ctx.project.config.documentation);
+                                                ctx.documentation);
     if(documentation.empty()) {
         return std::nullopt;
     }
-    return feature::present(documentation).as_markdown();
+    return present(documentation).as_markdown();
 }
 
 template <typename Entry>
@@ -147,7 +147,7 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
                ranges::none_of(query.paths, [&](const std::string& wanted) {
                    return hit.site.file.valid() &&
                           index::path_matches(wanted,
-                                              ctx.project.file_table.resolve(hit.site.file));
+                                              ctx.query.file_table().resolve(hit.site.file));
                });
     });
     return located;
@@ -231,7 +231,7 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
 /// The rename target of the symbols a locator names: one symbol's, or,
 /// for a name the overloads of one scope spell, all of theirs — renamed
 /// together, a call a template leaves open between them stays theirs.
-Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
+Outcome<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
@@ -240,9 +240,9 @@ Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locato
     if(!candidates) {
         return std::unexpected(candidates.error());
     }
-    std::vector<feature::RenameTarget> targets;
+    std::vector<RenameTarget> targets;
     for(auto& candidate: *candidates) {
-        auto target = feature::rename_target(ctx.query, candidate);
+        auto target = rename_target(ctx.query, candidate);
         if(!target) {
             if(candidates->size() == 1) {
                 return std::unexpected(target.error());
@@ -250,7 +250,7 @@ Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locato
             return ambiguous(ctx, *candidates);
         }
         auto root = target->symbol.symbol.hash;
-        if(ranges::none_of(targets, [&](const feature::RenameTarget& known) {
+        if(ranges::none_of(targets, [&](const RenameTarget& known) {
                return known.symbol.symbol.hash == root;
            })) {
             targets.push_back(std::move(*target));
@@ -272,34 +272,6 @@ Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locato
     return merged;
 }
 
-/// The files reachable from `root` along `adjacent`, breadth first and
-/// each once: direct neighbours at depth 1, `max_depth` levels at most,
-/// 0 meaning unbounded.
-std::vector<DepEntry> collect_deps(Project& ws,
-                                   Fid root,
-                                   int max_depth,
-                                   llvm::function_ref<llvm::SmallVector<Fid>(Fid)> adjacent) {
-    std::vector<DepEntry> entries;
-    llvm::SmallVector<std::pair<Fid, int>> queue{
-        {root, 0}
-    };
-    llvm::DenseSet<Fid> visited{root};
-    for(std::size_t i = 0; i < queue.size(); i += 1) {
-        auto [id, depth] = queue[i];
-        if(max_depth > 0 && depth >= max_depth) {
-            continue;
-        }
-        for(auto next: adjacent(id)) {
-            if(!visited.insert(next).second) {
-                continue;
-            }
-            queue.push_back({next, depth + 1});
-            entries.push_back({.path = ws.file_table.display(next), .depth = depth + 1});
-        }
-    }
-    return entries;
-}
-
 std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located> symbols) {
     std::vector<GraphEntry> entries;
     entries.reserve(symbols.size());
@@ -319,7 +291,7 @@ std::string via_of(index::SiteOrigin origin) {
     std::unreachable();
 }
 
-std::vector<GraphEntry> graph_entries(llvm::ArrayRef<feature::CallEdge> edges) {
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<CallEdge> edges) {
     std::vector<GraphEntry> entries;
     entries.reserve(edges.size());
     for(auto& edge: edges) {
@@ -336,129 +308,6 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<feature::CallEdge> edges) {
 }
 
 }  // namespace
-
-Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) {
-    if(!ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
-                         filter)) {
-        return std::unexpected(
-            std::format("invalid filter '{}': expected all, source, header or module",
-                        std::string_view(filter)));
-    }
-    auto& ws = ctx.project;
-    ProjectFilesResult result;
-    llvm::DenseSet<Fid> seen;
-    for(auto member: ws.build.members()) {
-        auto file_path = ws.file_table.resolve(member);
-        if(file_path.empty() || !seen.insert(member).second) {
-            continue;
-        }
-        auto module_name = ws.dep_graph.module_of(member);
-        llvm::StringRef kind = !module_name.empty()        ? "module"
-                               : is_header_path(file_path) ? "header"
-                                                           : "source";
-        if(filter != "all" && filter != kind) {
-            continue;
-        }
-        FileInfo info{.path = ws.file_table.display(member), .kind = kind.str()};
-        if(!module_name.empty()) {
-            info.module_name = module_name.str();
-        }
-        result.files.push_back(std::move(info));
-    }
-    if(filter == "all" || filter == "header") {
-        ws.index.for_each_indexed_file([&](Fid path_id) {
-            auto path = ws.file_table.resolve(path_id);
-            if(!seen.contains(path_id) && is_header_path(path)) {
-                seen.insert(path_id);
-                result.files.push_back({.path = ws.file_table.display(path_id), .kind = "header"});
-            }
-        });
-    }
-    result.total = static_cast<int>(result.files.size());
-    return result;
-}
-
-Outcome<FileDepsResult>
-    file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth) {
-    if(!ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
-                         direction)) {
-        return std::unexpected(
-            std::format("invalid direction '{}': expected includes, includers or both",
-                        std::string_view(direction)));
-    }
-    if(depth < 0) {
-        return std::unexpected("depth must not be negative");
-    }
-    if(!fs::is_file(path)) {
-        return std::unexpected(std::format("no such file: {}", path));
-    }
-    auto& ws = ctx.project;
-    FileDepsResult result{.file = path.str()};
-    auto file = ws.file_table.find(path);
-    if(!file) {
-        return result;
-    }
-    result.file = ws.file_table.display(*file);
-    if(direction != "includers") {
-        result.includes = collect_deps(ws, *file, depth, [&](Fid id) {
-            return ws.dep_graph.get_all_includes(id);
-        });
-    }
-    if(direction != "includes") {
-        result.includers = collect_deps(ws, *file, depth, [&](Fid id) {
-            return llvm::SmallVector<Fid>(ws.dep_graph.get_includers(id));
-        });
-    }
-    return result;
-}
-
-Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
-    if(!fs::is_file(path)) {
-        return std::unexpected(std::format("no such file: {}", path));
-    }
-    auto& ws = ctx.project;
-    ImpactAnalysisResult result;
-    auto file = ws.file_table.find(path);
-    if(!file) {
-        return result;
-    }
-    llvm::DenseSet<Fid> seen{*file};
-    for(auto dependent: llvm::concat<const Fid>(ws.dep_graph.get_includers(*file),
-                                                ws.dep_graph.get_forcing_units(*file))) {
-        if(seen.insert(dependent).second) {
-            result.direct_dependents.push_back(ws.file_table.display(dependent));
-        }
-    }
-    auto readers = ws.dep_graph.find_readers(*file);
-    // An importer reads the files its modules were built from without
-    // including them.
-    llvm::SmallVector<Fid> importers;
-    ws.index.for_each_importer(*file, [&](Fid importer) { importers.push_back(importer); });
-    ranges::sort(importers, [&](Fid lhs, Fid rhs) {
-        return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
-    });
-    for(auto importer: importers) {
-        if(!ranges::contains(readers, importer)) {
-            readers.push_back(importer);
-        }
-    }
-    for(auto reader: readers) {
-        if(seen.insert(reader).second) {
-            result.transitive_dependents.push_back(ws.file_table.display(reader));
-        }
-    }
-    for(auto reader: readers) {
-        auto module_name = ws.dep_graph.module_of(reader);
-        if(!module_name.empty()) {
-            result.affected_modules.push_back(module_name.str());
-        }
-    }
-    auto module_name = ws.dep_graph.module_of(*file);
-    if(!module_name.empty()) {
-        result.affected_modules.push_back(module_name.str());
-    }
-    return result;
-}
 
 Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit) {
     auto query = index::SymbolQuery::parse(text);
@@ -509,7 +358,10 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     };
 }
 
-Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path) {
+Outcome<DocumentSymbolsResult>
+    document_symbols(Context& ctx,
+                     const Spelling& path,
+                     llvm::function_ref<const clang::LangOptions&(Fid file)> dialect) {
     auto file = indexed_file(ctx, path);
     if(!file) {
         return std::unexpected(file.error());
@@ -522,18 +374,17 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     if(!source) {
         return result;
     }
-    auto file_path = ctx.project.file_table.resolve(**file);
-    auto text = vfs::read_text(file_path);
+    auto text = vfs::read_text(ctx.query.file_table().resolve(**file));
     if(!text) {
         return result;
     }
     // The outline the editor shows of a file it has not compiled; a
     // function's locals are no part of it.
-    auto entries = feature::extract_index_entries(*source->shard);
+    auto entries = extract_index_entries(*source->shard);
     auto resolve = [&](index::SymbolHash hash) {
         return ctx.query.symbol_info(hash, **file);
     };
-    SourceText buffer(*text, ctx.contexts.dialect(**file));
+    SourceText buffer(*text, dialect(**file));
     auto outline = feature::document_symbols(buffer, entries, resolve, {.locals = false});
     // The entry of a `#define` or a module declaration is where its symbol
     // is declared.
@@ -544,7 +395,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
             declared.try_emplace(decl.range.begin, decl.symbol);
         }
     }
-    auto list = [&](this auto& self, llvm::ArrayRef<feature::DocumentSymbol> symbols) -> void {
+    auto list = [&](this auto& self, llvm::ArrayRef<DocumentSymbol> symbols) -> void {
         for(const auto& symbol: symbols) {
             auto hash =
                 symbol.entity != 0 ? symbol.entity : declared.lookup(symbol.selection_range.begin);
@@ -615,7 +466,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     auto sites = feature::references(ctx.query, cursor, include_declaration);
     auto contexts = index::context_lines(ctx.query, sites);
-    auto functions = feature::enclosing_functions(ctx.query, sites);
+    auto functions = enclosing_functions(ctx.query, sites);
     assert(ranges::size(sites) == ranges::size(contexts) &&
            ranges::size(sites) == ranges::size(functions));
     for(auto [site, context, function]: views::zip(sites, contexts, functions)) {
@@ -634,17 +485,12 @@ Outcome<ReferencesResult> references(Context& ctx,
     return result;
 }
 
-bool units_pending(Project& project) {
-    return ranges::any_of(project.build.members(), [&](Fid unit) {
-        return project.build.indexed(project.file_table.resolve(unit)) &&
-               !project.index.indexed(unit);
-    });
-}
-
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
+PlannedRename rename(Context& ctx,
+                     llvm::ArrayRef<RenameRequest> requests,
+                     RenameWorkspace workspace) {
     PlannedRename planned;
     auto& result = planned.result;
-    std::vector<feature::Renaming> renamings;
+    std::vector<Renaming> renamings;
     // The answer's entry of each renaming.
     std::vector<std::size_t> entries;
     llvm::StringSet<> names;
@@ -672,30 +518,17 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
         renamings.push_back({.target = std::move(*target), .new_name = request.new_name});
     }
 
-    auto& config = ctx.project.config;
-    CanonicalRef root = config.workspace_root;
-    CanonicalPath cache_dir;
-    if(!config.project.cache_dir.empty()) {
-        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
-    std::vector<std::string> sources;
-    for(auto& source: workspace_sources(root, cache_dir)) {
-        sources.push_back(std::move(source).str());
-    }
-    feature::WorkspaceTexts texts(std::move(sources), std::move(names));
-    auto editable = [&](llvm::StringRef path) {
-        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
-    };
+    WorkspaceTexts texts(std::move(workspace.files), std::move(names));
     auto read = [&](llvm::StringRef path) {
         return texts.read(path);
     };
-    planned.plan = feature::plan_renames(ctx.query,
-                                         ctx.project.file_table,
-                                         renamings,
-                                         {.files = texts.files,
-                                          .editable = editable,
-                                          .read = read,
-                                          .units_pending = units_pending(ctx.project)});
+    planned.plan = plan_renames(ctx.query,
+                                ctx.query.file_table(),
+                                renamings,
+                                {.files = texts.files,
+                                 .editable = workspace.editable,
+                                 .read = read,
+                                 .units_pending = workspace.units_pending});
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;
@@ -839,4 +672,4 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     };
 }
 
-}  // namespace clice::query
+}  // namespace clice::feature::query

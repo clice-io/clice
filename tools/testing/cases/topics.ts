@@ -17,7 +17,7 @@ export const TOPICS: Readonly<Record<string, "feature" | "engine" | "command">> 
     semantic_tokens: "feature",
     inlay_hints: "feature",
     code_actions: "feature",
-    switch_source_header: "feature",
+    counterparts: "feature",
     rename: "feature",
     diagnostics: "feature",
     inactive_regions: "feature",

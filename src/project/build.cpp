@@ -612,32 +612,6 @@ static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
            fs::exists(path::join(dir, "build.ninja"));
 }
 
-std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
-    std::vector<CanonicalPath> found;
-    auto entries = fs::walk(root);
-    for(auto& entry: entries) {
-        if(!entry) {
-            vfs::warn_unreadable(entry.error());
-            continue;
-        }
-        if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(root.entry(entry->path), cache_dir)) {
-                entries.skip();
-            }
-            continue;
-        }
-        if(entry->type != fs::FileType::Regular) {
-            continue;
-        }
-        auto path = root.entry(entry->path);
-        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
-           is_context_header_path(path) || path.str().ends_with(".cuh")) {
-            found.push_back(std::move(path));
-        }
-    }
-    return found;
-}
-
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
     if(!path::is_within(file, root) || file == root) {
         return false;
@@ -651,6 +625,43 @@ bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file
         return inside;
     });
     return inside;
+}
+
+EditableWorkspace::EditableWorkspace(const Config& config) : root(config.workspace_root) {
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+}
+
+std::vector<std::string> EditableWorkspace::sources() const {
+    CanonicalRef workspace = root;
+    std::vector<std::string> found;
+    auto entries = fs::walk(workspace);
+    for(auto& entry: entries) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+            continue;
+        }
+        if(entry->type == fs::FileType::Directory) {
+            if(outside_sources(workspace.entry(entry->path), cache_dir)) {
+                entries.skip();
+            }
+            continue;
+        }
+        if(entry->type != fs::FileType::Regular) {
+            continue;
+        }
+        auto path = workspace.entry(entry->path);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path).str());
+        }
+    }
+    return found;
+}
+
+bool EditableWorkspace::editable(llvm::StringRef path) const {
+    return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
 }
 
 }  // namespace clice

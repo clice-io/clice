@@ -330,14 +330,29 @@ std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef databas
 /// event loop: a rule without patterns has the whole workspace walked.
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 
-/// The C-family sources and headers of the workspace a refactoring may
-/// edit: under `root`, hidden directories, the cache and every build tree
-/// (a directory holding CMakeCache.txt or build.ninja) left out.
-std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir);
-
 /// Whether `file` is the workspace's own — what a refactoring may edit and
-/// a save may record as a provisional member: it lies under `root` outside
-/// the directories workspace_sources leaves out, whatever its suffix.
+/// a save may record as a provisional member: it lies under `root`,
+/// whatever its suffix, outside the directories holding no sources a
+/// refactoring edits — hidden ones, package caches, `cache_dir` and build
+/// trees (a directory holding CMakeCache.txt or build.ninja).
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
+
+/// What a refactoring may edit of the workspace `config` roots, outside its
+/// cache directory (feature::RenameScope).
+struct EditableWorkspace {
+    explicit EditableWorkspace(const Config& config);
+
+    /// The C-family sources and headers of the workspace, as absolute
+    /// paths: the files under `root` a rename's scan reads, outside the
+    /// directories workspace_file leaves out.
+    std::vector<std::string> sources() const;
+
+    /// workspace_file of an absolute path.
+    bool editable(llvm::StringRef path) const;
+
+    CanonicalPath root;
+
+    CanonicalPath cache_dir;
+};
 
 }  // namespace clice

@@ -8,10 +8,12 @@ module clice;
 
 import :index.database;
 import :index.project_index;
+import :project.command_resolver;
 import :project.command_snapshot;
 import :project.configuration;
+import :project.hosting;
+import :project.index_reader;
 import :project.load;
-import :project.open_index;
 import :support.logging;
 import :vfs.cache_store;
 import :vfs.path;
@@ -25,7 +27,7 @@ std::string damaged_index_error(const Project& project) {
         index::database_directory(*project.store, project.database_key));
 }
 
-Spelling inspected_path(const Project& project, llvm::StringRef argument) {
+Spelling argument_path(const Project& project, llvm::StringRef argument) {
     return Spelling(argument, Spelling(project.config.workspace_root));
 }
 
@@ -75,51 +77,51 @@ void log_unusable_format(const Project& project) {
               std::string_view(project.config.project.cache_dir));
 }
 
-}  // namespace
-
-bool open_index(Project& project, Config config, llvm::StringRef requested_configuration) {
-    if(!open_database(project, std::move(config), requested_configuration)) {
-        return false;
-    }
-    switch(project.index.open(*project.database)) {
-        case index::LoadOutcome::Loaded: return true;
-        case index::LoadOutcome::Empty:
-            LOG_ERROR("No index cache at {}; run `clice index` first",
-                      std::string_view(project.config.project.cache_dir));
-            return false;
-        case index::LoadOutcome::Undecodable: log_unusable_format(project); return false;
-        case index::LoadOutcome::Unreadable:
-            LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-                      std::string_view(project.config.project.cache_dir));
-            return false;
-    }
-    std::unreachable();
+void log_unreadable(const Project& project) {
+    LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
+              std::string_view(project.config.project.cache_dir));
 }
 
-std::optional<LoadedIndex> load_index(Project& project,
-                                      CommandResolver& commands,
-                                      Config config,
-                                      llvm::StringRef requested_configuration,
-                                      bool with_build) {
-    if(!open_database(project, std::move(config), requested_configuration)) {
-        return std::nullopt;
+}  // namespace
+
+IndexReader::IndexReader(ReadOptions options) :
+    query(project.index, files, options.check_disk ? &gate : nullptr, nullptr) {}
+
+std::unique_ptr<IndexReader> IndexReader::open(const Spelling& workspace,
+                                               Config config,
+                                               llvm::StringRef configuration,
+                                               ReadOptions options) {
+    std::unique_ptr<IndexReader> reader(new IndexReader(options));
+    reader->files.spell_root(workspace);
+    auto& project = reader->project;
+    if(!open_database(project, std::move(config), configuration)) {
+        return nullptr;
+    }
+    if(options.load == IndexLoad::Tables) {
+        switch(project.index.open(*project.database)) {
+            case index::LoadOutcome::Loaded: return reader;
+            case index::LoadOutcome::Empty:
+                LOG_ERROR("No index cache at {}; run `clice index` first",
+                          std::string_view(project.config.project.cache_dir));
+                return nullptr;
+            case index::LoadOutcome::Undecodable: log_unusable_format(project); return nullptr;
+            case index::LoadOutcome::Unreadable: log_unreadable(project); return nullptr;
+        }
+        std::unreachable();
     }
     // The writer's load, read-only: it never saves on a read-only database.
-    auto loaded = load_saved(project, commands);
-    if(!loaded.decoded) {
+    CommandResolver commands{project};
+    if(!load_saved(project, commands).decoded) {
         log_unusable_format(project);
-        return std::nullopt;
+        return nullptr;
     }
     // load_saved detaches the database when the header exists but cannot
     // be read — a transient IO error, not an empty index.
     if(project.database == nullptr) {
-        LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-                  std::string_view(project.config.project.cache_dir));
-        return std::nullopt;
+        log_unreadable(project);
+        return nullptr;
     }
-    LoadedIndex result;
-    result.contexts = std::move(project.contexts.bytes);
-    if(with_build) {
+    if(options.load == IndexLoad::Build) {
         auto remembered = CommandSnapshot::remembered(project);
         load_build(project,
                    project.config.workspace_root,
@@ -127,7 +129,30 @@ std::optional<LoadedIndex> load_index(Project& project,
                    remembered.sources,
                    remembered.provisional);
     }
-    return result;
+    return reader;
+}
+
+feature::query::Context IndexReader::context() const {
+    return {
+        .query = query,
+        .root = project.config.workspace_root,
+        .documentation = project.config.documentation,
+    };
+}
+
+const clang::LangOptions& IndexReader::dialect(Fid file) {
+    auto hosts = ranked_hosts(project, file);
+    return clice::dialect(project, file, nullptr, hosts.empty() ? Fid() : hosts.front());
+}
+
+std::vector<std::string> IndexReader::stale(std::vector<std::string> listed) const {
+    for(auto file: gate.withheld()) {
+        listed.emplace_back(files.display(file));
+    }
+    ranges::sort(listed);
+    auto duplicates = ranges::unique(listed);
+    listed.erase(duplicates.begin(), duplicates.end());
+    return listed;
 }
 
 }  // namespace clice

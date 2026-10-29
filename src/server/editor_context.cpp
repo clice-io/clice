@@ -6,14 +6,12 @@ module;
 
 module clice;
 
-import :command.argument;
 import :index.project_index;
 import :project.command_resolver;
 import :project.hosting;
 import :server.editor_context;
 import :support.json;
 import :support.logging;
-import :syntax.lexer;
 
 namespace clice {
 
@@ -37,51 +35,6 @@ struct Blob {
     std::vector<Entry> contexts;
 };
 
-/// The command a file compiles with — among a multi-configuration
-/// file's or host's entries the pinned one, else the first, or the default
-/// command covering it — rules applied, like the resolve path's effective
-/// command: whether it compiles the file as C, whether an -x forces that
-/// (the driver override beats every suffix heuristic), and the last -std
-/// value.
-struct CommandLang {
-    CommandSource source;
-    bool is_c = false;
-    bool language_forced = false;
-    std::string standard;
-};
-
-std::optional<CommandLang> command_lang(Project& project,
-                                        Fid file,
-                                        llvm::ArrayRef<CanonicalRef> paths,
-                                        const Selection* pin) {
-    auto path = project.file_table.resolve(file);
-    auto commands = project.build.commands(file);
-    if(commands.empty()) {
-        return std::nullopt;
-    }
-    auto candidate = pick_pinned_command(project,
-                                         file,
-                                         commands,
-                                         paths,
-                                         path,
-                                         pin ? llvm::StringRef(pin->command_hash) : "",
-                                         pin ? llvm::StringRef(pin->base_hash) : "");
-    auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
-
-    llvm::StringRef language = ref.input.value;
-    CommandLang result{
-        .source = candidate.source,
-        .is_c = language == "c" || language == "c-header",
-        .language_forced = !project.commands.forced_language(ref.command).empty(),
-    };
-    for(auto& arg: project.commands.get(ref.command).args) {
-        if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
-            result.standard = arg.values[0];
-        }
-    }
-    return result;
-}
-
 }  // namespace
 
 Fid EditorContext::host_of(Fid path_id) const {
@@ -100,39 +53,7 @@ Fid EditorContext::host_of(Fid path_id) const {
 }
 
 const clang::LangOptions& EditorContext::dialect(Fid path_id) {
-    auto path = project.file_table.resolve(path_id);
-    const auto* pin = selection(path_id);
-    bool host_pin = pin && pin->host_path_id.valid();
-    auto own = command_lang(project, path_id, path, host_pin ? nullptr : pin);
-    // A file's entry is its command; a default command yields to the host
-    // a header borrows from, in resolve_command's order.
-    if(own && own->language_forced && own->source == CommandSource::CDBExact) {
-        return dialect_of("", own->is_c, own->standard);
-    }
-
-    // A header's active context (the user's persisted choice, else the
-    // resolved host) names the view being read; its command beats the
-    // contributor union the way it does for the AST after an escalation.
-    if(Fid host = host_of(path_id); host.valid()) {
-        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
-        if(host_lang) {
-            return dialect_of("", host_lang->is_c, host_lang->standard);
-        }
-    }
-
-    if(own && own->language_forced) {
-        return dialect_of("", own->is_c, own->standard);
-    }
-
-    bool contributed = false;
-    bool c_only = true;
-    project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) {
-        contributed = true;
-        c_only = c_only && llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
-    });
-    c_only = contributed && c_only;
-    return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
+    return clice::dialect(project, path_id, selection(path_id), host_of(path_id));
 }
 
 Resolution EditorContext::resolve_command(Fid path_id,

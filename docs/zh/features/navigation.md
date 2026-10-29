@@ -1710,7 +1710,7 @@ tests/workspace_symbols/projects/03_worktree_copies
 
 头文件与定义其声明的源文件配对，源文件也与该头文件配对。
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/counterparts -->
+<!-- BEGIN GENERATED ITEMS: counterparts/basics -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1719,7 +1719,7 @@ tests/workspace_symbols/projects/03_worktree_copies
 头文件与定义其声明的源文件配对，源文件也与该头文件配对
 
 ```case
-tests/switch_source_header/counterparts/01_header_and_source
+tests/counterparts/basics/01_header_and_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1731,7 +1731,7 @@ tests/switch_source_header/counterparts/01_header_and_source
 头文件与它为存放模板定义而包含的 `.tpp` 文件之间可以相互切换
 
 ```case
-tests/switch_source_header/counterparts/02_template_definitions
+tests/counterparts/basics/02_template_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1743,7 +1743,7 @@ tests/switch_source_header/counterparts/02_template_definitions
 自身定义了全部所声明内容的头文件，以及 `.def` 片段，都没有配对文件
 
 ```case
-tests/switch_source_header/counterparts/03_no_counterpart
+tests/counterparts/basics/03_no_counterpart
 ```
 
 <!-- END CAPABILITY -->
@@ -1754,7 +1754,7 @@ tests/switch_source_header/counterparts/03_no_counterpart
 
 头文件可以跨目录找到对应的源文件，例如在 `include/` 和 `src/` 之间查找。
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/layouts -->
+<!-- BEGIN GENERATED ITEMS: counterparts/layouts -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1765,7 +1765,7 @@ tests/switch_source_header/counterparts/03_no_counterpart
 在头文件所在目录之外，同名文件只有在两者中一方包含另一方时才算数（`tools/shape.cpp` 什么都没有包含，因此不是配对文件），而且其中只取最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 深一层目录。
 
 ```case
-tests/switch_source_header/layouts/01_split_directories
+tests/counterparts/layouts/01_split_directories
 ```
 
 <!-- END CAPABILITY -->
@@ -1776,7 +1776,7 @@ tests/switch_source_header/layouts/01_split_directories
 
 如果有多个文件可以配对，配对关系最明确的文件会直接打开，其余候选仍会列在列表中。
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/ranking -->
+<!-- BEGIN GENERATED ITEMS: counterparts/ranking -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1785,7 +1785,7 @@ tests/switch_source_header/layouts/01_split_directories
 多个源文件分别定义同一头文件的声明时，直接选中定义数量明显最多的那个，其余的仍留在列表中
 
 ```case
-tests/switch_source_header/ranking/01_scattered_definitions
+tests/counterparts/ranking/01_scattered_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1797,7 +1797,7 @@ tests/switch_source_header/ranking/01_scattered_definitions
 没有哪个候选明显胜过其他候选时，编辑器会列出所有候选及其理由，供用户挑选
 
 ```case
-tests/switch_source_header/ranking/02_split_evenly
+tests/counterparts/ranking/02_split_evenly
 ```
 
 <!-- END CAPABILITY -->
@@ -1808,7 +1808,7 @@ tests/switch_source_header/ranking/02_split_evenly
 
 模块接口单元与实现该模块的各个单元配对。
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/modules -->
+<!-- BEGIN GENERATED ITEMS: counterparts/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1817,7 +1817,7 @@ tests/switch_source_header/ranking/02_split_evenly
 模块接口单元与实现该模块的各个单元配对，每个实现单元也与该接口配对
 
 ```case
-tests/switch_source_header/modules/01_module_units
+tests/counterparts/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1831,7 +1831,7 @@ tests/switch_source_header/modules/01_module_units
 该实现单元还会列出其模块的主接口，排在分区之后。
 
 ```case
-tests/switch_source_header/modules/02_partitions
+tests/counterparts/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->

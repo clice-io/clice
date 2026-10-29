@@ -2,47 +2,27 @@ module;
 
 #include "support/prelude.h"
 
-module clice:server.query_commands;
+/// The command line's answers about symbols and files, from the index
+/// alone: what `clice query` prints, the renames `clice refactor` plans, the
+/// symbols `clice analyze` and `clice index` look up.
 
+module clice:feature.query;
+
+import :feature.documentation;
 import :feature.rename;
 import :index.query;
-import :server.editor_context;
+import :index.symbol;
+import :index.symbol_query;
+import :vfs.ids;
+import :vfs.path;
 
-namespace clice::query {
+namespace clice::feature::query {
 
 /// A command's answer, or the message for the user when the question
 /// cannot be answered (an unknown file, an ambiguous name, an invalid
 /// argument).
 template <typename T>
 using Outcome = std::expected<T, std::string>;
-
-struct FileInfo {
-    std::string path;
-    std::string kind;
-    std::optional<std::string> module_name;
-};
-
-struct ProjectFilesResult {
-    std::vector<FileInfo> files;
-    int total = 0;
-};
-
-struct DepEntry {
-    std::string path;
-    int depth = 0;
-};
-
-struct FileDepsResult {
-    std::string file;
-    std::vector<DepEntry> includes;
-    std::vector<DepEntry> includers;
-};
-
-struct ImpactAnalysisResult {
-    std::vector<std::string> direct_dependents;
-    std::vector<std::string> transitive_dependents;
-    std::vector<std::string> affected_modules;
-};
 
 struct SymbolEntry {
     std::string name;
@@ -63,16 +43,18 @@ struct SymbolSearchResult {
     std::vector<SymbolEntry> symbols;
 };
 
-/// What the commands read: the workspace's persisted index through an
-/// index::IndexQuery and, for the build questions (compile commands, the file
-/// set, include dependencies), the loaded build. Paths in and out are
-/// absolute filesystem paths, not URIs.
+/// What the answers read: the workspace's index through an
+/// index::IndexQuery, its root, which relative paths name files under, and
+/// how documentation comments are read. Paths in and out are absolute
+/// filesystem paths, not URIs.
 struct Context {
-    Project& project;
-    EditorContext& contexts;
     const index::IndexQuery& query;
 
-    /// Files a command was asked about that the index holds no shard for;
+    CanonicalRef root;
+
+    const DocumentationOptions& documentation;
+
+    /// Files an answer was asked about that the index holds no shard for;
     /// the caller reports them next to the shards the query withheld.
     std::vector<std::string> unindexed;
 
@@ -261,7 +243,7 @@ struct RenameResult {
 /// come from.
 struct PlannedRename {
     RenameResult result;
-    feature::BatchPlan plan;
+    BatchPlan plan;
 
     /// Whether anything keeps the edits from being written.
     bool blocked() const {
@@ -271,19 +253,17 @@ struct PlannedRename {
     }
 };
 
-/// The build's files, `filter` one of all, source, header, module. Needs
-/// the build.
-Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter);
+/// The workspace a rename batch edits, as the caller knows it: the files
+/// its scan reads (RenameScope::files), the ones it may edit
+/// (RenameScope::editable), and whether the build has units the index holds
+/// no record of yet (RenameScope::units_pending).
+struct RenameWorkspace {
+    std::vector<std::string> files;
 
-/// The files reachable from `path` along include edges, `direction` one of
-/// includes, includers, both; `depth` levels at most, 0 meaning unbounded.
-/// Needs the build.
-Outcome<FileDepsResult>
-    file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth);
+    llvm::function_ref<bool(llvm::StringRef path)> editable;
 
-/// What a change to `path` reaches: its direct includers, the sources
-/// hosting it, and the modules among them. Needs the build.
-Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path);
+    bool units_pending = false;
+};
 
 /// The symbols a locator (index::SymbolQuery) matches, best first, at most
 /// `limit` of them.
@@ -297,8 +277,12 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
 /// The symbol's definition as text.
 Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
 
-/// The document-level symbols defined in the file.
-Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path);
+/// The document-level symbols defined in the file, its text lexed in the
+/// dialect `dialect` gives.
+Outcome<DocumentSymbolsResult>
+    document_symbols(Context& ctx,
+                     const Spelling& path,
+                     llvm::function_ref<const clang::LangOptions&(Fid file)> dialect);
 
 Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
 
@@ -311,17 +295,15 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction);
 
-/// Whether some unit of the build the index is to hold has no record in
-/// it yet (see feature::RenameScope::units_pending).
-bool units_pending(Project& project);
-
-/// Plan the renames together against the workspace on disk (see
-/// feature::plan_renames), each workspace file read once: what would change,
-/// what the index cannot guarantee, and what keeps the change from being
-/// safe. Nothing is written. A rename names its symbol by its whole name,
-/// never a pattern; the overloads of one scope that name spells are
-/// renamed together.
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests);
+/// Plan the renames together against `workspace` on disk (see
+/// plan_renames), each of its files read once: what would change, what the
+/// index cannot guarantee, and what keeps the change from being safe.
+/// Nothing is written. A rename names its symbol by its whole name, never
+/// a pattern; the overloads of one scope that name spells are renamed
+/// together.
+PlannedRename rename(Context& ctx,
+                     llvm::ArrayRef<RenameRequest> requests,
+                     RenameWorkspace workspace);
 
 /// The symbols one declaration a locator names stands for: the symbol,
 /// or, for a name the overloads of one scope spell, all of them; macros
@@ -345,4 +327,4 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                             index::SymbolQuery locator,
                                             llvm::StringRef direction);
 
-}  // namespace clice::query
+}  // namespace clice::feature::query

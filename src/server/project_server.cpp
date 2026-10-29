@@ -16,7 +16,7 @@ import :index.writer_lock;
 import :project.build;
 import :project.load;
 import :sched.bootstrap;
-import :server.control_server;
+import :server.control;
 import :server.file_tracker;
 import :server.master_server;
 import :server.project_server;
@@ -633,7 +633,7 @@ void ProjectServer::start_control_listener() {
     }
     endpoint_recorded = true;
     LOG_INFO("Control channel listening on {}:{}", host, *port);
-    bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));
+    bg_tasks.spawn(control::serve(*this, std::move(*acceptor)));
 }
 
 kota::task<> ProjectServer::sources_poll_task() {

@@ -1837,7 +1837,7 @@ The candidates come from what the build and the index already know, so nothing i
 
 A header pairs with the source that defines its declarations, and the source with the header.
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/counterparts -->
+<!-- BEGIN GENERATED ITEMS: counterparts/basics -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1846,7 +1846,7 @@ A header pairs with the source that defines its declarations, and the source wit
 A header pairs with the source defining its declarations, and the source with the header
 
 ```case
-tests/switch_source_header/counterparts/01_header_and_source
+tests/counterparts/basics/01_header_and_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1858,7 +1858,7 @@ tests/switch_source_header/counterparts/01_header_and_source
 A header and the `.tpp` file it includes for its template definitions switch to each other
 
 ```case
-tests/switch_source_header/counterparts/02_template_definitions
+tests/counterparts/basics/02_template_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1870,7 +1870,7 @@ tests/switch_source_header/counterparts/02_template_definitions
 A header that defines everything it declares, and a `.def` fragment, have no counterpart
 
 ```case
-tests/switch_source_header/counterparts/03_no_counterpart
+tests/counterparts/basics/03_no_counterpart
 ```
 
 <!-- END CAPABILITY -->
@@ -1881,7 +1881,7 @@ tests/switch_source_header/counterparts/03_no_counterpart
 
 A header finds its source across directories, such as `include/` and `src/`.
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/layouts -->
+<!-- BEGIN GENERATED ITEMS: counterparts/layouts -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1895,7 +1895,7 @@ nothing and is no counterpart — and of those only the nearest:
 `src/legacy/shape.cpp` lies a directory deeper than `src/shape.cpp`.
 
 ```case
-tests/switch_source_header/layouts/01_split_directories
+tests/counterparts/layouts/01_split_directories
 ```
 
 <!-- END CAPABILITY -->
@@ -1906,7 +1906,7 @@ tests/switch_source_header/layouts/01_split_directories
 
 When several files could pair, the clearest one opens directly and the others stay listed.
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/ranking -->
+<!-- BEGIN GENERATED ITEMS: counterparts/ranking -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1915,7 +1915,7 @@ When several files could pair, the clearest one opens directly and the others st
 When several sources define a header's declarations, the one defining clearly the most is taken directly and the others stay listed
 
 ```case
-tests/switch_source_header/ranking/01_scattered_definitions
+tests/counterparts/ranking/01_scattered_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1927,7 +1927,7 @@ tests/switch_source_header/ranking/01_scattered_definitions
 When no candidate clearly outweighs the others, the editor lists them with their reasons to pick from
 
 ```case
-tests/switch_source_header/ranking/02_split_evenly
+tests/counterparts/ranking/02_split_evenly
 ```
 
 <!-- END CAPABILITY -->
@@ -1938,7 +1938,7 @@ tests/switch_source_header/ranking/02_split_evenly
 
 A module interface unit pairs with the units implementing its module.
 
-<!-- BEGIN GENERATED ITEMS: switch_source_header/modules -->
+<!-- BEGIN GENERATED ITEMS: counterparts/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1947,7 +1947,7 @@ A module interface unit pairs with the units implementing its module.
 A module interface unit pairs with the units implementing its module, and each of them with the interface
 
 ```case
-tests/switch_source_header/modules/01_module_units
+tests/counterparts/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1962,7 +1962,7 @@ The implementation unit also lists the primary interface of its module,
 after the partition.
 
 ```case
-tests/switch_source_header/modules/02_partitions
+tests/counterparts/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->

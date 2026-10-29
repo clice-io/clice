@@ -40,7 +40,7 @@ tests/<topic>/<subtopic>/NN_name/
   over time: `hover`, `code_completion`, `signature_help`, `navigation`,
   `document_highlights`, `document_symbols`, `workspace_symbols`,
   `document_links`, `folding_ranges`, `selection_ranges`, `semantic_tokens`,
-  `inlay_hints`, `code_actions`, `switch_source_header`, `rename`,
+  `inlay_hints`, `code_actions`, `counterparts`, `rename`,
   `diagnostics`, `inactive_regions`.
 - **Engine**, how the server behaves over time: `compile` (pch, preamble,
   cache, staleness, flags, languages), `contexts` (header contexts, switching,

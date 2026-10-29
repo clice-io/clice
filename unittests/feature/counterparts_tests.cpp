@@ -4,15 +4,13 @@ module;
 
 module clice;
 
-import :server.counterparts;
+import :feature.counterparts;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
-using query::Evidence;
-
-std::vector<std::string> order(const query::Ranking& ranking) {
+std::vector<std::string> order(const feature::CounterpartRanking& ranking) {
     std::vector<std::string> paths;
     for(auto& candidate: ranking.candidates) {
         paths.push_back(candidate.path);
@@ -23,20 +21,20 @@ std::vector<std::string> order(const query::Ranking& ranking) {
 ZEST_SUITE(Counterparts) {
 
 ZEST_CASE(NoCandidates) {
-    auto ranking = query::rank_counterparts({});
+    auto ranking = feature::rank_counterparts({});
     ZEXPECT(ranking.candidates.empty());
     ZEXPECT(!ranking.decisive);
 }
 
 ZEST_CASE(SingleCandidateIsDecisive) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "shapes.cppm", .module = "shapes"}
     });
     ZEXPECT(ranking.decisive);
 }
 
 ZEST_CASE(EvidenceOrdersCandidates) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "module.cppm", .module = "lib"},
         {.path = "tests/foo.cpp", .same_name = true},
         {.path = "bar.cpp", .overlap = 9},
@@ -49,7 +47,7 @@ ZEST_CASE(EvidenceOrdersCandidates) {
 }
 
 ZEST_CASE(NameAndOverlapWin) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "tests/shape.cpp", .same_name = true},
         {.path = "src/shape.cpp", .same_name = true, .overlap = 2},
         {.path = "module.cppm", .module = "lib"},
@@ -59,7 +57,7 @@ ZEST_CASE(NameAndOverlapWin) {
 }
 
 ZEST_CASE(TwiceTheOverlapWins) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "text_case.cpp", .overlap = 1},
         {.path = "text_ops.cpp",  .overlap = 2},
     });
@@ -68,7 +66,7 @@ ZEST_CASE(TwiceTheOverlapWins) {
 }
 
 ZEST_CASE(CloseOverlapAsks) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "a.cpp", .overlap = 4},
         {.path = "b.cpp", .overlap = 3},
     });
@@ -76,7 +74,7 @@ ZEST_CASE(CloseOverlapAsks) {
 }
 
 ZEST_CASE(SharedTieIgnoresModule) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "b.cpp", .overlap = 2},
         {.path = "a.cpp", .module = "lib", .overlap = 2},
     });
@@ -85,7 +83,7 @@ ZEST_CASE(SharedTieIgnoresModule) {
 }
 
 ZEST_CASE(EqualEvidenceAsks) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "tests/foo.cpp", .same_name = true, .distance = 3},
         {.path = "src/foo.cpp",   .same_name = true, .distance = 3},
     });
@@ -94,7 +92,7 @@ ZEST_CASE(EqualEvidenceAsks) {
 }
 
 ZEST_CASE(NearerDirectoryFirst) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "a/far.cpp",  .same_name = true, .distance = 3},
         {.path = "b/near.cpp", .same_name = true, .distance = 1},
     });
@@ -105,7 +103,7 @@ ZEST_CASE(NearerDirectoryFirst) {
 ZEST_CASE(NameAgainstOverlapAsks) {
     // A source of the same name the index has not reached yet keeps the
     // choice open against another one defining a single declaration.
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "foo.cpp", .same_name = true},
         {.path = "bar.cpp", .overlap = 1     },
     });
@@ -114,7 +112,7 @@ ZEST_CASE(NameAgainstOverlapAsks) {
 }
 
 ZEST_CASE(ModulePairingBreaksTie) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "other/shapes.cpp", .same_name = true},
         {.path = "shapes.cpp", .same_name = true, .module = "shapes"},
     });
@@ -123,7 +121,7 @@ ZEST_CASE(ModulePairingBreaksTie) {
 }
 
 ZEST_CASE(ModuleUnitsAsk) {
-    auto ranking = query::rank_counterparts({
+    auto ranking = feature::rank_counterparts({
         {.path = "a.cpp", .module = "lib"},
         {.path = "b.cpp", .module = "lib"},
     });
