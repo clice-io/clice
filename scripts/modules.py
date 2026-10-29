@@ -257,19 +257,14 @@ def main():
     )
     commands = parser.add_subparsers(dest="command", required=True)
     generating = commands.add_parser("generate")
-    generating.add_argument(
-        "configurations",
-        nargs="*",
-        choices=CONFIGURATIONS,
-        default=list(CONFIGURATIONS),
-    )
+    generating.add_argument("configurations", nargs="*", choices=CONFIGURATIONS)
     commands.add_parser("merge")
     args = parser.parse_args()
     clice = os.path.abspath(args.clice)
     if args.command == "generate":
         if (sys.platform, os.uname().machine) != ("linux", "x86_64"):
             raise SystemExit("modules.py generates on x64 Linux")
-        for name in args.configurations:
+        for name in args.configurations or CONFIGURATIONS:
             generate(name, clice)
     else:
         merge(clice)
