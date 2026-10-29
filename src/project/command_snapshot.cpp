@@ -61,7 +61,7 @@ struct Blob {
 /// candidates that a rule's default command covers records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
-Blob build_snapshot(Project& project, llvm::ArrayRef<Fid> standalone_debt) {
+Blob build_snapshot(Project& project, llvm::ArrayRef<Fid> unlisted_debt) {
     Blob snapshot;
     for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
@@ -99,10 +99,10 @@ Blob build_snapshot(Project& project, llvm::ArrayRef<Fid> standalone_debt) {
             .rules = std::move(rules),
         });
     }
-    // Units without a CDB entry, yet their effective command depends on
-    // the default command covering them and on the rules matching them —
-    // all of it must be snapshot to detect offline changes.
-    auto add_standalone = [&](Fid tu) {
+    // TUs no database lists: their effective command depends on the
+    // default command covering them and on the rules matching them — all
+    // of it must be snapshot to detect offline changes.
+    auto add_unlisted = [&](Fid tu) {
         auto file = project.file_table.resolve(tu);
         if(!project.build.entries(tu).empty()) {
             return;
@@ -113,12 +113,12 @@ Blob build_snapshot(Project& project, llvm::ArrayRef<Fid> standalone_debt) {
             .rules = project.build.edit_hash(file),
         });
     };
-    project.index.for_each_unit([&](Fid tu) { add_standalone(tu); });
-    // A dropped standalone TU whose rebuild has not finished keeps its entry:
+    project.index.for_each_unit([&](Fid tu) { add_unlisted(tu); });
+    // A dropped unlisted TU whose rebuild has not finished keeps its entry:
     // with no manifest and no CDB entry, the snapshot is the only
     // record that an index is owed (reconcile's debt pass retries it).
-    for(auto tu: standalone_debt) {
-        add_standalone(tu);
+    for(auto tu: unlisted_debt) {
+        add_unlisted(tu);
     }
     for(auto file: project.build.recorded()) {
         snapshot.provisional.push_back(project.index.portable(project.file_table.resolve(file)));
@@ -139,7 +139,7 @@ bool lone_header(Project& project, Fid file) {
 /// The debt candidates the snapshot must record: TUs with no manifest and
 /// no CDB entry, for which the snapshot is the only record that an index
 /// is owed.
-llvm::SmallVector<Fid> standalone_of(Project& project, llvm::ArrayRef<Fid> candidates) {
+llvm::SmallVector<Fid> unlisted_of(Project& project, llvm::ArrayRef<Fid> candidates) {
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
@@ -185,7 +185,7 @@ bool CommandSnapshot::owes_save(const Project& project) const {
 std::optional<std::string> CommandSnapshot::serialize(Project& project, llvm::ArrayRef<Fid> debt) {
     serialized_records = project.build.recorded_generation();
     auto json =
-        json::to_string<PathJsonConfig>(build_snapshot(project, standalone_of(project, debt)));
+        json::to_string<PathJsonConfig>(build_snapshot(project, unlisted_of(project, debt)));
     if(!json) {
         LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
     }

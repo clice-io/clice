@@ -1,0 +1,9 @@
+[answers.make.hover]
+markdown = '''
+**function** `make_widget`
+
+```cpp
+inline int make_widget()
+```
+'''
+range = "inline int ⟦make_widget⟧() {"

@@ -66,7 +66,7 @@ DependencyGraph stores include relationships between files and supports both for
 
 **Forward includes**: Given a file and compilation configuration, returns all files it directly includes. Each edge records whether it is a conditional include (distinguished via bit flags). A file may have different include sets under different compilation configurations (because search paths differ), so the key is a (file, configuration) pair.
 
-**Reverse includes**: Given a file, returns all files that directly include it. This is a reverse index built in bulk after all forward includes have been established. It is used for "finding host source files" -- BFS upward from the target header along reverse edges until a source file with a CDB entry is found.
+**Reverse includes**: Given a file, returns all files that directly include it. This is a reverse index built in bulk after all forward includes have been established. It is used for "finding host source files" -- BFS upward from the target header along reverse edges, collecting the translation units on the way and the roots above them.
 
 **Forced includes**: The headers a source file's compilation commands include ahead of its text (`-include`, such as the `cmake_pch.hxx` of a CMake precompiled header) are scanned like any header, so their own includes and their import syntax are part of the graph. The link from the source file to a forced header is kept apart from the include edges: no directive in the source file's text names it, so no cut of that text reproduces it. Host lookup climbs it to the units forcing the header in, and a header context entered through it starts at the forced header (see [Compilation Context](compilation-context.md)).
 
@@ -132,7 +132,7 @@ Fast scanning and background indexing are complementary: fast scanning guarantee
 
 **Why unfold in waves instead of scanning all files at once?** The system does not know upfront which headers need scanning -- they are not in the CDB and can only be discovered by resolving source files' includes. Wavefront expansion is the natural pattern for lazy discovery, while pipeline overlap maximizes parallelism.
 
-**Why is the conditional include tag useful?** Although the specific condition result is unknown, distinguishing "will definitely be included" from "might be included" provides guidance for host selection. A source file that includes the target header through an unconditional include chain is a more reliable host candidate than one connected through a conditional include chain.
+**Why is the conditional include tag useful?** Although the specific condition result is unknown, distinguishing "will definitely be included" from "might be included" guides the context synthesis where a `#line` in a chain file throws the include tree's line count off: it then prefers the include outside `#if` blocks, as one in an untaken branch must not shadow the real one.
 
 ## Known Limitations
 

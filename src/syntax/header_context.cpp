@@ -284,7 +284,7 @@ void copy_run(std::string& out,
 /// different occurrence — redirected to the header's snapshot, or blanked
 /// (keeping the line count) when there is none. Every other directive is
 /// kept verbatim: each fragment sits in the directory of the file it was
-/// cut from, so its includes, `__has_include` probes and macro-spelled
+/// cut from, so its includes, `__has_include` checks and macro-spelled
 /// includes resolve there as they do in that file. Returns whether the
 /// fragment names the snapshot.
 /// FIXME: a macro-spelled include naming the target is kept verbatim too, so

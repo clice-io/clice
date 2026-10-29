@@ -11,14 +11,14 @@ test("embedded data changes", async (t) => {
     await t.show("table.bin", s.errors("table.cpp"));
 });
 
-test("probed header appears", async (t) => {
+test("checked header appears", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.write("config.h", "#pragma once\n");
     await t.show("config.h", s.errors("main.cpp"));
 });
 
-test("probed data appears", async (t) => {
+test("checked data appears", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.write("data.bin", "AB");

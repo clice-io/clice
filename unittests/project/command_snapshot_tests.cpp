@@ -349,7 +349,7 @@ ZEST_CASE(RuleChangeReindexed) {
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(StandaloneHeaderLeaves) {
+ZEST_CASE(HeaderIndexedAloneLeaves) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
