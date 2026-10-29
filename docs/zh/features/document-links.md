@@ -55,7 +55,7 @@ tests/document_links/include_directives/04_include_next
 
 **`__has_include`**
 
-被检查的路径链接到所探测的文件
+被检查的路径链接到它所查找的文件
 
 ```case
 tests/document_links/include_directives/05_has_include
@@ -87,7 +87,7 @@ tests/document_links/embed_directives/01_embed
 
 **`__has_embed`**
 
-被检查的路径链接到所探测的资源
+被检查的路径链接到它所查找的资源
 
 ```case
 tests/document_links/embed_directives/02_has_embed
