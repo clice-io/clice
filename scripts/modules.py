@@ -258,7 +258,10 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     generating = commands.add_parser("generate")
     generating.add_argument(
-        "configurations", nargs="*", choices=CONFIGURATIONS, default=list(CONFIGURATIONS)
+        "configurations",
+        nargs="*",
+        choices=CONFIGURATIONS,
+        default=list(CONFIGURATIONS),
     )
     commands.add_parser("merge")
     args = parser.parse_args()
