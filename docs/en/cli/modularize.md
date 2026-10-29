@@ -46,8 +46,8 @@ A rewritten module becomes one named module, its name the module's:
 - Each header becomes a partition, `<stem>.cppm` beside it, named by its path under the primary interface's directory (`src/support/format.h` is `:support.format` under `src/`). A header files of other modules use is an interface partition the primary interface re-exports; one only the module's own files use is an implementation partition.
 - Each source becomes an implementation unit, `module <name>;`, and a `main` it defines moves into `extern "C++"`, which keeps it attached to the global module.
 - An include of a header of the same module imports that partition, so inside a module an edit rebuilds what including the header did; an include of a header of another rewritten module imports that module. A source names its module's interface partitions through the primary interface, which every implementation unit imports.
-- Includes of wrapped headers go. The partition `:prelude`, `prelude.cppm` beside the primary interface, imports `std.compat` and the generated modules for every unit of the module, its importers aside: the primary interface re-exports it, which brings it to the implementation units, and every partition imports it.
-- A unit opens a global module fragment only for the headers that stay headers, which stay included there after `macros.h`; one using the libraries' macros without one includes `macros.h` after its module declaration. A source that stays no module unit includes the prelude first.
+- Includes of wrapped headers go. A partition named after the primary interface, `<stem>_prelude.cppm` beside it (`:module_prelude` for `module.cppm`), imports `std.compat` and the generated modules for every unit of the module, its importers aside: the primary interface re-exports it, which brings it to the implementation units, and every partition imports it.
+- A unit opens a global module fragment only for what stays included or moves there, the headers that stay headers and its declarations of entities outside the scope, after the prelude, as they may name what the generated modules declare; one using the libraries' macros without one includes `macros.h` after its module declaration. A source that stays no module unit includes the prelude first.
 - A declaration of another module's entity on a line of its own (`class Foo;`) goes, and the file imports the owner's module instead; an anonymous namespace of a header is dissolved into the enclosing one.
 - Macros a header defines for other files move to `<stem>.macros.h` beside it, its directives without the includes, which every file using them includes.
 - A source defining what a header of another rewritten module declares joins that module, since a definition is attached where its declaration is; a source of a module that is not rewritten and includes a rewritten header imports its module instead and stays a plain translation unit.
@@ -90,7 +90,7 @@ The configurations have to wrap the same modules and, unless `--no-mirrors` is g
 
 Under `--out`:
 
-- `<module>.cppm` per wrapped module, and `<module>.macros.h` with the macros its importers need, in definition order. A kept module has both too: its unit exports the names files of other modules reach only through emptied headers, and its macro header, as the standard library's, is a system header, as the headers it replays are.
+- `<module>.cppm` per wrapped module, and `<module>.macros.h` with the macros its importers need, in definition order. A kept module has both too: its unit exports the names files of other modules reach only through emptied headers, with the aliases and using-declarations of the headers it includes, and its macro header, as the standard library's, is a system header, as the headers it replays are.
 - `mirror/<module>/`: an empty file for each header files of other modules include, by the name they include it with; `mirror/std/` for the standard headers.
 - `macros.h`: every macro header, and nothing else, so a file can include it anywhere, even ahead of its module declaration.
 - `prelude.h`, for a translation unit that is no module unit: the kept modules' headers of internal-linkage entities, `import std.compat;`, every import, then `macros.h`.
@@ -126,7 +126,7 @@ On stdout, the build plan. `wrapping` holds the module sources, mirrors, `macros
       {
         "name": "app.core",
         "primary": "src/core/module.cppm",
-        "interfaces": ["src/core/prelude.cppm", "src/core/text.cppm"],
+        "interfaces": ["src/core/module_prelude.cppm", "src/core/text.cppm"],
         "partitions": ["src/core/detail.cppm"],
         "sources": ["src/core/text.cpp"],
         "imports": []
@@ -195,7 +195,7 @@ tests/modularize/program/01_one_module
 ## Known Limitations
 
 - Module units must be built with full BMIs (`-fno-modules-reduced-bmi` on clang): a reduced BMI drops the global module fragment's declarations the purview never names, partial specializations among them.
-- A header holding an internal-linkage entity the program names stays textual: no module can export it. A rewritten file naming it includes it, and the prelude includes the kept modules' such headers; a file left as it is that reached one of a wrapped library only through its emptied headers includes it itself.
+- A header holding an internal-linkage entity the program names stays textual: no module can export it. A rewritten file naming it includes it, a kept module's by the header files of other modules include (`<stdio.h>` for its internal `<bits/types/FILE.h>`), as the prelude includes the kept modules' such headers; a file left as it is that reached one of a wrapped library only through its emptied headers includes it itself.
 - A header other files include by a name relative to their own directory (`"../foo.h"`) cannot be emptied; modularize warns about it.
 - Two wrapped modules whose headers use one `static` function or variable of a header both include, as simdjson and CRoaring call `<emmintrin.h>`'s intrinsics, each hold a copy, and clang gives both one mangled name: an importer using the code of both can fail to compile. modularize warns about such pairs, of the entities other files name (a helper only its own header's code calls is local to that file in the index); wrap them as one module.
 - The index holds one reading of a header per translation unit: a header a unit reads twice under different macros, as `<stddef.h>` under `__need_size_t` and then in full, counts as read in full wherever that unit includes it.

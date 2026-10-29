@@ -1,0 +1,215 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 7 file shards (# KB), 18 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "kit",
+        "source": "kit.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/kit"
+        ],
+        "mirrors": []
+      },
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [
+      "mirror/alpha"
+    ],
+    "macros": "macros.h",
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core.cppm",
+        "interfaces": [
+          "app/core/text.cppm",
+          "app/core_prelude.cppm"
+        ],
+        "partitions": [],
+        "sources": [],
+        "imports": []
+      },
+      {
+        "name": "app.tool",
+        "primary": "app/tool.cppm",
+        "interfaces": [
+          "app/tool/tool.cppm",
+          "app/tool_prelude.cppm"
+        ],
+        "partitions": [],
+        "sources": [],
+        "imports": [
+          "app.core"
+        ]
+      }
+    ],
+    "importers": [
+      "app/main.cpp"
+    ],
+    "macros": [],
+    "removed": [
+      "app/core/text.h",
+      "app/tool/tool.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap".files]
+"app/core.cppm" = '''
++export module app.core;
++
++export import :core.text;
++export import :core_prelude;
+'''
+"app/core/text.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++namespace ext { enum class Status : alpha :: Code ; }
++#include <kit/kit.h>
++
++export module app.core:core.text;
++
++import :core_prelude;
++
++export {
++
++namespace core {
++inline int size() {
++    return kt::Thing{1}.v + kit::Gizmo{2}.v + kit_local() + alpha::make();
++}
++}  // namespace core
++}
+'''
+"app/core/text.h" = "(removed)"
+"app/core_prelude.cppm" = '''
++export module app.core:core_prelude;
++
++import kit;
++import alpha;
+'''
+"app/main.cpp" = '''
++#include "wrap/prelude.h"
+ #include "../ext/ext.h"
+-#include "tool/tool.h"
++import app.tool;
+
+ int main() {
+'''
+"app/tool.cppm" = '''
++export module app.tool;
++
++export import :tool.tool;
++export import :tool_prelude;
+'''
+"app/tool/tool.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++#include <kit/kit.h>
++
++export module app.tool:tool.tool;
++
++import :tool_prelude;
++import app.core;
++
++export {
++
++namespace tool {
++inline int run() {
++    return core::size() + kit_local();
++}
++}  // namespace tool
++}
+'''
+"app/tool/tool.h" = "(removed)"
+"app/tool_prelude.cppm" = '''
++export module app.tool:tool_prelude;
++
++import kit;
++import alpha;
+'''
+"wrap/.modularize" = '''
++kit.macros.h
++kit.cppm
++mirror/alpha/alpha/alpha.h
++alpha.cppm
++alpha.macros.h
++macros.h
++prelude.h
+'''
+"wrap/alpha.cppm" = '''
++module;
++
++#include <kit/kit.h>
++#include "kit.macros.h"
++
++#include <alpha/alpha.h>
++
++export module alpha;
++
++export namespace alpha {
++using ::alpha::Code;
++using ::alpha::make;
++}
+'''
+"wrap/alpha.macros.h" = "+#pragma once"
+"wrap/kit.cppm" = '''
++module;
++
++#include <kit/kit.h>
++
++export module kit;
++
++export namespace kt = ::kit;
++
++export namespace kit {
++using ::kit::Gizmo;
++using ::kit::Thing;
++}
++
++export namespace original {
++using ::original::Gizmo;
++}
+'''
+"wrap/kit.macros.h" = "+#pragma once"
+"wrap/macros.h" = '''
++#pragma once
++
++#include "kit.macros.h"
++#include "alpha.macros.h"
+'''
+"wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"wrap/prelude.h" = '''
++#pragma once
++
++#include <kit/kit.h>
++import kit;
++import alpha;
++#include "macros.h"
+'''

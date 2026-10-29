@@ -65,7 +65,7 @@ stdout = '''
         "name": "app.core",
         "primary": "app/core/core.cppm",
         "interfaces": [
-          "app/core/prelude.cppm",
+          "app/core/core_prelude.cppm",
           "app/core/sink.cppm",
           "app/core/text.cppm"
         ],
@@ -83,7 +83,7 @@ stdout = '''
         "name": "app.tool",
         "primary": "app/tool/module.cppm",
         "interfaces": [
-          "app/tool/prelude.cppm",
+          "app/tool/module_prelude.cppm",
           "app/tool/tool.cppm"
         ],
         "partitions": [],
@@ -125,27 +125,35 @@ exit = 0
 "app/core/all.cppm" = '''
 +module app.core:all;
 +
-+import :prelude;
++import :core_prelude;
 +import :detail;
 '''
 "app/core/all.h" = "(removed)"
 "app/core/core.cppm" = '''
 +export module app.core;
 +
-+export import :prelude;
++export import :core_prelude;
 +export import :sink;
 +export import :text;
+'''
+"app/core/core_prelude.cppm" = '''
++export module app.core:core_prelude;
++
++import std.compat;
++import libc;
++import alpha;
++import beta;
 '''
 "app/core/detail.cppm" = '''
 +module;
 +
-+#include "wrap/macros.h"
++#include "wrap/prelude.h"
 +#include "cfg/late.h"
 +#include "cfg/config.h"
 +
 +module app.core:detail;
 +
-+import :prelude;
++import :core_prelude;
 +
 +namespace core {
 +inline int hidden() { return 1; }
@@ -156,18 +164,10 @@ exit = 0
 +#endif
 '''
 "app/core/detail.h" = "(removed)"
-"app/core/prelude.cppm" = '''
-+export module app.core:prelude;
-+
-+import std.compat;
-+import libc;
-+import alpha;
-+import beta;
-'''
 "app/core/sink.cppm" = '''
 +export module app.core:sink;
 +
-+import :prelude;
++import :core_prelude;
 +
 +export {
 +namespace core {
@@ -187,7 +187,7 @@ exit = 0
 -#include "core/detail.h"
 +module;
 +
-+#include "wrap/macros.h"
++#include "wrap/prelude.h"
 +#include "core/text.macros.h"
 +
 +module app.core;
@@ -200,7 +200,7 @@ exit = 0
 "app/core/text.cppm" = '''
 +module;
 +
-+#include "wrap/macros.h"
++#include "wrap/prelude.h"
 +#include "cfg/config.h"
 +#define CORE_TWICE(x) ((x) * 2)
 +#if CFG_FAST
@@ -212,7 +212,7 @@ exit = 0
 +
 +export module app.core:text;
 +
-+import :prelude;
++import :core_prelude;
 +
 +export {
 +namespace core {
@@ -273,11 +273,11 @@ exit = 0
 "app/tool/module.cppm" = '''
 +export module app.tool;
 +
-+export import :prelude;
++export import :module_prelude;
 +export import :tool;
 '''
-"app/tool/prelude.cppm" = '''
-+export module app.tool:prelude;
+"app/tool/module_prelude.cppm" = '''
++export module app.tool:module_prelude;
 +
 +import std.compat;
 +import libc;
@@ -289,7 +289,7 @@ exit = 0
 -#include "core/sink.h"
 +module;
 +
-+#include "wrap/macros.h"
++#include "wrap/prelude.h"
 +#include "core/sink.macros.h"
 +#include "core/text.macros.h"
 +
@@ -303,7 +303,7 @@ exit = 0
 "app/tool/tool.cppm" = '''
 +export module app.tool:tool;
 +
-+import :prelude;
++import :module_prelude;
 +import app.core;
 +
 +export {

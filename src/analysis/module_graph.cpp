@@ -3562,6 +3562,30 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         ranges::sort(interface.textual, {}, &InterfaceHeader::file);
         ranges::sort(interface.locals, {}, &InterfaceLocal::file);
+        // A kept module's unit also redeclares what the headers its global
+        // module fragment includes declare by another name, the aliases and
+        // the using-declarations, as no emptied header does.
+        llvm::DenseSet<std::uint32_t> fragment;
+        if(partition.kinds[module] == ModuleKind::Textual) {
+            llvm::SmallVector<std::uint32_t> pending;
+            for(auto& [file, reason]: included) {
+                pending.push_back(file);
+            }
+            while(!pending.empty()) {
+                auto file = pending.pop_back_val();
+                if(module_of(file) == module && fragment.insert(file).second) {
+                    pending.append(facts.files[file].includes.begin(),
+                                   facts.files[file].includes.end());
+                }
+            }
+            for(auto& declaration: facts.usings) {
+                if(ranges::any_of(including_files(facts, declaration.file, true),
+                                  [&](std::uint32_t file) { return fragment.contains(file); })) {
+                    kept_exports[module].insert(
+                        {declaration.name, declaration.file, ExportForm::Name});
+                }
+            }
+        }
         for(auto& [name, file, form]: kept_exports[module]) {
             interface.kept_exports.push_back(
                 {.name = name, .file = facts.files[file].path, .used = true, .form = form});
@@ -3612,22 +3636,6 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             auto& [name, file, form] = key;
             interface.exports.push_back(
                 {.name = name, .file = facts.files[file].path, .used = used, .form = form});
-        }
-        // A kept module's unit redeclares the aliases of the headers its
-        // global module fragment includes, as no emptied header does.
-        llvm::DenseSet<std::uint32_t> fragment;
-        if(partition.kinds[module] == ModuleKind::Textual) {
-            llvm::SmallVector<std::uint32_t> pending;
-            for(auto& [file, reason]: included) {
-                pending.push_back(file);
-            }
-            while(!pending.empty()) {
-                auto file = pending.pop_back_val();
-                if(module_of(file) == module && fragment.insert(file).second) {
-                    pending.append(facts.files[file].includes.begin(),
-                                   facts.files[file].includes.end());
-                }
-            }
         }
         auto& unit_files =
             partition.kinds[module] == ModuleKind::Textual ? fragment : reached[module];

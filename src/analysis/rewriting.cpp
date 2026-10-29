@@ -48,7 +48,7 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
 /// after it, as two modules' primaries may share a directory.
 std::string prelude_path(llvm::StringRef primary) {
     std::string path(path::parent(primary, posix));
-    path::push(path, std::format("{}_prelude.cppm", path::stem(primary, posix).str()), posix);
+    path::push(path, std::format("{}_prelude.cppm", path::stem(primary, posix)), posix);
     return path;
 }
 
@@ -109,7 +109,7 @@ struct Rewriter {
 
     /// A kept module's header holding an internal-linkage entity -> the
     /// header files naming the entity include for it.
-    llvm::DenseMap<std::uint32_t, std::uint32_t> local_entries;
+    llvm::DenseMap<std::uint32_t, std::uint32_t> local_entries{};
 
     /// Include operand -> the one rewritten header includers name by it,
     /// for a directive the index did not see, in a branch this configuration
@@ -617,6 +617,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto module = partition.module_of[file];
         std::vector<std::string> lines;
         auto module_unit = rewriter.rewritten(file);
+        auto prelude = std::format(R"(#include "{}")", wrapped.prelude);
         auto macros = std::format(R"(#include "{}")", wrapped.macros);
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
@@ -624,15 +625,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             macro_includes.insert(macro_include(defining, file));
         }
         // A module unit opens a global module fragment only for what stays
-        // included; what it holds may test the libraries' macros, which
-        // come first.
+        // included or moves there, which may name what the wrapped modules
+        // declare and test their macros: the prelude comes first.
         auto fragment = draft.fragment_code || !draft.needed.empty() || !macro_includes.empty();
         if(!module_unit) {
-            lines.push_back(std::format(R"(#include "{}")", wrapped.prelude));
+            lines.push_back(prelude);
         } else if(fragment) {
             lines.push_back("module;");
             lines.emplace_back();
-            lines.push_back(macros);
+            lines.push_back(prelude);
         }
         lines.append_range(draft.fragment);
         for(auto needed: draft.needed) {

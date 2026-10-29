@@ -14,7 +14,8 @@ struct WrappedModules {
     /// The header replaying their macros, which declares nothing.
     std::string macros;
 
-    /// The header a translation unit that stays one includes first.
+    /// The header a translation unit that stays one includes first, as
+    /// does a module unit's global module fragment.
     std::string prelude;
 };
 
@@ -74,9 +75,9 @@ struct Rewriting {
 /// Rewrite the partition's rewritten modules out of the files under `root`.
 /// `interfaces` are the partition's, whose wrapped modules' textual headers
 /// and kept modules' headers of internal-linkage entities stay included. A
-/// rewritten module's partition `prelude` imports the `wrapped` modules for
-/// all its units, which include its macro header where they use their
-/// macros.
+/// rewritten module's prelude partition imports the `wrapped` modules for
+/// all its units; a unit with a global module fragment includes the prelude
+/// there, one without includes the macro header where it uses their macros.
 std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                               Partition partition,
                                               llvm::ArrayRef<Interface> interfaces,
