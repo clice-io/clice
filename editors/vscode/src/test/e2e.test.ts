@@ -667,10 +667,13 @@ suite("clice E2E", function () {
                 what,
             );
         };
-        const edited = restarted("a restart after the edit");
+        const edited = restarted("restart after the edit");
         fs.writeFileSync(config, `${original ?? ""}\n# edited\n`);
         await edited;
-        const restored = restarted("a restart after the restore");
+        // The new server reads its configuration once the client says it is
+        // initialized: a restore before then is simply what it reads.
+        await client.sendRequest<SyncResult>("clice/internal/sync", {});
+        const restored = restarted("restart after the restore");
         if (original === undefined) {
             fs.rmSync(config);
         } else {

@@ -8,7 +8,7 @@
             "default": ""
         },
         "project": {
-            "$ref": "#/$defs/ProjectConfig",
+            "$ref": "#/$defs/ProjectSettings",
             "description": "The [project] section: project-wide server options.",
             "default": {
                 "cache_dir": "",
@@ -24,7 +24,7 @@
             }
         },
         "tracker": {
-            "$ref": "#/$defs/TrackerConfig",
+            "$ref": "#/$defs/TrackerSettings",
             "description": "The [tracker] section: background polling of files.",
             "default": {
                 "workspace_poll_seconds": 30
@@ -121,7 +121,7 @@
             }
         },
         "references": {
-            "$ref": "#/$defs/ReferencesConfig",
+            "$ref": "#/$defs/ReferencesSettings",
             "description": "The [references] section: what find references answers.",
             "default": {
                 "limit": 2000
@@ -130,7 +130,7 @@
         "rules": {
             "type": "array",
             "items": {
-                "$ref": "#/$defs/ConfigRule"
+                "$ref": "#/$defs/Rule"
             },
             "description": "File-pattern rules that adjust compilation flags ([[rules]] in clice.toml).",
             "default": []
@@ -138,7 +138,7 @@
     },
     "additionalProperties": false,
     "$defs": {
-        "ProjectConfig": {
+        "ProjectSettings": {
             "type": "object",
             "properties": {
                 "cache_dir": {
@@ -216,7 +216,7 @@
             },
             "additionalProperties": false
         },
-        "TrackerConfig": {
+        "TrackerSettings": {
             "type": "object",
             "properties": {
                 "workspace_poll_seconds": {
@@ -524,7 +524,7 @@
             },
             "additionalProperties": false
         },
-        "ReferencesConfig": {
+        "ReferencesSettings": {
             "type": "object",
             "properties": {
                 "limit": {
@@ -537,7 +537,7 @@
             },
             "additionalProperties": false
         },
-        "ConfigRule": {
+        "Rule": {
             "type": "object",
             "properties": {
                 "patterns": {
