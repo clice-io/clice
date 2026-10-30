@@ -1,6 +1,6 @@
 {
   "name": "clice",
-  "displayName": "clice",
+  "displayName": "clice vscode",
   "description": "C, C++ and CUDA language support by clice: template-aware completion, compilation contexts for headers, build configurations, and C++20 modules",
   "license": "Apache-2.0",
   "repository": {

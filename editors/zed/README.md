@@ -1,4 +1,4 @@
-# clice-zed
+# clice zed
 
 This is the [Zed](https://zed.dev) extension for [clice](https://github.com/clice-io/clice).
 
