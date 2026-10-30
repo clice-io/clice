@@ -49,8 +49,8 @@ struct Output {
 
 /// The project opened from scratch: the build's units and the scan from
 /// them.
-OpenedProject load(const Spelling& root, const LoadedConfig& config) {
-    return open_reader(root, config, {});
+OpenedProject load(const Spelling& root, const LoadedSettings& loaded) {
+    return open_reader(root, loaded, {});
 }
 
 Output describe(const OpenedProject& loaded) {
@@ -130,11 +130,11 @@ std::pair<std::int64_t, std::int64_t> spread(std::vector<std::int64_t>& times) {
 void time_scans(OpenedProject first,
                 std::uint32_t runs,
                 const Spelling& root,
-                const LoadedConfig& config) {
+                const LoadedSettings& read) {
     std::vector<std::int64_t> cold;
     std::vector<std::int64_t> warm;
     for(std::uint32_t run = 0; run < runs; run += 1) {
-        auto loaded = run == 0 ? std::move(first) : load(root, config);
+        auto loaded = run == 0 ? std::move(first) : load(root, read);
         auto& project = loaded.reader->project;
         project.dep_graph.reset();
         auto rescan = scan_dependency_graph(project.cdb,
@@ -167,8 +167,8 @@ int run_scan(const Options& opts) {
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
-    auto first = load(root, config);
+    auto& [root, loaded] = *read;
+    auto first = load(root, loaded);
     if(first.opened.members.empty()) {
         LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
                   root,
@@ -182,7 +182,7 @@ int run_scan(const Options& opts) {
     }
     print_summary(output, first.opened.scan);
     if(opts.runs) {
-        time_scans(std::move(first), *opts.runs, root, config);
+        time_scans(std::move(first), *opts.runs, root, loaded);
     }
     return 0;
 }

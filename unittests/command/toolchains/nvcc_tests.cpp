@@ -592,7 +592,7 @@ ZEST_CASE(RuleFlagsTranslated) {
                                           "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    // Config rule flags for an NVCC entry go through the same translation
+    // Rule flags for an NVCC entry go through the same translation
     // as the command: the remove matches the arch through its translated
     // spelling and the append reaches clang translated, not as raw nvcc
     // tokens.

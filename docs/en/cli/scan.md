@@ -6,11 +6,11 @@
 
 **Usage**: `clice scan [--workspace <dir>] [--configuration <tag>] [--json | --runs <n>]`
 
-The build is the one its compilation databases list: the databases the rules name, else the `compile_commands.json` at the workspace root and in its direct subdirectories, as the server finds them at startup; when there is none, the error names the ones down to three directories below the root and the rule that would load them. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
+The build is the one its compilation databases list: the databases the rules name, else the `compile_commands.json` at the project root and in its direct subdirectories, as the server finds them at startup; when there is none, the error names the ones down to three directories below the root and the rule that would load them. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
 
 `--runs <n>` times the scan: each run loads the build from scratch and scans it (cold, as at startup), then scans it again over what the first scan kept (warm, as after a database reload), and prints both times; the last line gives their minimum and median.
 
-The exit code is 0 after a scan; 1 when there is nothing to scan (the workspace or the configuration does not exist, or no database is found or lists a file) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
+The exit code is 0 after a scan; 1 when there is nothing to scan (the project root or the configuration does not exist, or no database is found or lists a file) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
 
 ## Examples
 

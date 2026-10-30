@@ -11,7 +11,7 @@ struct Project;
 
 /// What the index database records of the commands the index was built
 /// with (blob kind CommandSnapshot): per source file, the sorted canonical
-/// command hashes of its entries and a hash of its matched config rules when
+/// command hashes of its entries and a hash of its matched rules when
 /// the index was last saved; per unit without entries, the command covering
 /// it and its matched rules. A load diffs it against the live build to drop
 /// the index of every TU whose command changed while no server ran —

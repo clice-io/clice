@@ -117,7 +117,7 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
 }
 
 bool configured(const Spelling& dir) {
-    return ranges::any_of(config_file_names,
+    return ranges::any_of(settings_file_names,
                           [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
 }
 
@@ -199,22 +199,48 @@ bool defines_project(CanonicalRef dir) {
     return configured(Spelling(dir)) || !discover_compile_commands(dir).empty();
 }
 
-Spelling project_root_above(const Spelling& start) {
+Spelling find_project_root(const Spelling& start) {
+    // The directories holding `start`, not the links on the way to it: a
+    // directory reached through a symlink belongs to the project of the one
+    // it links to.
+    auto defines = [](const Spelling& dir) {
+        return configured(dir) || database_in(dir) || database_in(Spelling("build", dir));
+    };
+    CanonicalPath found;
+    path::walk_ancestors(CanonicalPath(start), [&](CanonicalRef dir) {
+        Spelling spelled(dir);
+        if(!defines(spelled)) {
+            return true;
+        }
+        found = dir;
+        // A database alone in a directory is its parent's when the parent
+        // is a project, whose discovery loads its direct subdirectories': a
+        // build directory beside the sources.
+        auto parent = dir.parent();
+        if(!configured(spelled) && !database_in(Spelling("build", spelled)) && !parent.empty() &&
+           defines(Spelling(parent))) {
+            found = std::move(parent);
+        }
+        return false;
+    });
+    if(found.empty()) {
+        return {};
+    }
     for(auto dir = start; !dir.empty(); dir = dir.parent()) {
-        if(configured(dir) || database_in(dir) || database_in(Spelling("build", dir))) {
+        if(CanonicalPath(dir) == found) {
             return dir;
         }
     }
-    return {};
+    return Spelling(found);
 }
 
 std::string deeper_databases_hint(const Project& project) {
     if(project.build.declares_sources()) {
         return {};
     }
-    CanonicalRef root = project.config.project_root;
+    CanonicalRef root = project.root;
     std::vector<std::string> names;
-    for(auto& database: deeper_compile_commands(root, project.config.project.cache_identity())) {
+    for(auto& database: deeper_compile_commands(root, project.settings.project.cache_identity())) {
         auto directory = database.parent();
         auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
         path::to_slash(name);

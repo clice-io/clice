@@ -28,7 +28,7 @@ Distilled from real correction history — these mistakes keep recurring:
 
 ## Source Layout
 
-`src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `compile` ← `semantic` ← `index` ← `feature`) ← `config` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
+`src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `compile` ← `semantic` ← `index` ← `feature`) ← `settings` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
 
 - `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching, failure records and their policies
 - `src/vfs/` — clice's view of the disk over `kota::fs`: source text and its change stamps, the file table and its freshness checks, the file system a compile sees, the on-disk cache store, finding a Cygwin or MSYS2 runtime's mount table
@@ -38,7 +38,7 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments
 - `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, and the reads every index-backed feature builds on (`IndexQuery` over all index sources, symbol search, declared text)
 - `src/feature/` — the language features, one interface each with its options, its result type and its protocol form, its answer from one file's AST, and what the index adds: AST only (diagnostics, signature help, selection ranges; formatting reads the text alone), index only (navigation, hierarchy, rename, workspace symbols, counterparts, and `query`: the command line's answers about symbols and files), both — the index answering while the AST is not current (hover, semantic tokens, folding, outline, document links) or completing what the AST answers (completion, code actions, inlay hint targets); which source answers is the server's call
-- `src/config/` — the `clice.toml` configuration: reading it with the editor's settings over it, its errors, and choosing the build configuration
+- `src/settings/` — the settings of `clice.toml` (`Settings`): reading them with the editor's over them, their errors, and choosing the build configuration
 - `src/project/` — the loaded project, opened one way for every entry point (`Project::open`): CDB loading and watching, command resolution, header hosting, the command snapshot and artifact records, results remembered with the files they read (the artifacts' failures among them), saving and loading the project's database, the project a command-line run reads (`ProjectReader`), and the answers about the build (`queries`: its files, include dependencies, a change's reach)
 - `src/worker/` — the stateless and stateful worker processes, their pool and protocol
 - `src/sched/` — the task graph (PCH, PCM, AST and TU nodes), the PCH and PCM builders, batch runs, the indexing pump

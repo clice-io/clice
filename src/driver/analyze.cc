@@ -17,9 +17,9 @@ namespace {
 /// hypothetical changes it is evaluated under.
 struct ModelOptions {
     DecoKV(help =
-               "A glob over workspace-relative paths, absolute ones outside the workspace: "
+               "A glob over paths relative to the project root, absolute ones outside it: "
                "analyze only the files it matches (default: every indexed file under the "
-               "workspace outside a dot directory)",
+               "project root outside a dot directory)",
            required = false)
     <std::vector<std::string>> scope;
 
@@ -351,7 +351,7 @@ CommandHandler build() {
 
 [[maybe_unused]] const bool registered = register_command(
     Command::analyze,
-    {.description = "Analyze the indexed workspace for refactoring", .build = build});
+    {.description = "Analyze the indexed project for refactoring", .build = build});
 
 }  // namespace
 

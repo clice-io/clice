@@ -33,7 +33,7 @@ static void dedup(llvm::SmallVector<Fid>& ids) {
 
 bool Invalidator::compiled_by_session(Fid path_id) const {
     auto session = store.find(path_id);
-    return !project.config.project.skip_header_bodies && session &&
+    return !project.settings.project.skip_header_bodies && session &&
            session->serving == ServingMode::Escalated;
 }
 

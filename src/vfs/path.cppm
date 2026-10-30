@@ -252,13 +252,13 @@ constexpr inline llvm::StringRef workspace_anchor = "${workspace}";
 /// other path, and every path without a project root, stays as it is. Points
 /// into `p` or `storage`.
 llvm::StringRef portable(llvm::StringRef p,
-                         llvm::StringRef workspace,
+                         llvm::StringRef project_root,
                          llvm::SmallVectorImpl<char>& storage);
 
-/// The path a portable name names in the checkout at `workspace`. Points
-/// into `name` or `storage`.
+/// The path a portable name names in the checkout at `project_root`.
+/// Points into `name` or `storage`.
 llvm::StringRef local(llvm::StringRef name,
-                      llvm::StringRef workspace,
+                      llvm::StringRef project_root,
                       llvm::SmallVectorImpl<char>& storage);
 
 using fs::path::is_within;

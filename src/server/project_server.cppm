@@ -1,6 +1,6 @@
 module clice:server.project_server;
 
-import :config.config;
+import :settings.settings;
 import :project.command_resolver;
 import :project.project;
 import :sched.stack;
@@ -36,7 +36,7 @@ public:
     ProjectServer(MasterServer& server, CanonicalPath root);
     ~ProjectServer();
 
-    /// Read the configuration (load_config): clice.toml under the root,
+    /// Read the settings (load_settings): clice.toml under the root,
     /// overlaid with the client's initializationOptions (`init_options`),
     /// its cache directory none of `taken_cache_dirs`. One with errors
     /// leaves the project broken.
@@ -110,8 +110,6 @@ public:
     bool knows(Fid path_id);
 
     MasterServer& server;
-    kota::event_loop& loop;
-    CanonicalPath root;
 
     /// The open documents routed to this project, and their buffer-sync
     /// logic.
@@ -150,15 +148,17 @@ public:
     /// ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
-    /// Problems found while reading the configuration, kept so LSPClient
+    /// Problems found while reading the settings, kept so LSPClient
     /// can publish them as diagnostics on the config file's URI, and the
     /// path of the file found (empty when none).
-    std::vector<ConfigIssue> config_issues;
-    std::string config_path;
+    std::vector<SettingsIssue> settings_issues;
+    std::string settings_file;
 
-    /// The configuration has errors: the project starts nothing, and the
+    /// The settings have errors: the project starts nothing, and the
     /// files under its root answer every request at once with nothing.
-    bool broken = false;
+    bool broken() const {
+        return has_error(settings_issues);
+    }
 
 private:
     /// A fresh session for the document, replacing a live one.
@@ -177,7 +177,7 @@ private:
     /// start() ran: documents opened from now on have their serving decided at once.
     bool started = false;
 
-    /// The build configuration the project activates (LoadedConfig).
+    /// The build configuration the project activates (LoadedSettings).
     std::string configuration;
 
     /// start() found no compile command for the project. The guidance

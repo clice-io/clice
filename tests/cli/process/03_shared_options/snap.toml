@@ -48,3 +48,29 @@ exit = 2
 
 ["a missing workspace"."left behind"]
 value = []
+
+["a subdirectory"."$ clice format --check ../main.cpp"]
+stdout = "Checked 1 file in #s: all formatted."
+exit = 0
+
+["a subdirectory"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a subdirectory"."$ clice index file ../main.cpp"]
+stdout = '''
+file ${WS}/main.cpp
+  blob=# B  content size=40  content hash=#1a667a99fd0a2c5a
+  variants=1
+    #61e14a2d31e40c1a  contributed by 1 unit
+      ${WS}/main.cpp
+  symbols=3  local symbols=2  occurrences=5  relations=5
+    Definition=3
+    Reference=2
+    local #af9437b6ea0b8b52  kind=Parameter  name=b
+    local #cca4d04698654dd1  kind=Parameter  name=a
+'''
+exit = 0

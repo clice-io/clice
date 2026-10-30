@@ -4,7 +4,7 @@ import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
-import :config.config;
+import :settings.settings;
 import :index.database;
 import :index.project_index;
 import :index.shard;
@@ -197,7 +197,7 @@ struct ContextChoices {
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
 ///   - symbol index (ProjectIndex + per-file Shard blobs)
-///   - compilation database and configuration
+///   - compilation database and settings
 ///
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
@@ -205,14 +205,20 @@ struct ContextChoices {
 ///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Project {
-    explicit Project(FileTable& file_table) : file_table(file_table) {}
+    explicit Project(FileTable& file_table, CanonicalPath root = {}) :
+        root(std::move(root)), file_table(file_table) {}
 
-    /// A default-constructed Config is born valid (every option holds its
+    /// The project's root: the `${workspace}` value, the anchor of rules and
+    /// databases no configuration file supplied, the enumeration root of
+    /// `**`-led patterns; empty for the project of files no folder holds.
+    CanonicalPath root;
+
+    /// A default-constructed Settings is born valid (every option holds its
     /// real default), so a directly-built Project (unit tests, tools)
     /// needs no init step. The server replaces this wholesale with the
     /// loaded user config and finalizes it after the initializationOptions
     /// overlay.
-    Config config;
+    Settings settings;
 
     /// The process's fid space, shared with everything else keyed by file
     /// (sessions, the task graph, the pool) — CDB entry file ids and
@@ -228,7 +234,7 @@ struct Project {
 
     /// Which entries and hand-written commands apply to a file under the
     /// active configuration; the only reader of the rules.
-    Build build{config, cdb, file_table};
+    Build build{settings, root, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// open() when cache_dir is configured; absent means caching
@@ -418,7 +424,7 @@ struct Project {
             Write,
         };
 
-        /// The build configuration to activate (LoadedConfig::configuration).
+        /// The build configuration to activate (LoadedSettings::configuration).
         llvm::StringRef configuration;
 
         Build build = Build::Members;
@@ -434,13 +440,6 @@ struct Project {
 
     /// What open() found.
     struct Opened {
-        /// Whether any compile command source is in place: a database
-        /// loaded, or a rule's default command. False means every file
-        /// compiles with the builtin fallback until a database appears —
-        /// the persisted index is still loaded then, so a database
-        /// generated later starts from the previous session's state.
-        bool has_commands = false;
-
         /// The build's translation units: the indexing pass's work list,
         /// so no driver walks the tree a second time.
         std::vector<Fid> members;
@@ -457,7 +456,7 @@ struct Project {
         std::string unreadable;
     };
 
-    /// Open the project over its final configuration (load_config), once,
+    /// Open the project over its final settings (load_settings), once,
     /// in a fixed order: the cache store and the index database; what the
     /// index remembers (the databases of earlier sessions, the provisional
     /// members); the build; the saved state — the index, the artifact
@@ -491,11 +490,27 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
 bool defines_project(CanonicalRef dir);
 
 /// The nearest directory at or above `start` holding a configuration file
-/// or a compile_commands.json, directly or in its build/ directory, spelled
-/// as `start` is: the root of the project a directory belongs to, as the
-/// server finds it for a file outside every served folder and the command
-/// line from the current directory. Empty when no ancestor has either.
-Spelling project_root_above(const Spelling& start);
+/// or a compile_commands.json, directly or in its build/ directory — its
+/// parent instead when it holds a database alone and the parent is such a
+/// directory — spelled as `start` is when `start` lies under it as spelled:
+/// the root of the project a directory belongs to, as the server finds it
+/// for a file outside every served folder and the command line from the
+/// current directory. Empty when no ancestor has either.
+Spelling find_project_root(const Spelling& start);
+
+/// The real paths that the databases of the rules active under
+/// `configuration` and resolving symlinks (Rule::resolve_symlinks)
+/// resolve to now, one per line; empty when no active rule resolves them.
+std::string resolved_databases(const Settings& settings, llvm::StringRef configuration);
+
+/// The index database of the build `configuration` reads, its databases
+/// `resolved` (resolved_databases): the configuration's own when nothing
+/// resolved; else the one of those real paths, or the own one of another
+/// configuration whose rules differ from its own only in naming exactly
+/// those databases directly.
+index::DatabaseKey database_key(const Settings& settings,
+                                llvm::StringRef configuration,
+                                llvm::StringRef resolved);
 
 /// The sentence the guidance of a project without a database ends with:
 /// the rule that loads the compile_commands.json files discovery passes

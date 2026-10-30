@@ -4,15 +4,15 @@ A C++ development toolkit built on LLVM/Clang
 
 Subcommands:
   serve       Start LSP server
-  query       Ask the persisted index about the workspace
-  refactor    Rewrite the workspace's sources through the persisted index
+  query       Ask the persisted index about the project
+  refactor    Rewrite the project's sources through the persisted index
   index       Index a project ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
   command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
-  analyze     Analyze the indexed workspace for refactoring
+  analyze     Analyze the indexed project for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''
 exit = 0
@@ -23,15 +23,15 @@ A C++ development toolkit built on LLVM/Clang
 
 Subcommands:
   serve       Start LSP server
-  query       Ask the persisted index about the workspace
-  refactor    Rewrite the workspace's sources through the persisted index
+  query       Ask the persisted index about the project
+  refactor    Rewrite the project's sources through the persisted index
   index       Index a project ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
   command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
-  analyze     Analyze the indexed workspace for refactoring
+  analyze     Analyze the indexed project for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''
 exit = 0
@@ -55,7 +55,7 @@ exit = 0
 
 ["command help"."$ clice query --help"]
 stdout = '''
-Ask the persisted index about the workspace
+Ask the persisted index about the project
 
 Subcommands:
   project-files     The build's files
@@ -75,10 +75,10 @@ exit = 0
 
 ["command help"."$ clice refactor --help"]
 stdout = '''
-Rewrite the workspace's sources through the persisted index
+Rewrite the project's sources through the persisted index
 
 Subcommands:
-  rename  Rename symbols across the workspace
+  rename  Rename symbols across the project
 '''
 exit = 0
 
@@ -204,7 +204,7 @@ usage: clice modularize [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --partition <value>             JSON file assigning modules by globs, first match wins; a module is wrapped, "textual": true stays headers, "external": true is std, "provides": "std.compat" names who exports its names, "rewrite": true rewrites a program module into module units, its primary interface at "primary"
-  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: the files the partition and the program span (may be repeated)
+  --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: the files the partition and the program span (may be repeated)
   --std <value>                   libc++'s module sources (share/libc++/v1): the partition's std module is imported as std.compat
   --out <value>                   Directory to write the modules, macro headers, mirrors and prelude into
   --no-mirrors                    Write no mirrors: what still includes a wrapped header parses it beside the import
@@ -269,7 +269,7 @@ usage: clice analyze modules [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --limit <value>                 Most hotspots, move and split candidates to list (default 20)
-  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: analyze only the files it matches (default: every indexed file under the workspace outside a dot directory) (may be repeated)
+  --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
   --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
   --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
   --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat
@@ -301,7 +301,7 @@ usage: clice analyze modules edge <FROM> <TO> [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   <FROM> <TO>                     The module whose files name the other's entities, and the module named
-  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: analyze only the files it matches (default: every indexed file under the workspace outside a dot directory) (may be repeated)
+  --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
   --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
   --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
   --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat

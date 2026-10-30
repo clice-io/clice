@@ -1,6 +1,6 @@
 module clice;
 
-import :config.configuration;
+import :settings.configuration;
 import :feature.protocol;
 import :project.command_resolver;
 import :project.hosting;
@@ -430,12 +430,12 @@ void ContextService::leave_context(Session& session) {
 
 ext::ListConfigurationsResult ContextService::list_configurations() const {
     ext::ListConfigurationsResult result;
-    for(auto tag: project.config.configurations()) {
+    for(auto tag: project.settings.configurations()) {
         result.configurations.push_back(tag.str());
     }
     result.active = project.build.active_configuration().str();
-    result.selected = read_selected_configuration(project.config.project.cache_dir);
-    result.default_configuration = fallback_configuration(project.config).str();
+    result.selected = read_selected_configuration(project.settings.project.cache_dir);
+    result.default_configuration = project.settings.fallback_configuration().str();
     return result;
 }
 
@@ -445,14 +445,14 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
         LOG_WARN("Cannot select configuration {}: {}", name, reason);
         return ext::SwitchConfigurationResult{.reason = std::move(reason)};
     };
-    if(!declares_configuration(project.config, name)) {
+    if(!project.settings.declares(name)) {
         return refuse(std::format("no rule declares the configuration {}", name));
     }
-    if(declares_configuration(project.config, pinned)) {
+    if(project.settings.declares(pinned)) {
         return refuse(
             std::format("the server runs with --configuration {}, which pins it", pinned));
     }
-    if(auto written = write_selected_configuration(project.config.project.cache_dir, name);
+    if(auto written = write_selected_configuration(project.settings.project.cache_dir, name);
        !written) {
         return refuse(std::format("the selection cannot be saved: {}", written.error().message()));
     }

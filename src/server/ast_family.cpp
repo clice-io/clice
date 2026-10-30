@@ -2,7 +2,7 @@ module clice;
 
 import :command.argument;
 import :compile.compilation;
-import :config.config;
+import :settings.settings;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
@@ -95,7 +95,8 @@ std::optional<PCHBuilder::Request> ASTFamily::declared_pch(Fid path_id,
         return std::nullopt;
     }
     return pch.precompiled_header(*unit,
-                                  project.config.project.skip_header_bodies && !imports.modular());
+                                  project.settings.project.skip_header_bodies &&
+                                      !imports.modular());
 }
 
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
@@ -192,7 +193,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         base_blob = it->second.blob;
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
-    bool skip_bodies = project.config.project.skip_header_bodies;
+    bool skip_bodies = project.settings.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies),
                               project.database_key.str(),
@@ -551,7 +552,7 @@ void ASTFamily::escalate(Session& session) {
     if(session.serving != ServingMode::IndexOnly) {
         return;
     }
-    if(project.config.project.readonly == ReadonlyMode::On) {
+    if(project.settings.project.readonly == ReadonlyMode::On) {
         return;
     }
     session.serving = ServingMode::Escalated;
@@ -783,7 +784,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // fix there is a change that retries a stopped pass.
     std::optional<tidy::TidyResolution> tidy_config;
     std::optional<DocumentFailures::Attempt> tidy_attempt;
-    if(project.config.diagnostics.clang_tidy &&
+    if(project.settings.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         auto& suspects = failures.suspects(path_id);
@@ -805,12 +806,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         worker::CompileParams params;
         params.known_instantiations = known_instantiations;
         params.standard_library_instantiations =
-            project.config.project.standard_library_instantiations;
-        params.skip_bodies = project.config.project.skip_header_bodies;
+            project.settings.project.standard_library_instantiations;
+        params.skip_bodies = project.settings.project.skip_header_bodies;
         params.path = file_path;
         params.version = session->version;
         params.text = session->text().str();
-        params.project_root = project.config.project_root.str();
+        params.project_root = project.root.str();
         if(tidy_attempt) {
             params.tidy = tidy_config->params;
         }
@@ -863,7 +864,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // it itself. One that did not build leaves the header the command
         // forces in to parse what it holds.
         std::optional<std::string> base_pch;
-        if(project.config.project.readonly != ReadonlyMode::On) {
+        if(project.settings.project.readonly != ReadonlyMode::On) {
             on_phase.emit(path_id, CompilePhase::Preamble);
             if(auto request = declared_pch(path_id, resolution, *imports)) {
                 auto key = request->pch_key;
@@ -1398,7 +1399,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
         co_return false;
     }
 
-    if(project.config.project.readonly != ReadonlyMode::On) {
+    if(project.settings.project.readonly != ReadonlyMode::On) {
         auto pch_key = co_await ensure_pch(ticket,
                                            epoch,
                                            text,

@@ -1,6 +1,6 @@
 [test.guidance]
 value = [
-    "initializationOptions: invalid type: expected boolean, got string at project.enable_indexing. Nothing is served until they are fixed and clice restarts",
+    "initializationOptions: invalid type: expected boolean, got string at project.enable_indexing. Nothing under ${WS} is served until they are fixed and clice restarts",
 ]
 
 [test."main.cpp"]

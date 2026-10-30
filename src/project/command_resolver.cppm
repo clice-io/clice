@@ -15,7 +15,7 @@ namespace clice {
 struct CommandRequest {
     /// Per-run additions to the database driver command (a lint plan's
     /// clang-tool extra args), applied before toolchain resolution so the
-    /// driver interprets them. Unlike config rule appends they are never
+    /// driver interprets them. Unlike rule appends they are never
     /// NVCC-translated; prepends land right after the binary name, appends
     /// win over rule appends.
     llvm::ArrayRef<std::string> extra_prepend;

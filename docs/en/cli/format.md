@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clice format` formats the files of a workspace with the clang-format built
+`clice format` formats the files of a project with the clang-format built
 into clice, as the editor does, several files at a time, with the
 `.clang-format` configuration the tree already has. clice adds no style
 settings of its own: the style comes from clang-format's own discovery, the
@@ -13,7 +13,7 @@ nearest `.clang-format` above each file.
 Without paths it formats the build's own files: every translation unit of the
 compilation database outside a build tree (a directory holding `CMakeCache.txt`
 or `build.ninja`, where FetchContent puts the sources it fetches) and every file
-with a C-family suffix they include that sits inside the workspace, outside the
+with a C-family suffix they include that sits inside the project, outside the
 build trees (a directory below the root holding a compilation database, where a
 build generates or fetches sources), outside the system include directories of
 their commands and outside the cache directory. A
@@ -30,14 +30,14 @@ format = false
 ```
 
 Files are rewritten in place; a symlinked source is rewritten at its target,
-which has to sit inside the workspace as well. `--check` rewrites nothing and
+which has to sit inside the project as well. `--check` rewrites nothing and
 prints what clang-format would change, one diagnostic per place, then how many
 files need formatting.
 
 Exit codes: `0` when every file is formatted (or, with `--check`, nothing
 would change), `1` when `--check` found files to format, `2` when the run
 could not complete: the arguments do not parse, a file or its `.clang-format`
-could not be read, the workspace, its configuration or a compilation
+could not be read, the project, its configuration or a compilation
 database could not be found or loaded, or the requested configuration does
 not exist.
 

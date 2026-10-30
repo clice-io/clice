@@ -1,6 +1,6 @@
 module clice;
 
-import :config.configuration;
+import :project.project;
 import :server.file_tracker;
 import :vfs.file_system;
 import :vfs.path;
@@ -30,16 +30,18 @@ static std::optional<std::string> git_dir(llvm::StringRef root) {
     return std::nullopt;
 }
 
-FileTracker::FileTracker(Project& project, const SessionStore& store, CanonicalPath root) :
-    project(project), store(store), cdb(project, root) {
-    auto git = git_dir(root);
+FileTracker::FileTracker(Project& project, const SessionStore& store) :
+    project(project), store(store), cdb(project) {
+    auto git = git_dir(project.root);
     if(!git) {
         return;
     }
     for(auto name: {"HEAD", "index"}) {
         checkout.push_back(project.file_table.disk.watch(
             path::join(*git, name),
-            [&disk = project.file_table.disk, root = root.str()] { disk.expire_under(root); }));
+            [&disk = project.file_table.disk, root = project.root.str()] {
+                disk.expire_under(root);
+            }));
     }
 }
 
@@ -50,7 +52,7 @@ static void push_delta(CDBDiff diff, llvm::SmallVectorImpl<FileEvent>& events) {
 }
 
 bool FileTracker::moved() const {
-    return resolved_databases(project.config, project.build.active_configuration()) !=
+    return resolved_databases(project.settings, project.build.active_configuration()) !=
            project.resolved_databases;
 }
 

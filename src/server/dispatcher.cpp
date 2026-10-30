@@ -206,12 +206,13 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
                       kota::cancellation_token token) {
     auto offset = ticket.session->positions().offset_clamped(position, encoding);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
-    co_return co_await ast_request(
-        ticket,
-        feature::RequestKind::Hover,
-        "Hover",
-        worker::HoverParams{.path = std::move(path), .offset = offset, .config = project.config},
-        std::move(token));
+    co_return co_await ast_request(ticket,
+                                   feature::RequestKind::Hover,
+                                   "Hover",
+                                   worker::HoverParams{.path = std::move(path),
+                                                       .offset = offset,
+                                                       .settings = project.settings},
+                                   std::move(token));
 }
 
 kota::task<std::vector<feature::InlayHint>, ipc::Error>
@@ -226,7 +227,7 @@ kota::task<std::vector<feature::InlayHint>, ipc::Error>
         ticket,
         feature::RequestKind::InlayHint,
         "InlayHint",
-        worker::InlayHintParams{std::move(path), offsets, project.config},
+        worker::InlayHintParams{std::move(path), offsets, project.settings},
         std::move(token));
 }
 
@@ -256,7 +257,7 @@ kota::task<std::optional<std::vector<feature::DocumentSymbol>>, ipc::Error>
     co_return co_await ast_request(ticket,
                                    feature::RequestKind::DocumentSymbol,
                                    "DocumentSymbol",
-                                   worker::DocumentSymbolParams{std::move(path), project.config},
+                                   worker::DocumentSymbolParams{std::move(path), project.settings},
                                    std::move(token));
 }
 
@@ -266,7 +267,7 @@ kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>
     co_return co_await ast_request(ticket,
                                    feature::RequestKind::SemanticTokens,
                                    "SemanticTokens",
-                                   worker::SemanticTokensParams{std::move(path), project.config},
+                                   worker::SemanticTokensParams{std::move(path), project.settings},
                                    std::move(token));
 }
 
@@ -351,7 +352,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     auto resolution = co_await trees.resolve(
         [&] { return contexts.resolve_command(path_id, wp.directory, wp.arguments); });
-    wp.config = project.config;
+    wp.settings = project.settings;
 
     ScopedTimer timer;
     ASTFamily::StatelessInputs inputs;

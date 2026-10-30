@@ -1,0 +1,4 @@
+# sub/ holds the only database and a clice.toml: a project of its own
+# inside the root's, whose clice.toml does not parse.
+[databases]
+sub = ["sub/main.cpp"]

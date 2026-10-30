@@ -1,7 +1,7 @@
 module clice;
 
-import :config.config;
-import :config.configuration;
+import :settings.settings;
+import :settings.configuration;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -52,7 +52,7 @@ static std::uint32_t physical_parallelism() {
 }
 
 std::uint32_t default_stateless_worker_count() {
-    // Config is constructed on every worker request (the feature and build
+    // Settings is constructed on every worker request (the feature and build
     // params carry one); query the core count once, not per request.
     const static std::uint32_t count = std::max(physical_parallelism() / 2, 2u);
     return count;
@@ -91,7 +91,7 @@ static std::expected<CompiledRule::Pattern, std::string>
     return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
 }
 
-std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
+std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     auto& p = project;
     std::vector<codec::rich_error> problems;
     auto problem = [&](std::string message, std::vector<codec::rich_error::path_segment> path) {
@@ -101,7 +101,7 @@ std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
 
     // Zero workers is never a runnable configuration: an error, and the
     // field's born-valid default meanwhile.
-    ProjectConfig defaults;
+    ProjectSettings defaults;
     auto reject_zero = [&](auto& field, const auto& fallback, llvm::StringRef name) {
         if(field.value == 0) {
             problem("a worker count must be at least 1", {"project", name.str()});
@@ -116,8 +116,7 @@ std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
 
-    this->project_root = project_root;
-    CanonicalRef root = this->project_root;
+    CanonicalRef root = project_root;
     Spelling root_anchor(root);
 
     if(p.cache_dir.empty() && !root.empty()) {
@@ -144,7 +143,7 @@ std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
     }
 
     compiled_rules.clear();
-    auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
+    auto compile = [&](const Rule& rule) -> std::optional<CompiledRule> {
         // A rule read from a file anchors at the file's directory, one from
         // initializationOptions at the project root; a project without a
         // folder has nothing to anchor one at.
@@ -216,8 +215,7 @@ std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
             compiled_rules.push_back(std::move(*compiled));
         }
     }
-    if(!default_configuration.empty() &&
-       !ranges::contains(configurations(), llvm::StringRef(default_configuration))) {
+    if(!default_configuration.empty() && !declares(default_configuration)) {
         auto tags = configurations();
         problem(tags.empty() ? std::format("{} names a configuration, but no rule declares one",
                                            default_configuration)
@@ -250,8 +248,8 @@ bool CompiledRule::active_under(llvm::StringRef configuration) const {
     return this->configuration.empty() || this->configuration == configuration;
 }
 
-llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
-                                                              llvm::StringRef configuration) const {
+llvm::SmallVector<const CompiledRule*>
+    Settings::matching_rules(CanonicalRef path, llvm::StringRef configuration) const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: compiled_rules) {
         if(rule.active_under(configuration) && rule.matches(path)) {
@@ -261,7 +259,7 @@ llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
     return result;
 }
 
-llvm::SmallVector<Spelling> Config::declared_databases(llvm::StringRef configuration) const {
+llvm::SmallVector<Spelling> Settings::declared_databases(llvm::StringRef configuration) const {
     llvm::SmallVector<Spelling> result;
     for(auto& rule: compiled_rules) {
         if(!rule.active_under(configuration)) {
@@ -276,7 +274,7 @@ llvm::SmallVector<Spelling> Config::declared_databases(llvm::StringRef configura
     return result;
 }
 
-llvm::SmallVector<llvm::StringRef> Config::configurations() const {
+llvm::SmallVector<llvm::StringRef> Settings::configurations() const {
     llvm::SmallVector<llvm::StringRef> tags;
     for(auto& rule: compiled_rules) {
         if(!rule.configuration.empty() && !ranges::contains(tags, rule.configuration)) {
@@ -284,6 +282,18 @@ llvm::SmallVector<llvm::StringRef> Config::configurations() const {
         }
     }
     return tags;
+}
+
+bool Settings::declares(llvm::StringRef configuration) const {
+    return ranges::contains(configurations(), configuration);
+}
+
+llvm::StringRef Settings::fallback_configuration() const {
+    if(!default_configuration.empty()) {
+        return default_configuration;
+    }
+    auto tags = configurations();
+    return tags.empty() ? llvm::StringRef() : tags.front();
 }
 
 /// Codec config the published schema is generated under, for its
@@ -371,11 +381,11 @@ static bool sets(const codec::dyn::Value& overlay,
 /// starts. An error with no position (a problem finalize found, an unknown
 /// enumerator) spans the value its path names. A document that does not
 /// parse has no such extent, its error marks a point.
-static ConfigIssue make_issue(ConfigIssue::Severity severity,
-                              llvm::StringRef path,
-                              const codec::rich_error& error,
-                              const toml::table* parsed) {
-    ConfigIssue issue;
+static SettingsIssue make_issue(SettingsIssue::Severity severity,
+                                llvm::StringRef path,
+                                const codec::rich_error& error,
+                                const toml::table* parsed) {
+    SettingsIssue issue;
     issue.severity = severity;
     issue.file = path.str();
     // The position is the issue's own; the message leaves it out.
@@ -406,24 +416,28 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
     return issue;
 }
 
-bool LoadedConfig::broken() const {
-    return ranges::any_of(issues, [](const ConfigIssue& issue) {
-        return issue.severity == ConfigIssue::Severity::Error;
+bool has_error(llvm::ArrayRef<SettingsIssue> issues) {
+    return ranges::any_of(issues, [](const SettingsIssue& issue) {
+        return issue.severity == SettingsIssue::Severity::Error;
     });
 }
 
-LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
-    using Severity = ConfigIssue::Severity;
-    LoadedConfig loaded;
+bool LoadedSettings::broken() const {
+    return has_error(issues);
+}
+
+LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& options) {
+    using Severity = SettingsIssue::Severity;
+    LoadedSettings loaded;
     auto& issues = loaded.issues;
-    Config layered;
+    Settings layered;
     std::optional<toml::table> parsed;
-    for(auto name: root.empty() ? llvm::ArrayRef<llvm::StringRef>() : config_file_names) {
+    for(auto name: root.empty() ? llvm::ArrayRef<llvm::StringRef>() : settings_file_names) {
         auto path = path::join(root, name);
         if(!fs::exists(path)) {
             continue;
         }
-        loaded.path = path;
+        loaded.file = path;
         auto content = vfs::read_text(path);
         if(!content) {
             issues.push_back(
@@ -438,7 +452,7 @@ LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
             break;
         }
         parsed = std::move(*table);
-        Config decoded;
+        Settings decoded;
         codec::UnknownFields unknown;
         auto result = [&] {
             codec::scoped_context<codec::UnknownFields> collecting(unknown);
@@ -494,11 +508,11 @@ LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
     // a time: its writer lock is the process's, so a second project of the
     // server would take it too. The merged configuration's falls back to the
     // file's own, then the default, then none.
-    loaded.config = layered;
-    auto problems = loaded.config.finalize(root);
-    auto& cache_dir = loaded.config.project.cache_dir;
+    loaded.settings = layered;
+    auto problems = loaded.settings.finalize(root);
+    auto& cache_dir = loaded.settings.project.cache_dir;
     auto taken_here = [&] {
-        return ranges::contains(options.taken_cache_dirs, loaded.config.project.cache_identity());
+        return ranges::contains(options.taken_cache_dirs, loaded.settings.project.cache_identity());
     };
     auto taken = [&] {
         return !cache_dir.empty() && (taken_here() || owned_elsewhere(cache_dir, root));
@@ -509,16 +523,16 @@ LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
                           ? std::string("already serves another project")
                           : std::format("serves the project at {}", cache_dir_owner(requested));
         for(auto& fallback: {file_cache_dir, std::string()}) {
-            loaded.config = layered;
-            loaded.config.project.cache_dir = fallback;
-            problems = loaded.config.finalize(root);
+            loaded.settings = layered;
+            loaded.settings.project.cache_dir = fallback;
+            problems = loaded.settings.finalize(root);
             if(!taken()) {
                 break;
             }
         }
         if(taken()) {
             cache_dir.clear();
-            loaded.config.project.cache_dir_defaulted = false;
+            loaded.settings.project.cache_dir_defaulted = false;
         }
         LOG_GUIDANCE("Cache directory {} {}; {} {}",
                      requested,
@@ -534,18 +548,12 @@ LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
                  .message = std::format("{}: {}", options.overlay_name, problem.to_string())});
         } else {
             issues.push_back(
-                make_issue(Severity::Error, loaded.path, problem, parsed ? &*parsed : nullptr));
+                make_issue(Severity::Error, loaded.file, problem, parsed ? &*parsed : nullptr));
         }
     }
 
-    llvm::StringRef requested = options.configuration;
-    if(options.strict) {
-        if(auto checked = check_requested_configuration(loaded.config, requested); !checked) {
-            issues.push_back({.severity = Severity::Error, .message = std::move(checked.error())});
-            requested = {};
-        }
-    }
-    loaded.configuration = resolve_configuration(loaded.config, requested);
+    loaded.configuration =
+        choose_configuration(loaded.settings, options.configuration, options.strict, issues);
     return loaded;
 }
 
@@ -582,8 +590,8 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
     }
 }
 
-std::expected<std::string, std::string> Config::json_schema() {
-    auto schema = json::schema_string<Config, DenyUnknownKeys>(/*pretty=*/true);
+std::expected<std::string, std::string> Settings::json_schema() {
+    auto schema = json::schema_string<Settings, DenyUnknownKeys>(/*pretty=*/true);
     if(!schema) {
         return std::unexpected(schema.error().message);
     }

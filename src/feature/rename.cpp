@@ -473,7 +473,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         auto path = files.resolve(file);
         if(!scope.editable(path)) {
             plan.conflicts.push_back(
-                std::format("the rename would change {}, which is not a workspace source "
+                std::format("the rename would change {}, which is not a source of the project "
                             "(a system header, a dependency or a generated file)",
                             edit.site.path));
             continue;

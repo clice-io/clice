@@ -374,3 +374,13 @@ struct HeldParams {
 };
 
 }  // namespace clice::ext
+
+namespace kota::ipc::protocol {
+
+template <>
+struct RequestTraits<clice::ext::RestartServerParams> {
+    using Result = null;
+    constexpr inline static std::string_view method = "clice/restartServer";
+};
+
+}  // namespace kota::ipc::protocol

@@ -193,7 +193,7 @@ std::optional<feature::HoverInfo> Requests::index_hover_card(const Session& sess
     if(!cursor) {
         return std::nullopt;
     }
-    return feature::hover_info(peer_queries(), *cursor, project.config.documentation);
+    return feature::hover_info(peer_queries(), *cursor, project.settings.documentation);
 }
 
 std::vector<index::DocumentLink> Requests::find_preamble_links(const Session& session) {
@@ -260,7 +260,7 @@ std::vector<feature::FileDiagnostic> Requests::finished_diagnostics(const Sessio
 
 std::vector<feature::FileDiagnostic>
     Requests::shown_diagnostics(const Session& session, const CompileOutput& output) const {
-    auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.config.diagnostics);
+    auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.settings.diagnostics);
     if(!session.closed) {
         for(auto& note: failures.notes(session.path_id)) {
             diagnostics.push_back(feature::crash_note(note));
@@ -545,7 +545,7 @@ Requests::TokensResult Requests::semantic_tokens(Ticket ticket, kota::cancellati
             tokens = feature::semantic_tokens(text_of(*session),
                                               query,
                                               *source,
-                                              project.config.semantic_tokens);
+                                              project.settings.semantic_tokens);
             break;
         }
         case Route::Empty: {
@@ -647,7 +647,7 @@ Requests::RawResult Requests::document_symbols(Ticket ticket,
             auto symbols = feature::document_symbols(text_of(*session),
                                                      query,
                                                      *source,
-                                                     project.config.document_symbols);
+                                                     project.settings.document_symbols);
             session->index_served = true;
             co_return convert(symbols);
         }
@@ -759,7 +759,7 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
         .encoding = encoding,
         .trigger_character = trigger_character,
         .dialect = contexts.dialect(path_id),
-        .options = project.config.code_completion,
+        .options = project.settings.code_completion,
         .client = client,
         .query = query,
         .graph = project.dep_graph,
@@ -796,7 +796,7 @@ Requests::RawResult Requests::complete(std::shared_ptr<Session> session,
                                                 path_id,
                                                 search_of(path_id),
                                                 scope,
-                                                project.config.code_completion.limit));
+                                                project.settings.code_completion.limit));
 }
 
 Requests::RawResult Requests::signature_help(std::shared_ptr<Session> session,
@@ -844,18 +844,19 @@ Requests::RawResult Requests::references(Ticket ticket,
                                          Fid path_id,
                                          const protocol::Position& position,
                                          bool include_declaration) {
-    co_return co_await navigate(ticket,
-                                path_id,
-                                position,
-                                "[]",
-                                [&](const Cursor& cursor) -> Reply {
-                                    return to_raw(feature::to_locations(
-                                        feature::references(peer_queries(),
-                                                            cursor,
-                                                            include_declaration,
-                                                            project.config.references.limit.value),
-                                        encoding));
-                                });
+    co_return co_await navigate(
+        ticket,
+        path_id,
+        position,
+        "[]",
+        [&](const Cursor& cursor) -> Reply {
+            return to_raw(
+                feature::to_locations(feature::references(peer_queries(),
+                                                          cursor,
+                                                          include_declaration,
+                                                          project.settings.references.limit.value),
+                                      encoding));
+        });
 }
 
 Requests::RawResult Requests::document_highlights(Ticket ticket,
@@ -876,7 +877,7 @@ Requests::RawResult Requests::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::rename_refusal(project.config.project_root)) {
+    if(auto refused = feature::rename_refusal(project.root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     co_return co_await navigate(ticket,
@@ -902,7 +903,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
                      const protocol::Position& position,
                      std::string new_name) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::rename_refusal(project.config.project_root)) {
+    if(auto refused = feature::rename_refusal(project.root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     if(ticket.session) {
@@ -924,7 +925,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
 
     // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
-    EditableFiles editable_files(project.config);
+    EditableFiles editable_files(project.root, project.settings);
     auto texts = co_await kota::queue(
         [editable_files, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
             return feature::RenameTexts(editable_files.sources(), names);
@@ -1101,10 +1102,7 @@ Requests::RawResult Requests::type_hierarchy_subtypes(Fid path_id,
 }
 
 std::vector<feature::WorkspaceSymbol> Requests::workspace_symbols(llvm::StringRef text) {
-    return feature::workspace_symbols(peer_queries(),
-                                      text,
-                                      Spelling(project.config.project_root),
-                                      encoding);
+    return feature::workspace_symbols(peer_queries(), text, Spelling(project.root), encoding);
 }
 
 }  // namespace clice

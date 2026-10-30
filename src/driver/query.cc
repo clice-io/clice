@@ -331,14 +331,14 @@ CommandHandler build() {
                                                       opts.direction.value_or("both"));
             }),
     });
-    return with_operations("Ask the persisted index about the workspace",
+    return with_operations("Ask the persisted index about the project",
                            std::move(operations),
                            Errors::JSON);
 }
 
-[[maybe_unused]] const bool registered = register_command(
-    Command::query,
-    {.description = "Ask the persisted index about the workspace", .build = build});
+[[maybe_unused]] const bool registered =
+    register_command(Command::query,
+                     {.description = "Ask the persisted index about the project", .build = build});
 
 }  // namespace
 

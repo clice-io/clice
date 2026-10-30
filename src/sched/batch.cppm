@@ -1,6 +1,6 @@
 module clice:sched.batch;
 
-import :config.config;
+import :settings.settings;
 import :support.prelude;
 import :worker.protocol;
 
@@ -21,8 +21,8 @@ struct BatchProject {
     /// files under this spelling.
     Spelling root;
 
-    /// Its configuration (load_config), without errors.
-    LoadedConfig config;
+    /// Its settings (load_settings), without errors.
+    LoadedSettings loaded;
 
     /// Stateless worker count override; 0 runs one per logical core for
     /// indexing, the configuration's count for linting.
@@ -139,8 +139,8 @@ struct BatchFormatOptions {
     /// The project's root as the command line spells it.
     Spelling root;
 
-    /// Its configuration (load_config), without errors.
-    LoadedConfig config;
+    /// Its settings (load_settings), without errors.
+    LoadedSettings loaded;
 
     /// What to format instead of the build's own files, canonical and
     /// absolute: a directory narrows the set to the files under it, a

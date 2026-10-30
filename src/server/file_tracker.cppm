@@ -23,7 +23,7 @@ class FileTracker {
 public:
     /// Construct after the project is loaded: its databases are baselined
     /// at their loads.
-    FileTracker(Project& project, const SessionStore& store, CanonicalPath root);
+    FileTracker(Project& project, const SessionStore& store);
 
     /// One CDB tick (see CDBWatcher::tick), after the file table looked at
     /// the flags, the open files looking for a database; the reload's diff

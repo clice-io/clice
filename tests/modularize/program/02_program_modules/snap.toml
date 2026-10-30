@@ -460,7 +460,7 @@ exit = 1
 ["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/outside.json"]
 stdout = '''
 {
-  "error": "module app.core: primary ../m.cppm lies outside the workspace",
+  "error": "module app.core: primary ../m.cppm lies outside the project",
   "stale": []
 }
 '''

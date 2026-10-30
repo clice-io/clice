@@ -3,7 +3,7 @@ module clice;
 import :command.database;
 import :command.file_kind;
 import :compile.tidy;
-import :config.config;
+import :settings.settings;
 import :feature.formatting;
 import :index.project_index;
 import :index.shard;
@@ -156,7 +156,7 @@ struct Lifetime {
     }
 };
 
-/// Shared batch startup: the command's config with the run's overrides
+/// Shared batch startup: the command's settings with the run's overrides
 /// (`workers` for the project's), the session file logger, and the worker
 /// pool. `log_tag` names the log files after the subcommand.
 bool start_batch(Stack& stack,
@@ -165,8 +165,9 @@ bool start_batch(Stack& stack,
                  llvm::StringRef log_tag) {
     auto& project = stack.project;
     stack.files.spell_root(batch.root);
-    project.config = batch.config.config;
-    auto& cfg = project.config.project;
+    project.root = CanonicalPath(batch.root);
+    project.settings = batch.loaded.settings;
+    auto& cfg = project.settings.project;
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
         cfg.stateless_worker_count.value = workers;
@@ -219,11 +220,11 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
         co_await stack.pool.stop();
         co_return;
     }
-    project.config.project.enable_indexing.value = true;
+    project.settings.project.enable_indexing.value = true;
     stack.sched.pump.collect_errors();
 
     auto opened = project.open({
-        .configuration = batch.config.configuration,
+        .configuration = batch.loaded.configuration,
         .store = Project::OpenOptions::Store::Writable,
         .index = Project::OpenOptions::Index::Write,
     });
@@ -237,7 +238,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
     // nothing — fail instead of pretending.
     if(!project.database) {
         LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(project.config.project.cache_dir));
+                  std::string_view(project.settings.project.cache_dir));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -498,10 +499,10 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     // not race the plan's own runs, and without --index nothing may touch
     // the persisted index — it opens read-only, so the shutdown save
     // commits nothing.
-    project.config.project.enable_indexing.value = false;
+    project.settings.project.enable_indexing.value = false;
 
     auto opened = project.open({
-        .configuration = batch.config.configuration,
+        .configuration = batch.loaded.configuration,
         .store = Project::OpenOptions::Store::Writable,
         .index = options.with_index ? Project::OpenOptions::Index::Write
                                     : Project::OpenOptions::Index::Read,
@@ -520,7 +521,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     }
     if(options.with_index && !project.database) {
         LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(project.config.project.cache_dir));
+                  std::string_view(project.settings.project.cache_dir));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -557,7 +558,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
         // drained any of it. Drain it through the pump like the index
         // batch does, or an already-linted owner's index stays missing while
         // the run exits clean.
-        project.config.project.enable_indexing.value = true;
+        project.settings.project.enable_indexing.value = true;
         stack.sched.pump.schedule(/*immediate=*/true);
         co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
     }
@@ -610,8 +611,8 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     auto& build = project.build;
     auto& files = project.file_table;
 
-    CanonicalRef root = project.config.project_root;
-    auto cache_dir = project.config.project.cache_identity();
+    CanonicalRef root = project.root;
+    auto cache_dir = project.settings.project.cache_identity();
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
         if(!ranges::contains(skipped_dirs, dir)) {
@@ -731,20 +732,20 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
 
     FileTable file_table;
     file_table.spell_root(options.root);
-    Project project{file_table};
-    project.config = options.config.config;
+    Project project{file_table, CanonicalPath(options.root)};
+    project.settings = options.loaded.settings;
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
     bool whole = options.paths.empty() ||
                  ranges::any_of(options.paths, [](auto& path) { return fs::is_directory(path); });
     auto opened = project.open({
-        .configuration = options.config.configuration,
+        .configuration = options.loaded.configuration,
         .build = whole ? Project::OpenOptions::Build::Members : Project::OpenOptions::Build::None,
     });
 
     std::vector<FormatFile> files;
     std::vector<CanonicalPath> directories;
-    CanonicalRef root = project.config.project_root;
+    CanonicalRef root = project.root;
     for(auto& path: options.paths) {
         if(fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
@@ -763,7 +764,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             if(!path::is_within(target, root)) {
                 if(path::is_within(CanonicalPath(path.parent()), root)) {
                     result.exit_code = 2;
-                    result.error = std::format("{}: links outside the workspace", path);
+                    result.error = std::format("{}: links outside the project", path);
                     return result;
                 }
             } else if(project.build.formattable(target)) {

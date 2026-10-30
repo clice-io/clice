@@ -60,13 +60,13 @@ static ipc::Error hooks_off() {
     return ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
 }
 
-/// Fire a workspace refresh request without awaiting the reply. Peer
+/// Send the client a request without awaiting the reply. Peer
 /// lifetime discipline as in the progress handshake: the peer outlives the
 /// client, and teardown fails pending requests before run() returns. A
 /// captureless coroutine lambda invoked immediately: parameters are copied
 /// into the frame, captures would dangle.
 template <typename Params>
-static void fire_refresh(kota::event_loop& loop, ipc::JSONPeer& peer, Params params) {
+static void fire_request(kota::event_loop& loop, ipc::JSONPeer& peer, Params params) {
     loop.schedule([](ipc::JSONPeer* peer, Params request) -> kota::task<> {
         // Hang detection: nothing waits on the answer; the bound only frees
         // the request of a client that never answers.
@@ -85,7 +85,7 @@ static kota::task<T, ipc::Error> holding(std::shared_ptr<ProjectServer> project,
 /// Tick the file trackers of every project, as clice/internal/poll asks,
 /// after a look at the configuration files. Returns the events of all.
 static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::PollParams& params) {
-    srv.look_at_configs();
+    srv.look_at_settings();
     bool cdb = params.loop == "cdb";
     std::uint32_t count = 0;
     if(cdb) {
@@ -138,7 +138,7 @@ LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server)
         });
     projects_conn = server.on_projects_changed.connect([this]() {
         if(client_ready) {
-            publish_config_diagnostics();
+            publish_settings_diagnostics();
         }
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
@@ -305,7 +305,7 @@ void LSPClient::refresh_diagnostics() {
         // The client pulls every document again: no report it pulled is
         // one it holds any more.
         pulled.clear();
-        fire_refresh(server.loop, peer, protocol::DiagnosticRefreshParams{});
+        fire_request(server.loop, peer, protocol::DiagnosticRefreshParams{});
     }
 }
 
@@ -637,7 +637,7 @@ void LSPClient::register_lifecycle() {
 
         this->client_ready = true;
         this->forward_notify_messages();
-        this->publish_config_diagnostics();
+        this->publish_settings_diagnostics();
         this->ask_for_restart();
 
         // Replay compile outputs that materialized while no ready client
@@ -953,8 +953,8 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
         if(!options.closed && !document.session) {
             return kota::outcome_error(unserved(document.path));
         }
-        // A configuration with errors serves nothing under its root.
-        if(document.project->broken) {
+        // A project whose settings have errors serves nothing under its root.
+        if(document.project->broken()) {
             if constexpr(std::same_as<Params, protocol::DocumentDiagnosticParams>) {
                 return kota::co_invoke([]() -> RawResult {
                     co_return full_report(std::vector<protocol::Diagnostic>());
@@ -1328,7 +1328,8 @@ std::shared_ptr<ProjectServer> LSPClient::configured(const std::optional<std::st
         return resolve_uri(*uri).project;
     }
     auto& projects = server.projects;
-    auto it = ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
+    auto it =
+        ranges::find_if(projects, [](auto& project) { return !project->project.root.empty(); });
     return it != projects.end() ? *it : projects.front();
 }
 
@@ -1337,10 +1338,19 @@ ext::SwitchConfigurationResult
     auto project = configured(params.uri);
     auto result =
         project->context_service.switch_configuration(params.name, server.requested_configuration);
-    if(result.success && params.name != project->project.build.active_configuration()) {
+    if(!result.success) {
+        return result;
+    }
+    // A selection replaces the last one; back on the active configuration,
+    // there is nothing left to apply.
+    auto topic = std::format("selection of {}", project->project.root.str());
+    if(params.name == project->project.build.active_configuration()) {
+        server.withdraw_restart(topic);
+    } else {
         server.ask_restart({
-            .file = project->config_path,
+            .file = project->settings_file,
             .message = std::format("Build configuration {} selected", params.name),
+            .topic = std::move(topic),
         });
     }
     return result;
@@ -1425,7 +1435,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            if(project->broken) {
+            if(project->broken()) {
                 co_return to_raw(ext::CurrentContextResult{});
             }
             co_return to_raw(co_await this->server.current_context(*project, session.get()));
@@ -1475,8 +1485,8 @@ void LSPClient::register_extensions() {
             auto& project = resolved.project->project;
             feature::query::Context context{
                 .query = resolved.project->index_query,
-                .root = project.config.project_root,
-                .documentation = project.config.documentation,
+                .root = project.root,
+                .documentation = project.settings.documentation,
             };
             auto found = feature::counterparts(context,
                                                project.dep_graph,
@@ -1684,12 +1694,12 @@ void LSPClient::register_extensions() {
 }
 
 /// Publish clice.toml load problems as diagnostics, each on its own file's
-/// URI (multiple files can contribute issues when the first config candidate
+/// URI (multiple files can contribute issues when the first configuration file candidate
 /// is malformed and the next one loads). The files are usually not open in
 /// the editor — publishing to a closed file is fine, the client shows it in
 /// the problems panel. The loaded file always gets a publish, so a clean
 /// load clears diagnostics from a previous (broken) state.
-void LSPClient::publish_config_diagnostics() {
+void LSPClient::publish_settings_diagnostics() {
     llvm::StringMap<std::vector<feature::FileDiagnostic>> by_file;
     // An issue is at the file as loaded; one that changed since is about to
     // load again. One that is gone places its issues at the top.
@@ -1702,18 +1712,18 @@ void LSPClient::publish_config_diagnostics() {
         }
         return it->second;
     };
-    for(auto& file: published_configs) {
+    for(auto& file: published_settings_files) {
         by_file.try_emplace(file.getKey());
     }
-    published_configs.clear();
+    published_settings_files.clear();
     for(auto& project: server.projects) {
-        if(project->config_path.empty()) {
+        if(project->settings_file.empty()) {
             continue;
         }
         // The loaded file always gets a publish (even with zero issues), so
         // a clean load clears diagnostics from a previous broken state.
-        by_file.try_emplace(project->config_path);
-        for(auto& issue: project->config_issues) {
+        by_file.try_emplace(project->settings_file);
+        for(auto& issue: project->settings_issues) {
             if(issue.file.empty()) {
                 continue;
             }
@@ -1728,13 +1738,14 @@ void LSPClient::publish_config_diagnostics() {
             by_file[issue.file].push_back({
                 .range = {offset(issue.line, issue.column),
                           offset(issue.end_line, issue.end_column)},
-                .level = issue.severity == ConfigIssue::Severity::Error ? DiagnosticLevel::Error
-                                                                        : DiagnosticLevel::Warning,
+                .level = issue.severity == SettingsIssue::Severity::Error
+                             ? DiagnosticLevel::Error
+                             : DiagnosticLevel::Warning,
                 .message = issue.message,
             });
-            published_configs.insert(issue.file);
+            published_settings_files.insert(issue.file);
         }
-        published_configs.insert(project->config_path);
+        published_settings_files.insert(project->settings_file);
     }
     // A client that restarts the server when asked is restarting it.
     for(auto& reason: server.restart_reasons) {
@@ -1745,7 +1756,7 @@ void LSPClient::publish_config_diagnostics() {
             .level = DiagnosticLevel::Warning,
             .message = std::format("{}; it applies once clice restarts", reason.message),
         });
-        published_configs.insert(reason.file);
+        published_settings_files.insert(reason.file);
     }
 
     for(auto& [file, diagnostics]: by_file) {
@@ -1759,30 +1770,25 @@ void LSPClient::publish_config_diagnostics() {
 }
 
 void LSPClient::ask_for_restart() {
-    if(!client_ready || server.restart_reasons.empty()) {
+    if(!client_ready) {
         return;
     }
     if(restart_server) {
-        if(!restart_asked) {
+        if(!restart_asked && !server.restart_reasons.empty()) {
             restart_asked = true;
-            // Hang detection: nothing waits on the answer; the bound only
-            // frees the request of a client that never answers.
-            server.loop.schedule([](ipc::JSONPeer* peer, std::string reason) -> kota::task<> {
-                co_await peer->send_request<codec::RawValue>(
-                    "clice/restartServer",
-                    ext::RestartServerParams{.reason = std::move(reason)},
-                    {.timeout = std::chrono::milliseconds(3000)});
-            }(&peer, server.restart_reasons.front().message));
+            fire_request(
+                server.loop,
+                peer,
+                ext::RestartServerParams{.reason = server.restart_reasons.front().message});
         }
         return;
     }
-    publish_config_diagnostics();
-    for(auto& reason: llvm::ArrayRef(server.restart_reasons).drop_front(restart_told)) {
-        if(reason.file.empty()) {
+    publish_settings_diagnostics();
+    for(auto& reason: server.restart_reasons) {
+        if(reason.file.empty() && restarts_told.insert(reason.message).second) {
             LOG_GUIDANCE("{}; it applies once clice restarts", reason.message);
         }
     }
-    restart_told = server.restart_reasons.size();
 }
 
 void LSPClient::push_output(ProjectServer& project, const Session& session, bool compiled) {
@@ -1834,13 +1840,13 @@ void LSPClient::push_output(ProjectServer& project, const Session& session, bool
         it->second = *output.version;
         if(session.index_served || same_text) {
             if(semantic_tokens_refresh) {
-                fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
+                fire_request(server.loop, peer, protocol::SemanticTokensRefreshParams{});
             }
             if(inlay_hint_refresh) {
-                fire_refresh(server.loop, peer, protocol::InlayHintRefreshParams{});
+                fire_request(server.loop, peer, protocol::InlayHintRefreshParams{});
             }
             if(folding_range_refresh) {
-                fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+                fire_request(server.loop, peer, protocol::FoldingRangeRefreshParams{});
             }
         }
     }
@@ -1853,10 +1859,10 @@ void LSPClient::refresh_index_served() {
     // Inlay hints stay out: the index never computes them, so a
     // background merge cannot have changed what the client holds.
     if(semantic_tokens_refresh) {
-        fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
+        fire_request(server.loop, peer, protocol::SemanticTokensRefreshParams{});
     }
     if(folding_range_refresh) {
-        fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+        fire_request(server.loop, peer, protocol::FoldingRangeRefreshParams{});
     }
 }
 
@@ -1867,7 +1873,7 @@ void LSPClient::refresh_stale() {
     if(pull_diagnostics) {
         refresh_diagnostics();
     } else if(semantic_tokens_refresh) {
-        fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
+        fire_request(server.loop, peer, protocol::SemanticTokensRefreshParams{});
     }
 }
 

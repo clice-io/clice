@@ -12,7 +12,7 @@ Every fact comes from the persisted index, as [`clice analyze modules interface`
 
 ## Partition
 
-The partition file groups files into modules by globs over workspace-relative paths (absolute ones outside the workspace), first match wins. Files no glob claims are the program's and stay headers.
+The partition file groups files into modules by globs over paths relative to the project root (absolute ones outside it), first match wins. Files no glob claims are the program's and stay headers.
 
 ```json
 {
@@ -101,7 +101,7 @@ Files whose content did not change keep their timestamps. The files a previous r
 
 The rewritten files are written in place, and the headers their partitions replace are deleted.
 
-On stdout, the build plan. `wrapping` holds the module sources, mirrors, `macros.h` and the prelude relative to `--out`, libc++'s sources and each library's include roots as found; `rewriting` the rewritten modules' units, workspace-relative:
+On stdout, the build plan. `wrapping` holds the module sources, mirrors, `macros.h` and the prelude relative to `--out`, libc++'s sources and each library's include roots as found; `rewriting` the rewritten modules' units, relative to the project root:
 
 ```json
 {
@@ -141,7 +141,7 @@ On stdout, the build plan. `wrapping` holds the module sources, mirrors, `macros
 }
 ```
 
-The build compiles `stdSources` and each module in order, each with its library's include roots and its `mirrors` first on the include path, and adds `mirrors` and `-include prelude.h` to every program compilation the rewrite leaves untouched. A rewritten module compiles its primary interface, `interfaces` and `partitions` as module interface units and its `sources` as implementation units, with the workspace root on the include path for `macros.h` and the prelude; `moved` lists the sources that joined another module, `path=module`.
+The build compiles `stdSources` and each module in order, each with its library's include roots and its `mirrors` first on the include path, and adds `mirrors` and `-include prelude.h` to every program compilation the rewrite leaves untouched. A rewritten module compiles its primary interface, `interfaces` and `partitions` as module interface units and its `sources` as implementation units, with the project root on the include path for `macros.h` and the prelude; `moved` lists the sources that joined another module, `path=module`.
 
 ## Examples
 

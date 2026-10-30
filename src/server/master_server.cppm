@@ -51,6 +51,10 @@ struct RestartReason {
     std::string file;
 
     std::string message;
+
+    /// What a later reason of the same topic replaces, as a project's next
+    /// selection replaces its last; empty for a reason of its own.
+    std::string topic;
 };
 
 /// A guidance or anomaly message materialized for transport delivery.
@@ -77,7 +81,7 @@ public:
     ~MasterServer();
 
     /// Start serving the projects of `folders` (see
-    /// project_roots): load each project's configuration, start the pool
+    /// project_roots): load each project's settings, start the pool
     /// sized for all of them, and load the projects. Documents opened
     /// before move to the projects routing picks for them.
     void initialize();
@@ -85,7 +89,7 @@ public:
 
     /// The `[semantic_tokens]` options the legend is built from, read as
     /// the client initializes, before any project is configured: those of
-    /// the first project's configuration (load_config).
+    /// the first project's settings (load_settings).
     feature::SemanticTokensOptions startup_token_options() const;
 
     /// Bring every project to rest with its index committed while the
@@ -144,6 +148,10 @@ public:
     /// otherwise (on_restart_needed). The same reason is given once.
     void ask_restart(RestartReason reason);
 
+    /// The reason of `topic` no longer holds: what it asked for is what
+    /// the server runs on again.
+    void withdraw_restart(llvm::StringRef topic);
+
     /// didSave: a look at the file's disk content, which every project
     /// knowing the file cascades if it changed (drain_disk_changes). A save
     /// is also when users expect everything to be current: the files every
@@ -161,7 +169,7 @@ public:
     /// the master's ticks does whatever the polling setting: a change asks
     /// for a restart. clice.toml is the one in use where it exists, else
     /// .clice/config.toml.
-    void look_at_configs();
+    void look_at_settings();
 
     /// Hand the disk changes the file table saw to every project knowing
     /// the file (ProjectServer::knows); how many there were.
@@ -264,7 +272,7 @@ public:
     /// Why the server must restart, oldest first (ask_restart).
     std::vector<RestartReason> restart_reasons;
 
-    /// ask_restart took a reason.
+    /// The restart reasons changed (ask_restart, withdraw_restart).
     Signal<> on_restart_needed;
 
     /// Emitted when the index an open index-served session is serving changed:
@@ -350,8 +358,8 @@ private:
     void serve_folders();
 
     /// Watch the configuration files of the folders served now (see
-    /// look_at_configs), keeping what earlier looks saw.
-    void watch_configs();
+    /// look_at_settings), keeping what earlier looks saw.
+    void watch_settings();
 
     /// Shut a project that stopped serving down in the background.
     void stop(std::shared_ptr<ProjectServer> project);
@@ -446,7 +454,7 @@ private:
     std::vector<std::weak_ptr<ProjectServer>> stopping;
 
     /// The configuration files of a folder served.
-    struct ConfigWatch {
+    struct SettingsWatch {
         CanonicalPath folder;
 
         /// clice.toml, and .clice/config.toml, which applies without it.
@@ -454,13 +462,11 @@ private:
         vfs::Flag hidden;
     };
 
-    std::vector<ConfigWatch> config_watches;
+    std::vector<SettingsWatch> settings_watches;
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).
     std::vector<ProjectServer*> waiting;
-
-    std::string session_log_dir;
 };
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);

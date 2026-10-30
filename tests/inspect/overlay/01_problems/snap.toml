@@ -1,4 +1,4 @@
-[test."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"no_such_section\\\": {}}\""]
+["an unknown section"."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"no_such_section\\\": {}}\""]
 stdout = '''
 {
   "feature": "semantic-tokens",
@@ -52,3 +52,11 @@ stdout = '''
 '''
 stderr = "warning: --config-overlay: unknown field 'no_such_section'"
 exit = 0
+
+["not JSON"."$ clice inspect semantic-tokens main.cpp --config-overlay \"{not json\""]
+stderr = "error: invalid --config-overlay: TAPE_ERROR: The JSON document has an improper structure: missing or superfluous commas, braces, missing keys, etc.  This is a fatal and unrecoverable error."
+exit = 2
+
+["a wrong type"."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"project\\\": {\\\"enable_indexing\\\": \\\"yes\\\"}}\""]
+stderr = "error: --config-overlay: invalid type: expected boolean, got string at project.enable_indexing"
+exit = 2

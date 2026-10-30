@@ -4,6 +4,7 @@ value = "${WS}/clice.toml changed"
 ["a client without restarts"."clice.toml"]
 pushes = [
     [],
+    [],
     [
         {
             at = "⟦⟧[[rules]]",

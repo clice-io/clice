@@ -11,5 +11,5 @@ diagnostics = [
 
 [test.guidance]
 value = [
-    'No compile_commands.json found in workspace ${WS} or its direct subdirectories. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup. Deeper ones load only when clice.toml names them (the editor also loads one when it opens a file below it); to use those found, give clice.toml a [[rules]] table with compile_commands = ["build/debug"].',
+    'No compile_commands.json found in ${WS} or its direct subdirectories. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup. Deeper ones load only when clice.toml names them (the editor also loads one when it opens a file below it); to use those found, give clice.toml a [[rules]] table with compile_commands = ["build/debug"].',
 ]

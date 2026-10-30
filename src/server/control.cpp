@@ -56,7 +56,7 @@ void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
                                 std::string_view(active),
                                 params.configuration)});
             }
-            if(!srv.project.config.project.enable_indexing.value) {
+            if(!srv.project.settings.project.enable_indexing.value) {
                 co_await kota::fail(
                     ipc::Error{"the running clice server has background indexing disabled"});
             }

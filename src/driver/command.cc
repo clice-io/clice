@@ -226,7 +226,7 @@ int run_file(const FileOptions& opts) {
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
+    auto& [root, loaded] = *read;
     Spelling path(*opts.target.path, Spelling::cwd());
     if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
@@ -234,7 +234,7 @@ int run_file(const FileOptions& opts) {
     }
     auto opened =
         open_reader(root,
-                    std::move(config),
+                    std::move(loaded),
                     {.build = Project::OpenOptions::Build::Databases, .file = CanonicalPath(path)});
     auto& project = opened.reader->project;
     auto& files = project.file_table;
@@ -477,10 +477,10 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
+    auto& [root, loaded] = *read;
     // The rules alone: what converts is the database or the command given.
     auto opened =
-        open_reader(root, std::move(config), {.build = Project::OpenOptions::Build::None});
+        open_reader(root, std::move(loaded), {.build = Project::OpenOptions::Build::None});
     auto& project = opened.reader->project;
     if(!command.empty()) {
         return convert_command(project, command, static_cast<bool>(opts.json));

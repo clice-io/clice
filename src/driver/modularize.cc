@@ -44,7 +44,7 @@ struct Options {
     <std::string> partition;
 
     DecoKV(help =
-               "A glob over workspace-relative paths, absolute ones outside the workspace: "
+               "A glob over paths relative to the project root, absolute ones outside it: "
                "the files the partition and the program span",
            required = false)
     <std::vector<std::string>> scope;

@@ -3,7 +3,6 @@ module clice;
 import :command.edit;
 import :command.file_kind;
 import :command.normalize;
-import :config.configuration;
 import :project.build;
 import :support.logging;
 import :support.shell;
@@ -13,8 +12,8 @@ import :vfs.path;
 namespace clice {
 
 void Build::reset_active(llvm::StringRef configuration) {
-    assert(configuration.empty() ? config.configurations().empty()
-                                 : declares_configuration(config, configuration));
+    assert(configuration.empty() ? settings.configurations().empty()
+                                 : settings.declares(configuration));
     covered_sources.reset();
     records.clear();
     provisional.clear();
@@ -23,23 +22,23 @@ void Build::reset_active(llvm::StringRef configuration) {
 }
 
 llvm::SmallVector<const CompiledRule*> Build::matching(CanonicalRef path) const {
-    return config.matching_rules(path, active);
+    return settings.matching_rules(path, active);
 }
 
 bool Build::declares_sources() const {
-    return ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+    return ranges::any_of(settings.compiled_rules, [&](const CompiledRule& rule) {
         return rule.active_under(active) && rule.declares_sources();
     });
 }
 
 llvm::SmallVector<Spelling> Build::declared_sources() const {
-    return config.declared_databases(active);
+    return settings.declared_databases(active);
 }
 
 llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
     llvm::SmallVector<SourceID, 4> declared;
     bool declares = declares_sources();
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) || declares) {
             for(auto& database: rule.compile_commands) {
                 if(auto id = declared_source(database)) {
@@ -78,12 +77,12 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
             }
         }
     };
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && !ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
@@ -154,7 +153,7 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
 
 Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
     Edits result;
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(!ranges::contains(matched, &rule)) {
             continue;
         }
@@ -272,7 +271,6 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(edit.empty()) {
         return {};
     }
-    llvm::StringRef root = config.project_root;
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
@@ -307,7 +305,7 @@ bool Build::indexed(CanonicalRef path) const {
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
-    if(!config.project_root.empty() && !path::is_within(path, config.project_root)) {
+    if(!root.empty() && !path::is_within(path, root)) {
         return false;
     }
     return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
@@ -498,7 +496,7 @@ std::optional<CommandRef> Build::pch_unit(CommandID command,
 
 llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && rule.has_default_command() && !rule.unmatchable) {
             result.push_back(&rule);
         }
@@ -516,14 +514,14 @@ Build::SourceWalk Build::source_walk() const {
     // Where the covered files can be: each pattern's literal directory, the
     // whole project for a rule without patterns. A root inside another
     // is walked as part of it.
-    auto add_root = [&](CanonicalRef root) {
-        if(!root.empty() && !ranges::contains(walk.roots, CanonicalPath(root))) {
-            walk.roots.emplace_back(root);
+    auto add_root = [&](CanonicalRef dir) {
+        if(!dir.empty() && !ranges::contains(walk.roots, CanonicalPath(dir))) {
+            walk.roots.emplace_back(dir);
         }
     };
     for(auto* rule: rules) {
         if(rule->patterns.empty()) {
-            add_root(config.project_root);
+            add_root(root);
         }
         for(auto& pattern: rule->patterns) {
             add_root(pattern.root);
@@ -539,7 +537,7 @@ Build::SourceWalk Build::source_walk() const {
                           })
             .begin(),
         walk.roots.end());
-    walk.cache_dir = config.project.cache_identity();
+    walk.cache_dir = settings.project.cache_identity();
     return walk;
 }
 
@@ -619,8 +617,8 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
     return inside;
 }
 
-EditableFiles::EditableFiles(const Config& config) :
-    root(config.project_root), cache_dir(config.project.cache_identity()) {}
+EditableFiles::EditableFiles(CanonicalRef root, const Settings& settings) :
+    root(root), cache_dir(settings.project.cache_identity()) {}
 
 std::vector<std::string> EditableFiles::sources() const {
     CanonicalRef project_root = root;

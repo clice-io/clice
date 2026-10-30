@@ -12,3 +12,35 @@ value = ["Build configuration release selected; it applies once clice restarts"]
 
 ["a client without restarts".asked]
 value = []
+
+["the active one".asked]
+value = []
+
+["a client without restarts, beside clice.toml".release]
+pushes = [
+    [],
+    [],
+    [
+        {
+            at = "⟦⟧[project]",
+            severity = "warning",
+            message = "Build configuration release selected; it applies once clice restarts",
+            source = "clice",
+        },
+    ],
+]
+
+["a client without restarts, beside clice.toml"."debug again"]
+pushes = [
+    [],
+    [],
+    [
+        {
+            at = "⟦⟧[project]",
+            severity = "warning",
+            message = "Build configuration release selected; it applies once clice restarts",
+            source = "clice",
+        },
+    ],
+    [],
+]

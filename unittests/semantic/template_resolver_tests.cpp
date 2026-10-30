@@ -4313,11 +4313,11 @@ ZEST_CASE(AtomicConstraintUnverified) {
 ZEST_CASE(PromotedDependentValue) {
     run(R"code(
         template <typename T>
-        struct Config {
+        struct Settings {
             static constexpr unsigned char n = 1;
         };
 
-        template <typename T, int N = -Config<T>::n>
+        template <typename T, int N = -Settings<T>::n>
         struct P {
             using type = char;
         };
@@ -4340,11 +4340,11 @@ ZEST_CASE(DependentConditionalValue) {
     /// becomes unsigned, so the value is not `-1`.
     add_focus("main.cpp", R"code(
         template <typename T>
-        struct Config {
+        struct Settings {
             static constexpr bool flag = true;
         };
 
-        template <typename T, long long N = (Config<T>::flag ? -1 : 0u)>
+        template <typename T, long long N = (Settings<T>::flag ? -1 : 0u)>
         struct P {
             using type = char;
         };
@@ -4374,11 +4374,11 @@ ZEST_CASE(SignedOverflowValue) {
     /// must not be chosen.
     add_focus("main.cpp", R"code(
         template <typename T>
-        struct Config {
+        struct Settings {
             static constexpr int top = 2147483647;
         };
 
-        template <typename T, int N = Config<T>::top + 1>
+        template <typename T, int N = Settings<T>::top + 1>
         struct P {
             using type = char;
         };
@@ -4650,11 +4650,11 @@ ZEST_CASE(ReferenceParameterMember) {
 ZEST_CASE(MemberValueDefault) {
     run(R"code(
         template <typename T>
-        struct Config {
+        struct Settings {
             static const int stages = 2;
         };
 
-        template <typename A, int S = Config<A>::stages>
+        template <typename A, int S = Settings<A>::stages>
         struct Gemm {
             using type = void;
         };
@@ -4800,11 +4800,11 @@ ZEST_CASE(MutableValueDefault) {
     /// stays unknown instead of reading its initializer.
     add_focus("main.cpp", R"code(
         template <typename T>
-        struct Config {
+        struct Settings {
             static inline int stages = 2;
         };
 
-        template <typename A, int S = Config<A>::stages>
+        template <typename A, int S = Settings<A>::stages>
         struct Gemm {
             using type = void;
         };

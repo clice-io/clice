@@ -42,6 +42,7 @@ local scenarios = {
         symbol = 'add(1, 2)',
         index_symbol = 'add(int a, int b)',
         definition_file = 'main.cpp',
+        restart = true,
     },
     imported_symbol = {
         file = 'main.cpp',
@@ -254,6 +255,29 @@ if scenario.context then
     if not context_is(true) then
         fail 'LspCliceResetContext did not reset the context'
     end
+end
+
+if scenario.restart and vim.fn.exists ':lsp' == 2 then
+    -- A saved clice.toml makes clice ask to be restarted, which the config
+    -- does through :lsp restart: another client attaches to the buffer.
+    step 'save clice.toml'
+    local file = assert(io.open(fixture_dir .. '/clice.toml', 'a'))
+    file:write '\n# edited\n'
+    file:close()
+    local function restarted()
+        local clients = vim.lsp.get_clients { bufnr = buf, name = 'clice' }
+        local client = clients[1]
+        if #clients == 1 and client.id ~= client_id and client.initialized then
+            return client
+        end
+    end
+    if not vim.wait(60000, function()
+        return restarted() ~= nil
+    end, 100) then
+        fail 'clice was not restarted after clice.toml changed'
+    end
+    client_id = restarted().id
+    step 'restarted'
 end
 
 step 'shutdown'

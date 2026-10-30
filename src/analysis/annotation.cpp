@@ -51,7 +51,8 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
     return annotation;
 }
 
-std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since) {
+std::expected<Annotation, std::string> git_churn(llvm::StringRef project_root,
+                                                 llvm::StringRef since) {
     // --relative names the files from the project root and keeps only
     // those under it, whatever the repository root is.
     auto [ended] = kota::run(execute({"git",
@@ -61,7 +62,7 @@ std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm
                                       "--name-only",
                                       "--relative",
                                       "-z"},
-                                     workspace.str()));
+                                     project_root.str()));
     auto& log = *ended;
     if(!log) {
         return std::unexpected(log.error());

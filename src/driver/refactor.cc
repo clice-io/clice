@@ -197,7 +197,7 @@ int run_rename(const RenameOptions& opts) {
     auto& reader = *opened->reader;
     auto& failed = opened->failed;
     auto ctx = reader.context();
-    EditableFiles editable_files(reader.project.config);
+    EditableFiles editable_files(reader.project.root, reader.project.settings);
     auto editable = [&](llvm::StringRef path) {
         return editable_files.editable(path);
     };
@@ -234,21 +234,21 @@ CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "rename",
-        .description = "Rename symbols across the workspace",
+        .description = "Rename symbols across the project",
         .run = operation<RenameOptions>(
             "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]",
             "refactor",
             Errors::JSON,
             run_rename),
     });
-    return with_operations("Rewrite the workspace's sources through the persisted index",
+    return with_operations("Rewrite the project's sources through the persisted index",
                            std::move(operations),
                            Errors::JSON);
 }
 
 [[maybe_unused]] const bool registered = register_command(
     Command::refactor,
-    {.description = "Rewrite the workspace's sources through the persisted index", .build = build});
+    {.description = "Rewrite the project's sources through the persisted index", .build = build});
 
 }  // namespace
 

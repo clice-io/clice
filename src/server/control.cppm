@@ -20,7 +20,7 @@ namespace clice::control {
 /// Run a pass over the build — every unit re-validated against the disk, the ones
 /// the hash gate finds current skipped — and answer once the index is
 /// persisted. Refused when `configuration` is not the one the server
-/// indexes, or when its configuration keeps background indexing off.
+/// indexes, or when its settings keep background indexing off.
 struct IndexParams {
     std::string configuration;
 };

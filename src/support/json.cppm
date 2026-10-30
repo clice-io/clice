@@ -20,7 +20,7 @@ struct client_json_config : ipc::lsp_config {
     constexpr static auto invalid_utf8 = codec::invalid_utf8::Replace;
 };
 
-/// How a configuration spells an enumerator of one word: its name in
+/// How the settings spell an enumerator of one word: its name in
 /// lowercase (`Off` as `off`). Any other case names none, so a value is
 /// written as the documentation lists it.
 struct LowercaseName {

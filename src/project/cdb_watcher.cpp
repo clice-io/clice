@@ -7,8 +7,7 @@ import :vfs.path;
 
 namespace clice {
 
-CDBWatcher::CDBWatcher(Project& project, CanonicalPath root) :
-    project(project), root(std::move(root)) {
+CDBWatcher::CDBWatcher(Project& project) : project(project) {
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
         track(SourceID(i));
     }
@@ -143,10 +142,10 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
 void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     auto& disk = project.file_table.disk;
     if(!root_flag) {
-        root_flag = disk.watch(root.str());
+        root_flag = disk.watch(project.root.str());
     }
     if(!listed_at || root_flag->stamp != listed_at) {
-        listed = database_places(root);
+        listed = database_places(project.root);
         // An entry made within the clock tick of the root's last change
         // leaves its stamp as it was: only a stable stamp guarantees the
         // listing (see vfs::stable_mtime).
@@ -168,8 +167,8 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     want(listed);
     for(auto path_id: open_files) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.entries(path_id).empty() && path::is_within(path, root)) {
-            want(database_places_above(path.parent(), root));
+        if(project.build.entries(path_id).empty() && path::is_within(path, project.root)) {
+            want(database_places_above(path.parent(), project.root));
         }
     }
 
@@ -235,13 +234,13 @@ CDBDiff CDBWatcher::discover_around(Fid path_id) {
         return found;
     }
     auto path = project.file_table.resolve(path_id);
-    if(!path::is_within(path, root)) {
+    if(!path::is_within(path, project.root)) {
         return found;
     }
     // A registered database whose load failed so far (absent at startup,
     // unreadable at an earlier open) gets another try: with polling off
     // nothing else would.
-    for(auto& database: compile_commands_above(path.parent(), root)) {
+    for(auto& database: compile_commands_above(path.parent(), project.root)) {
         auto registered = project.cdb.find_source(database);
         if((registered && project.cdb.loaded(*registered)) ||
            (!registered && project.cdb.find_same_file(database))) {

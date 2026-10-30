@@ -1,4 +1,4 @@
-module clice:config.config;
+module clice:settings.settings;
 
 import :feature.code_completion;
 import :feature.diagnostics;
@@ -13,8 +13,8 @@ import :support.prelude;
 
 namespace clice {
 
-/// Defaults that are computed rather than written: a fresh Config queries
-/// them in its field initializers, so a default-constructed Config is
+/// Defaults that are computed rather than written: a fresh Settings queries
+/// them in its field initializers, so a default-constructed Settings is
 /// already fully valid ("born valid") and no later pass fills options in.
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
@@ -34,8 +34,8 @@ bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root);
 void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef project_root);
 
 /// The configuration files a project root may hold, in lookup order.
-constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
-                                                                     ".clice/config.toml"};
+constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.toml",
+                                                                       ".clice/config.toml"};
 
 /// A compile command written by hand: one string tokenized like a shell
 /// command line, or an argv array.
@@ -44,7 +44,7 @@ using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
 /// A file-pattern rule: where matching files take their compile commands
 /// from and how those commands are edited. Corresponds to `[[rules]]` in
 /// clice.toml.
-struct ConfigRule {
+struct Rule {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Glob patterns selecting the files this rule applies "
@@ -216,7 +216,7 @@ enum class ReadonlyMode : std::uint8_t {
 /// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
 /// here because their defaults derive from the project root in
 /// finalize().
-struct ProjectConfig {
+struct ProjectSettings {
     /// finalize() leaves it the directory's identity, empty for none;
     /// cache_identity() names the directory.
     KOTATSU_ANNOTATE(defaulted = true,
@@ -236,11 +236,6 @@ struct ProjectConfig {
     /// a configured directory may be shared with other content.
     KOTATSU_ANNOTATE(skip = true)
     <bool> cache_dir_defaulted = false;
-
-    /// The identity of cache_dir, empty for none.
-    CanonicalPath cache_identity() const {
-        return cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir));
-    }
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -349,12 +344,17 @@ struct ProjectConfig {
                          "reaches; `0` means the machine's physical cores, which "
                          "is also the default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
+
+    /// The identity of cache_dir, empty for none.
+    CanonicalPath cache_identity() const {
+        return cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir));
+    }
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: how often files
 /// are looked at in the background (integration tests drive ticks through
 /// the clice/internal/poll hook instead).
-struct TrackerConfig {
+struct TrackerSettings {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Longest interval in seconds between two background looks at a "
@@ -365,7 +365,7 @@ struct TrackerConfig {
 };
 
 /// Corresponds to the `[references]` section in clice.toml.
-struct ReferencesConfig {
+struct ReferencesSettings {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Maximum number of locations a references request "
@@ -427,7 +427,7 @@ struct CompiledRule {
 
 /// A problem found while reading a configuration, carrying enough
 /// structure to publish an LSP diagnostic on the file's URI.
-struct ConfigIssue {
+struct SettingsIssue {
     enum class Severity : std::uint8_t {
         /// A value clice cannot honor: nothing runs on the configuration.
         Error,
@@ -453,15 +453,15 @@ struct ConfigIssue {
 /// Configuration for the clice LSP server, loadable from clice.toml
 /// or passed via LSP initializationOptions.
 ///
-/// A default-constructed Config is fully valid: every option holds its
+/// A default-constructed Settings is fully valid: every option holds its
 /// real default (single source: the field initializers, including the
 /// feature options structs, which double as their config sections).
-/// Loading is layering (load_config) — each source is decoded onto the
+/// Loading is layering (load_settings) — each source is decoded onto the
 /// same object in precedence order (clice.toml, then initializationOptions)
 /// and only touches the fields it names, nested sections merging per field.
 /// finalize() never fills option defaults; it only computes derived
 /// values from the merged result.
-struct Config {
+struct Settings {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "The build configuration to fall back on when neither "
@@ -472,15 +472,15 @@ struct Config {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [project] section: project-wide server options.")
-    <ProjectConfig> project;
+    <ProjectSettings> project;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [tracker] section: background polling of files.")
-    <TrackerConfig> tracker;
+    <TrackerSettings> tracker;
 
     // The feature sections are the features' own options: `defaulted =
     // true` lets a decode leave unmentioned fields at their initializers, so
-    // those are the single source of every default and a config source only
+    // those are the single source of every default and a settings source only
     // ever overlays what it names.
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -520,24 +520,18 @@ struct Config {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [references] section: what find references answers.")
-    <ReferencesConfig> references;
+    <ReferencesSettings> references;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "File-pattern rules that adjust compilation flags "
                          "([[rules]] in clice.toml).")
-    <std::vector<ConfigRule>> rules;
+    <std::vector<Rule>> rules;
 
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The project root finalize() ran for: the `${workspace}` value, the
-    /// anchor of rules and databases no configuration file supplied, and
-    /// the enumeration root of `**`-led patterns.
-    KOTATSU_ANNOTATE(skip = true)
-    <CanonicalPath> project_root;
-
-    /// Compute the values derived from the final merged config: default
+    /// Compute the values derived from the final merged settings: default
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per
     /// load, after every source has been overlaid. Returns the values clice
@@ -555,6 +549,14 @@ struct Config {
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 
+    /// Whether `configuration` is one of the tags the rules declare.
+    bool declares(llvm::StringRef configuration) const;
+
+    /// The configuration active when nothing selects one:
+    /// `default_configuration`, else the first declared tag; empty when the
+    /// rules declare none.
+    llvm::StringRef fallback_configuration() const;
+
     /// The databases the rules active under `configuration` declare, in
     /// declaration order, each once.
     llvm::SmallVector<Spelling> declared_databases(llvm::StringRef configuration) const;
@@ -563,13 +565,13 @@ struct Config {
     /// Fields whose defaults derive from the running machine (the worker
     /// counts follow the CPU count) carry no `default` annotation, so the
     /// schema is byte-identical on every host. Unknown properties are
-    /// rejected — the schema-side face of load_config's unknown-key
+    /// rejected — the schema-side face of load_settings's unknown-key
     /// warnings.
     static std::expected<std::string, std::string> json_schema();
 };
 
 /// What a project's configuration is read with besides its root.
-struct ConfigOptions {
+struct LoadSettingsOptions {
     /// A JSON object of clice.toml sections laid over the file, whole or
     /// not at all: the client's initializationOptions, `--config-overlay`.
     std::optional<codec::dyn::Value> overlay;
@@ -592,16 +594,16 @@ struct ConfigOptions {
 
 /// A project's configuration as read: the configuration, the file it came
 /// from, the problems found and the build configuration that applies.
-struct LoadedConfig {
+struct LoadedSettings {
     /// The layers that decode, merged and finalized: what process-wide
     /// settings are read from even when the configuration has errors.
-    Config config;
+    Settings settings;
 
     /// The configuration file found, also one that does not parse; empty
     /// for none.
-    std::string path;
+    std::string file;
 
-    std::vector<ConfigIssue> issues;
+    std::vector<SettingsIssue> issues;
 
     /// The active build configuration: a declared tag, or empty when the
     /// rules declare none.
@@ -611,15 +613,18 @@ struct LoadedConfig {
     bool broken() const;
 };
 
+/// Whether one of `issues` is an error: nothing may run on the settings.
+bool has_error(llvm::ArrayRef<SettingsIssue> issues);
+
 /// Read the configuration of the project at `root` (empty for a project
 /// without a folder): find its file (clice.toml, else .clice/config.toml),
 /// decode it, lay the overlay over it, finalize and check every value;
 /// choose the cache directory — the one the merged configuration names,
 /// else the one the file names, else the default, else none, passing over
-/// those taken (ConfigOptions::taken_cache_dirs) or owned by another
+/// those taken (LoadSettingsOptions::taken_cache_dirs) or owned by another
 /// project (owned_elsewhere); then resolve the build configuration from
 /// that directory's selection. A layer that does not decode is left out,
 /// an unknown key is a warning and the rest of its layer applies.
-LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options = {});
+LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& options = {});
 
 }  // namespace clice

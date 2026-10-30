@@ -1,9 +1,9 @@
 [test."$ clice refactor"]
 stdout = '''
-Rewrite the workspace's sources through the persisted index
+Rewrite the project's sources through the persisted index
 
 Subcommands:
-  rename  Rename symbols across the workspace
+  rename  Rename symbols across the project
 '''
 exit = 0
 

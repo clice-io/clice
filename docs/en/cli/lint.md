@@ -3,7 +3,7 @@
 ## Overview
 
 clice integrates clang-tidy as a built-in linting engine. `clice lint` runs
-the checks of your `.clang-tidy` over the workspace's translation units with a
+the checks of your `.clang-tidy` over the project's translation units with a
 resident worker pool and prints one merged report.
 
 **Usage**: `clice lint [--workspace <dir>] [--configuration <tag>] [--jobs <n>] [--index] [--json]`
@@ -22,14 +22,14 @@ exits with `130`.
 
 ## What is checked
 
-- Every translation unit the compilation database lists, inside the workspace.
-- Every header inside the workspace that the checked units include, subject to
+- Every translation unit the compilation database lists, inside the project.
+- Every header inside the project that the checked units include, subject to
   the `.clang-tidy` header filters (`HeaderFilterRegex`,
   `ExcludeHeaderFilterRegex`, `SystemHeaders`), read exactly as clang-tidy
   reads them.
-- Files outside the workspace are never checked, whether or not the build marks
+- Files outside the project are never checked, whether or not the build marks
   them as system headers. A rule in `clice.toml` with `lint = false` keeps
-  matching files inside the workspace out as well, for example a vendored
+  matching files inside the project out as well, for example a vendored
   library:
 
 ```toml

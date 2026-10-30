@@ -1,0 +1,13 @@
+["a broken outer project"."sub/main.cpp"]
+diagnostics = [
+    {
+        at = "int main() { return ⟦undeclared⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'undeclared'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["a broken inner project"."sub/main.cpp"]
+diagnostics = []

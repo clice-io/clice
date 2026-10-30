@@ -3,7 +3,7 @@ module clice:project.build;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :config.config;
+import :settings.settings;
 import :support.prelude;
 import :vfs.file_table;
 
@@ -46,8 +46,11 @@ struct Edits {
 /// and nothing else consults the rules.
 class Build {
 public:
-    Build(Config& config, CompilationDatabase& cdb, FileTable& files) :
-        config(config), cdb(cdb), command_table(cdb.commands()), files(files) {}
+    Build(Settings& settings,
+          const CanonicalPath& root,
+          CompilationDatabase& cdb,
+          FileTable& files) :
+        settings(settings), root(root), cdb(cdb), command_table(cdb.commands()), files(files) {}
 
     /// The configuration tag every tagged rule is checked against; empty
     /// when the rules declare none.
@@ -56,7 +59,7 @@ public:
     }
 
     /// Activate a configuration — a declared tag, or empty when the rules
-    /// declare none (see resolve_configuration) — and forget what the
+    /// declare none (see choose_configuration) — and forget what the
     /// previous one enumerated and recorded: the default sources and the
     /// provisional members.
     void reset_active(llvm::StringRef configuration);
@@ -292,7 +295,9 @@ private:
     /// (never headers) matching the rules' patterns.
     void collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out);
 
-    Config& config;
+    Settings& settings;
+    /// The project's root (Project::root).
+    const CanonicalPath& root;
     CompilationDatabase& cdb;
     CommandTable& command_table;
     FileTable& files;
@@ -334,10 +339,10 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 /// trees (a directory holding CMakeCache.txt or build.ninja).
 bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
-/// What a refactoring may edit of the project `config` roots, outside its
+/// What a refactoring may edit of the project `settings` roots, outside its
 /// cache directory (feature::RenameScope).
 struct EditableFiles {
-    explicit EditableFiles(const Config& config);
+    EditableFiles(CanonicalRef root, const Settings& settings);
 
     /// The C-family sources and headers of the project, as absolute
     /// paths: the files under `root` a rename's scan reads, outside the

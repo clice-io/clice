@@ -1,12 +1,13 @@
 module clice;
 
-import :config.configuration;
+import :settings.settings;
 import :index.database;
 import :index.project_index;
 import :project.build;
 import :project.command_snapshot;
 import :project.project;
 import :project.save;
+import :support.json;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
@@ -17,13 +18,50 @@ namespace clice {
 
 namespace {
 
+/// The real path of a declared database file, also of one whose directory
+/// does not exist yet: a path without the .json extension names the
+/// directory holding it.
+std::string real_path(const Spelling& database) {
+    if(path::extension(database) == ".json") {
+        return CanonicalPath(database).str();
+    }
+    return CanonicalPath(Spelling("compile_commands.json", database)).str();
+}
+
+/// The real paths of the databases the rules active under `configuration`
+/// declare, in priority order.
+std::vector<std::string> real_databases(const Settings& settings, llvm::StringRef configuration) {
+    std::vector<std::string> paths;
+    for(auto& database: settings.declared_databases(configuration)) {
+        paths.push_back(real_path(database));
+    }
+    return paths;
+}
+
+/// What the rules active under `configuration` do besides naming
+/// databases, one string each in declaration order: configurations alike in
+/// it and in the databases they read build alike.
+std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef configuration) {
+    std::vector<std::string> edits;
+    for(auto rule: settings.rules) {
+        if(!rule.configuration.empty() && rule.configuration != configuration) {
+            continue;
+        }
+        rule.configuration.clear();
+        rule.compile_commands.clear();
+        rule.resolve_symlinks = false;
+        edits.push_back(json::to_string(rule).value_or(""));
+    }
+    return edits;
+}
+
 /// Register and load the build's sources: the databases the rules declare
 /// (existing or not; the tracker watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
 /// meet later — the persisted index's (see CommandSnapshot::remembered),
 /// those above the file a run is about (see compile_commands_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
-    CanonicalRef root = project.config.project_root;
+    CanonicalRef root = project.root;
     ScopedTimer cdb_timer;
     std::size_t entries = 0;
     auto paths = project.build.declared_sources();
@@ -141,25 +179,42 @@ void load_members(Project& project,
     }
 }
 
+/// Why the index cache at `where` cannot be read, as `outcome` says; empty
+/// for one that loaded.
+std::string unreadable_index(index::LoadOutcome outcome, std::string_view where) {
+    switch(outcome) {
+        case index::LoadOutcome::Loaded: return {};
+        case index::LoadOutcome::Empty:
+            return std::format("No index cache at {}; run `clice index` first", where);
+        case index::LoadOutcome::Undecodable:
+            return std::format(
+                "Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
+                where);
+        case index::LoadOutcome::Unreadable:
+            return std::format("Failed to read the index cache at {}; the cache was left untouched",
+                               where);
+    }
+    std::unreachable();
+}
+
 /// Open the cache store and the index database as `options` say; why the
 /// index cannot be read, for a run that reads it, else empty.
 std::string open_store(Project& project, const Project::OpenOptions& options) {
     using Store = Project::OpenOptions::Store;
     using Index = Project::OpenOptions::Index;
-    auto& cache_dir = project.config.project.cache_dir;
+    auto& cache_dir = project.settings.project.cache_dir;
     if(options.store == Store::None || cache_dir.empty()) {
         return {};
     }
     bool read_only = options.store == Store::ReadOnly;
-    // Read-only, the default cache directory exists as soon as the config
+    // Read-only, the default cache directory exists as soon as the settings
     // resolves it, so only the versioned store inside it proves an index
     // was ever built — and a live server (even one on an older layout)
     // must not lose blobs to a reader.
     auto store = CacheStore::open(cache_dir, cache_format_version, read_only);
     if(!store) {
         if(read_only && store.error() == std::errc::no_such_file_or_directory) {
-            return std::format("No index cache at {}; run `clice index` first",
-                               std::string_view(cache_dir));
+            return unreadable_index(index::LoadOutcome::Empty, cache_dir);
         }
         auto why = std::format("Failed to open cache store at {}: {}",
                                std::string_view(cache_dir),
@@ -191,8 +246,8 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
             return {};
         }
         if(!index::database_exists(*project.store, key)) {
-            return std::format("No index cache at {}; run `clice index` first",
-                               index::database_directory(*project.store, key));
+            return unreadable_index(index::LoadOutcome::Empty,
+                                    index::database_directory(*project.store, key));
         }
         return std::format("The index database at {} cannot be opened; the log above says why",
                            index::database_directory(*project.store, key));
@@ -202,9 +257,9 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         return {};
     }
     // The owner is recorded, and checked again, under the lock: another
-    // project may have become the directory's owner since the configuration
+    // project may have become the directory's owner since the settings
     // chose it.
-    CanonicalRef root = project.config.project_root;
+    CanonicalRef root = project.root;
     if(owned_elsewhere(cache_dir, root)) {
         LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps no index",
                      std::string_view(cache_dir),
@@ -221,27 +276,43 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     return {};
 }
 
-/// Bind the index's tables in place, fetched on first use: what a run
-/// reading the index alone needs. Why it cannot be read, else empty.
-std::string open_tables(Project& project) {
-    auto& cache_dir = project.config.project.cache_dir;
-    switch(project.index.open(*project.database)) {
-        case index::LoadOutcome::Loaded: return {};
-        case index::LoadOutcome::Empty:
-            return std::format("No index cache at {}; run `clice index` first",
-                               std::string_view(cache_dir));
-        case index::LoadOutcome::Undecodable:
-            return std::format(
-                "Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                std::string_view(cache_dir));
-        case index::LoadOutcome::Unreadable:
-            return std::format("Failed to read the index cache at {}; the cache was left untouched",
-                               std::string_view(cache_dir));
+}  // namespace
+
+std::string resolved_databases(const Settings& settings, llvm::StringRef configuration) {
+    std::string resolved;
+    for(auto& rule: settings.compiled_rules) {
+        if(!rule.resolve_symlinks || !rule.active_under(configuration)) {
+            continue;
+        }
+        for(auto& database: rule.compile_commands) {
+            if(!resolved.empty()) {
+                resolved += '\n';
+            }
+            resolved += real_path(database);
+        }
     }
-    std::unreachable();
+    return resolved;
 }
 
-}  // namespace
+index::DatabaseKey database_key(const Settings& settings,
+                                llvm::StringRef configuration,
+                                llvm::StringRef resolved) {
+    if(resolved.empty()) {
+        return {.configuration = configuration.str()};
+    }
+    auto databases = real_databases(settings, configuration);
+    auto edits = edits_of(settings, configuration);
+    for(auto tag: settings.configurations()) {
+        auto resolves = [&](const CompiledRule& rule) {
+            return rule.resolve_symlinks && rule.active_under(tag);
+        };
+        if(tag != configuration && ranges::none_of(settings.compiled_rules, resolves) &&
+           real_databases(settings, tag) == databases && edits_of(settings, tag) == edits) {
+            return {.configuration = tag.str()};
+        }
+    }
+    return {.configuration = configuration.str(), .resolved = resolved.str()};
+}
 
 Project::Opened Project::open(const OpenOptions& options) {
     using Build = OpenOptions::Build;
@@ -249,12 +320,11 @@ Project::Opened Project::open(const OpenOptions& options) {
     assert((options.index != Index::Write || options.store == OpenOptions::Store::Writable) &&
            "the index's writer builds into a writable store");
     Opened opened;
-    CanonicalRef root = config.project_root;
     index.project_root = root;
     commands.set_project_root(root);
     build.reset_active(options.configuration);
-    resolved_databases = clice::resolved_databases(config, options.configuration);
-    database_key = clice::database_key(config, options.configuration, resolved_databases);
+    resolved_databases = clice::resolved_databases(settings, options.configuration);
+    database_key = clice::database_key(settings, options.configuration, resolved_databases);
     if(database_key.configuration != options.configuration) {
         LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",
                  options.configuration,
@@ -279,27 +349,23 @@ Project::Opened Project::open(const OpenOptions& options) {
             load_members(*this, remembered.sources, remembered.provisional, opened);
             break;
     }
-    opened.has_commands = !opened.members.empty() || build.declares_sources();
 
     if(database && opened.unreadable.empty()) {
         // A run reading the index alone binds its tables; with the build,
         // the saved state is read as the writer reads it.
+        // The tables a run reading the index alone binds in place, fetched
+        // on first use.
+        auto& cache_dir = settings.project.cache_dir;
         if(options.index == Index::Read && options.build != Build::Members) {
-            opened.unreadable = open_tables(*this);
+            opened.unreadable = unreadable_index(index.open(*database), cache_dir);
         } else {
             auto saved = load_saved(*this, options.build == Build::Members);
             opened.report = std::move(saved.report);
             // A reader takes no fresh database for one it cannot read.
-            auto& cache_dir = config.project.cache_dir;
             if(!saved.decoded && database && database->read_only()) {
-                opened.unreadable = std::format(
-                    "Index cache at {} is in an old or corrupt format; run `clice index` to "
-                    "rebuild",
-                    std::string_view(cache_dir));
+                opened.unreadable = unreadable_index(index::LoadOutcome::Undecodable, cache_dir);
             } else if(!database && options.index == Index::Read) {
-                opened.unreadable = std::format(
-                    "Failed to read the index cache at {}; the cache was left untouched",
-                    std::string_view(cache_dir));
+                opened.unreadable = unreadable_index(index::LoadOutcome::Unreadable, cache_dir);
             }
             // A unit deleted while no server ran keeps its index until a
             // look finds it missing (see FreshnessGate).
@@ -308,10 +374,11 @@ Project::Opened Project::open(const OpenOptions& options) {
             file_table.disk.find_missing(units);
         }
     }
+    // The store stays: a run building artifacts (lint without --index)
+    // still builds into it, only without the index's records.
     if(!opened.unreadable.empty()) {
         index.clear();
         database.reset();
-        store.reset();
     }
     return opened;
 }

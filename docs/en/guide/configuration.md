@@ -44,11 +44,11 @@ An edit to the configuration applies when the server starts again.
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Changes need a restart**
+**Changes restart the server**
 
-clice reads `clice.toml` when the server starts, so an edit applies at the next start
+clice reads `clice.toml` when the server starts. Saving it makes the server ask the editor to restart it, and the edit applies in the new server
 
-The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.
+The rule gains the macro while the server runs; once the editor restarted the server, `main.cpp` compiles with it.
 
 ```case
 tests/config/loading/04_edited_file
@@ -84,7 +84,7 @@ Top-level options, written before any section.
 | ----------------------- | -------- | ------- |
 | `default_configuration` | `string` | `""`    |
 
-The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
+The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules; a name no rule declares is an error. Unset, the first declared tag is used.
 
 </div>
 
@@ -180,7 +180,7 @@ Enable the clice/internal test hooks used by the test harness.
 | ----------------------- | -------- | ------- |
 | `stateful_worker_count` | `uint32` | `2`     |
 
-Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
+Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); at least 1.
 
 </div>
 
@@ -190,7 +190,7 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 | ------------------------ | -------- | ------- |
 | `stateless_worker_count` | `uint32` | —       |
 
-Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default.
+Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. At least 1.
 
 </div>
 
@@ -200,7 +200,7 @@ Number of stateless workers started — they handle ephemeral tasks (PCH/PCM bui
 | ---------------------------- | -------- | ------- |
 | `min_stateless_worker_count` | `uint32` | `1`     |
 
-Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
+Lower bound for dynamic stateless-worker scaling; at least 1.
 
 </div>
 
@@ -728,7 +728,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the project root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
 
 </div>
 
@@ -748,7 +748,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
 
 </div>
 
@@ -758,7 +758,7 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 | ------------------ | ------ | ------- |
 | `resolve_symlinks` | `bool` | `false` |
 
-Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.
+Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server asks to be restarted on that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.
 
 </div>
 
@@ -768,7 +768,7 @@ Whether builds are told apart by the real paths this rule's `compile_commands` r
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
 
-The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the project root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
 
 </div>
 
@@ -818,7 +818,7 @@ Whether matching translation units join the background index. `false` keeps them
 | ------ | ------ | ------- |
 | `lint` | `bool` | `true`  |
 
-Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the workspace are never checked. Any matching rule saying `false` wins.
+Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the project are never checked. Any matching rule saying `false` wins.
 
 </div>
 
@@ -828,7 +828,7 @@ Whether `clice lint` checks matching files. `false` keeps them out: their findin
 | -------- | ------ | ------- |
 | `format` | `bool` | `true`  |
 
-Whether `clice format` formats matching files. `false` keeps them out. Files outside the workspace are never formatted. Any matching rule saying `false` wins.
+Whether `clice format` formats matching files. `false` keeps them out. Files outside the project are never formatted. Any matching rule saying `false` wins.
 
 </div>
 

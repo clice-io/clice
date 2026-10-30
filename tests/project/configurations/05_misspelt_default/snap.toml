@@ -14,7 +14,7 @@ pushes = [
 menu = ["debug", "release"]
 active = ""
 selected = ""
-default = "debug"
+default = "relase"
 
 ["a misspelt default is an error"."main.cpp"]
 diagnostics = []

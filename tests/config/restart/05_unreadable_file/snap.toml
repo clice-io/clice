@@ -1,0 +1,13 @@
+[test.asked]
+value = "The configuration file of ${WS} was deleted"
+
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "int main() { return ⟦undeclared⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'undeclared'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

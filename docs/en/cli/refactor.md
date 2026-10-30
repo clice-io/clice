@@ -2,13 +2,13 @@
 
 ## Overview
 
-`clice refactor` rewrites the workspace's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring today; an editor's rename runs the same engine.
+`clice refactor` rewrites the project's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring today; an editor's rename runs the same engine.
 
 **Usage**: `clice refactor rename (<locator> <new-name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 
 ## Rename
 
-The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its name, spelled exactly, case included, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A near match or a pattern names nothing to rewrite a workspace for. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
+The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its name, spelled exactly, case included, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A near match or a pattern names nothing to rewrite a project for. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
 
 A rename changes every declaration, definition and reference the index ties to the symbol, and the symbols that must keep its name:
 
@@ -20,7 +20,7 @@ Operators, conversion functions, user-defined literals, macros, symbols declared
 
 ## Many renames at once
 
-`--spec <file>` makes every rename a file lists in one run: the index is read and the workspace swept once, so a terminology cleanup across hundreds of names costs about what one rename does, and the index is brought up to date once afterwards instead of between renames. `-` reads the list from stdin. Each line is `<locator> => <new name>`; blank lines and lines starting with `//` are skipped. A line naming several symbols is an error of its own, so a list is best written from the `symbol` each answer of `clice query` carries:
+`--spec <file>` makes every rename a file lists in one run: the index is read and the project swept once, so a terminology cleanup across hundreds of names costs about what one rename does, and the index is brought up to date once afterwards instead of between renames. `-` reads the list from stdin. Each line is `<locator> => <new name>`; blank lines and lines starting with `//` are skipped. A line naming several symbols is an error of its own, so a list is best written from the `symbol` each answer of `clice query` carries:
 
 ```
 // row → variant, flavor → kind
@@ -37,7 +37,7 @@ The list is all or nothing: a line that names no symbol, a conflict of any line,
 
 The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's, the same for one rename and for a list:
 
-- `renames` has one entry per rename asked for, with its `line` in the list, its `locator` as written, the symbol it found — `name`, `kind`, `symbol` — its `newName` and how many tokens it `edits`. An `error` says why its locator names no symbol to rename, with `candidates` when it names several. Its `warnings` are made anyway: the new name overloads a function of the same scope, or is reserved for the implementation. Its `conflicts` stop it: the new name is declared in the same scope already, is a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge; an earlier line renames the symbol to another name; a token it changes also names a symbol another line renames to another name.
+- `renames` has one entry per rename asked for, with its `line` in the list, its `locator` as written, the symbol it found — `name`, `kind`, `symbol` — its `newName` and how many tokens it `edits`. An `error` says why its locator names no symbol to rename, with `candidates` when it names several. Its `warnings` are made anyway: the new name overloads a function of the same scope, or is reserved for the implementation. Its `conflicts` stop it: the new name is declared in the same scope already, is a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the project; two namespaces would merge; an earlier line renames the symbol to another name; a token it changes also names a symbol another line renames to another name.
 - `files` lists the tokens replaced in each file, with a 1-based line and byte column and the `name` and `newName` each trades. `heuristic` marks one reached through a name the index resolved by heuristics — a call in a template whose callee depends on a template parameter — worth a look.
 - `unconfirmed` lists the places spelling an old `name` that the renames leave alone because no written code says what they name: the body of a `#define`, which names something else in another expansion, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles, a token that also names another symbol of the old name — under another build configuration, or as another overload a call in a template may pick. Read them before building.
 - `conflicts` stop all the renames together: a token two of them would change to different names, or a file that could not be rewritten.
@@ -49,7 +49,7 @@ The exit code is 0 when the renames were written, or planned under `--dry-run`, 
 
 Without `--dry-run` the command writes the files once every new text is computed: a file whose text changed since the plan was made stops the whole rename before anything is written. Each file is rewritten in place, keeping its byte order mark, line endings and permissions; a file that cannot be written — read-only, or a full disk — stops the rename there, and the error names the files already rewritten.
 
-Only the workspace is edited: hidden directories, the cache directory and build trees (a directory holding `CMakeCache.txt` or `build.ninja`) are left out. Its sources and headers are searched for the old and new names by suffix; an edit the index places may land in a file of any suffix.
+Only the project is edited: hidden directories, the cache directory and build trees (a directory holding `CMakeCache.txt` or `build.ninja`) are left out. Its sources and headers are searched for the old and new names by suffix; an edit the index places may land in a file of any suffix.
 
 The command reads the disk; unsaved editor buffers are invisible to it. Save them first, or rename from the editor.
 

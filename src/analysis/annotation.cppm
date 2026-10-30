@@ -38,6 +38,7 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path);
 
 /// The churn annotation from the project's git history: per file, the
 /// commits since `since` (any `git log --since` value) that touched it.
-std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since);
+std::expected<Annotation, std::string> git_churn(llvm::StringRef project_root,
+                                                 llvm::StringRef since);
 
 }  // namespace clice::analysis

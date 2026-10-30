@@ -282,10 +282,9 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
             llvm::StringRef primary = declared.primary;
             if(path::is_absolute(primary) || path::is_absolute(primary, path::Style::Posix) ||
                ranges::contains(path::components(primary), std::string_view(".."))) {
-                return std::unexpected(
-                    std::format("module {}: primary {} lies outside the workspace",
-                                declared.name,
-                                primary.str()));
+                return std::unexpected(std::format("module {}: primary {} lies outside the project",
+                                                   declared.name,
+                                                   primary.str()));
             }
         } else if(module.primary) {
             return std::unexpected(

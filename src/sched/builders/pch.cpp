@@ -190,7 +190,7 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
     worker::BuildPCHParams bp;
     bp.file = std::move(request.file);
     bp.directory = std::move(request.directory);
-    bp.project_root = project.config.project_root.str();
+    bp.project_root = project.root.str();
     bp.arguments = std::move(request.arguments);
     bp.hidden = std::move(request.hidden);
     bp.content = std::move(request.content);

@@ -54,7 +54,7 @@ struct Harness {
         trees(project, pool), pch(graph, project, pool),
         pcm(graph, project, resolver.commands, pch, pool),
         ast(project, resolver, graph, trees, pcm, pch, pool, store, failures) {
-        project.config.project.skip_header_bodies = false;
+        project.settings.project.skip_header_bodies = false;
     }
 };
 
@@ -315,7 +315,7 @@ ZEST_CASE(SkippedBodiesReindexOpen) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    project.config.project.skip_header_bodies = true;
+    project.settings.project.skip_header_bodies = true;
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
@@ -1085,8 +1085,9 @@ ZEST_CASE(CDBRemovedStillCovered) {
 
     Project project{files};
     SessionStore store;
-    project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(Rule{.default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto gone_id = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
     auto json = build_cdb_json({

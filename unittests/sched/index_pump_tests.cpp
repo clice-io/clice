@@ -192,7 +192,7 @@ ZEST_CASE(RoundSnapshotBoundary) {
     IndexerFixture f;
     // Manual rounds: the tail schedule() must no-op so the boundary between
     // the two rounds stays observable.
-    f.project.config.project.enable_indexing.value = false;
+    f.project.settings.project.enable_indexing.value = false;
 
     auto a = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
     auto b = f.project.file_table.intern(Spelling::absolute("/fake/b.cpp"));
@@ -234,7 +234,7 @@ ZEST_CASE(RoundSnapshotBoundary) {
 
 ZEST_CASE(PauseResumesRound) {
     IndexerFixture f;
-    f.project.config.project.enable_indexing.value = false;
+    f.project.settings.project.enable_indexing.value = false;
 
     auto a = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
     auto b = f.project.file_table.intern(Spelling::absolute("/fake/b.cpp"));
@@ -357,8 +357,8 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     // it to fire now. Un-fixed, this test waits out the full idle window
     // below instead of finishing promptly.
     IndexerFixture f;
-    f.project.config.project.enable_indexing.value = true;
-    f.project.config.project.idle_timeout_ms.value = 60'000;
+    f.project.settings.project.enable_indexing.value = true;
+    f.project.settings.project.idle_timeout_ms.value = 60'000;
 
     auto id = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
@@ -375,8 +375,8 @@ ZEST_CASE(BoostSparesRunningRound) {
     // past the round and leads the next one. Moved into the running round,
     // it would run there a second time and push the round's last file out.
     IndexerFixture f;
-    f.project.config.project.enable_indexing.value = true;
-    f.project.config.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.enable_indexing.value = true;
+    f.project.settings.project.idle_timeout_ms.value = 0;
 
     llvm::SmallVector<Fid> files;
     for(auto name: {"/fake/a.cpp", "/fake/b.cpp", "/fake/c.cpp"}) {

@@ -30,9 +30,9 @@ General-purpose utilities and infrastructure shared by all other modules.
 - `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else its own path under the workspace folder the user opened, never the spelling an include lookup reached it by. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
 - `CacheStore`: The on-disk artifact store for file-shaped build products (PCH/PCM and friends) — atomic pair commits, namespace quotas, LRU eviction, and crash recovery
 
-### `src/config/` — Configuration
+### `src/settings/` — Settings
 
-- `Config`: Loading and merging of `clice.toml` and LSP `initializationOptions`, strict unknown-key validation, and the JSON schema the configuration docs are generated from.
+- `Settings`: Loading and merging of `clice.toml` and LSP `initializationOptions`, located errors and unknown-key warnings, the JSON schema the configuration docs are generated from, and choosing the build configuration.
 
 ### `src/command/` — Compilation Command Processing
 

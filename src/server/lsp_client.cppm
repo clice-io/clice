@@ -77,10 +77,10 @@ private:
     /// capability-gated.
     void refresh_diagnostics();
 
-    /// Push every served project's clice.toml load problems as
-    /// diagnostics on the config file URI, and clear the ones of a
-    /// configuration no project loads any more.
-    void publish_config_diagnostics();
+    /// Push every served project's clice.toml problems as
+    /// diagnostics on the configuration file's URI, and clear the ones of a
+    /// configuration file no project reads any more.
+    void publish_settings_diagnostics();
 
     /// The server must restart (MasterServer::restart_reasons): ask a client
     /// that restarts it, once; else tell the user, a configuration file by a
@@ -216,8 +216,8 @@ private:
     /// clice/restartServer was sent; the client is restarting the server.
     bool restart_asked = false;
 
-    /// How many of MasterServer::restart_reasons the user was told of.
-    std::size_t restart_told = 0;
+    /// The restart reasons the user was told of in a message.
+    llvm::StringSet<> restarts_told;
 
     /// What the client takes from a completion item.
     feature::CompletionClient completion_client;
@@ -292,8 +292,8 @@ private:
     /// publish_alias for every second name of `path_id`.
     void publish_aliases(Fid path_id);
 
-    /// The configuration files publish_config_diagnostics published last.
-    llvm::StringSet<> published_configs;
+    /// The configuration files publish_settings_diagnostics published last.
+    llvm::StringSet<> published_settings_files;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<ProjectServer&, std::shared_ptr<Session>>::Connection output_conn;

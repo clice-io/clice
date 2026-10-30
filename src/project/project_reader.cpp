@@ -17,9 +17,9 @@ std::string damaged_index_error(const Project& project) {
 feature::query::Context ProjectReader::context() const {
     return {
         .query = query,
-        .root = project.config.project_root,
+        .root = project.root,
         .cwd = Spelling::cwd(),
-        .documentation = project.config.documentation,
+        .documentation = project.settings.documentation,
     };
 }
 

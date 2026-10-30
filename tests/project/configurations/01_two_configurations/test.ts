@@ -151,8 +151,8 @@ test(
 );
 
 // An editor whose only UI for configurations is its code action menu
-// switches them through source actions; the server tells the user that the
-// choice applies at the next start.
+// switches them through source actions; the server asks to be restarted on
+// the choice.
 test("source actions select a configuration", async (t) => {
     const s = await t.start();
     s.open("main.cpp", { pull: false });

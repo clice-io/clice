@@ -3,7 +3,7 @@ module clice;
 import :analysis.module_graph;
 import :analysis.text;
 import :command.file_kind;
-import :config.config;
+import :settings.settings;
 import :index.project_index;
 import :index.shard;
 import :index.symbol_query;
@@ -1394,8 +1394,7 @@ std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
             return std::unexpected(LoadError{.message = std::move(edited.error())});
         }
     }
-    return LoadedFacts{.root = llvm::StringRef(project.config.project_root).str(),
-                       .facts = std::move(facts)};
+    return LoadedFacts{.root = llvm::StringRef(project.root).str(), .facts = std::move(facts)};
 }
 
 std::expected<void, std::string> move_entities(Facts& facts,
@@ -1741,7 +1740,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         auto module = result.module_of[file];
         if(!result.primaries[module].empty() &&
            path::is_absolute(facts.files[file].path, path::Style::Posix)) {
-            return std::unexpected(std::format("module {} would rewrite {}, outside the workspace",
+            return std::unexpected(std::format("module {} would rewrite {}, outside the project",
                                                result.modules[module],
                                                facts.files[file].path));
         }

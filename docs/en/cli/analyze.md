@@ -12,7 +12,7 @@
 
 Every file in the scope belongs to a module, by default its directory. A module depends on another when one of its files names an entity a file of the other provides: a spelled name, a name a macro expansion produces in that file, or the template an explicit specialization specializes. The file providing an entity is a header defining it, else a header declaring it, else the source defining it. A dependency from a header is an interface edge, which would become an import of the module's interface; one only from sources is an implementation edge, which never closes a cycle because an implementation unit may import a module above it. Textual fragments such as `.inc` and `.def` files count as part of the files including them. A header only its own module's sources use, directly or through other such headers, is an internal partition: it adds nothing to the module's interface, and none of its dependencies are interface edges.
 
-- `--scope <glob>` analyzes only the files the glob matches, as a workspace-relative path; repeat it for several. By default every indexed file under the workspace outside a dot directory.
+- `--scope <glob>` analyzes only the files the glob matches, as a path relative to the project root; repeat it for several. By default every indexed file under the project root outside a dot directory.
 - `--dir-depth <n>` names a file's default module by the first `n` segments of its directory instead of all of them.
 - `--partition <file>` assigns modules by globs, first match wins: `{"modules": [{"name": "core", "files": ["src/support/**", "src/vfs/**"]}]}`. Files no glob claims keep their directory module. For the `interface` view and [modularize](./modularize.md), `"textual": true` keeps a module headers, `"external": true` marks one an existing module stands for (the standard library), and `"provides": "std.compat"` names the module exporting a module's names, read from the libc++ module sources `--std <dir>` names.
 - `--move <path>=<module>` and `--merge <module>+<module>[+...]` evaluate a hypothetical change without making it; repeat them for several.
@@ -57,7 +57,7 @@ An annotation is a named number per file that weighs the results, the way a prof
 - `churn` is how often a file changes: by default the commits of the last six months that touched it, from `git log` (`--churn-since <date>` takes any `git log --since` value; an empty value leaves it out). Hotspots and rebuild totals multiply by it.
 - `compile_time` is what rebuilding a translation unit costs. Without it every unit counts as one.
 
-An annotation file is `{"name": "compile_time", "unit": "s", "values": {"src/main.cpp": 4.2}}` with workspace-relative paths; one named like a computed annotation replaces it.
+An annotation file is `{"name": "compile_time", "unit": "s", "values": {"src/main.cpp": 4.2}}` with paths relative to the project root; one named like a computed annotation replaces it.
 
 ## Answers
 

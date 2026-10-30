@@ -26,7 +26,7 @@ std::string selected_hash(Project& project, Fid file) {
 
 /// JSON layout of the persisted command snapshot (blob kind
 /// CommandSnapshot): per source file, the sorted canonical command hashes of
-/// its entries and a hash of its matched config rules when the index state
+/// its entries and a hash of its matched rules when the index state
 /// was last saved. A unit without entries gets an entry too (empty
 /// hashes): the command covering it and its matched rules. Paths are the
 /// database's names (ProjectIndex::portable).
@@ -215,7 +215,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     Blob persisted;
     if(!json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
-                  std::string_view(project.config.project.cache_dir));
+                  std::string_view(project.settings.project.cache_dir));
         dirty = true;
         llvm::SmallVector<Fid> units;
         project_index.for_each_unit([&](Fid tu) { units.push_back(tu); });

@@ -1,6 +1,6 @@
 module clice;
 
-import :config.config;
+import :settings.settings;
 import :driver.driver;
 import :index.database;
 import :index.format;
@@ -15,7 +15,6 @@ import :index.writer_lock;
 import :feature.query;
 import :project.project;
 import :project.project_reader;
-import :project.project;
 import :sched.batch;
 import :server.control;
 import :support.text;
@@ -85,7 +84,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
+    auto& [root, loaded] = *read;
     // Progress goes to stderr whatever the log level: a run spends most of
     // its time with nothing else to say, and the per-unit log lines exist
     // only at info level. The batch paces the reports, and a tick with the
@@ -102,7 +101,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
             std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
     };
     auto indexed =
-        index_project({.root = std::move(root), .config = std::move(config), .workers = workers},
+        index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
                       report_progress);
     if(!indexed) {
         LOG_ERROR("{}", indexed.error());
@@ -896,20 +895,16 @@ int read_index(const ProjectOptions& where, Run run) {
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
-    auto project = open_reader(root,
-                               std::move(config),
-                               {
-                                   .build = Project::OpenOptions::Build::None,
-                                   .store = Project::OpenOptions::Store::ReadOnly,
-                                   .index = Project::OpenOptions::Index::Read,
-                               },
-                               /*check_disk=*/false);
-    if(!project.opened.unreadable.empty()) {
-        LOG_ERROR("{}", project.opened.unreadable);
+    auto& [root, loaded] = *read;
+    auto project = open_index(root,
+                              std::move(loaded),
+                              Project::OpenOptions::Build::None,
+                              {},
+                              /*check_disk=*/false);
+    if(!project) {
         return 1;
     }
-    auto& reader = *project.reader;
+    auto& reader = *project->reader;
     auto rc = run(reader);
     // A damaged record reads as missing, its log line the only trace: what
     // was printed is no answer automation may take as one.

@@ -69,10 +69,10 @@ CommandHandler build() {
                                   if(!read) {
                                       return print_error(read.error());
                                   }
-                                  auto& [root, config] = *read;
+                                  auto& [root, loaded] = *read;
                                   BatchFormatOptions options{
                                       .root = std::move(root),
-                                      .config = std::move(config),
+                                      .loaded = std::move(loaded),
                                       .jobs = opts.jobs.jobs.value_or(0),
                                       .check = static_cast<bool>(opts.check),
                                   };

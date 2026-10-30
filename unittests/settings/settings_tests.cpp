@@ -3,7 +3,7 @@ module clice;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :config.config;
+import :settings.settings;
 import :feature.code_completion;
 import :project.build;
 import :support.shell;
@@ -65,16 +65,17 @@ static bool default_mentions(const codec::dyn::Value& value,
     return false;
 }
 
-/// The edits the rules of `config` contribute for `path`, the way the build
+/// The edits the rules of `settings` contribute for `path`, the way the build
 /// view accumulates them.
-void match_rules(const Config& config,
+void match_rules(const Settings& settings,
                  llvm::StringRef path,
                  std::vector<std::string>& append,
                  std::vector<std::string>& remove) {
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{const_cast<Config&>(config), cdb, files};
+    CanonicalPath root;
+    Build build{const_cast<Settings&>(settings), root, cdb, files};
     for(auto& edit: build.edits(CanonicalPath(Spelling::absolute(path))).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
         out.insert(out.end(), edit.flags.begin(), edit.flags.end());
@@ -88,7 +89,7 @@ static codec::dyn::Value overlay(std::string_view text) {
     return std::move(*value);
 }
 
-ZEST_SUITE(Config) {
+ZEST_SUITE(Settings) {
 
 ZEST_CASE(CacheDirServesOneProject) {
     /// A shared cache directory keeps the root it was first used for; the
@@ -121,10 +122,10 @@ ZEST_CASE(CacheDirServesOneProject) {
     ZEXPECT(owned_elsewhere(moved, a));
 
     tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));
-    auto loaded = load_config(b);
+    auto loaded = load_settings(b);
     auto own = path::join(b, ".clice");
     path::canonicalize(own);
-    ZEXPECT(std::string(loaded.config.project.cache_dir) == own);
+    ZEXPECT(std::string(loaded.settings.project.cache_dir) == own);
 };
 
 ZEST_CASE(CacheDirFallbackChain) {
@@ -138,33 +139,33 @@ cache_dir = "file-cache"
     };
     auto cache_overlay = overlay(R"({ "project": { "cache_dir": "overlay-cache" } })");
 
-    auto merged = load_config(root, {.overlay = cache_overlay});
-    ZEXPECT(std::string_view(merged.config.project.cache_dir) == identity("overlay-cache").str());
+    auto merged = load_settings(root, {.overlay = cache_overlay});
+    ZEXPECT(std::string_view(merged.settings.project.cache_dir) == identity("overlay-cache").str());
 
     std::vector<CanonicalPath> taken = {identity("overlay-cache")};
-    auto own = load_config(root, {.overlay = cache_overlay, .taken_cache_dirs = taken});
-    ZEXPECT(std::string_view(own.config.project.cache_dir) == identity("file-cache").str());
+    auto own = load_settings(root, {.overlay = cache_overlay, .taken_cache_dirs = taken});
+    ZEXPECT(std::string_view(own.settings.project.cache_dir) == identity("file-cache").str());
     ZEXPECT(own.issues.empty());
 
     taken.push_back(identity("file-cache"));
-    auto fallback = load_config(root, {.overlay = cache_overlay, .taken_cache_dirs = taken});
-    ZEXPECT(std::string_view(fallback.config.project.cache_dir) == identity(".clice").str());
-    ZEXPECT(fallback.config.project.cache_dir_defaulted.value == true);
+    auto fallback = load_settings(root, {.overlay = cache_overlay, .taken_cache_dirs = taken});
+    ZEXPECT(std::string_view(fallback.settings.project.cache_dir) == identity(".clice").str());
+    ZEXPECT(fallback.settings.project.cache_dir_defaulted.value == true);
     ZEXPECT(fallback.issues.empty());
 }
 
 ZEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.
-    auto result = codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
+    auto result = codec::toml::from_string<ProjectSettings>(R"(cache_dir = "/tmp/test")");
     ZEXPECT(result);
     ZEXPECT(std::string_view(result->cache_dir) == "/tmp/test");
     ZEXPECT(result->enable_indexing.value == true);
     ZEXPECT(result->idle_timeout_ms.value == 3000u);
 }
 
-ZEST_CASE(ParseConfigRule) {
-    auto result = codec::toml::from_string<ConfigRule>(R"(
+ZEST_CASE(ParseRule) {
+    auto result = codec::toml::from_string<Rule>(R"(
 patterns = ["**/*.cpp"]
 append = ["-std=c++20"]
 )");
@@ -175,8 +176,8 @@ append = ["-std=c++20"]
     ZEXPECT(result->remove.empty());
 }
 
-ZEST_CASE(ParseFullConfig) {
-    auto result = codec::toml::from_string<Config>(R"(
+ZEST_CASE(ParseFullSettings) {
+    auto result = codec::toml::from_string<Settings>(R"(
 [project]
 cache_dir = "/tmp/test"
 enable_indexing = false
@@ -193,7 +194,7 @@ append = ["-std=c++20"]
 }
 
 ZEST_CASE(ParseInlayHints) {
-    auto result = codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Settings>(R"(
 [inlay_hints]
 block_end = true
 parameters = false
@@ -209,15 +210,15 @@ types = 64
     ZEXPECT(result->inlay_hints.designators.value == true);
 }
 
-ZEST_CASE(ParseEmptyConfig) {
-    auto result = codec::toml::from_string<Config>("");
+ZEST_CASE(ParseEmptySettings) {
+    auto result = codec::toml::from_string<Settings>("");
     ZEXPECT(result);
     ZEXPECT(result->rules.empty());
     ZEXPECT(std::string_view(result->project.cache_dir).empty());
 }
 
 ZEST_CASE(ParseOnlyRules) {
-    auto result = codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Settings>(R"(
 [[rules]]
 patterns = ["*.h"]
 remove = ["-Werror"]
@@ -230,16 +231,16 @@ remove = ["-Werror"]
 }
 
 ZEST_CASE(MatchRulesBasic) {
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-std=c++20"},
         .remove = {"-std=c++17"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
+    settings.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/foo.cpp", append, remove);
+    match_rules(settings, "/src/foo.cpp", append, remove);
     ZEXPECT(append.size() == 1u);
     ZEXPECT(append[0] == "-std=c++20");
     ZEXPECT(remove.size() == 1u);
@@ -247,104 +248,105 @@ ZEST_CASE(MatchRulesBasic) {
 }
 
 ZEST_CASE(MatchRulesNoMatch) {
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
+    settings.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/foo.h", append, remove);
+    match_rules(settings, "/src/foo.h", append, remove);
     ZEXPECT(append.empty());
     ZEXPECT(remove.empty());
 }
 
 ZEST_CASE(MatchRulesMultiple) {
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-DCPP"},
     });
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/test_*.cpp"},
         .append = {"-DTEST"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
+    settings.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/test_foo.cpp", append, remove);
+    match_rules(settings, "/src/test_foo.cpp", append, remove);
     ZEXPECT(append.size() == 2u);
     ZEXPECT(append[0] == "-DCPP");
     ZEXPECT(append[1] == "-DTEST");
 }
 
 ZEST_CASE(BornValidDefaults) {
-    // A default-constructed Config is fully valid without any init step;
+    // A default-constructed Settings is fully valid without any init step;
     // the option defaults come from the field initializers alone.
-    Config config;
-    ZEXPECT(config.project.enable_indexing.value == true);
-    ZEXPECT(config.project.idle_timeout_ms.value == 3000u);
-    ZEXPECT(config.project.test_hooks.value == false);
-    ZEXPECT(config.project.stateful_worker_count.value == 2u);
-    ZEXPECT(config.project.stateless_worker_count.value >= 2u);
-    ZEXPECT(config.project.min_stateless_worker_count.value == 1u);
-    ZEXPECT(config.project.max_stateless_worker_count.value ==
+    Settings settings;
+    ZEXPECT(settings.project.enable_indexing.value == true);
+    ZEXPECT(settings.project.idle_timeout_ms.value == 3000u);
+    ZEXPECT(settings.project.test_hooks.value == false);
+    ZEXPECT(settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(settings.project.stateless_worker_count.value >= 2u);
+    ZEXPECT(settings.project.min_stateless_worker_count.value == 1u);
+    ZEXPECT(settings.project.max_stateless_worker_count.value ==
             default_max_stateless_worker_count());
-    ZEXPECT(config.project.max_stateless_worker_count.value >=
-            config.project.min_stateless_worker_count.value);
-    ZEXPECT(config.tracker.workspace_poll_seconds.value == 30u);
-    ZEXPECT(config.inlay_hints.enabled.value == true);
-    ZEXPECT(config.inlay_hints.parameters.value == true);
-    ZEXPECT(config.inlay_hints.deduced_types.value == true);
-    ZEXPECT(config.inlay_hints.designators.value == true);
-    ZEXPECT(config.inlay_hints.block_end.value == false);
-    ZEXPECT(config.inlay_hints.default_arguments.value == false);
-    ZEXPECT(config.inlay_hints.max_length.types.value == 32u);
-    ZEXPECT(config.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
-    ZEXPECT(config.code_completion.bundle_overloads.value == true);
-    ZEXPECT(config.code_completion.statement_snippets.value == false);
-    ZEXPECT(config.code_completion.dot_to_arrow.value == true);
-    ZEXPECT(config.code_completion.all_scopes.value == true);
-    ZEXPECT(config.code_completion.insert_includes.value == true);
-    ZEXPECT(config.code_completion.insert_imports.value == true);
-    ZEXPECT(config.code_completion.limit.value == 100u);
-    ZEXPECT(config.references.limit.value == 2000u);
+    ZEXPECT(settings.project.max_stateless_worker_count.value >=
+            settings.project.min_stateless_worker_count.value);
+    ZEXPECT(settings.tracker.workspace_poll_seconds.value == 30u);
+    ZEXPECT(settings.inlay_hints.enabled.value == true);
+    ZEXPECT(settings.inlay_hints.parameters.value == true);
+    ZEXPECT(settings.inlay_hints.deduced_types.value == true);
+    ZEXPECT(settings.inlay_hints.designators.value == true);
+    ZEXPECT(settings.inlay_hints.block_end.value == false);
+    ZEXPECT(settings.inlay_hints.default_arguments.value == false);
+    ZEXPECT(settings.inlay_hints.max_length.types.value == 32u);
+    ZEXPECT(settings.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
+    ZEXPECT(settings.code_completion.bundle_overloads.value == true);
+    ZEXPECT(settings.code_completion.statement_snippets.value == false);
+    ZEXPECT(settings.code_completion.dot_to_arrow.value == true);
+    ZEXPECT(settings.code_completion.all_scopes.value == true);
+    ZEXPECT(settings.code_completion.insert_includes.value == true);
+    ZEXPECT(settings.code_completion.insert_imports.value == true);
+    ZEXPECT(settings.code_completion.limit.value == 100u);
+    ZEXPECT(settings.references.limit.value == 2000u);
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {
-    Config config;
-    config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    ZEXPECT(!config.project.cache_dir.empty());
-    ZEXPECT(!config.project.logging_dir.empty());
-    ZEXPECT(config.project.cache_dir_defaulted.value == true);
+    Settings settings;
+    settings.finalize(CanonicalPath(Spelling::absolute("/workspace")));
+    ZEXPECT(!settings.project.cache_dir.empty());
+    ZEXPECT(!settings.project.logging_dir.empty());
+    ZEXPECT(settings.project.cache_dir_defaulted.value == true);
 }
 
 ZEST_CASE(FinalizeEmptyWorkspace) {
-    Config config;
-    config.finalize(CanonicalPath());
-    ZEXPECT(config.project.cache_dir.empty());
-    ZEXPECT(config.project.logging_dir.empty());
+    Settings settings;
+    settings.finalize(CanonicalPath());
+    ZEXPECT(settings.project.cache_dir.empty());
+    ZEXPECT(settings.project.logging_dir.empty());
 }
 
 ZEST_CASE(FinalizePreservesSet) {
-    Config config;
-    config.project.cache_dir = "/custom";
-    config.project.enable_indexing = false;
-    config.inlay_hints.parameters = false;
-    config.inlay_hints.block_end = true;
-    config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    ZEXPECT(std::string_view(config.project.cache_dir) ==
+    Settings settings;
+    settings.project.cache_dir = "/custom";
+    settings.project.enable_indexing = false;
+    settings.inlay_hints.parameters = false;
+    settings.inlay_hints.block_end = true;
+    settings.finalize(CanonicalPath(Spelling::absolute("/workspace")));
+    ZEXPECT(std::string_view(settings.project.cache_dir) ==
             CanonicalPath(Spelling::absolute("/custom")).str());
-    ZEXPECT(config.project.cache_dir_defaulted.value == false);
-    ZEXPECT(config.project.enable_indexing.value == false);
-    ZEXPECT(config.inlay_hints.parameters.value == false);
-    ZEXPECT(config.inlay_hints.block_end.value == true);
+    ZEXPECT(settings.project.cache_dir_defaulted.value == false);
+    ZEXPECT(settings.project.enable_indexing.value == false);
+    ZEXPECT(settings.inlay_hints.parameters.value == false);
+    ZEXPECT(settings.inlay_hints.block_end.value == true);
 }
 
 ZEST_CASE(OverlayWithoutFile) {
     TempDir tmp;
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
         "project": {
             "cache_dir": "/opt/cache",
             "test_hooks": true,
@@ -355,21 +357,21 @@ ZEST_CASE(OverlayWithoutFile) {
         ]
     })")});
     ZEXPECT(loaded.issues.empty());
-    ZEXPECT(std::string_view(loaded.config.project.cache_dir) ==
+    ZEXPECT(std::string_view(loaded.settings.project.cache_dir) ==
             CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
-    ZEXPECT(loaded.config.project.enable_indexing.value == false);
-    ZEXPECT(loaded.config.rules.size() == 1u);
-    ZEXPECT(loaded.config.compiled_rules.size() == 1u);
+    ZEXPECT(loaded.settings.project.enable_indexing.value == false);
+    ZEXPECT(loaded.settings.rules.size() == 1u);
+    ZEXPECT(loaded.settings.compiled_rules.size() == 1u);
 }
 
 ZEST_CASE(LoadMalformedToml) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nbroken");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
-    ZEXPECT(loaded.path == path::join(root, "clice.toml"));
-    ZEXPECT(loaded.config.project.enable_indexing.value == true);
+    ZEXPECT(loaded.file == path::join(root, "clice.toml"));
+    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
 }
 
 ZEST_CASE(LegacyProjectKeysIgnored) {
@@ -382,18 +384,18 @@ cache_dir = "/opt/cache"
 index_dir = "/opt/index"
 worker_memory_limit = 4294967296
 )");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(!loaded.broken());
-    ZEXPECT(std::string_view(loaded.config.project.cache_dir) ==
+    ZEXPECT(std::string_view(loaded.settings.project.cache_dir) ==
             CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
 }
 
 ZEST_CASE(MissingFileUsesDefaults) {
     TempDir tmp;
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZEXPECT(loaded.path.empty());
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(loaded.file.empty());
     ZEXPECT(loaded.issues.empty());
-    ZEXPECT(loaded.config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
 }
 
 ZEST_CASE(WorkspaceVarSubst) {
@@ -403,19 +405,19 @@ ZEST_CASE(WorkspaceVarSubst) {
         path::canonicalize(p);
         return p;
     };
-    Config config;
-    config.project.cache_dir = "${workspace}/cache";
-    config.project.logging_dir = "${workspace}/logs";
-    config.rules.push_back(ConfigRule{.compile_commands = {"${workspace}/build"}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZEXPECT(std::string_view(config.project.cache_dir) == at("cache"));
-    ZEXPECT(std::string_view(config.project.logging_dir) == at("logs"));
-    ZASSERT(config.compiled_rules.size() == 1u);
-    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at("build"));
+    Settings settings;
+    settings.project.cache_dir = "${workspace}/cache";
+    settings.project.logging_dir = "${workspace}/logs";
+    settings.rules.push_back(Rule{.compile_commands = {"${workspace}/build"}});
+    settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(std::string_view(settings.project.cache_dir) == at("cache"));
+    ZEXPECT(std::string_view(settings.project.logging_dir) == at("logs"));
+    ZASSERT(settings.compiled_rules.size() == 1u);
+    ZEXPECT(settings.compiled_rules[0].compile_commands[0].str() == at("build"));
 }
 
 ZEST_CASE(ParseRuleSources) {
-    auto result = codec::toml::from_string<Config>(R"(
+    auto result = codec::toml::from_string<Settings>(R"(
 default_configuration = "debug"
 
 [[rules]]
@@ -472,48 +474,48 @@ compile_commands = ["build", "{}"]
 )",
                           at("elsewhere/compile_commands.json")));
 
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(root)));
     ZASSERT(!loaded.broken());
-    auto& config = loaded.config;
+    auto& settings = loaded.settings;
 
-    ZASSERT(config.compiled_rules.size() == 3u);
-    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at(".clice/out/debug"));
-    ZEXPECT(config.compiled_rules[0].directory.str() == at(".clice"));
-    ZEXPECT(config.compiled_rules[0].patterns[0].root == identity(".clice/src"));
-    ZEXPECT(config.compiled_rules[0].declares_sources());
+    ZASSERT(settings.compiled_rules.size() == 3u);
+    ZEXPECT(settings.compiled_rules[0].compile_commands[0].str() == at(".clice/out/debug"));
+    ZEXPECT(settings.compiled_rules[0].directory.str() == at(".clice"));
+    ZEXPECT(settings.compiled_rules[0].patterns[0].root == identity(".clice/src"));
+    ZEXPECT(settings.compiled_rules[0].declares_sources());
     /// The string spelling is tokenized, then `${workspace}` substituted
     /// per argument.
-    ZASSERT(config.compiled_rules[0].default_command.size() == 3u);
-    ZEXPECT(config.compiled_rules[0].default_command[2] == "-I" + at("include"));
-    ZEXPECT(!config.compiled_rules[1].declares_sources());
-    ZASSERT(config.compiled_rules[1].patterns.size() == 4u);
-    ZEXPECT(config.compiled_rules[1].patterns[0].root == CanonicalPath(Spelling::absolute(root)));
-    ZEXPECT(config.compiled_rules[1].patterns[1].root == identity("gen"));
-    ZEXPECT(config.compiled_rules[1].patterns[2].root == identity("shared"));
-    ZEXPECT(config.compiled_rules[1].patterns[3].root == identity(".clice"));
-    ZEXPECT(config.compiled_rules[2].patterns.empty());
-    ZEXPECT(config.compiled_rules[2].compile_commands[0].str() == at(".clice/build"));
-    ZEXPECT(config.compiled_rules[2].compile_commands[1].str() ==
+    ZASSERT(settings.compiled_rules[0].default_command.size() == 3u);
+    ZEXPECT(settings.compiled_rules[0].default_command[2] == "-I" + at("include"));
+    ZEXPECT(!settings.compiled_rules[1].declares_sources());
+    ZASSERT(settings.compiled_rules[1].patterns.size() == 4u);
+    ZEXPECT(settings.compiled_rules[1].patterns[0].root == CanonicalPath(Spelling::absolute(root)));
+    ZEXPECT(settings.compiled_rules[1].patterns[1].root == identity("gen"));
+    ZEXPECT(settings.compiled_rules[1].patterns[2].root == identity("shared"));
+    ZEXPECT(settings.compiled_rules[1].patterns[3].root == identity(".clice"));
+    ZEXPECT(settings.compiled_rules[2].patterns.empty());
+    ZEXPECT(settings.compiled_rules[2].compile_commands[0].str() == at(".clice/build"));
+    ZEXPECT(settings.compiled_rules[2].compile_commands[1].str() ==
             at("elsewhere/compile_commands.json"));
 
-    auto tags = config.configurations();
+    auto tags = settings.configurations();
     ZASSERT(tags.size() == 1u);
     ZEXPECT(tags[0] == "debug");
 
     /// A relative pattern sees only files under its anchor; a bare `*`
     /// names the anchor's direct children.
-    ZEXPECT(config.matching_rules(identity(".clice/src/a.cpp"), "debug").size() == 2u);
-    ZEXPECT(config.matching_rules(identity(".clice/src/a.cpp"), "release").size() == 1u);
-    ZEXPECT(config.matching_rules(identity("src/a.cpp"), "debug").size() == 1u);
-    ZEXPECT(config.matching_rules(identity(".clice/a.cpp"), "debug").size() == 2u);
+    ZEXPECT(settings.matching_rules(identity(".clice/src/a.cpp"), "debug").size() == 2u);
+    ZEXPECT(settings.matching_rules(identity(".clice/src/a.cpp"), "release").size() == 1u);
+    ZEXPECT(settings.matching_rules(identity("src/a.cpp"), "debug").size() == 1u);
+    ZEXPECT(settings.matching_rules(identity(".clice/a.cpp"), "debug").size() == 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
-    auto hxx = config.matching_rules(identity("other/tree/x.hxx"), "debug");
+    auto hxx = settings.matching_rules(identity("other/tree/x.hxx"), "debug");
     ZASSERT(hxx.size() == 2u);
     ZEXPECT(hxx[0]->append.size() == 2u);
-    ZEXPECT(config.matching_rules(identity("gen/x.cpp"), "debug").size() == 2u);
-    ZEXPECT(config.matching_rules(identity("shared/x.cpp"), "debug").size() == 2u);
-    ZEXPECT(config.matching_rules(identity("shared/deep/x.cpp"), "debug").size() == 1u);
+    ZEXPECT(settings.matching_rules(identity("gen/x.cpp"), "debug").size() == 2u);
+    ZEXPECT(settings.matching_rules(identity("shared/x.cpp"), "debug").size() == 2u);
+    ZEXPECT(settings.matching_rules(identity("shared/deep/x.cpp"), "debug").size() == 1u);
 }
 
 ZEST_CASE(InitOptionsAnchorAtWorkspace) {
@@ -537,27 +539,27 @@ append = ["-DFROM_FILE"]
 compile_commands = ["../build"]
 )");
 
-    auto from_file = load_config(CanonicalPath(Spelling::absolute(root))).config;
+    auto from_file = load_settings(CanonicalPath(Spelling::absolute(root))).settings;
     ZASSERT(from_file.compiled_rules.size() == 2u);
     ZEXPECT(from_file.compiled_rules[0].patterns[0].root ==
             CanonicalPath(Spelling::absolute(at("src"))));
     ZEXPECT(from_file.compiled_rules[0].directory.str() == at(".clice"));
     ZEXPECT(from_file.compiled_rules[1].compile_commands[0].str() == at(".clice/../build"));
 
-    auto overlaid = load_config(CanonicalPath(Spelling::absolute(root)), {.overlay = overlay(R"({
+    auto overlaid = load_settings(CanonicalPath(Spelling::absolute(root)), {.overlay = overlay(R"({
         "rules": [
             { "patterns": ["src/**"], "compile_commands": ["cmake"] },
             { "compile_commands": ["out"] }
         ]
     })")});
-    auto& config = overlaid.config;
+    auto& settings = overlaid.settings;
 
-    ZASSERT(config.compiled_rules.size() == 2u);
-    ZEXPECT(config.compiled_rules[0].patterns[0].root ==
+    ZASSERT(settings.compiled_rules.size() == 2u);
+    ZEXPECT(settings.compiled_rules[0].patterns[0].root ==
             CanonicalPath(Spelling::absolute(at("src"))));
-    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at("cmake"));
-    ZEXPECT(config.compiled_rules[0].directory.str() == root);
-    ZEXPECT(config.compiled_rules[1].compile_commands[0].str() == at("out"));
+    ZEXPECT(settings.compiled_rules[0].compile_commands[0].str() == at("cmake"));
+    ZEXPECT(settings.compiled_rules[0].directory.str() == root);
+    ZEXPECT(settings.compiled_rules[1].compile_commands[0].str() == at("out"));
 }
 
 ZEST_CASE(RelativeProjectDirsAnchor) {
@@ -574,110 +576,111 @@ ZEST_CASE(RelativeProjectDirsAnchor) {
     path::canonicalize(root);
     tmp.touch(".clice/config.toml", "[project]\ncache_dir = \"cache\"\n");
 
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(root)));
     ZASSERT(!loaded.broken());
-    ZEXPECT(std::string_view(loaded.config.project.cache_dir) == at(".clice/cache"));
-    ZEXPECT(std::string_view(loaded.config.project.logging_dir) == at(".clice/cache/logs"));
+    ZEXPECT(std::string_view(loaded.settings.project.cache_dir) == at(".clice/cache"));
+    ZEXPECT(std::string_view(loaded.settings.project.logging_dir) == at(".clice/cache/logs"));
 
-    Config config;
-    config.project.logging_dir = "logs";
-    config.finalize(CanonicalPath(Spelling::absolute(root)));
-    ZEXPECT(std::string_view(config.project.logging_dir) == at("logs"));
+    Settings settings;
+    settings.project.logging_dir = "logs";
+    settings.finalize(CanonicalPath(Spelling::absolute(root)));
+    ZEXPECT(std::string_view(settings.project.logging_dir) == at("logs"));
 }
 
 ZEST_CASE(SourcesOffByDefault) {
-    Config config;
-    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});
-    config.finalize(CanonicalPath(Spelling::absolute("/ws")));
-    ZEXPECT(!config.compiled_rules[0].declares_sources());
-    ZEXPECT(config.configurations().empty());
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"**/*"}, .append = {"-DX"}});
+    settings.finalize(CanonicalPath(Spelling::absolute("/ws")));
+    ZEXPECT(!settings.compiled_rules[0].declares_sources());
+    ZEXPECT(settings.configurations().empty());
 }
 
 ZEST_CASE(InvalidGlobPattern) {
-    Config config;
+    Settings settings;
     // All-invalid patterns: the rule matches nothing (its flags never
     // apply), but the database it declares still loads.
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/****.{c,cc}"},
         .compile_commands = {"/elsewhere/compile_commands.json"},
         .append = {"-DSHOULD_NOT_APPEAR"},
     });
     // Mixed valid/invalid: only the invalid pattern is skipped; rule remains.
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/****.{c,cc}", "**/*.cpp"},
         .append = {"-DCPP"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
-    ZASSERT(config.compiled_rules.size() == 2u);
-    ZEXPECT(config.compiled_rules[0].unmatchable);
-    ZEXPECT(config.compiled_rules[0].declares_sources());
-    ZEXPECT(!config.compiled_rules[1].unmatchable);
+    settings.finalize(CanonicalPath(Spelling::absolute("/src")));
+    ZASSERT(settings.compiled_rules.size() == 2u);
+    ZEXPECT(settings.compiled_rules[0].unmatchable);
+    ZEXPECT(settings.compiled_rules[0].declares_sources());
+    ZEXPECT(!settings.compiled_rules[1].unmatchable);
 
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/foo.cpp", append, remove);
+    match_rules(settings, "/src/foo.cpp", append, remove);
     ZEXPECT(append.size() == 1u);
     ZEXPECT(append[0] == "-DCPP");
 }
 
-ZEST_CASE(ConfigPriorityJson) {
+ZEST_CASE(OverlayPriority) {
     // initializationOptions-sourced config should override an on-disk default.
     TempDir tmp;
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)),
-                              {.overlay = overlay(R"({ "project": { "idle_timeout_ms": 42 } })")});
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)),
+                      {.overlay = overlay(R"({ "project": { "idle_timeout_ms": 42 } })")});
     ZEXPECT(loaded.issues.empty());
-    ZEXPECT(loaded.config.project.idle_timeout_ms.value == 42u);
+    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 42u);
     // Unset fields still receive defaults.
-    ZEXPECT(loaded.config.project.enable_indexing.value == true);
-    ZEXPECT(loaded.config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
+    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
 }
 
 ZEST_CASE(DefaultWorkspaceCache) {
-    Config config;
+    Settings settings;
     CanonicalPath root(Spelling::absolute("/ws/root"));
-    config.finalize(root);
+    settings.finalize(root);
 
-    ZEXPECT(std::string_view(config.project.cache_dir) == root.str() + "/.clice");
-    ZEXPECT(std::string_view(config.project.logging_dir) == root.str() + "/.clice/logs");
+    ZEXPECT(std::string_view(settings.project.cache_dir) == root.str() + "/.clice");
+    ZEXPECT(std::string_view(settings.project.logging_dir) == root.str() + "/.clice/logs");
 }
 
 ZEST_CASE(WorkspaceSubstEmpty) {
     // Empty project_root must not rewrite "${workspace}" into "" and produce
     // bogus paths like "/cache": the directory stays relative, and a project
     // without a folder has nothing to anchor it at, so it is dropped.
-    Config config;
-    config.project.cache_dir = "${workspace}/cache";
-    config.finalize(CanonicalPath());
-    ZEXPECT(config.project.cache_dir.empty());
+    Settings settings;
+    settings.project.cache_dir = "${workspace}/cache";
+    settings.finalize(CanonicalPath());
+    ZEXPECT(settings.project.cache_dir.empty());
 }
 
 ZEST_CASE(RootlessRulesIgnored) {
     // A server without folders has nothing to anchor a rule's paths at:
     // the rule is dropped instead of matching against the process's cwd.
-    Config config;
-    config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DX"}});
-    config.finalize(CanonicalPath());
-    ZEXPECT(config.compiled_rules.empty());
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DX"}});
+    settings.finalize(CanonicalPath());
+    ZEXPECT(settings.compiled_rules.empty());
 }
 
 ZEST_CASE(HomeExpanded) {
     // A leading `~` is the home directory, not a directory named `~`.
     TempDir tmp;
-    Config config;
-    config.project.cache_dir = "~/clice-cache";
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.project.cache_dir = "~/clice-cache";
+    settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     std::string home;
     ZASSERT(!sys::home_dir(home));
-    ZEXPECT(std::string_view(config.project.cache_dir) ==
+    ZEXPECT(std::string_view(settings.project.cache_dir) ==
             CanonicalPath(Spelling("clice-cache", Spelling::absolute(home))).str());
 }
 
 ZEST_CASE(WorkspaceSubstRepeated) {
     // Multiple ${workspace} occurrences in one string all get substituted.
-    Config config;
-    config.project.cache_dir = "${workspace}/a/${workspace}/b";
+    Settings settings;
+    settings.project.cache_dir = "${workspace}/a/${workspace}/b";
     CanonicalPath root(Spelling::absolute("/root"));
-    config.finalize(root);
-    ZEXPECT(std::string_view(config.project.cache_dir) ==
+    settings.finalize(root);
+    ZEXPECT(std::string_view(settings.project.cache_dir) ==
             CanonicalPath(Spelling::absolute(root.str() + "/a/" + root.str() + "/b")).str());
 }
 
@@ -692,16 +695,16 @@ ZEST_CASE(CompileCommandsList) {
         path::canonicalize(p);
         return p;
     };
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .compile_commands = {
                              "${workspace}/build", at("abs/path/compile_commands.json"),
                              "out", "build.json",
                              }
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZASSERT(config.compiled_rules.size() == 1u);
-    auto& databases = config.compiled_rules[0].compile_commands;
+    settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZASSERT(settings.compiled_rules.size() == 1u);
+    auto& databases = settings.compiled_rules[0].compile_commands;
     ZASSERT(databases.size() == 4u);
     ZEXPECT(databases[0].str() == at("build"));
     ZEXPECT(databases[1].str() == at("abs/path/compile_commands.json"));
@@ -715,10 +718,10 @@ ZEST_CASE(TomlErrorLocated) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file == path::join(root, "clice.toml"));
     ZEXPECT(issue.line == 1u);
     ZEXPECT(issue.column == 9u);
@@ -727,29 +730,29 @@ ZEST_CASE(TomlErrorLocated) {
 ZEST_CASE(SyntaxIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
-    ZEXPECT(loaded.issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Error);
 }
 
 ZEST_CASE(TypeIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\ntest_hooks = \"yes\"\n");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
-    ZEXPECT(loaded.issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Error);
     ZEXPECT(loaded.issues[0].message.find("test_hooks") != std::string::npos);
 }
 
 ZEST_CASE(RemovedKeyIssueWarns) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\nworker_memory_limit = 4294967296\n");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(!loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
-    ZEXPECT(loaded.issues[0].severity == ConfigIssue::Severity::Warning);
+    ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Warning);
     ZEXPECT(loaded.issues[0].message.find("worker_memory_limit") != std::string::npos);
 }
 
@@ -758,10 +761,10 @@ ZEST_CASE(UnknownFeatureKeyWarns) {
     // must still be reported as a Warning, not vanish.
     TempDir tmp;
     tmp.touch("clice.toml", "[inlay_hints]\nblokc_end = true\n");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)));
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(!loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
-    ZEXPECT(loaded.issues[0].severity == ConfigIssue::Severity::Warning);
+    ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Warning);
     ZEXPECT(loaded.issues[0].message.find("blokc_end") != std::string::npos);
 }
 
@@ -771,16 +774,16 @@ ZEST_CASE(CapitalizedReadonlyRejected) {
 readonly = "On"
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file == path::join(root, "clice.toml"));
     ZEXPECT(issue.message.find("readonly") != std::string::npos);
     ZEXPECT(issue.line == 2u);
     ZEXPECT(issue.column == 12u);
-    ZEXPECT(loaded.config.project.readonly.value == ReadonlyMode::Off);
+    ZEXPECT(loaded.settings.project.readonly.value == ReadonlyMode::Off);
 }
 
 ZEST_CASE(InvalidGlobLocated) {
@@ -789,11 +792,11 @@ ZEST_CASE(InvalidGlobLocated) {
 patterns = ["src/[a"]
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file == path::join(root, "clice.toml"));
     ZEXPECT(issue.message.find("src/[a") != std::string::npos);
     ZEXPECT(issue.line == 2u);
@@ -809,11 +812,11 @@ configuration = "debug"
 append = ["-DDEBUG"]
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file == path::join(root, "clice.toml"));
     ZEXPECT(issue.message.find("relase") != std::string::npos);
     ZEXPECT(issue.line == 1u);
@@ -824,11 +827,11 @@ ZEST_CASE(ZeroWorkerCountRejected) {
     // An explicit 0 is not a runnable worker configuration: finalize
     // reports it and, meanwhile, falls back to the born-valid default
     // instead of starting a pool with no workers.
-    Config config;
-    config.project.stateful_worker_count = 0;
-    config.project.stateless_worker_count = 0;
-    config.project.min_stateless_worker_count = 0;
-    auto problems = config.finalize(CanonicalPath());
+    Settings settings;
+    settings.project.stateful_worker_count = 0;
+    settings.project.stateless_worker_count = 0;
+    settings.project.min_stateless_worker_count = 0;
+    auto problems = settings.finalize(CanonicalPath());
     ZASSERT(problems.size() == 3u);
     ZEXPECT(problems[0].to_string() ==
             "a worker count must be at least 1 at project.stateful_worker_count");
@@ -836,9 +839,9 @@ ZEST_CASE(ZeroWorkerCountRejected) {
             "a worker count must be at least 1 at project.stateless_worker_count");
     ZEXPECT(problems[2].to_string() ==
             "a worker count must be at least 1 at project.min_stateless_worker_count");
-    ZEXPECT(config.project.stateful_worker_count.value == 2u);
-    ZEXPECT(config.project.stateless_worker_count.value >= 2u);
-    ZEXPECT(config.project.min_stateless_worker_count.value == 1u);
+    ZEXPECT(settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(settings.project.stateless_worker_count.value >= 2u);
+    ZEXPECT(settings.project.min_stateless_worker_count.value == 1u);
 }
 
 ZEST_CASE(ZeroWorkerCountLocated) {
@@ -847,16 +850,16 @@ ZEST_CASE(ZeroWorkerCountLocated) {
 stateful_worker_count = 0
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file == path::join(root, "clice.toml"));
     ZEXPECT(issue.message.find("stateful_worker_count") != std::string::npos);
     ZEXPECT(issue.line == 2u);
     ZEXPECT(issue.column == 25u);
-    ZEXPECT(loaded.config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
 }
 
 ZEST_CASE(StrictRejectsUnknownConfiguration) {
@@ -870,16 +873,19 @@ append = ["-DDEBUG"]
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
 
-    auto strict = load_config(root, {.configuration = "nope"});
+    auto strict = load_settings(root, {.configuration = "nope"});
     ZEXPECT(strict.broken());
     ZASSERT(strict.issues.size() == 1u);
-    ZEXPECT(strict.issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(strict.issues[0].severity == SettingsIssue::Severity::Error);
     ZEXPECT(strict.issues[0].file.empty());
     ZEXPECT(strict.issues[0].message.find("nope") != std::string::npos);
     ZEXPECT(strict.configuration == "debug");
 
-    auto lax = load_config(root, {.configuration = "nope", .strict = false});
-    ZEXPECT(lax.issues.empty());
+    // Served, the name is skipped with a warning.
+    auto lax = load_settings(root, {.configuration = "nope", .strict = false});
+    ZEXPECT(!lax.broken());
+    ZASSERT(lax.issues.size() == 1u);
+    ZEXPECT(lax.issues[0].severity == SettingsIssue::Severity::Warning);
     ZEXPECT(lax.configuration == "debug");
 }
 
@@ -889,45 +895,47 @@ ZEST_CASE(NullOptionRejected) {
     // both flat and inside a feature section.
     TempDir tmp;
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto flat = load_config(root, {.overlay = overlay(R"({ "project": { "test_hooks": null } })")});
+    auto flat =
+        load_settings(root, {.overlay = overlay(R"({ "project": { "test_hooks": null } })")});
     ZEXPECT(flat.broken());
     auto nested =
-        load_config(root, {.overlay = overlay(R"({ "inlay_hints": { "block_end": null } })")});
+        load_settings(root, {.overlay = overlay(R"({ "inlay_hints": { "block_end": null } })")});
     ZEXPECT(nested.broken());
 }
 
 ZEST_CASE(OverlayUnknownKeyWarns) {
     TempDir tmp;
-    auto loaded = load_config(
+    auto loaded = load_settings(
         CanonicalPath(Spelling::absolute(tmp.root)),
         {.overlay = overlay(R"({ "project": { "idel_timeout_ms": 5, "idle_timeout_ms": 42 } })")});
     ZEXPECT(!loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Warning);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Warning);
     ZEXPECT(issue.file.empty());
     ZEXPECT(issue.message.starts_with("initializationOptions: "));
     ZEXPECT(issue.message.find("idel_timeout_ms") != std::string::npos);
-    ZEXPECT(loaded.config.project.idle_timeout_ms.value == 42u);
+    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 42u);
 }
 
 ZEST_CASE(BadOverlayAppliesNothing) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\nidle_timeout_ms = 16\n");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
         "rules": [{ "patterns": ["**/*.cpp"], "append": ["-DOVERLAY"] }],
         "project": { "idle_timeout_ms": 99, "enable_indexing": "yes" }
     })")});
     ZEXPECT(loaded.broken());
     ZASSERT(loaded.issues.size() == 1u);
     auto& issue = loaded.issues[0];
-    ZEXPECT(issue.severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
     ZEXPECT(issue.file.empty());
     ZEXPECT(issue.message.starts_with("initializationOptions: "));
     ZEXPECT(issue.message.find("project.enable_indexing") != std::string::npos);
-    ZEXPECT(loaded.config.rules.empty());
-    ZEXPECT(loaded.config.project.idle_timeout_ms.value == 16u);
-    ZEXPECT(loaded.config.project.enable_indexing.value == true);
+    ZEXPECT(loaded.settings.rules.empty());
+    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 16u);
+    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
 }
 
 ZEST_CASE(MalformedTomlNoFallback) {
@@ -935,28 +943,29 @@ ZEST_CASE(MalformedTomlNoFallback) {
     tmp.touch("clice.toml", "[project\ninvalid");
     tmp.touch(".clice/config.toml", "[project]\nenable_indexing = false\n");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto loaded = load_config(root);
+    auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
-    ZEXPECT(loaded.path == path::join(root, "clice.toml"));
+    ZEXPECT(loaded.file == path::join(root, "clice.toml"));
     ZASSERT(loaded.issues.size() == 1u);
-    ZEXPECT(loaded.issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Error);
     ZEXPECT(loaded.issues[0].file == path::join(root, "clice.toml"));
-    ZEXPECT(loaded.config.project.enable_indexing.value == true);
-    ZEXPECT(loaded.config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
+    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
 }
 
 ZEST_CASE(RuleOrderLaterRemoveWins) {
     // Later rule's `remove` must cancel an earlier rule's matching `append`.
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO", "-DBAR"},
     });
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .remove = {"-DFOO"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
+    CanonicalPath project_root(Spelling::absolute("/src"));
+    settings.finalize(project_root);
 
     // The edits stay in rule order; the remove takes effect against the
     // earlier append when the command is built, and against the base.
@@ -964,7 +973,7 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     auto edits = build.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
     ZASSERT(edits.edits.size() == 2u);
     ZEXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
@@ -975,26 +984,26 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
 ZEST_CASE(RuleOrderLaterAppendWins) {
     // Later append comes after earlier append — at compiler level, last wins
     // for flags like -O; verify the ordering is preserved.
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-O2"},
     });
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/*.cpp"},
         .append = {"-O3"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute("/src")));
+    settings.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/a.cpp", append, remove);
+    match_rules(settings, "/src/a.cpp", append, remove);
     ZEXPECT(append.size() == 2u);
     ZEXPECT(append[0] == "-O2");
     ZEXPECT(append[1] == "-O3");
 }
 
 ZEST_CASE(InitOptionsOverlayPreservesToml) {
-    // Mirror the master_server flow: load workspace config from clice.toml first,
+    // Mirror the master_server flow: load the project settings from clice.toml first,
     // then overlay initializationOptions JSON. Fields absent in the JSON must
     // keep their clice.toml values; fields present in the JSON override.
     TempDir tmp;
@@ -1010,7 +1019,7 @@ append = ["-DFROM_TOML"]
 )");
 
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto from_file = load_config(root).config;
+    auto from_file = load_settings(root).settings;
     auto from_toml = CanonicalPath(Spelling("/from/toml", Spelling::absolute(tmp.root))).str();
     ZEXPECT(std::string_view(from_file.project.cache_dir) == from_toml);
     ZEXPECT(from_file.project.test_hooks.value == true);
@@ -1019,19 +1028,19 @@ append = ["-DFROM_TOML"]
 
     // Overlay only `idle_timeout_ms` via JSON.
     auto overlaid =
-        load_config(root, {.overlay = overlay(R"({ "project": { "idle_timeout_ms": 99 } })")});
+        load_settings(root, {.overlay = overlay(R"({ "project": { "idle_timeout_ms": 99 } })")});
     ZEXPECT(overlaid.issues.empty());
-    auto& config = overlaid.config;
+    auto& settings = overlaid.settings;
 
     // Overridden field.
-    ZEXPECT(config.project.idle_timeout_ms.value == 99u);
+    ZEXPECT(settings.project.idle_timeout_ms.value == 99u);
     // Untouched fields stay at TOML values.
-    ZEXPECT(std::string_view(config.project.cache_dir) == from_toml);
-    ZEXPECT(config.project.test_hooks.value == true);
+    ZEXPECT(std::string_view(settings.project.cache_dir) == from_toml);
+    ZEXPECT(settings.project.test_hooks.value == true);
     // Rules from clice.toml must survive the overlay.
-    ZEXPECT(config.rules.size() == 1u);
-    ZEXPECT(config.compiled_rules.size() == 1u);
-    ZEXPECT(config.rules[0].append[0] == "-DFROM_TOML");
+    ZEXPECT(settings.rules.size() == 1u);
+    ZEXPECT(settings.compiled_rules.size() == 1u);
+    ZEXPECT(settings.rules[0].append[0] == "-DFROM_TOML");
 }
 
 ZEST_CASE(OverlaySectionDeepMerge) {
@@ -1048,23 +1057,24 @@ block_end = true
 [code_completion]
 bundle_overloads = false
 )");
-    auto loaded = load_config(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
         "inlay_hints": { "parameters": false, "block_end": false },
         "code_completion": { "limit": 5 }
     })")});
     ZEXPECT(loaded.issues.empty());
-    auto& config = loaded.config;
+    auto& settings = loaded.settings;
 
     // From the TOML layer.
-    ZEXPECT(config.code_completion.bundle_overloads.value == false);
+    ZEXPECT(settings.code_completion.bundle_overloads.value == false);
     // From the JSON overlay, including a nested field both layers set —
     // the later source wins.
-    ZEXPECT(config.inlay_hints.block_end.value == false);
-    ZEXPECT(config.inlay_hints.parameters.value == false);
-    ZEXPECT(config.code_completion.limit.value == 5u);
+    ZEXPECT(settings.inlay_hints.block_end.value == false);
+    ZEXPECT(settings.inlay_hints.parameters.value == false);
+    ZEXPECT(settings.code_completion.limit.value == 5u);
     // Named by nobody: field-initializer defaults.
-    ZEXPECT(config.inlay_hints.deduced_types.value == true);
-    ZEXPECT(config.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
+    ZEXPECT(settings.inlay_hints.deduced_types.value == true);
+    ZEXPECT(settings.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
 }
 
 ZEST_CASE(InitOptionsOverlayRulesReplace) {
@@ -1078,30 +1088,30 @@ patterns = ["**/*.cpp"]
 append = ["-DTOML_ONLY"]
 )");
     CanonicalPath root(Spelling::absolute(tmp.root));
-    auto from_file = load_config(root).config;
+    auto from_file = load_settings(root).settings;
     ZEXPECT(from_file.compiled_rules.size() == 1u);
 
-    auto loaded = load_config(root, {.overlay = overlay(R"({
+    auto loaded = load_settings(root, {.overlay = overlay(R"({
         "rules": [{ "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] }]
     })")});
     ZEXPECT(loaded.issues.empty());
-    auto& config = loaded.config;
+    auto& settings = loaded.settings;
 
-    ZEXPECT(config.rules.size() == 1u);
-    ZEXPECT(config.rules[0].append[0] == "-DFROM_JSON");
-    ZEXPECT(config.compiled_rules.size() == 1u);
+    ZEXPECT(settings.rules.size() == 1u);
+    ZEXPECT(settings.rules[0].append[0] == "-DFROM_JSON");
+    ZEXPECT(settings.compiled_rules.size() == 1u);
 
     // Original TOML rule no longer applies.
     std::vector<std::string> append, remove;
-    match_rules(config, "/src/x.cpp", append, remove);
+    match_rules(settings, "/src/x.cpp", append, remove);
     ZEXPECT(append.empty());
-    match_rules(config, "/src/x.cc", append, remove);
+    match_rules(settings, "/src/x.cc", append, remove);
     ZEXPECT(append.size() == 1u);
     ZEXPECT(append[0] == "-DFROM_JSON");
 }
 
 ZEST_CASE(JsonSchema) {
-    auto schema = Config::json_schema();
+    auto schema = Settings::json_schema();
     ZASSERT(schema);
     auto doc = json::from_string<codec::dyn::Value>(*schema);
     ZASSERT(doc);
@@ -1166,6 +1176,6 @@ ZEST_CASE(JsonSchema) {
     }
 }
 
-};  // ZEST_SUITE(Config)
+};  // ZEST_SUITE(Settings)
 
 }  // namespace clice::testing

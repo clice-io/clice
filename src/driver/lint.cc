@@ -42,9 +42,9 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
     if(!read) {
         return print_error(read.error());
     }
-    auto& [root, config] = *read;
+    auto& [root, loaded] = *read;
     auto result = run_batch_lint({
-        .project = {.root = std::move(root), .config = std::move(config), .workers = jobs},
+        .project = {.root = std::move(root), .loaded = std::move(loaded), .workers = jobs},
         .with_index = with_index,
     });
     if(json) {
