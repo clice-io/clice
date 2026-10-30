@@ -6,7 +6,7 @@ import :analysis.wrapping;
 import :driver.driver;
 import :feature.query;
 import :index.symbol_query;
-import :project.index_reader;
+import :project.project_reader;
 import :vfs.path;
 
 namespace clice::driver {
@@ -17,9 +17,9 @@ namespace {
 /// hypothetical changes it is evaluated under.
 struct ModelOptions {
     DecoKV(help =
-               "A glob over workspace-relative paths, absolute ones outside the workspace: "
+               "A glob over paths relative to the project root, absolute ones outside it: "
                "analyze only the files it matches (default: every indexed file under the "
-               "workspace outside a dot directory)",
+               "project root outside a dot directory)",
            required = false)
     <std::vector<std::string>> scope;
 
@@ -50,7 +50,7 @@ struct ModelOptions {
     DecoKV(help = "A hypothetical declaration move: <locator>=<header>", required = false)
     <std::vector<std::string>> move_entity;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
 };
 
 /// What weighs the results of the views that rank by weight.
@@ -132,16 +132,14 @@ struct PlainViewOptions {
     LogLevelOption log;
 };
 
-/// A file as the facts name it: one under the workspace by its path from
-/// the root, which `<PATH>` may also give absolute.
-std::string fact_path(const WorkspaceOptions& where, const std::string& argument) {
-    if(!path::has_root(argument)) {
-        return argument;
-    }
-    CanonicalPath root(where.root());
-    CanonicalPath file(Spelling(argument, where.root()));
+/// A file as the facts name it: one under the project by its path from
+/// the root, one outside by its identity; `argument` is relative to the
+/// current directory or absolute. The view runs once the root was found.
+std::string fact_path(const ProjectOptions& where, const std::string& argument) {
+    CanonicalPath file(Spelling(argument, Spelling::cwd()));
+    CanonicalPath root(*where.root());
     if(!path::is_within(file, root)) {
-        return argument;
+        return file.str();
     }
     return llvm::StringRef(file).drop_front(llvm::StringRef(root).size()).ltrim('/').str();
 }
@@ -176,7 +174,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     }
     std::vector<feature::query::SymbolEntry> candidates;
     std::vector<std::string> unindexed;
-    auto move_declarations = [&](IndexReader& reader,
+    auto move_declarations = [&](ProjectReader& reader,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
         auto ctx = reader.context();
         for(llvm::StringRef move: model.move_entity.value_or(std::vector<std::string>{})) {
@@ -203,8 +201,11 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
         }
         return {};
     };
-    auto loaded = analysis::load_facts(model.where.root(),
-                                       model.where.configuration.tag(),
+    auto reader = open_for_analysis(model.where);
+    if(!reader) {
+        return fail(std::move(reader.error()));
+    }
+    auto loaded = analysis::load_facts(**reader,
                                        model.scope.value_or(std::vector<std::string>{}),
                                        move_declarations);
     if(!loaded) {
@@ -225,7 +226,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
 
     analysis::Annotations annotations;
     if(weights) {
-        // A workspace outside git history has no churn; the results stay
+        // A project outside git history has no churn; the results stay
         // unweighted by it rather than failing.
         if(auto since = weights->churn_since.value_or("6.months"); !since.empty()) {
             if(auto churn = analysis::git_churn(loaded->root, since)) {
@@ -350,7 +351,7 @@ CommandHandler build() {
 
 [[maybe_unused]] const bool registered = register_command(
     Command::analyze,
-    {.description = "Analyze the indexed workspace for refactoring", .build = build});
+    {.description = "Analyze the indexed project for refactoring", .build = build});
 
 }  // namespace
 

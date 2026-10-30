@@ -5,12 +5,9 @@ import :command.database;
 import :command.file_kind;
 import :command.table;
 import :command.toolchain;
-import :config.config;
 import :driver.driver;
-import :project.configuration;
-import :project.load;
-import :project.index_reader;
 import :project.project;
+import :project.project_reader;
 import :support.json;
 import :support.shell;
 import :vfs.file_system;
@@ -30,7 +27,7 @@ struct FileOptions {
              required = false)
     json;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -47,7 +44,7 @@ struct ConvertOptions {
              required = false)
     json;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -122,31 +119,6 @@ struct FileCommands {
     std::string file;
     std::vector<EntryCommands> commands;
 };
-
-/// The project of the workspace a command names, with its configuration,
-/// and the build configuration that applies.
-struct Workspace {
-    Spelling root;
-    std::unique_ptr<FileTable> files = std::make_unique<FileTable>();
-    std::unique_ptr<Project> project = std::make_unique<Project>(*files);
-    std::string configuration;
-};
-
-std::expected<Workspace, std::string> open_workspace(const WorkspaceOptions& where) {
-    Workspace workspace{.root = where.root()};
-    if(!fs::is_directory(workspace.root)) {
-        return std::unexpected(std::format("{}: not a directory", workspace.root));
-    }
-    workspace.files->spell_root(workspace.root);
-    auto& config = workspace.project->config;
-    config = Config::load_from_workspace(CanonicalPath(workspace.root));
-    auto requested = where.configuration.tag();
-    if(auto checked = check_requested_configuration(config, requested); !checked) {
-        return std::unexpected(std::move(checked.error()));
-    }
-    workspace.configuration = resolve_configuration(config, requested);
-    return workspace;
-}
 
 /// A compile_commands.json as one read found it: its entries, each as
 /// written, and the hash of its bytes, which a load of the same bytes
@@ -250,25 +222,24 @@ void print_text(const FileCommands& commands) {
 }
 
 int run_file(const FileOptions& opts) {
-    auto workspace = open_workspace(opts.where);
-    if(!workspace) {
-        LOG_ERROR("{}", workspace.error());
-        return 1;
+    auto read = read_project(opts.where);
+    if(!read) {
+        return print_error(read.error());
     }
-    auto& project = *workspace->project;
-    auto path = argument_path(project, *opts.target.path);
+    auto& [root, loaded] = *read;
+    Spelling path(*opts.target.path, Spelling::cwd());
     if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
         return 1;
     }
+    auto opened =
+        open_reader(root,
+                    std::move(loaded),
+                    {.build = Project::OpenOptions::Build::Databases, .file = CanonicalPath(path)});
+    auto& project = opened.reader->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
     CanonicalRef identity = files.resolve(file);
-    CanonicalPath root(workspace->root);
-    load_sources(project,
-                 root,
-                 workspace->configuration,
-                 compile_commands_above(identity.parent(), root));
     auto entries = project.build.entries(file);
     if(entries.empty()) {
         LOG_ERROR("No compilation database lists {}", files.display(file));
@@ -358,7 +329,7 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
 
 /// Convert the command given after --, which runs in the current
 /// directory.
-int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, bool json) {
+int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool json) {
     auto directory = Spelling::cwd();
     auto sources = compiled_sources(command, directory);
     if(sources.size() != 1) {
@@ -375,11 +346,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
                                                ", ")));
         return 1;
     }
-    auto& project = *workspace.project;
     auto& cdb = project.cdb;
-    project.commands.set_workspace_root(CanonicalPath(workspace.root));
-    project.build.reset_active(workspace.configuration);
-
     llvm::SmallVector<const char*> argv;
     for(auto& argument: command) {
         argv.push_back(argument.c_str());
@@ -414,7 +381,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
 /// Convert every entry of the database `path` names, a .json file or a
 /// directory holding a compile_commands.json, printing the database of
 /// converted entries.
-int convert_database(Workspace& workspace, const Spelling& path) {
+int convert_database(Project& project, const Spelling& path) {
     if(path::extension(path) != ".json" && !fs::is_directory(path)) {
         LOG_ERROR(
             "{}: a compilation database is a .json file, or a directory holding a "
@@ -422,11 +389,8 @@ int convert_database(Workspace& workspace, const Spelling& path) {
             path);
         return 1;
     }
-    auto& project = *workspace.project;
     auto& cdb = project.cdb;
     auto& files = project.file_table;
-    project.commands.set_workspace_root(CanonicalPath(workspace.root));
-    project.build.reset_active(workspace.configuration);
     auto source = cdb.add_source(path);
     auto database = Spelling::absolute(cdb.source_path(source));
     auto written = read_database(database);
@@ -509,15 +473,19 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
         return usage_error(Errors::Text,
                            "--json converts a command; a database converts to a database");
     }
-    auto workspace = open_workspace(opts.where);
-    if(!workspace) {
-        LOG_ERROR("{}", workspace.error());
-        return 1;
+    auto read = read_project(opts.where);
+    if(!read) {
+        return print_error(read.error());
     }
+    auto& [root, loaded] = *read;
+    // The rules alone: what converts is the database or the command given.
+    auto opened =
+        open_reader(root, std::move(loaded), {.build = Project::OpenOptions::Build::None});
+    auto& project = opened.reader->project;
     if(!command.empty()) {
-        return convert_command(*workspace, command, static_cast<bool>(opts.json));
+        return convert_command(project, command, static_cast<bool>(opts.json));
     }
-    return convert_database(*workspace, Spelling(*opts.database, Spelling::cwd()));
+    return convert_database(project, Spelling(*opts.database, Spelling::cwd()));
 }
 
 /// `clice command convert`, whose options end at a `--`: what follows is

@@ -39,8 +39,9 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 | `clice.initializationOptions`   | `{}`        | Configuration in the shape of `clice.toml`, taking the place of the same settings in the project's file.                                                                           |
 | `clice.inactiveRegions.opacity` | `0.45`      | Opacity of preprocessor branches not taken; `1` leaves them as they are.                                                                                                           |
 
-Changing a server setting, `clice.toml` or `.clice/config.toml` offers to
-restart the server in place — no window reload is needed. With
+Changing a server setting offers to restart the server in place — no window
+reload is needed; saving `clice.toml` or `.clice/config.toml` restarts it on
+its own, as clice asks (not when it connects to a server over a socket). With
 [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)
 installed, both configuration files are completed and checked against clice's
 schema.

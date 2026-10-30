@@ -27,6 +27,16 @@ test("the units lint", async (t) => {
     await t.cli("lint");
 });
 
+// An index lint cannot read leaves it its cache: the PCH and the PCMs still
+// build into it.
+test("the units lint beside an index that cannot be read", async (t) => {
+    await t.cli("index");
+    for (const database of t.disk.list(".clice/cache/*/index/*/index.mdb")) {
+        t.disk.truncate(database, 0);
+    }
+    await t.cli("lint");
+});
+
 test("a rule leaving the pch's builder out of the index", async (t) => {
     // The module units still read the PCH: without it they are no module
     // units at all.

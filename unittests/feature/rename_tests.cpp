@@ -869,7 +869,7 @@ ZEST_CASE(EditOutsideWorkspace) {
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
     ZASSERT(renamed->conflicts.size() == 1U);
-    ZEXPECT(renamed->conflicts.front().contains("not a workspace source"));
+    ZEXPECT(renamed->conflicts.front().contains("not a source of the project"));
 }
 
 ZEST_CASE(ApplyRewritesTokens) {

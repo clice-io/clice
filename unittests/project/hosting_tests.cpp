@@ -28,9 +28,10 @@ struct TreeProject {
     Project project{files};
 
     TreeProject() {
-        project.config.rules.push_back(
-            ConfigRule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
-        project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        project.settings.rules.push_back(
+            Rule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
+        project.root = CanonicalPath(Spelling::absolute(tmp.root));
+        project.settings.finalize(project.root);
         project.build.reset_active("");
     }
 
@@ -83,10 +84,11 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
     FileTable files;
 
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
-    project.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
+    project.settings.rules.push_back(Rule{.compile_commands = {"cmake"}});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     for(auto source: project.build.declared_sources()) {
         project.cdb.load(source);
@@ -117,11 +119,12 @@ ZEST_CASE(ProximityWithinSource) {
     tmp.touch("src/x.h", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(ConfigRule{
+    project.settings.rules.push_back(Rule{
         .patterns = {"src/**", "other/**"},
         .default_command = std::string("clang++")
     });
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
@@ -160,9 +163,10 @@ ZEST_CASE(ProximityByDirectories) {
     tmp.touch("a/b/x.h", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("a/b/x.h")));
@@ -186,9 +190,10 @@ ZEST_CASE(HostsMatchLanguage) {
     tmp.touch("shared/plain.h", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"c/**"}, .default_command = std::string("clang")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto hpp = project.file_table.intern(Spelling::absolute(tmp.path("shared/types.hpp")));
@@ -209,9 +214,10 @@ ZEST_CASE(HostsMatchLanguage) {
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     project.commands_epoch += 1;
     auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
@@ -221,9 +227,10 @@ ZEST_CASE(HostsMatchLanguage) {
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     project.commands_epoch += 1;
     auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
@@ -268,9 +275,10 @@ ZEST_CASE(LenderSibling) {
     tmp.touch("src/plain.c", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
@@ -289,9 +297,10 @@ ZEST_CASE(LenderCxxDriverC) {
     tmp.touch("lib/a.c", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
@@ -307,9 +316,10 @@ ZEST_CASE(LenderByDirectories) {
     tmp.touch("a/bc/z.cpp", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
@@ -325,7 +335,8 @@ ZEST_CASE(LenderSearchDir) {
     tmp.touch("include/api/new.h", "");
     FileTable files;
     Project project{files};
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
@@ -356,7 +367,8 @@ ZEST_CASE(LenderSearchDirSymlink) {
     ZASSERT(::symlink(tmp.path("vendor/real").c_str(), tmp.path("a/inc").c_str()) == 0);
     FileTable files;
     Project project{files};
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
@@ -381,8 +393,9 @@ ZEST_CASE(LenderIgnoresCommandless) {
     tmp.touch("src/b.cpp", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(Rule{.default_command = std::string("ccache")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
@@ -398,12 +411,12 @@ ZEST_CASE(LenderAcrossModules) {
     tmp.touch("mods/m.cppm", "");
     FileTable files;
     Project project{files};
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"mods/*.cppm"},
-                   .default_command = std::string("clang++ -std=c++20")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    project.settings.rules.push_back(
+        Rule{.patterns = {"mods/*.cppm"}, .default_command = std::string("clang++ -std=c++20")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto intern = [&](llvm::StringRef file) {
@@ -420,7 +433,8 @@ ZEST_CASE(ProvisionalMembers) {
     TempDir tmp;
     FileTable files;
     Project project{files};
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto add = [&](llvm::StringRef driver, llvm::StringRef file) {
         tmp.touch(file, "");

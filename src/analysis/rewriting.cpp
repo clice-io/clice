@@ -160,8 +160,8 @@ struct Rewriter {
     /// that resolves from there. A quoted one resolving relative to its
     /// includer (`"a.h"`, `"../include/a.h"`) resolves only from there; one
     /// that does not goes through the include path. With none, its path
-    /// under the deepest include root, else its workspace-relative path, the
-    /// root being on the include path as for the prelude.
+    /// under the deepest include root, else its path relative to the project
+    /// root, the root being on the include path as for the prelude.
     std::string spelling(std::uint32_t file, std::uint32_t user) const {
         auto& info = facts.files[file];
         auto beside = [&](llvm::StringRef from, llvm::StringRef spelled) {

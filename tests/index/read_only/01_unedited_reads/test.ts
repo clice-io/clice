@@ -183,9 +183,13 @@ test("header served read-only", async (t) => {
 
 test("unindexed header compiles", async (t) => {
     // Opened before main.cpp, which indexes it, has run, the header is
-    // compiled at once: it is indexed by no run of its own.
+    // compiled at once: it is indexed by no run of its own. main.cpp joins
+    // the database once its index is held, so no run can come first.
+    t.disk.database({});
     const s = await t.start(AUTO);
     const host = await s.park("index", "main.cpp", { at: "reply" });
+    t.disk.database();
+    expect(await s.poll("cdb")).toBe(1);
     s.open("header.h", { pull: false });
     await t.show("hover", s.hover(t.at("header.h", "int |add(")));
     expect((await s.counts()).pch).toBe(1);

@@ -20,6 +20,24 @@ struct client_json_config : ipc::lsp_config {
     constexpr static auto invalid_utf8 = codec::invalid_utf8::Replace;
 };
 
+/// How the settings spell an enumerator of one word: its name in
+/// lowercase (`Off` as `off`). Any other case names none, so a value is
+/// written as the documentation lists it.
+struct LowercaseName {
+    std::string operator()(bool is_serialize, std::string_view value) const {
+        std::string name(value);
+        if(is_serialize) {
+            ranges::transform(name, name.begin(), llvm::toLower);
+            return name;
+        }
+        if(name.empty() || ranges::any_of(name, llvm::isUpper)) {
+            return {};
+        }
+        name.front() = llvm::toUpper(name.front());
+        return name;
+    }
+};
+
 /// `value` as the client's JSON, or `fallback` when it cannot be encoded.
 template <typename T>
 std::string to_client_json(const T& value, std::string_view fallback) {

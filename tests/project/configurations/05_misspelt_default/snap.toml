@@ -1,0 +1,20 @@
+["a misspelt default is an error"."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'default_configuration = ⟦"relase"⟧',
+            severity = "error",
+            message = "relase names no rule's configuration (debug, release) at default_configuration",
+            source = "clice",
+        },
+    ],
+]
+
+["a misspelt default is an error".menu.configurations]
+menu = ["debug", "release"]
+active = ""
+selected = ""
+default = "relase"
+
+["a misspelt default is an error"."main.cpp"]
+diagnostics = []

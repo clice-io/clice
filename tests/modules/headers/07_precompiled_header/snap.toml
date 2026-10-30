@@ -32,6 +32,18 @@ range = "return counter.⟦next⟧();"
 stdout = "Linted 5 translation units in #s: 0 findings."
 exit = 0
 
+["the units lint beside an index that cannot be read"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 11 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["the units lint beside an index that cannot be read"."$ clice lint"]
+stdout = "Linted 5 translation units in #s: 0 findings."
+stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is empty; run `clice index` to repair it"
+exit = 0
+
 ["a rule leaving the pch's builder out of the index"."$ clice lint"]
 stdout = "Linted 5 translation units in #s: 0 findings."
 exit = 0

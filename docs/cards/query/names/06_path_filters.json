@@ -3,7 +3,7 @@
   "topic": "query",
   "subtopic": "names",
   "title": "Narrow by path",
-  "summary": "A `path:` filter keeps the symbols of the files under a path, spelled from the workspace root, as a file name or absolute",
+  "summary": "A `path:` filter keeps the symbols of the files under a path, spelled from the current directory, as a file name or absolute",
   "prose": "",
   "status": "supported",
   "issues": [],

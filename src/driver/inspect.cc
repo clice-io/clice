@@ -4,7 +4,7 @@ import :command.file_kind;
 import :command.table;
 import :compile.compilation;
 import :compile.tidy;
-import :config.config;
+import :settings.settings;
 import :driver.driver;
 import :feature.code_actions;
 import :feature.code_completion;
@@ -26,12 +26,9 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.command_snapshot;
-import :project.configuration;
 import :project.hosting;
-import :project.index_reader;
-import :project.load;
 import :project.project;
+import :project.project_reader;
 import :semantic.symbol;
 import :support.bytes;
 import :syntax.token;
@@ -56,7 +53,7 @@ struct Options {
 
     DecoKV(help =
                "Configuration overlay as a JSON object of clice.toml "
-               "sections, over the workspace's configuration",
+               "sections, over the project's configuration",
            required = false)
     <std::string> config_overlay;
 
@@ -70,7 +67,7 @@ struct Options {
            required = false)
     <std::uint32_t> occurrence;
 
-    ConfigurationOption configuration;
+    ProjectOptions where;
 };
 
 struct FeatureOptions {
@@ -182,7 +179,7 @@ struct FeatureParams {
     /// What `unit` compiled from, for a feature that compiles on its own.
     const CompilationInput& input;
 
-    const Config& config;
+    const Settings& settings;
 
     /// The whole file, a marker's range, or a point as an empty range.
     LocalSourceRange range;
@@ -204,22 +201,23 @@ std::optional<codec::RawValue> run_folding_ranges(const FeatureParams& params) {
 }
 
 std::optional<codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
-    const auto& options = params.config.semantic_tokens;
+    const auto& options = params.settings.semantic_tokens;
     return to_raw_json(feature::named_tokens(feature::semantic_tokens(params.unit, options),
                                              feature::semantic_token_legend(options)));
 }
 
 std::optional<codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
-    return to_raw_json(feature::check_semantic_tokens(params.unit, params.config.semantic_tokens));
+    return to_raw_json(
+        feature::check_semantic_tokens(params.unit, params.settings.semantic_tokens));
 }
 
 std::optional<codec::RawValue> run_document_symbols(const FeatureParams& params) {
-    return to_raw_json(feature::document_symbols(params.unit, params.config.document_symbols));
+    return to_raw_json(feature::document_symbols(params.unit, params.settings.document_symbols));
 }
 
 std::optional<codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
     return to_raw_json(
-        feature::check_document_symbols(params.unit, params.config.document_symbols));
+        feature::check_document_symbols(params.unit, params.settings.document_symbols));
 }
 
 std::optional<codec::RawValue> run_document_links(const FeatureParams& params) {
@@ -252,7 +250,7 @@ struct RawInlayHint {
 /// first as an open buffer's is.
 std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
     auto& unit = params.unit;
-    auto hints = feature::inlay_hints(unit, params.range, params.config.inlay_hints);
+    auto hints = feature::inlay_hints(unit, params.range, params.settings.inlay_hints);
 
     std::vector<std::byte> bytes;
     index::TUIndex tu;
@@ -350,9 +348,11 @@ std::optional<codec::RawValue> run_code_action(const FeatureParams& params) {
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
 std::optional<codec::RawValue> run_hover(const FeatureParams& params) {
-    const auto& config = params.config;
-    auto info =
-        feature::hover_info(params.unit, params.range.begin, config.hover, config.documentation);
+    const auto& settings = params.settings;
+    auto info = feature::hover_info(params.unit,
+                                    params.range.begin,
+                                    settings.hover,
+                                    settings.documentation);
     if(!info) {
         return codec::RawValue{};
     }
@@ -371,26 +371,26 @@ CompilationParams completion_at(const FeatureParams& params) {
         .kind = CompilationKind::Completion,
         .input = params.input,
         .completion = {.offset = params.range.begin},
-        .skip_bodies = params.config.project.skip_header_bodies,
+        .skip_bodies = params.settings.project.skip_header_bodies,
     };
 }
 
 std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) {
-    const auto& config = params.config;
+    const auto& settings = params.settings;
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
         feature::code_complete(completion_at(params),
-                               config.code_completion,
-                               config.documentation,
+                               settings.code_completion,
+                               settings.documentation,
                                {.snippets = true, .insert_replace = true, .markdown = true})
             .list);
 }
 
 std::optional<codec::RawValue> run_signature_help(const FeatureParams& params) {
-    const auto& config = params.config;
+    const auto& settings = params.settings;
     return to_raw_json(feature::signature_help(completion_at(params),
-                                               config.signature_help,
-                                               config.documentation));
+                                               settings.signature_help,
+                                               settings.documentation));
 }
 
 /// Marker payload for document-highlight: the unit's own TU index stands
@@ -535,76 +535,41 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     return file;
 }
 
-/// The workspace the inspected file's directory belongs to, as the server
-/// serves it from a workspace folder holding it: the nearest ancestor
-/// holding a configuration file, whose rules may name a database deeper
-/// down (a monorepo's root); else the nearest holding a compile_commands.json,
-/// directly or in its build/ directory; `start` itself when none does.
-/// Only the ancestors themselves are checked — scanning their
-/// subdirectories would let an unrelated sibling project's database win.
-CanonicalPath workspace_of(CanonicalRef start) {
-    CanonicalPath configured;
-    CanonicalPath built;
-    path::walk_ancestors(start, [&](CanonicalRef dir) {
-        if(ranges::any_of(config_file_names, [&](llvm::StringRef marker) {
-               return fs::exists(path::join(dir, marker));
-           })) {
-            configured = dir;
-            return false;
-        }
-        if(built.empty() && (fs::exists(path::join(dir, "compile_commands.json")) ||
-                             fs::exists(path::join(dir, "build", "compile_commands.json")))) {
-            built = dir;
-        }
-        return true;
-    });
-    if(!configured.empty()) {
-        return configured;
-    }
-    return built.empty() ? CanonicalPath(start) : built;
-}
-
-/// The project the file in `directory` belongs to, loaded as `clice serve`
-/// loads it: the configuration of the nearest project at or above it with
-/// --config-overlay put in before the rules compile, as initializationOptions
+/// The project the file in `directory` belongs to, opened as `clice serve`
+/// opens it: the project root at or above it (or --workspace), its
+/// settings with --config-overlay laid over them as initializationOptions
 /// are; its index when one was built, which tells the server's hosts and
-/// what their trials found; the databases the configuration names, else the
+/// what their trials found; the databases the settings name, else the
 /// ones discovered under its root and those between the root and the file;
 /// the dependency graph.
-auto load_inspected(const Options& opts, const Spelling& directory)
-    -> std::expected<std::unique_ptr<IndexReader>, std::string> {
-    auto identity = CanonicalPath(directory);
-    auto root = workspace_of(identity);
-    auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const Options& opts,
+                                                                           const Spelling& path) {
+    LoadSettingsOptions options{.overlay_name = "--config-overlay"};
     if(opts.config_overlay) {
-        if(auto result = json::from_string<StrictJson>(*opts.config_overlay, config); !result) {
-            return std::unexpected(
-                std::format("invalid --config-overlay: {}", result.error().message));
+        auto overlay = json::from_string<codec::dyn::Value>(*opts.config_overlay);
+        if(!overlay) {
+            return std::unexpected(ProjectError{
+                .message = std::format("invalid --config-overlay: {}", overlay.error().message),
+                .exit_code = 2});
         }
+        options.overlay = std::move(*overlay);
     }
-    config.finalize(root);
-    config.keep_own_cache_dir();
-    auto requested = opts.configuration.tag();
-    if(auto checked = check_requested_configuration(config, requested); !checked) {
-        return std::unexpected(std::move(checked.error()));
+    auto read = read_project(opts.where, std::move(options), path.parent());
+    if(!read) {
+        return std::unexpected(std::move(read.error()));
     }
-    auto reader = IndexReader::open(Spelling(root),
-                                    std::move(config),
-                                    requested,
-                                    {.load = IndexLoad::Saved, .required = false});
-    auto& project = reader->project;
-    load_build(project,
-               root,
-               project.build.active_configuration(),
-               compile_commands_above(identity, root));
-    // A unit whose command changed since it was indexed leaves the index
-    // here as a server's load drops it: its manifest no longer tells where
-    // its compile enters a header.
-    if(project.database) {
-        index::IndexReport changed;
-        project.command_snapshot.reconcile(project, changed);
+    auto& [root, loaded] = *read;
+    auto project = open_reader(root,
+                               std::move(loaded),
+                               {
+                                   .store = Project::OpenOptions::Store::ReadOnly,
+                                   .index = Project::OpenOptions::Index::Read,
+                                   .file = CanonicalPath(path),
+                               });
+    if(!project.opened.unreadable.empty()) {
+        LOG_INFO("{}", project.opened.unreadable);
     }
-    return reader;
+    return std::move(project.reader);
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -615,7 +580,7 @@ auto load_inspected(const Options& opts, const Spelling& directory)
 std::string build_pch(Project& project,
                       const CommandRef& writer,
                       llvm::StringRef file,
-                      llvm::StringRef workspace) {
+                      llvm::StringRef project_root) {
     std::string dir;
     sys::temp_dir(dir);
     std::string output;
@@ -628,10 +593,10 @@ std::string build_pch(Project& project,
         .kind = CompilationKind::PrecompiledHeader,
         .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
                   .directory = project.commands.get(writer.command).directory,
-                  .workspace = workspace.str(),
+                  .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
-        .skip_bodies = project.config.project.skip_header_bodies,
+        .skip_bodies = project.settings.project.skip_header_bodies,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
@@ -662,7 +627,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
                                                            Project& project,
                                                            const Selection* pin) {
     CommandResolver commands(project);
-    CompilationInput input{.workspace = project.config.workspace_root.str()};
+    CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
         return commands.resolve_command(path_id,
@@ -678,7 +643,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         auto unit = clice::compile({
             .kind = CompilationKind::Content,
             .input = std::move(trial),
-            .skip_bodies = project.config.project.skip_header_bodies,
+            .skip_bodies = project.settings.project.skip_header_bodies,
         });
         if(unit->completed()) {
             auto& files = project.file_table;
@@ -707,7 +672,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         input.add_synthesized(resolution.synthesized->files);
     }
     if(auto writer = commands.pch_unit(path_id, resolution)) {
-        if(auto pch = build_pch(project, *writer, file.path, input.workspace); !pch.empty()) {
+        if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }
     }
@@ -726,13 +691,13 @@ void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  const CompilationInput& input,
-                 const Config& config) {
+                 const Settings& settings) {
     CompilationParams params{
         .kind = CompilationKind::Content,
         .input = input,
-        .skip_bodies = config.project.skip_header_bodies,
+        .skip_bodies = settings.project.skip_header_bodies,
     };
-    if(config.diagnostics.clang_tidy) {
+    if(settings.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
         if(!resolution.error.empty()) {
             LOG_WARN("{}", resolution.error);
@@ -762,7 +727,7 @@ void run_feature(FileEntry& entry,
     }
 
     auto run = [&](LocalSourceRange range) {
-        return spec.run({.unit = *unit, .input = input, .config = config, .range = range});
+        return spec.run({.unit = *unit, .input = input, .settings = settings, .range = range});
     };
     const auto& [points, ranges] = file.markers;
     std::vector<std::pair<std::string, LocalSourceRange>> places;
@@ -804,10 +769,9 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    auto reader = load_inspected(opts, path.parent());
+    auto reader = load_inspected(opts, path);
     if(!reader) {
-        LOG_ERROR("{}", reader.error());
-        return 1;
+        return print_error(reader.error());
     }
     auto& project = (*reader)->project;
     std::optional<Selection> pin;
@@ -825,7 +789,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("--host: {}", input.error());
         return 1;
     }
-    run_feature(entry, spec, *file, *input, project.config);
+    run_feature(entry, spec, *file, *input, project.settings);
     if(!input->pch.first.empty()) {
         fs::remove(input->pch.first);
     }
@@ -869,7 +833,7 @@ CommandHandler build() {
                                         "inspect",
                                         Errors::Text,
                                         [](const SchemaOptions&) {
-                                            auto schema = Config::json_schema();
+                                            auto schema = Settings::json_schema();
                                             if(!schema) {
                                                 LOG_ERROR("config schema generation failed: {}",
                                                           schema.error());

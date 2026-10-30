@@ -2,11 +2,10 @@ import { expect } from "vitest";
 import * as proto from "vscode-languageserver-protocol";
 import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
-/// Persist `name` and start the server again: what an editor does to apply
-/// a switch.
+/// Persist `name`; the server asks to be restarted on it.
 async function switchTo(s: Serve, name: string): Promise<void> {
     expect(await s.switchConfiguration(name)).toEqual({ success: true, reason: null });
-    await s.restart();
+    await s.restarted();
 }
 
 /// The configurations whose index library the cache holds.
@@ -152,8 +151,8 @@ test(
 );
 
 // An editor whose only UI for configurations is its code action menu
-// switches them through source actions; the server tells the user that the
-// choice applies at the next start.
+// switches them through source actions; the server asks to be restarted on
+// the choice.
 test("source actions select a configuration", async (t) => {
     const s = await t.start();
     s.open("main.cpp", { pull: false });
@@ -179,6 +178,6 @@ test("source actions select a configuration", async (t) => {
             arguments: command?.arguments ?? [],
         }),
     ).toEqual({ success: true, reason: null });
-    await t.show("told", s.client.shownMessages);
+    await t.show("asked", await s.restarted());
     await t.show("selected", s.configurations());
 });

@@ -144,4 +144,4 @@ stdout = '''
   "stale": []
 }
 '''
-exit = 1
+exit = 2

@@ -4,7 +4,7 @@ pushes = [
         {
             at = "⟦[[project]]⟧ @1",
             severity = "error",
-            message = "invalid type: expected table, got array at project (line 1, column 1)",
+            message = "invalid type: expected table, got array at project",
             source = "clice",
         },
     ],

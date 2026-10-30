@@ -26,9 +26,10 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     FileTable files;
     Project project{files};
     CommandResolver resolver(project);
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
@@ -57,9 +58,10 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     FileTable files;
     Project project{files};
     CommandResolver resolver(project);
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
@@ -102,8 +104,9 @@ ZEST_CASE(TreeSkipsFirstHost) {
     FileTable files;
     Project project{files};
     CommandResolver resolver(project);
-    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     for(auto source: project.build.declared_sources()) {
         project.cdb.load(source);
@@ -164,8 +167,9 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     Project project{files};
     CommandResolver resolver(project);
     project.file_table.intern(Spelling::absolute(tmp.path("later.h")));
-    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     for(auto source: project.build.declared_sources()) {
         project.cdb.load(source);

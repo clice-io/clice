@@ -54,15 +54,15 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     return file;
 }
 
-/// Anchor a query's paths in the workspace. The file of a place, and the
-/// one holding an id's entries, is one file, workspace-relative or absolute
-/// as the command's own path arguments are; false when the index holds no
+/// Anchor a query's paths. The file of a place, and the one holding an id's
+/// entries, is one file, relative to the current directory or absolute as
+/// the command's own path arguments are; false when the index holds no
 /// shard for it, which the caller answers as not found with the file
 /// noted. A path filter spelling a path names its file or directory by
-/// identity, a relative one from the workspace root.
+/// identity, a relative one from the current directory.
 Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
     auto anchor = [&](std::string& path) -> Outcome<bool> {
-        Spelling spelled(path, Spelling(ctx.root));
+        Spelling spelled(path, ctx.cwd);
         auto file = indexed_file(ctx, spelled);
         if(!file) {
             return std::unexpected(file.error());
@@ -78,7 +78,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         }
         return true;
     }
-    query.resolve_paths(Spelling(ctx.root));
+    query.resolve_paths(ctx.cwd);
     return query.position ? anchor(query.position->path) : true;
 }
 
@@ -481,9 +481,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     return result;
 }
 
-PlannedRename rename(Context& ctx,
-                     llvm::ArrayRef<RenameRequest> requests,
-                     RenameWorkspace workspace) {
+PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles files) {
     PlannedRename planned;
     auto& result = planned.result;
     std::vector<Renaming> renamings;
@@ -514,7 +512,7 @@ PlannedRename rename(Context& ctx,
         renamings.push_back({.target = std::move(*target), .new_name = request.new_name});
     }
 
-    WorkspaceTexts texts(std::move(workspace.files), std::move(names));
+    RenameTexts texts(std::move(files.files), std::move(names));
     auto read = [&](llvm::StringRef path) {
         return texts.read(path);
     };
@@ -522,9 +520,9 @@ PlannedRename rename(Context& ctx,
                                 ctx.query.file_table(),
                                 renamings,
                                 {.files = texts.files,
-                                 .editable = workspace.editable,
+                                 .editable = files.editable,
                                  .read = read,
-                                 .units_pending = workspace.units_pending});
+                                 .units_pending = files.units_pending});
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;

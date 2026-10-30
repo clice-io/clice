@@ -23,7 +23,7 @@ struct CommandEdit {
     Spelling directory;
 };
 
-/// Config-rule edits applied on top of a base command (structured, no
+/// Rule edits applied on top of a base command (structured, no
 /// re-parse), in the order the rules declare them: a remove cancels the
 /// matching options of the base command and of the appends before it;
 /// appends insert before the input slot so they always take effect for
@@ -32,7 +32,7 @@ struct CommandEdits {
     llvm::ArrayRef<CommandEdit> edits;
 
     /// Per-run additions in the resolved command's own dialect (a lint
-    /// plan's clang-tool extra args). Unlike the config rule lists above
+    /// plan's clang-tool extra args). Unlike the rule lists above
     /// they are never NVCC-translated — clang-tidy's extra args are clang
     /// args by definition. Prepends land right after the binary name,
     /// ahead of the command's own flags (the command wins on collision);

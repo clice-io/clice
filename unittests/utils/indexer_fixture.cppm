@@ -7,7 +7,6 @@ import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.load;
 import :project.project;
 import :project.save;
 import :sched.builders.pch;
@@ -66,10 +65,11 @@ struct IndexerFixture {
         pump.apply_report(co_await save_project(project, loop, pump.save_debt(), search));
     }
 
-    /// Load and take the report, as the workspace load does. Returns the
-    /// decode result (false = a header of another format, or corrupt).
+    /// Load and take the report, as the project's opening does, reconciled
+    /// with the build on a writable database. Returns the decode result
+    /// (false = a header of another format, or corrupt).
     bool load() {
-        auto result = load_saved(project);
+        auto result = load_saved(project, project.database && !project.database->read_only());
         pump.apply_report(result.report);
         return result.decoded;
     }

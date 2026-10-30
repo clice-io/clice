@@ -37,7 +37,7 @@ kota::task<> IncludeTrees::run(TreeRequest request, std::shared_ptr<kota::event>
     auto& command = request.command;
     worker::IncludeTreeParams params;
     params.file = project.file_table.resolve(request.key.first).str();
-    params.workspace = project.config.workspace_root.str();
+    params.project_root = project.root.str();
     params.directory = project.commands.get(command.command).directory;
     auto rendered = project.toolchain.render(command, project.cdb.spelling(command.file));
     params.arguments.assign(rendered.argv.begin(), rendered.argv.end());

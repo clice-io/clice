@@ -28,6 +28,7 @@ import {
     QueryContextRequest,
     ReleaseRequest,
     ResetContextRequest,
+    RestartServerRequest,
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
@@ -112,9 +113,10 @@ export interface InitializeOptions {
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; by default versioned edits,
-    /// prepared renames, markdown hover cards and diagnostics' related
-    /// information alone, so servers see a conservative client unless a
-    /// test opts in.
+    /// prepared renames, markdown hover cards, diagnostics' related
+    /// information and restarting the server when it asks, as the editors
+    /// spawning it do, so servers see a conservative client unless a test
+    /// opts in.
     capabilities?: proto.ClientCapabilities | undefined;
     /// The position encodings the client offers (general.positionEncodings)
     /// beside those capabilities; none, which leaves UTF-16, by default.
@@ -188,6 +190,10 @@ export class CliceClient {
     progressEvents: { token: string; value: unknown; at: number }[] = [];
     /// Methods of server→client requests the client answered with null.
     serverRequests: string[] = [];
+    /// The reasons of the restarts the server asked for (RestartServerRequest),
+    /// oldest first.
+    restartRequests: string[] = [];
+    private restartWaiters: (() => void)[] = [];
     initResult: proto.InitializeResult | null = null;
     /// Bound by initialize(); relative paths in open/openAndWait resolve
     /// against it.
@@ -288,6 +294,13 @@ export class CliceClient {
                 );
             }
             this.liveTokens.add(token);
+        });
+        this.connection.onRequest(RestartServerRequest, (p) => {
+            this.restartRequests.push(p.reason);
+            for (const resolve of this.restartWaiters.splice(0)) {
+                resolve();
+            }
+            return null;
         });
         // ProtocolConnection's type surface omits the star handlers and the
         // unhandled-progress hook its underlying MessageConnection provides;
@@ -492,6 +505,7 @@ export class CliceClient {
                             symbolKind: { valueSet: Object.values(proto.SymbolKind) },
                         },
                     },
+                    experimental: { restartServer: true },
                 },
                 options.positionEncodings,
             ),
@@ -511,6 +525,20 @@ export class CliceClient {
         await options.beforeInitialized?.();
         await this.sendNotification(proto.InitializedNotification.type, {});
         return this;
+    }
+
+    /// Resolves once the server asked for its `count`th restart.
+    restartAsked(count: number): Promise<void> {
+        return new Promise((resolve) => {
+            const check = () => {
+                if (this.restartRequests.length >= count) {
+                    resolve();
+                } else {
+                    this.restartWaiters.push(check);
+                }
+            };
+            check();
+        });
     }
 
     /// Announce workspace folders coming and going

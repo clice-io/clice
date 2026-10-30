@@ -18,6 +18,8 @@ vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })
 
 Neovim runs a clice for each project root: the nearest directory above the file that holds a `clice.toml`, else a `compile_commands.json`, else a `.git` (before Neovim 0.11.3, the nearest that holds any of them).
 
+Saving `clice.toml` or `.clice/config.toml` restarts clice on Neovim 0.12, where `:lsp restart` exists; before, clice puts a diagnostic on the file saying the change applies from its next start.
+
 ## Commands
 
 | Command                        | Does                                                                                                                                                                               |

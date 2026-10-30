@@ -5,7 +5,7 @@ Session log: ${WS}/before/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query symbol-search UTIL_LIMIT --workspace before"]
+[test."$ clice query symbol-search UTIL_LIMIT"]
 stdout = '''
 {
   "result": {
@@ -26,7 +26,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query symbol-search src/a.cpp:2 --workspace before"]
+[test."$ clice query symbol-search src/a.cpp:2"]
 stdout = '''
 {
   "result": {
@@ -47,7 +47,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query symbol-search \"helper path:src/a.cpp\" --workspace before"]
+[test."$ clice query symbol-search \"helper path:src/a.cpp\""]
 stdout = '''
 {
   "result": {
@@ -75,7 +75,7 @@ Session log: ${WS}/after/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query symbol-search UTIL_LIMIT --workspace after"]
+[test."$ clice query symbol-search UTIL_LIMIT #2"]
 stdout = '''
 {
   "result": {
@@ -96,7 +96,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query symbol-search src/a.cpp:2 --workspace after"]
+[test."$ clice query symbol-search src/a.cpp:2 #2"]
 stdout = '''
 {
   "result": {
@@ -117,7 +117,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query symbol-search \"helper path:src/a.cpp\" --workspace after"]
+[test."$ clice query symbol-search \"helper path:src/a.cpp\" #2"]
 stdout = '''
 {
   "result": {

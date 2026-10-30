@@ -9,16 +9,8 @@ diagnostics = [
     },
 ]
 
-[test.edited]
-diagnostics = [
-    {
-        at = "return ⟦FROM_TOML⟧;",
-        severity = "error",
-        message = "use of undeclared identifier 'FROM_TOML'",
-        source = "clang",
-        code = "err_undeclared_var_use",
-    },
-]
+[test.asked]
+value = "${WS}/clice.toml changed"
 
 [test.restarted]
 diagnostics = []

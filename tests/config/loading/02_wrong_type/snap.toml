@@ -4,7 +4,7 @@ pushes = [
         {
             at = 'enable_indexing = ⟦"yes"⟧',
             severity = "error",
-            message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)",
+            message = "invalid type: expected boolean, got string at project.enable_indexing",
             source = "clice",
         },
     ],
@@ -19,7 +19,7 @@ pushes = [
         {
             at = 'enable_indexing = ⟦"yes"⟧',
             severity = "error",
-            message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)",
+            message = "invalid type: expected boolean, got string at project.enable_indexing",
             source = "clice",
         },
     ],
@@ -27,3 +27,14 @@ pushes = [
 
 ["the fix clears it".fixed]
 pushes = [[]]
+
+["saving the fix serves".broken]
+document_symbols = []
+
+["saving the fix serves".asked]
+value = "${WS}/clice.toml changed"
+
+["saving the fix serves".fixed]
+document_symbols = [
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return 0; }" },
+]

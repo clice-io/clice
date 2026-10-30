@@ -95,7 +95,7 @@ struct Wrapping {
 /// Wrap the interfaces of a partition's wrapped modules. With `libcxx`, the
 /// partition's external module `std` is libc++'s, imported as std.compat,
 /// and the modules it keeps headers contribute their includes and macros
-/// ahead of every import. `root` absolutizes the workspace-relative paths.
+/// ahead of every import. `root` absolutizes the paths relative to the project root.
 /// Without `mirrors`, no header is emptied: what still includes a wrapped
 /// header parses it beside the import.
 std::expected<Wrapping, std::string> wrap(const Partition& partition,

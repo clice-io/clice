@@ -117,9 +117,9 @@ public:
     /// Where queries of cwd-insensitive commands run, and what command hashes
     /// name the paths under relative to (path::portable). Set before load;
     /// empty means the process working directory, and absolute paths.
-    void set_workspace_root(CanonicalRef path);
+    void set_project_root(CanonicalRef path);
 
-    CanonicalRef workspace_root() const {
+    CanonicalRef project_root() const {
         return root;
     }
 
@@ -166,7 +166,7 @@ public:
 
     /// Identity hash of a command (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
-    /// workspace root taken by their portable names so a moved checkout
+    /// project root taken by their portable names so a moved checkout
     /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied command — the pin
     /// identity of clice/switchContext.

@@ -68,12 +68,12 @@ ProjectIndex::ProjectIndex(ProjectIndex&&) noexcept = default;
 
 std::string ProjectIndex::portable(llvm::StringRef path) const {
     llvm::SmallString<256> buffer;
-    return path::portable(path, workspace, buffer).str();
+    return path::portable(path, project_root, buffer).str();
 }
 
 Spelling ProjectIndex::local(llvm::StringRef name) const {
     llvm::SmallString<256> buffer;
-    return Spelling::absolute(path::local(name, workspace, buffer));
+    return Spelling::absolute(path::local(name, project_root, buffer));
 }
 
 void ProjectIndex::damaged_record(BlobKind kind, llvm::StringRef key) const {

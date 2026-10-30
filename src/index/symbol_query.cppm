@@ -16,8 +16,8 @@ module;
 ///   src/a.cpp:120:8      the symbol under that cursor (1-based line and byte column)
 ///   kind:function        of these kinds (comma-separated, or the term repeated)
 ///   path:src/index/      declared in that file or under that directory, a
-///                        relative path from the workspace root; a bare file
-///                        name matches by name
+///                        relative path from the current directory; a bare
+///                        file name matches by name
 ///
 /// Terms are separated by whitespace; quotes and angle brackets keep
 /// theirs. One term names the symbol, the rest narrow it.
@@ -94,8 +94,8 @@ struct SymbolQuery {
     static std::expected<SymbolQuery, std::string> parse(llvm::StringRef text);
 
     /// Take the path filters spelling a path as identities, relative ones
-    /// from the workspace `root`; a bare file name stays a name.
-    void resolve_paths(const Spelling& root);
+    /// from `directory`; a bare file name stays a name.
+    void resolve_paths(const Spelling& directory);
 
     /// Whether the query names symbols by pattern rather than by id or
     /// place.

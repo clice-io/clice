@@ -14,7 +14,7 @@
 - `project-files [--filter all|source|header|module]` lists the build's files; `file-deps <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impact-analysis <file>` the include graph and the files that import a module the file is part of.
 - `counterparts <file>` lists the files the file pairs with — a header's sources, a source's headers, a module's interface and implementation units — best first, each with its reasons, and names the one an editor would open without asking as `preferred` (see [Switch Source/Header](../features/navigation.md#switch-source-header)).
 
-Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
+Paths are relative to the current directory or absolute in questions, absolute in answers; lines are 1-based.
 
 ## Locators
 
@@ -29,11 +29,11 @@ A locator names symbols, wherever a command takes one. It is one string: spaces 
 | `::ns::Foo::bar`             | symbols inside exactly that container                                                                                                                                                                                                                      |
 | `ns::*`, `ns::**`            | the container's members; everything below it                                                                                                                                                                                                               |
 | `Widget<int>`                | the specialization spelling those arguments                                                                                                                                                                                                                |
-| `#1a2b3c`                    | the symbol with that id; one only some files see takes `path:` naming a file that holds it, workspace-relative or absolute                                                                                                                                 |
+| `#1a2b3c`                    | the symbol with that id; one only some files see takes `path:` naming a file that holds it, relative or absolute                                                                                                                                           |
 | `src/a.cpp:120`              | the symbols defined on that line                                                                                                                                                                                                                           |
 | `src/a.cpp:120:8`            | the symbol under that cursor, with a 1-based line and byte column                                                                                                                                                                                          |
 | `kind:function,method`       | only these kinds                                                                                                                                                                                                                                           |
-| `path:src/index/`            | symbols declared in that file or under that directory, a relative path starting at the workspace root; a bare file name, `path:a.cpp`, matches every file of that name                                                                                     |
+| `path:src/index/`            | symbols declared in that file or under that directory, a path relative to the current directory; a bare file name, `path:a.cpp`, matches every file of that name                                                                                           |
 
 A local or a parameter is known only to its file: a name finds it only together with `path:` naming the file or its directory. An entity of internal linkage at namespace scope — `static`, or in an anonymous namespace — a name finds wherever it is.
 
@@ -45,7 +45,7 @@ Every answer is one JSON object: `{"result": ..., "stale": [...]}` on success, `
 
 `stale` lists the files whose entries the answer had to leave out because their content on disk no longer matches what was indexed — the positions the index holds for them would point into text that moved. A file that changed only because a header it includes changed keeps answering from its last index. A symbol whose definition sits in a stale file is reported as not found, with the file named, so a reader can tell "does not exist" from "not indexed yet". Only files the answer consulted are checked: a symbol added to a file after it was indexed is simply absent, since no entry leads to that file — `--fresh` is the way to ask about the current disk. The index never sees unsaved editor buffers: the disk is the truth it describes.
 
-`--fresh` brings the index up to date with the disk before answering: while an editor session has the workspace open, its server runs the sweep; otherwise the command runs the indexer itself, building the index from nothing when there is none yet. Either way only the units whose inputs changed are recompiled. Without `--fresh` a workspace with no index answers with an error.
+`--fresh` brings the index up to date with the disk before answering: while an editor session has the project open, its server runs the sweep; otherwise the command runs the indexer itself, building the index from nothing when there is none yet. Either way only the units whose inputs changed are recompiled. Without `--fresh` a project with no index answers with an error.
 
 ## Examples
 
@@ -168,7 +168,7 @@ tests/query/names/05_file_local_names
 
 **Narrow by path**
 
-A `path:` filter keeps the symbols of the files under a path, spelled from the workspace root, as a file name or absolute
+A `path:` filter keeps the symbols of the files under a path, spelled from the current directory, as a file name or absolute
 
 ```case
 tests/query/names/06_path_filters

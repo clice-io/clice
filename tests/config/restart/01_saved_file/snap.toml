@@ -1,0 +1,25 @@
+["the editor restarts".asked]
+value = "${WS}/clice.toml changed"
+
+["a client without restarts"."clice.toml"]
+pushes = [
+    [],
+    [],
+    [
+        {
+            at = "⟦⟧[[rules]]",
+            severity = "warning",
+            message = "${WS}/clice.toml changed; it applies once clice restarts",
+            source = "clice",
+        },
+    ],
+]
+
+["a client without restarts".asked]
+value = []
+
+["polling off".asked]
+value = "${WS}/clice.toml changed"
+
+["the same content".asked]
+value = []

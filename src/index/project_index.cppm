@@ -301,7 +301,7 @@ public:
     llvm::SmallVector<Fid> stale_units();
 
     /// Forget everything read and merged, as after the database was
-    /// discarded: the workspace stays.
+    /// discarded: the project root stays.
     void clear();
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
@@ -440,7 +440,7 @@ public:
     /// portable names (path::portable), so a moved checkout keeps its
     /// index; empty names every file by its identity. Set before the index
     /// opens a database or saves.
-    CanonicalPath workspace;
+    CanonicalPath project_root;
 
 private:
     friend struct testing::IndexInternals;

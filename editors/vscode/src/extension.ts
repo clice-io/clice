@@ -5,10 +5,12 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { window, ExtensionContext } from "vscode";
 import {
+    ClientCapabilities,
     LanguageClient,
     LanguageClientOptions,
     ServerOptions,
     State,
+    StaticFeature,
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
@@ -268,6 +270,28 @@ async function startServer(context: ExtensionContext): Promise<void> {
     }
 }
 
+/// The server asks for a restart when what it was started on changes (its
+/// configuration file, the build); a server spawned here is restarted as the
+/// restart command does. One in socket mode is the user's: the extension can
+/// only reconnect to it, so it is not declared and the server tells the user.
+const restartFeature: StaticFeature = {
+    fillClientCapabilities(capabilities: ClientCapabilities) {
+        let socket = false;
+        try {
+            socket = getSetting().mode === "socket";
+        } catch {
+            // An invalid setting stops the start before the capabilities.
+        }
+        if (!socket) {
+            const experimental = (capabilities.experimental ?? {}) as Record<string, unknown>;
+            capabilities.experimental = { ...experimental, restartServer: true };
+        }
+    },
+    initialize: () => undefined,
+    getState: () => ({ kind: "static" }),
+    clear: () => undefined,
+};
+
 /// Set while a restart is offered: a change before the user answers joins
 /// the offer instead of stacking another one, as saving on every pause would.
 let offering = false;
@@ -302,58 +326,6 @@ async function onSettingsChanged(
     if (launchSettings.some((setting) => event.affectsConfiguration(setting))) {
         await offerRestart("clice server settings changed.", context);
     }
-}
-
-/// clice reads its configuration when it starts: an edited clice.toml, or
-/// .clice/config.toml, of a workspace folder applies once the server
-/// restarts. Only a folder's own: a clice.toml deeper down, a test fixture
-/// or a vendored project's, configures nothing the server runs. The second
-/// sits under .clice, which files.watcherExclude keeps from file watchers,
-/// so its saves in the editor are what is seen of it.
-function watchConfigFiles(context: ExtensionContext) {
-    const offer = (uri: vscode.Uri) =>
-        void offerRestart(
-            `clice: ${vscode.workspace.asRelativePath(uri)} changed; it applies once the server restarts.`,
-            context,
-        );
-    const watchers = new Map<string, vscode.Disposable>();
-    const watch = (folders: readonly vscode.WorkspaceFolder[]) => {
-        for (const folder of folders) {
-            const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(folder, "clice.toml"),
-            );
-            watcher.onDidCreate(offer);
-            watcher.onDidChange(offer);
-            watcher.onDidDelete(offer);
-            watchers.set(folder.uri.toString(), watcher);
-        }
-    };
-    watch(vscode.workspace.workspaceFolders ?? []);
-    context.subscriptions.push(
-        {
-            dispose: () => {
-                for (const watcher of watchers.values()) {
-                    watcher.dispose();
-                }
-            },
-        },
-        vscode.workspace.onDidChangeWorkspaceFolders((event) => {
-            for (const folder of event.removed) {
-                watchers.get(folder.uri.toString())?.dispose();
-                watchers.delete(folder.uri.toString());
-            }
-            watch(event.added);
-        }),
-        vscode.workspace.onDidSaveTextDocument((document) => {
-            const folder = vscode.workspace.getWorkspaceFolder(document.uri);
-            if (
-                folder &&
-                document.uri.fsPath === path.join(folder.uri.fsPath, ".clice", "config.toml")
-            ) {
-                offer(document.uri);
-            }
-        }),
-    );
 }
 
 export async function activate(context: ExtensionContext) {
@@ -417,9 +389,15 @@ export async function activate(context: ExtensionContext) {
     };
 
     const serverOptions = makeServerOptions(context, channel);
-    client = new ClientHandle(
-        () => new LanguageClient("clice", "clice", serverOptions, clientOptions),
-    );
+    client = new ClientHandle(() => {
+        const created = new LanguageClient("clice", "clice", serverOptions, clientOptions);
+        created.registerFeature(restartFeature);
+        created.onRequest("clice/restartServer", () => {
+            void startServer(context);
+            return null;
+        });
+        return created;
+    });
 
     context.subscriptions.push(
         vscode.commands.registerCommand("clice.restart", () => startServer(context)),
@@ -427,7 +405,6 @@ export async function activate(context: ExtensionContext) {
             void onSettingsChanged(event, context);
         }),
     );
-    watchConfigFiles(context);
 
     registerBuildConfiguration(client, context);
     registerCompilationContext(client, context, registerCompileCommand(client, context));

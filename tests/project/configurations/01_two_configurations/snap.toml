@@ -143,11 +143,11 @@ exit = 0
 
 ["scripted commands reject unknown names"."$ clice index --configuration nope --jobs 2"]
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
-exit = 1
+exit = 2
 
 ["scripted commands reject unknown names"."$ clice index stats --configuration nope"]
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
-exit = 1
+exit = 2
 
 ["scripted commands reject unknown names"."$ clice lint --configuration nope --jobs 2"]
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
@@ -155,11 +155,11 @@ exit = 2
 
 ["scripted commands reject unknown names"."$ clice inspect hover gated.cpp --configuration nope"]
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
-exit = 1
+exit = 2
 
 ["scripted commands reject unknown names"."$ clice command gated.cpp --configuration nope"]
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
-exit = 1
+exit = 2
 
 ["scripted commands reject unknown names"."$ clice inspect hover gated.cpp"]
 stdout = '''
@@ -198,11 +198,11 @@ exit = 0
 ["source actions select a configuration".offered]
 value = ["Use build configuration release from the next start"]
 
-["source actions select a configuration".told]
-value = ["clice: release applies once clice restarts"]
+["source actions select a configuration".asked]
+value = "Build configuration release selected"
 
 ["source actions select a configuration".selected.configurations]
 menu = ["debug", "release"]
-active = "debug"
+active = "release"
 selected = "release"
 default = "debug"

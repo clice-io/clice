@@ -61,15 +61,15 @@ workspace_symbols = [
     { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = 2;" },
 ]
 
-["clice index while the server switches"."$ clice index --jobs 2"]
-stderr = "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)"
+["clice index while the server waits for a restart"."$ clice index --jobs 2"]
+stderr = "error: request failed: the compilation databases of the running clice server now resolve to another build, which it opens once it restarts"
 exit = 1
 
-["clice index while the server switches"."$ clice index --jobs 2 #2"]
+["clice index while the server waits for a restart"."$ clice index --jobs 2 #2"]
 stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 
-["clice index while the server switches".debug]
+["clice index while the server waits for a restart".debug]
 workspace_symbols = [
     { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
 ]

@@ -4,13 +4,15 @@ outline: 2
 
 # Configuration
 
-clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
+clice reads configuration from `clice.toml` in the project root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
-Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload. The VS Code extension offers the restart when either file changes.
+Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file saying the change applies once clice restarts.
+
+A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count of zero, a pattern that does not compile, a `default_configuration` no rule's tag names. The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. Settings from `initializationOptions` with an error are left out whole, with the error naming them.
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
-Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
+Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the project root.
 
 ## Editor Settings
 
@@ -42,11 +44,11 @@ An edit to the configuration applies when the server starts again.
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Changes need a restart**
+**Changes restart the server**
 
-clice reads `clice.toml` when the server starts, so an edit applies at the next start
+clice reads `clice.toml` when the server starts. Saving it makes the server ask the editor to restart it, and the edit applies in the new server
 
-The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.
+The rule gains the macro while the server runs; once the editor restarted the server, `main.cpp` compiles with it.
 
 ```case
 tests/config/loading/04_edited_file
@@ -66,11 +68,11 @@ Each workspace folder the editor opens is a project of its own, with its own `cl
 
 The following variable is supported in string values:
 
-| Variable       | Description                                    |
-| -------------- | ---------------------------------------------- |
-| `${workspace}` | The workspace directory provided by the client |
+| Variable       | Description                  |
+| -------------- | ---------------------------- |
+| `${workspace}` | The project's root directory |
 
-## Workspace
+## Top Level
 
 Top-level options, written before any section.
 
@@ -82,7 +84,7 @@ Top-level options, written before any section.
 | ----------------------- | -------- | ------- |
 | `default_configuration` | `string` | `""`    |
 
-The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
+The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules; a name no rule declares is an error. Unset, the first declared tag is used.
 
 </div>
 
@@ -178,7 +180,7 @@ Enable the clice/internal test hooks used by the test harness.
 | ----------------------- | -------- | ------- |
 | `stateful_worker_count` | `uint32` | `2`     |
 
-Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
+Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); at least 1.
 
 </div>
 
@@ -188,7 +190,7 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 | ------------------------ | -------- | ------- |
 | `stateless_worker_count` | `uint32` | —       |
 
-Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default.
+Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. At least 1.
 
 </div>
 
@@ -198,7 +200,7 @@ Number of stateless workers started — they handle ephemeral tasks (PCH/PCM bui
 | ---------------------------- | -------- | ------- |
 | `min_stateless_worker_count` | `uint32` | `1`     |
 
-Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
+Lower bound for dynamic stateless-worker scaling; at least 1.
 
 </div>
 
@@ -726,7 +728,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the project root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
 
 </div>
 
@@ -746,7 +748,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
 
 </div>
 
@@ -756,7 +758,7 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 | ------------------ | ------ | ------- |
 | `resolve_symlinks` | `bool` | `false` |
 
-Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.
+Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server asks to be restarted on that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.
 
 </div>
 
@@ -766,7 +768,7 @@ Whether builds are told apart by the real paths this rule's `compile_commands` r
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
 
-The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the project root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
 
 </div>
 
@@ -816,7 +818,7 @@ Whether matching translation units join the background index. `false` keeps them
 | ------ | ------ | ------- |
 | `lint` | `bool` | `true`  |
 
-Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the workspace are never checked. Any matching rule saying `false` wins.
+Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the project are never checked. Any matching rule saying `false` wins.
 
 </div>
 
@@ -826,7 +828,7 @@ Whether `clice lint` checks matching files. `false` keeps them out: their findin
 | -------- | ------ | ------- |
 | `format` | `bool` | `true`  |
 
-Whether `clice format` formats matching files. `false` keeps them out. Files outside the workspace are never formatted. Any matching rule saying `false` wins.
+Whether `clice format` formats matching files. `false` keeps them out. Files outside the project are never formatted. Any matching rule saying `false` wins.
 
 </div>
 
@@ -930,9 +932,9 @@ tests/project/rules/09_remove_flags
 
 ## Switching Configurations
 
-The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
+The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the server asks the editor to do, as for an edited configuration file. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
 
-Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server switches to that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
+Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server asks to be restarted on that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

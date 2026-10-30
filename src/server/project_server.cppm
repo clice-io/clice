@@ -1,6 +1,6 @@
 module clice:server.project_server;
 
-import :config.config;
+import :settings.settings;
 import :project.command_resolver;
 import :project.project;
 import :sched.stack;
@@ -36,19 +36,18 @@ public:
     ProjectServer(MasterServer& server, CanonicalPath root);
     ~ProjectServer();
 
-    /// Load the configuration — clice.toml under the root, overlaid with
-    /// the client's initializationOptions (`init_options`), then
-    /// finalized — and apply its serving mode. A cache directory belongs
-    /// to one project: when the one configured is among
-    /// `taken_cache_dirs`, this project falls back to its clice.toml's,
-    /// then the default, then runs without one.
+    /// Read the settings (load_settings): clice.toml under the root,
+    /// overlaid with the client's initializationOptions (`init_options`),
+    /// its cache directory none of `taken_cache_dirs`. One with errors
+    /// leaves the project broken.
     void configure(const std::optional<codec::dyn::Value>& init_options,
                    llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
-    /// Load the project from disk (see bootstrap_project), restore the
-    /// editor's context choices, and start its store-lifetime services;
-    /// then watch its databases and files. Documents opened before are
-    /// validated and their serving decided against the loaded state.
+    /// Open the project (Project::open), queue what its index lacks,
+    /// restore the editor's context choices, and start its store-lifetime
+    /// services; then watch its databases and files. Documents opened
+    /// before are validated and their serving decided against the loaded
+    /// state. A broken project starts nothing.
     void start();
 
     /// Quiesce compile and index work and persist the final state; then
@@ -78,18 +77,18 @@ public:
     void discover_around(Fid path_id);
 
     /// After the editor saved a file routed here: record a source of the
-    /// workspace the build does not declare as a provisional member
+    /// project the build does not declare as a provisional member
     /// (Build::record), the build following it as a database reload would.
     void saved(Fid path_id);
 
-    /// Weigh what the looks found of the project's databases (see
+    /// Reload what the looks found changed of the project's databases (see
     /// FileTracker::tick_cdb, `force` as there) and dispatch the reloads;
-    /// how many events that was. Nullopt when the databases moved to
-    /// another build's index (FileTracker::moved): the project restarts on
-    /// that one instead (MasterServer::restart).
-    std::optional<std::size_t> weigh_databases(bool force);
+    /// how many events that was. None when the databases moved to another
+    /// build's index (FileTracker::moved): only a new server opens that
+    /// one, which is asked for (MasterServer::ask_restart).
+    std::size_t reload_databases(bool force);
 
-    /// After a tick looked at the flags: weigh_databases, unless the
+    /// After a tick looked at the flags: reload_databases, unless the
     /// project's polling is off.
     void tick_databases();
 
@@ -111,8 +110,6 @@ public:
     bool knows(Fid path_id);
 
     MasterServer& server;
-    kota::event_loop& loop;
-    CanonicalPath root;
 
     /// The open documents routed to this project, and their buffer-sync
     /// logic.
@@ -151,11 +148,17 @@ public:
     /// ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
-    /// Problems found while loading clice.toml, kept so LSPClient can
-    /// publish them as diagnostics on the config file's URI, and the path
-    /// of the file found (empty when none).
-    std::vector<ConfigIssue> config_issues;
-    std::string config_path;
+    /// Problems found while reading the settings, kept so LSPClient
+    /// can publish them as diagnostics on the config file's URI, and the
+    /// path of the file found (empty when none).
+    std::vector<SettingsIssue> settings_issues;
+    std::string settings_file;
+
+    /// The settings have errors: the project starts nothing, and the
+    /// files under its root answer every request at once with nothing.
+    bool broken() const {
+        return has_error(settings_issues);
+    }
 
 private:
     /// A fresh session for the document, replacing a live one.
@@ -173,6 +176,9 @@ private:
 
     /// start() ran: documents opened from now on have their serving decided at once.
     bool started = false;
+
+    /// The build configuration the project activates (LoadedSettings).
+    std::string configuration;
 
     /// start() found no compile command for the project. The guidance
     /// saying so waits for the first document the project serves: a folder

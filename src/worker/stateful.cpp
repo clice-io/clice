@@ -288,7 +288,7 @@ RequestResult<worker::CompileParams>
                 .kind = CompilationKind::Content,
                 .input = {.arguments = doc->arguments,
                           .directory = doc->directory,
-                          .workspace = params.workspace,
+                          .project_root = params.project_root,
                           .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
                 .skip_bodies = params.skip_bodies,
@@ -426,22 +426,23 @@ void StatefulWorker::register_handlers() {
             [&](DocumentEntry& doc) {
                 auto regions = doc.inactive_regions();
                 return std::optional(
-                    feature::semantic_tokens(*doc.unit, regions, params.config.semantic_tokens));
+                    feature::semantic_tokens(*doc.unit, regions, params.settings.semantic_tokens));
             });
     });
 
     // === DocumentSymbol ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
                         -> RequestResult<worker::DocumentSymbolParams> {
-        return with_ast_or(
-            "DocumentSymbol",
-            params,
-            std::optional<std::vector<feature::DocumentSymbol>>{},
-            [&](DocumentEntry& doc) {
-                auto regions = doc.inactive_regions();
-                return std::optional(
-                    feature::document_symbols(*doc.unit, regions, params.config.document_symbols));
-            });
+        return with_ast_or("DocumentSymbol",
+                           params,
+                           std::optional<std::vector<feature::DocumentSymbol>>{},
+                           [&](DocumentEntry& doc) {
+                               auto regions = doc.inactive_regions();
+                               return std::optional(
+                                   feature::document_symbols(*doc.unit,
+                                                             regions,
+                                                             params.settings.document_symbols));
+                           });
     });
 
     // === CodeAction ===
@@ -467,17 +468,16 @@ void StatefulWorker::register_handlers() {
     });
 
     // === InlayHint ===
-    peer.on_request(
-        [this](RequestContext& ctx,
-               const worker::InlayHintParams& params) -> RequestResult<worker::InlayHintParams> {
-            return with_ast_or(
-                "InlayHint",
-                params,
-                std::vector<feature::InlayHint>{},
-                [&](DocumentEntry& doc) {
-                    return feature::inlay_hints(*doc.unit, params.range, params.config.inlay_hints);
-                });
-        });
+    peer.on_request([this](RequestContext& ctx, const worker::InlayHintParams& params)
+                        -> RequestResult<worker::InlayHintParams> {
+        return with_ast_or(
+            "InlayHint",
+            params,
+            std::vector<feature::InlayHint>{},
+            [&](DocumentEntry& doc) {
+                return feature::inlay_hints(*doc.unit, params.range, params.settings.inlay_hints);
+            });
+    });
 
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {
@@ -502,8 +502,8 @@ void StatefulWorker::register_handlers() {
                                [&](DocumentEntry& doc) {
                                    return feature::hover_info(*doc.unit,
                                                               params.offset,
-                                                              params.config.hover,
-                                                              params.config.documentation);
+                                                              params.settings.hover,
+                                                              params.settings.documentation);
                                });
         });
 }

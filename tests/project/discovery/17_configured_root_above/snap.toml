@@ -1,0 +1,57 @@
+["from the file".value.hover]
+markdown = '''
+**variable** `value`
+
+```cpp
+int value = VALUE
+```
+Value: `3`
+'''
+range = "int ⟦value⟧ = VALUE;"
+
+[--workspace."$ clice inspect semantic-tokens sub/a.cpp --workspace ."]
+stdout = '''
+{
+  "feature": "semantic-tokens",
+  "files": {
+    "a.cpp": {
+      "result": [
+        {
+          "range": {
+            "begin": 0,
+            "end": 3
+          },
+          "kind": "primitive",
+          "modifiers": []
+        },
+        {
+          "range": {
+            "begin": 4,
+            "end": 9
+          },
+          "kind": "variable",
+          "modifiers": [
+            "definition",
+            "global"
+          ]
+        },
+        {
+          "range": {
+            "begin": 10,
+            "end": 11
+          },
+          "kind": "operator",
+          "modifiers": []
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": [
+        "use of undeclared identifier 'VALUE'"
+      ]
+    }
+  }
+}
+'''
+stderr = "warning: Toolchain query miss: driver=clang++ kind=c++"
+exit = 0

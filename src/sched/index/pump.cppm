@@ -160,6 +160,16 @@ public:
     /// previously scheduled idle window would starve the reader).
     void schedule(bool immediate = false);
 
+    /// At the start of a run writing the index: queue every member the index
+    /// holds nothing of and every unit depending on a file that changed while
+    /// no server ran, DepsOnly — a cold start with a warm index keeps serving
+    /// the stored shards, not blanking every query until the pass drains —
+    /// and the units owed the variants a rebuild discarded, read fresh by
+    /// content; then schedule. With indexing off it queues nothing, but the
+    /// units whose runs walked a changed file are still marked behind the
+    /// disk.
+    void enqueue_outdated(llvm::ArrayRef<Fid> members);
+
     /// Take an index report: book its reindex debt into the table — before
     /// the current attempt finishes and its waiters wake, so a waker never
     /// observes an index as current that the report just declared stale —

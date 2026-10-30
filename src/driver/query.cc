@@ -4,7 +4,8 @@ import :driver.driver;
 import :feature.counterparts;
 import :feature.query;
 import :index.symbol_query;
-import :project.index_reader;
+import :project.project;
+import :project.project_reader;
 import :project.queries;
 
 namespace clice::driver {
@@ -13,7 +14,7 @@ namespace {
 
 /// What every question takes.
 struct Options {
-    WorkspaceOptions where;
+    ProjectOptions where;
     FreshOption fresh;
 };
 
@@ -114,9 +115,10 @@ struct TypeHierarchyQuestion {
 /// file's, and the files asked about that the index holds no shard for.
 template <typename Ask>
 int run_query(const Options& opts, bool with_build, Ask ask) {
-    auto opened = open_index(opts.where,
-                             opts.fresh,
-                             {.load = with_build ? IndexLoad::Build : IndexLoad::Tables});
+    auto opened = open_project(opts.where,
+                               opts.fresh,
+                               with_build ? Project::OpenOptions::Build::Members
+                                          : Project::OpenOptions::Build::None);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
@@ -150,8 +152,8 @@ CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
         return run_query(
             opts.query,
             with_build,
-            [&](IndexReader& reader, feature::query::Context& ctx) {
-                return ask(reader, ctx, argument_path(reader.project, *opts.target.path), opts);
+            [&](ProjectReader& reader, feature::query::Context& ctx) {
+                return ask(reader, ctx, Spelling(*opts.target.path, Spelling::cwd()), opts);
             });
     });
 }
@@ -163,7 +165,7 @@ CommandHandler symbol_question(std::string_view usage, Ask ask) {
         return run_query(
             opts.query,
             /*with_build=*/false,
-            [&](IndexReader&, feature::query::Context& ctx) {
+            [&](ProjectReader&, feature::query::Context& ctx) {
                 return index::SymbolQuery::parse(*opts.target.locator).and_then([&](auto locator) {
                     return ask(ctx, std::move(locator), opts);
                 });
@@ -183,7 +185,7 @@ CommandHandler build() {
             [](const ProjectFilesQuestion& opts) {
                 return run_query(opts.query,
                                  /*with_build=*/true,
-                                 [&](IndexReader& reader, feature::query::Context&) {
+                                 [&](ProjectReader& reader, feature::query::Context&) {
                                      return project_files(reader.project,
                                                           opts.filter.value_or("all"));
                                  });
@@ -194,7 +196,7 @@ CommandHandler build() {
         .description = "The files a file includes and the files including it",
         .run = file_question<FileDepsQuestion>("clice query file-deps <PATH> [OPTIONS]",
                                                /*with_build=*/true,
-                                               [](IndexReader& reader,
+                                               [](ProjectReader& reader,
                                                   feature::query::Context&,
                                                   const Spelling& path,
                                                   const FileDepsQuestion& opts) {
@@ -210,7 +212,7 @@ CommandHandler build() {
         .run = file_question<FileQuestion>(
             "clice query impact-analysis <PATH> [OPTIONS]",
             /*with_build=*/true,
-            [](IndexReader& reader,
+            [](ProjectReader& reader,
                feature::query::Context&,
                const Spelling& path,
                const FileQuestion&) { return impact_analysis(reader.project, path); }),
@@ -221,7 +223,7 @@ CommandHandler build() {
         .run = file_question<FileQuestion>(
             "clice query counterparts <PATH> [OPTIONS]",
             /*with_build=*/true,
-            [](IndexReader& reader,
+            [](ProjectReader& reader,
                feature::query::Context& ctx,
                const Spelling& path,
                const FileQuestion&) {
@@ -241,7 +243,7 @@ CommandHandler build() {
                 auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
                 return run_query(opts.query,
                                  /*with_build=*/false,
-                                 [&](IndexReader&, feature::query::Context& ctx) {
+                                 [&](ProjectReader&, feature::query::Context& ctx) {
                                      return feature::query::symbol_search(ctx, text, limit);
                                  });
             }),
@@ -260,7 +262,7 @@ CommandHandler build() {
         .description = "A file's outline",
         .run = file_question<FileQuestion>("clice query document-symbols <PATH> [OPTIONS]",
                                            /*with_build=*/false,
-                                           [](IndexReader& reader,
+                                           [](ProjectReader& reader,
                                               feature::query::Context& ctx,
                                               const Spelling& path,
                                               const FileQuestion&) {
@@ -329,14 +331,14 @@ CommandHandler build() {
                                                       opts.direction.value_or("both"));
             }),
     });
-    return with_operations("Ask the persisted index about the workspace",
+    return with_operations("Ask the persisted index about the project",
                            std::move(operations),
                            Errors::JSON);
 }
 
-[[maybe_unused]] const bool registered = register_command(
-    Command::query,
-    {.description = "Ask the persisted index about the workspace", .build = build});
+[[maybe_unused]] const bool registered =
+    register_command(Command::query,
+                     {.description = "Ask the persisted index about the project", .build = build});
 
 }  // namespace
 

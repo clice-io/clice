@@ -3,7 +3,7 @@ module;
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
 /// of it — no recompile: a rename is the entries of a symbol group, each
-/// checked against the text it indexed, plus a scan of the workspace for
+/// checked against the text it indexed, plus a scan of the project for
 /// the tokens spelling the old name that the index ties to nothing.
 
 module clice:feature.rename;
@@ -65,16 +65,16 @@ struct ScannedText {
 
 /// Scan `text` for `names`; nullopt when it spells none of them as a
 /// token. Text work alone, safe on any thread: a server runs it off its
-/// event loop over the whole workspace.
+/// event loop over the whole project.
 std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names);
 
-/// The texts a rename reads (RenameScope::read): the workspace's files
+/// The texts a rename reads (RenameScope::read): the project's files
 /// scanned for its names up front, and on first read the text of an open
 /// buffer or of an edited file the walk's suffixes left out.
-struct WorkspaceTexts {
-    /// Read and scan `files`, the workspace's sources and headers by
+struct RenameTexts {
+    /// Read and scan `files`, the project's sources and headers by
     /// suffix (RenameScope::files): file work alone, safe on any thread.
-    WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names);
+    RenameTexts(std::vector<std::string> files, llvm::StringSet<> names);
 
     /// A file's text scanned for the names: the open buffer `buffer`
     /// gives, else the disk's; null when it spells none.
@@ -96,18 +96,18 @@ private:
     llvm::StringMap<std::optional<ScannedText>> late;
 };
 
-/// Why no rename can be made in the workspace rooted at `root`: one
+/// Why no rename can be made in the project rooted at `root`: one
 /// without a folder has no sources to edit; nullopt when one can.
-std::optional<std::string> workspace_refusal(llvm::StringRef root);
+std::optional<std::string> rename_refusal(llvm::StringRef root);
 
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
-    /// The workspace files the scan looks at, absolute: its sources and
+    /// The project's files the scan looks at, absolute: its sources and
     /// headers by suffix, build trees, hidden directories and the cache
     /// directory left out.
     llvm::ArrayRef<std::string> files;
 
-    /// Whether the rename may edit a file: one in the workspace outside
+    /// Whether the rename may edit a file: one in the project outside
     /// those directories, whatever its suffix. An edit elsewhere is a
     /// conflict.
     llvm::function_ref<bool(llvm::StringRef path)> editable;
@@ -193,7 +193,7 @@ struct BatchEdit {
 };
 
 /// Renames planned together against one index and one reading of the
-/// workspace, all applying at once: `A` to `B` beside `B` to `C` renames
+/// project, all applying at once: `A` to `B` beside `B` to `C` renames
 /// the old `B`, and two names may swap.
 struct BatchPlan {
     /// One per renaming, in order.

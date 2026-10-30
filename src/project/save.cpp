@@ -3,6 +3,7 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :project.artifact_records;
+import :project.build;
 import :project.command_snapshot;
 import :project.project;
 import :project.save;
@@ -284,6 +285,98 @@ kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loo
              after ? after->pages * after->page_size >> 20 : 0,
              timer.ms());
     co_return report;
+}
+
+/// Drop the index of every TU a rule's `index = false` keeps out: an index
+/// built before the rule would otherwise serve on, since the pump never
+/// rebuilds an excluded unit.
+static void drop_excluded(Project& project, index::IndexReport& report) {
+    llvm::SmallVector<Fid> excluded;
+    project.index.for_each_unit([&](Fid tu) {
+        if(!project.build.indexed(project.file_table.resolve(tu))) {
+            excluded.push_back(tu);
+        }
+    });
+    for(auto tu: excluded) {
+        LOG_INFO("A rule keeps {} out of the index; dropping its entries",
+                 project.file_table.resolve(tu));
+        project.index.drop(tu, report);
+    }
+}
+
+SavedLoad load_saved(Project& project, bool reconcile) {
+    SavedLoad result;
+    auto& report = result.report;
+    if(!project.database) {
+        return result;
+    }
+    auto& db = *project.database;
+    auto& index = project.index;
+    bool read_only = db.read_only();
+    ScopedTimer timer;
+
+    // Artifact metadata and context choices are index-independent: they
+    // load (and self-validate) beside any index state.
+    auto load_metadata = [&] {
+        if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
+            load_artifact_records(project, artifacts.buffer->getBuffer());
+        }
+        if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
+            project.contexts.bytes = choices.buffer->getBuffer().str();
+        }
+    };
+
+    switch(index.open(db)) {
+        // A database with no index yet may still hold the command snapshot,
+        // and with it the debt of the files a save owed an index: the
+        // snapshot of a session whose index was discarded.
+        case index::LoadOutcome::Empty: break;
+        case index::LoadOutcome::Unreadable:
+            // Run this session memory-only — saving a fresh lineage over
+            // records whose header was never read could alias their path
+            // ids — and leave everything for a healthier restart to load.
+            // Confirmed page corruption heals through rebuildability
+            // instead: the condemned database deletes itself and a fresh
+            // empty one opens in its place, so this session's rebuild
+            // persists instead of being redone at the next start.
+            if(!read_only && db.corrupted()) {
+                LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+                reopen_fresh_database(project);
+            } else {
+                // Best effort before detaching: the metadata blobs may
+                // still read while only the header is unreadable.
+                load_metadata();
+                LOG_WARN(
+                    "Index database header unreadable; disabling index persistence this "
+                    "session");
+                project.database.reset();
+            }
+            return result;
+        case index::LoadOutcome::Undecodable:
+            // Another format discards everything, the metadata with it.
+            result.decoded = false;
+            if(!read_only) {
+                reopen_fresh_database(project);
+            }
+            return result;
+        case index::LoadOutcome::Loaded: break;
+    }
+    load_metadata();
+    if(reconcile) {
+        drop_excluded(project, report);
+        project.command_snapshot.reconcile(project, report);
+    }
+
+    // The reads above may have met a damaged page or record: heal it like
+    // the unreadable-header case above instead of writing into a damaged
+    // tree every session. The session starts over as a first run.
+    if(!read_only && index.damaged()) {
+        recover_corrupt_database(project, report);
+        return result;
+    }
+
+    LOG_PERF("startup", "phase=index_load elapsed_ms={}", timer.ms());
+    return result;
 }
 
 }  // namespace clice

@@ -243,22 +243,22 @@ std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
 
 namespace path {
 
-/// How configuration and persisted names spell the workspace root.
+/// How configuration and persisted names spell the project root.
 constexpr inline llvm::StringRef workspace_anchor = "${workspace}";
 
 /// The name records that outlive the checkout's location give a path:
-/// `${workspace}/rel` under the workspace root, so the index database and
+/// `${workspace}/rel` under the project root, so the index database and
 /// the hashes of symbols and commands survive a move of the checkout; any
-/// other path, and every path without a workspace, stays as it is. Points
+/// other path, and every path without a project root, stays as it is. Points
 /// into `p` or `storage`.
 llvm::StringRef portable(llvm::StringRef p,
-                         llvm::StringRef workspace,
+                         llvm::StringRef project_root,
                          llvm::SmallVectorImpl<char>& storage);
 
-/// The path a portable name names in the checkout at `workspace`. Points
-/// into `name` or `storage`.
+/// The path a portable name names in the checkout at `project_root`.
+/// Points into `name` or `storage`.
 llvm::StringRef local(llvm::StringRef name,
-                      llvm::StringRef workspace,
+                      llvm::StringRef project_root,
                       llvm::SmallVectorImpl<char>& storage);
 
 using fs::path::is_within;

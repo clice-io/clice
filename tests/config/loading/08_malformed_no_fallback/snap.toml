@@ -1,0 +1,14 @@
+[test."clice.toml"]
+pushes = [
+    [
+        {
+            at = "[[rules]⟦⟧",
+            severity = "error",
+            message = "TOML parse error: Error while parsing table header: expected ']', saw '\\n'",
+            source = "clice",
+        },
+    ],
+]
+
+[test."main.cpp"]
+diagnostics = []

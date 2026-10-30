@@ -58,7 +58,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
 
     worker::TURunParams params;
     params.file = file_path;
-    params.workspace = project.config.workspace_root.str();
+    params.project_root = project.root.str();
     params.index = plan.index;
     params.errors = plan.errors;
     params.tidy = std::move(plan.tidy);
@@ -196,7 +196,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.known_instantiations =
             project.index.known_instantiations(path_id, std::move(include_closure));
     }
-    params.standard_library_instantiations = project.config.project.standard_library_instantiations;
+    params.standard_library_instantiations = project.settings.project.standard_library_instantiations;
 
     std::optional<CacheStore::PendingEntry> transfer;
     if(plan.index && project.store) {

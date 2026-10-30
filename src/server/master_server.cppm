@@ -11,6 +11,7 @@ import :support.anomaly;
 import :support.prelude;
 import :support.signal;
 import :syntax.position;
+import :vfs.disk_state;
 import :worker.pool;
 import :worker.probe;
 
@@ -43,6 +44,19 @@ enum class ServerLifecycle : std::uint8_t {
     Exited,
 };
 
+/// Why the server must restart (MasterServer::ask_restart).
+struct RestartReason {
+    /// The configuration file the change concerns, as it is now; empty for
+    /// none.
+    std::string file;
+
+    std::string message;
+
+    /// What a later reason of the same topic replaces, as a project's next
+    /// selection replaces its last; empty for a reason of its own.
+    std::string topic;
+};
+
 /// A guidance or anomaly message materialized for transport delivery.
 /// The log file is the durable record; this copy exists so a client that
 /// attaches after the message fired can still be shown it.
@@ -66,16 +80,16 @@ public:
     MasterServer(kota::event_loop& loop, std::string requested_configuration);
     ~MasterServer();
 
-    /// Start serving the projects of `workspace_roots` (see
-    /// project_roots): load each project's configuration, start the pool
+    /// Start serving the projects of `folders` (see
+    /// project_roots): load each project's settings, start the pool
     /// sized for all of them, and load the projects. Documents opened
     /// before move to the projects routing picks for them.
     void initialize();
     void initialize(const Spelling& root);
 
-    /// The `[semantic_tokens]` options the legend is built from, read once
-    /// as the client initializes: the first project's clice.toml under the
-    /// initializationOptions.
+    /// The `[semantic_tokens]` options the legend is built from, read as
+    /// the client initializes, before any project is configured: those of
+    /// the first project's settings (load_settings).
     feature::SemanticTokensOptions startup_token_options() const;
 
     /// Bring every project to rest with its index committed while the
@@ -127,10 +141,16 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
-    /// The databases of `project` moved to another build's index
-    /// (FileTracker::moved): a fresh project takes its root over (see
-    /// serve_folders).
-    void restart(ProjectServer& project);
+    /// What the server was started on changed: a configuration file, the
+    /// build the databases resolve to, the build configuration selected.
+    /// Only a new process applies it, and only the editor can start one: it
+    /// is asked to (clice/restartServer) when it can be, the user told
+    /// otherwise (on_restart_needed). The same reason is given once.
+    void ask_restart(RestartReason reason);
+
+    /// The reason of `topic` no longer holds: what it asked for is what
+    /// the server runs on again.
+    void withdraw_restart(llvm::StringRef topic);
 
     /// didSave: a look at the file's disk content, which every project
     /// knowing the file cascades if it changed (drain_disk_changes). A save
@@ -139,10 +159,17 @@ public:
     /// looked at too.
     void saved(Fid path_id);
 
-    /// Start the background looks at files (see vfs::DiskState::tick), each
-    /// tick followed by the projects' weighing of their databases
-    /// (ProjectServer::tick_databases); calls after the first do nothing.
+    /// Start the background looks at files (see vfs::DiskState::tick) on the
+    /// master's ticks, each followed by the projects' look at their
+    /// databases (ProjectServer::tick_databases); calls after the first do
+    /// nothing.
     void start_polling();
+
+    /// Look at the configuration files of every folder served, as each of
+    /// the master's ticks does whatever the polling setting: a change asks
+    /// for a restart. clice.toml is the one in use where it exists, else
+    /// .clice/config.toml.
+    void look_at_settings();
 
     /// Hand the disk changes the file table saw to every project knowing
     /// the file (ProjectServer::knows); how many there were.
@@ -242,6 +269,12 @@ public:
     /// A project started or stopped serving.
     Signal<> on_projects_changed;
 
+    /// Why the server must restart, oldest first (ask_restart).
+    std::vector<RestartReason> restart_reasons;
+
+    /// The restart reasons changed (ask_restart, withdraw_restart).
+    Signal<> on_restart_needed;
+
     /// Emitted when the index an open index-served session is serving changed:
     /// results the client already pulled describe the old index, and only a
     /// refresh request makes it re-pull them — index-only sessions never
@@ -277,7 +310,7 @@ public:
     /// The folders served: the client's workspace folders (or
     /// the command line's --workspace), and the roots open_session found
     /// above files no folder covers.
-    std::vector<CanonicalPath> workspace_roots;
+    std::vector<CanonicalPath> folders;
 
     /// The client's initializationOptions, applied to every project.
     std::optional<codec::dyn::Value> init_options;
@@ -315,22 +348,26 @@ private:
     std::vector<CanonicalPath> project_roots() const;
 
     /// Make the projects served those project_roots names: make the
-    /// missing ones — and one in place of `replaced` — retire the ones no
-    /// folder needs, and move the open documents to the projects routing
-    /// picks now. A project made while its root's previous one is still
-    /// alive holds the root's documents, their compiles waiting
+    /// missing ones, stop the ones no folder needs, and move the open
+    /// documents to the projects routing picks now. A project made while
+    /// its root's previous one is still alive (a folder removed and added
+    /// again) holds the root's documents, their compiles waiting
     /// (ASTFamily::loaded), and starts once that is gone (make_project runs
     /// this again): the previous one saves its index and frees the cache
     /// directory first.
-    void serve_folders(const ProjectServer* replaced = nullptr);
+    void serve_folders();
+
+    /// Watch the configuration files of the folders served now (see
+    /// look_at_settings), keeping what earlier looks saw.
+    void watch_settings();
 
     /// Shut a project that stopped serving down in the background.
-    void retire(std::shared_ptr<ProjectServer> project);
+    void stop(std::shared_ptr<ProjectServer> project);
 
     /// The cache directories in use: a cache directory belongs to one
     /// project at a time, a removed one's until it is gone — but for the
-    /// project serving its root again, `heir`, which opens it then.
-    std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef heir = {}) const;
+    /// project serving its root again, `successor`, which opens it then.
+    std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef successor = {}) const;
 
     /// Before a file's first compile: every project whose root holds the
     /// file registers the databases between it and the root, so routing
@@ -395,8 +432,10 @@ private:
     /// The background looks at files and databases, and the ends of the
     /// file table's turns, until the drain cancels them.
     kota::task_group<> polling;
-    bool polling_started = false;
     kota::task<> poll_task();
+
+    /// A project polls the disk: the master's ticks look at the files.
+    bool polling_files = false;
 
     /// The watch on the client process, which outlives the drain: a client
     /// may die between the shutdown reply and its exit.
@@ -412,13 +451,22 @@ private:
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
-    std::vector<std::weak_ptr<ProjectServer>> retired;
+    std::vector<std::weak_ptr<ProjectServer>> stopping;
+
+    /// The configuration files of a folder served.
+    struct SettingsWatch {
+        CanonicalPath folder;
+
+        /// clice.toml, and .clice/config.toml, which applies without it.
+        vfs::Flag file;
+        vfs::Flag hidden;
+    };
+
+    std::vector<SettingsWatch> settings_watches;
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).
     std::vector<ProjectServer*> waiting;
-
-    std::string session_log_dir;
 };
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);

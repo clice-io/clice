@@ -1,5 +1,7 @@
 module clice;
 
+import :command.database;
+import :project.build;
 import :project.hosting;
 import :project.project;
 import :support.logging;
@@ -115,23 +117,23 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
 }
 
 bool configured(const Spelling& dir) {
-    return ranges::any_of(config_file_names,
+    return ranges::any_of(settings_file_names,
                           [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
 }
 
 }  // namespace
 
-llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
+llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
     llvm::SmallVector<Spelling> places;
-    if(workspace_root.empty()) {
+    if(project_root.empty()) {
         return places;
     }
-    places.emplace_back(database_name, Spelling(workspace_root));
+    places.emplace_back(database_name, Spelling(project_root));
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    if(auto entries = fs::Directory::open(workspace_root)) {
+    if(auto entries = fs::Directory::open(project_root)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
@@ -139,8 +141,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
             // A symlinked build directory is a build directory too, even
             // before its target exists.
             if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
-                subdirectories.push_back(
-                    Spelling::absolute(path::join(workspace_root, entry->name)));
+                subdirectories.push_back(Spelling::absolute(path::join(project_root, entry->name)));
             }
         }
     }
@@ -151,17 +152,17 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     return places;
 }
 
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
-    return existing(database_places(workspace_root));
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root) {
+    return existing(database_places(project_root));
 }
 
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
+llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir) {
     // Deep enough for a CMake preset's out/build/<preset> and a nested
-    // project's build directory, and no deeper: a workspace with no
+    // project's build directory, and no deeper: a project root with no
     // database at all may be a home directory.
     llvm::SmallVector<Spelling> found;
-    auto walk = fs::walk(workspace_root, {.max_depth = 4});
+    auto walk = fs::walk(project_root, {.max_depth = 4});
     for(auto& entry: walk) {
         if(!entry) {
             vfs::warn_unreadable(entry.error());
@@ -171,7 +172,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
         if(entry->type == fs::FileType::Directory) {
             auto name = entry->name();
             if(name.starts_with(".") || name == "node_modules" ||
-               workspace_root.entry(spelled) == cache_dir) {
+               project_root.entry(spelled) == cache_dir) {
                 walk.skip();
             }
             continue;
@@ -198,33 +199,109 @@ bool defines_project(CanonicalRef dir) {
     return configured(Spelling(dir)) || !discover_compile_commands(dir).empty();
 }
 
-CanonicalPath project_root_above(CanonicalRef start) {
-    CanonicalPath root;
-    path::walk_ancestors(start, [&](CanonicalRef dir) {
+Spelling find_project_root(const Spelling& start) {
+    // The directories holding `start`, not the links on the way to it: a
+    // directory reached through a symlink belongs to the project of the one
+    // it links to.
+    auto defines = [](const Spelling& dir) {
+        return configured(dir) || database_in(dir) || database_in(Spelling("build", dir));
+    };
+    CanonicalPath found;
+    path::walk_ancestors(CanonicalPath(start), [&](CanonicalRef dir) {
         Spelling spelled(dir);
-        if(configured(spelled) || database_in(spelled) || database_in(Spelling("build", spelled))) {
-            root = dir;
-            return false;
+        if(!defines(spelled)) {
+            return true;
         }
-        return true;
+        found = dir;
+        // A database alone in a directory is its parent's when the parent
+        // is a project, whose discovery loads its direct subdirectories': a
+        // build directory beside the sources.
+        auto parent = dir.parent();
+        if(!configured(spelled) && !database_in(Spelling("build", spelled)) && !parent.empty() &&
+           defines(Spelling(parent))) {
+            found = std::move(parent);
+        }
+        return false;
     });
-    return root;
+    if(found.empty()) {
+        return {};
+    }
+    for(auto dir = start; !dir.empty(); dir = dir.parent()) {
+        if(CanonicalPath(dir) == found) {
+            return dir;
+        }
+    }
+    return Spelling(found);
 }
 
-llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
+std::string deeper_databases_hint(const Project& project) {
+    if(project.build.declares_sources()) {
+        return {};
+    }
+    CanonicalRef root = project.root;
+    std::vector<std::string> names;
+    for(auto& database: deeper_compile_commands(root, project.settings.project.cache_identity())) {
+        auto directory = database.parent();
+        auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
+        path::to_slash(name);
+        names.push_back(std::format(R"("{}")", name));
+    }
+    if(names.empty()) {
+        return {};
+    }
+    return std::format(
+        " Deeper ones load only when clice.toml names them (the editor also loads one when it "
+        "opens a file below it); to use those found, give clice.toml a [[rules]] table with "
+        "compile_commands = [{}].",
+        llvm::join(names, ", "));
+}
+
+bool found_unreadable_database(const Project& project) {
+    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
+                          [&](std::size_t i) {
+                              return !project.cdb.loaded(SourceID(i)) &&
+                                     fs::exists(project.cdb.source_path(SourceID(i)));
+                          });
+}
+
+std::string why_no_members(const Project& project, llvm::StringRef root) {
+    std::vector<std::string> empty;
+    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
+        auto path = project.cdb.source_path(SourceID(i));
+        if(project.cdb.loaded(SourceID(i))) {
+            empty.push_back(path.str());
+        } else if(fs::exists(path)) {
+            return std::format("{} cannot be read; the error above says why.", path.str());
+        } else {
+            return std::format("{} does not exist yet; the build writes it.", path.str());
+        }
+    }
+    if(!empty.empty()) {
+        return std::format("{} {} no file.",
+                           llvm::join(empty, ", "),
+                           empty.size() == 1 ? "lists" : "list");
+    }
+    if(project.build.declares_sources()) {
+        return "no file on disk matches a rule with a default_command.";
+    }
+    return std::format("no compile_commands.json found in {} or its direct subdirectories.{}",
+                       root.str(),
+                       deeper_databases_hint(project));
+}
+
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root) {
     llvm::SmallVector<Spelling> places;
     for(auto dir: path::ancestors(start)) {
         places.emplace_back(database_name, Spelling::absolute(dir));
-        if(dir == std::string_view(workspace_root)) {
+        if(dir == std::string_view(project_root)) {
             break;
         }
     }
     return places;
 }
 
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
-                                                   CanonicalRef workspace_root) {
-    return existing(database_places_above(start, workspace_root));
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root) {
+    return existing(database_places_above(start, project_root));
 }
 
 DepsSnapshot capture_deps_snapshot(FileTable& files,

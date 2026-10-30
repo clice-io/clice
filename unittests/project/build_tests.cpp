@@ -9,9 +9,8 @@ module clice;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :config.config;
+import :settings.settings;
 import :project.build;
-import :project.configuration;
 import :project.project;
 import :support.shell;
 import :unittests.utils.cdb_helper;
@@ -32,16 +31,17 @@ using namespace std::literals;
 struct Layout {
     TempDir dir;
     std::string root;
-    Config config;
+    CanonicalPath project_root;
+    Settings settings;
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
 
     explicit Layout(llvm::StringRef name) :
-        root(write_layout(dir, name)),
-        config(Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)))) {
-        build.reset_active(fallback_configuration(config));
+        root(write_layout(dir, name)), project_root(Spelling::absolute(root)),
+        settings(load_settings(project_root).settings) {
+        build.reset_active(settings.fallback_configuration());
         for(auto source: build.declared_sources()) {
             cdb.load(source);
         }
@@ -165,7 +165,7 @@ ZEST_CASE(LintSet) {
 
 #ifndef _WIN32
 ZEST_CASE(LintSetSymlinkedRoot) {
-    /// The workspace is opened through a symlink: the configuration resolves
+    /// The workspace is opened through a symlink: the settings resolve
     /// the root, and its rules anchor where every file's identity lies.
     TempDir tmp;
     tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
@@ -173,15 +173,14 @@ ZEST_CASE(LintSetSymlinkedRoot) {
     tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
     ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
 
-    Config config =
-        Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.path("link"))));
-    ZEXPECT(config.workspace_root.str() ==
-            CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
+    CanonicalPath project_root(Spelling::absolute(tmp.path("link")));
+    ZEXPECT(project_root.str() == CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
+    Settings settings = load_settings(project_root).settings;
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
-    build.reset_active(fallback_configuration(config));
+    Build build{settings, project_root, cdb, files};
+    build.reset_active(settings.fallback_configuration());
     ZEXPECT(build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/src/main.cpp")))));
     ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/vendor/lib.cpp")))));
     ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("elsewhere/x.cpp")))));
@@ -196,12 +195,13 @@ lint = false
     tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
     ZASSERT(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()) == 0);
 
-    Config config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
-    build.reset_active(fallback_configuration(config));
+    Build build{settings, project_root, cdb, files};
+    build.reset_active(settings.fallback_configuration());
     ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("vendor/lib.cpp")))));
 };
 
@@ -214,14 +214,15 @@ ZEST_CASE(WalkResolvesLinks) {
     ZASSERT(::symlink(tmp.path("elsewhere/impl.cpp").c_str(), tmp.path("src/alias.cpp").c_str()) ==
             0);
 
-    Config config;
-    config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto members = build.members();
     ZASSERT(members.size() == 1U);
@@ -243,7 +244,7 @@ ZEST_CASE(FormatSet) {
 
 ZEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
-    /// configuration file's directory: a config under .clice/ covers
+    /// configuration file's directory: a configuration file under .clice/ covers
     /// sources through `${workspace}` and `..` patterns alike, and a
     /// pattern reaching outside the workspace is honoured too.
     TempDir tmp;
@@ -251,26 +252,27 @@ ZEST_CASE(PatternRootsEnumerate) {
     tmp.touch("lib/util.cpp", "");
     tmp.touch("other/skip.cpp", "");
 
-    Config config;
-    auto under_clice = [&](ConfigRule rule) {
+    Settings settings;
+    auto under_clice = [&](Rule rule) {
         rule.directory = tmp.path(".clice");
         return rule;
     };
-    config.rules.push_back(under_clice(
+    settings.rules.push_back(under_clice(
         {.patterns = {"${workspace}/src/**"}, .default_command = std::string("clang++ -DSRC")}));
-    config.rules.push_back(under_clice(
+    settings.rules.push_back(under_clice(
         {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")}));
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZASSERT(config.compiled_rules.size() == 2U);
-    ZEXPECT(config.compiled_rules[0].patterns[0].root ==
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
+    ZASSERT(settings.compiled_rules.size() == 2U);
+    ZEXPECT(settings.compiled_rules[0].patterns[0].root ==
             CanonicalPath(Spelling::absolute(tmp.path("src"))));
-    ZEXPECT(config.compiled_rules[1].patterns[0].root ==
+    ZEXPECT(settings.compiled_rules[1].patterns[0].root ==
             CanonicalPath(Spelling::absolute(tmp.path("lib"))));
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto members = build.members();
     ZASSERT(members.size() == 2U);
@@ -288,14 +290,15 @@ ZEST_CASE(EditHashKeepsAnchor) {
     TempDir tmp;
     tmp.touch("main.cpp", "");
     auto hash = [&](llvm::StringRef directory) {
-        Config config;
-        config.rules.push_back(ConfigRule{.append = {"-Iinc"}});
-        config.rules.back().directory = directory;
-        config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        Settings settings;
+        settings.rules.push_back(Rule{.append = {"-Iinc"}});
+        settings.rules.back().directory = directory;
+        CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+        settings.finalize(project_root);
         FileTable files;
         CommandTable commands;
         CompilationDatabase cdb{files, commands};
-        Build build{config, cdb, files};
+        Build build{settings, project_root, cdb, files};
         CanonicalPath main(Spelling::absolute(tmp.path("main.cpp")));
         CanonicalRef file = main;
         return build.edit_hash(file);
@@ -316,21 +319,22 @@ ZEST_CASE(ForcedLanguageMembers) {
     tmp.touch("src/data.txt", "");
     tmp.touch("src/pre.i", "");
     tmp.touch("src/iface.cppm", "");
-    Config config;
-    config.rules.push_back(
-        ConfigRule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
-    config.rules.push_back(ConfigRule{.patterns = {"src/**"},
-                                      .default_command = std::string("clang++ -x c++-header")});
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(
+        Rule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
+    settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++ -x c++-header")});
+    settings.rules.push_back(Rule{
         .patterns = {"sketch/*.ino", "sketch/**"},
         .default_command = std::string("clang++ -x c++")
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto members = build.members();
     ZASSERT(members.size() == 4U);
@@ -350,23 +354,24 @@ ZEST_CASE(WorkspaceRuleCoversKnownSources) {
     tmp.touch("clice.toml", "");
     tmp.touch("main.cpp", "");
     tmp.touch("tool", "");
-    Config config;
-    config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -x c++")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(Rule{.default_command = std::string("clang++ -x c++")});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto members = build.members();
     ZASSERT(members.size() == 1U);
     ZEXPECT(members.front() == files.intern(Spelling::absolute(tmp.path("main.cpp"))));
 
-    config.rules.insert(
-        config.rules.begin(),
-        ConfigRule{.patterns = {"tool"}, .default_command = std::string("clang++ -x c++")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    settings.rules.insert(
+        settings.rules.begin(),
+        Rule{.patterns = {"tool"}, .default_command = std::string("clang++ -x c++")});
+    settings.finalize(project_root);
     build.reset_active("");
     members = build.members();
     ZEXPECT(members.size() == 2U);
@@ -387,15 +392,16 @@ ZEST_CASE(UnitsDeduplicated) {
     tmp.touch("b/compile_commands.json", entry("-DSAME"));
     tmp.touch("c/compile_commands.json", entry("-DOTHER"));
 
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .compile_commands = {"a", "b", "c"}
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     for(auto source: build.declared_sources()) {
         cdb.load(source);
@@ -412,14 +418,15 @@ ZEST_CASE(CudaHeaderNotDefaultSource) {
     TempDir tmp;
     tmp.touch("cuda/kernel.cu", "");
     tmp.touch("cuda/kernel.cuh", "");
-    Config config;
-    config.rules.push_back(
-        ConfigRule{.patterns = {"cuda/**"}, .default_command = std::string("clang++ -x cuda")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(
+        Rule{.patterns = {"cuda/**"}, .default_command = std::string("clang++ -x cuda")});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     ZEXPECT(build.members().size() == 1U);
     ZEXPECT(!build.unit(files.intern(Spelling::absolute(tmp.path("cuda/kernel.cuh")))));
@@ -430,14 +437,15 @@ ZEST_CASE(InvalidDefaultCommandIgnored) {
     /// command instead of aborting: they take the builtin fallback.
     TempDir tmp;
     tmp.touch("main.cpp", "");
-    Config config;
-    config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(Rule{.default_command = std::string("ccache")});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
     ZEXPECT(build.commands(main).empty());
@@ -451,25 +459,26 @@ ZEST_CASE(UnmatchableRuleDeclaresNothing) {
     /// file, so it declares no source and discovery stays on; a database it
     /// names still counts, since entries apply regardless of patterns.
     TempDir tmp;
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"**/****.{c,cc}"},
         .default_command = std::string("clang++"),
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     ZEXPECT(!build.declares_sources());
     ZEXPECT(build.members().empty());
 
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"**/****.{c,cc}"},
         .compile_commands = {"build"},
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    settings.finalize(project_root);
     build.reset_active("");
     ZEXPECT(build.declares_sources());
 };
@@ -486,12 +495,13 @@ ZEST_CASE(DiscoveredSourceOrder) {
     tmp.touch("sub/compile_commands.json", listing("main.cpp"));
     tmp.touch("build/compile_commands.json", listing("main.cpp"));
     tmp.touch("compile_commands.json", listing("main.cpp"));
-    Config config;
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto sub = cdb.add_source(Spelling::absolute(tmp.path("sub")));
     auto build_dir = cdb.add_source(Spelling::absolute(tmp.path("build")));
@@ -616,7 +626,7 @@ ZEST_CASE(LinkedDatabaseSameFile) {
 };
 #endif
 
-ZEST_CASE(ProjectRootAbove) {
+ZEST_CASE(FindProjectRoot) {
     /// A file outside every folder belongs to the nearest ancestor holding
     /// a clice.toml or a database, directly or in its build directory.
     TempDir tmp;
@@ -624,16 +634,34 @@ ZEST_CASE(ProjectRootAbove) {
     tmp.touch("app/build/compile_commands.json", "[]");
     tmp.touch("tool/compile_commands.json", "[]");
     tmp.touch("tool/sub/clice.toml", "");
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("lib/src/deep")))) ==
-            CanonicalPath(Spelling::absolute(path::join(tmp.root, "lib"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("app/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("app"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("tool"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/sub/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("tool/sub"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("none/src")))).empty());
+    tmp.touch("lib/out/compile_commands.json", "[]");
+    tmp.touch("solo/db/compile_commands.json", "[]");
+    auto above = [&](llvm::StringRef start) {
+        return find_project_root(Spelling::absolute(tmp.path(start))).str();
+    };
+    ZEXPECT(above("lib/src/deep") == Spelling::absolute(tmp.path("lib")).str());
+    ZEXPECT(above("app/src") == Spelling::absolute(tmp.path("app")).str());
+    ZEXPECT(above("tool/src") == Spelling::absolute(tmp.path("tool")).str());
+    ZEXPECT(above("tool/sub/src") == Spelling::absolute(tmp.path("tool/sub")).str());
+    ZEXPECT(above("none/src").empty());
+    // A build directory beside the sources belongs to their project.
+    ZEXPECT(above("app/build/gen") == Spelling::absolute(tmp.path("app")).str());
+    ZEXPECT(above("lib/out") == Spelling::absolute(tmp.path("lib")).str());
+    ZEXPECT(above("solo/db/gen") == Spelling::absolute(tmp.path("solo/db")).str());
 };
+
+#ifndef _WIN32
+ZEST_CASE(FindProjectRootThroughSymlink) {
+    /// A directory reached through a symlink belongs to the project of the
+    /// directory it links to.
+    TempDir tmp;
+    tmp.touch("repo/clice.toml", "");
+    tmp.touch("repo/src/main.cpp", "");
+    ZASSERT(::symlink(tmp.path("repo/src").c_str(), tmp.path("alias").c_str()) == 0);
+    auto root = find_project_root(Spelling::absolute(tmp.path("alias")));
+    ZEXPECT(CanonicalPath(root).str() == CanonicalPath(Spelling::absolute(tmp.path("repo"))).str());
+};
+#endif
 
 ZEST_CASE(DefinesProject) {
     /// A directory is a project of its own when it holds a configuration
@@ -672,14 +700,15 @@ ZEST_CASE(RefreshDefaultSources) {
     /// the next refresh, once; a deleted one leaves the members.
     TempDir tmp;
     tmp.touch("src/main.cpp", "");
-    Config config;
-    config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto refresh = [&] {
         return build.refresh_default_sources(walk_sources(build.source_walk()));
@@ -721,19 +750,20 @@ ZEST_CASE(InactiveConfigurationExcluded) {
     tmp.touch("debug/compile_commands.json", entry("-DDEBUG"));
     tmp.touch("release/compile_commands.json", entry("-DRELEASE"));
 
-    Config config;
-    config.default_configuration = "release";
-    config.rules.push_back(ConfigRule{.configuration = "debug",
-                                      .compile_commands = {"debug"},
-                                      .append = {"-DFROM_DEBUG_RULE"}});
-    config.rules.push_back(ConfigRule{.configuration = "release", .compile_commands = {"release"}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.default_configuration = "release";
+    settings.rules.push_back(Rule{.configuration = "debug",
+                                  .compile_commands = {"debug"},
+                                  .append = {"-DFROM_DEBUG_RULE"}});
+    settings.rules.push_back(Rule{.configuration = "release", .compile_commands = {"release"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
-    build.reset_active(resolve_configuration(config, ""));
+    Build build{settings, project_root, cdb, files};
+    build.reset_active(settings.fallback_configuration());
     ZEXPECT(build.active_configuration() == "release");
     ZASSERT(build.declared_sources().size() == 1U);
     cdb.load(tmp.path("release"));
@@ -751,17 +781,18 @@ ZEST_CASE(InactiveSourceKeepsDiscovery) {
     /// Only an inactive configuration declares a database: the active one
     /// has no source, so discovery stays on for it.
     TempDir tmp;
-    Config config;
-    config.default_configuration = "release";
-    config.rules.push_back(ConfigRule{.configuration = "debug", .compile_commands = {"."}});
-    config.rules.push_back(ConfigRule{.configuration = "release", .append = {"-DNDEBUG"}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.default_configuration = "release";
+    settings.rules.push_back(Rule{.configuration = "debug", .compile_commands = {"."}});
+    settings.rules.push_back(Rule{.configuration = "release", .append = {"-DNDEBUG"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
-    build.reset_active(resolve_configuration(config, ""));
+    Build build{settings, project_root, cdb, files};
+    build.reset_active(settings.fallback_configuration());
     ZEXPECT(!build.declares_sources());
     ZEXPECT(build.declared_sources().empty());
 
@@ -782,16 +813,17 @@ ZEST_CASE(EditsAcrossHostAndHeader) {
     /// A header borrowing a host command carries both files' edits, each
     /// rule once, in declaration order.
     TempDir tmp;
-    Config config;
-    config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DA"}});
-    config.rules.push_back(ConfigRule{.patterns = {"include/**"}, .append = {"-DB"}});
-    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DC"}, .remove = {"-DA"}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DA"}});
+    settings.rules.push_back(Rule{.patterns = {"include/**"}, .append = {"-DB"}});
+    settings.rules.push_back(Rule{.patterns = {"**/*"}, .append = {"-DC"}, .remove = {"-DA"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
 
     CanonicalPath host(Spelling::absolute(tmp.path("src/main.cpp")));
@@ -815,21 +847,22 @@ ZEST_CASE(RuleTurnsQueryOff) {
     /// file's command, alone or beside other edits, and the edit hash says
     /// so; a command lent from such a file keeps it off.
     TempDir tmp;
-    Config config;
-    config.rules.push_back(ConfigRule{
+    Settings settings;
+    settings.rules.push_back(Rule{
         .patterns = {"src/**", "vendor/**"},
         .append = {"-DA"}
     });
-    config.rules.push_back(ConfigRule{
+    settings.rules.push_back(Rule{
         .patterns = {"vendor/**", "third_party/**"},
         .query_toolchain = false
     });
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
 
     CanonicalPath own(Spelling::absolute(tmp.path("src/a.cpp")));
@@ -868,16 +901,17 @@ ZEST_CASE(LendMergesRules) {
     /// borrower's, so a rule matching both applies once.
     TempDir tmp;
     tmp.touch("src/a.cpp", "");
-    Config config;
-    config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
-    config.rules.push_back(ConfigRule{.patterns = {"new/**"}, .append = {"-DOWN"}});
-    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DBOTH"}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    settings.rules.push_back(Rule{.patterns = {"new/**"}, .append = {"-DOWN"}});
+    settings.rules.push_back(Rule{.patterns = {"**/*"}, .append = {"-DBOTH"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
 
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
-    Build build{config, cdb, files};
+    Build build{settings, project_root, cdb, files};
     build.reset_active("");
     auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
     auto lender = *cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
@@ -902,9 +936,10 @@ ZEST_CASE(LendMergesRules) {
 std::vector<const char*> render_fallback(CompilationDatabase& db,
                                          llvm::StringRef file,
                                          const CommandEdits& options = {}) {
-    Config config;
-    config.finalize(CanonicalPath());
-    Build build{config, db, db.files()};
+    Settings settings;
+    CanonicalPath project_root = CanonicalPath();
+    settings.finalize(project_root);
+    Build build{settings, project_root, db, db.files()};
     auto source = CommandSource::Fallback;
     auto applied = apply_edits(db.commands(),
                                db.files(),
@@ -969,7 +1004,7 @@ ZEST_CASE(DefaultFallback) {
 };
 
 ZEST_CASE(FallbackAppliesAppend) {
-    /// Config rule appends must reach the synthesized fallback command:
+    /// Rule appends must reach the synthesized fallback command:
     /// users without a CDB rely on them to supply include paths.
     FileTable file_table;
     CommandTable commands;

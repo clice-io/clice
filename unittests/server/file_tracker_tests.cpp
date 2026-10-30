@@ -38,7 +38,8 @@ ZEST_CASE(CDBTickDebounces) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     // Rewrite with one more entry: the first tick only records the pending
     // content, the second sees it stable and reloads.
@@ -73,7 +74,8 @@ ZEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -94,7 +96,8 @@ ZEST_CASE(CDBTickDiscoversLate) {
     Project project{files};
     SessionStore store;
     // No compile_commands.json at construction time.
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -116,7 +119,8 @@ ZEST_CASE(CDBTickWatchesSubdirectory) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("build/compile_commands.json",
@@ -139,7 +143,8 @@ ZEST_CASE(CDBTickNewSubdirectory) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("out/compile_commands.json",
@@ -162,7 +167,8 @@ ZEST_CASE(CDBTickDanglingSymlink) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files).empty());
 
     elsewhere.touch("target/compile_commands.json",
@@ -182,7 +188,8 @@ ZEST_CASE(CDBTickAboveOpenFile) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("a/b/main.cpp")));
     store.open(main_id);
     ZASSERT(tick(tracker, files).empty());
@@ -210,7 +217,8 @@ ZEST_CASE(CDBTickDeleteRecreate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -238,7 +246,8 @@ ZEST_CASE(CDBTickRetriesFailedLoad) {
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(!project.cdb.load_source(id).has_value());
     auto before = file_mtime_ns(tmp.path("compile_commands.json"));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     tmp.touch("compile_commands.json", "[]");
     ZASSERT(set_file_mtime(tmp.path("compile_commands.json"), before));
@@ -266,7 +275,8 @@ ZEST_CASE(CDBTickRelocates) {
         {tmp.root, tmp.path("only.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto only_id = project.file_table.intern(Spelling::absolute(tmp.path("only.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
@@ -312,7 +322,8 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
     auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZEXPECT(tick(tracker, files).empty());
     ZEXPECT(tick(tracker, files).empty());
     ZEXPECT(!project.cdb.present(id));
@@ -334,7 +345,8 @@ ZEST_CASE(ResponseRewriteBeforeWatch) {
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZEXPECT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
     ZASSERT(events.size() == 1u);
@@ -356,7 +368,8 @@ ZEST_CASE(ResponseAddedByReload) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
@@ -384,7 +397,8 @@ ZEST_CASE(CDBTickRenameOver) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto before = file_mtime_ns(tmp.path("compile_commands.json"));
 
     tmp.touch("replacement.json",
@@ -410,10 +424,12 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("a/main.cpp")));
     ZEXPECT(tracker.discover_around(main).empty());
 
@@ -449,7 +465,8 @@ ZEST_CASE(CDBTickFollowsRetarget) {
     SessionStore store;
     auto id = project.cdb.add_source(Spelling::absolute(database));
     ZASSERT(project.cdb.load_source(id));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     fs::remove(database);
     ZASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
@@ -472,13 +489,15 @@ ZEST_CASE(CDBTickDiscoversAround) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("a/b/main.cpp")));
     auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("a/other.cpp")));
 
@@ -516,7 +535,8 @@ ZEST_CASE(CDBTickPhantomReplacement) {
         {tmp.root, tmp.path("main.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
@@ -549,11 +569,13 @@ ZEST_CASE(CDBTickCoalescesSources) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
@@ -587,7 +609,8 @@ ZEST_CASE(CDBRewriteBeforeWatch) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -616,7 +639,8 @@ ZEST_CASE(CDBSameStampRewrite) {
     auto mtime = file_mtime_ns(database) + 3'600'000'000'000;
     ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("compile_commands.json",
@@ -650,7 +674,8 @@ ZEST_CASE(CDBForgedStampSeen) {
     auto mtime = file_mtime_ns(database) - 3'600'000'000'000;
     ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(tick(tracker, files).empty());
     ZASSERT(tick(tracker, files).empty());
 
@@ -685,7 +710,8 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     Project project{files};
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     // A first look is no change.
     project.file_table.disk.current(header);
@@ -729,16 +755,18 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.settings.rules.push_back(
+        Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
     project.build.reset_active("");
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("src/both.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     auto both = project.file_table.intern(Spelling::absolute(tmp.path("src/both.cpp")));
     project.file_table.disk.current(both);
     ZASSERT(workspace_tick(tracker, files).empty());
@@ -763,7 +791,8 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     store.open(header);
     project.file_table.disk.current(header);
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     ZASSERT(workspace_tick(tracker, files).empty());
 
     tmp.touch("header.h", R"(int x = 2222;)");
@@ -792,7 +821,8 @@ ZEST_CASE(WorkspaceTickAfterScan) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.file_table.disk.read(header);
     tmp.touch("header.h", R"(int x = 2222;)");
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     auto first = workspace_tick(tracker, files);
     ZASSERT(first.size() == 1u);
@@ -820,7 +850,8 @@ ZEST_CASE(AnyLookReportsChange) {
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
     tmp.touch("header.h", R"(int x = 2222;)");
     project.rescan_disk_file(header);
 
@@ -847,7 +878,8 @@ ZEST_CASE(CheckoutMakesWorkspaceDue) {
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.file_table.disk.current(header);
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    FileTracker tracker(project, store);
 
     tmp.touch("header.h", R"(int x = 2222;)");
     files.disk.tick(std::chrono::hours(1));
@@ -875,7 +907,8 @@ ZEST_CASE(LinkedWorktreeWatched) {
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("wt/header.h")));
     project.file_table.disk.current(header);
-    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.path("wt"))));
+    project.root = CanonicalPath(Spelling::absolute(tmp.path("wt")));
+    FileTracker tracker(project, store);
 
     tmp.touch("wt/header.h", R"(int x = 2222;)");
     tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");

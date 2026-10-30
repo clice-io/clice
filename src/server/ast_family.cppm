@@ -78,10 +78,6 @@ public:
     /// IndexQuery, Requests and the transports.
     DocumentCompiles compiles;
 
-    /// Parsed form of config.project.readonly, written once by the master
-    /// at initialization.
-    ReadonlyMode readonly = ReadonlyMode::Off;
-
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down
     /// (MasterServer::serve_folders) holds documents before it loads, which

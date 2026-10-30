@@ -1,6 +1,6 @@
 module clice:sched.batch;
 
-import :config.config;
+import :settings.settings;
 import :support.prelude;
 import :worker.protocol;
 
@@ -15,21 +15,22 @@ struct BatchProgress {
     std::size_t failed = 0;
 };
 
-struct BatchOptions {
-    /// The workspace as the command line spells it; the result names files
-    /// under this spelling.
+/// The project a batch run works on, as the command read it.
+struct BatchProject {
+    /// The project's root as the command line spells it; the result names
+    /// files under this spelling.
     Spelling root;
 
-    /// The workspace's configuration, as the command loaded it.
-    Config config;
+    /// Its settings (load_settings), without errors.
+    LoadedSettings loaded;
 
-    /// The build configuration to activate (`--configuration`), one
-    /// `config` declares (check_requested_configuration); empty takes the
-    /// persisted selection, else the default.
-    std::string configuration;
-
-    /// Stateless worker count override; 0 runs one per logical core.
+    /// Stateless worker count override; 0 runs one per logical core for
+    /// indexing, the configuration's count for linting.
     std::uint32_t workers = 0;
+};
+
+struct BatchOptions {
+    BatchProject project;
 
     /// Called on the event loop when a round begins or ends and every ten
     /// seconds in between; null for no progress reporting.
@@ -94,7 +95,7 @@ struct BatchResult {
 };
 
 /// One-shot batch indexing on the lean scheduling stack — no sessions, no
-/// transports: bootstrap the workspace, drain the pump, persist, and wind
+/// transports: open the project, drain the pump, persist, and wind
 /// down in contract-11 order. Runs its own event loop to completion.
 /// Rounds start immediately and indexing happens even when the config
 /// keeps the background index disabled — running the command is the
@@ -102,20 +103,7 @@ struct BatchResult {
 BatchResult run_batch_index(const BatchOptions& options);
 
 struct BatchLintOptions {
-    /// The workspace as the command line spells it; findings name files
-    /// under this spelling.
-    Spelling root;
-
-    /// The workspace's configuration, as the command loaded it.
-    Config config;
-
-    /// The build configuration to activate (`--configuration`), one
-    /// `config` declares (check_requested_configuration); empty takes the
-    /// persisted selection, else the default.
-    std::string configuration;
-
-    /// Stateless worker count override; 0 keeps the config's values.
-    std::uint32_t workers = 0;
+    BatchProject project;
 
     /// Also produce and persist the project index from the same parses.
     bool with_index = false;
@@ -148,11 +136,11 @@ struct BatchLintResult {
 };
 
 struct BatchFormatOptions {
-    CanonicalPath root;
+    /// The project's root as the command line spells it.
+    Spelling root;
 
-    /// The build configuration to activate (`--configuration`); empty
-    /// takes the persisted selection, else the default.
-    std::string configuration;
+    /// Its settings (load_settings), without errors.
+    LoadedSettings loaded;
 
     /// What to format instead of the build's own files, canonical and
     /// absolute: a directory narrows the set to the files under it, a
@@ -171,8 +159,8 @@ struct BatchFormatOptions {
 struct BatchFormatResult {
     /// 0 = every file formatted (or, with --check, nothing to change),
     /// 1 = --check found files to format, 2 = the run could not complete:
-    /// the configuration is invalid, a file's style could not be read, a
-    /// file could not be read or written.
+    /// a file's style could not be read, a file could not be read or
+    /// written.
     int exit_code = 0;
 
     /// Files formatted or checked.
@@ -190,14 +178,14 @@ struct BatchFormatResult {
     double seconds = 0;
 };
 
-/// Format the workspace as the editor formats a document: load the build,
-/// take its own files (the translation units and the workspace files they
+/// Format the project as the editor formats a document: load the build,
+/// take its own files (the translation units and the project's files they
 /// include, outside the build trees and the commands' system include
 /// directories, no rule saying `format = false`), and format them in
 /// process, `jobs` at a time.
 BatchFormatResult run_batch_format(const BatchFormatOptions& options);
 
-/// Lint the workspace through TURun {tidy} (or {index, tidy}): bootstrap,
+/// Lint the project through TURun {tidy} (or {index, tidy}): open it,
 /// run every lintable CDB entry through the family under its .clang-tidy
 /// configuration, and return the merged findings. The background pump
 /// stays off during the pass — the plan's own runs are the only consumer

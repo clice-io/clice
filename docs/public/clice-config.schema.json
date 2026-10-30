@@ -4,11 +4,11 @@
     "properties": {
         "default_configuration": {
             "type": "string",
-            "description": "The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.",
+            "description": "The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules; a name no rule declares is an error. Unset, the first declared tag is used.",
             "default": ""
         },
         "project": {
-            "$ref": "#/$defs/ProjectConfig",
+            "$ref": "#/$defs/ProjectSettings",
             "description": "The [project] section: project-wide server options.",
             "default": {
                 "cache_dir": "",
@@ -24,7 +24,7 @@
             }
         },
         "tracker": {
-            "$ref": "#/$defs/TrackerConfig",
+            "$ref": "#/$defs/TrackerSettings",
             "description": "The [tracker] section: background polling of files.",
             "default": {
                 "workspace_poll_seconds": 30
@@ -121,7 +121,7 @@
             }
         },
         "references": {
-            "$ref": "#/$defs/ReferencesConfig",
+            "$ref": "#/$defs/ReferencesSettings",
             "description": "The [references] section: what find references answers.",
             "default": {
                 "limit": 2000
@@ -130,7 +130,7 @@
         "rules": {
             "type": "array",
             "items": {
-                "$ref": "#/$defs/ConfigRule"
+                "$ref": "#/$defs/Rule"
             },
             "description": "File-pattern rules that adjust compilation flags ([[rules]] in clice.toml).",
             "default": []
@@ -138,7 +138,7 @@
     },
     "additionalProperties": false,
     "$defs": {
-        "ProjectConfig": {
+        "ProjectSettings": {
             "type": "object",
             "properties": {
                 "cache_dir": {
@@ -167,7 +167,6 @@
                     "default": true
                 },
                 "readonly": {
-                    "type": "string",
                     "enum": [
                         "off",
                         "on",
@@ -192,20 +191,20 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 4294967295,
-                    "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.",
+                    "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); at least 1.",
                     "default": 2
                 },
                 "stateless_worker_count": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 4294967295,
-                    "description": "Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default."
+                    "description": "Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. At least 1."
                 },
                 "min_stateless_worker_count": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 4294967295,
-                    "description": "Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.",
+                    "description": "Lower bound for dynamic stateless-worker scaling; at least 1.",
                     "default": 1
                 },
                 "max_stateless_worker_count": {
@@ -217,7 +216,7 @@
             },
             "additionalProperties": false
         },
-        "TrackerConfig": {
+        "TrackerSettings": {
             "type": "object",
             "properties": {
                 "workspace_poll_seconds": {
@@ -466,7 +465,6 @@
             "type": "object",
             "properties": {
                 "arguments": {
-                    "type": "string",
                     "enum": [
                         "placeholders",
                         "delimiters",
@@ -526,7 +524,7 @@
             },
             "additionalProperties": false
         },
-        "ReferencesConfig": {
+        "ReferencesSettings": {
             "type": "object",
             "properties": {
                 "limit": {
@@ -539,7 +537,7 @@
             },
             "additionalProperties": false
         },
-        "ConfigRule": {
+        "Rule": {
             "type": "object",
             "properties": {
                 "patterns": {
@@ -547,7 +545,7 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.",
+                    "description": "Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the project root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.",
                     "default": []
                 },
                 "configuration": {
@@ -560,12 +558,12 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.",
+                    "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.",
                     "default": []
                 },
                 "resolve_symlinks": {
                     "type": "boolean",
-                    "description": "Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server switches to that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.",
+                    "description": "Whether builds are told apart by the real paths this rule's `compile_commands` resolve to, through symlinks and Windows junctions, rather than by the configuration's name: for a build system that selects a build by pointing a link at its directory. Each real path keeps an index of its own, and when the link is pointed elsewhere the server asks to be restarted on that build's index, which still holds what an earlier session indexed there. A configuration whose rules differ from this configuration's only in naming exactly those databases directly shares its index. The index of a build no longer used stays in the cache directory until deleted.",
                     "default": false
                 },
                 "default_command": {
@@ -580,7 +578,7 @@
                             }
                         }
                     ],
-                    "description": "The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.",
+                    "description": "The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the project root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.",
                     "default": ""
                 },
                 "append": {
@@ -611,12 +609,12 @@
                 },
                 "lint": {
                     "type": "boolean",
-                    "description": "Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the workspace are never checked. Any matching rule saying `false` wins.",
+                    "description": "Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the project are never checked. Any matching rule saying `false` wins.",
                     "default": true
                 },
                 "format": {
                     "type": "boolean",
-                    "description": "Whether `clice format` formats matching files. `false` keeps them out. Files outside the workspace are never formatted. Any matching rule saying `false` wins.",
+                    "description": "Whether `clice format` formats matching files. `false` keeps them out. Files outside the project are never formatted. Any matching rule saying `false` wins.",
                     "default": true
                 }
             },

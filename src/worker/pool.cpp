@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :config.config;
+import :settings.settings;
 import :support.anomaly;
 import :support.logging;
 import :support.process;

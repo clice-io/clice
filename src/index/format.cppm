@@ -33,7 +33,7 @@ namespace clice::index {
 /// hash order with a stable path table and pins its search blob, so it
 /// is read in place; v16: entity hashes follow clang 23's node kinds;
 /// v17: file versions carry no stat stamps; v18: files under the
-/// workspace root are named, and hashed into symbols, by their portable
+/// project root are named, and hashed into symbols, by their portable
 /// names; v19: entity hashes follow clang 23.1.2, xclang's; v20: preamble
 /// indexes carry the preamble's diagnostics; v21: aliases at namespace
 /// scope are global symbols, and the entries cover weak call edges, implicit

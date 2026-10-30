@@ -1,6 +1,6 @@
 module clice;
 
-import :config.config;
+import :settings.settings;
 import :driver.driver;
 import :index.database;
 import :index.format;
@@ -13,9 +13,8 @@ import :index.symbol_query;
 import :index.tu_manifest;
 import :index.writer_lock;
 import :feature.query;
-import :project.configuration;
-import :project.index_reader;
 import :project.project;
+import :project.project_reader;
 import :sched.batch;
 import :server.control;
 import :support.text;
@@ -27,7 +26,7 @@ namespace {
 
 struct Options {
     kota::deco::decl::HelpOption help;
-    WorkspaceOptions where;
+    ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;
@@ -44,21 +43,21 @@ struct StatsOptions {
              required = false)
     variants;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
 struct SymbolOptions {
     kota::deco::decl::HelpOption help;
     SymbolTarget target;
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
 struct FileOptions {
     kota::deco::decl::HelpOption help;
     FileTarget target;
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -80,57 +79,12 @@ std::string format_time(std::uint64_t epoch_ms) {
     return timestamp;
 }
 
-/// Index through the serving writer: the editor's server holds the cache
-/// directory's writer lock, so it runs the pass and the command waits
-/// for the index to be committed.
-int run_indexing_via_server(const index::ServerEndpoint& endpoint,
-                            llvm::StringRef configuration,
-                            bool json) {
-    // FIXME: the failed units come in the server's spelling of the workspace,
-    // which differs from this command's when the server or the command reaches
-    // the workspace through a symlink.
-    auto result = control::request_index(endpoint, configuration);
-    if(!result) {
-        LOG_ERROR("{}", result.error());
-        return 1;
+int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) {
+    auto read = read_project(where);
+    if(!read) {
+        return print_error(read.error());
     }
-    if(json) {
-        print_json(*result);
-        return result->failed.empty() ? 0 : 1;
-    }
-    driver::println("Indexed through the running clice server (pid {}).", endpoint.pid);
-    if(!result->failed.empty()) {
-        driver::println(
-            "{} translation unit{} failed to index (see the server log); the index is partial:",
-            result->failed.size(),
-            plural_s(result->failed.size()));
-        for(auto& path: result->failed) {
-            driver::println("  {}", path);
-        }
-        return 1;
-    }
-    return 0;
-}
-
-int run_indexing(Spelling root, std::string configuration, std::uint32_t workers, bool json) {
-    auto config = Config::load_from_workspace(CanonicalPath(root));
-    if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        LOG_ERROR("{}", checked.error());
-        return 1;
-    }
-    auto& cache_dir = config.project.cache_dir;
-    auto writer = index::probe_writer(cache_dir);
-    switch(writer.state) {
-        case index::WriterProbe::State::Free: break;
-        case index::WriterProbe::State::Server:
-            return run_indexing_via_server(writer.endpoint,
-                                           resolve_configuration(config, configuration),
-                                           json);
-        case index::WriterProbe::State::Held: {
-            LOG_ERROR("{}", index::held_writer_message(writer, cache_dir));
-            return 1;
-        }
-    }
+    auto& [root, loaded] = *read;
     // Progress goes to stderr whatever the log level: a run spends most of
     // its time with nothing else to say, and the per-unit log lines exist
     // only at info level. The batch paces the reports, and a tick with the
@@ -146,14 +100,37 @@ int run_indexing(Spelling root, std::string configuration, std::uint32_t workers
             progress.failed,
             std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
     };
-
-    auto result = run_batch_index({
-        .root = std::move(root),
-        .config = std::move(config),
-        .configuration = std::move(configuration),
-        .workers = workers,
-        .on_progress = report_progress,
-    });
+    auto indexed =
+        index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
+                      report_progress);
+    if(!indexed) {
+        LOG_ERROR("{}", indexed.error());
+        return 1;
+    }
+    if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
+        // FIXME: the failed units come in the server's spelling of the
+        // project, which differs from this command's when the server or the
+        // command reaches the project through a symlink.
+        auto& failed = server->result.failed;
+        if(json) {
+            print_json(server->result);
+            return failed.empty() ? 0 : 1;
+        }
+        driver::println("Indexed through the running clice server (pid {}).", server->pid);
+        if(!failed.empty()) {
+            driver::println(
+                "{} translation unit{} failed to index (see the server log); the index is "
+                "partial:",
+                failed.size(),
+                plural_s(failed.size()));
+            for(auto& path: failed) {
+                driver::println("  {}", path);
+            }
+            return 1;
+        }
+        return 0;
+    }
+    auto& result = std::get<BatchResult>(*indexed);
     if(json) {
         print_json(result);
         return result.exit_code;
@@ -651,7 +628,7 @@ llvm::StringRef kind_name(SymbolKind kind) {
 /// What the index records about every symbol `text`, a locator, names:
 /// an id its symbol, whether a file places it or not; anything else what
 /// `clice query` finds for it, a name every symbol spelling it whole.
-int run_show_symbol(IndexReader& reader, llvm::StringRef text) {
+int run_show_symbol(ProjectReader& reader, llvm::StringRef text) {
     auto locator = index::SymbolQuery::parse(text);
     if(!locator) {
         LOG_ERROR("{}", locator.error());
@@ -681,8 +658,7 @@ int run_show_symbol(IndexReader& reader, llvm::StringRef text) {
         // the file holding its entries.
         Fid anchor;
         if(!paths.empty()) {
-            anchor = project.file_table.intern(
-                Spelling(paths.front(), Spelling(project.config.workspace_root)));
+            anchor = project.file_table.intern(Spelling(paths.front(), Spelling::cwd()));
         }
         matches.push_back({*handle, anchor});
     } else {
@@ -768,7 +744,7 @@ int run_show_symbol(IndexReader& reader, llvm::StringRef text) {
 }
 
 int run_show_file(Project& project, llvm::StringRef argument) {
-    auto path = argument_path(project, argument);
+    Spelling path(argument, Spelling::cwd());
     // Interning only names the file: the index reads its records by name.
     auto file = project.file_table.intern(path);
     auto* found = project.index.shard(file);
@@ -845,7 +821,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
 }
 
 int run_show_tu(Project& project, llvm::StringRef argument) {
-    auto path = argument_path(project, argument);
+    Spelling path(argument, Spelling::cwd());
     auto& files = project.file_table;
     auto tu = files.intern(path);
     auto& project_index = project.index;
@@ -911,38 +887,35 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     return 0;
 }
 
-/// Open the persisted index of the workspace as the writer loads it, every
-/// file served as it was indexed, and hand it to `run`, which reads it.
+/// Open the persisted index of the project, every file served as it was
+/// indexed, and hand it to `run`, which reads it.
 template <typename Run>
-int read_index(const WorkspaceOptions& where, Run run) {
-    auto spelling = where.root();
-    if(!workspace_exists(spelling)) {
+int read_index(const ProjectOptions& where, Run run) {
+    auto read = read_project(where);
+    if(!read) {
+        return print_error(read.error());
+    }
+    auto& [root, loaded] = *read;
+    auto project = open_index(root,
+                              std::move(loaded),
+                              Project::OpenOptions::Build::None,
+                              {},
+                              /*check_disk=*/false);
+    if(!project) {
         return 1;
     }
-    auto configuration = where.configuration.tag();
-    auto config = Config::load_from_workspace(CanonicalPath(spelling));
-    if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        LOG_ERROR("{}", checked.error());
-        return 1;
-    }
-    auto reader = IndexReader::open(spelling,
-                                    std::move(config),
-                                    configuration,
-                                    {.load = IndexLoad::Saved, .check_disk = false});
-    if(!reader) {
-        return 1;
-    }
-    auto rc = run(*reader);
+    auto& reader = *project->reader;
+    auto rc = run(reader);
     // A damaged record reads as missing, its log line the only trace: what
     // was printed is no answer automation may take as one.
-    return reader->project.index.damaged() ? 1 : rc;
+    return reader.project.index.damaged() ? 1 : rc;
 }
 
 /// An operation reading the record of the one file it names.
 template <typename Show>
 CommandHandler show_file(std::string_view usage, Show show) {
     return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
-        return read_index(opts.where, [&](IndexReader& reader) {
+        return read_index(opts.where, [&](ProjectReader& reader) {
             return show(reader.project, *opts.target.path);
         });
     });
@@ -953,29 +926,30 @@ CommandHandler build() {
     operations.push_back({
         .name = "stats",
         .description = "What the persisted index holds: its sizes and how its records spread",
-        .run = operation<StatsOptions>("clice index stats [OPTIONS]",
-                                       "index",
-                                       Errors::Text,
-                                       [](const StatsOptions& opts) {
-                                           return read_index(opts.where, [&](IndexReader& reader) {
-                                               return run_stats(reader.project,
-                                                                opts.limit.value_or(20),
-                                                                static_cast<bool>(opts.variants));
-                                           });
-                                       }),
+        .run =
+            operation<StatsOptions>("clice index stats [OPTIONS]",
+                                    "index",
+                                    Errors::Text,
+                                    [](const StatsOptions& opts) {
+                                        return read_index(opts.where, [&](ProjectReader& reader) {
+                                            return run_stats(reader.project,
+                                                             opts.limit.value_or(20),
+                                                             static_cast<bool>(opts.variants));
+                                        });
+                                    }),
     });
     operations.push_back({
         .name = "symbol",
         .description = "What the persisted index records about symbols",
-        .run = operation<SymbolOptions>("clice index symbol <LOCATOR> [OPTIONS]",
-                                        "index",
-                                        Errors::Text,
-                                        [](const SymbolOptions& opts) {
-                                            return read_index(opts.where, [&](IndexReader& reader) {
-                                                return run_show_symbol(reader,
-                                                                       *opts.target.locator);
-                                            });
-                                        }),
+        .run =
+            operation<SymbolOptions>("clice index symbol <LOCATOR> [OPTIONS]",
+                                     "index",
+                                     Errors::Text,
+                                     [](const SymbolOptions& opts) {
+                                         return read_index(opts.where, [&](ProjectReader& reader) {
+                                             return run_show_symbol(reader, *opts.target.locator);
+                                         });
+                                     }),
     });
     operations.push_back({
         .name = "file",
@@ -989,12 +963,7 @@ CommandHandler build() {
     });
     auto index =
         operation<Options>("clice index [OPTIONS]", "index", Errors::Text, [](const Options& opts) {
-            auto spelling = opts.where.root();
-            if(!workspace_exists(spelling)) {
-                return 1;
-            }
-            return run_indexing(std::move(spelling),
-                                opts.where.configuration.tag(),
+            return run_indexing(opts.where,
                                 opts.jobs.jobs.value_or(0),
                                 static_cast<bool>(opts.report.json));
         });
@@ -1003,7 +972,7 @@ CommandHandler build() {
 
 [[maybe_unused]] const bool registered =
     register_command(Command::index,
-                     {.description = "Index a workspace ahead of time", .build = build});
+                     {.description = "Index a project ahead of time", .build = build});
 
 }  // namespace
 

@@ -2,7 +2,7 @@ module clice:analysis.module_graph;
 
 import :analysis.annotation;
 import :index.symbol;
-import :project.index_reader;
+import :project.project_reader;
 import :project.project;
 import :semantic.symbol;
 import :support.prelude;
@@ -12,8 +12,8 @@ namespace clice::analysis {
 
 /// A file of the analyzed scope; its position in Facts::files is its id.
 struct File {
-    /// Workspace-relative, `/`-separated; absolute for a file outside the
-    /// workspace, as a third-party header a scope glob takes in.
+    /// Relative to the project root, `/`-separated; absolute for a file
+    /// outside the project, as a third-party header a scope glob takes in.
     std::string path;
 
     /// A translation unit's source file; every other scoped file is a header.
@@ -271,9 +271,9 @@ struct Facts {
     std::vector<IncludeTree> trees;
 };
 
-/// Read the facts of every indexed file whose path, workspace-relative or
-/// absolute outside the workspace, `in_scope` accepts out of the loaded
-/// index.
+/// Read the facts of every indexed file whose path, relative to the project
+/// root or absolute outside the project, `in_scope` accepts out of the
+/// loaded index.
 Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_scope);
 
 struct LoadedFacts {
@@ -281,7 +281,7 @@ struct LoadedFacts {
     Facts facts;
 };
 
-/// Why the index of a workspace gives no facts.
+/// Why the index of a project gives no facts.
 struct LoadError {
     std::string message;
 
@@ -291,14 +291,13 @@ struct LoadError {
 
 /// Changes the facts while the index they were read from is still open,
 /// for what only the index can resolve: the symbols a locator names.
-using FactsEdit = llvm::function_ref<std::expected<void, std::string>(IndexReader&, Facts&)>;
+using FactsEdit = llvm::function_ref<std::expected<void, std::string>(ProjectReader&, Facts&)>;
 
-/// The facts of the files the `scope` globs select out of the index of
-/// `workspace` (default: the workspace's own files outside dot
-/// directories), after `edit`, and the workspace root; none from an index
+/// The facts of the files the `scope` globs select out of the index
+/// `reader` opened (default: the project's own files outside dot
+/// directories), after `edit`, and the project root; none from an index
 /// that lacks a unit or describes a file as it no longer is.
-std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
-                                                 llvm::StringRef configuration,
+std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
                                                  llvm::ArrayRef<std::string> scope,
                                                  FactsEdit edit = {});
 
@@ -332,7 +331,7 @@ struct Partition {
     std::vector<llvm::StringSet<>> provides;
 
     /// Per module: the primary interface unit of a program module rewritten
-    /// into a named module, workspace-relative; empty for one whose files
+    /// into a named module, relative to the project root; empty for one whose files
     /// stay as they are.
     std::vector<std::string> primaries;
 
@@ -355,8 +354,8 @@ struct PartitionSpec {
     struct Module {
         std::string name;
 
-        /// Globs over workspace-relative paths, absolute ones outside the
-        /// workspace.
+        /// Globs over paths relative to the project root, absolute ones
+        /// outside the project.
         std::vector<std::string> files;
 
         ModuleKind kind = ModuleKind::Wrapped;

@@ -7,6 +7,28 @@ import :support.prelude;
 
 namespace clice {
 
+/// What load_saved found.
+struct SavedLoad {
+    /// False when the database's header is of another format or corrupt:
+    /// the writer discards the database and starts over, but a reader must
+    /// report an unusable cache instead of an empty index.
+    bool decoded = true;
+
+    /// The units owed a reindex the load found: the ones a rule keeps out or
+    /// whose command changed while no server ran.
+    index::IndexReport report;
+};
+
+/// Open what the project's database holds: the index (ProjectIndex::open),
+/// the artifact records into the project, the context choices; then, with
+/// `reconcile` (the build is loaded), drop the index of the units a rule
+/// keeps out and of those whose command changed while no server ran
+/// (CommandSnapshot::reconcile) — in memory only on a read-only database.
+/// The writer replaces a database of another format or found corrupt by a
+/// fresh one; one whose header cannot be read is detached, persistence off
+/// for the session.
+SavedLoad load_saved(Project& project, bool reconcile);
+
 /// Persist what the project's database carries: the index's dirty state
 /// (ProjectIndex::begin_save), then the command snapshot, the artifact
 /// records and the context choices, in one write offloaded to the kota

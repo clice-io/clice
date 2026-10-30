@@ -117,10 +117,10 @@ struct CompilationInput {
     /// The directory the command runs in.
     std::string directory;
 
-    /// The workspace root: hashes that outlive the checkout's location
+    /// The project root: hashes that outlive the checkout's location
     /// name the unit's files relative to it (path::portable). Empty for
     /// none.
-    std::string workspace;
+    std::string project_root;
 
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = new vfs::View();
 
@@ -360,8 +360,8 @@ public:
     /// them out first, see `is_builtin_file`.
     auto file_path(clang::FileID fid) -> llvm::StringRef;
 
-    /// See CompilationInput::workspace.
-    auto workspace() -> llvm::StringRef;
+    /// See CompilationInput::project_root.
+    auto project_root() -> llvm::StringRef;
 
     /// The text of `fid`: the focus file's as the editor has it, any
     /// other's as clang read it. In the focus file every offset the unit

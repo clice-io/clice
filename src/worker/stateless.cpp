@@ -160,7 +160,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
         .kind = params.whole_file ? CompilationKind::PrecompiledHeader : CompilationKind::Preamble,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace,
+                  .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
         .skip_bodies = params.skip_bodies,
@@ -379,7 +379,7 @@ static worker::IncludeTreeResult
         .kind = CompilationKind::Preprocess,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace,
+                  .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .stop = stop,
     });
@@ -414,7 +414,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         .kind = CompilationKind::Whole,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
-                  .workspace = params.workspace,
+                  .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
         .stop = stop,
@@ -509,7 +509,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
-        .skip_bodies = params.config.project.skip_header_bodies,
+        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_artifacts(cp.input, params.pch, params.pcms);
@@ -517,8 +517,8 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
     cp.input.add_synthesized(params.synthesized);
 
     auto completion = feature::code_complete(std::move(cp),
-                                             params.config.code_completion,
-                                             params.config.documentation,
+                                             params.settings.code_completion,
+                                             params.settings.documentation,
                                              params.client,
                                              params.encoding,
                                              params.candidates);
@@ -538,7 +538,7 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
-        .skip_bodies = params.config.project.skip_header_bodies,
+        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_artifacts(cp.input, params.pch, params.pcms);
@@ -546,8 +546,8 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
     cp.input.add_synthesized(params.synthesized);
 
     auto help = feature::signature_help(std::move(cp),
-                                        params.config.signature_help,
-                                        params.config.documentation,
+                                        params.settings.signature_help,
+                                        params.settings.documentation,
                                         params.selected);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
 

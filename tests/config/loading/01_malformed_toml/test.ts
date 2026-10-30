@@ -1,6 +1,8 @@
 import { test } from "@clice/tools/testing";
 
-test("defaults stand in", { errors: ["Invalid clice\\.toml .*TOML parse error"] }, async (t) => {
+// The project of a clice.toml that does not parse serves nothing: the
+// undeclared name in main.cpp goes unreported.
+test("nothing is served", { errors: ["Invalid clice\\.toml .*TOML parse error"] }, async (t) => {
     const s = await t.start();
     s.open("main.cpp");
     await t.show("guidance", await s.guidance());

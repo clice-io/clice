@@ -5,12 +5,12 @@ import :vfs.path;
 namespace clice {
 
 llvm::StringRef path::portable(llvm::StringRef p,
-                               llvm::StringRef workspace,
+                               llvm::StringRef project_root,
                                llvm::SmallVectorImpl<char>& storage) {
-    if(workspace.empty() || !is_within(p, workspace)) {
+    if(project_root.empty() || !is_within(p, project_root)) {
         return p;
     }
-    auto rest = p.drop_front(workspace.size());
+    auto rest = p.drop_front(project_root.size());
     storage.assign(workspace_anchor.begin(), workspace_anchor.end());
     if(!rest.empty() && !is_separator(rest.front())) {
         storage.push_back('/');
@@ -20,14 +20,14 @@ llvm::StringRef path::portable(llvm::StringRef p,
 }
 
 llvm::StringRef path::local(llvm::StringRef name,
-                            llvm::StringRef workspace,
+                            llvm::StringRef project_root,
                             llvm::SmallVectorImpl<char>& storage) {
     if(!name.consume_front(workspace_anchor)) {
         return name;
     }
-    assert(!workspace.empty() && "a portable name read without its workspace");
-    storage.assign(workspace.begin(), workspace.end());
-    if(workspace.ends_with("/")) {
+    assert(!project_root.empty() && "a portable name read without its project root");
+    storage.assign(project_root.begin(), project_root.end());
+    if(project_root.ends_with("/")) {
         name.consume_front("/");
     }
     storage.append(name.begin(), name.end());

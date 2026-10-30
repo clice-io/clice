@@ -473,7 +473,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         auto path = files.resolve(file);
         if(!scope.editable(path)) {
             plan.conflicts.push_back(
-                std::format("the rename would change {}, which is not a workspace source "
+                std::format("the rename would change {}, which is not a source of the project "
                             "(a system header, a dependency or a generated file)",
                             edit.site.path));
             continue;
@@ -862,7 +862,7 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     return result;
 }
 
-WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names) :
+RenameTexts::RenameTexts(std::vector<std::string> files, llvm::StringSet<> names) :
     files(std::move(files)), names(std::move(names)) {
     for(auto& path: this->files) {
         walked.insert(path);
@@ -874,7 +874,7 @@ WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<>
     }
 }
 
-const ScannedText* WorkspaceTexts::read(
+const ScannedText* RenameTexts::read(
     llvm::StringRef path,
     llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer) {
     auto open = buffer ? buffer(path) : std::nullopt;
@@ -897,7 +897,7 @@ const ScannedText* WorkspaceTexts::read(
     return it->second ? &*it->second : nullptr;
 }
 
-std::optional<std::string> workspace_refusal(llvm::StringRef root) {
+std::optional<std::string> rename_refusal(llvm::StringRef root) {
     if(root.empty()) {
         return "a rename edits the sources of a workspace folder; open one";
     }

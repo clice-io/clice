@@ -1,0 +1,15 @@
+["rule before the bad value".guidance]
+value = [
+    "initializationOptions: invalid type: expected boolean, got string at project.enable_indexing. Nothing under ${WS} is served until they are fixed and clice restarts",
+]
+
+["rule before the bad value"."main.cpp"]
+errors = []
+
+["rule after the bad value".guidance]
+value = [
+    "initializationOptions: invalid type: expected boolean, got string at project.enable_indexing. Nothing under ${WS} is served until they are fixed and clice restarts",
+]
+
+["rule after the bad value"."main.cpp"]
+errors = []

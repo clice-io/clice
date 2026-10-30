@@ -5,7 +5,8 @@ import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
 import :project.build;
-import :project.index_reader;
+import :project.project;
+import :project.project_reader;
 import :project.queries;
 import :vfs.file_system;
 
@@ -35,7 +36,7 @@ struct RenameOptions {
              required = false)
     dry_run;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     FreshOption fresh;
     LogLevelOption log;
 };
@@ -189,21 +190,21 @@ int run_rename(const RenameOptions& opts) {
     }
     // The build tells a unit the index never reached from a file outside
     // the build, so the writer's load restores it.
-    auto opened = open_index(opts.where, opts.fresh, {.load = IndexLoad::Build});
+    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Build::Members);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
     auto& reader = *opened->reader;
     auto& failed = opened->failed;
     auto ctx = reader.context();
-    EditableWorkspace workspace(reader.project.config);
+    EditableFiles editable_files(reader.project.root, reader.project.settings);
     auto editable = [&](llvm::StringRef path) {
-        return workspace.editable(path);
+        return editable_files.editable(path);
     };
     auto planned = feature::query::rename(ctx,
                                           *requests,
                                           {
-                                              .files = workspace.sources(),
+                                              .files = editable_files.sources(),
                                               .editable = editable,
                                               .units_pending = units_pending(reader.project),
                                           });
@@ -233,21 +234,21 @@ CommandHandler build() {
     std::vector<Operation> operations;
     operations.push_back({
         .name = "rename",
-        .description = "Rename symbols across the workspace",
+        .description = "Rename symbols across the project",
         .run = operation<RenameOptions>(
             "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]",
             "refactor",
             Errors::JSON,
             run_rename),
     });
-    return with_operations("Rewrite the workspace's sources through the persisted index",
+    return with_operations("Rewrite the project's sources through the persisted index",
                            std::move(operations),
                            Errors::JSON);
 }
 
 [[maybe_unused]] const bool registered = register_command(
     Command::refactor,
-    {.description = "Rewrite the workspace's sources through the persisted index", .build = build});
+    {.description = "Rewrite the project's sources through the persisted index", .build = build});
 
 }  // namespace
 

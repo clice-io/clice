@@ -38,6 +38,8 @@ interface FieldSchema {
     additionalProperties?: FieldSchema | boolean;
     /// Untagged variant alternatives (a field accepting several shapes).
     anyOf?: FieldSchema[];
+    /// The names an enumerated option takes.
+    enum?: unknown[];
     minimum?: number;
     maximum?: number;
     description?: string;
@@ -72,6 +74,9 @@ function resolveRef(root: StructSchema, schema: FieldSchema): StructSchema {
 function renderType(field: FieldSchema): string {
     if (field.anyOf !== undefined) {
         return field.anyOf.map(renderType).join(" or ");
+    }
+    if (field.type === undefined && field.enum?.every((name) => typeof name === "string")) {
+        return "`string`";
     }
     switch (field.type) {
         case "boolean":

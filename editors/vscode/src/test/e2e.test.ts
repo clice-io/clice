@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
 import type {
@@ -645,6 +646,40 @@ suite("clice E2E", function () {
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
             fs.rmSync(root, { recursive: true, force: true });
         }
+    });
+
+    test("an edited configuration restarts the server", async function () {
+        this.timeout(120 * 1000);
+        const config = path.join(workspaceFolder().uri.fsPath, "clice.toml");
+        const original = fs.existsSync(config) ? fs.readFileSync(config, "utf8") : undefined;
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        // The server looks at its configuration files on every tick, polling
+        // off or not, and asks the extension, which restarts it.
+        const restarted = (what: string) => {
+            let stopped = false;
+            return until(
+                [client.onDidChangeState],
+                (event) => {
+                    stopped ||= event?.newState === State.Stopped;
+                    return stopped && event?.newState === State.Running;
+                },
+                what,
+            );
+        };
+        const edited = restarted("restart after the edit");
+        fs.writeFileSync(config, `${original ?? ""}\n# edited\n`);
+        await edited;
+        // The new server reads its configuration once the client says it is
+        // initialized: a restore before then is simply what it reads.
+        await client.sendRequest<SyncResult>("clice/internal/sync", {});
+        const restored = restarted("restart after the restore");
+        if (original === undefined) {
+            fs.rmSync(config);
+        } else {
+            fs.writeFileSync(config, original);
+        }
+        await restored;
     });
 
     test("a closed tab leaves no problems", async function () {

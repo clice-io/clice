@@ -77,10 +77,15 @@ private:
     /// capability-gated.
     void refresh_diagnostics();
 
-    /// Push every served project's clice.toml load problems as
-    /// diagnostics on the config file URI, and clear the ones of a
-    /// configuration no project loads any more.
-    void publish_config_diagnostics();
+    /// Push every served project's clice.toml problems as
+    /// diagnostics on the configuration file's URI, and clear the ones of a
+    /// configuration file no project reads any more.
+    void publish_settings_diagnostics();
+
+    /// The server must restart (MasterServer::restart_reasons): ask a client
+    /// that restarts it, once; else tell the user, a configuration file by a
+    /// diagnostic on it, the rest by a message. Nothing until client_ready.
+    void ask_for_restart();
 
     /// Push a session's materialized compile output to the client: its
     /// diagnostics — or, to a pulling client, a diagnostics refresh when an
@@ -204,6 +209,16 @@ private:
     /// Configuration files are still pushed; no client pulls them.
     bool pull_diagnostics = false;
 
+    /// The client restarts the server when asked (clice/restartServer), as
+    /// it declared under its experimental capabilities.
+    bool restart_server = false;
+
+    /// clice/restartServer was sent; the client is restarting the server.
+    bool restart_asked = false;
+
+    /// The restart reasons the user was told of in a message.
+    llvm::StringSet<> restarts_told;
+
     /// What the client takes from a completion item.
     feature::CompletionClient completion_client;
 
@@ -277,8 +292,8 @@ private:
     /// publish_alias for every second name of `path_id`.
     void publish_aliases(Fid path_id);
 
-    /// The configuration files publish_config_diagnostics published last.
-    llvm::StringSet<> published_configs;
+    /// The configuration files publish_settings_diagnostics published last.
+    llvm::StringSet<> published_settings_files;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<ProjectServer&, std::shared_ptr<Session>>::Connection output_conn;
@@ -313,6 +328,10 @@ private:
     /// Subscription to open documents' compile phases; disconnects on
     /// destruction.
     Signal<Fid, CompilePhase>::Connection compile_phase_conn;
+
+    /// Subscription to the server needing a restart; disconnects on
+    /// destruction.
+    Signal<>::Connection restart_conn;
 
     /// Sequence number of the next notify-log message to forward (see
     /// MasterServer::notify_seq).

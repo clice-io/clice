@@ -68,9 +68,9 @@ cc_library(
     module_interfaces = glob(["src/%s/**/*.cppm" % layer]),
     deps = deps,
 ) for layer, deps in [
-    ("config", [":core"]),
-    ("project", [":config"]),
-    ("worker", [":config"]),
+    ("settings", [":core"]),
+    ("project", [":settings"]),
+    ("worker", [":settings"]),
     ("sched", [
         ":project",
         ":worker",

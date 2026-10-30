@@ -1,8 +1,6 @@
 module clice;
 
-import :config.config;
 import :driver.driver;
-import :project.configuration;
 import :sched.batch;
 import :support.logging;
 
@@ -18,7 +16,7 @@ struct Options {
              required = false)
     index;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;
@@ -39,21 +37,14 @@ void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     }
 }
 
-int run_lint(Spelling root,
-             std::string configuration,
-             std::uint32_t jobs,
-             bool with_index,
-             bool json) {
-    auto config = Config::load_from_workspace(CanonicalPath(root));
-    if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        LOG_ERROR("{}", checked.error());
-        return 2;
+int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, bool json) {
+    auto read = read_project(where);
+    if(!read) {
+        return print_error(read.error());
     }
+    auto& [root, loaded] = *read;
     auto result = run_batch_lint({
-        .root = std::move(root),
-        .config = std::move(config),
-        .configuration = std::move(configuration),
-        .workers = jobs,
+        .project = {.root = std::move(root), .loaded = std::move(loaded), .workers = jobs},
         .with_index = with_index,
     });
     if(json) {
@@ -90,12 +81,7 @@ CommandHandler build() {
                               "lint",
                               Errors::Text,
                               [](const Options& opts) {
-                                  auto workspace = opts.where.root();
-                                  if(!workspace_exists(workspace)) {
-                                      return 2;
-                                  }
-                                  return run_lint(std::move(workspace),
-                                                  opts.where.configuration.tag(),
+                                  return run_lint(opts.where,
                                                   opts.jobs.jobs.value_or(0),
                                                   static_cast<bool>(opts.index),
                                                   static_cast<bool>(opts.report.json));

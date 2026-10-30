@@ -1,5 +1,5 @@
-[test."$ clice format link.cpp --workspace ws"]
-stderr = "${WS}/ws/link.cpp: links outside the workspace"
+[test."$ clice format ws/link.cpp --workspace ws"]
+stderr = "${WS}/ws/link.cpp: links outside the project"
 exit = 2
 
 [test."$ clice format --workspace ws"]

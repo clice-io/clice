@@ -64,6 +64,25 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     return true;
 }
 
+void IndexPump::enqueue_outdated(llvm::ArrayRef<Fid> members) {
+    auto stale = project.index.stale_units();
+    if(!project.settings.project.enable_indexing.value) {
+        return;
+    }
+    for(auto member: members) {
+        if(!project.index.indexed(member)) {
+            enqueue(member, ReindexReason::DepsOnly);
+        }
+    }
+    for(auto unit: stale) {
+        enqueue(unit, ReindexReason::DepsOnly);
+    }
+    for(auto unit: project.index.owed_units()) {
+        enqueue(unit, ReindexReason::ContentChanged);
+    }
+    schedule();
+}
+
 void IndexPump::apply_report(const index::IndexReport& report) {
     for(auto id: report.reindex()) {
         enqueue(id, ReindexReason::ContentChanged);
@@ -181,7 +200,7 @@ kota::task<> IndexPump::stop() {
 }
 
 void IndexPump::schedule(bool immediate) {
-    if(!project.config.project.enable_indexing.value || indexing_active)
+    if(!project.settings.project.enable_indexing.value || indexing_active)
         return;
     if(indexing_scheduled) {
         // An immediate request colliding with an armed idle timer re-arms
@@ -203,7 +222,7 @@ void IndexPump::schedule(bool immediate) {
     // a crashed file's retry must not owe an extra idle window on top of
     // the round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : project.config.project.idle_timeout_ms.value) +
+        std::chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
         test_jitter());
 
     if(!bg_tasks.spawn(run_background_indexing())) {
@@ -337,7 +356,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool content_changed =
         pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
-    bool skipped = on_skipped_diagnostics && project.config.project.skip_header_bodies;
+    bool skipped = on_skipped_diagnostics && project.settings.project.skip_header_bodies;
     if(!served && (content_changed || (skipped && lacks_skipped_diagnostics(server_path_id)) ||
                    project.index.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);

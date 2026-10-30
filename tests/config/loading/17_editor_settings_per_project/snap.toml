@@ -1,0 +1,5 @@
+[test.guidance]
+value = [
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/beta keeps its cache in ${WS}/beta/.clice",
+    "initializationOptions: debug names a configuration, but no rule declares one at default_configuration. Nothing under ${WS}/beta is served until they are fixed and clice restarts",
+]

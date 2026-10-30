@@ -1,0 +1,2 @@
+[test.asked]
+value = "${WS}/sub/clice.toml changed"

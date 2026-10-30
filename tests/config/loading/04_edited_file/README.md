@@ -1,5 +1,5 @@
-# Changes need a restart
+# Changes restart the server
 
-clice reads `clice.toml` when the server starts, so an edit applies at the next start
+clice reads `clice.toml` when the server starts. Saving it makes the server ask the editor to restart it, and the edit applies in the new server
 
-The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.
+The rule gains the macro while the server runs; once the editor restarted the server, `main.cpp` compiles with it.

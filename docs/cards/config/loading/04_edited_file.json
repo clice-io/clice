@@ -2,9 +2,9 @@
   "id": "config/loading/04_edited_file",
   "topic": "config",
   "subtopic": "loading",
-  "title": "Changes need a restart",
-  "summary": "clice reads `clice.toml` when the server starts, so an edit applies at the next start",
-  "prose": "The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.",
+  "title": "Changes restart the server",
+  "summary": "clice reads `clice.toml` when the server starts. Saving it makes the server ask the editor to restart it, and the edit applies in the new server",
+  "prose": "The rule gains the macro while the server runs; once the editor restarted the server, `main.cpp` compiles with it.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -51,30 +51,9 @@
           }
         },
         {
-          "label": "edited",
+          "label": "asked",
           "value": {
-            "diagnostics": [
-              {
-                "at": {
-                  "$place": "return ⟦FROM_TOML⟧;",
-                  "path": "main.cpp",
-                  "range": {
-                    "start": {
-                      "line": 1,
-                      "character": 11
-                    },
-                    "end": {
-                      "line": 1,
-                      "character": 20
-                    }
-                  }
-                },
-                "severity": "error",
-                "message": "use of undeclared identifier 'FROM_TOML'",
-                "source": "clang",
-                "code": "err_undeclared_var_use"
-              }
-            ]
+            "value": "${WS}/clice.toml changed"
           }
         },
         {

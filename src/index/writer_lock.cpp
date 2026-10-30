@@ -85,52 +85,52 @@ void remove_endpoint(llvm::StringRef cache_dir) {
     fs::remove(path::join(cache_dir, endpoint_name));
 }
 
-std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir) {
+std::string held_writer_message(const WriterStatus& status, llvm::StringRef cache_dir) {
     return std::format(
         "another clice process{} holds the index writer lock at {}; retry when it "
         "is done",
-        probe.holder.empty() ? "" : std::format(" ({})", probe.holder),
+        status.holder.empty() ? "" : std::format(" ({})", status.holder),
         std::string_view(cache_dir));
 }
 
-WriterProbe probe_writer(llvm::StringRef cache_dir) {
-    WriterProbe probe;
+WriterStatus check_writer(llvm::StringRef cache_dir) {
+    WriterStatus status;
     auto lock_path = path::join(cache_dir, lock_name);
     auto opened = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
     if(!opened) {
         // Whoever opens the database next reports the real cause.
-        return probe;
+        return status;
     }
     if(auto taken = opened->try_lock(); taken && *taken) {
         // Removed under the lock: a server acquiring it right after the
         // release publishes a record this removal must not take.
         remove_endpoint(cache_dir);
-        return probe;
+        return status;
     }
-    probe.state = WriterProbe::State::Held;
+    status.state = WriterStatus::State::Held;
     auto holder = recorded_pid(lock_path);
-    probe.holder = holder_name(holder);
+    status.holder = holder_name(holder);
 
     std::string record;
     if(fs::read_file(record, path::join(cache_dir, endpoint_name))) {
-        return probe;
+        return status;
     }
     ServerEndpoint endpoint;
     if(auto parsed = json::from_string(record, endpoint); !parsed) {
-        return probe;
+        return status;
     }
     // A record from a server that died holding the lock survives until the
     // next holder records its own; the recorded pid tells them apart.
     if(holder && *holder != endpoint.pid) {
-        return probe;
+        return status;
     }
     if(endpoint.version != clice::version) {
-        probe.holder = std::format("a clice {} server (pid {})", endpoint.version, endpoint.pid);
-        return probe;
+        status.holder = std::format("a clice {} server (pid {})", endpoint.version, endpoint.pid);
+        return status;
     }
-    probe.state = WriterProbe::State::Server;
-    probe.endpoint = std::move(endpoint);
-    return probe;
+    status.state = WriterStatus::State::Server;
+    status.endpoint = std::move(endpoint);
+    return status;
 }
 
 }  // namespace clice::index

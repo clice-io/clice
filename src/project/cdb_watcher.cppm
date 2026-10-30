@@ -21,7 +21,7 @@ class CDBWatcher {
 public:
     /// Construct after the project is loaded: every registered source is
     /// baselined at its load.
-    CDBWatcher(Project& project, CanonicalPath root);
+    explicit CDBWatcher(Project& project);
 
     /// One tick, after the file table looked at the flags. When no rule
     /// declares a source, a database found at a watched place is registered:
@@ -104,8 +104,6 @@ private:
 
 private:
     Project& project;
-
-    CanonicalPath root;
 
     llvm::SmallVector<TrackedSource> sources;
 

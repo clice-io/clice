@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :config.config;
+import :settings.settings;
 import :feature.protocol;
 import :feature.semantic_tokens;
 import :feature.workspace_symbols;
@@ -72,18 +72,20 @@ MasterServer::~MasterServer() {
     logging::set_notify_hook(nullptr);
 }
 
-/// Dump every configuration layer of a project — the config file verbatim,
+/// Dump every configuration layer of a project — the configuration file verbatim,
 /// the client's initializationOptions overlay, and the merged result after
-/// defaults. Absence is stated explicitly so "was my config even read?"
+/// defaults. Absence is stated explicitly so "were my settings even read?"
 /// never needs a support round-trip; the stderr mirror puts all of it in
 /// the editor's output panel.
-static void log_configuration(const ProjectServer& project,
-                              const std::optional<codec::dyn::Value>& init_options) {
-    if(project.config_path.empty()) {
-        LOG_INFO("Configuration file: Missing (project {})", project.root);
+static void log_settings(const ProjectServer& project,
+                         const std::optional<codec::dyn::Value>& init_options) {
+    if(project.settings_file.empty()) {
+        LOG_INFO("Configuration file: Missing (project {})", project.project.root);
     } else {
-        auto text = vfs::read_text(project.config_path);
-        LOG_INFO("Configuration file {}:\n{}", project.config_path, text.value_or("<unreadable>"));
+        auto text = vfs::read_text(project.settings_file);
+        LOG_INFO("Configuration file {}:\n{}",
+                 project.settings_file,
+                 text.value_or("<unreadable>"));
     }
     if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
@@ -91,7 +93,7 @@ static void log_configuration(const ProjectServer& project,
         auto pretty = json::prettify(*json);
         LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
     }
-    if(auto json = json::to_string(project.project.config)) {
+    if(auto json = json::to_string(project.project.settings)) {
         auto pretty = json::prettify(*json);
         LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
     }
@@ -99,7 +101,7 @@ static void log_configuration(const ProjectServer& project,
 
 void MasterServer::initialize() {
     std::shared_ptr<ProjectServer> placeholder;
-    if(!workspace_roots.empty()) {
+    if(!folders.empty()) {
         placeholder = std::move(projects.front());
         projects.clear();
         for(auto& root: project_roots()) {
@@ -107,6 +109,7 @@ void MasterServer::initialize() {
         }
         projects_generation += 1;
     }
+    watch_settings();
     for(auto& project: projects) {
         project->configure(init_options, taken_cache_dirs());
     }
@@ -120,7 +123,7 @@ void MasterServer::initialize() {
     pool_opts.max_stateless = 0;
     bool unbounded = false;
     for(auto& project: projects) {
-        auto& cfg = project->project.config.project;
+        auto& cfg = project->project.settings.project;
         pool_opts.stateful_count =
             std::max(pool_opts.stateful_count, cfg.stateful_worker_count.value);
         pool_opts.stateless_count =
@@ -143,16 +146,16 @@ void MasterServer::initialize() {
     }
     pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
-    auto& first = projects.front()->project.config.project;
+    auto& first = projects.front()->project.settings.project;
     if(!first.logging_dir.empty()) {
         auto dir = logging::session_log_directory(first.logging_dir);
         if(logging::file_logger("master", dir, logging::options)) {
             LOG_INFO("Session log directory: {}", dir);
-            session_log_dir = std::move(dir);
+            pool_opts.log_dir = std::move(dir);
         }
     }
     for(auto& project: projects) {
-        log_configuration(*project, init_options);
+        log_settings(*project, init_options);
     }
 
     LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
@@ -160,8 +163,7 @@ void MasterServer::initialize() {
              pool_opts.stateful_count,
              pool_opts.stateless_count);
 
-    pool_opts.log_dir = session_log_dir;
-    if(projects.front()->project.config.project.test_hooks.value) {
+    if(projects.front()->project.settings.project.test_hooks.value) {
         pool.probe = &probe;
     }
     if(pool.start(pool_opts)) {
@@ -170,18 +172,19 @@ void MasterServer::initialize() {
         for(auto& project: projects) {
             project->start();
         }
+        polling.spawn(poll_task());
     } else {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
     }
     if(placeholder) {
         rehome_sessions(*placeholder);
-        retire(std::move(placeholder));
+        stop(std::move(placeholder));
     }
     on_projects_changed.emit();
 }
 
 void MasterServer::initialize(const Spelling& root) {
-    workspace_roots = {CanonicalPath(root)};
+    folders = {CanonicalPath(root)};
     files.spell_root(root);
     initialize();
 }
@@ -236,8 +239,9 @@ static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServ
                                       llvm::function_ref<bool(ProjectServer&)> accept) {
     ProjectServer* deepest = nullptr;
     for(auto& project: projects) {
-        if(!project->root.empty() && path::is_within(path, project->root) && accept(*project) &&
-           (!deepest || project->root.size() > deepest->root.size())) {
+        if(!project->project.root.empty() && path::is_within(path, project->project.root) &&
+           accept(*project) &&
+           (!deepest || project->project.root.size() > deepest->project.root.size())) {
             deepest = project.get();
         }
     }
@@ -245,6 +249,13 @@ static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServ
 }
 
 ProjectServer* MasterServer::compiler(Fid path_id) {
+    // An outer project listing them would serve them silently under its own
+    // settings.
+    auto path = files.resolve(path_id);
+    if(auto* holding = deepest_holding(projects, path, [](ProjectServer&) { return true; });
+       holding && holding->broken()) {
+        return holding;
+    }
     for(auto& project: projects) {
         if(project->contexts.holds_choice(path_id)) {
             return project.get();
@@ -255,7 +266,6 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     auto lists = [&](ProjectServer& project) {
         return !project.project.build.commands(path_id).empty();
     };
-    auto path = files.resolve(path_id);
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;
     }
@@ -328,20 +338,20 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
     return made;
 }
 
-std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef heir) const {
+std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor) const {
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ProjectServer& project) {
         // The rootless project opens no store.
-        auto& cache_dir = project.project.config.project.cache_dir;
-        if(!project.root.empty() && !cache_dir.empty()) {
-            dirs.push_back(CanonicalPath(Spelling::absolute(cache_dir)));
+        auto cache_dir = project.project.settings.project.cache_identity();
+        if(!project.project.root.empty() && !cache_dir.empty()) {
+            dirs.push_back(std::move(cache_dir));
         }
     };
     for(auto& project: projects) {
         take(*project);
     }
-    for(auto& weak: retired) {
-        if(auto project = weak.lock(); project && project->root != heir) {
+    for(auto& weak: stopping) {
+        if(auto project = weak.lock(); project && project->project.root != successor) {
             take(*project);
         }
     }
@@ -357,24 +367,42 @@ void MasterServer::builds_changed() {
     }
 }
 
-void MasterServer::restart(ProjectServer& project) {
-    LOG_INFO("The databases of project {} moved to another build; restarting it", project.root);
-    serve_folders(&project);
+void MasterServer::ask_restart(RestartReason reason) {
+    if(!reason.topic.empty()) {
+        std::erase_if(restart_reasons,
+                      [&](const RestartReason& earlier) { return earlier.topic == reason.topic; });
+    }
+    if(ranges::contains(restart_reasons, reason.message, &RestartReason::message)) {
+        return;
+    }
+    LOG_INFO("Restart needed: {}", reason.message);
+    restart_reasons.push_back(std::move(reason));
+    on_restart_needed.emit();
+}
+
+void MasterServer::withdraw_restart(llvm::StringRef topic) {
+    if(std::erase_if(restart_reasons,
+                     [&](const RestartReason& reason) { return reason.topic == topic; }) > 0) {
+        on_restart_needed.emit();
+    }
 }
 
 void MasterServer::open_session(Fid path_id, std::string text, int version) {
     discover_around(path_id);
-    if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) && !compiler(path_id)) {
+    auto* compiling = compiler(path_id);
+    if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) &&
+       (!compiling || compiling->broken())) {
         // The project root nearest the file serves it: one no folder
         // holds, or one nested deeper than the folders holding it (a
-        // subproject's clice.toml or database). A folder's own root, and a
-        // database a served project loads already (a build directory above
-        // a generated file), stay that project's.
+        // subproject's clice.toml or database), a broken project's too. A
+        // folder's own root, and a database a served project loads already
+        // (a build directory above a generated file), stay that project's.
         auto path = files.resolve(path_id);
-        auto root = project_root_above(path.parent());
+        auto above = find_project_root(Spelling(path.parent()));
+        auto root = above.empty() ? CanonicalPath() : CanonicalPath(above);
         auto covered = [&](auto& project) {
-            if(!project->root.empty() && path::is_within(path, project->root) &&
-               path::is_within(project->root, root)) {
+            if(!project->project.root.empty() && path::is_within(path, project->project.root) &&
+               path::is_within(project->project.root, root)) {
                 return true;
             }
             auto& cdb = project->project.cdb;
@@ -382,7 +410,7 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
             return cdb.find_source(spelled) || cdb.find_source(Spelling("build", spelled));
         };
         if(!root.empty() && ranges::none_of(projects, covered)) {
-            workspace_roots.push_back(std::move(root));
+            folders.push_back(std::move(root));
             serve_folders();
         }
     }
@@ -409,7 +437,7 @@ void MasterServer::close_session(Fid path_id) {
 void MasterServer::discover_around(Fid path_id) {
     auto path = files.resolve(path_id);
     for(auto& project: projects) {
-        if(!project->root.empty() && path::is_within(path, project->root)) {
+        if(!project->project.root.empty() && path::is_within(path, project->project.root)) {
             project->discover_around(path_id);
         }
     }
@@ -433,6 +461,9 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
+        if(to.broken()) {
+            continue;
+        }
         if(moved->serving == ServingMode::Escalated) {
             to.ast.request_compile(moved);
         } else {
@@ -459,12 +490,12 @@ void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spe
     auto fresh = identities(added);
     for(auto& root: gone) {
         if(!ranges::contains(fresh, root)) {
-            std::erase(workspace_roots, root);
+            std::erase(folders, root);
         }
     }
     for(auto& root: fresh) {
-        if(!ranges::contains(workspace_roots, root)) {
-            workspace_roots.push_back(std::move(root));
+        if(!ranges::contains(folders, root)) {
+            folders.push_back(std::move(root));
         }
     }
     if(lifecycle == ServerLifecycle::Ready) {
@@ -477,7 +508,7 @@ CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
         return folder;
     }
     CanonicalRef enclosing;
-    for(auto& other: workspace_roots) {
+    for(auto& other: folders) {
         if(other.size() < folder.size() && other.size() > enclosing.size() &&
            path::is_within(folder, other)) {
             enclosing = other;
@@ -490,20 +521,13 @@ CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
 }
 
 feature::SemanticTokensOptions MasterServer::startup_token_options() const {
-    auto config = Config::load_from_workspace(project_roots().front(),
-                                              /*issues=*/nullptr,
-                                              /*loaded_path=*/nullptr,
-                                              /*finalized=*/false);
-    if(init_options) {
-        // ProjectServer::configure reports a bad overlay.
-        [[maybe_unused]] auto overlaid = codec::dyn::from_dyn(*init_options, config);
-    }
-    return config.semantic_tokens;
+    return load_settings(project_roots().front(), {.overlay = init_options, .strict = false})
+        .settings.semantic_tokens;
 }
 
 std::vector<CanonicalPath> MasterServer::project_roots() const {
     std::vector<CanonicalPath> roots;
-    for(auto& folder: workspace_roots) {
+    for(auto& folder: folders) {
         auto root = root_of(folder);
         if(!ranges::contains(roots, root)) {
             roots.push_back(std::move(root));
@@ -515,14 +539,15 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
     return roots;
 }
 
-void MasterServer::serve_folders(const ProjectServer* replaced) {
-    std::erase_if(retired, [](auto& weak) { return weak.expired(); });
+void MasterServer::serve_folders() {
+    std::erase_if(stopping, [](auto& weak) { return weak.expired(); });
+    watch_settings();
     std::vector<std::shared_ptr<ProjectServer>> serving;
     llvm::SmallVector<ProjectServer*> made;
     for(auto& root: project_roots()) {
-        if(auto it =
-               ranges::find_if(projects, [&](auto& project) { return project->root == root; });
-           it != projects.end() && it->get() != replaced) {
+        if(auto it = ranges::find_if(projects,
+                                     [&](auto& project) { return project->project.root == root; });
+           it != projects.end()) {
             serving.push_back(*it);
             continue;
         }
@@ -544,22 +569,22 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
     projects = std::move(serving);
     for(auto& project: leaving) {
         std::erase(waiting, project.get());
-        retired.push_back(project);
+        stopping.push_back(project);
     }
     // Configured at once, so the documents it holds while it waits are
     // served under its own options; the cache directory its root's
     // previous project still holds passes to it.
     for(auto* project: made) {
-        project->configure(init_options, taken_cache_dirs(project->root));
-        log_configuration(*project, init_options);
+        project->configure(init_options, taken_cache_dirs(project->project.root));
+        log_settings(*project, init_options);
     }
     // A removed project holds its cache directory until it is gone: one
     // taking its root over waits for that, holding the root's documents.
     llvm::SmallVector<ProjectServer*> starting;
     std::erase_if(waiting, [&](ProjectServer* project) {
-        bool held = ranges::any_of(retired, [&](auto& weak) {
+        bool held = ranges::any_of(stopping, [&](auto& weak) {
             auto previous = weak.lock();
-            return previous && previous->root == project->root;
+            return previous && previous->project.root == project->project.root;
         });
         if(!held) {
             starting.push_back(project);
@@ -588,19 +613,19 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
         rehome_sessions(*project);
     }
     for(auto& project: leaving) {
-        LOG_INFO("No longer serving project {}", project->root);
+        LOG_INFO("No longer serving project {}", project->project.root);
         rehome_sessions(*project);
         if(auto it = round.find(project.get()); it != round.end()) {
             carry(it->second);
             round.erase(it);
             fold_index_progress();
         }
-        retire(std::move(project));
+        stop(std::move(project));
     }
     on_projects_changed.emit();
 }
 
-void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
+void MasterServer::stop(std::shared_ptr<ProjectServer> project) {
     bg_tasks.spawn([](std::shared_ptr<ProjectServer> project) -> kota::task<> {
         co_await project->shutdown();
         project->close();
@@ -687,29 +712,73 @@ void MasterServer::saved(Fid path_id) {
 }
 
 void MasterServer::start_polling() {
-    if(!polling_started) {
-        polling_started = true;
-        polling.spawn(poll_task());
-    }
+    polling_files = true;
 }
 
 kota::task<> MasterServer::poll_task() {
     // A tick's looks run on the event loop: bounded, so a backlog (a
-    // checkout making every workspace file due) spreads over ticks instead
+    // checkout making every file of a project due) spreads over ticks instead
     // of stalling requests.
     constexpr auto interval = std::chrono::milliseconds(250);
     constexpr auto budget = std::chrono::milliseconds(2);
     while(true) {
         // Time is the feature: the disk loop's pace.
         co_await kota::sleep(interval);
-        if(files.disk.tick(budget) > 0) {
-            probe.happened(LoopEvent::DiskChange);
+        if(polling_files) {
+            if(files.disk.tick(budget) > 0) {
+                probe.happened(LoopEvent::DiskChange);
+            }
+            for(auto& project: projects) {
+                project->tick_databases();
+            }
         }
-        // A tick may restart its project, which replaces the list.
-        auto ticking = projects;
-        for(auto& project: ticking) {
-            project->tick_databases();
+        look_at_settings();
+    }
+}
+
+void MasterServer::watch_settings() {
+    std::vector<SettingsWatch> watches;
+    for(auto& folder: folders) {
+        if(auto it = ranges::find(settings_watches, folder, &SettingsWatch::folder);
+           it != settings_watches.end()) {
+            watches.push_back(std::move(*it));
+            continue;
         }
+        auto& watch = watches.emplace_back(SettingsWatch{
+            .folder = folder,
+            .file = {.path = path::join(folder, settings_file_names[0])},
+            .hidden = {.path = path::join(folder, settings_file_names[1])},
+        });
+        watch.file.look();
+        watch.hidden.look();
+    }
+    settings_watches = std::move(watches);
+}
+
+void MasterServer::look_at_settings() {
+    // Whether a configuration file is there and what it holds, unreadable
+    // or not: a save that keeps the content changes nothing.
+    auto content = [](const vfs::Flag& flag) {
+        return std::pair(flag.stamp.has_value(), flag.hash);
+    };
+    for(auto& watch: settings_watches) {
+        auto file = content(watch.file);
+        auto hidden = content(watch.hidden);
+        watch.file.look();
+        watch.hidden.look();
+        if(content(watch.file) == file && (watch.file.stamp || content(watch.hidden) == hidden)) {
+            continue;
+        }
+        auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
+        if(!in_use.stamp) {
+            ask_restart({.message = std::format("The configuration file of {} was deleted",
+                                                files.display(watch.folder))});
+            continue;
+        }
+        ask_restart({
+            .file = in_use.path,
+            .message = std::format("{} changed", files.display_identity(in_use.path)),
+        });
     }
 }
 
@@ -856,6 +925,9 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
 
 void MasterServer::serve_again(ProjectServer& project,
                                llvm::ArrayRef<std::shared_ptr<Session>> sessions) {
+    if(project.broken()) {
+        return;
+    }
     // A compile finishing on unchanged text has the client re-pull what it
     // holds.
     bool index_served = false;
@@ -906,7 +978,7 @@ bool MasterServer::test_hooks() const {
 /// Whether the project's index pump has work wait_idle() waits for. A queue
 /// no round will take, indexing being off, is none.
 static bool indexing(ProjectServer& project) {
-    return project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle();
+    return project.project.settings.project.enable_indexing.value && !project.sched.pump.is_idle();
 }
 
 /// Whether the project has work wait_idle() waits for.
@@ -927,7 +999,7 @@ kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
         drain_disk_changes();
         return awaited_requests(editor).empty() && waiting.empty() &&
                ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
-               ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
+               ranges::all_of(stopping, [](auto& weak) { return weak.expired(); });
     };
     while(true) {
         if(quiet()) {
@@ -950,14 +1022,14 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
             [&](const auto& id) { return std::format("request {} {}", request.method, id); },
             request.id));
     }
-    for(auto& weak: retired) {
+    for(auto& weak: stopping) {
         if(auto project = weak.lock()) {
-            lines.push_back(std::format("removed project {} shutting down", project->root));
+            lines.push_back(std::format("removed project {} shutting down", project->project.root));
         }
     }
     for(auto* project: waiting) {
         lines.push_back(
-            std::format("project {} waiting for its previous one to go", project->root));
+            std::format("project {} waiting for its previous one to go", project->project.root));
     }
     for(auto& hold: probe.holds()) {
         if(hold.parked) {

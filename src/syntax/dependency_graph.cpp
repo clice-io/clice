@@ -447,7 +447,7 @@ namespace {
 
 /// A file's bytes as a scan read them: their lexical scan, and the
 /// same-source {stat, hash} pairing them — the cold-start read doubles as
-/// the workspace's first disk observation.
+/// the project's first disk observation.
 struct ScannedText {
     DiskObservation obs;
     std::shared_ptr<const ScanResult> result;

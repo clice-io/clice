@@ -231,6 +231,9 @@ export class Serve extends Client {
     /// How the server counts a position's character, as it chose at the
     /// handshake from what the client offered.
     private encoding: PositionEncoding = "utf-16";
+    /// The folders the server serves, as `folders` in ServerOptions: those
+    /// it started with, moved by `changeFolders`; a restart starts on them.
+    private folders: string[] | null | undefined;
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
     constructor(
@@ -243,6 +246,7 @@ export class Serve extends Client {
         this.disk = owner.disk;
         this.steps = owner.steps;
         this.options = options;
+        this.folders = options.folders;
     }
 
     /// The faults this server was told to cause, and whether its kill was
@@ -1057,8 +1061,9 @@ export class Serve extends Client {
         return this.steps.run("initialize", async () => {
             const client = this.live();
             this.recordToml("clice.toml");
-            const { config, capabilities, positionEncoding, folders, foldersBeforeInitialized } =
+            const { config, capabilities, positionEncoding, foldersBeforeInitialized } =
                 this.options;
+            const folders = this.folders;
             if (config !== undefined) {
                 recordConfig(config);
             }
@@ -1068,11 +1073,13 @@ export class Serve extends Client {
                 positionEncodings:
                     positionEncoding === undefined ? undefined : [positionEncoding, "utf-16"],
                 folders,
-                ...(foldersBeforeInitialized === undefined
+                ...(foldersBeforeInitialized === undefined || this.servers.length > 1
                     ? {}
                     : {
-                          beforeInitialized: () =>
-                              client.changeWorkspaceFolders(foldersBeforeInitialized),
+                          beforeInitialized: async () => {
+                              await client.changeWorkspaceFolders(foldersBeforeInitialized);
+                              this.moveFolders(foldersBeforeInitialized);
+                          },
                       }),
             };
             await client.initialize(this.workspace, initialize);
@@ -1175,8 +1182,25 @@ export class Serve extends Client {
         });
     }
 
-    /// Stop and start the server, the cache kept, and open again the
-    /// documents it had open with their buffers.
+    /// The server asked to be restarted (clice/restartServer), now or once
+    /// it does: restart it as an editor does, on the folders it serves.
+    /// Returns the reason the server gave.
+    restarted(): Promise<string> {
+        return this.steps.run("restarted", async () => {
+            const client = this.live();
+            await client.restartAsked(1);
+            await this.restart();
+            return client.restartRequests[0] ?? "";
+        });
+    }
+
+    /// The reasons of the restarts the live server asked for so far.
+    restartRequests(): string[] {
+        return [...this.live().restartRequests];
+    }
+
+    /// Stop and start the server on the folders it serves, the cache kept,
+    /// and open again the documents it had open with their buffers.
     restart(): Promise<void> {
         return this.steps.run("restart", async () => {
             const documents = [...this.documents].map(([file, { text }]) => ({ file, text }));
@@ -1215,9 +1239,22 @@ export class Serve extends Client {
             ...(change.added ?? []).map((f) => `+${f}`),
             ...(change.removed ?? []).map((f) => `-${f}`),
         ];
-        return this.ask(`folders ${parts.join(" ")}`, (client) =>
-            client.changeWorkspaceFolders(change),
+        return this.ask(`folders ${parts.join(" ")}`, async (client) => {
+            await client.changeWorkspaceFolders(change);
+            this.moveFolders(change);
+        });
+    }
+
+    /// Follow folders coming and going in the ones a restart starts on.
+    private moveFolders(change: { added?: string[]; removed?: string[] }): void {
+        const removed = change.removed ?? [];
+        const kept = (this.folders ?? (this.folders === null ? [] : ["."])).filter(
+            (folder) => !removed.includes(folder),
         );
+        this.folders = [
+            ...kept,
+            ...(change.added ?? []).filter((folder) => !kept.includes(folder)),
+        ];
     }
 
     // Combined actions.

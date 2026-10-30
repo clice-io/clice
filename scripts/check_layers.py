@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
+"""Enforce the src/ include layering: core <- settings <- {project, worker} <- sched <- server,
 project <- analysis and {analysis, server} <- driver; inside core, support <- vfs <-
 command <- syntax <- compile <- semantic <- index <- feature.
 
@@ -32,7 +32,7 @@ FORBIDDEN = {
     **{
         layer: [f"{above}/" for above in CORE[index + 1 :]]
         + [
-            "config/",
+            "settings/",
             "project/",
             "worker/",
             "sched/",
@@ -42,7 +42,7 @@ FORBIDDEN = {
         ]
         for index, layer in enumerate(CORE)
     },
-    "config": ["project/", "worker/", "sched/", "server/", "analysis/", "driver/"],
+    "settings": ["project/", "worker/", "sched/", "server/", "analysis/", "driver/"],
     "project": ["worker/", "sched/", "server/", "analysis/", "driver/"],
     "worker": ["project/", "sched/", "server/", "analysis/", "driver/"],
     "sched": ["server/", "analysis/", "driver/"],
@@ -99,7 +99,7 @@ def main() -> int:
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- config <- {project, worker} <- sched <- server, project <- analysis, "
+            "core <- settings <- {project, worker} <- sched <- server, project <- analysis, "
             "{analysis, server} <- driver; inside core, "
             + " <- ".join(CORE)
             + "; includes and imports go downward only."

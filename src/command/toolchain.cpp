@@ -540,8 +540,8 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
     admission.spec.kind = input.value;
     admission.spec.family = command.family;
     admission.spec.query_toolchain = command.query_toolchain;
-    admission.spec.cwd = query_cwd(pk.cwd_sensitive ? command.directory
-                                                    : llvm::StringRef(commands.workspace_root()));
+    admission.spec.cwd =
+        query_cwd(pk.cwd_sensitive ? command.directory : llvm::StringRef(commands.project_root()));
     return admission;
 }
 

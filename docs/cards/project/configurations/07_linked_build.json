@@ -305,12 +305,12 @@
       ]
     },
     {
-      "name": "clice index while the server switches",
+      "name": "clice index while the server waits for a restart",
       "blocks": [
         {
           "label": "$ clice index --jobs 2",
           "value": {
-            "stderr": "error: request failed: the databases of the running clice server now resolve to another build, which it switches to when it starts again: polling is off (tracker.workspace_poll_seconds = 0)",
+            "stderr": "error: request failed: the compilation databases of the running clice server now resolve to another build, which it opens once it restarts",
             "exit": 1
           }
         },

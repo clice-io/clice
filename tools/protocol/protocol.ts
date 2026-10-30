@@ -158,8 +158,8 @@ export const ListConfigurationsRequest = new RequestType<
 >("clice/listConfigurations");
 
 /// clice/switchConfiguration: persist `name` as the selected configuration.
-/// The running server keeps its configuration; the choice takes effect when
-/// the client restarts it.
+/// The running server keeps its configuration; it asks for the restart that
+/// applies the choice (RestartServerRequest).
 export interface SwitchConfigurationParams {
     name: string;
     /// The project, as in ListConfigurationsParams.
@@ -178,6 +178,18 @@ export const SwitchConfigurationRequest = new RequestType<
     SwitchConfigurationResult,
     void
 >("clice/switchConfiguration");
+
+/// clice/restartServer, server to client: what the server was started on
+/// changed, and only a new server applies it. Sent to a client that declared
+/// `experimental.restartServer` at initialize; it restarts the server.
+export interface RestartServerParams {
+    /// What changed, for the user.
+    reason: string;
+}
+
+export const RestartServerRequest = new RequestType<RestartServerParams, null, void>(
+    "clice/restartServer",
+);
 
 /// clice/counterparts: the files `uri` pairs with — a header's sources, a
 /// source's headers, a module's interface and implementation units — best

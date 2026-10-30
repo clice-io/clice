@@ -4,7 +4,6 @@ import :command.edit;
 import :command.file_kind;
 import :command.normalize;
 import :project.build;
-import :project.configuration;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -13,8 +12,8 @@ import :vfs.path;
 namespace clice {
 
 void Build::reset_active(llvm::StringRef configuration) {
-    assert(configuration.empty() ? config.configurations().empty()
-                                 : declares_configuration(config, configuration));
+    assert(configuration.empty() ? settings.configurations().empty()
+                                 : settings.declares(configuration));
     covered_sources.reset();
     records.clear();
     provisional.clear();
@@ -23,23 +22,23 @@ void Build::reset_active(llvm::StringRef configuration) {
 }
 
 llvm::SmallVector<const CompiledRule*> Build::matching(CanonicalRef path) const {
-    return config.matching_rules(path, active);
+    return settings.matching_rules(path, active);
 }
 
 bool Build::declares_sources() const {
-    return ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+    return ranges::any_of(settings.compiled_rules, [&](const CompiledRule& rule) {
         return rule.active_under(active) && rule.declares_sources();
     });
 }
 
 llvm::SmallVector<Spelling> Build::declared_sources() const {
-    return config.declared_databases(active);
+    return settings.declared_databases(active);
 }
 
 llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
     llvm::SmallVector<SourceID, 4> declared;
     bool declares = declares_sources();
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) || declares) {
             for(auto& database: rule.compile_commands) {
                 if(auto id = declared_source(database)) {
@@ -78,12 +77,12 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
             }
         }
     };
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && !ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
@@ -154,7 +153,7 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
 
 Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
     Edits result;
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(!ranges::contains(matched, &rule)) {
             continue;
         }
@@ -272,7 +271,6 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(edit.empty()) {
         return {};
     }
-    llvm::StringRef root = config.workspace_root;
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
@@ -307,7 +305,7 @@ bool Build::indexed(CanonicalRef path) const {
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
-    if(!config.workspace_root.empty() && !path::is_within(path, config.workspace_root)) {
+    if(!root.empty() && !path::is_within(path, root)) {
         return false;
     }
     return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
@@ -498,7 +496,7 @@ std::optional<CommandRef> Build::pch_unit(CommandID command,
 
 llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
-    for(auto& rule: config.compiled_rules) {
+    for(auto& rule: settings.compiled_rules) {
         if(rule.active_under(active) && rule.has_default_command() && !rule.unmatchable) {
             result.push_back(&rule);
         }
@@ -514,16 +512,16 @@ Build::SourceWalk Build::source_walk() const {
     }
 
     // Where the covered files can be: each pattern's literal directory, the
-    // whole workspace for a rule without patterns. A root inside another
+    // whole project for a rule without patterns. A root inside another
     // is walked as part of it.
-    auto add_root = [&](CanonicalRef root) {
-        if(!root.empty() && !ranges::contains(walk.roots, CanonicalPath(root))) {
-            walk.roots.emplace_back(root);
+    auto add_root = [&](CanonicalRef dir) {
+        if(!dir.empty() && !ranges::contains(walk.roots, CanonicalPath(dir))) {
+            walk.roots.emplace_back(dir);
         }
     };
     for(auto* rule: rules) {
         if(rule->patterns.empty()) {
-            add_root(config.workspace_root);
+            add_root(root);
         }
         for(auto& pattern: rule->patterns) {
             add_root(pattern.root);
@@ -539,9 +537,7 @@ Build::SourceWalk Build::source_walk() const {
                           })
             .begin(),
         walk.roots.end());
-    if(!config.project.cache_dir.empty()) {
-        walk.cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
+    walk.cache_dir = settings.project.cache_identity();
     return walk;
 }
 
@@ -597,7 +593,7 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     return walked;
 }
 
-/// Whether a workspace directory holds no sources a refactoring edits:
+/// Whether a project directory holds no sources a refactoring edits:
 /// hidden, a package cache, the cache directory or a build tree.
 static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
     auto name = path::filename(dir);
@@ -606,7 +602,7 @@ static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
            fs::exists(path::join(dir, "build.ninja"));
 }
 
-bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
+bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
     if(!path::is_within(file, root) || file == root) {
         return false;
     }
@@ -621,23 +617,20 @@ bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file
     return inside;
 }
 
-EditableWorkspace::EditableWorkspace(const Config& config) : root(config.workspace_root) {
-    if(!config.project.cache_dir.empty()) {
-        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
-}
+EditableFiles::EditableFiles(CanonicalRef root, const Settings& settings) :
+    root(root), cache_dir(settings.project.cache_identity()) {}
 
-std::vector<std::string> EditableWorkspace::sources() const {
-    CanonicalRef workspace = root;
+std::vector<std::string> EditableFiles::sources() const {
+    CanonicalRef project_root = root;
     std::vector<std::string> found;
-    auto entries = fs::walk(workspace);
+    auto entries = fs::walk(project_root);
     for(auto& entry: entries) {
         if(!entry) {
             vfs::warn_unreadable(entry.error());
             continue;
         }
         if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(workspace.entry(entry->path), cache_dir)) {
+            if(outside_sources(project_root.entry(entry->path), cache_dir)) {
                 entries.skip();
             }
             continue;
@@ -645,7 +638,7 @@ std::vector<std::string> EditableWorkspace::sources() const {
         if(entry->type != fs::FileType::Regular) {
             continue;
         }
-        auto path = workspace.entry(entry->path);
+        auto path = project_root.entry(entry->path);
         if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
            is_context_header_path(path) || path.str().ends_with(".cuh")) {
             found.push_back(std::move(path).str());
@@ -654,8 +647,8 @@ std::vector<std::string> EditableWorkspace::sources() const {
     return found;
 }
 
-bool EditableWorkspace::editable(llvm::StringRef path) const {
-    return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+bool EditableFiles::editable(llvm::StringRef path) const {
+    return project_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
 }
 
 }  // namespace clice

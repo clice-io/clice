@@ -1,7 +1,7 @@
 module clice:worker.protocol;
 
 import :compile.compilation;
-import :config.config;
+import :settings.settings;
 import :feature.code_actions;
 import :feature.code_completion;
 import :feature.diagnostics;
@@ -123,11 +123,11 @@ struct HoverParams {
     std::string path;
     uint32_t offset = 0;
 
-    /// The workspace config, carried whole on every request — the worker
-    /// holds no config state and a config change simply shows up on the
+    /// The project's settings, carried whole on every request — the worker
+    /// holds no settings state and a change to them simply shows up on the
     /// next request. Features read their own section; no per-feature
     /// forwarding field is ever added here.
-    Config config;
+    Settings settings;
 };
 
 /// Parameters for stateful compilation (builds AST, publishes diagnostics).
@@ -136,8 +136,8 @@ struct CompileParams {
     int version;
     std::string text;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -218,8 +218,8 @@ struct CompileResult {
 struct BuildPCHParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -284,8 +284,8 @@ struct BuildPCMParams {
 struct TURunParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -338,9 +338,9 @@ struct CompletionParams {
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
-    /// The workspace config, carried whole — the worker holds no config
-    /// state and a config change simply shows up on the next request.
-    Config config;
+    /// The project's settings, carried whole — the worker holds no settings
+    /// state and a change to them simply shows up on the next request.
+    Settings settings;
 
     feature::CompletionClient client;
 
@@ -379,7 +379,7 @@ struct SignatureHelpParams {
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
-    Config config;
+    Settings settings;
 
     /// The label of the signature the client shows active, empty when the
     /// popup is not open.
@@ -486,8 +486,8 @@ struct TURunResult {
 struct IncludeTreeParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -548,9 +548,9 @@ struct InlayHintParams {
     std::string path;
     LocalSourceRange range;
 
-    /// The workspace config, carried whole — the worker holds no config
-    /// state and a config change simply shows up on the next request.
-    Config config;
+    /// The project's settings, carried whole — the worker holds no settings
+    /// state and a change to them simply shows up on the next request.
+    Settings settings;
 };
 
 /// Request the semantic tokens of an open file's AST (see
@@ -558,18 +558,18 @@ struct InlayHintParams {
 struct SemanticTokensParams {
     std::string path;
 
-    /// The workspace config, carried whole — the worker holds no config
-    /// state and a config change simply shows up on the next request.
-    Config config;
+    /// The project's settings, carried whole — the worker holds no settings
+    /// state and a change to them simply shows up on the next request.
+    Settings settings;
 };
 
 /// Request the outline of an open file's AST (see feature::document_symbols).
 struct DocumentSymbolParams {
     std::string path;
 
-    /// The workspace config, carried whole — the worker holds no config
-    /// state and a config change simply shows up on the next request.
-    Config config;
+    /// The project's settings, carried whole — the worker holds no settings
+    /// state and a change to them simply shows up on the next request.
+    Settings settings;
 };
 
 struct EvictParams {

@@ -2,7 +2,7 @@
 
 ## 概述
 
-clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 worker 池，对工作区内的翻译单元运行 `.clang-tidy` 中配置的检查，并输出一份合并后的报告。
+clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 worker 池，对项目的翻译单元运行 `.clang-tidy` 中配置的检查，并输出一份合并后的报告。
 
 **用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--jobs <n>] [--index] [--json]`
 
@@ -17,12 +17,12 @@ clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 wor
 
 ## 检查范围
 
-- 编译数据库中列出、且位于工作区内的每个翻译单元。
-- 被检查的单元所包含、且位于工作区内的每个头文件，并受 `.clang-tidy` 的头文件过滤项（`HeaderFilterRegex`、
+- 编译数据库中列出、且位于项目内的每个翻译单元。
+- 被检查的单元所包含、且位于项目内的每个头文件，并受 `.clang-tidy` 的头文件过滤项（`HeaderFilterRegex`、
   `ExcludeHeaderFilterRegex`、`SystemHeaders`）约束，这些过滤项的读取方式与 clang-tidy
   完全一致。
-- 工作区之外的文件从不检查，无论构建是否把它们标记为系统头文件。`clice.toml` 中写有 `lint = false`
-  的规则也会把工作区内匹配到的文件排除在外，例如随项目附带的第三方库：
+- 项目之外的文件从不检查，无论构建是否把它们标记为系统头文件。`clice.toml` 中写有 `lint = false`
+  的规则也会把项目内匹配到的文件排除在外，例如随项目附带的第三方库：
 
 ```toml
 [[rules]]

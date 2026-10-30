@@ -1095,7 +1095,7 @@ void EntityTable::add_file(Hasher& hasher, clang::FileID fid) {
         return;
     }
     llvm::SmallString<256> storage;
-    hasher.add(path::portable(unit.source_path(fid), unit.workspace(), storage));
+    hasher.add(path::portable(unit.source_path(fid), unit.project_root(), storage));
 }
 
 void EntityTable::add_declaration_name(Hasher& hasher, clang::DeclarationName name) {
