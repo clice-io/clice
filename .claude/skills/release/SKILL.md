@@ -75,6 +75,13 @@ re-uploads with `--clobber` and skips already-published versions, so a
 transient registry failure is recovered by rerunning just that job —
 never by a new tag.
 
+**The Marketplace display name stays `clice vscode`.** The extension was once
+listed as `clice` under another publisher, before it moved to `clice-io`, and
+the Marketplace refuses a display name an existing extension holds, the old
+listing included: renamed to `clice` (#990), every publish failed with "This
+extension display name is taken". The identity, `clice-io.clice` (`publisher`
+and `name`), is what installs and updates; the display name only shows.
+
 The binary embeds its build identity (`git describe`: nearest tag + commit
 hash), not the release tag — the tag is applied after the build. Match crash
 logs to releases by the commit hash; the release notes state the hash.
