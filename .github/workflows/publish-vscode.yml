@@ -191,13 +191,11 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" --clobber vsix/*.vsix
 
-      # The Marketplace refuses a display name any extension holds, a removed
-      # one included, and says so only here ("This extension display name is
-      # taken"). `clice` is held forever by the extension's first listing,
-      # ykiko.clice-vscode, removed when it moved to clice-io on 2026-07-19
-      # (the policy: microsoft/vsmarketplace#1708; vsmarketplace@microsoft.com,
-      # asked to release it, never answered). Renamed to `clice` in #990,
-      # every nightly's publish failed. The plugins are `clice <editor>`.
+      # The display name is `clice vscode`, not `clice`: the Marketplace keeps
+      # a removed extension's display name from everyone, its author included
+      # (microsoft/vsmarketplace#1708), and `clice` belongs to the removed
+      # first listing, ykiko.clice-vscode. It says a name is taken only here,
+      # at publish ("This extension display name is taken").
       - name: Publish to Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCODE_EXTENSION }}
