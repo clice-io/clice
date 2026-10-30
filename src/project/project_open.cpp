@@ -225,12 +225,18 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         LOG_WARN("{}", why);
         return {};
     }
-    // Size budgets are deliberately generous: eviction exists to bound
-    // disk usage, not to keep the working set tight.
-    constexpr std::uint64_t GiB = 1ull << 30;
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 8 * GiB});
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
+    // Only a run loading the build's members compiles them; registering
+    // scans the whole namespace, which a run reading the index alone
+    // does not pay for. Size budgets are deliberately generous: eviction
+    // exists to bound disk usage, not to keep the working set tight.
+    if(options.build == Project::OpenOptions::Build::Members) {
+        constexpr std::uint64_t GiB = 1ull << 30;
+        store->register_namespace({.name = "pch",
+                                   .extension = ".pch",
+                                   .aux_extension = ".pch.idx",
+                                   .max_bytes = 8 * GiB});
+        store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
+    }
     project.store.emplace(std::move(*store));
     if(!read_only) {
         LOG_INFO("Cache store: {}", project.store->base_dir());
