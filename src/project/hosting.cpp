@@ -532,7 +532,7 @@ void take_tree(Project& project, const TreeRequest& request) {
         .kind = CompilationKind::Preprocess,
         .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
                   .directory = project.commands.get(command.command).directory,
-                  .workspace = project.config.workspace_root.str(),
+                  .project_root = project.config.project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
     });
     if(!unit->completed()) {

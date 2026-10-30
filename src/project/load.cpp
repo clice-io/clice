@@ -114,7 +114,7 @@ ProjectLoad load_project(Project& project,
                          llvm::StringRef requested_configuration,
                          bool read_only_index) {
     ProjectLoad report;
-    project.index.workspace = root;
+    project.index.project_root = root;
     auto& cfg = project.config.project;
     auto configuration = resolve_configuration(project.config, requested_configuration);
     project.resolved_databases = resolved_databases(project.config, configuration);
@@ -197,7 +197,7 @@ std::string deeper_databases_hint(const Project& project) {
     if(project.build.declares_sources()) {
         return {};
     }
-    CanonicalRef root = project.config.workspace_root;
+    CanonicalRef root = project.config.project_root;
     auto& cache_dir = project.config.project.cache_dir;
     std::vector<std::string> names;
     for(auto& database: deeper_compile_commands(
@@ -255,7 +255,7 @@ void load_sources(Project& project,
                   CanonicalRef root,
                   llvm::StringRef configuration,
                   llvm::ArrayRef<Spelling> nearby) {
-    project.commands.set_workspace_root(root);
+    project.commands.set_project_root(root);
     project.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;

@@ -214,8 +214,8 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
     return file_path(*entry);
 }
 
-auto CompilationUnit::workspace() -> llvm::StringRef {
-    return params.input.workspace;
+auto CompilationUnit::project_root() -> llvm::StringRef {
+    return params.input.project_root;
 }
 
 auto CompilationUnit::file_text(clang::FileID fid) -> SourceText& {

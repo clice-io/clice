@@ -388,18 +388,18 @@ struct Project {
 
 /// Where a `compile_commands.json` is looked for when no rule declares
 /// one: the workspace root, then its direct subdirectories in name order.
-llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root);
+llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
 
 /// The `compile_commands.json` files to load when no rule declares one:
 /// those of database_places that exist. Empty when none exists yet — the
 /// CDBWatcher keeps watching the places.
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root);
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root);
 
 /// The `compile_commands.json` files discovery passes over, deeper than
 /// the root's direct subdirectories down to three directories below it
 /// (hidden directories, `node_modules` and the cache directory skipped),
 /// by path: what the guidance of a workspace without a database names.
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
+llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir);
 
 /// Whether `dir` is a project of its own: it holds a configuration file,
@@ -414,13 +414,13 @@ bool defines_project(CanonicalRef dir);
 CanonicalPath project_root_above(CanonicalRef start);
 
 /// Where a `compile_commands.json` is looked for in `start` and its
-/// ancestors up to `workspace_root`, nearest first.
-llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root);
+/// ancestors up to `project_root`, nearest first.
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root);
 
 /// The `compile_commands.json` files of database_places_above that exist:
 /// the databases a file deeper in the tree than startup discovery looks
 /// may compile from.
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef workspace_root);
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

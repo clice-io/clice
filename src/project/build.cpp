@@ -272,7 +272,7 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(edit.empty()) {
         return {};
     }
-    llvm::StringRef root = config.workspace_root;
+    llvm::StringRef root = config.project_root;
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
@@ -307,7 +307,7 @@ bool Build::indexed(CanonicalRef path) const {
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
-    if(!config.workspace_root.empty() && !path::is_within(path, config.workspace_root)) {
+    if(!config.project_root.empty() && !path::is_within(path, config.project_root)) {
         return false;
     }
     return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
@@ -523,7 +523,7 @@ Build::SourceWalk Build::source_walk() const {
     };
     for(auto* rule: rules) {
         if(rule->patterns.empty()) {
-            add_root(config.workspace_root);
+            add_root(config.project_root);
         }
         for(auto& pattern: rule->patterns) {
             add_root(pattern.root);
@@ -606,7 +606,7 @@ static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
            fs::exists(path::join(dir, "build.ninja"));
 }
 
-bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
+bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
     if(!path::is_within(file, root) || file == root) {
         return false;
     }
@@ -621,13 +621,13 @@ bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file
     return inside;
 }
 
-EditableWorkspace::EditableWorkspace(const Config& config) : root(config.workspace_root) {
+EditableFiles::EditableFiles(const Config& config) : root(config.project_root) {
     if(!config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
 }
 
-std::vector<std::string> EditableWorkspace::sources() const {
+std::vector<std::string> EditableFiles::sources() const {
     CanonicalRef workspace = root;
     std::vector<std::string> found;
     auto entries = fs::walk(workspace);
@@ -654,8 +654,8 @@ std::vector<std::string> EditableWorkspace::sources() const {
     return found;
 }
 
-bool EditableWorkspace::editable(llvm::StringRef path) const {
-    return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+bool EditableFiles::editable(llvm::StringRef path) const {
+    return project_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
 }
 
 }  // namespace clice

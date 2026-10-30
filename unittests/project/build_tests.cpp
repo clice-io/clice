@@ -175,8 +175,7 @@ ZEST_CASE(LintSetSymlinkedRoot) {
 
     Config config =
         Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.path("link"))));
-    ZEXPECT(config.workspace_root.str() ==
-            CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
+    ZEXPECT(config.project_root.str() == CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};

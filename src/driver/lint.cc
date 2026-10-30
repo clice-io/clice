@@ -18,7 +18,7 @@ struct Options {
              required = false)
     index;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;

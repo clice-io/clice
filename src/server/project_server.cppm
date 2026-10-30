@@ -87,9 +87,9 @@ public:
     /// how many events that was. Nullopt when the databases moved to
     /// another build's index (FileTracker::moved): the project restarts on
     /// that one instead (MasterServer::restart).
-    std::optional<std::size_t> weigh_databases(bool force);
+    std::optional<std::size_t> reload_databases(bool force);
 
-    /// After a tick looked at the flags: weigh_databases, unless the
+    /// After a tick looked at the flags: reload_databases, unless the
     /// project's polling is off.
     void tick_databases();
 

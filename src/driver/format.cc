@@ -23,7 +23,7 @@ struct Options {
              required = false)
     check;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     JobsOption jobs;
     LogLevelOption log;
 };

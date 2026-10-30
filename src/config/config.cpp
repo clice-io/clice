@@ -9,15 +9,15 @@ import :vfs.path;
 namespace clice {
 
 /// Replace all occurrences of ${workspace} with the workspace root.
-/// No-op when workspace_root is empty, to avoid producing paths like "/cache"
+/// No-op when project_root is empty, to avoid producing paths like "/cache"
 /// from "${workspace}/cache".
-static void substitute_workspace(std::string& value, llvm::StringRef workspace_root) {
-    if(workspace_root.empty())
+static void substitute_workspace(std::string& value, llvm::StringRef project_root) {
+    if(project_root.empty())
         return;
     std::size_t pos = 0;
     while((pos = value.find(path::workspace_anchor, pos)) != std::string::npos) {
-        value.replace(pos, path::workspace_anchor.size(), workspace_root);
-        pos += workspace_root.size();
+        value.replace(pos, path::workspace_anchor.size(), project_root);
+        pos += project_root.size();
     }
 }
 
@@ -27,8 +27,8 @@ static void substitute_workspace(std::string& value, llvm::StringRef workspace_r
 /// project's setting).
 static std::optional<Spelling> setting_path(std::string value,
                                             const Spelling& anchor,
-                                            CanonicalRef workspace_root) {
-    substitute_workspace(value, workspace_root);
+                                            CanonicalRef project_root) {
+    substitute_workspace(value, project_root);
     if(std::string expanded; !sys::expand_tilde(expanded, value)) {
         value = std::move(expanded);
     }
@@ -69,11 +69,11 @@ std::uint32_t default_max_stateless_worker_count() {
 /// A `**`-led pattern matches anywhere and enumerates from the workspace.
 static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
                                                             const Spelling& anchor,
-                                                            CanonicalRef workspace_root) {
+                                                            CanonicalRef project_root) {
     // A substituted workspace root is path, never glob syntax.
-    substitute_workspace(pattern, kota::GlobPattern::escape(workspace_root));
+    substitute_workspace(pattern, kota::GlobPattern::escape(project_root));
     std::string text = pattern;
-    CanonicalPath root = workspace_root;
+    CanonicalPath root = project_root;
     if(!pattern.starts_with("**")) {
         auto [directory, rest] = kota::GlobPattern::split_root(pattern);
         root = CanonicalPath(Spelling(directory, anchor));
@@ -91,7 +91,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
     return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
 }
 
-void Config::finalize(CanonicalRef workspace_root) {
+void Config::finalize(CanonicalRef project_root) {
     auto& p = project;
 
     // Validation, not default-filling: zero workers or a zero memory
@@ -112,8 +112,8 @@ void Config::finalize(CanonicalRef workspace_root) {
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
 
-    this->workspace_root = workspace_root;
-    CanonicalRef root = this->workspace_root;
+    this->project_root = project_root;
+    CanonicalRef root = this->project_root;
     Spelling root_anchor(root);
 
     if(p.cache_dir.empty() && !root.empty()) {
@@ -339,7 +339,7 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
 }
 
 std::optional<Config> Config::load(llvm::StringRef path,
-                                   CanonicalRef workspace_root,
+                                   CanonicalRef project_root,
                                    std::vector<ConfigIssue>* issues,
                                    bool finalized) {
     auto content = vfs::read_text(path);
@@ -378,28 +378,28 @@ std::optional<Config> Config::load(llvm::StringRef path,
     for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
                                                               &config.project.logging_dir}) {
         if(!dir->empty()) {
-            *dir = std::move(*setting_path(*dir, directory, workspace_root)).str();
+            *dir = std::move(*setting_path(*dir, directory, project_root)).str();
         }
     }
     if(finalized)
-        config.finalize(workspace_root);
+        config.finalize(project_root);
     LOG_INFO("Loaded config from {}", path);
     return config;
 }
 
-std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef workspace_root) {
+std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef project_root) {
     auto config = json::from_string<Config>(json);
     if(!config) {
         LOG_WARN("Failed to parse initializationOptions JSON: {}", config.error().message);
         return std::nullopt;
     }
 
-    config->finalize(workspace_root);
+    config->finalize(project_root);
     LOG_INFO("Loaded config from initializationOptions");
     return std::move(*config);
 }
 
-Config Config::load_from_workspace(CanonicalRef workspace_root,
+Config Config::load_from_workspace(CanonicalRef project_root,
                                    std::vector<ConfigIssue>* issues,
                                    std::string* loaded_path,
                                    bool finalized) {
@@ -408,15 +408,15 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
 
     auto config = [&] {
         bool found = false;
-        if(!workspace_root.empty()) {
+        if(!project_root.empty()) {
             for(auto name: config_file_names) {
-                auto config_path = path::join(llvm::StringRef(workspace_root), name);
+                auto config_path = path::join(llvm::StringRef(project_root), name);
                 if(!fs::exists(config_path))
                     continue;
                 found = true;
                 if(loaded_path)
                     *loaded_path = config_path;
-                if(auto config = load(config_path, workspace_root, issues, /*finalized=*/false))
+                if(auto config = load(config_path, project_root, issues, /*finalized=*/false))
                     return std::move(*config);
                 // Present but malformed: fall through to defaults, but
                 // report the situation clearly so users know their config
@@ -426,12 +426,12 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
             }
         }
         if(!found) {
-            LOG_INFO("No clice.toml found in {}, using default configuration", workspace_root);
+            LOG_INFO("No clice.toml found in {}, using default configuration", project_root);
         }
         return Config();
     }();
     if(finalized) {
-        config.finalize(workspace_root);
+        config.finalize(project_root);
         config.keep_own_cache_dir();
     }
     return config;
@@ -454,9 +454,9 @@ static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
     return !owner.empty() && owner != root && fs::is_directory(owner);
 }
 
-bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
-    return !path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), workspace_root) &&
-           live_owner(cache_dir_owner(cache_dir), workspace_root);
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root) {
+    return !path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), project_root) &&
+           live_owner(cache_dir_owner(cache_dir), project_root);
 }
 
 void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
@@ -475,15 +475,15 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
 
 void Config::keep_own_cache_dir() {
     auto& p = project;
-    if(p.cache_dir.empty() || !owned_elsewhere(p.cache_dir, workspace_root)) {
+    if(p.cache_dir.empty() || !owned_elsewhere(p.cache_dir, project_root)) {
         return;
     }
-    auto own = path::join(workspace_root, ".clice");
+    auto own = path::join(project_root, ".clice");
     path::canonicalize(own);
     LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps its cache in {}",
                  p.cache_dir,
                  cache_dir_owner(p.cache_dir),
-                 workspace_root,
+                 project_root,
                  own);
     if(path::is_within(p.logging_dir, p.cache_dir)) {
         p.logging_dir = path::join(own, "logs");

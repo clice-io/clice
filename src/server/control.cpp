@@ -74,7 +74,7 @@ void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
                                  "build, which it switches to when it starts again: polling is off "
                                  "(tracker.workspace_poll_seconds = 0)"});
         }
-        srv.weigh_databases(/*force=*/true);
+        srv.reload_databases(/*force=*/true);
         auto members = srv.project.build.members();
         if(members.empty()) {
             co_await kota::fail(ipc::Error{

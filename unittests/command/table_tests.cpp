@@ -152,7 +152,7 @@ ZEST_CASE(CommandHashSurvivesMove) {
         FileTable file_table;
         CommandTable commands;
         CompilationDatabase database{file_table, commands};
-        commands.set_workspace_root(CanonicalPath(Spelling::absolute(workspace.root)));
+        commands.set_project_root(CanonicalPath(Spelling::absolute(workspace.root)));
         auto driver = workspace.path("tools/clang++");
         auto include = "-I" + workspace.path("inc");
         auto entry = database.add_command(workspace.root,

@@ -105,11 +105,11 @@ void ProjectIndex::clear() {
     // Replaced in place: the file table reference keeps the type from
     // being assigned.
     auto& table = files;
-    auto root = std::move(workspace);
+    auto root = std::move(project_root);
     auto generation = manifests_changed + 1;
     std::destroy_at(this);
     std::construct_at(this, table);
-    workspace = std::move(root);
+    project_root = std::move(root);
     manifests_changed = generation;
 }
 

@@ -38,24 +38,24 @@ ZEST_CASE(FallbackDefaultElseFirst) {
 ZEST_CASE(SelectionRoundTrips) {
     TempDir tmp;
     auto cache_dir = tmp.path(".clice");
-    ZEXPECT(read_selection(cache_dir).empty());
-    ZASSERT(write_selection(cache_dir, "release"));
-    ZEXPECT(read_selection(cache_dir) == "release");
-    ZASSERT(write_selection(cache_dir, "debug"));
-    ZEXPECT(read_selection(cache_dir) == "debug");
+    ZEXPECT(read_selected_configuration(cache_dir).empty());
+    ZASSERT(write_selected_configuration(cache_dir, "release"));
+    ZEXPECT(read_selected_configuration(cache_dir) == "release");
+    ZASSERT(write_selected_configuration(cache_dir, "debug"));
+    ZEXPECT(read_selected_configuration(cache_dir) == "debug");
     ZEXPECT(fs::exists(path::join(cache_dir, "state.json")));
 
     tmp.touch(".clice/state.json", "not json");
-    ZEXPECT(read_selection(cache_dir).empty());
+    ZEXPECT(read_selected_configuration(cache_dir).empty());
     ZEXPECT(read_file(path::join(cache_dir, "state.json")).value_or("") == "not json");
-    ZEXPECT(read_selection("").empty());
+    ZEXPECT(read_selected_configuration("").empty());
 };
 
 ZEST_CASE(SelectionWriteFails) {
     TempDir tmp;
-    ZEXPECT(!write_selection("", "release").has_value());
+    ZEXPECT(!write_selected_configuration("", "release").has_value());
     tmp.touch("blocked", "x");
-    ZEXPECT(!write_selection(tmp.path("blocked"), "release").has_value());
+    ZEXPECT(!write_selected_configuration(tmp.path("blocked"), "release").has_value());
 };
 
 ZEST_CASE(CheckRequested) {
@@ -73,7 +73,7 @@ ZEST_CASE(ResolvePrecedence) {
     auto config = tagged(tmp);
     ZEXPECT(resolve_configuration(config, "") == "release");
 
-    ZASSERT(write_selection(config.project.cache_dir, "debug"));
+    ZASSERT(write_selected_configuration(config.project.cache_dir, "debug"));
     ZEXPECT(resolve_configuration(config, "") == "debug");
     ZEXPECT(resolve_configuration(config, "release") == "release");
 };
@@ -83,9 +83,9 @@ ZEST_CASE(UnknownNameFallsBack) {
     auto config = tagged(tmp);
     ZEXPECT(resolve_configuration(config, "nope") == "release");
 
-    ZASSERT(write_selection(config.project.cache_dir, "gone"));
+    ZASSERT(write_selected_configuration(config.project.cache_dir, "gone"));
     ZEXPECT(resolve_configuration(config, "") == "release");
-    ZEXPECT(read_selection(config.project.cache_dir) == "gone");
+    ZEXPECT(read_selected_configuration(config.project.cache_dir) == "gone");
     ZEXPECT(resolve_configuration(config, "debug") == "debug");
 };
 
@@ -94,7 +94,7 @@ ZEST_CASE(UntaggedIgnoresSelection) {
     Config config;
     config.rules.push_back(ConfigRule{.compile_commands = {"."}});
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZASSERT(write_selection(config.project.cache_dir, "release"));
+    ZASSERT(write_selected_configuration(config.project.cache_dir, "release"));
     ZEXPECT(resolve_configuration(config, "").empty());
     ZEXPECT(resolve_configuration(config, "release").empty());
 };

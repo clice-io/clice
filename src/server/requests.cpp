@@ -876,7 +876,7 @@ Requests::RawResult Requests::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::workspace_refusal(project.config.workspace_root)) {
+    if(auto refused = feature::workspace_refusal(project.config.project_root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     co_return co_await navigate(ticket,
@@ -902,7 +902,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
                      const protocol::Position& position,
                      std::string new_name) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::workspace_refusal(project.config.workspace_root)) {
+    if(auto refused = feature::workspace_refusal(project.config.project_root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     if(ticket.session) {
@@ -924,10 +924,10 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
 
     // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
-    EditableWorkspace workspace(project.config);
+    EditableFiles workspace(project.config);
     auto texts = co_await kota::queue(
         [workspace, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
-            return feature::WorkspaceTexts(workspace.sources(), names);
+            return feature::RenameTexts(workspace.sources(), names);
         });
     if(ticket.session && !ticket.fresh()) {
         co_await kota::fail(content_modified());
@@ -1103,7 +1103,7 @@ Requests::RawResult Requests::type_hierarchy_subtypes(Fid path_id,
 std::vector<feature::WorkspaceSymbol> Requests::workspace_symbols(llvm::StringRef text) {
     return feature::workspace_symbols(peer_queries(),
                                       text,
-                                      Spelling(project.config.workspace_root),
+                                      Spelling(project.config.project_root),
                                       encoding);
 }
 

@@ -71,10 +71,10 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
 /// The texts a rename reads (RenameScope::read): the workspace's files
 /// scanned for its names up front, and on first read the text of an open
 /// buffer or of an edited file the walk's suffixes left out.
-struct WorkspaceTexts {
+struct RenameTexts {
     /// Read and scan `files`, the workspace's sources and headers by
     /// suffix (RenameScope::files): file work alone, safe on any thread.
-    WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names);
+    RenameTexts(std::vector<std::string> files, llvm::StringSet<> names);
 
     /// A file's text scanned for the names: the open buffer `buffer`
     /// gives, else the disk's; null when it spells none.

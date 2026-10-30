@@ -609,7 +609,7 @@ ZEST_CASE(DefaultWorkspaceCache) {
 }
 
 ZEST_CASE(WorkspaceSubstEmpty) {
-    // Empty workspace_root must not rewrite "${workspace}" into "" and produce
+    // Empty project_root must not rewrite "${workspace}" into "" and produce
     // bogus paths like "/cache": the directory stays relative, and a project
     // without a folder has nothing to anchor it at, so it is dropped.
     Config config;

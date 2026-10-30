@@ -862,7 +862,7 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     return result;
 }
 
-WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<> names) :
+RenameTexts::RenameTexts(std::vector<std::string> files, llvm::StringSet<> names) :
     files(std::move(files)), names(std::move(names)) {
     for(auto& path: this->files) {
         walked.insert(path);
@@ -874,7 +874,7 @@ WorkspaceTexts::WorkspaceTexts(std::vector<std::string> files, llvm::StringSet<>
     }
 }
 
-const ScannedText* WorkspaceTexts::read(
+const ScannedText* RenameTexts::read(
     llvm::StringRef path,
     llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer) {
     auto open = buffer ? buffer(path) : std::nullopt;

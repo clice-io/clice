@@ -615,7 +615,7 @@ auto load_inspected(const Options& opts, const Spelling& directory)
 std::string build_pch(Project& project,
                       const CommandRef& writer,
                       llvm::StringRef file,
-                      llvm::StringRef workspace) {
+                      llvm::StringRef project_root) {
     std::string dir;
     sys::temp_dir(dir);
     std::string output;
@@ -628,7 +628,7 @@ std::string build_pch(Project& project,
         .kind = CompilationKind::PrecompiledHeader,
         .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
                   .directory = project.commands.get(writer.command).directory,
-                  .workspace = workspace.str(),
+                  .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
         .skip_bodies = project.config.project.skip_header_bodies,
@@ -662,7 +662,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
                                                            Project& project,
                                                            const Selection* pin) {
     CommandResolver commands(project);
-    CompilationInput input{.workspace = project.config.workspace_root.str()};
+    CompilationInput input{.project_root = project.config.project_root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
         return commands.resolve_command(path_id,
@@ -707,7 +707,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         input.add_synthesized(resolution.synthesized->files);
     }
     if(auto writer = commands.pch_unit(path_id, resolution)) {
-        if(auto pch = build_pch(project, *writer, file.path, input.workspace); !pch.empty()) {
+        if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }
     }

@@ -71,7 +71,7 @@ llvm::StringRef resource_dir() {
     return dir;
 }
 
-void CommandTable::set_workspace_root(CanonicalRef path) {
+void CommandTable::set_project_root(CanonicalRef path) {
     root = path;
 }
 

@@ -291,7 +291,7 @@ void ProjectServer::saved(Fid path_id) {
     if(!project.config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
     }
-    if(!workspace_file(root, cache_dir, path) || !project.build.record(path_id)) {
+    if(!project_file(root, cache_dir, path) || !project.build.record(path_id)) {
         return;
     }
     LOG_INFO("Recorded {} as a provisional member", path);
@@ -462,7 +462,7 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
-std::optional<std::size_t> ProjectServer::weigh_databases(bool force) {
+std::optional<std::size_t> ProjectServer::reload_databases(bool force) {
     if(!tracker) {
         return 0;
     }
@@ -479,7 +479,7 @@ std::optional<std::size_t> ProjectServer::weigh_databases(bool force) {
 
 void ProjectServer::tick_databases() {
     if(project.config.tracker.workspace_poll_seconds.value > 0 &&
-       weigh_databases(false).value_or(1) > 0) {
+       reload_databases(false).value_or(1) > 0) {
         server.probe.happened(LoopEvent::DatabaseChange);
     }
 }

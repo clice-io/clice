@@ -25,12 +25,12 @@ std::uint32_t default_max_stateless_worker_count();
 /// that exists.
 std::string cache_dir_owner(llvm::StringRef cache_dir);
 
-/// Whether `cache_dir` serves another project than `workspace_root`'s.
-bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root);
+/// Whether `cache_dir` serves another project than `project_root`'s.
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root);
 
-/// Record `workspace_root` as the owner of a cache directory it may use
+/// Record `project_root` as the owner of a cache directory it may use
 /// (owned_elsewhere is false); called under the directory's writer lock.
-void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef workspace_root);
+void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef project_root);
 
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
@@ -503,13 +503,13 @@ struct Config {
     /// anchor of rules and databases no configuration file supplied, and
     /// the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
-    <CanonicalPath> workspace_root;
+    <CanonicalPath> project_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per
     /// load, after every source has been overlaid.
-    void finalize(CanonicalRef workspace_root);
+    void finalize(CanonicalRef project_root);
 
     /// After finalize: move off a cache directory another project owns
     /// (owned_elsewhere) to the default one under the workspace root.
@@ -537,18 +537,18 @@ struct Config {
     /// logging_dir, ...) must be computed only once, from the final merged
     /// values.
     static std::optional<Config> load(llvm::StringRef path,
-                                      CanonicalRef workspace_root,
+                                      CanonicalRef project_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       bool finalized = true);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
-    static std::optional<Config> load_from_json(llvm::StringRef json, CanonicalRef workspace_root);
+    static std::optional<Config> load_from_json(llvm::StringRef json, CanonicalRef project_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config if no file is found. `loaded_path`, when
     /// provided, receives the path of the config file that was found (even
     /// if it failed to parse), or stays empty. `finalized` as in load().
-    static Config load_from_workspace(CanonicalRef workspace_root,
+    static Config load_from_workspace(CanonicalRef project_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       std::string* loaded_path = nullptr,
                                       bool finalized = true);

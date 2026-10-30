@@ -440,7 +440,7 @@ public:
     /// portable names (path::portable), so a moved checkout keeps its
     /// index; empty names every file by its identity. Set before the index
     /// opens a database or saves.
-    CanonicalPath workspace;
+    CanonicalPath project_root;
 
 private:
     friend struct testing::IndexInternals;

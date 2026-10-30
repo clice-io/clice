@@ -256,7 +256,7 @@ struct PlannedRename {
 /// its scan reads (RenameScope::files), the ones it may edit
 /// (RenameScope::editable), and whether the build has units the index holds
 /// no record of yet (RenameScope::units_pending).
-struct RenameWorkspace {
+struct RenameFiles {
     std::vector<std::string> files;
 
     llvm::function_ref<bool(llvm::StringRef path)> editable;
@@ -300,9 +300,7 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
 /// Nothing is written. A rename names its symbol by its whole name, never
 /// a pattern; the overloads of one scope that name spells are renamed
 /// together.
-PlannedRename rename(Context& ctx,
-                     llvm::ArrayRef<RenameRequest> requests,
-                     RenameWorkspace workspace);
+PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles workspace);
 
 /// The symbols one declaration a locator names stands for: the symbol,
 /// or, for a name the overloads of one scope spell, all of them; macros

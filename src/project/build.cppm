@@ -332,19 +332,19 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 /// whatever its suffix, outside the directories holding no sources a
 /// refactoring edits — hidden ones, package caches, `cache_dir` and build
 /// trees (a directory holding CMakeCache.txt or build.ninja).
-bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
+bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
 /// What a refactoring may edit of the workspace `config` roots, outside its
 /// cache directory (feature::RenameScope).
-struct EditableWorkspace {
-    explicit EditableWorkspace(const Config& config);
+struct EditableFiles {
+    explicit EditableFiles(const Config& config);
 
     /// The C-family sources and headers of the workspace, as absolute
     /// paths: the files under `root` a rename's scan reads, outside the
-    /// directories workspace_file leaves out.
+    /// directories project_file leaves out.
     std::vector<std::string> sources() const;
 
-    /// workspace_file of an absolute path.
+    /// project_file of an absolute path.
     bool editable(llvm::StringRef path) const;
 
     CanonicalPath root;

@@ -58,7 +58,7 @@ void remove_endpoint(llvm::StringRef cache_dir);
 
 /// A command's view of the writer before it decides how the index gets
 /// updated: become the writer itself, ask the serving one, or give up.
-struct WriterProbe {
+struct WriterStatus {
     enum class State : std::uint8_t {
         /// Nobody holds the lock.
         Free,
@@ -76,14 +76,14 @@ struct WriterProbe {
     std::string holder;
 };
 
-/// Probe the lock without keeping it: a momentary observation — the
+/// Check the lock without keeping it: a momentary observation — the
 /// caller's own acquisition is the real gate. Never from a process that
 /// holds the lock: POSIX record locks are per process, and closing the
-/// probe's descriptor would release it.
-WriterProbe probe_writer(llvm::StringRef cache_dir);
+/// check's descriptor would release it.
+WriterStatus check_writer(llvm::StringRef cache_dir);
 
-/// What a command tells the user when the probe found a writer it cannot
+/// What a command tells the user when the check found a writer it cannot
 /// ask.
-std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir);
+std::string held_writer_message(const WriterStatus& status, llvm::StringRef cache_dir);
 
 }  // namespace clice::index

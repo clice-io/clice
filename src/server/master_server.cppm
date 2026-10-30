@@ -66,7 +66,7 @@ public:
     MasterServer(kota::event_loop& loop, std::string requested_configuration);
     ~MasterServer();
 
-    /// Start serving the projects of `workspace_roots` (see
+    /// Start serving the projects of `folders` (see
     /// project_roots): load each project's configuration, start the pool
     /// sized for all of them, and load the projects. Documents opened
     /// before move to the projects routing picks for them.
@@ -277,7 +277,7 @@ public:
     /// The folders served: the client's workspace folders (or
     /// the command line's --workspace), and the roots open_session found
     /// above files no folder covers.
-    std::vector<CanonicalPath> workspace_roots;
+    std::vector<CanonicalPath> folders;
 
     /// The client's initializationOptions, applied to every project.
     std::optional<codec::dyn::Value> init_options;
@@ -325,12 +325,12 @@ private:
     void serve_folders(const ProjectServer* replaced = nullptr);
 
     /// Shut a project that stopped serving down in the background.
-    void retire(std::shared_ptr<ProjectServer> project);
+    void stop(std::shared_ptr<ProjectServer> project);
 
     /// The cache directories in use: a cache directory belongs to one
     /// project at a time, a removed one's until it is gone — but for the
-    /// project serving its root again, `heir`, which opens it then.
-    std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef heir = {}) const;
+    /// project serving its root again, `successor`, which opens it then.
+    std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef successor = {}) const;
 
     /// Before a file's first compile: every project whose root holds the
     /// file registers the databases between it and the root, so routing
@@ -412,7 +412,7 @@ private:
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
-    std::vector<std::weak_ptr<ProjectServer>> retired;
+    std::vector<std::weak_ptr<ProjectServer>> stopping;
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).

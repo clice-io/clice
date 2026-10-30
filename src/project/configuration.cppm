@@ -13,12 +13,12 @@ llvm::StringRef fallback_configuration(const Config& config);
 
 /// The persisted selection: the `configuration` field of `state.json` under
 /// the cache directory. Empty when there is none.
-std::string read_selection(llvm::StringRef cache_dir);
+std::string read_selected_configuration(llvm::StringRef cache_dir);
 
 /// Persist `configuration` as the selection, written whole and renamed
 /// into place.
-std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
-                                                     llvm::StringRef configuration);
+std::expected<void, std::error_code> write_selected_configuration(llvm::StringRef cache_dir,
+                                                                  llvm::StringRef configuration);
 
 /// Whether `name` is one of the tags the rules declare.
 bool declares_configuration(const Config& config, llvm::StringRef name);

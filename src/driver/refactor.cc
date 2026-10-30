@@ -35,7 +35,7 @@ struct RenameOptions {
              required = false)
     dry_run;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     FreshOption fresh;
     LogLevelOption log;
 };
@@ -196,7 +196,7 @@ int run_rename(const RenameOptions& opts) {
     auto& reader = *opened->reader;
     auto& failed = opened->failed;
     auto ctx = reader.context();
-    EditableWorkspace workspace(reader.project.config);
+    EditableFiles workspace(reader.project.config);
     auto editable = [&](llvm::StringRef path) {
         return workspace.editable(path);
     };

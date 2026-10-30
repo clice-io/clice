@@ -163,7 +163,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     Facts facts;
     auto& index = project.index;
     auto& table = project.file_table;
-    llvm::StringRef root(index.workspace);
+    llvm::StringRef root(index.project_root);
 
     // A path relative to the workspace, empty for one outside it.
     auto relative_of = [&](Fid fid) {
@@ -1405,7 +1405,7 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
             return std::unexpected(LoadError{.message = std::move(edited.error())});
         }
     }
-    return LoadedFacts{.root = llvm::StringRef(project.config.workspace_root).str(),
+    return LoadedFacts{.root = llvm::StringRef(project.config.project_root).str(),
                        .facts = std::move(facts)};
 }
 

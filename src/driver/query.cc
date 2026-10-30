@@ -13,7 +13,7 @@ namespace {
 
 /// What every question takes.
 struct Options {
-    WorkspaceOptions where;
+    ProjectOptions where;
     FreshOption fresh;
 };
 

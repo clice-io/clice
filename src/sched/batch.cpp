@@ -230,7 +230,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
 
     auto report = bootstrap_project(project,
                                     stack.sched.pump,
-                                    project.config.workspace_root,
+                                    project.config.project_root,
                                     options.configuration);
 
     // The command's whole product is the persisted index: without a database
@@ -504,7 +504,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
 
     auto report = bootstrap_project(project,
                                     stack.sched.pump,
-                                    project.config.workspace_root,
+                                    project.config.project_root,
                                     options.configuration,
                                     /*read_only_index=*/!options.with_index);
 
@@ -596,7 +596,7 @@ struct FormatFile {
 };
 
 /// The files `clice format` formats without arguments: the build's
-/// translation units that are the workspace's own (workspace_file: not in
+/// translation units that are the workspace's own (project_file: not in
 /// a build tree, where FetchContent puts the sources it fetches) and
 /// every file they include that is the workspace's own — inside it,
 /// outside the cache directory, the build trees (the directories below the
@@ -607,7 +607,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     auto& build = project.build;
     auto& files = project.file_table;
 
-    CanonicalRef root = project.config.workspace_root;
+    CanonicalRef root = project.config.project_root;
     auto cache_dir = project.config.project.cache_dir.empty()
                          ? CanonicalPath()
                          : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
@@ -652,7 +652,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
         if(!formats(path) || !build.formattable(path) ||
-           (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
+           (unit.contains(fid) ? !project_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
                                      ranges::any_of(skipped_dirs, [&](auto& dir) {
                                          return path::is_within(path, dir);
@@ -759,7 +759,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     // build's own files to those under them, and only they need the build.
     std::vector<FormatFile> files;
     std::vector<CanonicalPath> directories;
-    CanonicalRef root = project.config.workspace_root;
+    CanonicalRef root = project.config.project_root;
     for(auto& path: options.paths) {
         if(fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));

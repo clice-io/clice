@@ -30,7 +30,7 @@ struct FileOptions {
              required = false)
     json;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -47,7 +47,7 @@ struct ConvertOptions {
              required = false)
     json;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -132,7 +132,7 @@ struct Workspace {
     std::string configuration;
 };
 
-std::expected<Workspace, std::string> open_workspace(const WorkspaceOptions& where) {
+std::expected<Workspace, std::string> open_workspace(const ProjectOptions& where) {
     Workspace workspace{.root = where.root()};
     if(!fs::is_directory(workspace.root)) {
         return std::unexpected(std::format("{}: not a directory", workspace.root));
@@ -377,7 +377,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
     }
     auto& project = *workspace.project;
     auto& cdb = project.cdb;
-    project.commands.set_workspace_root(CanonicalPath(workspace.root));
+    project.commands.set_project_root(CanonicalPath(workspace.root));
     project.build.reset_active(workspace.configuration);
 
     llvm::SmallVector<const char*> argv;
@@ -425,7 +425,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     auto& project = *workspace.project;
     auto& cdb = project.cdb;
     auto& files = project.file_table;
-    project.commands.set_workspace_root(CanonicalPath(workspace.root));
+    project.commands.set_project_root(CanonicalPath(workspace.root));
     project.build.reset_active(workspace.configuration);
     auto source = cdb.add_source(path);
     auto database = Spelling::absolute(cdb.source_path(source));

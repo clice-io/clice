@@ -183,7 +183,7 @@ struct ConfigurationOption {
 /// The workspace a subcommand works in, relative to the current directory,
 /// and its build configuration. The files it names are relative to the
 /// workspace.
-struct WorkspaceOptions {
+struct ProjectOptions {
     DecoKV(help = "Workspace root directory (default: the current directory)", required = false)
     <std::string> workspace;
 
@@ -433,9 +433,9 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
                                                                     const Config& config,
                                                                     llvm::StringRef configuration) {
     auto& cache_dir = config.project.cache_dir;
-    auto writer = index::probe_writer(cache_dir);
+    auto writer = index::check_writer(cache_dir);
     switch(writer.state) {
-        case index::WriterProbe::State::Server: {
+        case index::WriterStatus::State::Server: {
             auto result = control::request_index(writer.endpoint,
                                                  resolve_configuration(config, configuration));
             if(!result) {
@@ -443,10 +443,10 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
             }
             return std::move(result->failed);
         }
-        case index::WriterProbe::State::Held: {
+        case index::WriterStatus::State::Held: {
             return std::unexpected(index::held_writer_message(writer, cache_dir));
         }
-        case index::WriterProbe::State::Free: break;
+        case index::WriterStatus::State::Free: break;
     }
     auto report_progress = [](const BatchProgress& progress) {
         driver::println(stderr,
@@ -488,7 +488,7 @@ struct OpenedIndex {
 /// Open the persisted index of the workspace `where` names, as `options`
 /// say, brought up to date with the disk first under --fresh (refresh). The
 /// error is the answer's.
-inline std::expected<OpenedIndex, std::string> open_index(const WorkspaceOptions& where,
+inline std::expected<OpenedIndex, std::string> open_index(const ProjectOptions& where,
                                                           const FreshOption& fresh,
                                                           ReadOptions options) {
     auto spelling = where.root();

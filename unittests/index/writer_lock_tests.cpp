@@ -48,9 +48,9 @@ ZEST_CASE(ProbeIgnoresStaleEndpoint) {
     ZASSERT(fs::exists(path::join(cache_dir, "server.json")));
 
     // Nobody holds the lock: the record is a crash's residue, removed by
-    // the probe.
-    auto probe = index::probe_writer(cache_dir);
-    ZASSERT(probe.state == index::WriterProbe::State::Free);
+    // the check.
+    auto status = index::check_writer(cache_dir);
+    ZASSERT(status.state == index::WriterStatus::State::Free);
     ZASSERT(!fs::exists(path::join(cache_dir, "server.json")));
 
     index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});

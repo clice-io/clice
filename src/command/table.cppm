@@ -117,9 +117,9 @@ public:
     /// Where queries of cwd-insensitive commands run, and what command hashes
     /// name the paths under relative to (path::portable). Set before load;
     /// empty means the process working directory, and absolute paths.
-    void set_workspace_root(CanonicalRef path);
+    void set_project_root(CanonicalRef path);
 
-    CanonicalRef workspace_root() const {
+    CanonicalRef project_root() const {
         return root;
     }
 

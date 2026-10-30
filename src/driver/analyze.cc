@@ -50,7 +50,7 @@ struct ModelOptions {
     DecoKV(help = "A hypothetical declaration move: <locator>=<header>", required = false)
     <std::vector<std::string>> move_entity;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
 };
 
 /// What weighs the results of the views that rank by weight.
@@ -134,7 +134,7 @@ struct PlainViewOptions {
 
 /// A file as the facts name it: one under the workspace by its path from
 /// the root, which `<PATH>` may also give absolute.
-std::string fact_path(const WorkspaceOptions& where, const std::string& argument) {
+std::string fact_path(const ProjectOptions& where, const std::string& argument) {
     if(!path::has_root(argument)) {
         return argument;
     }

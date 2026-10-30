@@ -29,7 +29,7 @@ struct Options {
            required = false)
     <std::uint32_t> runs;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 

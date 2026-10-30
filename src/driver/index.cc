@@ -27,7 +27,7 @@ namespace {
 
 struct Options {
     kota::deco::decl::HelpOption help;
-    WorkspaceOptions where;
+    ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;
@@ -44,21 +44,21 @@ struct StatsOptions {
              required = false)
     variants;
 
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
 struct SymbolOptions {
     kota::deco::decl::HelpOption help;
     SymbolTarget target;
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
 struct FileOptions {
     kota::deco::decl::HelpOption help;
     FileTarget target;
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 
@@ -119,14 +119,14 @@ int run_indexing(Spelling root, std::string configuration, std::uint32_t workers
         return 1;
     }
     auto& cache_dir = config.project.cache_dir;
-    auto writer = index::probe_writer(cache_dir);
+    auto writer = index::check_writer(cache_dir);
     switch(writer.state) {
-        case index::WriterProbe::State::Free: break;
-        case index::WriterProbe::State::Server:
+        case index::WriterStatus::State::Free: break;
+        case index::WriterStatus::State::Server:
             return run_indexing_via_server(writer.endpoint,
                                            resolve_configuration(config, configuration),
                                            json);
-        case index::WriterProbe::State::Held: {
+        case index::WriterStatus::State::Held: {
             LOG_ERROR("{}", index::held_writer_message(writer, cache_dir));
             return 1;
         }
@@ -682,7 +682,7 @@ int run_show_symbol(IndexReader& reader, llvm::StringRef text) {
         Fid anchor;
         if(!paths.empty()) {
             anchor = project.file_table.intern(
-                Spelling(paths.front(), Spelling(project.config.workspace_root)));
+                Spelling(paths.front(), Spelling(project.config.project_root)));
         }
         matches.push_back({*handle, anchor});
     } else {
@@ -914,7 +914,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
 /// Open the persisted index of the workspace as the writer loads it, every
 /// file served as it was indexed, and hand it to `run`, which reads it.
 template <typename Run>
-int read_index(const WorkspaceOptions& where, Run run) {
+int read_index(const ProjectOptions& where, Run run) {
     auto spelling = where.root();
     if(!workspace_exists(spelling)) {
         return 1;

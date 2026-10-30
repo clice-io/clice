@@ -56,7 +56,7 @@ struct Options {
     <std::string> std;
 
     OutputOptions output;
-    WorkspaceOptions where;
+    ProjectOptions where;
     LogLevelOption log;
 };
 

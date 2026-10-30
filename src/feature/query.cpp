@@ -481,9 +481,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     return result;
 }
 
-PlannedRename rename(Context& ctx,
-                     llvm::ArrayRef<RenameRequest> requests,
-                     RenameWorkspace workspace) {
+PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles workspace) {
     PlannedRename planned;
     auto& result = planned.result;
     std::vector<Renaming> renamings;
@@ -514,7 +512,7 @@ PlannedRename rename(Context& ctx,
         renamings.push_back({.target = std::move(*target), .new_name = request.new_name});
     }
 
-    WorkspaceTexts texts(std::move(workspace.files), std::move(names));
+    RenameTexts texts(std::move(workspace.files), std::move(names));
     auto read = [&](llvm::StringRef path) {
         return texts.read(path);
     };

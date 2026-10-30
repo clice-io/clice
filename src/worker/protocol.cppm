@@ -136,8 +136,8 @@ struct CompileParams {
     int version;
     std::string text;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -218,8 +218,8 @@ struct CompileResult {
 struct BuildPCHParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -284,8 +284,8 @@ struct BuildPCMParams {
 struct TURunParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -486,8 +486,8 @@ struct TURunResult {
 struct IncludeTreeParams {
     std::string file;
     std::string directory;
-    /// See CompilationInput::workspace.
-    std::string workspace;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;

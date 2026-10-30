@@ -121,17 +121,17 @@ bool configured(const Spelling& dir) {
 
 }  // namespace
 
-llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
+llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
     llvm::SmallVector<Spelling> places;
-    if(workspace_root.empty()) {
+    if(project_root.empty()) {
         return places;
     }
-    places.emplace_back(database_name, Spelling(workspace_root));
+    places.emplace_back(database_name, Spelling(project_root));
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    if(auto entries = fs::Directory::open(workspace_root)) {
+    if(auto entries = fs::Directory::open(project_root)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
@@ -139,8 +139,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
             // A symlinked build directory is a build directory too, even
             // before its target exists.
             if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
-                subdirectories.push_back(
-                    Spelling::absolute(path::join(workspace_root, entry->name)));
+                subdirectories.push_back(Spelling::absolute(path::join(project_root, entry->name)));
             }
         }
     }
@@ -151,17 +150,17 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     return places;
 }
 
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
-    return existing(database_places(workspace_root));
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root) {
+    return existing(database_places(project_root));
 }
 
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
+llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir) {
     // Deep enough for a CMake preset's out/build/<preset> and a nested
     // project's build directory, and no deeper: a workspace with no
     // database at all may be a home directory.
     llvm::SmallVector<Spelling> found;
-    auto walk = fs::walk(workspace_root, {.max_depth = 4});
+    auto walk = fs::walk(project_root, {.max_depth = 4});
     for(auto& entry: walk) {
         if(!entry) {
             vfs::warn_unreadable(entry.error());
@@ -171,7 +170,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
         if(entry->type == fs::FileType::Directory) {
             auto name = entry->name();
             if(name.starts_with(".") || name == "node_modules" ||
-               workspace_root.entry(spelled) == cache_dir) {
+               project_root.entry(spelled) == cache_dir) {
                 walk.skip();
             }
             continue;
@@ -211,20 +210,19 @@ CanonicalPath project_root_above(CanonicalRef start) {
     return root;
 }
 
-llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root) {
     llvm::SmallVector<Spelling> places;
     for(auto dir: path::ancestors(start)) {
         places.emplace_back(database_name, Spelling::absolute(dir));
-        if(dir == std::string_view(workspace_root)) {
+        if(dir == std::string_view(project_root)) {
             break;
         }
     }
     return places;
 }
 
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
-                                                   CanonicalRef workspace_root) {
-    return existing(database_places_above(start, workspace_root));
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root) {
+    return existing(database_places_above(start, project_root));
 }
 
 DepsSnapshot capture_deps_snapshot(FileTable& files,

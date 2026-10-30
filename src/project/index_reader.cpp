@@ -22,7 +22,7 @@ std::string damaged_index_error(const Project& project) {
 }
 
 Spelling argument_path(const Project& project, llvm::StringRef argument) {
-    return Spelling(argument, Spelling(project.config.workspace_root));
+    return Spelling(argument, Spelling(project.config.project_root));
 }
 
 IndexReader::IndexReader(ReadOptions options) :
@@ -37,7 +37,7 @@ std::unique_ptr<IndexReader> IndexReader::open(const Spelling& workspace,
     auto& project = reader->project;
     auto active = resolve_configuration(config, configuration);
     project.config = std::move(config);
-    project.index.workspace = project.config.workspace_root;
+    project.index.project_root = project.config.project_root;
     project.build.reset_active(active);
     auto& cache_dir = project.config.project.cache_dir;
 
@@ -119,7 +119,7 @@ std::unique_ptr<IndexReader> IndexReader::open(const Spelling& workspace,
     if(options.load == IndexLoad::Build) {
         auto remembered = CommandSnapshot::remembered(project);
         load_build(project,
-                   project.config.workspace_root,
+                   project.config.project_root,
                    project.build.active_configuration(),
                    remembered.sources,
                    remembered.provisional);
@@ -130,7 +130,7 @@ std::unique_ptr<IndexReader> IndexReader::open(const Spelling& workspace,
 feature::query::Context IndexReader::context() const {
     return {
         .query = query,
-        .root = project.config.workspace_root,
+        .root = project.config.project_root,
         .documentation = project.config.documentation,
     };
 }

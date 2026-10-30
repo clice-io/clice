@@ -99,7 +99,7 @@ static void log_configuration(const ProjectServer& project,
 
 void MasterServer::initialize() {
     std::shared_ptr<ProjectServer> placeholder;
-    if(!workspace_roots.empty()) {
+    if(!folders.empty()) {
         placeholder = std::move(projects.front());
         projects.clear();
         for(auto& root: project_roots()) {
@@ -175,13 +175,13 @@ void MasterServer::initialize() {
     }
     if(placeholder) {
         rehome_sessions(*placeholder);
-        retire(std::move(placeholder));
+        stop(std::move(placeholder));
     }
     on_projects_changed.emit();
 }
 
 void MasterServer::initialize(const Spelling& root) {
-    workspace_roots = {CanonicalPath(root)};
+    folders = {CanonicalPath(root)};
     files.spell_root(root);
     initialize();
 }
@@ -328,7 +328,7 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
     return made;
 }
 
-std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef heir) const {
+std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor) const {
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ProjectServer& project) {
         // The rootless project opens no store.
@@ -340,8 +340,8 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef heir) con
     for(auto& project: projects) {
         take(*project);
     }
-    for(auto& weak: retired) {
-        if(auto project = weak.lock(); project && project->root != heir) {
+    for(auto& weak: stopping) {
+        if(auto project = weak.lock(); project && project->root != successor) {
             take(*project);
         }
     }
@@ -382,7 +382,7 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
             return cdb.find_source(spelled) || cdb.find_source(Spelling("build", spelled));
         };
         if(!root.empty() && ranges::none_of(projects, covered)) {
-            workspace_roots.push_back(std::move(root));
+            folders.push_back(std::move(root));
             serve_folders();
         }
     }
@@ -459,12 +459,12 @@ void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spe
     auto fresh = identities(added);
     for(auto& root: gone) {
         if(!ranges::contains(fresh, root)) {
-            std::erase(workspace_roots, root);
+            std::erase(folders, root);
         }
     }
     for(auto& root: fresh) {
-        if(!ranges::contains(workspace_roots, root)) {
-            workspace_roots.push_back(std::move(root));
+        if(!ranges::contains(folders, root)) {
+            folders.push_back(std::move(root));
         }
     }
     if(lifecycle == ServerLifecycle::Ready) {
@@ -477,7 +477,7 @@ CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
         return folder;
     }
     CanonicalRef enclosing;
-    for(auto& other: workspace_roots) {
+    for(auto& other: folders) {
         if(other.size() < folder.size() && other.size() > enclosing.size() &&
            path::is_within(folder, other)) {
             enclosing = other;
@@ -503,7 +503,7 @@ feature::SemanticTokensOptions MasterServer::startup_token_options() const {
 
 std::vector<CanonicalPath> MasterServer::project_roots() const {
     std::vector<CanonicalPath> roots;
-    for(auto& folder: workspace_roots) {
+    for(auto& folder: folders) {
         auto root = root_of(folder);
         if(!ranges::contains(roots, root)) {
             roots.push_back(std::move(root));
@@ -516,7 +516,7 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
 }
 
 void MasterServer::serve_folders(const ProjectServer* replaced) {
-    std::erase_if(retired, [](auto& weak) { return weak.expired(); });
+    std::erase_if(stopping, [](auto& weak) { return weak.expired(); });
     std::vector<std::shared_ptr<ProjectServer>> serving;
     llvm::SmallVector<ProjectServer*> made;
     for(auto& root: project_roots()) {
@@ -544,7 +544,7 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
     projects = std::move(serving);
     for(auto& project: leaving) {
         std::erase(waiting, project.get());
-        retired.push_back(project);
+        stopping.push_back(project);
     }
     // Configured at once, so the documents it holds while it waits are
     // served under its own options; the cache directory its root's
@@ -557,7 +557,7 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
     // taking its root over waits for that, holding the root's documents.
     llvm::SmallVector<ProjectServer*> starting;
     std::erase_if(waiting, [&](ProjectServer* project) {
-        bool held = ranges::any_of(retired, [&](auto& weak) {
+        bool held = ranges::any_of(stopping, [&](auto& weak) {
             auto previous = weak.lock();
             return previous && previous->root == project->root;
         });
@@ -595,12 +595,12 @@ void MasterServer::serve_folders(const ProjectServer* replaced) {
             round.erase(it);
             fold_index_progress();
         }
-        retire(std::move(project));
+        stop(std::move(project));
     }
     on_projects_changed.emit();
 }
 
-void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
+void MasterServer::stop(std::shared_ptr<ProjectServer> project) {
     bg_tasks.spawn([](std::shared_ptr<ProjectServer> project) -> kota::task<> {
         co_await project->shutdown();
         project->close();
@@ -927,7 +927,7 @@ kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
         drain_disk_changes();
         return awaited_requests(editor).empty() && waiting.empty() &&
                ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
-               ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
+               ranges::all_of(stopping, [](auto& weak) { return weak.expired(); });
     };
     while(true) {
         if(quiet()) {
@@ -950,7 +950,7 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
             [&](const auto& id) { return std::format("request {} {}", request.method, id); },
             request.id));
     }
-    for(auto& weak: retired) {
+    for(auto& weak: stopping) {
         if(auto project = weak.lock()) {
             lines.push_back(std::format("removed project {} shutting down", project->root));
         }

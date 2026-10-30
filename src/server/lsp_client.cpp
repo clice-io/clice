@@ -102,7 +102,7 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::Pol
         }
         if(cdb) {
             count += static_cast<std::uint32_t>(
-                project->weigh_databases(params.force.value_or(true)).value_or(1));
+                project->reload_databases(params.force.value_or(true)).value_or(1));
             continue;
         }
         auto events = co_await project->tracker->tick_sources();
@@ -515,7 +515,7 @@ void LSPClient::register_lifecycle() {
         }
 
         srv.lifecycle = ServerLifecycle::Initialized;
-        LOG_INFO("Initialized with folders: {}", llvm::join(srv.workspace_roots, ", "));
+        LOG_INFO("Initialized with folders: {}", llvm::join(srv.folders, ", "));
 
         protocol::InitializeResult result;
         auto& caps = result.capabilities;
@@ -1445,7 +1445,7 @@ void LSPClient::register_extensions() {
             auto& project = resolved.project->project;
             feature::query::Context context{
                 .query = resolved.project->index_query,
-                .root = project.config.workspace_root,
+                .root = project.config.project_root,
                 .documentation = project.config.documentation,
             };
             auto found = feature::counterparts(context,

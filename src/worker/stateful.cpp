@@ -288,7 +288,7 @@ RequestResult<worker::CompileParams>
                 .kind = CompilationKind::Content,
                 .input = {.arguments = doc->arguments,
                           .directory = doc->directory,
-                          .workspace = params.workspace,
+                          .project_root = params.project_root,
                           .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
                 .skip_bodies = params.skip_bodies,

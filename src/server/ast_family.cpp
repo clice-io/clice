@@ -809,7 +809,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text().str();
-        params.workspace = project.config.workspace_root.str();
+        params.project_root = project.config.project_root.str();
         if(tidy_attempt) {
             params.tidy = tidy_config->params;
         }

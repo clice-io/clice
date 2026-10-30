@@ -434,7 +434,7 @@ ext::ListConfigurationsResult ContextService::list_configurations() const {
         result.configurations.push_back(tag.str());
     }
     result.active = project.build.active_configuration().str();
-    result.selected = read_selection(project.config.project.cache_dir);
+    result.selected = read_selected_configuration(project.config.project.cache_dir);
     result.default_configuration = fallback_configuration(project.config).str();
     return result;
 }
@@ -452,7 +452,8 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
         return refuse(
             std::format("the server runs with --configuration {}, which pins it", pinned));
     }
-    if(auto written = write_selection(project.config.project.cache_dir, name); !written) {
+    if(auto written = write_selected_configuration(project.config.project.cache_dir, name);
+       !written) {
         return refuse(std::format("the selection cannot be saved: {}", written.error().message()));
     }
     LOG_INFO("Selected configuration {}; it becomes active at the next start", name);
