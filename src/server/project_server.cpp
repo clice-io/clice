@@ -6,12 +6,11 @@ module clice;
 
 import :command.file_kind;
 import :command.table;
+import :config.config;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
 import :project.build;
-import :project.load;
-import :sched.bootstrap;
 import :server.control;
 import :server.file_tracker;
 import :server.master_server;
@@ -113,81 +112,61 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
 ProjectServer::~ProjectServer() = default;
 
+/// Where a configuration problem is, as compilers name a place, its file
+/// spelled `file`.
+static std::string place(llvm::StringRef file, const ConfigIssue& issue) {
+    return issue.line == 0 ? file.str() : std::format("{}:{}:{}", file, issue.line, issue.column);
+}
+
 void ProjectServer::configure(const std::optional<codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
-    config_issues.clear();
-    config_path.clear();
-    // Load clice.toml raw and overlay initializationOptions BEFORE computing
-    // defaults: derived fields (logging_dir, index_dir, ...) must follow the
-    // final merged values (e.g. a cache_dir overridden by the client).
-    project.config =
-        Config::load_from_workspace(root, &config_issues, &config_path, /*finalized=*/false);
-    // One message: the configuration file lists each as a diagnostic.
-    if(!config_issues.empty()) {
-        auto& first = config_issues.front();
-        LOG_GUIDANCE(
-            "Configuration problem in {}: {}{}",
-            project.file_table.display_identity(first.file),
-            first.message,
-            config_issues.size() == 1
-                ? std::string()
-                : std::format(" (and {} more, listed as its problems)", config_issues.size() - 1));
-    }
-    std::string own_cache_dir = project.config.project.cache_dir;
-    if(init_options) {
-        if(auto ov = codec::dyn::from_dyn(*init_options, project.config); !ov) {
-            LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
-        }
-    }
-    auto overlaid = project.config;
-    project.config.finalize(root);
+    auto loaded = load_config(root,
+                              {
+                                  .overlay = init_options,
+                                  .configuration = server.requested_configuration,
+                                  .strict = false,
+                                  .taken_cache_dirs = taken_cache_dirs,
+                              });
+    broken = loaded.broken();
+    project.config = std::move(loaded.config);
+    configuration = std::move(loaded.configuration);
+    config_path = std::move(loaded.path);
+    config_issues = std::move(loaded.issues);
 
-    // A cache directory serves one project (see owned_elsewhere), and one
-    // at a time: its writer lock is the process's, so a second project here
-    // would take it too. Fall back to the project's own, then the default,
-    // then none.
-    auto& cache_dir = project.config.project.cache_dir;
-    auto taken = [&] {
-        return !cache_dir.empty() &&
-               (ranges::contains(taken_cache_dirs, CanonicalPath(Spelling::absolute(cache_dir))) ||
-                owned_elsewhere(cache_dir, root));
-    };
-    if(!root.empty() && taken()) {
-        std::string requested = cache_dir;
-        for(auto& fallback: {own_cache_dir, std::string()}) {
-            project.config = overlaid;
-            project.config.project.cache_dir = fallback;
-            project.config.finalize(root);
-            if(!taken()) {
-                break;
-            }
+    // The file's problems are listed as its diagnostics, with one message;
+    // the overlay's, the same for every project, the master tells once.
+    const ConfigIssue* first = nullptr;
+    std::size_t count = 0;
+    for(auto& issue: config_issues) {
+        if(issue.file.empty()) {
+            continue;
         }
-        if(taken()) {
-            cache_dir.clear();
-            project.config.project.cache_dir_defaulted = false;
+        if(issue.severity == ConfigIssue::Severity::Error) {
+            LOG_ERROR("Invalid clice.toml {}: {}", place(issue.file, issue), issue.message);
+        } else {
+            LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
         }
-        LOG_GUIDANCE("Cache directory {} already serves another project; {} {}",
-                     requested,
-                     root,
-                     cache_dir.empty() ? std::string("keeps no cache")
-                                       : std::format("keeps its cache in {}", cache_dir));
+        if(!first ||
+           (first->severity != issue.severity && issue.severity == ConfigIssue::Severity::Error)) {
+            first = &issue;
+        }
+        count += 1;
     }
-
+    if(first) {
+        LOG_GUIDANCE("Configuration problem in {}: {}{}{}",
+                     place(project.file_table.display_identity(first->file), *first),
+                     first->message,
+                     count == 1 ? std::string()
+                                : std::format(" (and {} more, listed as its problems)", count - 1),
+                     broken
+                         ? std::format(". Nothing under {} is served until it is fixed and saved",
+                                       project.file_table.display(root))
+                         : std::string());
+    }
+    if(broken) {
+        return;
+    }
     auto& cfg = project.config.project;
-    if(cfg.readonly == "on") {
-        ast.readonly = ReadonlyMode::On;
-    } else if(cfg.readonly == "auto") {
-        ast.readonly = ReadonlyMode::Auto;
-    } else {
-        if(cfg.readonly != "off") {
-            LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
-        }
-        ast.readonly = ReadonlyMode::Off;
-    }
-    if(const std::string& arguments = project.config.code_completion.arguments;
-       arguments != "placeholders" && arguments != "delimiters" && arguments != "none") {
-        LOG_WARN("Unknown code_completion.arguments '{}'; using placeholders", arguments);
-    }
     freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
@@ -196,16 +175,25 @@ void ProjectServer::configure(const std::optional<codec::dyn::Value>& init_optio
 
 void ProjectServer::start() {
     started = true;
+    if(broken) {
+        return;
+    }
     if(!root.empty()) {
-        auto report = bootstrap_project(project, sched.pump, root, server.requested_configuration);
+        auto opened = project.open({
+            .configuration = configuration,
+            .store = Project::OpenOptions::Store::Writable,
+            .index = Project::OpenOptions::Index::Write,
+        });
+        sched.pump.apply_report(opened.report);
+        sched.pump.enqueue_outdated(opened.members);
         contexts.load();
-        if(report.opened_store) {
+        if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        commands_missing = !report.has_commands && !found_unreadable_database(project);
+        commands_missing = !opened.has_commands && !found_unreadable_database(project);
     }
 
     // Documents opened before the project started — held while its root's
@@ -272,6 +260,9 @@ void ProjectServer::discover_around(Fid path_id) {
 }
 
 void ProjectServer::saved(Fid path_id) {
+    if(broken) {
+        return;
+    }
     // The open files the save made stale show what their background run
     // finds as soon as it can (ASTFamily::report_skipped).
     if(project.config.project.skip_header_bodies) {
@@ -282,16 +273,13 @@ void ProjectServer::saved(Fid path_id) {
         }
     }
     // A header compiles through a host or a lender, never as a member; a
-    // build tree or the cache holds no sources of the workspace's own.
+    // build tree or the cache holds no sources of the project's own.
     auto path = project.file_table.resolve(path_id);
     if(root.empty() || !is_source_path(path) || project.build.declared(path_id)) {
         return;
     }
-    CanonicalPath cache_dir;
-    if(!project.config.project.cache_dir.empty()) {
-        cache_dir = CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
-    }
-    if(!project_file(root, cache_dir, path) || !project.build.record(path_id)) {
+    if(!project_file(root, project.config.project.cache_identity(), path) ||
+       !project.build.record(path_id)) {
         return;
     }
     LOG_INFO("Recorded {} as a provisional member", path);
@@ -310,8 +298,9 @@ std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
     auto session = sessions.open(path_id);
     // The serving mode's creation write point; the only other write is
     // ASTFamily::escalate.
-    session->serving =
-        ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
+    session->serving = project.config.project.readonly == ReadonlyMode::Off
+                           ? ServingMode::Escalated
+                           : ServingMode::IndexOnly;
     return session;
 }
 
@@ -399,6 +388,9 @@ void ProjectServer::open_closures(llvm::SmallVectorImpl<Fid>& files) {
 }
 
 bool ProjectServer::knows(Fid path_id) {
+    if(broken) {
+        return false;
+    }
     return sessions.find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
            project.dep_graph.knows(path_id) || !invalidator.readers(path_id).empty();
 }
@@ -426,7 +418,7 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.disk.current(path_id);
-    if(!started) {
+    if(!started || broken) {
         return;
     }
     contexts.validate_saved_context(path_id);
@@ -462,13 +454,19 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
-std::optional<std::size_t> ProjectServer::reload_databases(bool force) {
+std::size_t ProjectServer::reload_databases(bool force) {
     if(!tracker) {
         return 0;
     }
+    // A reload would record the other build's commands as the ones this
+    // index was built with.
     if(tracker->moved()) {
-        server.restart(*this);
-        return std::nullopt;
+        server.ask_restart({
+            .file = config_path,
+            .message = std::format("The compilation databases of {} now resolve to another build",
+                                   project.file_table.display(root)),
+        });
+        return 0;
     }
     auto events = tracker->tick_cdb(force);
     if(!events.empty()) {
@@ -478,8 +476,7 @@ std::optional<std::size_t> ProjectServer::reload_databases(bool force) {
 }
 
 void ProjectServer::tick_databases() {
-    if(project.config.tracker.workspace_poll_seconds.value > 0 &&
-       reload_databases(false).value_or(1) > 0) {
+    if(project.config.tracker.workspace_poll_seconds.value > 0 && reload_databases(false) > 0) {
         server.probe.happened(LoopEvent::DatabaseChange);
     }
 }
@@ -539,7 +536,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // Not before the server is ready: document-sync events are accepted
     // early (a pre-ready didClose arrives here), but the scheduler reads
     // configuration that initialize() has not applied yet. The reindex
-    // queue filled above is kept — the post-ready workspace load kicks the
+    // queue filled above is kept — the post-ready project load kicks the
     // scheduler.
     if(dirty.reschedule_indexing && server.lifecycle == ServerLifecycle::Ready) {
         sched.pump.schedule();

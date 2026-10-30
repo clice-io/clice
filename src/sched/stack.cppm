@@ -36,7 +36,7 @@ struct SchedulingStack {
     static std::chrono::milliseconds checkpoint_interval();
 
     /// Persist the index and the cache store's manifest as they stand, a
-    /// round running or not: a cold round covers the whole workspace, and
+    /// round running or not: a cold round covers the whole project, and
     /// a process killed mid-round loses only what merged since the last
     /// checkpoint.
     kota::task<> checkpoint();

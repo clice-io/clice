@@ -212,7 +212,7 @@ struct Pairing {
     }
 
     /// The project's files of the same name on the other side: in the
-    /// file's own directory, or elsewhere in the workspace when one of the
+    /// file's own directory, or elsewhere in the project when one of the
     /// two includes the other — a header under `include/` and the source
     /// under `src/` including it, not two files of separate parts sharing a
     /// name, nor a system header and a project source. Of those the

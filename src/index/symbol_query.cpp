@@ -359,11 +359,11 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
     return result;
 }
 
-void SymbolQuery::resolve_paths(const Spelling& root) {
+void SymbolQuery::resolve_paths(const Spelling& directory) {
     for(auto& wanted: paths) {
         if(wanted == "." || wanted == ".." ||
            ranges::any_of(wanted, [](char c) { return path::is_separator(c); })) {
-            wanted = CanonicalPath(Spelling(wanted, root)).str();
+            wanted = CanonicalPath(Spelling(wanted, directory)).str();
         }
     }
 }

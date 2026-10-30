@@ -11,6 +11,7 @@ import :support.anomaly;
 import :support.prelude;
 import :support.signal;
 import :syntax.position;
+import :vfs.disk_state;
 import :worker.pool;
 import :worker.probe;
 
@@ -43,6 +44,15 @@ enum class ServerLifecycle : std::uint8_t {
     Exited,
 };
 
+/// Why the server must restart (MasterServer::ask_restart).
+struct RestartReason {
+    /// The configuration file the change concerns, as it is now; empty for
+    /// none.
+    std::string file;
+
+    std::string message;
+};
+
 /// A guidance or anomaly message materialized for transport delivery.
 /// The log file is the durable record; this copy exists so a client that
 /// attaches after the message fired can still be shown it.
@@ -73,9 +83,9 @@ public:
     void initialize();
     void initialize(const Spelling& root);
 
-    /// The `[semantic_tokens]` options the legend is built from, read once
-    /// as the client initializes: the first project's clice.toml under the
-    /// initializationOptions.
+    /// The `[semantic_tokens]` options the legend is built from, read as
+    /// the client initializes, before any project is configured: those of
+    /// the first project's configuration (load_config).
     feature::SemanticTokensOptions startup_token_options() const;
 
     /// Bring every project to rest with its index committed while the
@@ -127,10 +137,12 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
-    /// The databases of `project` moved to another build's index
-    /// (FileTracker::moved): a fresh project takes its root over (see
-    /// serve_folders).
-    void restart(ProjectServer& project);
+    /// What the server was started on changed: a configuration file, the
+    /// build the databases resolve to, the build configuration selected.
+    /// Only a new process applies it, and only the editor can start one: it
+    /// is asked to (clice/restartServer) when it can be, the user told
+    /// otherwise (on_restart_needed). The same reason is given once.
+    void ask_restart(RestartReason reason);
 
     /// didSave: a look at the file's disk content, which every project
     /// knowing the file cascades if it changed (drain_disk_changes). A save
@@ -139,10 +151,17 @@ public:
     /// looked at too.
     void saved(Fid path_id);
 
-    /// Start the background looks at files (see vfs::DiskState::tick), each
-    /// tick followed by the projects' weighing of their databases
-    /// (ProjectServer::tick_databases); calls after the first do nothing.
+    /// Start the background looks at files (see vfs::DiskState::tick) on the
+    /// master's ticks, each followed by the projects' look at their
+    /// databases (ProjectServer::tick_databases); calls after the first do
+    /// nothing.
     void start_polling();
+
+    /// Look at the configuration files of every folder served, as each of
+    /// the master's ticks does whatever the polling setting: a change asks
+    /// for a restart. clice.toml is the one in use where it exists, else
+    /// .clice/config.toml.
+    void look_at_configs();
 
     /// Hand the disk changes the file table saw to every project knowing
     /// the file (ProjectServer::knows); how many there were.
@@ -242,6 +261,12 @@ public:
     /// A project started or stopped serving.
     Signal<> on_projects_changed;
 
+    /// Why the server must restart, oldest first (ask_restart).
+    std::vector<RestartReason> restart_reasons;
+
+    /// ask_restart took a reason.
+    Signal<> on_restart_needed;
+
     /// Emitted when the index an open index-served session is serving changed:
     /// results the client already pulled describe the old index, and only a
     /// refresh request makes it re-pull them — index-only sessions never
@@ -315,14 +340,18 @@ private:
     std::vector<CanonicalPath> project_roots() const;
 
     /// Make the projects served those project_roots names: make the
-    /// missing ones — and one in place of `replaced` — retire the ones no
-    /// folder needs, and move the open documents to the projects routing
-    /// picks now. A project made while its root's previous one is still
-    /// alive holds the root's documents, their compiles waiting
+    /// missing ones, stop the ones no folder needs, and move the open
+    /// documents to the projects routing picks now. A project made while
+    /// its root's previous one is still alive (a folder removed and added
+    /// again) holds the root's documents, their compiles waiting
     /// (ASTFamily::loaded), and starts once that is gone (make_project runs
     /// this again): the previous one saves its index and frees the cache
     /// directory first.
-    void serve_folders(const ProjectServer* replaced = nullptr);
+    void serve_folders();
+
+    /// Watch the configuration files of the folders served now (see
+    /// look_at_configs), keeping what earlier looks saw.
+    void watch_configs();
 
     /// Shut a project that stopped serving down in the background.
     void stop(std::shared_ptr<ProjectServer> project);
@@ -395,8 +424,10 @@ private:
     /// The background looks at files and databases, and the ends of the
     /// file table's turns, until the drain cancels them.
     kota::task_group<> polling;
-    bool polling_started = false;
     kota::task<> poll_task();
+
+    /// A project polls the disk: the master's ticks look at the files.
+    bool polling_files = false;
 
     /// The watch on the client process, which outlives the drain: a client
     /// may die between the shutdown reply and its exit.
@@ -413,6 +444,17 @@ private:
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
     std::vector<std::weak_ptr<ProjectServer>> stopping;
+
+    /// The configuration files of a folder served.
+    struct ConfigWatch {
+        CanonicalPath folder;
+
+        /// clice.toml, and .clice/config.toml, which applies without it.
+        vfs::Flag file;
+        vfs::Flag hidden;
+    };
+
+    std::vector<ConfigWatch> config_watches;
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).

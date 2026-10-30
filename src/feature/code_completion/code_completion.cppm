@@ -4,6 +4,7 @@ import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
+import :support.json;
 import :support.prelude;
 import :syntax.completion;
 import :syntax.dependency_graph;
@@ -14,10 +15,18 @@ import :vfs.ids;
 
 namespace clice::feature {
 
+/// What completing a call or a template inserts after the name
+/// (CodeCompletionOptions::arguments).
+enum class CompletionArguments : std::uint8_t {
+    Placeholders,
+    Delimiters,
+    None,
+};
+
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
-                     choices = {"placeholders", "delimiters", "none"},
+                     enum_string = type<LowercaseName>,
                      description =
                          "What completing a call or a template inserts after the "
                          "name: \"placeholders\" its parentheses or angle brackets "
@@ -31,7 +40,7 @@ struct CodeCompletionOptions {
                          "name is not called, as when taking a function's "
                          "address. Clients without snippet support get the "
                          "parentheses of a call alone.")
-    <std::string> arguments = "placeholders";
+    <CompletionArguments> arguments = CompletionArguments::Placeholders;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "Collapse an overload set into a single completion item.")

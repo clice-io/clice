@@ -26,12 +26,9 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.command_snapshot;
-import :project.configuration;
 import :project.hosting;
-import :project.index_reader;
-import :project.load;
 import :project.project;
+import :project.project_reader;
 import :semantic.symbol;
 import :support.bytes;
 import :syntax.token;
@@ -56,7 +53,7 @@ struct Options {
 
     DecoKV(help =
                "Configuration overlay as a JSON object of clice.toml "
-               "sections, over the workspace's configuration",
+               "sections, over the project's configuration",
            required = false)
     <std::string> config_overlay;
 
@@ -70,7 +67,7 @@ struct Options {
            required = false)
     <std::uint32_t> occurrence;
 
-    ConfigurationOption configuration;
+    ProjectOptions where;
 };
 
 struct FeatureOptions {
@@ -535,76 +532,41 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     return file;
 }
 
-/// The workspace the inspected file's directory belongs to, as the server
-/// serves it from a workspace folder holding it: the nearest ancestor
-/// holding a configuration file, whose rules may name a database deeper
-/// down (a monorepo's root); else the nearest holding a compile_commands.json,
-/// directly or in its build/ directory; `start` itself when none does.
-/// Only the ancestors themselves are checked — scanning their
-/// subdirectories would let an unrelated sibling project's database win.
-CanonicalPath workspace_of(CanonicalRef start) {
-    CanonicalPath configured;
-    CanonicalPath built;
-    path::walk_ancestors(start, [&](CanonicalRef dir) {
-        if(ranges::any_of(config_file_names, [&](llvm::StringRef marker) {
-               return fs::exists(path::join(dir, marker));
-           })) {
-            configured = dir;
-            return false;
-        }
-        if(built.empty() && (fs::exists(path::join(dir, "compile_commands.json")) ||
-                             fs::exists(path::join(dir, "build", "compile_commands.json")))) {
-            built = dir;
-        }
-        return true;
-    });
-    if(!configured.empty()) {
-        return configured;
-    }
-    return built.empty() ? CanonicalPath(start) : built;
-}
-
-/// The project the file in `directory` belongs to, loaded as `clice serve`
-/// loads it: the configuration of the nearest project at or above it with
-/// --config-overlay put in before the rules compile, as initializationOptions
+/// The project the file in `directory` belongs to, opened as `clice serve`
+/// opens it: the project root at or above it (or --workspace), its
+/// configuration with --config-overlay laid over it as initializationOptions
 /// are; its index when one was built, which tells the server's hosts and
 /// what their trials found; the databases the configuration names, else the
 /// ones discovered under its root and those between the root and the file;
 /// the dependency graph.
-auto load_inspected(const Options& opts, const Spelling& directory)
-    -> std::expected<std::unique_ptr<IndexReader>, std::string> {
-    auto identity = CanonicalPath(directory);
-    auto root = workspace_of(identity);
-    auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const Options& opts,
+                                                                           const Spelling& path) {
+    ConfigOptions options{.overlay_name = "--config-overlay"};
     if(opts.config_overlay) {
-        if(auto result = json::from_string<StrictJson>(*opts.config_overlay, config); !result) {
-            return std::unexpected(
-                std::format("invalid --config-overlay: {}", result.error().message));
+        auto overlay = json::from_string<codec::dyn::Value>(*opts.config_overlay);
+        if(!overlay) {
+            return std::unexpected(ProjectError{
+                .message = std::format("invalid --config-overlay: {}", overlay.error().message),
+                .exit_code = 2});
         }
+        options.overlay = std::move(*overlay);
     }
-    config.finalize(root);
-    config.keep_own_cache_dir();
-    auto requested = opts.configuration.tag();
-    if(auto checked = check_requested_configuration(config, requested); !checked) {
-        return std::unexpected(std::move(checked.error()));
+    auto read = read_project(opts.where, std::move(options), path.parent());
+    if(!read) {
+        return std::unexpected(std::move(read.error()));
     }
-    auto reader = IndexReader::open(Spelling(root),
-                                    std::move(config),
-                                    requested,
-                                    {.load = IndexLoad::Saved, .required = false});
-    auto& project = reader->project;
-    load_build(project,
-               root,
-               project.build.active_configuration(),
-               compile_commands_above(identity, root));
-    // A unit whose command changed since it was indexed leaves the index
-    // here as a server's load drops it: its manifest no longer tells where
-    // its compile enters a header.
-    if(project.database) {
-        index::IndexReport changed;
-        project.command_snapshot.reconcile(project, changed);
+    auto& [root, config] = *read;
+    auto project = open_reader(root,
+                               std::move(config),
+                               {
+                                   .store = Project::OpenOptions::Store::ReadOnly,
+                                   .index = Project::OpenOptions::Index::Read,
+                                   .file = CanonicalPath(path),
+                               });
+    if(!project.opened.unreadable.empty()) {
+        LOG_INFO("{}", project.opened.unreadable);
     }
-    return reader;
+    return std::move(project.reader);
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -804,10 +766,9 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    auto reader = load_inspected(opts, path.parent());
+    auto reader = load_inspected(opts, path);
     if(!reader) {
-        LOG_ERROR("{}", reader.error());
-        return 1;
+        return print_error(reader.error());
     }
     auto& project = (*reader)->project;
     std::optional<Selection> pin;

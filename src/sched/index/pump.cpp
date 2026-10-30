@@ -64,6 +64,25 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     return true;
 }
 
+void IndexPump::enqueue_outdated(llvm::ArrayRef<Fid> members) {
+    auto stale = project.index.stale_units();
+    if(!project.config.project.enable_indexing.value) {
+        return;
+    }
+    for(auto member: members) {
+        if(!project.index.indexed(member)) {
+            enqueue(member, ReindexReason::DepsOnly);
+        }
+    }
+    for(auto unit: stale) {
+        enqueue(unit, ReindexReason::DepsOnly);
+    }
+    for(auto unit: project.index.owed_units()) {
+        enqueue(unit, ReindexReason::ContentChanged);
+    }
+    schedule();
+}
+
 void IndexPump::apply_report(const index::IndexReport& report) {
     for(auto id: report.reindex()) {
         enqueue(id, ReindexReason::ContentChanged);

@@ -1,0 +1,35 @@
+[readonly."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'readonly = ⟦"On"⟧',
+            severity = "error",
+            message = "unknown enum value 'On' at project.readonly",
+            source = "clice",
+        },
+    ],
+]
+
+[glob."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'patterns = [⟦"src/[a"⟧]',
+            severity = "error",
+            message = "invalid glob pattern 'src/[a': unmatched `[` at rules[0].patterns[0]",
+            source = "clice",
+        },
+    ],
+]
+
+["worker count"."clice.toml"]
+pushes = [
+    [
+        {
+            at = "min_stateless_worker_count = ⟦0⟧",
+            severity = "error",
+            message = "a worker count must be at least 1 at project.min_stateless_worker_count",
+            source = "clice",
+        },
+    ],
+]

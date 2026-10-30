@@ -77,6 +77,14 @@ test("added folder adopts its files", async (t) => {
     expect(await s.errors("beta/main.cpp")).toEqual([]);
 });
 
+test("a restart keeps the folders changed since", async (t) => {
+    const s = await t.start({ folders: ["alpha"] });
+    await s.changeFolders({ added: ["beta"] });
+    await s.restart();
+    await s.indexed();
+    await t.show("symbols", s.workspaceSymbols("_fn"));
+});
+
 test("removed folder releases its files", async (t) => {
     const s = await t.start(FOLDERS);
     expect(await s.errors("beta/main.cpp")).toEqual([]);

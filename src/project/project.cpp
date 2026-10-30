@@ -1,5 +1,7 @@
 module clice;
 
+import :command.database;
+import :project.build;
 import :project.hosting;
 import :project.project;
 import :support.logging;
@@ -157,7 +159,7 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root)
 llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir) {
     // Deep enough for a CMake preset's out/build/<preset> and a nested
-    // project's build directory, and no deeper: a workspace with no
+    // project's build directory, and no deeper: a project root with no
     // database at all may be a home directory.
     llvm::SmallVector<Spelling> found;
     auto walk = fs::walk(project_root, {.max_depth = 4});
@@ -197,17 +199,68 @@ bool defines_project(CanonicalRef dir) {
     return configured(Spelling(dir)) || !discover_compile_commands(dir).empty();
 }
 
-CanonicalPath project_root_above(CanonicalRef start) {
-    CanonicalPath root;
-    path::walk_ancestors(start, [&](CanonicalRef dir) {
-        Spelling spelled(dir);
-        if(configured(spelled) || database_in(spelled) || database_in(Spelling("build", spelled))) {
-            root = dir;
-            return false;
+Spelling project_root_above(const Spelling& start) {
+    for(auto dir = start; !dir.empty(); dir = dir.parent()) {
+        if(configured(dir) || database_in(dir) || database_in(Spelling("build", dir))) {
+            return dir;
         }
-        return true;
-    });
-    return root;
+    }
+    return {};
+}
+
+std::string deeper_databases_hint(const Project& project) {
+    if(project.build.declares_sources()) {
+        return {};
+    }
+    CanonicalRef root = project.config.project_root;
+    std::vector<std::string> names;
+    for(auto& database: deeper_compile_commands(root, project.config.project.cache_identity())) {
+        auto directory = database.parent();
+        auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
+        path::to_slash(name);
+        names.push_back(std::format(R"("{}")", name));
+    }
+    if(names.empty()) {
+        return {};
+    }
+    return std::format(
+        " Deeper ones load only when clice.toml names them (the editor also loads one when it "
+        "opens a file below it); to use those found, give clice.toml a [[rules]] table with "
+        "compile_commands = [{}].",
+        llvm::join(names, ", "));
+}
+
+bool found_unreadable_database(const Project& project) {
+    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
+                          [&](std::size_t i) {
+                              return !project.cdb.loaded(SourceID(i)) &&
+                                     fs::exists(project.cdb.source_path(SourceID(i)));
+                          });
+}
+
+std::string why_no_members(const Project& project, llvm::StringRef root) {
+    std::vector<std::string> empty;
+    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
+        auto path = project.cdb.source_path(SourceID(i));
+        if(project.cdb.loaded(SourceID(i))) {
+            empty.push_back(path.str());
+        } else if(fs::exists(path)) {
+            return std::format("{} cannot be read; the error above says why.", path.str());
+        } else {
+            return std::format("{} does not exist yet; the build writes it.", path.str());
+        }
+    }
+    if(!empty.empty()) {
+        return std::format("{} {} no file.",
+                           llvm::join(empty, ", "),
+                           empty.size() == 1 ? "lists" : "list");
+    }
+    if(project.build.declares_sources()) {
+        return "no file on disk matches a rule with a default_command.";
+    }
+    return std::format("no compile_commands.json found in {} or its direct subdirectories.{}",
+                       root.str(),
+                       deeper_databases_hint(project));
 }
 
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root) {

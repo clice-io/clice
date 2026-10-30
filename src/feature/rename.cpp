@@ -897,7 +897,7 @@ const ScannedText* RenameTexts::read(
     return it->second ? &*it->second : nullptr;
 }
 
-std::optional<std::string> workspace_refusal(llvm::StringRef root) {
+std::optional<std::string> rename_refusal(llvm::StringRef root) {
     if(root.empty()) {
         return "a rename edits the sources of a workspace folder; open one";
     }

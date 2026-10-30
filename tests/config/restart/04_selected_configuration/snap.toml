@@ -1,0 +1,14 @@
+["the editor restarts".asked]
+value = "Build configuration release selected"
+
+["the editor restarts".menu.configurations]
+menu = ["debug", "release"]
+active = "release"
+selected = "release"
+default = "debug"
+
+["a client without restarts".guidance]
+value = ["Build configuration release selected; it applies once clice restarts"]
+
+["a client without restarts".asked]
+value = []

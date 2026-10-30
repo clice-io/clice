@@ -1,13 +1,10 @@
 module clice;
 
-import :config.config;
 import :driver.driver;
-import :project.configuration;
-import :project.load;
 import :project.project;
+import :project.project_reader;
 import :support.logging;
 import :syntax.dependency_graph;
-import :vfs.file_table;
 
 namespace clice::driver {
 
@@ -50,25 +47,15 @@ struct Output {
     std::vector<ScannedFile> files;
 };
 
-/// A project loaded from scratch: the build's units and the scan from them.
-struct Loaded {
-    std::unique_ptr<FileTable> files = std::make_unique<FileTable>();
-    std::unique_ptr<Project> project = std::make_unique<Project>(*files);
-    BuildLoad load;
-};
-
-Loaded load(const Spelling& root, const Config& config, llvm::StringRef configuration) {
-    Loaded loaded;
-    loaded.files->spell_root(root);
-    auto& project = *loaded.project;
-    project.config = config;
-    loaded.load = load_build(project, CanonicalPath(root), configuration);
-    return loaded;
+/// The project opened from scratch: the build's units and the scan from
+/// them.
+OpenedProject load(const Spelling& root, const LoadedConfig& config) {
+    return open_reader(root, config, {});
 }
 
-Output describe(const Loaded& loaded) {
-    auto& files = *loaded.files;
-    auto& graph = loaded.project->dep_graph;
+Output describe(const OpenedProject& loaded) {
+    auto& files = loaded.reader->files;
+    auto& graph = loaded.reader->project.dep_graph;
 
     llvm::DenseMap<Fid, std::vector<std::string>> modules;
     for(auto& entry: graph.modules()) {
@@ -77,7 +64,7 @@ Output describe(const Loaded& loaded) {
         }
     }
     llvm::DenseMap<Fid, std::vector<std::string>> unresolved;
-    for(auto& include: loaded.load.scan.unresolved) {
+    for(auto& include: loaded.opened.scan.unresolved) {
         auto name = include.angled ? std::format("<{}>", include.name)
                                    : std::format("\"{}\"", include.name);
         auto& names = unresolved[include.includer];
@@ -140,22 +127,21 @@ std::pair<std::int64_t, std::int64_t> spread(std::vector<std::int64_t>& times) {
 
 /// Scan `runs` times, each cold from a fresh load and warm over what it
 /// kept, and print the times.
-void time_scans(Loaded first,
+void time_scans(OpenedProject first,
                 std::uint32_t runs,
                 const Spelling& root,
-                const Config& config,
-                llvm::StringRef configuration) {
+                const LoadedConfig& config) {
     std::vector<std::int64_t> cold;
     std::vector<std::int64_t> warm;
     for(std::uint32_t run = 0; run < runs; run += 1) {
-        auto loaded = run == 0 ? std::move(first) : load(root, config, configuration);
-        auto& project = *loaded.project;
+        auto loaded = run == 0 ? std::move(first) : load(root, config);
+        auto& project = loaded.reader->project;
         project.dep_graph.reset();
         auto rescan = scan_dependency_graph(project.cdb,
                                             project.toolchain,
                                             project.dep_graph,
-                                            project.build.units(loaded.load.members));
-        cold.push_back(loaded.load.scan.elapsed_ms);
+                                            project.build.units(loaded.opened.members));
+        cold.push_back(loaded.opened.scan.elapsed_ms);
         warm.push_back(rescan.elapsed_ms);
         driver::println("Run {}: cold {}ms, warm {}ms", run + 1, cold.back(), warm.back());
     }
@@ -177,23 +163,16 @@ int run_scan(const Options& opts) {
         LOG_ERROR("--runs takes a count of at least 1");
         return 1;
     }
-    auto root = opts.where.root();
-    if(!workspace_exists(root)) {
-        return 1;
+    auto read = read_project(opts.where);
+    if(!read) {
+        return print_error(read.error());
     }
-    auto config = Config::load_from_workspace(CanonicalPath(root));
-    auto requested = opts.where.configuration.tag();
-    if(auto checked = check_requested_configuration(config, requested); !checked) {
-        LOG_ERROR("{}", checked.error());
-        return 1;
-    }
-    auto configuration = resolve_configuration(config, requested);
-
-    auto first = load(root, config, configuration);
-    if(first.load.members.empty()) {
+    auto& [root, config] = *read;
+    auto first = load(root, config);
+    if(first.opened.members.empty()) {
         LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
                   root,
-                  deeper_databases_hint(*first.project));
+                  deeper_databases_hint(first.reader->project));
         return 1;
     }
     auto output = describe(first);
@@ -201,9 +180,9 @@ int run_scan(const Options& opts) {
         print_json(output);
         return 0;
     }
-    print_summary(output, first.load.scan);
+    print_summary(output, first.opened.scan);
     if(opts.runs) {
-        time_scans(std::move(first), *opts.runs, root, config, configuration);
+        time_scans(std::move(first), *opts.runs, root, config);
     }
     return 0;
 }

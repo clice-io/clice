@@ -20,6 +20,12 @@ errors = [
     },
 ]
 
+["a restart keeps the folders changed since".symbols]
+workspace_symbols = [
+    { name = "alpha_fn()", kind = "Function", at = "alpha/main.cpp │ int ⟦alpha_fn⟧() { return 0; }" },
+    { name = "beta_fn()", kind = "Function", at = "beta/main.cpp │ int ⟦beta_fn⟧() { return 0; }" },
+]
+
 ["removed folder releases its files".pushes]
 pushes = [
     [],

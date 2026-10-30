@@ -4,13 +4,15 @@ outline: 2
 
 # Configuration
 
-clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
+clice reads configuration from `clice.toml` in the project root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
-Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload. The VS Code extension offers the restart when either file changes.
+Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file saying the change applies once clice restarts.
+
+A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count of zero, a pattern that does not compile, a `default_configuration` no rule's tag names. The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. Settings from `initializationOptions` with an error are left out whole, with the error naming them.
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
-Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
+Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the project root.
 
 ## Editor Settings
 
@@ -66,11 +68,11 @@ Each workspace folder the editor opens is a project of its own, with its own `cl
 
 The following variable is supported in string values:
 
-| Variable       | Description                                    |
-| -------------- | ---------------------------------------------- |
-| `${workspace}` | The workspace directory provided by the client |
+| Variable       | Description                  |
+| -------------- | ---------------------------- |
+| `${workspace}` | The project's root directory |
 
-## Workspace
+## Top Level
 
 Top-level options, written before any section.
 
@@ -930,9 +932,9 @@ tests/project/rules/09_remove_flags
 
 ## Switching Configurations
 
-The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
+The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the language status of a C or C++ file (the `{}` beside its language mode) names the active configuration and opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the server asks the editor to do, as for an edited configuration file. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
 
-Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server switches to that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
+Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server asks to be restarted on that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

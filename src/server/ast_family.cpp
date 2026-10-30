@@ -2,6 +2,7 @@ module clice;
 
 import :command.argument;
 import :compile.compilation;
+import :config.config;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
@@ -550,7 +551,7 @@ void ASTFamily::escalate(Session& session) {
     if(session.serving != ServingMode::IndexOnly) {
         return;
     }
-    if(readonly == ReadonlyMode::On) {
+    if(project.config.project.readonly == ReadonlyMode::On) {
         return;
     }
     session.serving = ServingMode::Escalated;
@@ -862,7 +863,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // it itself. One that did not build leaves the header the command
         // forces in to parse what it holds.
         std::optional<std::string> base_pch;
-        if(readonly != ReadonlyMode::On) {
+        if(project.config.project.readonly != ReadonlyMode::On) {
             on_phase.emit(path_id, CompilePhase::Preamble);
             if(auto request = declared_pch(path_id, resolution, *imports)) {
                 auto key = request->pch_key;
@@ -1397,7 +1398,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
         co_return false;
     }
 
-    if(readonly != ReadonlyMode::On) {
+    if(project.config.project.readonly != ReadonlyMode::On) {
         auto pch_key = co_await ensure_pch(ticket,
                                            epoch,
                                            text,

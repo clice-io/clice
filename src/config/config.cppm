@@ -8,6 +8,7 @@ import :feature.hover;
 import :feature.inlay_hints;
 import :feature.semantic_tokens;
 import :feature.signature_help;
+import :support.json;
 import :support.prelude;
 
 namespace clice {
@@ -20,7 +21,7 @@ std::uint32_t default_max_stateless_worker_count();
 
 /// A cache directory keys its indexes, configuration selection and server
 /// record by configuration alone, so it serves one project, whose root it
-/// records. One inside a workspace root belongs to that root whatever it
+/// records. One inside a project root belongs to that root whatever it
 /// records; one outside (a shared location) to the root it records, while
 /// that exists.
 std::string cache_dir_owner(llvm::StringRef cache_dir);
@@ -32,7 +33,7 @@ bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root);
 /// (owned_elsewhere is false); called under the directory's writer lock.
 void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef project_root);
 
-/// The configuration files a workspace root may hold, in lookup order.
+/// The configuration files a project root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
                                                                      ".clice/config.toml"};
 
@@ -49,7 +50,7 @@ struct ConfigRule {
                          "Glob patterns selecting the files this rule applies "
                          "to. A relative pattern is anchored at this "
                          "configuration file's directory (`..` segments "
-                         "allowed), or at the workspace root for a rule passed "
+                         "allowed), or at the project root for a rule passed "
                          "through initializationOptions; an absolute pattern "
                          "or one starting with `**` matches the file's "
                          "absolute path. "
@@ -74,15 +75,15 @@ struct ConfigRule {
                          "Compilation databases, in priority order: a "
                          "compile_commands.json or a directory containing one, "
                          "relative to this configuration file (to the "
-                         "workspace root for a rule passed through "
+                         "project root for a rule passed through "
                          "initializationOptions). All of them load, and every "
                          "entry applies to its own file "
                          "whatever the patterns say; the patterns and the "
                          "order decide which entry a file present in several "
                          "databases gets by default. A rule without patterns "
-                         "names the workspace's databases. When no rule "
+                         "names the project's databases. When no rule "
                          "declares a source, every compile_commands.json in "
-                         "the workspace root and its immediate subdirectories "
+                         "the project root and its immediate subdirectories "
                          "loads, and so do the ones in the directories above "
                          "a file when it is opened.")
     <std::vector<std::string>> compile_commands;
@@ -95,9 +96,9 @@ struct ConfigRule {
                          "configuration's name: for a build system that selects "
                          "a build by pointing a link at its directory. Each real "
                          "path keeps an index of its own, and when the link is "
-                         "pointed elsewhere the server switches to that build's "
-                         "index, which still holds what an earlier session "
-                         "indexed there. A configuration whose rules differ "
+                         "pointed elsewhere the server asks to be restarted on "
+                         "that build's index, which still holds what an earlier "
+                         "session indexed there. A configuration whose rules differ "
                          "from this configuration's only in naming exactly "
                          "those databases directly shares its index. The index "
                          "of a build no longer used stays in the cache "
@@ -110,7 +111,7 @@ struct ConfigRule {
                          "database entry, without the source file: a string "
                          "tokenized like a shell command line, or an argv "
                          "array. It runs from the directory of the configuration "
-                         "file it was read from (the workspace root for a rule "
+                         "file it was read from (the project root for a rule "
                          "passed through initializationOptions), and the "
                          "matching source files on disk "
                          "join the background index (unless the rule turns "
@@ -168,14 +169,14 @@ struct ConfigRule {
                          "keeps them out: their findings are dropped and a "
                          "translation unit they head is not parsed, unless "
                          "`--index` needs it for the index. Files outside the "
-                         "workspace are never checked. Any matching rule "
+                         "project are never checked. Any matching rule "
                          "saying `false` wins.")
     <bool> lint = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Whether `clice format` formats matching files. "
-                         "`false` keeps them out. Files outside the workspace "
+                         "`false` keeps them out. Files outside the project "
                          "are never formatted. Any matching rule saying "
                          "`false` wins.")
     <bool> format = true;
@@ -183,16 +184,41 @@ struct ConfigRule {
     /// Where the rule's relative paths and patterns anchor and its default
     /// command runs: the directory of the configuration file it was read
     /// from; empty for a rule from initializationOptions, which anchors at
-    /// the workspace root.
+    /// the project root.
     KOTATSU_ANNOTATE(skip = true)
     <std::string> directory;
 };
 
+/// How open files are served (`readonly`). Routing is not governed by this:
+/// every request is answered by the best source available at that moment
+/// (see Requests); the mode only decides whether PCH/AST builds are a goal
+/// at all. Builds are always pull-driven — no lifecycle event starts one,
+/// the first request that needs the AST does.
+enum class ReadonlyMode : std::uint8_t {
+    /// Every open file targets a full AST; the index answers while the
+    /// pulled compile is in flight.
+    Off,
+    /// Never build a PCH: reads serve from the index alone (a cold file
+    /// jumps the indexing queue), while completion and signature help
+    /// still compile on demand — without a preamble. The
+    /// low-resource profile.
+    On,
+    /// Files start as On and switch to Off at the first edit intent
+    /// (edit, completion, signature help, a context switch, a restored
+    /// buffer that diverged from the index). A file the index can never
+    /// serve — indexing disabled, or its boost attempt finished without a
+    /// servable shard — falls back to Off rather than answering empty
+    /// forever.
+    Auto,
+};
+
 /// Corresponds to the `[project]` section in clice.toml. Field
 /// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
-/// here because their defaults derive from the workspace root in
+/// here because their defaults derive from the project root in
 /// finalize().
 struct ProjectConfig {
+    /// finalize() leaves it the directory's identity, empty for none;
+    /// cache_identity() names the directory.
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Directory for the unified on-disk cache (PCH, PCM and "
@@ -210,6 +236,11 @@ struct ProjectConfig {
     /// a configured directory may be shared with other content.
     KOTATSU_ANNOTATE(skip = true)
     <bool> cache_dir_defaulted = false;
+
+    /// The identity of cache_dir, empty for none.
+    CanonicalPath cache_identity() const {
+        return cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir));
+    }
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -252,7 +283,7 @@ struct ProjectConfig {
     <bool> skip_header_bodies = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     choices = {"off", "on", "auto"},
+                     enum_string = type<LowercaseName>,
                      description =
                          "Read-only serving for open files: \"off\" targets a "
                          "full AST for every open file — builds are pulled by "
@@ -267,7 +298,7 @@ struct ProjectConfig {
                          "and falls back to \"off\" for a file the index "
                          "cannot serve. Feature routing always answers from "
                          "the best source currently available.")
-    <std::string> readonly = "off";
+    <ReadonlyMode> readonly = ReadonlyMode::Off;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -286,8 +317,8 @@ struct ProjectConfig {
                      minimum = 1,
                      description =
                          "Number of stateful workers — they hold ASTs in memory "
-                         "and serve queries (hover, semantic tokens, ...); `0` is "
-                         "invalid and falls back to the default.")
+                         "and serve queries (hover, semantic tokens, ...); at "
+                         "least 1.")
     <std::uint32_t> stateful_worker_count = 2;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -298,16 +329,16 @@ struct ProjectConfig {
                          "ephemeral tasks (PCH/PCM builds, completion, signature "
                          "help, background indexing) — and the most that "
                          "background indexing keeps busy at once; defaults to "
-                         "half the machine's physical cores, at least 2. `0` is "
-                         "invalid and falls back to that default.")
+                         "half the machine's physical cores, at least 2. At "
+                         "least 1.")
     <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
 
     /// See WorkerPoolOptions.
     KOTATSU_ANNOTATE(defaulted = true,
                      minimum = 1,
                      description =
-                         "Lower bound for dynamic stateless-worker scaling; `0` "
-                         "is invalid and falls back to the default.")
+                         "Lower bound for dynamic stateless-worker scaling; at "
+                         "least 1.")
     <std::uint32_t> min_stateless_worker_count = 1;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -352,7 +383,7 @@ struct CompiledRule {
         /// anchored at the configuration file's directory when compiled.
         kota::GlobPattern glob;
 
-        /// The literal directory the pattern starts in (the workspace root
+        /// The literal directory the pattern starts in (the project root
         /// for `**`-led patterns): where the files it covers are enumerated.
         CanonicalPath root;
     };
@@ -394,18 +425,20 @@ struct CompiledRule {
     bool active_under(llvm::StringRef configuration) const;
 };
 
-/// A problem found while loading a configuration file, carrying enough
+/// A problem found while reading a configuration, carrying enough
 /// structure to publish an LSP diagnostic on the file's URI.
 struct ConfigIssue {
     enum class Severity : std::uint8_t {
-        /// The configuration was rejected and defaults are in effect.
+        /// A value clice cannot honor: nothing runs on the configuration.
         Error,
         /// The configuration still applies (e.g. an unknown key was ignored).
         Warning,
     };
 
     Severity severity;
-    /// Absolute path of the configuration file.
+    /// Absolute path of the configuration file; empty for a problem of the
+    /// overlay, whose message names it, or of the `--configuration` asked
+    /// for.
     std::string file;
     std::string message;
     /// 1-based position in the file; 0 when unknown.
@@ -423,9 +456,9 @@ struct ConfigIssue {
 /// A default-constructed Config is fully valid: every option holds its
 /// real default (single source: the field initializers, including the
 /// feature options structs, which double as their config sections).
-/// Loading is layering — each source is decoded onto the same object in
-/// precedence order (clice.toml, then initializationOptions) and only
-/// touches the fields it names, nested sections merging per field.
+/// Loading is layering (load_config) — each source is decoded onto the
+/// same object in precedence order (clice.toml, then initializationOptions)
+/// and only touches the fields it names, nested sections merging per field.
 /// finalize() never fills option defaults; it only computes derived
 /// values from the merged result.
 struct Config {
@@ -433,9 +466,8 @@ struct Config {
                      description =
                          "The build configuration to fall back on when neither "
                          "`--configuration` nor a persisted selection names one: "
-                         "a tag declared on rules. When rules carry tags and this "
-                         "names none of them, the first declared tag is used and "
-                         "a warning is logged.")
+                         "a tag declared on rules; a name no rule declares is an "
+                         "error. Unset, the first declared tag is used.")
     <std::string> default_configuration;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -499,7 +531,7 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The workspace root finalize() ran for: the `${workspace}` value, the
+    /// The project root finalize() ran for: the `${workspace}` value, the
     /// anchor of rules and databases no configuration file supplied, and
     /// the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
@@ -508,12 +540,12 @@ struct Config {
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per
-    /// load, after every source has been overlaid.
-    void finalize(CanonicalRef project_root);
-
-    /// After finalize: move off a cache directory another project owns
-    /// (owned_elsewhere) to the default one under the workspace root.
-    void keep_own_cache_dir();
+    /// load, after every source has been overlaid. Returns the values clice
+    /// cannot honor, each at its key: a glob that does not compile,
+    /// `default_configuration` naming no declared tag, a zero worker count
+    /// (which falls back to its default meanwhile, so the process-wide
+    /// settings read from it stay runnable).
+    std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
     /// The compiled rules applying to `path`, in declaration order,
     /// restricted to untagged rules and rules tagged `configuration`.
@@ -527,38 +559,67 @@ struct Config {
     /// declaration order, each once.
     llvm::SmallVector<Spelling> declared_databases(llvm::StringRef configuration) const;
 
-    /// Try to load configuration from a TOML file. Its relative paths and
-    /// patterns anchor at the file's directory: every rule records it, so a
-    /// source overlaid later keeps its own anchor. Parse/validation problems are appended to
-    /// `issues` when provided: decode failures as Error (the caller falls
-    /// back to defaults), unknown keys as Warning (the rest of the file
-    /// still applies). Set `finalized` to false when further config sources
-    /// will be overlaid before finalize() runs — derived fields (cache_dir,
-    /// logging_dir, ...) must be computed only once, from the final merged
-    /// values.
-    static std::optional<Config> load(llvm::StringRef path,
-                                      CanonicalRef project_root,
-                                      std::vector<ConfigIssue>* issues = nullptr,
-                                      bool finalized = true);
-
-    /// Try to load configuration from a JSON string (e.g. initializationOptions).
-    static std::optional<Config> load_from_json(llvm::StringRef json, CanonicalRef project_root);
-
-    /// Load config from the workspace, trying standard locations.
-    /// Returns a default config if no file is found. `loaded_path`, when
-    /// provided, receives the path of the config file that was found (even
-    /// if it failed to parse), or stays empty. `finalized` as in load().
-    static Config load_from_workspace(CanonicalRef project_root,
-                                      std::vector<ConfigIssue>* issues = nullptr,
-                                      std::string* loaded_path = nullptr,
-                                      bool finalized = true);
-
     /// The configuration's JSON schema (draft 2020-12), pretty-printed.
     /// Fields whose defaults derive from the running machine (the worker
     /// counts follow the CPU count) carry no `default` annotation, so the
     /// schema is byte-identical on every host. Unknown properties are
-    /// rejected — the schema-side face of load()'s unknown-key warnings.
+    /// rejected — the schema-side face of load_config's unknown-key
+    /// warnings.
     static std::expected<std::string, std::string> json_schema();
 };
+
+/// What a project's configuration is read with besides its root.
+struct ConfigOptions {
+    /// A JSON object of clice.toml sections laid over the file, whole or
+    /// not at all: the client's initializationOptions, `--config-overlay`.
+    std::optional<codec::dyn::Value> overlay;
+
+    /// What the overlay is called in messages.
+    llvm::StringRef overlay_name = "initializationOptions";
+
+    /// The build configuration asked for (`--configuration`); empty for
+    /// none.
+    llvm::StringRef configuration;
+
+    /// Whether a `configuration` no rule declares is an error, as for the
+    /// command line, or ignored with guidance, as for the server, whose
+    /// argument outlives the edits of the rules.
+    bool strict = true;
+
+    /// The cache directories other projects of this process use.
+    llvm::ArrayRef<CanonicalPath> taken_cache_dirs;
+};
+
+/// A project's configuration as read: the configuration, the file it came
+/// from, the problems found and the build configuration that applies.
+struct LoadedConfig {
+    /// The layers that decode, merged and finalized: what process-wide
+    /// settings are read from even when the configuration has errors.
+    Config config;
+
+    /// The configuration file found, also one that does not parse; empty
+    /// for none.
+    std::string path;
+
+    std::vector<ConfigIssue> issues;
+
+    /// The active build configuration: a declared tag, or empty when the
+    /// rules declare none.
+    std::string configuration;
+
+    /// Whether an issue is an error: nothing may run on the configuration.
+    bool broken() const;
+};
+
+/// Read the configuration of the project at `root` (empty for a project
+/// without a folder): find its file (clice.toml, else .clice/config.toml),
+/// decode it, lay the overlay over it, finalize and check every value;
+/// choose the cache directory — the one the merged configuration names,
+/// else the one the file names, else the default, else none, passing over
+/// those taken (ConfigOptions::taken_cache_dirs) or owned by another
+/// project (owned_elsewhere); then resolve the build configuration from
+/// that directory's selection. A layer that does not decode is left out,
+/// an unknown key is a warning and the rest of its layer applies.
+LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options = {});
 
 }  // namespace clice

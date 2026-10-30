@@ -6,7 +6,7 @@ Subcommands:
   serve       Start LSP server
   query       Ask the persisted index about the workspace
   refactor    Rewrite the workspace's sources through the persisted index
-  index       Index a workspace ahead of time
+  index       Index a project ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
@@ -25,7 +25,7 @@ Subcommands:
   serve       Start LSP server
   query       Ask the persisted index about the workspace
   refactor    Rewrite the workspace's sources through the persisted index
-  index       Index a workspace ahead of time
+  index       Index a project ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
@@ -88,7 +88,7 @@ usage: clice index [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
@@ -110,7 +110,7 @@ usage: clice lint [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --index                         Also build and persist the project index from the same parses
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
@@ -125,9 +125,9 @@ usage: clice format [<PATH>...] [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <PATH>...                       Files to format, or directories to format the build's own files under; relative to the workspace (default: the build's own files)
+  <PATH>...                       Files to format, or directories to format the build's own files under; relative to the current directory (default: the build's own files)
   --check                         Report the files that need formatting instead of rewriting them
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
@@ -161,9 +161,9 @@ usage: clice command <PATH> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <PATH>                          The file, relative to the workspace or absolute
+  <PATH>                          The file, relative to the current directory or absolute
   --json                          Print the commands as JSON on stdout instead of text
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -181,7 +181,7 @@ Options:
   -h|--help                       display this help and exit
   --json                          Print every scanned file with what it includes, the includes no search found and the modules it provides
   --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload)
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -208,7 +208,7 @@ Options:
   --std <value>                   libc++'s module sources (share/libc++/v1): the partition's std module is imported as std.compat
   --out <value>                   Directory to write the modules, macro headers, mirrors and prelude into
   --no-mirrors                    Write no mirrors: what still includes a wrapped header parses it beside the import
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -239,7 +239,7 @@ Options:
   -h|--help                       display this help and exit
   <LOCATOR>                       The symbol, as a locator: a name, an answer's symbol, or file:line[:column]
   --include-declaration           List the declarations and the definition too
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
   --log-level <trace|debug|info|warn|error|off>
@@ -255,7 +255,7 @@ Options:
   -h|--help                       display this help and exit
   --limit <value>                 How many of the largest file shards to list (default 20)
   --variants                      Then every file shard with its variant count, one tab-separated line each
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -276,7 +276,7 @@ Options:
   --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
   --merge <value>                 A hypothetical merge: <module>+<module>[+...] into the first (may be repeated)
   --move-entity <value>           A hypothetical declaration move: <locator>=<header> (may be repeated)
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --annotation <value>            An annotation file weighing the results: {"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}} (may be repeated)
   --churn-since <value>           git log --since value of the churn annotation (default 6.months; empty leaves it out)
@@ -308,7 +308,7 @@ Options:
   --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
   --merge <value>                 A hypothetical merge: <module>+<module>[+...] into the first (may be repeated)
   --move-entity <value>           A hypothetical declaration move: <locator>=<header> (may be repeated)
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -323,9 +323,10 @@ Options:
   -h|--help                       display this help and exit
   <PATH>                          The source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
-  --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
+  --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the project's configuration
   --host <value>                  Compile the header as included by this source file, as the editor's context choice does
   --occurrence <value>            With --host, which place its compile enters the header at, from 0
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -340,7 +341,7 @@ Options:
   -h|--help                       display this help and exit
   <DATABASE>                      The compile_commands.json to convert, relative to the current directory
   --json                          Print the converted command as a database entry instead of text
-  --workspace <value>             Workspace root directory (default: the current directory)
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr

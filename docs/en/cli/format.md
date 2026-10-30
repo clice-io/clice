@@ -19,7 +19,7 @@ build generates or fetches sources), outside the system include directories of
 their commands and outside the cache directory. A
 directory argument narrows that set to the
 files under it; a file argument with a C-family suffix is formatted whether or
-not the build knows it. Paths are relative to the workspace. A rule in `clice.toml` with
+not the build knows it. Paths are relative to the current directory. A rule in `clice.toml` with
 `format = false` keeps matching files out, for example a vendored library or
 generated sources:
 

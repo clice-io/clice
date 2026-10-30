@@ -1,7 +1,7 @@
 module clice;
 
 import :config.config;
-import :project.configuration;
+import :config.configuration;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.path;

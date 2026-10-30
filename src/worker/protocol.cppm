@@ -123,7 +123,7 @@ struct HoverParams {
     std::string path;
     uint32_t offset = 0;
 
-    /// The workspace config, carried whole on every request — the worker
+    /// The project's config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
     /// next request. Features read their own section; no per-feature
     /// forwarding field is ever added here.
@@ -338,7 +338,7 @@ struct CompletionParams {
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
-    /// The workspace config, carried whole — the worker holds no config
+    /// The project's config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
 
@@ -548,7 +548,7 @@ struct InlayHintParams {
     std::string path;
     LocalSourceRange range;
 
-    /// The workspace config, carried whole — the worker holds no config
+    /// The project's config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
 };
@@ -558,7 +558,7 @@ struct InlayHintParams {
 struct SemanticTokensParams {
     std::string path;
 
-    /// The workspace config, carried whole — the worker holds no config
+    /// The project's config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
 };
@@ -567,7 +567,7 @@ struct SemanticTokensParams {
 struct DocumentSymbolParams {
     std::string path;
 
-    /// The workspace config, carried whole — the worker holds no config
+    /// The project's config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
 };

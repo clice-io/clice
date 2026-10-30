@@ -1,6 +1,7 @@
 module clice;
 
 import :config.config;
+import :config.configuration;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -8,7 +9,7 @@ import :vfs.path;
 
 namespace clice {
 
-/// Replace all occurrences of ${workspace} with the workspace root.
+/// Replace all occurrences of ${workspace} with the project root.
 /// No-op when project_root is empty, to avoid producing paths like "/cache"
 /// from "${workspace}/cache".
 static void substitute_workspace(std::string& value, llvm::StringRef project_root) {
@@ -66,11 +67,10 @@ std::uint32_t default_max_stateless_worker_count() {
 /// the first wildcard segment is anchored (a relative one at `anchor`) and
 /// resolved like every path the file table names — a symlinked directory
 /// matches the files it holds — and the wildcard tail follows verbatim.
-/// A `**`-led pattern matches anywhere and enumerates from the workspace.
-static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
-                                                            const Spelling& anchor,
-                                                            CanonicalRef project_root) {
-    // A substituted workspace root is path, never glob syntax.
+/// A `**`-led pattern matches anywhere and enumerates from the project root.
+static std::expected<CompiledRule::Pattern, std::string>
+    compile_pattern(std::string pattern, const Spelling& anchor, CanonicalRef project_root) {
+    // A substituted project root is path, never glob syntax.
     substitute_workspace(pattern, kota::GlobPattern::escape(project_root));
     std::string text = pattern;
     CanonicalPath root = project_root;
@@ -85,22 +85,26 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
     }
     auto glob = kota::GlobPattern::create(text);
     if(!glob) {
-        LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern, glob.error().message);
-        return std::nullopt;
+        return std::unexpected(
+            std::format("invalid glob pattern '{}': {}", pattern, glob.error().message));
     }
     return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
 }
 
-void Config::finalize(CanonicalRef project_root) {
+std::vector<codec::rich_error> Config::finalize(CanonicalRef project_root) {
     auto& p = project;
+    std::vector<codec::rich_error> problems;
+    auto problem = [&](std::string message, std::vector<codec::rich_error::path_segment> path) {
+        auto& error = problems.emplace_back(std::move(message));
+        error.path = std::move(path);
+    };
 
-    // Validation, not default-filling: zero workers or a zero memory
-    // budget is never a runnable configuration, so an explicit 0 falls
-    // back to the field's born-valid default with a warning.
+    // Zero workers is never a runnable configuration: an error, and the
+    // field's born-valid default meanwhile.
     ProjectConfig defaults;
-    auto reject_zero = [](auto& field, const auto& fallback, llvm::StringRef name) {
+    auto reject_zero = [&](auto& field, const auto& fallback, llvm::StringRef name) {
         if(field.value == 0) {
-            LOG_WARN("{} = 0 is invalid; using {}", name, fallback);
+            problem("a worker count must be at least 1", {"project", name.str()});
             field = fallback.value;
         }
     };
@@ -124,7 +128,7 @@ void Config::finalize(CanonicalRef project_root) {
         p.logging_dir = path::join(p.cache_dir, "logs");
 
     // A path still relative here came from initializationOptions (load()
-    // anchored a file's own) and resolves against the workspace root; the
+    // anchored a file's own) and resolves against the project root; the
     // file table's name for it is the one kept, whatever the user wrote.
     for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
         if(dir->empty()) {
@@ -142,7 +146,7 @@ void Config::finalize(CanonicalRef project_root) {
     compiled_rules.clear();
     auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
         // A rule read from a file anchors at the file's directory, one from
-        // initializationOptions at the workspace root; a project without a
+        // initializationOptions at the project root; a project without a
         // folder has nothing to anchor one at.
         auto anchor =
             rule.directory.empty() ? root_anchor : Spelling::absolute(std::string(rule.directory));
@@ -153,17 +157,21 @@ void Config::finalize(CanonicalRef project_root) {
             return std::nullopt;
         }
         CompiledRule compiled;
-        for(auto& pattern: rule.patterns) {
-            if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
-                compiled.patterns.push_back(std::move(*compiled_pattern));
+        for(auto [index, pattern]: views::enumerate(rule.patterns)) {
+            auto compiled_pattern = compile_pattern(pattern, anchor, root);
+            if(!compiled_pattern) {
+                problem(std::move(compiled_pattern.error()),
+                        {"rules",
+                         static_cast<std::size_t>(&rule - rules.data()),
+                         "patterns",
+                         static_cast<std::size_t>(index)});
+                continue;
             }
+            compiled.patterns.push_back(std::move(*compiled_pattern));
         }
         // Without a valid pattern the rule can match nothing; its declared
         // databases still load, since entries apply regardless of patterns.
-        if(compiled.patterns.empty() && !rule.patterns.empty()) {
-            LOG_WARN("Rule matches no file: all of its glob patterns failed to compile");
-            compiled.unmatchable = true;
-        }
+        compiled.unmatchable = compiled.patterns.empty() && !rule.patterns.empty();
         compiled.configuration = rule.configuration;
         for(auto& database: rule.compile_commands) {
             auto full = *setting_path(database, anchor, root);
@@ -210,8 +218,15 @@ void Config::finalize(CanonicalRef project_root) {
     }
     if(!default_configuration.empty() &&
        !ranges::contains(configurations(), llvm::StringRef(default_configuration))) {
-        LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
+        auto tags = configurations();
+        problem(tags.empty() ? std::format("{} names a configuration, but no rule declares one",
+                                           default_configuration)
+                             : std::format("{} names no rule's configuration ({})",
+                                           default_configuration,
+                                           llvm::join(tags, ", ")),
+                {"default_configuration"});
     }
+    return problems;
 }
 
 bool CompiledRule::has_default_command() const {
@@ -310,9 +325,52 @@ static std::optional<toml::source_position> end_at(const toml::node& node,
     return std::nullopt;
 }
 
-/// An issue at its error's position, spanning the key or value of `parsed`
-/// that starts there: the error carries only where it starts. A document
-/// that does not parse has no such extent, its error marks a point.
+/// The node of `table` at `path`, as a decode error or a finalize problem
+/// names it; null when the document holds none there.
+const static toml::node* node_at(const toml::table& table,
+                                 llvm::ArrayRef<codec::rich_error::path_segment> path) {
+    const toml::node* node = &table;
+    for(auto& segment: path) {
+        if(auto* key = std::get_if<std::string>(&segment)) {
+            auto* within = node->as_table();
+            node = within ? within->get(*key) : nullptr;
+        } else {
+            auto* within = node->as_array();
+            node = within ? within->get(std::get<std::size_t>(segment)) : nullptr;
+        }
+        if(!node) {
+            return nullptr;
+        }
+    }
+    return node;
+}
+
+/// Whether the overlay sets the value at `path`: a problem there is the
+/// overlay's.
+static bool sets(const codec::dyn::Value& overlay,
+                 llvm::ArrayRef<codec::rich_error::path_segment> path) {
+    const codec::dyn::Value* value = &overlay;
+    for(auto& segment: path) {
+        if(auto* key = std::get_if<std::string>(&segment)) {
+            auto* object = value->get_object();
+            value = object ? object->find(*key) : nullptr;
+        } else {
+            auto* array = value->get_array();
+            auto index = std::get<std::size_t>(segment);
+            value = array && index < array->size() ? &(*array)[index] : nullptr;
+        }
+        if(!value) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// An issue of the file `path` at its error's position, spanning the key or
+/// value of `parsed` that starts there: the error carries only where it
+/// starts. An error with no position (a problem finalize found, an unknown
+/// enumerator) spans the value its path names. A document that does not
+/// parse has no such extent, its error marks a point.
 static ConfigIssue make_issue(ConfigIssue::Severity severity,
                               llvm::StringRef path,
                               const codec::rich_error& error,
@@ -320,8 +378,18 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
     ConfigIssue issue;
     issue.severity = severity;
     issue.file = path.str();
-    issue.message = error.to_string();
+    // The position is the issue's own; the message leaves it out.
+    auto described = error;
+    described.location.reset();
+    issue.message = described.to_string();
     if(!error.location) {
+        if(auto* node = parsed ? node_at(*parsed, error.path) : nullptr) {
+            auto& source = node->source();
+            issue.line = source.begin.line;
+            issue.column = source.begin.column;
+            issue.end_line = source.end.line;
+            issue.end_column = source.end.column;
+        }
         return issue;
     }
     issue.line = issue.end_line = static_cast<std::uint32_t>(error.location->line);
@@ -338,106 +406,150 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
     return issue;
 }
 
-std::optional<Config> Config::load(llvm::StringRef path,
-                                   CanonicalRef project_root,
-                                   std::vector<ConfigIssue>* issues,
-                                   bool finalized) {
-    auto content = vfs::read_text(path);
-    if(!content)
-        return std::nullopt;
+bool LoadedConfig::broken() const {
+    return ranges::any_of(issues, [](const ConfigIssue& issue) {
+        return issue.severity == ConfigIssue::Severity::Error;
+    });
+}
 
-    auto parsed = codec::toml::parse_table(*content);
-    auto* table = parsed ? &*parsed : nullptr;
-    Config config;
-    codec::UnknownFields unknown;
-    auto decoded = [&]() -> std::expected<void, codec::rich_error> {
-        if(!parsed) {
-            return std::unexpected(parsed.error());
+LoadedConfig load_config(CanonicalRef root, const ConfigOptions& options) {
+    using Severity = ConfigIssue::Severity;
+    LoadedConfig loaded;
+    auto& issues = loaded.issues;
+    Config layered;
+    std::optional<toml::table> parsed;
+    for(auto name: root.empty() ? llvm::ArrayRef<llvm::StringRef>() : config_file_names) {
+        auto path = path::join(root, name);
+        if(!fs::exists(path)) {
+            continue;
         }
-        codec::scoped_context<codec::UnknownFields> collecting(unknown);
-        return codec::toml::from_toml(*parsed, config);
-    }();
-    if(!decoded) {
-        LOG_ERROR("Invalid clice.toml {}: {}", path, decoded.error().to_string());
-        if(issues)
-            issues->push_back(
-                make_issue(ConfigIssue::Severity::Error, path, decoded.error(), table));
-        return std::nullopt;
-    }
-
-    if(issues) {
+        loaded.path = path;
+        auto content = vfs::read_text(path);
+        if(!content) {
+            issues.push_back(
+                {.severity = Severity::Error,
+                 .file = path,
+                 .message = std::format("cannot read it: {}", content.error().message())});
+            break;
+        }
+        auto table = codec::toml::parse_table(*content);
+        if(!table) {
+            issues.push_back(make_issue(Severity::Error, path, table.error(), nullptr));
+            break;
+        }
+        parsed = std::move(*table);
+        Config decoded;
+        codec::UnknownFields unknown;
+        auto result = [&] {
+            codec::scoped_context<codec::UnknownFields> collecting(unknown);
+            return codec::toml::from_toml(*parsed, decoded);
+        }();
+        if(!result) {
+            issues.push_back(make_issue(Severity::Error, path, result.error(), &*parsed));
+            break;
+        }
         for(auto& entry: unknown.entries) {
-            LOG_WARN("clice.toml {}: {}", path, entry.to_string());
-            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry, table));
+            issues.push_back(make_issue(Severity::Warning, path, entry, &*parsed));
         }
-    }
-    auto directory = Spelling::absolute(path).parent();
-    for(auto& rule: config.rules) {
-        rule.directory = directory.str();
-    }
-    for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
-                                                              &config.project.logging_dir}) {
-        if(!dir->empty()) {
-            *dir = std::move(*setting_path(*dir, directory, project_root)).str();
+        // The file's relative paths and patterns anchor at its directory:
+        // every rule records it, so the overlay keeps its own anchor.
+        auto directory = Spelling::absolute(path).parent();
+        for(auto& rule: decoded.rules) {
+            rule.directory = directory.str();
         }
-    }
-    if(finalized)
-        config.finalize(project_root);
-    LOG_INFO("Loaded config from {}", path);
-    return config;
-}
-
-std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef project_root) {
-    auto config = json::from_string<Config>(json);
-    if(!config) {
-        LOG_WARN("Failed to parse initializationOptions JSON: {}", config.error().message);
-        return std::nullopt;
-    }
-
-    config->finalize(project_root);
-    LOG_INFO("Loaded config from initializationOptions");
-    return std::move(*config);
-}
-
-Config Config::load_from_workspace(CanonicalRef project_root,
-                                   std::vector<ConfigIssue>* issues,
-                                   std::string* loaded_path,
-                                   bool finalized) {
-    if(loaded_path)
-        loaded_path->clear();
-
-    auto config = [&] {
-        bool found = false;
-        if(!project_root.empty()) {
-            for(auto name: config_file_names) {
-                auto config_path = path::join(llvm::StringRef(project_root), name);
-                if(!fs::exists(config_path))
-                    continue;
-                found = true;
-                if(loaded_path)
-                    *loaded_path = config_path;
-                if(auto config = load(config_path, project_root, issues, /*finalized=*/false))
-                    return std::move(*config);
-                // Present but malformed: fall through to defaults, but
-                // report the situation clearly so users know their config
-                // wasn't applied.
-                LOG_WARN("Falling back to default configuration because {} is invalid",
-                         config_path);
+        for(std::string* dir: std::initializer_list<std::string*>{&decoded.project.cache_dir,
+                                                                  &decoded.project.logging_dir}) {
+            if(!dir->empty()) {
+                *dir = std::move(*setting_path(*dir, directory, root)).str();
             }
         }
-        if(!found) {
-            LOG_INFO("No clice.toml found in {}, using default configuration", project_root);
-        }
-        return Config();
-    }();
-    if(finalized) {
-        config.finalize(project_root);
-        config.keep_own_cache_dir();
+        layered = std::move(decoded);
+        break;
     }
-    return config;
+    std::string file_cache_dir = layered.project.cache_dir;
+
+    if(options.overlay) {
+        auto overlaid = layered;
+        codec::UnknownFields unknown;
+        auto result = [&] {
+            codec::scoped_context<codec::UnknownFields> collecting(unknown);
+            return codec::dyn::from_dyn(*options.overlay, overlaid);
+        }();
+        auto issue = [&](Severity severity, const codec::rich_error& error) {
+            issues.push_back(
+                {.severity = severity,
+                 .message = std::format("{}: {}", options.overlay_name, error.to_string())});
+        };
+        if(!result) {
+            issue(Severity::Error, result.error());
+        } else {
+            for(auto& entry: unknown.entries) {
+                issue(Severity::Warning, entry);
+            }
+            layered = std::move(overlaid);
+        }
+    }
+
+    // A cache directory serves one project (see owned_elsewhere), and one at
+    // a time: its writer lock is the process's, so a second project of the
+    // server would take it too. The merged configuration's falls back to the
+    // file's own, then the default, then none.
+    loaded.config = layered;
+    auto problems = loaded.config.finalize(root);
+    auto& cache_dir = loaded.config.project.cache_dir;
+    auto taken_here = [&] {
+        return ranges::contains(options.taken_cache_dirs, loaded.config.project.cache_identity());
+    };
+    auto taken = [&] {
+        return !cache_dir.empty() && (taken_here() || owned_elsewhere(cache_dir, root));
+    };
+    if(!root.empty() && taken()) {
+        std::string requested = cache_dir;
+        auto reason = taken_here()
+                          ? std::string("already serves another project")
+                          : std::format("serves the project at {}", cache_dir_owner(requested));
+        for(auto& fallback: {file_cache_dir, std::string()}) {
+            loaded.config = layered;
+            loaded.config.project.cache_dir = fallback;
+            problems = loaded.config.finalize(root);
+            if(!taken()) {
+                break;
+            }
+        }
+        if(taken()) {
+            cache_dir.clear();
+            loaded.config.project.cache_dir_defaulted = false;
+        }
+        LOG_GUIDANCE("Cache directory {} {}; {} {}",
+                     requested,
+                     reason,
+                     root,
+                     cache_dir.empty() ? std::string("keeps no cache")
+                                       : std::format("keeps its cache in {}", cache_dir));
+    }
+    for(auto& problem: problems) {
+        if(options.overlay && sets(*options.overlay, problem.path)) {
+            issues.push_back(
+                {.severity = Severity::Error,
+                 .message = std::format("{}: {}", options.overlay_name, problem.to_string())});
+        } else {
+            issues.push_back(
+                make_issue(Severity::Error, loaded.path, problem, parsed ? &*parsed : nullptr));
+        }
+    }
+
+    llvm::StringRef requested = options.configuration;
+    if(options.strict) {
+        if(auto checked = check_requested_configuration(loaded.config, requested); !checked) {
+            issues.push_back({.severity = Severity::Error, .message = std::move(checked.error())});
+            requested = {};
+        }
+    }
+    loaded.configuration = resolve_configuration(loaded.config, requested);
+    return loaded;
 }
 
-/// Where a cache directory outside its workspace root records its owner.
+/// Where a cache directory outside its project root records its owner.
 constexpr static llvm::StringRef cache_owner_file = "owner";
 
 std::string cache_dir_owner(llvm::StringRef cache_dir) {
@@ -460,36 +572,14 @@ bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root) {
 }
 
 void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
-    auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.
-    if(owner == llvm::StringRef(root) ||
-       (!path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
-        live_owner(owner, root))) {
+    if(cache_dir_owner(cache_dir) == llvm::StringRef(root) || owned_elsewhere(cache_dir, root)) {
         return;
     }
     if(auto error = fs::write_file(path::join(cache_dir, cache_owner_file), root.str() + "\n")) {
         LOG_WARN("Cannot record the owner of cache directory {}: {}", cache_dir, error.message());
     }
-}
-
-void Config::keep_own_cache_dir() {
-    auto& p = project;
-    if(p.cache_dir.empty() || !owned_elsewhere(p.cache_dir, project_root)) {
-        return;
-    }
-    auto own = path::join(project_root, ".clice");
-    path::canonicalize(own);
-    LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps its cache in {}",
-                 p.cache_dir,
-                 cache_dir_owner(p.cache_dir),
-                 project_root,
-                 own);
-    if(path::is_within(p.logging_dir, p.cache_dir)) {
-        p.logging_dir = path::join(own, "logs");
-    }
-    p.cache_dir = std::move(own);
-    p.cache_dir_defaulted = true;
 }
 
 std::expected<std::string, std::string> Config::json_schema() {

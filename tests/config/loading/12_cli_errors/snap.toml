@@ -1,0 +1,40 @@
+[malformed."$ clice lint"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice index"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice scan"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice command main.cpp"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice format --check"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice inspect document-symbols main.cpp"]
+stderr = "error: ${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+exit = 2
+
+[malformed."$ clice query project-files"]
+stdout = '''
+{
+  "error": "${WS}/clice.toml:1:9: TOML parse error: Error while parsing table header: expected ']', saw '\\n'",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown key"."$ clice lint"]
+stdout = '''
+${WS}/main.cpp:2:2: error: the rule meant for other.cpp reached main.cpp [clang-diagnostic-error]
+Linted 2 translation units in #s: 1 finding.
+'''
+stderr = "warning: ${WS}/clice.toml:2:1: unknown field 'pattrens' at rules[0]"
+exit = 1

@@ -201,7 +201,7 @@ struct ContextChoices {
 ///
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
-///   - Initialization  (load_project at startup)
+///   - Opening         (open, once)
 ///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Project {
@@ -231,7 +231,7 @@ struct Project {
     Build build{config, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
-    /// load_project() when cache_dir is configured; absent means caching
+    /// open() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
     /// database, written by save_project.
@@ -384,10 +384,93 @@ struct Project {
     /// The build_inputs of `modules`, each once: what their PCMs were built
     /// from, their imports' inputs included, or what keeps them failing.
     DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
+
+    /// How much of the project a run opens (open()).
+    struct OpenOptions {
+        /// What of the build loads.
+        enum class Build : std::uint8_t {
+            /// No database: the rules alone, for commands converted under
+            /// them.
+            None,
+            /// The databases alone, for the commands of one file.
+            Databases,
+            /// The databases, the provisional members the index remembers,
+            /// the members and the dependency graph.
+            Members,
+        };
+
+        /// How the cache store opens.
+        enum class Store : std::uint8_t {
+            None,
+            /// For a run reading what others built.
+            ReadOnly,
+            /// For a run building artifacts (PCHs, PCMs) itself.
+            Writable,
+        };
+
+        /// How the index database opens.
+        enum class Index : std::uint8_t {
+            None,
+            /// Read-only, without the writer lock: a concurrent writer keeps
+            /// owning it, and what the run changes stays in memory.
+            Read,
+            /// As the writer, under the cache directory's writer lock.
+            Write,
+        };
+
+        /// The build configuration to activate (LoadedConfig::configuration).
+        llvm::StringRef configuration;
+
+        Build build = Build::Members;
+
+        Store store = Store::None;
+
+        Index index = Index::None;
+
+        /// The file a run is about: the databases in its directory and
+        /// above it up to the root join the ones discovered.
+        CanonicalPath file;
+    };
+
+    /// What open() found.
+    struct Opened {
+        /// Whether any compile command source is in place: a database
+        /// loaded, or a rule's default command. False means every file
+        /// compiles with the builtin fallback until a database appears —
+        /// the persisted index is still loaded then, so a database
+        /// generated later starts from the previous session's state.
+        bool has_commands = false;
+
+        /// The build's translation units: the indexing pass's work list,
+        /// so no driver walks the tree a second time.
+        std::vector<Fid> members;
+
+        /// The dependency scan from them.
+        ScanReport scan;
+
+        /// The units owed a reindex the load found: the ones a rule keeps
+        /// out or whose command changed while no server ran.
+        index::IndexReport report;
+
+        /// Why the index could not be read, for a run reading it: it opens
+        /// with none then. Empty when it was read.
+        std::string unreadable;
+    };
+
+    /// Open the project over its final configuration (load_config), once,
+    /// in a fixed order: the cache store and the index database; what the
+    /// index remembers (the databases of earlier sessions, the provisional
+    /// members); the build; the saved state — the index, the artifact
+    /// records, the context choices — reconciled with the build when that
+    /// is loaded: the units a rule keeps out and those whose command
+    /// changed while no server ran leave the index, in memory only when the
+    /// database is read-only. A run reading the index without the build
+    /// binds its tables alone, fetched on first use.
+    Opened open(const OpenOptions& options);
 };
 
 /// Where a `compile_commands.json` is looked for when no rule declares
-/// one: the workspace root, then its direct subdirectories in name order.
+/// one: the project root, then its direct subdirectories in name order.
 llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
 
 /// The `compile_commands.json` files to load when no rule declares one:
@@ -398,7 +481,7 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root)
 /// The `compile_commands.json` files discovery passes over, deeper than
 /// the root's direct subdirectories down to three directories below it
 /// (hidden directories, `node_modules` and the cache directory skipped),
-/// by path: what the guidance of a workspace without a database names.
+/// by path: what the guidance of a project without a database names.
 llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir);
 
@@ -408,10 +491,28 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
 bool defines_project(CanonicalRef dir);
 
 /// The nearest directory at or above `start` holding a configuration file
-/// or a compile_commands.json, directly or in its build/ directory: the
-/// root of the project a file outside every served folder belongs to.
-/// Empty when no ancestor has either.
-CanonicalPath project_root_above(CanonicalRef start);
+/// or a compile_commands.json, directly or in its build/ directory, spelled
+/// as `start` is: the root of the project a directory belongs to, as the
+/// server finds it for a file outside every served folder and the command
+/// line from the current directory. Empty when no ancestor has either.
+Spelling project_root_above(const Spelling& start);
+
+/// The sentence the guidance of a project without a database ends with:
+/// the rule that loads the compile_commands.json files discovery passes
+/// over (deeper_compile_commands). Empty when there is none, or the rules
+/// declare the build's sources.
+std::string deeper_databases_hint(const Project& project);
+
+/// Whether a database the load found on disk could not be read, which its
+/// load logged the reason for.
+bool found_unreadable_database(const Project& project);
+
+/// Why the build has no member, completing a batch command's "Nothing to
+/// <verb>: ": a database it found that cannot be read, does not exist yet
+/// or lists no file; the rules' default commands claiming no file; else
+/// that no database was found in `root` or its direct subdirectories, and
+/// the deeper ones there are.
+std::string why_no_members(const Project& project, llvm::StringRef root);
 
 /// Where a `compile_commands.json` is looked for in `start` and its
 /// ancestors up to `project_root`, nearest first.

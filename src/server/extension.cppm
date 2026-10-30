@@ -133,9 +133,9 @@ struct ListConfigurationsResult {
 };
 
 /// clice/switchConfiguration: persist `name` as the selected
-/// configuration. The running server keeps its configuration; the choice
-/// takes effect when the client restarts it. `uri` names the project as
-/// in ListConfigurationsParams.
+/// configuration. The running server keeps its configuration; it asks for
+/// the restart that applies the choice (clice/restartServer). `uri` names
+/// the project as in ListConfigurationsParams.
 struct SwitchConfigurationParams {
     std::string name;
     std::optional<std::string> uri;
@@ -171,8 +171,9 @@ struct CounterpartsResult {
     std::optional<std::string> preferred;
 };
 
-/// clice/internal/poll — TEST-ONLY, not a stable API. Runs
-/// one file-tracker tick (stat → diff → events → dispatch → effects) and
+/// clice/internal/poll — TEST-ONLY, not a stable API. Runs a look at the
+/// configuration files, then one file-tracker tick (stat → diff → events →
+/// dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can
 /// disable the polling loops and get "change disk → poll → assert"
 /// determinism with zero sleeps. Absent from capabilities and user docs.
@@ -277,6 +278,21 @@ struct StatsResult {
 
     /// The process ids of the workers in service, by kind.
     WorkerPids workers;
+};
+
+/// What a client declares under its capabilities' `experimental` key.
+struct ExperimentalCapabilities {
+    /// The client restarts the server when asked (RestartServerParams):
+    /// it owns the server process.
+    bool restart_server = false;
+};
+
+/// clice/restartServer, sent to a client that declared it handles it: what
+/// the server was started on changed, and only a new server applies it.
+/// The client restarts the server as its restart command does.
+struct RestartServerParams {
+    /// What changed, for the user.
+    std::string reason;
 };
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.

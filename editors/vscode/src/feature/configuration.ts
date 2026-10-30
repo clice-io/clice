@@ -114,12 +114,6 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             vscode.window.showWarningMessage(
                 `clice: cannot switch the build configuration: ${switched.reason}`,
             );
-            return;
-        }
-        if (chosen.label !== result.active) {
-            // The choice is persisted only; the running server keeps its
-            // configuration until it is started again.
-            await vscode.commands.executeCommand("clice.restart");
         }
     }
 

@@ -9,10 +9,11 @@ function libraries(t: TestContext): string[] {
 }
 
 /// Point out/current at another build, as the build system does, and have
-/// the server look at its databases.
+/// the server look at its databases: it asks to be restarted on that build.
 async function flip(t: TestContext, s: Serve, build: string): Promise<void> {
     t.disk.linkDirectory("out/current", `out/${build}`);
     await s.poll("cdb");
+    await s.restarted();
     await s.indexed();
 }
 
@@ -43,10 +44,9 @@ test("switching back indexes nothing", async (t) => {
     const s = await t.start();
     await s.indexed();
     await flip(t, s, "debug");
-    const indexed = (await s.counts()).index;
     await flip(t, s, "release");
     await t.show("release again", s.workspaceSymbols("_only"));
-    expect((await s.counts()).index).toBe(indexed);
+    expect((await s.counts()).index).toBe(0);
 });
 
 test("a server starts on the build the link names", async (t) => {
@@ -67,7 +67,7 @@ test("the hand-written configuration reuses the index", async (t) => {
     await s.indexed();
     expect(libraries(t)).toEqual(["debug"]);
     expect(await s.switchConfiguration("debug")).toEqual({ success: true, reason: null });
-    await s.restart();
+    await s.restarted();
     await s.indexed();
     await t.show("debug", { menu: s.configurations(), symbols: s.workspaceSymbols("_only") });
     expect((await s.counts()).index).toBe(0);
@@ -110,21 +110,22 @@ test("a link made after the start", async (t) => {
     await s.indexed();
     t.disk.linkDirectory("out/current", "out/release");
     await s.poll("cdb");
+    await s.restarted();
     await s.indexed();
     await t.show("release", s.workspaceSymbols("_only"));
     expect(libraries(t)).toEqual(["active-out_current", "active-out_release"]);
 });
 
-test("clice index while the server switches", async (t) => {
+test("clice index while the server waits for a restart", async (t) => {
     t.disk.linkDirectory("out/current", "out/release");
     const s = await t.start();
     await s.indexed();
-    // The server has not looked since the link moved (tests run with polling
-    // off): the request finds it out and is refused rather than indexing into
-    // the release build's index, until a look switches the server.
+    // The request finds the link moved and is refused rather than indexing
+    // into the release build's index, until the server restarted on the
+    // debug one.
     t.disk.linkDirectory("out/current", "out/debug");
     await t.cli("index --jobs 2");
-    await s.poll("cdb");
+    await s.restarted();
     await s.indexed();
     await t.cli("index --jobs 2");
     await t.show("debug", s.workspaceSymbols("_only"));

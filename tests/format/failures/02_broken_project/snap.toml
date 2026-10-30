@@ -1,9 +1,5 @@
 ["a broken configuration"."$ clice format"]
-stderr = '''
-error: Invalid clice.toml ${WS}/clice.toml: TOML parse error: Error while parsing table header: expected ']', saw '\n' (line 1, column 8)
-warning: Falling back to default configuration because ${WS}/clice.toml is invalid
-${WS}/clice.toml: TOML parse error: Error while parsing table header: expected ']', saw '\n' (line 1, column 8)
-'''
+stderr = "error: ${WS}/clice.toml:1:8: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
 exit = 2
 
 ["a broken compilation database"."$ clice format --check"]

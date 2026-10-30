@@ -1,0 +1,8 @@
+# clice.toml at the root names no database; sub/ has its own under build/,
+# which alone defines VALUE: a client taking the root for the project
+# compiles a.cpp with the fallback command and fails.
+[units]
+"sub/a.cpp" = ["-DVALUE=3"]
+
+[databases]
+"sub/build" = ["sub/a.cpp"]

@@ -1,6 +1,6 @@
 module clice;
 
-import :project.configuration;
+import :config.configuration;
 import :server.file_tracker;
 import :vfs.file_system;
 import :vfs.path;

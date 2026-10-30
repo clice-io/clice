@@ -1,8 +1,8 @@
 module clice;
 
+import :config.configuration;
 import :feature.protocol;
 import :project.command_resolver;
-import :project.configuration;
 import :project.hosting;
 import :server.ast_family;
 import :server.context_service;

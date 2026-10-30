@@ -342,26 +342,6 @@ auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& con
     return naming;
 }
 
-/// What completing a call or a template inserts after the name
-/// (CodeCompletionOptions::arguments).
-enum class Arguments : std::uint8_t {
-    Placeholders,
-    Delimiters,
-    None,
-};
-
-/// The server warns of a value outside the option's choices when it loads
-/// the configuration.
-Arguments arguments_of(llvm::StringRef option) {
-    if(option == "delimiters") {
-        return Arguments::Delimiters;
-    }
-    if(option == "none") {
-        return Arguments::None;
-    }
-    return Arguments::Placeholders;
-}
-
 /// The virtual functions of `record`'s bases, direct or not, an override
 /// declaration in its body may name: none that it, or a class between it and
 /// the base, overrides, and none final or deleted. Sema offers only its
@@ -1042,8 +1022,8 @@ public:
             WholeBuffer& whole) :
         clang::CodeCompleteConsumer(sema_options(options)), focus(focus), offset(offset),
         encoding(encoding), output(output), documented(documented), options(options),
-        argument_style(arguments_of(options.arguments)), client(client),
-        scope_candidates(candidates), includes_pending(includes_pending),
+        argument_style(options.arguments), client(client), scope_candidates(candidates),
+        includes_pending(includes_pending),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()), whole(whole) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
@@ -1669,30 +1649,31 @@ public:
         /// its placeholders, or its parentheses with the cursor between them
         /// — what a bundle of several overloads takes too. A call without
         /// parameters is complete with its parentheses.
-        auto insert_call =
-            [&](Candidate& item, const clang::CodeCompletionString& ccs, bool called_here) {
-                if(arguments_follow || !called_here || argument_style == Arguments::None) {
-                    return;
-                }
-                auto complete = item.label + "()";
-                if(!client.snippets) {
-                    item.insert = complete;
-                    item.bundled_insert = std::move(complete);
-                    return;
-                }
-                item.bundled_insert = escape_snippet(item.label) + "($0)";
-                item.bundled_snippet = true;
-                auto snippet = build_snippet(ccs);
-                if(snippet.empty()) {
-                    item.insert = std::move(complete);
-                } else if(argument_style == Arguments::Placeholders) {
-                    item.insert = std::move(snippet);
-                    item.snippet = true;
-                } else {
-                    item.insert = item.bundled_insert;
-                    item.snippet = true;
-                }
-            };
+        auto insert_call = [&](Candidate& item,
+                               const clang::CodeCompletionString& ccs,
+                               bool called_here) {
+            if(arguments_follow || !called_here || argument_style == CompletionArguments::None) {
+                return;
+            }
+            auto complete = item.label + "()";
+            if(!client.snippets) {
+                item.insert = complete;
+                item.bundled_insert = std::move(complete);
+                return;
+            }
+            item.bundled_insert = escape_snippet(item.label) + "($0)";
+            item.bundled_snippet = true;
+            auto snippet = build_snippet(ccs);
+            if(snippet.empty()) {
+                item.insert = std::move(complete);
+            } else if(argument_style == CompletionArguments::Placeholders) {
+                item.insert = std::move(snippet);
+                item.snippet = true;
+            } else {
+                item.insert = item.bundled_insert;
+                item.snippet = true;
+            }
+        };
 
         /// After `t.`, `t->` or `T::` on a template parameter, Sema offers
         /// what the constraints on it require as patterns: a name and, for
@@ -1903,8 +1884,8 @@ public:
                             preferred.isNull() ||
                                 (!result.isNull() && !preferred->isDependentType() &&
                                  initializes(sema.getASTContext(), result, preferred)));
-            } else if(argument_style != Arguments::None && client.snippets && !arguments_follow &&
-                      !context.isUsingDeclaration() &&
+            } else if(argument_style != CompletionArguments::None && client.snippets &&
+                      !arguments_follow && !context.isUsingDeclaration() &&
                       llvm::isa<clang::ClassTemplateDecl,
                                 clang::TypeAliasTemplateDecl,
                                 clang::VarTemplateDecl>(declaration)) {
@@ -1913,7 +1894,7 @@ public:
                 // name alone does not name a type.
                 if(snippet.empty()) {
                     item.insert = item.label + "<>";
-                } else if(argument_style == Arguments::Placeholders) {
+                } else if(argument_style == CompletionArguments::Placeholders) {
                     item.insert = std::move(snippet);
                     item.snippet = true;
                 } else {
@@ -2299,7 +2280,7 @@ public:
                     item.bundle = item.label;
                 }
                 // Not knowing the parameters, a call takes its parentheses.
-                if(argument_style != Arguments::None && !arguments_follow) {
+                if(argument_style != CompletionArguments::None && !arguments_follow) {
                     if(function && !expects_function(context.getPreferredType())) {
                         item.insert = client.snippets ? escape_snippet(item.label) + "($0)"
                                                       : item.label + "()";
@@ -2400,7 +2381,7 @@ private:
     std::vector<const clang::NamedDecl*>& documented;
 
     const CodeCompletionOptions& options;
-    Arguments argument_style;
+    CompletionArguments argument_style;
     const CompletionClient& client;
     llvm::ArrayRef<ScopeCandidate> scope_candidates;
     /// Set once an item needs the header of its symbol included (Completion).

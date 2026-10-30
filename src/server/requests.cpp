@@ -876,7 +876,7 @@ Requests::RawResult Requests::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::workspace_refusal(project.config.project_root)) {
+    if(auto refused = feature::rename_refusal(project.config.project_root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     co_return co_await navigate(ticket,
@@ -902,7 +902,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
                      const protocol::Position& position,
                      std::string new_name) {
     // Refused up front, before the cursor costs a compile.
-    if(auto refused = feature::workspace_refusal(project.config.project_root)) {
+    if(auto refused = feature::rename_refusal(project.config.project_root)) {
         co_await kota::fail(request_failed(std::move(*refused)));
     }
     if(ticket.session) {
@@ -924,10 +924,10 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
 
     // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
-    EditableFiles workspace(project.config);
+    EditableFiles editable_files(project.config);
     auto texts = co_await kota::queue(
-        [workspace, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
-            return feature::RenameTexts(workspace.sources(), names);
+        [editable_files, names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
+            return feature::RenameTexts(editable_files.sources(), names);
         });
     if(ticket.session && !ticket.fresh()) {
         co_await kota::fail(content_modified());
@@ -948,7 +948,7 @@ kota::task<std::optional<feature::Renamed>, ipc::Error>
     }
 
     auto editable = [&](llvm::StringRef path) {
-        return workspace.editable(path);
+        return editable_files.editable(path);
     };
     // Open buffers are read as the editor holds them.
     auto buffer = [&](llvm::StringRef path) -> std::optional<llvm::StringRef> {

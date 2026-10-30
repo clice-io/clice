@@ -47,74 +47,70 @@ kota::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpo
 }
 
 void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
-    peer.on_request([&srv](RequestContext&,
-                           const IndexParams& params) -> RequestResult<IndexParams> {
-        auto active = srv.project.build.active_configuration();
-        if(params.configuration != active) {
-            co_await kota::fail(ipc::Error{
-                std::format("the running clice server indexes configuration '{}', not '{}'",
-                            std::string_view(active),
-                            params.configuration)});
-        }
-        if(!srv.project.config.project.enable_indexing.value) {
-            co_await kota::fail(
-                ipc::Error{"the running clice server has background indexing disabled"});
-        }
-        // Build changes arrive through the tracker's poll; a request right
-        // after a compile_commands.json edit must see the new units.
-        srv.project.file_table.disk.look_flags();
-        // The poll restarts the project on the other build; restarted
-        // here, it would close this very channel before the answer.
-        if(srv.tracker && srv.tracker->moved()) {
-            co_await kota::fail(
-                ipc::Error{srv.project.config.tracker.workspace_poll_seconds.value > 0
-                               ? "the running clice server is about to switch to the build its "
-                                 "databases now resolve to; run the command again in a moment"
-                               : "the databases of the running clice server now resolve to another "
-                                 "build, which it switches to when it starts again: polling is off "
-                                 "(tracker.workspace_poll_seconds = 0)"});
-        }
-        srv.reload_databases(/*force=*/true);
-        auto members = srv.project.build.members();
-        if(members.empty()) {
-            co_await kota::fail(ipc::Error{
-                "nothing to index: the running clice server's build has no translation units"});
-        }
-        IndexResult result;
-        llvm::SmallVector<Fid> files;
-        for(auto member: members) {
-            if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
-                files.push_back(member);
+    peer.on_request(
+        [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
+            auto active = srv.project.build.active_configuration();
+            if(params.configuration != active) {
+                co_await kota::fail(ipc::Error{
+                    std::format("the running clice server indexes configuration '{}', not '{}'",
+                                std::string_view(active),
+                                params.configuration)});
             }
-        }
-        srv.sched.pump.schedule(/*immediate=*/true);
-        for(auto file: files) {
-            // One await covers one attempt; a crash or preemption
-            // requeues the file behind it.
-            while(srv.sched.pump.pending_reason(file)) {
-                co_await srv.sched.pump.await_attempt(file);
+            if(!srv.project.config.project.enable_indexing.value) {
+                co_await kota::fail(
+                    ipc::Error{"the running clice server has background indexing disabled"});
             }
-        }
-        // The round persists at its end; the asker reads the disk, so its
-        // index must be there before the answer.
-        co_await srv.sched.pump.persist();
-        if(has_unsaved_state(srv.project)) {
-            co_await kota::fail(
-                ipc::Error{"part of the index could not be persisted; see the server log"});
-        }
-        // Not current after the pass: the attempt failed, or the serving
-        // side vetoed it (an open buffer diverged from the disk) and the
-        // shard still describes older bytes.
-        for(auto file: files) {
-            auto* shard = srv.project.index.shard(file);
-            auto disk = srv.project.file_table.disk.current(file);
-            bool current = shard && disk && shard->content_hash() == disk->hash;
-            if(!current) {
-                result.failed.emplace_back(srv.project.file_table.display(file));
+            // Build changes arrive through the tracker's poll; a request right
+            // after a compile_commands.json edit must see the new units.
+            srv.project.file_table.disk.look_flags();
+            srv.reload_databases(/*force=*/true);
+            // Indexing would fill the old build's index while a --fresh answer
+            // then opens the new one's.
+            if(srv.tracker && srv.tracker->moved()) {
+                co_await kota::fail(ipc::Error{
+                    "the compilation databases of the running clice server now resolve to another "
+                    "build, which it opens once it restarts"});
             }
-        }
-        co_return result;
-    });
+            auto members = srv.project.build.members();
+            if(members.empty()) {
+                co_await kota::fail(ipc::Error{
+                    "nothing to index: the running clice server's build has no translation units"});
+            }
+            IndexResult result;
+            llvm::SmallVector<Fid> files;
+            for(auto member: members) {
+                if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
+                    files.push_back(member);
+                }
+            }
+            srv.sched.pump.schedule(/*immediate=*/true);
+            for(auto file: files) {
+                // One await covers one attempt; a crash or preemption
+                // requeues the file behind it.
+                while(srv.sched.pump.pending_reason(file)) {
+                    co_await srv.sched.pump.await_attempt(file);
+                }
+            }
+            // The round persists at its end; the asker reads the disk, so its
+            // index must be there before the answer.
+            co_await srv.sched.pump.persist();
+            if(has_unsaved_state(srv.project)) {
+                co_await kota::fail(
+                    ipc::Error{"part of the index could not be persisted; see the server log"});
+            }
+            // Not current after the pass: the attempt failed, or the serving
+            // side vetoed it (an open buffer diverged from the disk) and the
+            // shard still describes older bytes.
+            for(auto file: files) {
+                auto* shard = srv.project.index.shard(file);
+                auto disk = srv.project.file_table.disk.current(file);
+                bool current = shard && disk && shard->content_hash() == disk->hash;
+                if(!current) {
+                    result.failed.emplace_back(srv.project.file_table.display(file));
+                }
+            }
+            co_return result;
+        });
 }
 
 using Connections = std::list<std::unique_ptr<ipc::JSONPeer>>;

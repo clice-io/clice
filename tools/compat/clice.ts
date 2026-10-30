@@ -3,6 +3,7 @@
 /// for the real compiler) and, per file, `clice command`: the database's
 /// entries as clice reads them and the commands it compiles with.
 
+import * as path from "node:path";
 import { run } from "./scenario.ts";
 
 export interface LintRun {
@@ -35,14 +36,18 @@ export async function lint(clice: string, root: string, env: NodeJS.ProcessEnv):
 }
 
 /// `clice command <file> --json`: the file's entries, in the order the
-/// build ranks them.
+/// build ranks them; a relative `file` under `root`.
 export async function fileCommands(
     clice: string,
     root: string,
     file: string,
     env: NodeJS.ProcessEnv,
 ): Promise<EntryCommands[]> {
-    const ran = await run(clice, ["command", file, "--workspace", root, "--json"], { env });
+    const ran = await run(
+        clice,
+        ["command", path.resolve(root, file), "--workspace", root, "--json"],
+        { env },
+    );
     if (ran.status !== 0) {
         throw new Error(
             `clice command ${file}: ${ran.error ?? `exit ${ran.status}`}\n${ran.stdout}\n${ran.stderr}`,

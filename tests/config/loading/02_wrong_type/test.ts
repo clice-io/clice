@@ -18,3 +18,14 @@ test("the fix clears it", INVALID, async (t) => {
     });
     await t.show("fixed", s.pushes("clice.toml"));
 });
+
+// Saving the fix restarts the server, which serves the project.
+test("saving the fix serves", INVALID, async (t) => {
+    const s = await t.start();
+    s.open("main.cpp");
+    await t.show("broken", s.documentSymbols("main.cpp"));
+    t.disk.write("clice.toml", "[project]\nenable_indexing = true\n");
+    await s.poll("workspace");
+    await t.show("asked", await s.restarted());
+    await t.show("fixed", s.documentSymbols("main.cpp"));
+});

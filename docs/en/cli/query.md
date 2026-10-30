@@ -14,7 +14,7 @@
 - `project-files [--filter all|source|header|module]` lists the build's files; `file-deps <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impact-analysis <file>` the include graph and the files that import a module the file is part of.
 - `counterparts <file>` lists the files the file pairs with — a header's sources, a source's headers, a module's interface and implementation units — best first, each with its reasons, and names the one an editor would open without asking as `preferred` (see [Switch Source/Header](../features/navigation.md#switch-source-header)).
 
-Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
+Paths are relative to the current directory or absolute in questions, absolute in answers; lines are 1-based.
 
 ## Locators
 
@@ -29,11 +29,11 @@ A locator names symbols, wherever a command takes one. It is one string: spaces 
 | `::ns::Foo::bar`             | symbols inside exactly that container                                                                                                                                                                                                                      |
 | `ns::*`, `ns::**`            | the container's members; everything below it                                                                                                                                                                                                               |
 | `Widget<int>`                | the specialization spelling those arguments                                                                                                                                                                                                                |
-| `#1a2b3c`                    | the symbol with that id; one only some files see takes `path:` naming a file that holds it, workspace-relative or absolute                                                                                                                                 |
+| `#1a2b3c`                    | the symbol with that id; one only some files see takes `path:` naming a file that holds it, relative or absolute                                                                                                                                           |
 | `src/a.cpp:120`              | the symbols defined on that line                                                                                                                                                                                                                           |
 | `src/a.cpp:120:8`            | the symbol under that cursor, with a 1-based line and byte column                                                                                                                                                                                          |
 | `kind:function,method`       | only these kinds                                                                                                                                                                                                                                           |
-| `path:src/index/`            | symbols declared in that file or under that directory, a relative path starting at the workspace root; a bare file name, `path:a.cpp`, matches every file of that name                                                                                     |
+| `path:src/index/`            | symbols declared in that file or under that directory, a path relative to the current directory; a bare file name, `path:a.cpp`, matches every file of that name                                                                                           |
 
 A local or a parameter is known only to its file: a name finds it only together with `path:` naming the file or its directory. An entity of internal linkage at namespace scope — `static`, or in an anonymous namespace — a name finds wherever it is.
 
@@ -168,7 +168,7 @@ tests/query/names/05_file_local_names
 
 **Narrow by path**
 
-A `path:` filter keeps the symbols of the files under a path, spelled from the workspace root, as a file name or absolute
+A `path:` filter keeps the symbols of the files under a path, spelled from the current directory, as a file name or absolute
 
 ```case
 tests/query/names/06_path_filters

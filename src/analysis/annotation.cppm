@@ -12,7 +12,7 @@ struct Annotation {
     std::string name;
     std::string unit;
 
-    /// Workspace-relative path -> value.
+    /// Path relative to the project root -> value.
     llvm::StringMap<double> values;
 };
 
@@ -33,10 +33,10 @@ struct Annotations {
 };
 
 /// An annotation file: `{"name": ..., "unit": ..., "values": {path: number}}`,
-/// paths relative to the workspace.
+/// paths relative to the project root.
 std::expected<Annotation, std::string> read_annotation(llvm::StringRef path);
 
-/// The churn annotation from the workspace's git history: per file, the
+/// The churn annotation from the project's git history: per file, the
 /// commits since `since` (any `git log --since` value) that touched it.
 std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since);
 

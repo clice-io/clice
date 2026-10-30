@@ -1,4 +1,4 @@
-module clice:project.configuration;
+module clice:config.configuration;
 
 import :config.config;
 import :index.database;

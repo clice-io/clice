@@ -9,12 +9,9 @@ import :index.project_index;
 import :index.shard;
 import :project.build;
 import :project.command_resolver;
-import :project.configuration;
-import :project.load;
 import :project.project;
 import :project.save;
 import :sched.batch;
-import :sched.bootstrap;
 import :sched.index.pump;
 import :sched.stack;
 import :support.anomaly;
@@ -159,17 +156,16 @@ struct Lifetime {
     }
 };
 
-/// Shared batch startup: the command's config with the run's overrides,
-/// the session file logger, and the worker pool. `log_tag` names the log
-/// files after the subcommand.
+/// Shared batch startup: the command's config with the run's overrides
+/// (`workers` for the project's), the session file logger, and the worker
+/// pool. `log_tag` names the log files after the subcommand.
 bool start_batch(Stack& stack,
-                 Config config,
-                 const Spelling& root,
+                 const BatchProject& batch,
                  std::uint32_t workers,
                  llvm::StringRef log_tag) {
     auto& project = stack.project;
-    stack.files.spell_root(root);
-    project.config = std::move(config);
+    stack.files.spell_root(batch.root);
+    project.config = batch.config.config;
     auto& cfg = project.config.project;
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
@@ -211,11 +207,9 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
 
     // The machine is the run's: every logical core, while memory admits
     // the units.
-    bool started = start_batch(stack,
-                               options.config,
-                               options.root,
-                               options.workers != 0 ? options.workers : sys::parallelism(),
-                               "index");
+    auto& batch = options.project;
+    bool started =
+        start_batch(stack, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
     result.log_dir = stack.log_dir;
     if(!started) {
         result.exit_code = 1;
@@ -228,10 +222,13 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
     project.config.project.enable_indexing.value = true;
     stack.sched.pump.collect_errors();
 
-    auto report = bootstrap_project(project,
-                                    stack.sched.pump,
-                                    project.config.project_root,
-                                    options.configuration);
+    auto opened = project.open({
+        .configuration = batch.config.configuration,
+        .store = Project::OpenOptions::Store::Writable,
+        .index = Project::OpenOptions::Index::Write,
+    });
+    stack.sched.pump.apply_report(opened.report);
+    stack.sched.pump.enqueue_outdated(opened.members);
 
     // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,
@@ -245,8 +242,8 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
         co_await shutdown(stack);
         co_return;
     }
-    if(report.members.empty()) {
-        LOG_ERROR("Nothing to index: {}", why_no_members(project, options.root));
+    if(opened.members.empty()) {
+        LOG_ERROR("Nothing to index: {}", why_no_members(project, batch.root));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -489,7 +486,8 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     ScopedTimer timer;
     auto& project = stack.project;
 
-    if(!start_batch(stack, options.config, options.root, options.workers, "lint")) {
+    auto& batch = options.project;
+    if(!start_batch(stack, batch, batch.workers, "lint")) {
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
@@ -498,19 +496,24 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     }
     // The command's product is the lint report: the background pass must
     // not race the plan's own runs, and without --index nothing may touch
-    // the persisted index — the read-only load queues no reconciliation
-    // or removal writes, so the shutdown save commits nothing.
+    // the persisted index — it opens read-only, so the shutdown save
+    // commits nothing.
     project.config.project.enable_indexing.value = false;
 
-    auto report = bootstrap_project(project,
-                                    stack.sched.pump,
-                                    project.config.project_root,
-                                    options.configuration,
-                                    /*read_only_index=*/!options.with_index);
+    auto opened = project.open({
+        .configuration = batch.config.configuration,
+        .store = Project::OpenOptions::Store::Writable,
+        .index = options.with_index ? Project::OpenOptions::Index::Write
+                                    : Project::OpenOptions::Index::Read,
+    });
+    stack.sched.pump.apply_report(opened.report);
+    if(options.with_index) {
+        stack.sched.pump.enqueue_outdated(opened.members);
+    }
 
-    auto& members = report.members;
+    auto& members = opened.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", why_no_members(project, options.root));
+        LOG_ERROR("Nothing to lint: {}", why_no_members(project, batch.root));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -549,7 +552,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
     result.findings = std::move(pass.findings);
     if(options.with_index && !lifetime.stop_requested) {
         // The pass's merges can owe other TUs a reindex (a rebuilt shared
-        // shard dropped their variants), and bootstrap may have taken
+        // shard dropped their variants), and the opening may have taken
         // prior-session debt — the pass runs outside the pump, so nothing
         // drained any of it. Drain it through the pump like the index
         // batch does, or an already-linted owner's index stays missing while
@@ -596,9 +599,9 @@ struct FormatFile {
 };
 
 /// The files `clice format` formats without arguments: the build's
-/// translation units that are the workspace's own (project_file: not in
+/// translation units that are the project's own (project_file: not in
 /// a build tree, where FetchContent puts the sources it fetches) and
-/// every file they include that is the workspace's own — inside it,
+/// every file they include that is the project's own — inside it,
 /// outside the cache directory, the build trees (the directories below the
 /// root holding one of the build's databases: what a build generates or
 /// fetches lives there) and the commands' system include directories, of
@@ -608,9 +611,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     auto& files = project.file_table;
 
     CanonicalRef root = project.config.project_root;
-    auto cache_dir = project.config.project.cache_dir.empty()
-                         ? CanonicalPath()
-                         : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
+    auto cache_dir = project.config.project.cache_identity();
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
         if(!ranges::contains(skipped_dirs, dir)) {
@@ -620,7 +621,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     if(!cache_dir.empty()) {
         skip(cache_dir);
     }
-    // A database at the workspace root, or above it, is a copy of the
+    // A database at the project root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own;
     // a root link to build/compile_commands.json names build/.
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
@@ -728,35 +729,19 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     ScopedTimer timer;
     BatchFormatResult result;
 
-    if(!fs::is_directory(options.root)) {
-        result.exit_code = 2;
-        result.error = std::format("{}: not a directory", options.root);
-        return result;
-    }
-    // A rewriting command does not run on defaults a broken configuration
-    // fell back to: the exclusions would be gone with it.
     FileTable file_table;
+    file_table.spell_root(options.root);
     Project project{file_table};
-    std::vector<ConfigIssue> issues;
-    project.config = Config::load_from_workspace(options.root, &issues);
-    for(auto& issue: issues) {
-        if(issue.severity == ConfigIssue::Severity::Error) {
-            result.exit_code = 2;
-            result.error = std::format("{}: {}", issue.file, issue.message);
-            return result;
-        }
-    }
-    if(auto checked = check_requested_configuration(project.config, options.configuration);
-       !checked) {
-        result.exit_code = 2;
-        result.error = std::move(checked.error());
-        return result;
-    }
-    auto configuration = resolve_configuration(project.config, options.configuration);
-    project.build.reset_active(configuration);
-
+    project.config = options.config.config;
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
+    bool whole = options.paths.empty() ||
+                 ranges::any_of(options.paths, [](auto& path) { return fs::is_directory(path); });
+    auto opened = project.open({
+        .configuration = options.config.configuration,
+        .build = whole ? Project::OpenOptions::Build::Members : Project::OpenOptions::Build::None,
+    });
+
     std::vector<FormatFile> files;
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.project_root;
@@ -773,7 +758,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             return result;
         } else {
             // Rewritten where its bytes are, which have to be the
-            // workspace's too.
+            // project's too.
             auto target = CanonicalPath(path);
             if(!path::is_within(target, root)) {
                 if(path::is_within(CanonicalPath(path.parent()), root)) {
@@ -786,9 +771,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
         }
     }
-    if(options.paths.empty() || !directories.empty()) {
+    if(whole) {
         // A database that cannot be loaded makes the file set incomplete.
-        auto load = load_build(project, options.root, configuration);
         if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
             result.error =
@@ -803,13 +787,13 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
                 return result;
             }
         }
-        for(auto& file: project_files(project, load.members)) {
+        for(auto& file: project_files(project, opened.members)) {
             if(!directories.empty() && ranges::none_of(directories, [&](auto& directory) {
                    return path::is_within(file.path, directory);
                })) {
                 continue;
             }
-            // A symlink into the workspace is the workspace's; one pointing
+            // A symlink into the project is the project's; one pointing
             // out of it is not.
             if(path::is_within(file.path, root)) {
                 files.push_back(std::move(file));

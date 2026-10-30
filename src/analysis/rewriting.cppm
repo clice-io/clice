@@ -6,7 +6,7 @@ import :support.prelude;
 namespace clice::analysis {
 
 /// What a wrapping gives the files a partition rewrites, paths
-/// workspace-relative.
+/// relative to the project root.
 struct WrappedModules {
     /// The modules a rewritten module's prelude partition imports, in order.
     std::vector<std::string> imports;
@@ -30,7 +30,7 @@ struct WrappedModules {
 /// modules instead.
 struct Rewriting {
     struct File {
-        /// Workspace-relative.
+        /// Relative to the project root.
         std::string path;
         std::string content;
     };
@@ -46,7 +46,7 @@ struct Rewriting {
         std::vector<std::string> imports;
     };
 
-    /// What the build needs, paths workspace-relative.
+    /// What the build needs, paths relative to the project root.
     struct Plan {
         std::vector<Module> modules;
 

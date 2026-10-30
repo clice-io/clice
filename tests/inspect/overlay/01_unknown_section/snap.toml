@@ -1,3 +1,54 @@
 [test."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"no_such_section\\\": {}}\""]
-stderr = "error: invalid --config-overlay: unknown field 'no_such_section'"
-exit = 1
+stdout = '''
+{
+  "feature": "semantic-tokens",
+  "files": {
+    "main.cpp": {
+      "result": [
+        {
+          "range": {
+            "begin": 0,
+            "end": 3
+          },
+          "kind": "primitive",
+          "modifiers": []
+        },
+        {
+          "range": {
+            "begin": 4,
+            "end": 8
+          },
+          "kind": "function",
+          "modifiers": [
+            "definition",
+            "global"
+          ]
+        },
+        {
+          "range": {
+            "begin": 13,
+            "end": 19
+          },
+          "kind": "keyword",
+          "modifiers": [
+            "controlFlow"
+          ]
+        },
+        {
+          "range": {
+            "begin": 20,
+            "end": 21
+          },
+          "kind": "number",
+          "modifiers": []
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+stderr = "warning: --config-overlay: unknown field 'no_such_section'"
+exit = 0

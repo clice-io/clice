@@ -6,7 +6,7 @@ test(
     { except: { win32: "a symlink on Windows needs a privilege the CI runners lack" } },
     async (t) => {
         t.disk.symlink("ws/link.cpp", "outside/main.cpp");
-        await t.cli("format link.cpp --workspace ws");
+        await t.cli("format ws/link.cpp --workspace ws");
         await t.cli("format --workspace ws");
     },
 );

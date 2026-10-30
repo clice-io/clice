@@ -7,8 +7,8 @@ module clice:driver.driver;
 import :config.config;
 import :feature.query;
 import :index.writer_lock;
-import :project.configuration;
-import :project.index_reader;
+import :project.project;
+import :project.project_reader;
 import :sched.batch;
 import :server.control;
 import :support.json;
@@ -180,18 +180,30 @@ struct ConfigurationOption {
     }
 };
 
-/// The workspace a subcommand works in, relative to the current directory,
-/// and its build configuration. The files it names are relative to the
-/// workspace.
+/// The project a subcommand works on, and its build configuration.
 struct ProjectOptions {
-    DecoKV(help = "Workspace root directory (default: the current directory)", required = false)
+    DecoKV(help =
+               "Project root directory (default: the nearest directory at or above the current "
+               "one holding a clice.toml or a compile_commands.json)",
+           required = false)
     <std::string> workspace;
 
     ConfigurationOption configuration;
 
-    /// The workspace as spelled: the current directory when none is given.
-    Spelling root() const {
-        return Spelling(workspace.value_or(""), Spelling::cwd());
+    /// The project's root as spelled: --workspace as given, relative to
+    /// the current directory; else the project root at or above `start`
+    /// (project_root_above), else `start`. An error for a --workspace that
+    /// is no directory.
+    std::expected<Spelling, std::string> root(const Spelling& start = Spelling::cwd()) const {
+        if(workspace) {
+            Spelling root(*workspace, Spelling::cwd());
+            if(!fs::is_directory(root)) {
+                return std::unexpected(std::format("{}: not a directory", root));
+            }
+            return root;
+        }
+        auto root = project_root_above(start);
+        return root.empty() ? start : root;
     }
 };
 
@@ -227,7 +239,7 @@ inline std::string location(llvm::StringRef file, std::uint32_t line, std::uint3
 
 /// The file an operation is about.
 struct FileTarget {
-    DecoInput(meta_var = "<PATH>", help = "The file, relative to the workspace or absolute")
+    DecoInput(meta_var = "<PATH>", help = "The file, relative to the current directory or absolute")
     <std::string> path;
 };
 
@@ -247,16 +259,6 @@ struct FreshOption {
              required = false)
     fresh;
 };
-
-/// Whether the workspace a batch subcommand names is a directory; one that
-/// is not is reported, never created for the run's cache and logs.
-inline bool workspace_exists(const Spelling& workspace) {
-    if(fs::is_directory(workspace)) {
-        return true;
-    }
-    LOG_ERROR("{}: not a directory", workspace);
-    return false;
-}
 
 template <typename Parser>
 void print_usage(Parser& cmd) {
@@ -422,32 +424,124 @@ inline CommandHandler with_operations(std::string_view overview,
     };
 }
 
-/// Bring the index up to date with the disk before a --fresh answer:
-/// through the serving writer when a server holds the lock, else by a
-/// batch run of this process. Either runs a pass over the build under the hash
-/// gate, so only units whose inputs changed are recompiled — and an
-/// absent index gets built from nothing; `configuration` is one `config`
-/// declares (check_requested_configuration). Returns the units that
-/// failed to index, or why the refresh could not run.
-inline std::expected<std::vector<std::string>, std::string> refresh(const Spelling& workspace,
-                                                                    const Config& config,
-                                                                    llvm::StringRef configuration) {
-    auto& cache_dir = config.project.cache_dir;
+/// Why a subcommand cannot work on its project, and the exit code it ends
+/// with: 2 for arguments or a configuration it cannot take, 1 otherwise.
+struct ProjectError {
+    std::string message;
+    int exit_code = 1;
+};
+
+/// Answer that a subcommand answering in JSON cannot work on its project;
+/// returns its exit code.
+inline int fail(ProjectError error) {
+    print_json(Failure{.error = std::move(error.message)});
+    return error.exit_code;
+}
+
+/// Tell on stderr why a subcommand answering in text cannot work on its
+/// project; returns its exit code.
+inline int print_error(const ProjectError& error) {
+    LOG_ERROR("{}", error.message);
+    return error.exit_code;
+}
+
+/// The root `where` names, found from `start`, and its configuration
+/// (load_config, `options` beside the configuration asked for): its
+/// warnings logged, its errors the run's, each where it is, as compilers
+/// name a place.
+inline std::expected<std::pair<Spelling, LoadedConfig>, ProjectError>
+    read_project(const ProjectOptions& where,
+                 ConfigOptions options = {},
+                 const Spelling& start = Spelling::cwd()) {
+    auto root = where.root(start);
+    if(!root) {
+        return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
+    }
+    auto configuration = where.configuration.tag();
+    options.configuration = configuration;
+    auto config = load_config(CanonicalPath(*root), options);
+    std::vector<std::string> errors;
+    for(auto& issue: config.issues) {
+        auto text = location(issue.file, issue.line, issue.column) + issue.message;
+        if(issue.severity == ConfigIssue::Severity::Warning) {
+            LOG_WARN("{}", text);
+        } else {
+            errors.push_back(std::move(text));
+        }
+    }
+    if(!errors.empty()) {
+        return std::unexpected(ProjectError{.message = llvm::join(errors, "\n"), .exit_code = 2});
+    }
+    return std::pair{std::move(*root), std::move(config)};
+}
+
+/// A project opened for a subcommand reading it.
+struct OpenedProject {
+    std::unique_ptr<ProjectReader> reader;
+
+    /// What its opening found.
+    Project::Opened opened;
+
+    /// The units a --fresh refresh could not index, whose shards are as
+    /// absent as a withheld file's.
+    std::vector<std::string> failed;
+};
+
+/// The project at `root` under `config`, opened for a subcommand reading it
+/// as `options` say, `configuration` set from `config`; `check_disk` as for
+/// ProjectReader.
+inline OpenedProject open_reader(const Spelling& root,
+                                 LoadedConfig config,
+                                 Project::OpenOptions options,
+                                 bool check_disk = true) {
+    OpenedProject project{.reader = std::make_unique<ProjectReader>(check_disk)};
+    auto& reader = *project.reader;
+    reader.files.spell_root(root);
+    reader.project.config = std::move(config.config);
+    options.configuration = config.configuration;
+    project.opened = reader.project.open(options);
+    return project;
+}
+
+/// How a run's index came up to date through the running server: the
+/// server's pid and its answer.
+struct ServerIndexed {
+    std::uint32_t pid = 0;
+    control::IndexResult result;
+};
+
+/// Bring the index of `project` up to date with the disk: through the
+/// serving writer when a server holds the lock, else by a batch run of this
+/// process, `on_progress` reporting it. Either runs a pass over the build
+/// under the hash gate, so only units whose inputs changed are recompiled
+/// — and an absent index gets built from nothing. An error when another
+/// process holds the lock, or the server refuses.
+inline std::expected<std::variant<ServerIndexed, BatchResult>, std::string>
+    index_project(BatchProject project,
+                  llvm::function_ref<void(const BatchProgress&)> on_progress) {
+    auto& cache_dir = project.config.config.project.cache_dir;
     auto writer = index::check_writer(cache_dir);
     switch(writer.state) {
         case index::WriterStatus::State::Server: {
-            auto result = control::request_index(writer.endpoint,
-                                                 resolve_configuration(config, configuration));
+            auto result = control::request_index(writer.endpoint, project.config.configuration);
             if(!result) {
-                return std::unexpected(result.error());
+                return std::unexpected(std::move(result.error()));
             }
-            return std::move(result->failed);
+            return ServerIndexed{.pid = writer.endpoint.pid, .result = std::move(*result)};
         }
         case index::WriterStatus::State::Held: {
             return std::unexpected(index::held_writer_message(writer, cache_dir));
         }
         case index::WriterStatus::State::Free: break;
     }
+    return run_batch_index({.project = std::move(project), .on_progress = on_progress});
+}
+
+/// Bring the index up to date with the disk before a --fresh answer
+/// (index_project). Returns the units that failed to index, or why the
+/// refresh could not run.
+inline std::expected<std::vector<std::string>, std::string> refresh(const Spelling& root,
+                                                                    const LoadedConfig& config) {
     auto report_progress = [](const BatchProgress& progress) {
         driver::println(stderr,
                         "indexing {}/{} units, {} failed",
@@ -455,12 +549,14 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
                         progress.total,
                         progress.failed);
     };
-    auto result = run_batch_index({
-        .root = workspace,
-        .config = config,
-        .configuration = configuration.str(),
-        .on_progress = report_progress,
-    });
+    auto indexed = index_project({.root = root, .config = config}, report_progress);
+    if(!indexed) {
+        return std::unexpected(std::move(indexed.error()));
+    }
+    if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
+        return std::move(server->result.failed);
+    }
+    auto& result = std::get<BatchResult>(*indexed);
     if(!result.completed) {
         return std::unexpected(result.interrupted ? "indexing interrupted"
                                                   : "indexing failed; see the log");
@@ -476,41 +572,63 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     return std::move(result.failed);
 }
 
-/// The persisted index an answer in JSON reads.
-struct OpenedIndex {
-    std::unique_ptr<IndexReader> reader;
-
-    /// The units a --fresh refresh could not index, whose shards are as
-    /// absent as a withheld file's.
+/// Open the project `where` names with its index, read-only, and `build`
+/// of its build, brought up to date with the disk first under --fresh
+/// (refresh). The error is the answer's.
+inline std::expected<OpenedProject, ProjectError> open_project(const ProjectOptions& where,
+                                                               const FreshOption& fresh,
+                                                               Project::OpenOptions::Build build) {
+    auto read = read_project(where);
+    if(!read) {
+        return std::unexpected(std::move(read.error()));
+    }
+    auto& [root, config] = *read;
     std::vector<std::string> failed;
-};
-
-/// Open the persisted index of the workspace `where` names, as `options`
-/// say, brought up to date with the disk first under --fresh (refresh). The
-/// error is the answer's.
-inline std::expected<OpenedIndex, std::string> open_index(const ProjectOptions& where,
-                                                          const FreshOption& fresh,
-                                                          ReadOptions options) {
-    auto spelling = where.root();
-    auto config = Config::load_from_workspace(CanonicalPath(spelling));
-    auto configuration = where.configuration.tag();
-    if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        return std::unexpected(std::move(checked.error()));
-    }
-    OpenedIndex opened;
     if(fresh.fresh) {
-        auto refreshed = refresh(spelling, config, configuration);
+        auto refreshed = refresh(root, config);
         if(!refreshed) {
-            return std::unexpected(std::move(refreshed.error()));
+            return std::unexpected(ProjectError{.message = std::move(refreshed.error())});
         }
-        opened.failed = std::move(*refreshed);
+        failed = std::move(*refreshed);
     }
-    opened.reader = IndexReader::open(spelling, std::move(config), configuration, options);
-    if(!opened.reader) {
-        return std::unexpected(
-            "the index could not be opened (the log above says why); run `clice index` or pass --fresh");
+    auto project = open_reader(root,
+                               std::move(config),
+                               {
+                                   .build = build,
+                                   .store = Project::OpenOptions::Store::ReadOnly,
+                                   .index = Project::OpenOptions::Index::Read,
+                               });
+    if(!project.opened.unreadable.empty()) {
+        LOG_ERROR("{}", project.opened.unreadable);
+        return std::unexpected(ProjectError{
+            .message = "the index could not be opened (the log above says why); run `clice index` "
+                       "or pass --fresh"});
     }
-    return opened;
+    project.failed = std::move(failed);
+    return project;
+}
+
+/// The project `where` names with its index's tables bound, read-only, for
+/// an analysis of the index. The error is the answer's.
+inline std::expected<std::unique_ptr<ProjectReader>, ProjectError>
+    open_for_analysis(const ProjectOptions& where) {
+    auto read = read_project(where);
+    if(!read) {
+        return std::unexpected(std::move(read.error()));
+    }
+    auto& [root, config] = *read;
+    auto project = open_reader(root,
+                               std::move(config),
+                               {
+                                   .build = Project::OpenOptions::Build::None,
+                                   .store = Project::OpenOptions::Store::ReadOnly,
+                                   .index = Project::OpenOptions::Index::Read,
+                               });
+    if(!project.opened.unreadable.empty()) {
+        LOG_ERROR("{}", project.opened.unreadable);
+        return std::unexpected(ProjectError{.message = "no usable index; run `clice index` first"});
+    }
+    return std::move(project.reader);
 }
 
 }  // namespace clice::driver

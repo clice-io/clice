@@ -166,7 +166,7 @@ public:
 
     /// Identity hash of a command (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
-    /// workspace root taken by their portable names so a moved checkout
+    /// project root taken by their portable names so a moved checkout
     /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied command — the pin
     /// identity of clice/switchContext.

@@ -42,14 +42,19 @@ struct SymbolSearchResult {
     std::vector<SymbolEntry> symbols;
 };
 
-/// What the answers read: the workspace's index through an
-/// index::IndexQuery, its root, which relative paths name files under, and
-/// how documentation comments are read. Paths in and out are absolute
+/// What the answers read: the project's index through an
+/// index::IndexQuery, its root, the directory relative paths name files
+/// under, and how documentation comments are read. Paths out are absolute
 /// filesystem paths, not URIs.
 struct Context {
     const index::IndexQuery& query;
 
     CanonicalRef root;
+
+    /// The current directory of a command-line run, which the relative paths
+    /// it is given are relative to; empty for a server, whose requests name
+    /// files absolute.
+    Spelling cwd;
 
     const DocumentationOptions& documentation;
 
@@ -252,7 +257,7 @@ struct PlannedRename {
     }
 };
 
-/// The workspace a rename batch edits, as the caller knows it: the files
+/// The files a rename batch reads and edits, as the caller knows them: those
 /// its scan reads (RenameScope::files), the ones it may edit
 /// (RenameScope::editable), and whether the build has units the index holds
 /// no record of yet (RenameScope::units_pending).
@@ -294,13 +299,13 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction);
 
-/// Plan the renames together against `workspace` on disk (see
+/// Plan the renames together against `files` on disk (see
 /// plan_renames), each of its files read once: what would change, what the
 /// index cannot guarantee, and what keeps the change from being safe.
 /// Nothing is written. A rename names its symbol by its whole name, never
 /// a pattern; the overloads of one scope that name spells are renamed
 /// together.
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles workspace);
+PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles files);
 
 /// The symbols one declaration a locator names stands for: the symbol,
 /// or, for a name the overloads of one scope spell, all of them; macros

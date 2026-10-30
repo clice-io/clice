@@ -10,8 +10,8 @@ import :command.database;
 import :command.edit;
 import :command.table;
 import :config.config;
+import :config.configuration;
 import :project.build;
-import :project.configuration;
 import :project.project;
 import :support.shell;
 import :unittests.utils.cdb_helper;
@@ -40,7 +40,7 @@ struct Layout {
 
     explicit Layout(llvm::StringRef name) :
         root(write_layout(dir, name)),
-        config(Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)))) {
+        config(load_config(CanonicalPath(Spelling::absolute(root))).config) {
         build.reset_active(fallback_configuration(config));
         for(auto source: build.declared_sources()) {
             cdb.load(source);
@@ -173,8 +173,7 @@ ZEST_CASE(LintSetSymlinkedRoot) {
     tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
     ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
 
-    Config config =
-        Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.path("link"))));
+    Config config = load_config(CanonicalPath(Spelling::absolute(tmp.path("link")))).config;
     ZEXPECT(config.project_root.str() == CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
     FileTable files;
     CommandTable commands;
@@ -195,7 +194,7 @@ lint = false
     tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
     ZASSERT(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()) == 0);
 
-    Config config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
+    Config config = load_config(CanonicalPath(Spelling::absolute(tmp.root))).config;
     FileTable files;
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
@@ -623,15 +622,14 @@ ZEST_CASE(ProjectRootAbove) {
     tmp.touch("app/build/compile_commands.json", "[]");
     tmp.touch("tool/compile_commands.json", "[]");
     tmp.touch("tool/sub/clice.toml", "");
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("lib/src/deep")))) ==
-            CanonicalPath(Spelling::absolute(path::join(tmp.root, "lib"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("app/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("app"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("tool"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/sub/src")))) ==
-            CanonicalPath(Spelling::absolute(tmp.path("tool/sub"))));
-    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("none/src")))).empty());
+    auto above = [&](llvm::StringRef start) {
+        return project_root_above(Spelling::absolute(tmp.path(start))).str();
+    };
+    ZEXPECT(above("lib/src/deep") == Spelling::absolute(tmp.path("lib")).str());
+    ZEXPECT(above("app/src") == Spelling::absolute(tmp.path("app")).str());
+    ZEXPECT(above("tool/src") == Spelling::absolute(tmp.path("tool")).str());
+    ZEXPECT(above("tool/sub/src") == Spelling::absolute(tmp.path("tool/sub")).str());
+    ZEXPECT(above("none/src").empty());
 };
 
 ZEST_CASE(DefinesProject) {

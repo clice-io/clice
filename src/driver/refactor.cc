@@ -5,7 +5,8 @@ import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
 import :project.build;
-import :project.index_reader;
+import :project.project;
+import :project.project_reader;
 import :project.queries;
 import :vfs.file_system;
 
@@ -189,21 +190,21 @@ int run_rename(const RenameOptions& opts) {
     }
     // The build tells a unit the index never reached from a file outside
     // the build, so the writer's load restores it.
-    auto opened = open_index(opts.where, opts.fresh, {.load = IndexLoad::Build});
+    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Build::Members);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
     auto& reader = *opened->reader;
     auto& failed = opened->failed;
     auto ctx = reader.context();
-    EditableFiles workspace(reader.project.config);
+    EditableFiles editable_files(reader.project.config);
     auto editable = [&](llvm::StringRef path) {
-        return workspace.editable(path);
+        return editable_files.editable(path);
     };
     auto planned = feature::query::rename(ctx,
                                           *requests,
                                           {
-                                              .files = workspace.sources(),
+                                              .files = editable_files.sources(),
                                               .editable = editable,
                                               .units_pending = units_pending(reader.project),
                                           });

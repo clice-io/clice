@@ -292,7 +292,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
 }
 
 void CacheStore::write_ignore_markers(llvm::StringRef root) {
-    // The root ignores itself, so the workspace-local default never
+    // The root ignores itself, so the project-local default never
     // pollutes the repository: `*` covers git and everything honoring
     // gitignore (ripgrep, editor search), except `config.toml` — the root
     // doubles as the `.clice/config.toml` location, and user configuration

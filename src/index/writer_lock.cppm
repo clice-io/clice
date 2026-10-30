@@ -7,10 +7,10 @@ namespace clice::index {
 /// One writer per cache directory. The index's records and manifests
 /// tolerate no second writer, and every build configuration's database
 /// lives under the same cache directory, so the lock sits at its root:
-/// the LSP server of the workspace holds it for its lifetime, else a
+/// the LSP server of the project holds it for its lifetime, else a
 /// batch command (`clice index`, `clice lint --index`) for the run. An OS
 /// advisory lock dies with its process, so a crash leaves nothing stale
-/// behind. Held by the workspace that opened the store, not by the
+/// behind. Held by the project that opened the store, not by the
 /// database handle: a database condemned and reopened mid-session keeps
 /// the directory.
 class WriterLock {

@@ -24,15 +24,14 @@ exit = 0
 ["a missing workspace"."$ clice query project-files --workspace missing"]
 stdout = '''
 {
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "error": "${WS}/missing: not a directory",
   "stale": []
 }
 '''
-stderr = "error: No index cache at ${WS}/missing/.clice; run `clice index` first"
-exit = 1
+exit = 2
 
 ["a missing workspace"."$ clice format --check --workspace missing"]
-stderr = "${WS}/missing: not a directory"
+stderr = "error: ${WS}/missing: not a directory"
 exit = 2
 
 ["a missing workspace"."$ clice lint --workspace missing"]
@@ -41,11 +40,11 @@ exit = 2
 
 ["a missing workspace"."$ clice index --workspace missing"]
 stderr = "error: ${WS}/missing: not a directory"
-exit = 1
+exit = 2
 
 ["a missing workspace"."$ clice scan --workspace missing"]
 stderr = "error: ${WS}/missing: not a directory"
-exit = 1
+exit = 2
 
 ["a missing workspace"."left behind"]
 value = []

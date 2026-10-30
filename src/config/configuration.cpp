@@ -1,8 +1,8 @@
 module clice;
 
 import :config.config;
+import :config.configuration;
 import :index.database;
-import :project.configuration;
 import :support.anomaly;
 import :support.logging;
 import :vfs.path;
@@ -11,7 +11,7 @@ namespace clice {
 
 namespace {
 
-/// The workspace state that outlives a server process and the cache
+/// The project state that outlives a server process and the cache
 /// layout version alike: kept at the cache directory root, next to the
 /// ignore markers, not inside the versioned store.
 struct PersistedState {

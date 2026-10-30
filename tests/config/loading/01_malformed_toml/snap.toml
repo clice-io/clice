@@ -1,19 +1,19 @@
-["defaults stand in".guidance]
+["nothing is served".guidance]
 value = [
-    "Configuration problem in ${WS}/clice.toml: TOML parse error: Error while parsing table header: expected ']', saw 'e' (line 1, column 10)",
+    "Configuration problem in ${WS}/clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and saved",
 ]
 
-["defaults stand in"."clice.toml"]
+["nothing is served"."clice.toml"]
 pushes = [
     [
         {
             at = "[project ⟦⟧enable_indexing = false]",
             severity = "error",
-            message = "TOML parse error: Error while parsing table header: expected ']', saw 'e' (line 1, column 10)",
+            message = "TOML parse error: Error while parsing table header: expected ']', saw 'e'",
             source = "clice",
         },
     ],
 ]
 
-["defaults stand in".diagnostics]
+["nothing is served".diagnostics]
 diagnostics = []

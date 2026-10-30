@@ -52,7 +52,7 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
 }
 
 std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since) {
-    // --relative names the files from the workspace and keeps only
+    // --relative names the files from the project root and keeps only
     // those under it, whatever the repository root is.
     auto [ended] = kota::run(execute({"git",
                                       "log",

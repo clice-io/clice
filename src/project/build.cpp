@@ -3,8 +3,8 @@ module clice;
 import :command.edit;
 import :command.file_kind;
 import :command.normalize;
+import :config.configuration;
 import :project.build;
-import :project.configuration;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -514,7 +514,7 @@ Build::SourceWalk Build::source_walk() const {
     }
 
     // Where the covered files can be: each pattern's literal directory, the
-    // whole workspace for a rule without patterns. A root inside another
+    // whole project for a rule without patterns. A root inside another
     // is walked as part of it.
     auto add_root = [&](CanonicalRef root) {
         if(!root.empty() && !ranges::contains(walk.roots, CanonicalPath(root))) {
@@ -539,9 +539,7 @@ Build::SourceWalk Build::source_walk() const {
                           })
             .begin(),
         walk.roots.end());
-    if(!config.project.cache_dir.empty()) {
-        walk.cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
+    walk.cache_dir = config.project.cache_identity();
     return walk;
 }
 
@@ -597,7 +595,7 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     return walked;
 }
 
-/// Whether a workspace directory holds no sources a refactoring edits:
+/// Whether a project directory holds no sources a refactoring edits:
 /// hidden, a package cache, the cache directory or a build tree.
 static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
     auto name = path::filename(dir);
@@ -621,23 +619,20 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
     return inside;
 }
 
-EditableFiles::EditableFiles(const Config& config) : root(config.project_root) {
-    if(!config.project.cache_dir.empty()) {
-        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    }
-}
+EditableFiles::EditableFiles(const Config& config) :
+    root(config.project_root), cache_dir(config.project.cache_identity()) {}
 
 std::vector<std::string> EditableFiles::sources() const {
-    CanonicalRef workspace = root;
+    CanonicalRef project_root = root;
     std::vector<std::string> found;
-    auto entries = fs::walk(workspace);
+    auto entries = fs::walk(project_root);
     for(auto& entry: entries) {
         if(!entry) {
             vfs::warn_unreadable(entry.error());
             continue;
         }
         if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(workspace.entry(entry->path), cache_dir)) {
+            if(outside_sources(project_root.entry(entry->path), cache_dir)) {
                 entries.skip();
             }
             continue;
@@ -645,7 +640,7 @@ std::vector<std::string> EditableFiles::sources() const {
         if(entry->type != fs::FileType::Regular) {
             continue;
         }
-        auto path = workspace.entry(entry->path);
+        auto path = project_root.entry(entry->path);
         if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
            is_context_header_path(path) || path.str().ends_with(".cuh")) {
             found.push_back(std::move(path).str());

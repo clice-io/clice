@@ -14,7 +14,7 @@ struct Options {
     DecoInput(meta_var = "<PATH>",
               help =
                   "Files to format, or directories to format the build's own files under; "
-                  "relative to the workspace (default: the build's own files)",
+                  "relative to the current directory (default: the build's own files)",
               required = false)
     <std::vector<std::string>> paths;
 
@@ -65,15 +65,20 @@ CommandHandler build() {
                               "format",
                               Errors::Text,
                               [](const Options& opts) {
+                                  auto read = read_project(opts.where);
+                                  if(!read) {
+                                      return print_error(read.error());
+                                  }
+                                  auto& [root, config] = *read;
                                   BatchFormatOptions options{
-                                      .root = CanonicalPath(opts.where.root()),
-                                      .configuration = opts.where.configuration.tag(),
+                                      .root = std::move(root),
+                                      .config = std::move(config),
                                       .jobs = opts.jobs.jobs.value_or(0),
                                       .check = static_cast<bool>(opts.check),
                                   };
                                   for(auto& argument:
                                       opts.paths.value_or(std::vector<std::string>{})) {
-                                      options.paths.emplace_back(argument, Spelling(options.root));
+                                      options.paths.emplace_back(argument, Spelling::cwd());
                                   }
                                   return run_format(std::move(options));
                               });

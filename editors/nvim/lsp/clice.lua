@@ -165,10 +165,6 @@ local function switch_configuration(client, bufnr)
       request(client, bufnr, 'clice/switchConfiguration', { name = name, uri = uri }, function(result)
         if not result.success then
           vim.notify(('clice: cannot switch the build configuration: %s'):format(result.reason), vim.log.levels.WARN)
-        elseif name ~= list.active and vim.fn.exists(':lsp') == 2 then
-          vim.cmd('lsp restart clice')
-        elseif name ~= list.active then
-          vim.notify(('clice: %s applies once clice restarts'):format(name))
         end
       end)
     end)
@@ -201,11 +197,24 @@ local function switch_source_header(client, bufnr)
   end)
 end
 
+-- `:lsp restart` (Neovim 0.12) restarts the server when it asks to: what it
+-- was started on changed, a configuration file or the build.
+local restarts = vim.fn.exists(':lsp') == 2
+
 ---@type vim.lsp.Config
 return {
   cmd = { 'clice', 'serve' },
   filetypes = { 'c', 'cpp', 'cuda' },
   root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
+  capabilities = restarts and { experimental = { restartServer = true } } or nil,
+  handlers = restarts and {
+    ['clice/restartServer'] = function()
+      vim.schedule(function()
+        vim.cmd('lsp restart clice')
+      end)
+      return vim.NIL
+    end,
+  } or nil,
   on_attach = function(client, bufnr)
     vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceShowContext', function()
       show_context(client, bufnr)

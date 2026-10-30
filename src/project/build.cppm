@@ -126,7 +126,7 @@ public:
                        llvm::ArrayRef<std::string> extra_append = {});
 
     /// Hash of the edits for `paths`, empty when none apply: the rules'
-    /// part of a file's persisted command identity, the workspace root
+    /// part of a file's persisted command identity, the project root
     /// taken as `${workspace}`.
     std::string edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
 
@@ -224,11 +224,11 @@ public:
     /// says `index = false`.
     bool indexed(CanonicalRef path) const;
 
-    /// Whether `clice lint` checks a file: it sits inside the workspace and
+    /// Whether `clice lint` checks a file: it sits inside the project root and
     /// no matching active rule says `lint = false`.
     bool lintable(CanonicalRef path) const;
 
-    /// Whether `clice format` formats a file: it sits inside the workspace
+    /// Whether `clice format` formats a file: it sits inside the project root
     /// and no matching active rule says `format = false`.
     bool formattable(CanonicalRef path) const;
 
@@ -238,7 +238,7 @@ private:
     /// The edits of `matched` rules, in declaration order.
     Edits edits_of(llvm::ArrayRef<const CompiledRule*> matched) const;
 
-    /// Whether a file sits inside the workspace, when there is one, and every
+    /// Whether a file sits inside the project root, when there is one, and every
     /// matching active rule keeps `field` on: the lint and format sets.
     bool inside(CanonicalRef path, bool CompiledRule::* field) const;
 
@@ -324,22 +324,22 @@ std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef databas
 
 /// Every file under the walk's roots, version control metadata and the
 /// cache directory skipped. File system work only, so it can run off the
-/// event loop: a rule without patterns has the whole workspace walked.
+/// event loop: a rule without patterns has the whole project walked.
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 
-/// Whether `file` is the workspace's own — what a refactoring may edit and
+/// Whether `file` is the project's own — what a refactoring may edit and
 /// a save may record as a provisional member: it lies under `root`,
 /// whatever its suffix, outside the directories holding no sources a
 /// refactoring edits — hidden ones, package caches, `cache_dir` and build
 /// trees (a directory holding CMakeCache.txt or build.ninja).
 bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
-/// What a refactoring may edit of the workspace `config` roots, outside its
+/// What a refactoring may edit of the project `config` roots, outside its
 /// cache directory (feature::RenameScope).
 struct EditableFiles {
     explicit EditableFiles(const Config& config);
 
-    /// The C-family sources and headers of the workspace, as absolute
+    /// The C-family sources and headers of the project, as absolute
     /// paths: the files under `root` a rename's scan reads, outside the
     /// directories project_file leaves out.
     std::vector<std::string> sources() const;
