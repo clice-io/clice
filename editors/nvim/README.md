@@ -1,4 +1,4 @@
-# clice for Neovim
+# clice nvim
 
 Neovim 0.11 or later.
 
