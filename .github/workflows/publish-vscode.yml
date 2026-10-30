@@ -36,21 +36,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # The Marketplace refuses a display name any extension holds, a removed
-      # one included, and says so only when the nightly publishes. `clice` is
-      # held forever by the extension's first listing, ykiko.clice-vscode,
-      # removed when it moved to clice-io on 2026-07-19 (the policy:
-      # microsoft/vsmarketplace#1708; vsmarketplace@microsoft.com, asked to
-      # release it, never answered). Renamed to `clice` in #990, every
-      # nightly's publish failed. The plugins are `clice <editor>`.
-      - name: Check the Marketplace display name
-        run: |
-          NAME=$(python3 -c 'import json; print(json.load(open("editors/vscode/package.json"))["displayName"])')
-          if [ "$NAME" != "clice vscode" ]; then
-            echo "::error file=editors/vscode/package.json::displayName is \"$NAME\": the Marketplace refuses names other extensions hold (see publish-vscode.yml)"
-            exit 1
-          fi
-
       - uses: ./.github/actions/setup-pixi
         with:
           environments: node
@@ -206,6 +191,13 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" --clobber vsix/*.vsix
 
+      # The Marketplace refuses a display name any extension holds, a removed
+      # one included, and says so only here ("This extension display name is
+      # taken"). `clice` is held forever by the extension's first listing,
+      # ykiko.clice-vscode, removed when it moved to clice-io on 2026-07-19
+      # (the policy: microsoft/vsmarketplace#1708; vsmarketplace@microsoft.com,
+      # asked to release it, never answered). Renamed to `clice` in #990,
+      # every nightly's publish failed. The plugins are `clice <editor>`.
       - name: Publish to Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCODE_EXTENSION }}
