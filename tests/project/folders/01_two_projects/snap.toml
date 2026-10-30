@@ -43,6 +43,10 @@ pushes = [
     [],
 ]
 
+["folder re-added at once keeps its cache"."$ clice index --workspace beta --jobs 1"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
 ["database change moves a document".unlisted]
 errors = [
     {

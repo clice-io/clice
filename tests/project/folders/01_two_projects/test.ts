@@ -100,14 +100,12 @@ test("removed folder releases its files", async (t) => {
 test("folder re-added at once keeps its cache", async (t) => {
     const s = await t.start(FOLDERS);
     await s.indexed();
-    // The control endpoint record exists only while a project holds the
-    // cache directory's writer lock.
-    const before = t.disk.read("beta/.clice/server.json");
     await s.changeFolders({ removed: ["beta"] });
     await s.changeFolders({ added: ["beta"] });
     await s.sync();
-    expect(t.disk.list("beta/.clice/server.json")).toEqual(["beta/.clice/server.json"]);
-    expect(t.disk.read("beta/.clice/server.json")).not.toBe(before);
+    // Only a project holding the cache directory's writer lock answers
+    // `clice index`.
+    await t.cli("index --workspace beta --jobs 1");
 });
 
 test("database change moves a document", async (t) => {
