@@ -75,17 +75,6 @@ re-uploads with `--clobber` and skips already-published versions, so a
 transient registry failure is recovered by rerunning just that job —
 never by a new tag.
 
-**The editor plugins are named `clice <editor>`**: `clice vscode`, `clice zed`,
-`clice nvim`; their identities (`clice-io.clice`, the Zed id `clice`) are
-what installs and updates, the names only show. For VS Code the Marketplace
-leaves no other choice: `clice` belonged to the extension's first listing,
-`ykiko.clice-vscode`, removed when it moved to `clice-io` (2026-07-19). Since
-March 2026 the Marketplace keeps a removed extension's name and display name
-forever, from everyone, its author included (microsoft/vsmarketplace#1708);
-only vsmarketplace@microsoft.com can release one, and requests have gone
-unanswered. Renamed back to `clice` (#990), every publish failed with "This
-extension display name is taken".
-
 The binary embeds its build identity (`git describe`: nearest tag + commit
 hash), not the release tag — the tag is applied after the build. Match crash
 logs to releases by the commit hash; the release notes state the hash.
