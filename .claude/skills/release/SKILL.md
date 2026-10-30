@@ -77,7 +77,7 @@ never by a new tag.
 
 **The Marketplace display name stays `clice vscode`.** `clice` belonged to
 the extension's first listing, `ykiko.clice-vscode`, removed when it moved to
-`clice-io` (2026-07-19). Since March 2025 the Marketplace keeps a removed
+`clice-io` (2026-07-19). Since March 2026 the Marketplace keeps a removed
 extension's name and display name forever, from everyone, its author included
 (microsoft/vsmarketplace#1708); only vsmarketplace@microsoft.com can release
 one, and a request sent that day got no answer. Renamed back to `clice` (#990),
