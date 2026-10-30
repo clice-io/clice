@@ -18,5 +18,7 @@ test("beside clice.toml", async (t) => {
     await s.sync();
     t.disk.write(".clice/config.toml", '[[rules]]\nappend = ["-DEDITED"]\n');
     await s.poll("workspace");
+    // A request the look asked for goes out before the sync answers.
+    await s.sync();
     await t.show("asked", s.restartRequests());
 });

@@ -21,6 +21,7 @@ test("a client without restarts", async (t) => {
     const s = await t.start({ capabilities: {} });
     await edit(t, s);
     await s.poll("workspace");
+    await s.sync();
     await t.show("clice.toml", s.pushes("clice.toml"));
     await t.show("asked", s.restartRequests());
 });
@@ -39,5 +40,7 @@ test("the same content", async (t) => {
     await s.sync();
     t.disk.touch("clice.toml", new Date(Date.now() + 10_000));
     await s.poll("workspace");
+    // A request the look asked for goes out before the sync answers.
+    await s.sync();
     await t.show("asked", s.restartRequests());
 });
