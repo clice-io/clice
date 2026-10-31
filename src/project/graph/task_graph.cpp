@@ -164,6 +164,12 @@ void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported
 
     if(result == Result::Success) {
         node.dirty = false;
+        // Every attempt waiting on this one reads its product: marked now,
+        // with the publication, so an invalidation before they resume
+        // overtakes them.
+        for(auto waiter: node.waiting_dependents) {
+            mark_received(waiter, id);
+        }
         replace_edges(id, &Node::waited, attempt.waits);
     }
 
@@ -249,16 +255,27 @@ async::task<Result>
     co_return *result;
 }
 
+void TaskGraph::mark_received(NodeId waiter, NodeId dep) {
+    auto& received = nodes.find(waiter)->second.attempt->received;
+    if(!ranges::contains(received, dep)) {
+        received.push_back(dep);
+    }
+}
+
 async::task<std::optional<Result>> TaskGraph::await_attempt(NodeId id,
                                                             const Work& work,
                                                             std::optional<NodeId> waiter) {
     if(!nodes.find(id)->second.dirty) {
         switch(work.check ? work.check() : Check::Holds) {
-            case Check::Holds: co_return Result::Success;
+            case Check::Holds:
+                if(waiter) {
+                    mark_received(*waiter, id);
+                }
+                co_return Result::Success;
             // Only the node: what its dependents built from the product
             // stands.
             case Check::ProductGone: nodes.find(id)->second.dirty = true; break;
-            case Check::InputsChanged: invalidate(id, waiter); break;
+            case Check::InputsChanged: invalidate(id); break;
         }
     }
     if(!nodes.find(id)->second.compiling && !start_attempt(id, work)) {
@@ -314,17 +331,14 @@ async::task<Result> TaskGraph::join(NodeId id, Work work, JoinOptions options) {
 }
 
 llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id) {
-    return invalidate(id, std::nullopt);
-}
-
-llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id, std::optional<NodeId> spared) {
-    llvm::SmallVector<NodeId> queue;
+    // Each node with the node it was reached from; none for `id`.
+    llvm::SmallVector<std::pair<NodeId, std::optional<NodeId>>> queue;
     llvm::SmallVector<NodeId> dirtied;
     llvm::DenseSet<NodeId> visited;
-    queue.push_back(id);
+    queue.push_back({id, std::nullopt});
 
     while(!queue.empty()) {
-        auto current = queue.pop_back_val();
+        auto [current, from] = queue.pop_back_val();
         if(!visited.insert(current).second) {
             continue;
         }
@@ -335,18 +349,22 @@ llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id, std::optional<NodeId>
         }
         auto& node = it->second;
 
-        // The in-flight result (if any) is stale: fire the attempt's
-        // token. Interest is untouched — waiters keep their references and
-        // drive a fresh attempt once the overtaken one finishes.
-        if(current != spared) {
+        // The in-flight result is stale when the attempt read what changed:
+        // fire its token. One still waiting for it has read nothing of the
+        // old product and gets the fresh one. Interest is untouched —
+        // waiters keep their references and drive a fresh attempt once the
+        // overtaken one finishes.
+        auto* attempt = node.compiling ? node.attempt.get() : nullptr;
+        if(!from || !attempt || ranges::contains(attempt->received, *from)) {
             cancel_attempt(node);
             node.generation += 1;
         }
         node.dirty = true;
         dirtied.push_back(current);
 
-        queue.append(node.dependents.begin(), node.dependents.end());
-        queue.append(node.waiting_dependents.begin(), node.waiting_dependents.end());
+        for(auto next: llvm::concat<const NodeId>(node.dependents, node.waiting_dependents)) {
+            queue.push_back({next, current});
+        }
     }
 
     return dirtied;

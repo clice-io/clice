@@ -228,6 +228,9 @@ private:
         /// Edges recorded via depend(), deduplicated, in order; doubles as
         /// the edge-reference registry released when the attempt finishes.
         llvm::SmallVector<NodeId, 8> waits;
+
+        /// The waits that returned Success: the products the attempt read.
+        llvm::SmallVector<NodeId, 8> received;
     };
 
     struct Node {
@@ -274,9 +277,8 @@ private:
         std::shared_ptr<AttemptState> attempt;
     };
 
-    /// invalidate(), the attempt of `spared` left current: it is the waiter
-    /// whose check found the change.
-    llvm::SmallVector<NodeId> invalidate(NodeId id, std::optional<NodeId> spared);
+    /// The live attempt of `waiter` read the product of `dep`.
+    void mark_received(NodeId waiter, NodeId dep);
 
     /// Interest +1; creates the node if needed.
     void acquire(NodeId id);
