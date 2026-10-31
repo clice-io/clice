@@ -145,7 +145,8 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
-    front_opts.SkipFunctionBodies = params.skip_bodies;
+    front_opts.SkipFunctionBodies =
+        params.skip_bodies || params.kind == CompilationKind::Completion;
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -386,8 +387,7 @@ public:
     }
 
     /// Asked under CompilationParams::skip_bodies, and by every completion's
-    /// parse, which skips each body but the one holding the point unless told
-    /// otherwise.
+    /// parse, which skips each body but the one holding the point.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);

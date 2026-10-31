@@ -1,0 +1,638 @@
+[default.using_declaration.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "lib::detail::helper_detail()",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::detail::helper_detail()",
+    },
+    {
+        label = "lib::helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "lib::helper_limit", kind = "Variable", detail = "const int", insert = "lib::helper_limit" },
+    { label = "lib::helper_mode", kind = "EnumMember", detail = "Mode", insert = "lib::helper_mode" },
+    {
+        label = "lib::helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_static(${1:int x})",
+        snippet = true,
+    },
+    { label = "lib::helper_type", kind = "Class", insert = "lib::helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[default.first_in_namespace.completion]
+items = [
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "detail::helper_detail()", kind = "Function", detail = "int", insert = "detail::helper_detail()" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[default.using_directive.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    {
+        label = "lib::detail::helper_detail()",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::detail::helper_detail()",
+    },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[default.namespace_member.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[default.namespace_names.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "detail", kind = "Module", insert = "detail" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[default.two_qualifiers.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+[default.absolute.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[default.global.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[default.qualified_using_declaration.completion]
+items = [
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+]
+
+[default.qualified_using_directive.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[default.trailing_return.completion]
+items = [
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    {
+        label = "lib::detail::helper_detail()",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::detail::helper_detail()",
+    },
+    {
+        label = "lib::helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "lib::helper_limit", kind = "Variable", detail = "const int", insert = "lib::helper_limit" },
+    { label = "lib::helper_mode", kind = "EnumMember", detail = "Mode", insert = "lib::helper_mode" },
+    {
+        label = "lib::helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "lib::helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[default.local_using_directive.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[default.local_alias.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+[default.command_line_macro.completion]
+items = [
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+]
+
+[default.compiler_macro.completion]
+items = [
+    { label = "__cplusplus", kind = "Constant", insert = "__cplusplus" },
+]
+
+[default.namespace_alias.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+[configured.using_declaration.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[configured.first_in_namespace.completion]
+items = [
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[configured.using_directive.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[configured.namespace_member.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.namespace_names.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "detail", kind = "Module", insert = "detail" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.two_qualifiers.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+[configured.absolute.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.global.completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.qualified_using_declaration.completion]
+items = [
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+]
+
+[configured.qualified_using_directive.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.trailing_return.completion]
+items = [
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[configured.local_using_directive.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[configured.local_alias.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+[configured.command_line_macro.completion]
+items = [
+    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
+]
+
+[configured.compiler_macro.completion]
+items = [
+    { label = "__cplusplus", kind = "Constant", insert = "__cplusplus" },
+]
+
+[configured.namespace_alias.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
+
+["before the first compile".names.completion]
+items = [
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+["an include added before the compile".names.completion]
+items = [
+    { label = "helper_extra()", kind = "Function", detail = "int", insert = "helper_extra()" },
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+["a namespace bringing in names"."brings in".completion]
+items = [
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "run()", kind = "Function", detail = "int", insert = "run()" },
+]
+incomplete = true
+
+["a namespace bringing in names"."brings in none".completion]
+items = [
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "detail", kind = "Module", insert = "detail" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]

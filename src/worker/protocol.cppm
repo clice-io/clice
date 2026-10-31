@@ -211,6 +211,10 @@ struct CompileResult {
 
     /// See TURunResult::index_in_file.
     bool index_in_file = false;
+
+    /// What the compile instantiates the file's templates with, for its
+    /// completions.
+    feature::InstantiatedTemplates instantiated;
 };
 
 /// Build a PCH (and its paired pch.idx index) from preamble content, or
@@ -347,12 +351,13 @@ struct CompletionParams {
     /// What the edits' ranges count in: the client's position encoding.
     PositionEncoding encoding = PositionEncoding::UTF16;
 
-    /// The names of other namespaces the index found for the typed prefix.
-    std::vector<feature::ScopeCandidate> candidates;
+    /// The names the index found for the typed prefix. When it found more
+    /// of them, the list is incomplete: the editor asks again as the prefix
+    /// grows.
+    feature::CompileCompletion names;
 
-    /// The index found more of them: the list is incomplete, so the editor
-    /// asks again as the prefix grows.
-    bool more_candidates = false;
+    /// What the document's latest compile instantiates its templates with.
+    feature::InstantiatedTemplates instantiated;
 };
 
 /// A completion's reply: the list as the client takes it, and where the

@@ -2,6 +2,7 @@ module clice;
 
 import :index.format;
 import :index.indexer;
+import :index.instantiation_shard;
 import :index.shard;
 import :index.tu_index;
 import :support.bytes;
@@ -79,6 +80,75 @@ ZEST_CASE(TUIndexSections) {
         return true;
     });
     ZASSERT(symbols > 0);
+}
+
+ZEST_CASE(SectionsNamingCoverEntries) {
+    kind = CompilationKind::Whole;
+    add_file("header.h", R"(
+            #pragma once
+            inline int twice(int value) { return value + value; }
+            namespace {
+            struct Hidden {
+                int get() const { return 1; }
+            };
+            }  // namespace
+            template <typename T>
+            struct Box {
+                T item;
+                int size() const { return twice(item.get()); }
+            };
+            template <typename T>
+            int measure(const T& box) { return box.size(); }
+        )");
+    add_focus("main.cpp", R"(
+            #include "header.h"
+            int main() {
+                Box<Hidden> box;
+                return measure(box) + twice(2);
+            }
+        )");
+    auto view = build();
+
+    // Each section holding entries of a symbol, a file-local one among
+    // them, is one the lookup names.
+    bool local = false;
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto& shard = view.section_shard(section);
+        shard.for_each_relation([&](index::SymbolHash hash, const index::Relation&) {
+            ZEXPECT(ranges::contains(view.sections_naming(hash), section));
+            return true;
+        });
+        shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView&) {
+            ZEXPECT(view.find_symbol(hash));
+            local = true;
+            return true;
+        });
+    }
+    ZASSERT(local);
+
+    // An instantiation names a symbol of internal linkage too.
+    bool instantiated = false;
+    bool internal = false;
+    for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
+        view.instantiation_shard(section).for_each_record(
+            [&](const index::InstantiationRecord& record) {
+                ZEXPECT(
+                    ranges::contains(view.instantiation_sections_naming(record.target), section));
+                if(index::has_from(record.kind)) {
+                    ZEXPECT(
+                        ranges::contains(view.instantiation_sections_naming(record.from), section));
+                }
+                auto target = view.find_symbol(record.target);
+                internal |= target && target->scope != index::SymbolScope::External;
+                instantiated = true;
+                return true;
+            });
+    }
+    ZASSERT(instantiated);
+    ZASSERT(internal);
+
+    ZEXPECT(view.sections_naming(1).empty());
+    ZEXPECT(!view.find_symbol(1));
 }
 
 ZEST_CASE(CorruptSectionBytesRejected) {

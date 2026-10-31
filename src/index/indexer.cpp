@@ -409,6 +409,24 @@ public:
         index->occurrences.emplace_back(range, ensure_symbol(decls::normalize(decl)));
     }
 
+    /// The macros the compiler and the command line define come with a
+    /// PCH but from no file: completion finds them among the preamble's
+    /// names all the same.
+    void add_predefined_macros() {
+        auto& sources = unit.context().getSourceManager();
+        for(const auto* macro: unit.predefined_macros()) {
+            auto [it, inserted] = symbols.try_emplace(unit.get<EntityTable>().entity(macro));
+            if(inserted) {
+                auto& symbol = it->second;
+                symbol.name = unit.token_spelling(macro->getDefinitionLoc());
+                symbol.kind = SymbolKind::Macro;
+                symbol.scope = SymbolScope::External;
+                symbol.flags = SymbolFlags::Completable;
+                symbol.token_class = token_class(*macro, sources);
+            }
+        }
+    }
+
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
         // FIXME: A macro location is a name a macro body spells, which
         // project_expansions records, or a macro name passed as an argument and
@@ -1750,6 +1768,8 @@ public:
         // index's to resolve: the preamble's own index carries none of it.
         if(!preamble) {
             project_expansions();
+        } else {
+            add_predefined_macros();
         }
         auto instantiations_ms = instantiations_timer.ms_f();
 
@@ -2032,8 +2052,9 @@ public:
             SearchSnapshot names;
             for(auto hash: table) {
                 auto& symbol = symbols.find(hash)->second;
-                if(has_flag(symbol.flags, SymbolFlags::Completable) &&
-                   symbol.scope == SymbolScope::External) {
+                // The unit reaches the names of internal linkage its preamble
+                // declares as much as the others.
+                if(has_flag(symbol.flags, SymbolFlags::Completable)) {
                     names.entries.push_back({
                         .hash = hash,
                         .name = symbol.name,

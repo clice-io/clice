@@ -259,8 +259,14 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     // What the TU's instantiations resolve in its other files, in the
     // coordinates of the text the TU read: the overlay's own entries of
     // the file, or the disk shard of that very text.
-    for(std::uint32_t i = 0; with_instantiations && i < state.instantiation_count() && !stopped;
-        i += 1) {
+    llvm::SmallVector<std::uint32_t, 4> instantiated_sections;
+    if(with_instantiations) {
+        instantiated_sections = state.instantiation_sections_naming(hash);
+    }
+    for(auto i: instantiated_sections) {
+        if(stopped) {
+            break;
+        }
         auto local_id = state.instantiation_path(i);
         auto& instantiations = state.instantiation_shard(i);
         if(local_id == focus_id || !instantiations.loaded()) {
@@ -291,7 +297,10 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                     return visitor(expansion ? expanded : instantiated, relation);
                                 });
     }
-    for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
+    for(auto i: state.sections_naming(hash)) {
+        if(stopped) {
+            break;
+        }
         auto local_id = state.section_path(i);
         if(local_id == focus_id) {
             continue;
@@ -299,9 +308,8 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
         auto& shard = state.section_shard(i);
         std::optional<IndexSource> source;
         shard.relations_of(hash, kind, [&](const Relation& relation) {
-            // An overlay spans hundreds of headers and few hold relations of
-            // any one symbol: resolving every entry's file up front dominated
-            // each lookup.
+            // Most sections naming the symbol hold no relation of `kind`:
+            // the file is resolved once one turns up.
             if(!source) {
                 auto file = files.intern(Spelling::absolute(state.path(local_id)));
                 if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {

@@ -4,6 +4,7 @@ import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
+import :index.search;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
@@ -106,10 +107,10 @@ struct CompletionClient {
     bool markdown = false;
 };
 
-/// A name unqualified completion may offer from the index — of another
-/// namespace, or a macro of a header the file does not include: the
-/// completion looks it up to tell whether the file reaches it already
-/// (CodeCompletionOptions::all_scopes).
+/// A name completion may offer from the index, its preamble's or the
+/// project's: the completion looks it up to tell whether the file reaches
+/// it already, and offers one it does not reach with the qualifier, the
+/// include or the import that does (CodeCompletionOptions::all_scopes).
 struct ScopeCandidate {
     std::string name;
 
@@ -154,36 +155,155 @@ struct Completion {
     std::optional<IncludePlace> include;
 };
 
+/// What a compile of the code completes with (code_complete): the names
+/// the index offers, and whether it holds more of them.
+struct CompileCompletion {
+    std::vector<ScopeCandidate> candidates;
+    bool more_candidates = false;
+
+    /// After a qualifier, whether the index holds more names of other
+    /// scopes, which the qualifier's namespace may bring in.
+    bool more_elsewhere = false;
+
+    /// The candidates stand in for the namespaces' names the precompiled
+    /// preamble declares: the compile reads no others of them (clang's
+    /// LoadExternal off), none after `.`. Not where the index names
+    /// nothing, as in a directive, nor where no index of the document's PCH
+    /// is at hand: the compile reads them all then.
+    bool from_index = false;
+
+    /// How much of the buffer the PCH whose index named the candidates
+    /// stands for: a compile behind another PCH, as after an include added
+    /// since, reads all of its names. None after `.`.
+    std::optional<std::uint32_t> preamble;
+
+    /// Where the name being typed is looked up, with from_index.
+    index::CompletionScope scope;
+};
+
+/// A type, or a template argument, of one compile spelled by the names
+/// that find it again in another compile of the same code: parts in
+/// pre-order, each followed by those it is made of.
+struct TypePart {
+    enum class Kind : std::uint8_t {
+        /// `value` is the clang::BuiltinType::Kind.
+        Builtin,
+        Pointer,
+        LValueReference,
+        RValueReference,
+        /// Of `value` elements.
+        Array,
+        /// The return type, then the parameters.
+        Function,
+        /// A class or an enumeration, by `declarations`.
+        Tag,
+        /// The class of the class template `declarations` names.
+        Pattern,
+        /// A specialization of the class template `declarations` names, its
+        /// arguments after it.
+        Specialization,
+        /// A template argument: the integer `value` of the type after it.
+        Integral,
+        /// A template argument: the template `declarations` names.
+        Template,
+        /// A template argument: a pack of the arguments after it.
+        Pack,
+    };
+
+    /// One declaration a name is found through: its name, empty for an
+    /// anonymous namespace, and its clang::Decl::Kind.
+    struct Declaration {
+        std::string name;
+        std::uint32_t kind = 0;
+    };
+
+    Kind kind = Kind::Builtin;
+
+    /// A type's CVR qualifiers (clang::Qualifiers::getCVRQualifiers).
+    std::uint8_t qualifiers = 0;
+
+    std::int64_t value = 0;
+
+    /// How many parts it is made of, those right after it.
+    std::uint32_t parts = 0;
+
+    /// A function type's, the qualifiers and the ref-qualifier
+    /// (clang::RefQualifierKind) of a member function's among them.
+    bool variadic = false;
+    bool nothrow = false;
+    std::uint8_t method_qualifiers = 0;
+    std::uint8_t ref_qualifier = 0;
+
+    /// The declarations from one in the translation unit down to the named
+    /// one itself.
+    std::vector<Declaration> declarations;
+};
+
+/// What the focus file's whole compile tells completion, whose own parse
+/// stops at the point: the arguments of the only instantiation of each
+/// function template written there, generic lambdas among them, and the
+/// class each `auto` variable of a range-based `for` in a template holds.
+struct InstantiatedTemplates {
+    struct Entry {
+        /// Where the name of the template or the variable is in the focus
+        /// file, and the name.
+        std::uint32_t offset = 0;
+        std::string name;
+
+        /// The arguments, one after the other, or the class.
+        std::vector<TypePart> parts;
+    };
+
+    std::vector<Entry> functions;
+    std::vector<Entry> loops;
+};
+
+/// What `unit`, a compile of the whole focus file, instantiates the file's
+/// templates with (InstantiatedTemplates).
+auto instantiated_templates(CompilationUnit& unit) -> InstantiatedTemplates;
+
+/// A completion with `instantiated` from the latest compile of the whole
+/// file, which may predate its text: an entry serves the template or the
+/// variable of its name at its offset alone.
 auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16,
-                   llvm::ArrayRef<ScopeCandidate> candidates = {}) -> Completion;
+                   const CompileCompletion& names = {},
+                   const InstantiatedTemplates& instantiated = {}) -> Completion;
 
-/// The identifier typed at `offset` of `text`, from its start to `offset`,
-/// when nothing qualifies it — no `::`, `.` or `->` before it — and it is
-/// not empty: where a completion may offer names of other namespaces.
-auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
-    -> std::optional<llvm::StringRef>;
+/// The identifier being typed at `offset` of `text`, from its start to
+/// `offset`, and the scope a qualifier before it names.
+struct TypedName {
+    llvm::StringRef prefix;
+    index::CompletionScope scope;
+
+    /// After `.`: a member, which Sema reads from its class whole. Not after
+    /// `->`, which a trailing return type follows too.
+    bool member = false;
+};
+
+/// None in a number, and after a qualifier spelled other than by names
+/// (`T<int>::`, `decltype(x)::`).
+auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
+    -> std::optional<TypedName>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
 
-/// The most names one completion offers from the index (ScopeCandidate,
-/// CodeCompletionOptions::all_scopes).
+/// The most names one completion offers from the index (ScopeCandidate).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The names the index offers where `prefix` is completed unqualified in
-/// `file` (ScopeCandidate), appended to `candidates`; whether they are all
-/// of them.
-bool scope_candidates(const index::IndexQuery& query,
+/// The names the index offers where `typed` is completed in `file`
+/// (ScopeCandidate), into `compile`, with whether it holds more.
+void scope_candidates(const index::IndexQuery& query,
                       const DependencyGraph& graph,
-                      llvm::StringRef prefix,
+                      const TypedName& typed,
                       Fid file,
-                      std::vector<ScopeCandidate>& candidates);
+                      CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring
@@ -270,13 +390,6 @@ struct CompletionInputs {
 /// items.
 struct NoCompletion {};
 
-/// What a compile of the code completes with (code_complete): the names of
-/// other scopes the index offers, and whether it holds more of them.
-struct CompileCompletion {
-    std::vector<ScopeCandidate> candidates;
-    bool more_candidates = false;
-};
-
 /// How a completion request is answered: not at all, before any compile,
 /// or by a compile of the code.
 using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
@@ -287,8 +400,8 @@ using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, Com
 /// `import ` opens module suggestions, the others for include paths and
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
-/// other code by a compile, with the names of other scopes the index offers
-/// for an unqualified one.
+/// other code by a compile, with the names the index offers where a name
+/// is typed.
 auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
 
 }  // namespace clice::feature
