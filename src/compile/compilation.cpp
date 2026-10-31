@@ -686,6 +686,15 @@ CompilationStatus CompilationUnit::run() {
         at.Line = position->line + 1;
         at.Column = position->character + 1;
         instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
+        if(params.completion.reached) {
+            instance->getPreprocessor().setTokenWatcher(
+                [this, reached = false](const clang::Token& token) mutable {
+                    if(token.is(clang::tok::code_completion) && !reached) {
+                        reached = true;
+                        params.completion.reached(instance->getSema());
+                    }
+                });
+        }
     }
 
     // The PCH files what its build learned of the focus file under the

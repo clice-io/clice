@@ -5,6 +5,7 @@ import :feature.code_actions;
 import :feature.code_completion.item;
 import :feature.code_completion;
 import :feature.documentation;
+import :index.search;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -984,6 +985,95 @@ struct Rebuilder {
     clang::SourceLocation loc;
 };
 
+/// The namespace a qualifier names at the point, through aliases; null for
+/// another scope, whose names Sema reads whole regardless.
+clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::CompletionScope& scope) {
+    auto& ast = sema.getASTContext();
+    auto as_namespace = [](const clang::LookupResult& found) -> clang::DeclContext* {
+        if(!found.isSingleResult()) {
+            return nullptr;
+        }
+        auto* decl = found.getFoundDecl()->getUnderlyingDecl();
+        if(auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(decl)) {
+            return alias->getNamespace();
+        }
+        return llvm::dyn_cast<clang::NamespaceDecl>(decl);
+    };
+    llvm::ArrayRef<std::string> names = scope.qualifier;
+    clang::DeclContext* space = ast.getTranslationUnitDecl();
+    if(!scope.absolute) {
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(names.front()),
+                                  {},
+                                  clang::Sema::LookupNestedNameSpecifierName);
+        found.suppressDiagnostics();
+        sema.LookupName(found, sema.getCurScope());
+        space = as_namespace(found);
+        names = names.drop_front();
+    }
+    for(const auto& name: names) {
+        if(!space) {
+            return nullptr;
+        }
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(name),
+                                  {},
+                                  clang::Sema::LookupNestedNameSpecifierName);
+        found.suppressDiagnostics();
+        sema.LookupQualifiedName(found, space);
+        space = as_namespace(found);
+    }
+    return space;
+}
+
+/// Loads, of the precompiled preamble, what Sema lists at the point of
+/// the candidates' names while it reads no other names of namespaces
+/// (CompileCompletion::from_index): the declarations unqualified lookup
+/// finds, or those of the namespace a qualifier names. A namespace the
+/// index searched under another name, through an alias, is read whole.
+void load_names(clang::Sema& sema,
+                const index::CompletionScope& scope,
+                llvm::ArrayRef<ScopeCandidate> candidates) {
+    auto& ast = sema.getASTContext();
+    clang::DeclContext* space = nullptr;
+    if(scope.qualified()) {
+        space = qualified_namespace(sema, scope);
+        if(!space) {
+            return;
+        }
+        llvm::SmallVector<llvm::StringRef, 4> names;
+        for(auto* context = space; !context->isTranslationUnit(); context = context->getParent()) {
+            if(auto* named = llvm::dyn_cast<clang::NamespaceDecl>(context);
+               named && !named->isInline()) {
+                names.push_back(named->getName());
+            }
+        }
+        ranges::reverse(names);
+        if(names.size() < scope.qualifier.size() ||
+           !ranges::equal(llvm::ArrayRef(names).take_back(scope.qualifier.size()),
+                          scope.qualifier,
+                          {},
+                          {},
+                          [](const std::string& name) { return llvm::StringRef(name); })) {
+            space->lookups();
+            return;
+        }
+    }
+    for(const auto& candidate: candidates) {
+        // Its identifier comes with the macro a header defines by its name.
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(candidate.name),
+                                  {},
+                                  clang::Sema::LookupOrdinaryName);
+        found.suppressDiagnostics();
+        if(space) {
+            sema.LookupQualifiedName(found, space);
+        } else if(!candidate.macro) {
+            sema.LookupName(found, sema.getCurScope());
+        }
+    }
+}
+
 /// The function template `context` is in, through the lambdas and local
 /// classes inside it.
 const clang::FunctionDecl* enclosing_template(const clang::DeclContext* context) {
@@ -1002,11 +1092,15 @@ public:
     /// request: `if`, `for` and the like exist only as code patterns. The
     /// members the other access operator reaches come as candidates
     /// carrying the fix that writes it.
-    static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options) {
+    /// With `from_index`, the names of namespaces the preamble declares
+    /// are the candidates' alone (load_names).
+    static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options,
+                                                   bool from_index) {
         clang::CodeCompleteOptions sema;
         sema.IncludeMacros = 1;
         sema.IncludeCodePatterns = 1;
         sema.IncludeFixIts = options.dot_to_arrow.value;
+        sema.LoadExternal = !from_index;
         return sema;
     }
 
@@ -1018,9 +1112,10 @@ public:
             const CodeCompletionOptions& options,
             const CompletionClient& client,
             llvm::ArrayRef<ScopeCandidate> candidates,
+            bool from_index,
             bool& includes_pending,
             WholeBuffer& whole) :
-        clang::CodeCompleteConsumer(sema_options(options)), focus(focus), offset(offset),
+        clang::CodeCompleteConsumer(sema_options(options, from_index)), focus(focus), offset(offset),
         encoding(encoding), output(output), documented(documented), options(options),
         argument_style(options.arguments), client(client), scope_candidates(candidates),
         includes_pending(includes_pending),
@@ -2405,13 +2500,15 @@ auto code_complete(CompilationParams params,
                    const DocumentationOptions& documentation,
                    const CompletionClient& client,
                    PositionEncoding encoding,
-                   llvm::ArrayRef<ScopeCandidate> candidates) -> Completion {
+                   const CompileCompletion& names) -> Completion {
     auto offset = params.completion.offset;
 
     std::vector<protocol::CompletionItem> items;
     std::vector<const clang::NamedDecl*> documented;
     WholeBuffer whole(params);
     bool includes = false;
+    // The index holds no module's names a module file brings in.
+    bool from_index = names.from_index && params.input.pcms.empty();
     params.completion.consumer = [&](CompilationUnit& unit) {
         return std::make_unique<Builder>(unit.focus_file(),
                                          offset,
@@ -2420,10 +2517,16 @@ auto code_complete(CompilationParams params,
                                          documented,
                                          options,
                                          client,
-                                         candidates,
+                                         names.candidates,
+                                         from_index,
                                          includes,
                                          whole);
     };
+    if(from_index) {
+        params.completion.reached = [&](clang::Sema& sema) {
+            load_names(sema, names.scope, names.candidates);
+        };
+    }
     auto unit = compile(std::move(params));
 
     assert(ranges::size(items) == ranges::size(documented));

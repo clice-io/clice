@@ -201,8 +201,7 @@ void LSPClient::register_editing() {
                                              worker::CompletionParams{
                                                  .client = completion_client,
                                                  .encoding = encoding,
-                                                 .candidates = compile.candidates,
-                                                 .more_candidates = compile.more_candidates,
+                                                 .names = compile,
                                              },
                                              ctx.cancellation)
                           .or_fail();

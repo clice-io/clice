@@ -209,6 +209,10 @@ struct CompilationParams {
         /// Makes what clang hands the results to, for the unit once it has
         /// opened the focus file; the compile owns it.
         std::function<std::unique_ptr<clang::CodeCompleteConsumer>(CompilationUnit&)> consumer;
+
+        /// Run once the parse reaches the point, before Sema lists what is
+        /// visible there.
+        std::function<void(clang::Sema&)> reached;
     };
 
     /// Completion: the point and its consumer.

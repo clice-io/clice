@@ -2032,8 +2032,9 @@ public:
             SearchSnapshot names;
             for(auto hash: table) {
                 auto& symbol = symbols.find(hash)->second;
-                if(has_flag(symbol.flags, SymbolFlags::Completable) &&
-                   symbol.scope == SymbolScope::External) {
+                // The unit reaches the names of internal linkage its preamble
+                // declares as much as the others.
+                if(has_flag(symbol.flags, SymbolFlags::Completable)) {
                     names.entries.push_back({
                         .hash = hash,
                         .name = symbol.name,

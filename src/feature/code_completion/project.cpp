@@ -15,6 +15,7 @@ import :support.fuzzy_matcher;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
+import :syntax.lexer;
 import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_table;
@@ -25,17 +26,37 @@ namespace clice::feature {
 // What the server completes without a compile, and how it finishes the
 // list a compile returns.
 
-auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
-    -> std::optional<llvm::StringRef> {
+auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<TypedName> {
     auto prefix = Prefix::from(text, offset);
-    if(prefix.spelling.empty() || clang::isDigit(prefix.spelling.front())) {
+    if(!prefix.spelling.empty() && clang::isDigit(prefix.spelling.front())) {
         return std::nullopt;
     }
+    TypedName typed{.prefix = prefix.spelling};
     auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(before.ends_with("::") || before.ends_with(".") || before.ends_with("->")) {
+    while(before.consume_back("::")) {
+        before = before.rtrim();
+        auto start = before.size();
+        while(start > 0 && is_identifier_char(before[start - 1])) {
+            start -= 1;
+        }
+        auto name = before.substr(start);
+        if(name.empty()) {
+            if(before.ends_with(">") || before.ends_with(")")) {
+                return std::nullopt;
+            }
+            typed.scope.absolute = true;
+            break;
+        }
+        if(clang::isDigit(name.front())) {
+            return std::nullopt;
+        }
+        typed.scope.qualifier.insert(typed.scope.qualifier.begin(), name.str());
+        before = before.drop_back(name.size()).rtrim();
+    }
+    if(before.ends_with(".") || before.ends_with("->")) {
         return std::nullopt;
     }
-    return prefix.spelling;
+    return typed;
 }
 
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
@@ -54,7 +75,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 
 bool scope_candidates(const index::IndexQuery& query,
                       const DependencyGraph& graph,
-                      llvm::StringRef prefix,
+                      const TypedName& typed,
                       Fid file,
                       std::vector<ScopeCandidate>& candidates) {
     auto kind_of = [](SymbolKind kind) {
@@ -73,8 +94,8 @@ bool scope_candidates(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
-    auto found = index::completables(query, prefix, file, scope_candidate_limit);
-    for(auto& [symbol, declared]: found.names) {
+    auto found = index::completables(query, typed.prefix, typed.scope, file, scope_candidate_limit);
+    for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
             .name = symbol.name,
@@ -90,7 +111,6 @@ bool scope_candidates(const index::IndexQuery& query,
         // An enumerator keeps its enumeration in the qualifier: the index
         // does not tell a scoped one, which needs it, and an unscoped one
         // takes it as well.
-        auto chain = query.container_chain(symbol.hash, declared);
         auto namespaces = llvm::ArrayRef(chain);
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();
@@ -461,10 +481,12 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     }
 
     CompileCompletion compile;
-    if(auto prefix = offset ? unqualified_prefix(text, *offset) : std::nullopt;
-       prefix && inputs.options.all_scopes && completing.directive.empty()) {
+    if(auto typed = offset ? typed_name(text, *offset) : std::nullopt;
+       typed && completing.directive.empty()) {
         compile.more_candidates =
-            !scope_candidates(inputs.query, inputs.graph, *prefix, inputs.file, compile.candidates);
+            !scope_candidates(inputs.query, inputs.graph, *typed, inputs.file, compile.candidates);
+        compile.from_index = true;
+        compile.scope = std::move(typed->scope);
     }
     return compile;
 }
