@@ -1,6 +1,6 @@
 module clice;
 
-import :server.master_server;
+import :server.master;
 import :support.anomaly;
 import :support.logging;
 import :unittests.utils;
@@ -19,9 +19,6 @@ ZEST_CASE(BoundedRetention) {
     auto saved_level = spdlog::get_level();
     spdlog::set_level(spdlog::level::off);
 
-    std::size_t wakeups = 0;
-    auto conn = server.on_notify.connect([&] { wakeups += 1; });
-
     for(int i = 0; i < 130; i++) {
         LOG_GUIDANCE("notify retention probe {}", i);
     }
@@ -29,7 +26,6 @@ ZEST_CASE(BoundedRetention) {
     spdlog::set_level(saved_level);
 
     ZEXPECT(server.notify_seq == 130u);
-    ZEXPECT(wakeups == 130u);
     ZASSERT(server.notify_log.size() == 128u);
     // Drop-oldest: the first two messages were evicted, and the sequence
     // arithmetic keeps addressing the retained window.

@@ -6,16 +6,11 @@ import :index.query;
 import :index.shard;
 import :index.text;
 import :index.tu_index;
-import :project.command_resolver;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.builders.turun;
-import :sched.graph;
-import :sched.index.pump;
-import :server.document_compile;
-import :server.live_sources;
-import :server.session_store;
+import :project.project;
+import :server.served_project;
+import :server.session;
 import :support.bytes;
+import :unittests.server.served_project_fixture;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -23,30 +18,16 @@ import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.file_system;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 namespace {
 
 ZEST_SUITE(QueryOverlay, Tester) {
 
-kota::event_loop loop;
-FileTable files;
-Project project{files};
-SessionStore session_store;
-WorkerPool pool{loop};
-CommandResolver resolver{project};
-TaskGraph graph;
-PCHBuilder pch{graph, project, pool};
-PCMBuilder pcm{graph, project, resolver, pch, pool};
-DocumentCompiles compiles;
-
-TURunFamily turun{graph, project, resolver, pcm, pch, pool};
-IndexPump indexer{loop, project, turun, pool};
-ServerLiveSources live{project, pch, session_store, compiles};
-index::FreshnessGate gate{project.file_table};
-index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
-index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
+ServedProjectFixture fx;
+Project& project = fx.project().project;
+index::IndexQuery& index_query = project.index_query;
+index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -54,9 +35,9 @@ std::shared_ptr<Session> session;
 std::string focus_path;
 
 /// Compile the added sources, persist the preamble index (exactly what
-/// the PCH build produces), and open a session whose pch_key points at
-/// it. The session's own index is the focus file's TU index of an open
-/// file's compile, mirroring the production per-edit index.
+/// the PCH build produces), and open the focus file with a latest compile
+/// whose pch_key points at it. Its own index is the focus file's TU index
+/// of an open file's compile, mirroring the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
     kind = CompilationKind::Whole;
     ZASSERT(compile());
@@ -77,14 +58,11 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     st.state = nullptr;
 
     focus_path = std::string(full_index.path(full_index.path_count() - 1));
-    auto path_id = project.file_table.intern(Spelling::absolute(focus_path));
-    session = session_store.open(path_id);
-
     auto it = sources.all_files.find(path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
-    session->set_text(it->second.content);
+    session = fx.open(focus_path, it->second.content);
 
-    auto& entry = compiles.entries[path_id];
+    auto& entry = fx.entry(session->path_id);
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
@@ -129,7 +107,7 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
     ZASSERT(project.index.merge(tu_index_bytes(blob), {}).has_value());
 }
 
-/// A finished per-edit index with no entries — what a session holds when
+/// A finished per-edit index with no entries — what a document holds when
 /// every entry of its buffer lives behind the PCH. `loaded` is what the
 /// freshness gate keys on; an unloaded index means "compile not finished".
 index::TUIndex empty_session_index() {
@@ -142,13 +120,13 @@ index::TUIndex empty_session_index() {
 void install_empty_index(std::source_location location = std::source_location::current()) {
     auto index = std::make_shared<index::TUIndex>(empty_session_index());
     ZASSERT(index->loaded());
-    auto& entry = compiles.entries[session->path_id];
+    auto& entry = fx.entry(session->path_id);
     auto next = DocumentCompile(*entry.latest);
     next.index = std::move(index);
     entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
 }
 
-/// The symbol under a marker in the open session, through the query's
+/// The symbol under a marker in the open document, through the query's
 /// serving source (buffer coordinates).
 index::IndexQuery::Cursor
     cursor_of(llvm::StringRef name,
@@ -277,10 +255,10 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    // Opening the header makes its session authoritative: overlay entries
+    // Opening the header makes its document authoritative: overlay entries
     // for it describe the disk snapshot and would map onto the edited
     // buffer at wrong lines, so they must vanish from results.
-    session_store.open(project.file_table.intern(Spelling::absolute(header_path("foo.h"))));
+    fx.open(header_path("foo.h"), "");
 
     auto locations = relations("ref", RelationKind::Reference);
     ZASSERT(locations.size() == 1);
@@ -329,9 +307,9 @@ Derived instance;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
-    // Once derived.h is open, its session owns the type relations spelled
+    // Once derived.h is open, its document owns the type relations spelled
     // there; the overlay's disk-snapshot relations must stop contributing.
-    session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
+    fx.open(header_path("derived.h"), "");
     supertypes =
         feature::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
@@ -499,9 +477,8 @@ int main() { return 0; }
     // file-local macro identities — its entries must stay scoped to the
     // file that built the blob.
     auto other_path = std::string(path::parent(focus_path)) + "/other.cpp";
-    auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
-    other->set_text(session->text().str());
-    auto& other_entry = compiles.entries[other->path_id];
+    auto other = fx.open(other_path, session->text().str());
+    auto& other_entry = fx.entry(other->path_id);
     auto other_compiled = std::make_shared<DocumentCompile>();
     other_compiled->pch_key = "key";
     other_entry.latest = std::move(other_compiled);
@@ -519,10 +496,10 @@ int main() { return 0; }
     open_with_overlay();
     install_empty_index();
 
-    // Body edits dirty the session but never move preamble entries: as long
-    // as the buffer still starts with the blob's preamble text, the
+    // Body edits dirty the document but never move preamble entries: as
+    // long as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
-    compiles.entries[session->path_id].current = false;
+    fx.entry(session->path_id).current = false;
     session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }

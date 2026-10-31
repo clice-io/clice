@@ -3,6 +3,8 @@ module clice;
 import :feature.navigation;
 import :index.symbol;
 import :semantic.symbol;
+import :server.served_project;
+import :unittests.server.served_project_fixture;
 import :unittests.utils.index_query_tester;
 import :vfs.file_system;
 import :vfs.ids;
@@ -88,9 +90,9 @@ ZEST_CASE(ShardServesOpenSession) {
 
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
-    auto session = store.open(focus_id);
-    store.apply_open(*session, unit->focus_file().content().str(), 1);
-    ZASSERT(!compiles.index_current(session->path_id));
+    auto session =
+        fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
+    ZASSERT(!fx.project().index_current(session->path_id));
 
     auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
@@ -106,9 +108,8 @@ ZEST_CASE(DivergedBufferWithdrawsShard) {
     )");
     index_workspace();
 
-    auto session = store.open(focus_id);
     auto edited = unit->focus_file().content().str() + "// edited\n";
-    store.apply_open(*session, edited, 1);
+    auto session = fx.open(project.file_table.resolve(focus_id), edited, 1);
 
     // The buffer no longer matches the shard's content: the shard withdraws
     // and the un-compiled session resolves nothing.
@@ -132,15 +133,16 @@ ZEST_CASE(HeaderEdgesFromHost) {
 
     // The header has no manifest of its own; its directive is a node of
     // the host TU's manifest hanging off the header's node.
-    auto session = store.open(header_id);
-    store.apply_open(*session, sources.all_files.lookup("header.h").content, 1);
+    auto session = fx.open(project.file_table.resolve(header_id),
+                           sources.all_files.lookup("header.h").content,
+                           1);
     auto edges = query.project().include_edges(session->path_id);
     ZASSERT(edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
-    auto focus_session = store.open(focus_id);
-    store.apply_open(*focus_session, unit->focus_file().content().str(), 1);
+    auto focus_session =
+        fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
     auto focus_edges = query.project().include_edges(focus_session->path_id);
     ZASSERT(focus_edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(focus_edges[0].target).ends_with("header.h"));

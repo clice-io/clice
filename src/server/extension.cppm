@@ -72,6 +72,12 @@ struct CurrentContextResult {
     /// Whether no choice of the user's is in force.
     bool automatic = true;
 
+    /// The user's choice while it does not hold — its host left the build or
+    /// no longer includes the file, or its command is gone: it waits, and
+    /// applies again once it holds. Meanwhile the file compiles in the
+    /// automatic context.
+    std::optional<ContextItem> inactive_choice;
+
     /// The command the document compiles with; absent when it is not open.
     std::optional<CompileCommand> command;
 

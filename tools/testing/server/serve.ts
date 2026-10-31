@@ -477,6 +477,9 @@ export class Serve extends Client {
         return shown(reply, "current_context", (result) => ({
             ...(result.context === null ? {} : { context: this.contextItem(result.context) }),
             automatic: result.automatic,
+            ...(result.inactiveChoice === undefined || result.inactiveChoice === null
+                ? {}
+                : { inactive_choice: this.contextItem(result.inactiveChoice) }),
         }));
     }
 

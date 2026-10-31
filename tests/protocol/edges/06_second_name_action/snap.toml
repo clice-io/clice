@@ -1,0 +1,12 @@
+[["action from the second name".actions.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+
+["action from the second name".actions.code_actions.edits]
+"real/main.cpp" = '''
+ int main() {
+-    auto tonnes = 12;
++    int tonnes = 12;
+     return tonnes;
+ }
+'''

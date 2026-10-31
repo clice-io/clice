@@ -1,0 +1,9 @@
+# repo/sub is a project of its own, nested in the folder. The folder's build
+# lists the subproject's source too, so the folder's project hosts the header
+# in a file the subproject serves.
+[units]
+"repo/sub/widget.cpp" = []
+
+[databases]
+repo = ["repo/sub/widget.cpp"]
+"repo/sub/build" = ["repo/sub/widget.cpp"]

@@ -1,0 +1,38 @@
+[[test.actions.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'size' inline"
+
+[test.actions.code_actions.edits]
+"repo/widget.h" = '''
+ class Widget {
+ public:
+-    int size() const;
++    int size() const {}
+ };
+'''
+
+[[test.actions.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::size' out of line"
+
+[test.actions.code_actions.edits]
+"repo/widget.h" = '''
+     int size() const;
+ };
++
++inline int Widget::size() const {
++}
+'''
+
+[[test.actions.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::size' in widget.cpp"
+
+[test.actions.code_actions.edits]
+"repo/sub/widget.cpp" = '''
+
+ int later() { return 1; }
++
++int Widget::size() const {
++}
+'''

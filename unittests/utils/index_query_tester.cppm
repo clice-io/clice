@@ -5,34 +5,22 @@ import :index.query;
 import :index.search;
 import :index.symbol_query;
 import :project.project;
-import :sched.builders.pch;
-import :sched.graph;
-import :server.document_compile;
-import :server.live_sources;
-import :server.session_store;
+import :server.served_project;
 import :support.prelude;
+import :unittests.server.served_project_fixture;
 import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
 import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 
 struct IndexQueryTester : Tester {
-    kota::event_loop loop;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    WorkerPool pool{loop};
-    TaskGraph graph;
-    DocumentCompiles compiles;
-    PCHBuilder pch{graph, project, pool};
-    ServerLiveSources live{project, pch, store, compiles};
-    index::FreshnessGate gate{project.file_table};
-    index::IndexQuery query{project.index, project.file_table, &gate, &live};
+    ServedProjectFixture fx;
+    Project& project = fx.project().project;
+    index::IndexQuery& query = project.index_query;
 
     Fid focus_id;
     Fid header_id;

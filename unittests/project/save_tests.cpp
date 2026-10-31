@@ -3,10 +3,10 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :index.symbol_query;
+import :project.contexts;
 import :project.project;
 import :project.save;
 import :sched.index.pending_table;
-import :server.editor_context;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
@@ -19,9 +19,9 @@ namespace {
 ZEST_SUITE(ContextChoices) {
 
 ZEST_CASE(ContextsBlobRoundTrip) {
-    // The editor's choices and artifact hosts ride the context choices: a
-    // restart attaching an editor gets them back, and the save that
-    // committed them makes the change numbered before it durable.
+    // The editor's choices ride the context choices: a restart attaching an
+    // editor gets them back, and the save that commits them leaves nothing
+    // pending.
     TempDir tmp;
     tmp.touch("host.cpp", "#include \"h.h\"\n");
     tmp.touch("h.h", "int x;\n");
@@ -31,32 +31,32 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands, f.project.choices};
         f.load();
-        editor.load();
         auto host = f.project.file_table.intern(Spelling::absolute(host_path));
         auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-        editor.selections[header] = ContextChoice{host, 1, "applied", "base"};
-        editor.mark_dirty();
-        auto seq = f.project.choices.save_seq;
+        ContextChoice choice{host, 1, "applied", "base"};
+        std::pair<Fid, const ContextChoice*> choices[] = {
+            {header, &choice}
+        };
+        f.project.choices.bytes = serialize_choices(f.project, choices);
+        f.project.choices.dirty = true;
         f.save();
         ZASSERT(!f.project.choices.dirty);
-        ZASSERT(f.project.choices.committed_seq == seq);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands, f.project.choices};
     f.load();
-    editor.load();
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
     auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-    auto* saved = editor.selection(header);
-    ZASSERT(saved != nullptr);
-    ZASSERT(saved->host_path_id == host);
-    ZASSERT(saved->occurrence == std::optional<std::uint32_t>(1));
-    ZASSERT(saved->command_hash == "applied");
-    ZASSERT(saved->base_hash == "base");
+    auto choices = parse_choices(f.project, f.project.choices.bytes);
+    ZASSERT(choices.size() == 1u);
+    ZASSERT(choices[0].first == header);
+    auto& saved = choices[0].second;
+    ZASSERT(saved.host_path_id == host);
+    ZASSERT(saved.occurrence == std::optional<std::uint32_t>(1));
+    ZASSERT(saved.command_hash == "applied");
+    ZASSERT(saved.base_hash == "base");
     ZASSERT(!f.project.choices.dirty);
 }
 
@@ -86,15 +86,12 @@ ZEST_CASE(CorruptSaveKeepsPending) {
     f.project.database = std::make_unique<CorruptAfterWrite>(std::move(f.project.database));
     f.project.choices.bytes = "choices";
     f.project.choices.dirty = true;
-    f.project.choices.save_seq += 1;
-    auto seq = f.project.choices.save_seq;
 
     f.save();
-    ZASSERT(f.project.choices.committed_seq < seq);
     ZASSERT(f.project.choices.dirty);
 
     f.save();
-    ZASSERT(f.project.choices.committed_seq == seq);
+    ZASSERT(!f.project.choices.dirty);
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZASSERT(kept.buffer->getBuffer() == "choices");

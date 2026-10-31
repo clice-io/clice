@@ -7,7 +7,6 @@ import :command.table;
 import :command.toolchain;
 import :driver.driver;
 import :project.project;
-import :project.project_reader;
 import :support.json;
 import :support.shell;
 import :vfs.file_system;
@@ -233,10 +232,10 @@ int run_file(const FileOptions& opts) {
         return 1;
     }
     auto opened =
-        open_reader(root,
-                    std::move(loaded),
-                    {.build = Project::OpenOptions::Build::Databases, .file = CanonicalPath(path)});
-    auto& project = opened.reader->project;
+        open_at(root,
+                std::move(loaded),
+                {.build = Project::OpenOptions::Build::Databases, .file = CanonicalPath(path)});
+    auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
     CanonicalRef identity = files.resolve(file);
@@ -479,9 +478,8 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
     }
     auto& [root, loaded] = *read;
     // The rules alone: what converts is the database or the command given.
-    auto opened =
-        open_reader(root, std::move(loaded), {.build = Project::OpenOptions::Build::None});
-    auto& project = opened.reader->project;
+    auto opened = open_at(root, std::move(loaded), {.build = Project::OpenOptions::Build::None});
+    auto& project = opened->project;
     if(!command.empty()) {
         return convert_command(project, command, static_cast<bool>(opts.json));
     }

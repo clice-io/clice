@@ -1,0 +1,6 @@
+["a pull follows the document".pulled]
+value = ["missing IN_OUTER"]
+
+["a completion is outdated".reply]
+code = -32801
+message = "Document changed while the request was in flight"

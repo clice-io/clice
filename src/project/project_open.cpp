@@ -320,6 +320,13 @@ index::DatabaseKey database_key(const Settings& settings,
     return {.configuration = configuration.str(), .resolved = resolved.str()};
 }
 
+std::string damaged_index_error(const Project& project) {
+    return std::format(
+        "the index database at {} is damaged (the log above says where); delete that "
+        "directory and run `clice index` to rebuild it",
+        index::database_directory(*project.store, project.database_key));
+}
+
 Project::Opened Project::open(const OpenOptions& options) {
     using Build = OpenOptions::Build;
     using Index = OpenOptions::Index;

@@ -9,7 +9,8 @@ import :vfs.file_system;
 namespace clice {
 
 /// What one resolution asks for beyond the file itself. The editor fields
-/// are filled by EditorContext for editor-facing compiles of open files;
+/// are filled by the served project for editor-facing compiles of open
+/// files (ServedProject::resolve_command);
 /// a background resolution (indexing, batch runs, `clice inspect`) leaves
 /// them empty and so depends on nothing but the project on disk.
 struct CommandRequest {
@@ -29,7 +30,7 @@ struct CommandRequest {
 
     /// Take the include trees the host search misses with preprocess runs
     /// in this process (take_tree): the command line's way, which runs no
-    /// workers; the server takes them through its pool (IncludeTrees).
+    /// workers; the server takes them through its pool (ServedProject::take_tree).
     bool preprocess = false;
 };
 

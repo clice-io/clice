@@ -1,0 +1,30 @@
+[test.renamed.rename.edits]
+"repo/api.h" = '''
+ #pragma once
+
+-int compute(int x);
++int evaluate(int x);
+'''
+"repo/main.cpp" = '''
+ #include "api.h"
+
+-int compute(int x) { return x; }
++int evaluate(int x) { return x; }
+
+-int main() { return compute(1); }
++int main() { return evaluate(1); }
+'''
+"repo/sub/user.cpp" = '''
+ #include "../api.h"
+
+-int later() { return compute(9); }
++int later() { return evaluate(9); }
+
+-int use() { return compute(2); }
++int use() { return evaluate(2); }
+'''
+
+[test.renamed.rename.versions]
+"repo/api.h" = "disk"
+"repo/main.cpp" = 0
+"repo/sub/user.cpp" = 1

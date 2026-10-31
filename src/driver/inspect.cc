@@ -28,7 +28,6 @@ import :index.tu_index;
 import :project.command_resolver;
 import :project.hosting;
 import :project.project;
-import :project.project_reader;
 import :semantic.symbol;
 import :support.bytes;
 import :syntax.token;
@@ -542,7 +541,7 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 /// what their trials found; the databases the settings name, else the
 /// ones discovered under its root and those between the root and the file;
 /// the dependency graph.
-std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const Options& opts,
+std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const Options& opts,
                                                                            const Spelling& path) {
     LoadSettingsOptions options{.overlay_name = "--config-overlay"};
     if(opts.config_overlay) {
@@ -559,17 +558,17 @@ std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const
         return std::unexpected(std::move(read.error()));
     }
     auto& [root, loaded] = *read;
-    auto project = open_reader(root,
-                               std::move(loaded),
-                               {
-                                   .store = Project::OpenOptions::Store::ReadOnly,
-                                   .index = Project::OpenOptions::Index::Read,
-                                   .file = CanonicalPath(path),
-                               });
-    if(!project.opened.unreadable.empty()) {
-        LOG_INFO("{}", project.opened.unreadable);
+    auto opened = open_at(root,
+                          std::move(loaded),
+                          {
+                              .store = Project::OpenOptions::Store::ReadOnly,
+                              .index = Project::OpenOptions::Index::Read,
+                              .file = CanonicalPath(path),
+                          });
+    if(!opened->opened.unreadable.empty()) {
+        LOG_INFO("{}", opened->opened.unreadable);
     }
-    return std::move(project.reader);
+    return opened;
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -769,11 +768,11 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    auto reader = load_inspected(opts, path);
-    if(!reader) {
-        return print_error(reader.error());
+    auto opened = load_inspected(opts, path);
+    if(!opened) {
+        return print_error(opened.error());
     }
-    auto& project = (*reader)->project;
+    auto& project = (*opened)->project;
     std::optional<ContextChoice> choice;
     if(opts.host) {
         choice = ContextChoice{

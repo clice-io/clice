@@ -2,7 +2,6 @@ module clice:analysis.module_graph;
 
 import :analysis.annotation;
 import :index.symbol;
-import :project.project_reader;
 import :project.project;
 import :semantic.symbol;
 import :support.prelude;
@@ -289,17 +288,12 @@ struct LoadError {
     std::vector<std::string> dropped;
 };
 
-/// Changes the facts while the index they were read from is still open,
-/// for what only the index can resolve: the symbols a locator names.
-using FactsEdit = llvm::function_ref<std::expected<void, std::string>(ProjectReader&, Facts&)>;
-
-/// The facts of the files the `scope` globs select out of the index
-/// `reader` opened (default: the project's own files outside dot
-/// directories), after `edit`, and the project root; none from an index
-/// that lacks a unit or describes a file as it no longer is.
-std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
-                                                 llvm::ArrayRef<std::string> scope,
-                                                 FactsEdit edit = {});
+/// The facts of the files the `scope` globs select out of the index of
+/// `project` (default: the project's own files outside dot directories),
+/// and the project root; none from an index that lacks a unit or describes
+/// a file as it no longer is.
+std::expected<LoadedFacts, LoadError> load_facts(Project& project,
+                                                 llvm::ArrayRef<std::string> scope);
 
 /// What a module is to the program a partition wraps.
 enum class ModuleKind : std::uint8_t {

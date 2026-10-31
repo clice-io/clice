@@ -1,7 +1,7 @@
 module clice;
 
 import :driver.driver;
-import :server.master_server;
+import :server.master;
 
 namespace clice::driver {
 

@@ -14,7 +14,6 @@ import :index.tu_manifest;
 import :index.writer_lock;
 import :feature.query;
 import :project.project;
-import :project.project_reader;
 import :sched.batch;
 import :server.control;
 import :support.text;
@@ -628,14 +627,13 @@ llvm::StringRef kind_name(SymbolKind kind) {
 /// What the index records about every symbol `text`, a locator, names:
 /// an id its symbol, whether a file places it or not; anything else what
 /// `clice query` finds for it, a name every symbol spelling it whole.
-int run_show_symbol(ProjectReader& reader, llvm::StringRef text) {
+int run_show_symbol(Project& project, llvm::StringRef text) {
     auto locator = index::SymbolQuery::parse(text);
     if(!locator) {
         LOG_ERROR("{}", locator.error());
         return 1;
     }
-    auto& project = reader.project;
-    auto& query = reader.query;
+    auto& query = project.index_query;
 
     // Each match with the file it was found in: a symbol below external
     // scope is known to the files holding it.
@@ -645,7 +643,7 @@ int run_show_symbol(ProjectReader& reader, llvm::StringRef text) {
     };
 
     std::vector<Match> matches;
-    auto ctx = reader.context();
+    auto ctx = query_context(project);
     auto handle = locator->handle;
     auto paths = locator->paths;
     auto named = feature::query::named_symbols(ctx, std::move(*locator));
@@ -896,28 +894,27 @@ int read_index(const ProjectOptions& where, Run run) {
         return print_error(read.error());
     }
     auto& [root, loaded] = *read;
-    auto project = open_index(root,
-                              std::move(loaded),
-                              Project::OpenOptions::Build::None,
-                              {},
-                              /*check_disk=*/false);
-    if(!project) {
+    auto opened = open_index(root,
+                             std::move(loaded),
+                             Project::OpenOptions::Build::None,
+                             {},
+                             /*check_disk=*/false);
+    if(!opened) {
         return 1;
     }
-    auto& reader = *project->reader;
-    auto rc = run(reader);
+    auto& project = (*opened)->project;
+    auto rc = run(project);
     // A damaged record reads as missing, its log line the only trace: what
     // was printed is no answer automation may take as one.
-    return reader.project.index.damaged() ? 1 : rc;
+    return project.index.damaged() ? 1 : rc;
 }
 
 /// An operation reading the record of the one file it names.
 template <typename Show>
 CommandHandler show_file(std::string_view usage, Show show) {
     return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
-        return read_index(opts.where, [&](ProjectReader& reader) {
-            return show(reader.project, *opts.target.path);
-        });
+        return read_index(opts.where,
+                          [&](Project& project) { return show(project, *opts.target.path); });
     });
 }
 
@@ -926,30 +923,29 @@ CommandHandler build() {
     operations.push_back({
         .name = "stats",
         .description = "What the persisted index holds: its sizes and how its records spread",
-        .run =
-            operation<StatsOptions>("clice index stats [OPTIONS]",
-                                    "index",
-                                    Errors::Text,
-                                    [](const StatsOptions& opts) {
-                                        return read_index(opts.where, [&](ProjectReader& reader) {
-                                            return run_stats(reader.project,
-                                                             opts.limit.value_or(20),
-                                                             static_cast<bool>(opts.variants));
-                                        });
-                                    }),
+        .run = operation<StatsOptions>("clice index stats [OPTIONS]",
+                                       "index",
+                                       Errors::Text,
+                                       [](const StatsOptions& opts) {
+                                           return read_index(opts.where, [&](Project& project) {
+                                               return run_stats(project,
+                                                                opts.limit.value_or(20),
+                                                                static_cast<bool>(opts.variants));
+                                           });
+                                       }),
     });
     operations.push_back({
         .name = "symbol",
         .description = "What the persisted index records about symbols",
-        .run =
-            operation<SymbolOptions>("clice index symbol <LOCATOR> [OPTIONS]",
-                                     "index",
-                                     Errors::Text,
-                                     [](const SymbolOptions& opts) {
-                                         return read_index(opts.where, [&](ProjectReader& reader) {
-                                             return run_show_symbol(reader, *opts.target.locator);
-                                         });
-                                     }),
+        .run = operation<SymbolOptions>("clice index symbol <LOCATOR> [OPTIONS]",
+                                        "index",
+                                        Errors::Text,
+                                        [](const SymbolOptions& opts) {
+                                            return read_index(opts.where, [&](Project& project) {
+                                                return run_show_symbol(project,
+                                                                       *opts.target.locator);
+                                            });
+                                        }),
     });
     operations.push_back({
         .name = "file",

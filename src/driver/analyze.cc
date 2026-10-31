@@ -6,7 +6,7 @@ import :analysis.wrapping;
 import :driver.driver;
 import :feature.query;
 import :index.symbol_query;
-import :project.project_reader;
+import :project.project;
 import :vfs.path;
 
 namespace clice::driver {
@@ -174,9 +174,9 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     }
     std::vector<feature::query::SymbolEntry> candidates;
     std::vector<std::string> unindexed;
-    auto move_declarations = [&](ProjectReader& reader,
+    auto move_declarations = [&](Project& project,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
-        auto ctx = reader.context();
+        auto ctx = query_context(project);
         for(llvm::StringRef move: model.move_entity.value_or(std::vector<std::string>{})) {
             auto [text, path] = move.rsplit('=');
             if(text.empty() || path.empty()) {
@@ -201,13 +201,18 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
         }
         return {};
     };
-    auto reader = open_for_analysis(model.where);
-    if(!reader) {
-        return fail(std::move(reader.error()));
+    auto opened = open_for_analysis(model.where);
+    if(!opened) {
+        return fail(std::move(opened.error()));
     }
-    auto loaded = analysis::load_facts(**reader,
-                                       model.scope.value_or(std::vector<std::string>{}),
-                                       move_declarations);
+    auto& project = (*opened)->project;
+    auto loaded = analysis::load_facts(project, model.scope.value_or(std::vector<std::string>{}));
+    // The locators resolve against the index the facts were read from.
+    if(loaded) {
+        if(auto moved = move_declarations(project, loaded->facts); !moved) {
+            loaded = std::unexpected(analysis::LoadError{.message = std::move(moved.error())});
+        }
+    }
     if(!loaded) {
         Failure failure{.error = std::move(loaded.error().message),
                         .stale = std::move(loaded.error().dropped)};

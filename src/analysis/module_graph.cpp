@@ -8,7 +8,6 @@ import :index.project_index;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
-import :project.project_reader;
 import :project.project;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -1344,9 +1343,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     return facts;
 }
 
-std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
-                                                 llvm::ArrayRef<std::string> scope,
-                                                 FactsEdit edit) {
+std::expected<LoadedFacts, LoadError> load_facts(Project& project,
+                                                 llvm::ArrayRef<std::string> scope) {
     std::vector<kota::GlobPattern> globs;
     for(auto& pattern: scope) {
         auto glob = kota::GlobPattern::create(pattern);
@@ -1359,15 +1357,14 @@ std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
         globs.push_back(std::move(*glob));
     }
 
-    auto& project = reader.project;
-    auto& files = reader.files;
+    auto& files = project.file_table;
     // A file written since it was indexed (as `clice refactor rename`
     // leaves the files it edits) would give facts about text that is gone.
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
     project.index.for_each_indexed_file([&](Fid file) {
         if(auto* shard = project.index.shard(file);
-           shard && reader.gate.stale(file, shard->content_hash())) {
+           shard && project.freshness.stale(file, shard->content_hash())) {
             stale.dropped.emplace_back(files.display(file));
         }
     });
@@ -1388,11 +1385,6 @@ std::expected<LoadedFacts, LoadError> load_facts(ProjectReader& reader,
     });
     if(project.index.damaged()) {
         return std::unexpected(LoadError{.message = damaged_index_error(project)});
-    }
-    if(edit) {
-        if(auto edited = edit(reader, facts); !edited) {
-            return std::unexpected(LoadError{.message = std::move(edited.error())});
-        }
     }
     return LoadedFacts{.root = llvm::StringRef(project.root).str(), .facts = std::move(facts)};
 }

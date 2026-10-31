@@ -1,0 +1,6 @@
+[test.diagnostics]
+diagnostics = []
+
+[test.context.compile_command]
+source = "host"
+from = "unity.cpp"

@@ -1,11 +1,10 @@
 ["requests before initialize".hover]
-wrong = "a request before initialize is served; LSP asks for a ServerNotInitialized (-32002) error"
-code = -32602
-message = "Document not open"
+code = -32002
+message = "the server is not initialized"
 
 ["requests before initialize".symbols]
-wrong = "a request before initialize is served; LSP asks for a ServerNotInitialized (-32002) error"
-workspace_symbols = []
+code = -32002
+message = "the server is not initialized"
 
 ["an unknown method".request]
 code = -32601
@@ -35,11 +34,9 @@ value = ["use of undeclared identifier 'nope'"]
 diagnostics = []
 
 ["requests after shutdown".hover]
-wrong = "a request after shutdown is served; LSP asks for an InvalidRequest (-32600) error"
-hover = {}
+code = -32600
+message = "the server is shutting down"
 
 ["requests after shutdown".symbols]
-wrong = "a request after shutdown is served; LSP asks for an InvalidRequest (-32600) error"
-workspace_symbols = [
-    { name = "add(int a, int b)", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
-]
+code = -32600
+message = "the server is shutting down"

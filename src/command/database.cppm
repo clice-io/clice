@@ -132,7 +132,8 @@ public:
     llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
-    /// successful load, then maintained by the CDBWatcher's stats. A
+    /// successful load, then maintained by the server's
+    /// database watch (ServedProject::tick_database). A
     /// discovered source that vanished keeps serving its entries but yields
     /// to the present ones (see Build::source_order).
     bool present(SourceID id) const;

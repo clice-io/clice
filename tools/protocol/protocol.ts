@@ -76,6 +76,12 @@ export interface CurrentContextResult {
     /// Whether no choice of the user's is in force.
     automatic: boolean;
 
+    /// The user's choice while it does not hold — its host left the build or
+    /// no longer includes the file, or its command is gone: it waits, and
+    /// applies again once it holds. Meanwhile the file compiles in the
+    /// automatic context.
+    inactiveChoice?: ContextItem | null;
+
     /// The command the document compiles with; null when it is not open.
     command: CompileCommand | null;
 

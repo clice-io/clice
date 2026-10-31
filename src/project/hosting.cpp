@@ -467,7 +467,7 @@ void commit_trial(Project& project,
                                   },
                                   std::move(trace));
     // A header found self-contained lists hosts lending the same command
-    // once (ContextService::contexts).
+    // once (list_contexts).
     project.context_epoch += 1;
     project.mark_artifacts_dirty();
 }

@@ -13,16 +13,6 @@ import :support.timer;
 
 namespace clice {
 
-namespace {
-
-/// Wake the context choices' durability waiters (switchContext).
-void pulse(ContextChoices& contexts) {
-    contexts.committed.set();
-    contexts.committed.reset();
-}
-
-}  // namespace
-
 void recover_corrupt_database(Project& project, index::IndexReport& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     for(auto unit: project.build.members()) {
@@ -54,11 +44,6 @@ void reopen_fresh_database(Project& project) {
     // rebuildable artifact record.
     project.mark_artifacts_dirty();
     project.choices.dirty = !project.choices.bytes.empty();
-    // Durability waiters re-evaluate against the new database: a failed
-    // reopen disables persistence for the session, and a parked
-    // switchContext would otherwise sleep forever — no later save pulses,
-    // they all early-return on the null database.
-    pulse(project.choices);
 }
 
 bool has_unsaved_state(const Project& project) {
@@ -120,45 +105,28 @@ kota::task<index::IndexReport> save_project(Project& project,
     }
 
     // Metadata blobs ride every save: dirty artifact records and context
-    // choices flush on whatever save runs next. The context choices' change number
-    // is taken here — marks arriving past this point are not covered by
-    // these bytes and wait for the next save. The context choices' fate
-    // is tracked on its own: failing artifact records must not park a
-    // switchContext ack whose choice is already durable.
-    auto flush_seq = choices.save_seq;
+    // choices flush on whatever save runs next.
     bool carries_artifacts = false;
-    bool carries_contexts = false;
-    bool contexts_ok = true;
+    bool carries_choices = false;
     if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifact_records(project); !bytes.empty()) {
             carries_artifacts = true;
             blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
         }
     }
-    if(choices.dirty) {
-        if(!choices.bytes.empty()) {
-            carries_contexts = true;
-            blobs.push_back(
-                {index::BlobKind::ContextChoices, "contexts", copy_bytes(choices.bytes)});
-        } else {
-            contexts_ok = false;
-        }
+    if(choices.dirty && !choices.bytes.empty()) {
+        carries_choices = true;
+        blobs.push_back({index::BlobKind::ContextChoices, "contexts", copy_bytes(choices.bytes)});
     }
     // Serialization failures keep their dirty flag for the next attempt.
     if(carries_artifacts) {
         project.artifacts_dirty = false;
     }
-    if(carries_contexts) {
+    if(carries_choices) {
         choices.dirty = false;
     }
 
     if(blobs.empty() && batch.removals.empty()) {
-        // A serialize-only failure builds no batch: waiters still must see
-        // the failed attempt (see the failure pulse below), or a request
-        // bounded on failed saves never counts one.
-        if(!contexts_ok) {
-            pulse(choices);
-        }
         co_return report;
     }
 
@@ -173,7 +141,7 @@ kota::task<index::IndexReport> save_project(Project& project,
             snapshot.unsaved();
         }
         project.artifacts_dirty = project.artifacts_dirty || carries_artifacts;
-        choices.dirty = choices.dirty || carries_contexts;
+        choices.dirty = choices.dirty || carries_choices;
     };
     auto cancelled = llvm::make_scope_exit(restore);
     co_await kota::queue([&] { committed = db.write(blobs, batch.removals); });
@@ -181,7 +149,6 @@ kota::task<index::IndexReport> save_project(Project& project,
 
     if(!committed) {
         restore();
-        contexts_ok = false;
     } else if(snapshot_bytes) {
         snapshot.saved(std::move(*snapshot_bytes));
     }
@@ -195,18 +162,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    if(co_await index.migrate_views(db, loop, report)) {
-        // Context choices as of the number taken are durable: advance the
-        // committed number and wake durability waiters (switchContext).
-        // Failed attempts pulse too, or a permanently failing write (full
-        // disk, unserializable path) parks every durability wait forever;
-        // they give up after a few of these. A recovery pulses as it
-        // reopens: what the condemned database took is not durable.
-        if(contexts_ok) {
-            choices.committed_seq = std::max(choices.committed_seq, flush_seq);
-        }
-        pulse(choices);
-    } else {
+    if(!co_await index.migrate_views(db, loop, report)) {
         recover_corrupt_database(project, report);
     }
 

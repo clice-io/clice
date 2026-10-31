@@ -1,0 +1,1493 @@
+module clice;
+
+import :command.argument;
+import :compile.compilation;
+import :settings.settings;
+import :compile.diagnostic;
+import :compile.tidy;
+import :feature.diagnostics;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.hosting;
+import :project.project;
+import :sched.builders.build_common;
+import :server.client;
+import :server.master;
+import :server.served_project;
+import :server.session;
+import :support.anomaly;
+import :support.bytes;
+import :support.failure_record;
+import :support.json;
+import :support.logging;
+import :support.text;
+import :support.timer;
+import :syntax.dependency_graph;
+import :syntax.preamble;
+import :vfs.file_table;
+import :vfs.path;
+import :worker.protocol;
+
+namespace clice {
+
+/// The diagnostics the PCH's build raised in the preamble.
+static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
+    std::vector<feature::FileDiagnostic> diagnostics;
+    [[maybe_unused]] auto status =
+        json::from_string<ipc::lsp_config>(preamble.preamble_diagnostics(), diagnostics);
+    return diagnostics;
+}
+
+/// Why each import that failed to build did not, named by module.
+static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
+                                                           const PCMBuilder& pcm,
+                                                           const DependencyGraph& graph) {
+    std::vector<feature::ModuleFailure> failures;
+    for(auto module: imports) {
+        auto failure = pcm.build_failure(module);
+        if(!failure) {
+            continue;
+        }
+        auto& named = failures.emplace_back(
+            feature::ModuleFailure{.error = failure->error, .cycle = failure->cycle});
+        for(auto unit: failure->chain) {
+            named.chain.push_back(graph.module_of(unit).str());
+        }
+    }
+    return failures;
+}
+
+/// The imports of a module several units provide, each resolved to the
+/// nearest of them (PCMBuilder::direct_deps).
+static std::vector<feature::ModuleChoice> module_choices(const PCMBuilder::ModuleDeps& imports,
+                                                         const Project& project) {
+    auto& graph = project.dep_graph;
+    assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
+    std::vector<feature::ModuleChoice> choices;
+    for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
+        if(PCMBuilder::is_unresolved(dep)) {
+            continue;
+        }
+        auto chosen = Fid{static_cast<std::uint32_t>(dep.key)};
+        auto name = graph.module_of(chosen);
+        auto providers = graph.lookup_module(name);
+        if(providers.size() < 2) {
+            continue;
+        }
+        auto& choice = choices.emplace_back(feature::ModuleChoice{
+            .module = name.str(),
+            .chosen = project.file_table.display(chosen),
+            .offset = offset,
+        });
+        for(auto provider: providers) {
+            if(provider != chosen) {
+                choice.others.push_back(project.file_table.display(provider));
+            }
+        }
+    }
+    return choices;
+}
+
+std::optional<PCHBuilder::Request>
+    ServedProject::declared_pch(Fid path_id,
+                                const Resolution& resolution,
+                                const PCMBuilder::ModuleDeps& imports) {
+    auto unit = commands.pch_unit(path_id, resolution);
+    if(!unit) {
+        return std::nullopt;
+    }
+    return sched.pch.precompiled_header(*unit,
+                                        project.settings.project.skip_header_bodies &&
+                                            !imports.modular());
+}
+
+ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
+                                               llvm::StringRef text,
+                                               std::optional<std::uint32_t> point,
+                                               const std::string& directory,
+                                               const std::vector<std::string>& arguments,
+                                               const Resolution& resolution,
+                                               const PCMBuilder::ModuleDeps& imports,
+                                               llvm::StringRef base) {
+    auto path = project.file_table.resolve(path_id);
+    auto* synthesized = resolution.synthesized.get();
+    // The part of the prefix inside braces comes after the preamble, which
+    // the header's own directives would otherwise precede. A preamble still
+    // being typed ends before its unfinished directive: the finished part
+    // keeps its PCH — the key of the one before, when the directive goes at
+    // the end of the block — and the unfinished one parses with the body,
+    // which reports its own error.
+    auto bound = preamble_bound(text);
+    bool partial = false;
+    if(point) {
+        auto before = preamble_bound(text, logical_line_begin(text, *point));
+        partial = before < bound;
+        bound = before;
+    }
+    bound = synthesized && !synthesized->open.empty() ? 0 : finished_preamble_bound(text, bound);
+    if(bound == 0 && !synthesized) {
+        // No preamble directives and no injected -include — PCH would be
+        // empty. Self-contained header contexts end up here too: they borrow
+        // a command but inject nothing. A precompiled header the build
+        // declares is loaded by the parse itself.
+        return {.partial = partial};
+    }
+
+    // With a synthesized prefix, the PCH is worth building even at
+    // bound == 0: the -include'd prefix is processed via the predefines
+    // buffer and ends up in the PCH, so the (potentially huge) prefix is not
+    // re-parsed on every edit. The -include flag is part of the
+    // canonicalized arguments below, and the prefix's name hashes its
+    // content — through the fragments it includes, the whole chain's — so
+    // the key tracks prefix changes automatically.
+
+    // The modules imported by the preamble, or by a file the command line
+    // includes, are inputs of the PCH: it depends on what their PCMs were
+    // built from, and keys on which PCMs those are — a module that gains or
+    // loses its PCM, or whose provider or command changes, starts a new
+    // PCH. A PCH loses the imports of a module unit's global module
+    // fragment: the module declaration past it takes the fragment for
+    // absent and hides what the fragment made visible. Such a preamble
+    // goes without one.
+    std::string pcm_keys;
+    llvm::SmallVector<Fid> modules;
+    bool imported = false;
+    assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
+    for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
+        if(offset != 0 && offset >= bound) {
+            continue;
+        }
+        imported = true;
+        if(!PCMBuilder::is_unresolved(dep)) {
+            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            if(auto it = project.pcm_builds.find(module);
+               it != project.pcm_builds.end() && !it->second.path.empty()) {
+                pcm_keys += it->second.key;
+                modules.push_back(module);
+            }
+        }
+        pcm_keys.push_back('\0');
+    }
+    if(imported && imports.module_unit) {
+        LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
+        return {.partial = partial};
+    }
+
+    // Key the PCH by preamble text plus the frontend-relevant compile flags,
+    // so files with the same preamble text but different flags (-D, -I, -std)
+    // produce separate PCHs.  The source file path stays out of the key so
+    // files with identical preambles share one PCH — but its DIRECTORY (and
+    // the working directory) must stay in: quote includes and relative paths
+    // resolve against them, so equal preamble text in different directories
+    // can mean different content.  A preamble defining or testing a macro
+    // keeps the path in too: the PCH places the macro and its uses in the
+    // file that built it, where a file sharing it would find its own.  The
+    // clang version guards against reusing
+    // blobs a newer bundled clang would reject, and the database key keeps
+    // the blob with the index database that records its dependencies:
+    // shared across databases, one could rebuild it while another's
+    // records still confirmed the old content. A PCH built over the
+    // build's precompiled header names the very build it chains onto:
+    // rebuilt, that one has another name.
+    auto preamble_text = text.substr(0, bound);
+    llvm::StringRef base_blob;
+    if(auto it = project.pch_cache.find(base); it != project.pch_cache.end()) {
+        base_blob = it->second.blob;
+    }
+    auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
+    bool skip_bodies = project.settings.project.skip_header_bodies;
+    auto pch_key = cache_key({clang::getClangFullVersion(),
+                              pch_build_rule(skip_bodies),
+                              project.database_key.str(),
+                              directory,
+                              path::parent(path),
+                              own_path,
+                              preamble_text,
+                              canonicalize(arguments),
+                              pcm_keys,
+                              base_blob});
+    PCHPlan plan{
+        .decision = PCHPlan::Decision::Acquire,
+        .request =
+            {
+                      .pch_key = std::move(pch_key),
+                      .file = std::string(path),
+                      .directory = directory,
+                      .arguments = arguments,
+                      .hidden = resolution.hidden,
+                      .content = std::string(text),
+                      .preamble_bound = bound,
+                      .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
+                      .base = base.str(),
+                      .skip_bodies = skip_bodies,
+                      },
+        .partial = partial,
+    };
+    if(imported) {
+        project.fill_pcm_deps(plan.request.pcms, sched.pcm.closure(imports.resolved).getArrayRef());
+        plan.request.modules = std::move(modules);
+    }
+    return plan;
+}
+
+kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
+    auto outcome = co_await run(ctx, path_id);
+    enter_phase(path_id, CompilePhase::Idle);
+    co_return outcome;
+}
+
+void ServedProject::record_crash(const std::shared_ptr<Session>& session,
+                                 feature::RequestKind kind,
+                                 llvm::StringRef death,
+                                 std::string cause) {
+    auto path_id = session->path_id;
+    // A document that left the project compiles under another command now:
+    // what crashed here is no record of its.
+    if(!owns(*session)) {
+        LOG_WARN("{} crashed a worker after it left the project: {}",
+                 project.file_table.resolve(path_id),
+                 cause);
+        return;
+    }
+    bool shown = session->crashed(kind, death, std::move(cause), Session::Clock::now());
+    auto* record = session->find(kind);
+    LOG_WARN("{} crashed a worker: {}",
+             project.file_table.resolve(path_id),
+             feature::crash_note({.kind = kind,
+                                  .cause = record->cause,
+                                  .count = record->count,
+                                  .save_only = record->save_only(Session::policy)})
+                 .message);
+    // A silent first crash leaves the published state alone (see Session
+    // invariant 4).
+    if(!shown) {
+        return;
+    }
+    // A stopped compile leaves no AST behind the old diagnostics: they go,
+    // and the note says why.
+    auto previous = latest(path_id);
+    if(previous && previous->output.has_value() &&
+       (kind == feature::RequestKind::Compile || kind == feature::RequestKind::PCH)) {
+        set_output(path_id,
+                   CompileOutput{
+                       .text = session->source,
+                       .diagnostics = {.source = previous->output->diagnostics.source},
+                   });
+    }
+    republish(session);
+}
+
+bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
+                                    bool tidy,
+                                    const std::optional<std::string>& consumed,
+                                    const ipc::Error& error) {
+    auto path_id = session->path_id;
+    auto file = project.file_table.resolve(path_id);
+    auto& suspects = session->suspects;
+    // The checks run in the parse (their preprocessor callbacks) and after
+    // it: they are the first suspect, tried by a compile without them. One
+    // that crashes as well clears them.
+    if(tidy) {
+        LOG_WARN("Compile crashed with clang-tidy on for {}; retrying without it", file);
+        suspects.tidy = error;
+        return true;
+    }
+    suspects.tidy.reset();
+    // A death while reading a prebuilt pair may be the pair's fault: deep
+    // corruption aborts the AST reader (report_fatal_error in the bitstream
+    // reader) before any diagnostic can anchor, so the pch_suspect gate
+    // never gets a say. The first such death retracts the pair and the
+    // round runs again on a rebuilt one; a death on the rebuilt pair is the
+    // document's own.
+    if(consumed && suspects.pch != *consumed) {
+        LOG_WARN("Compile crashed reading PCH pair {} for {}; retracting the pair",
+                 *consumed,
+                 file);
+        suspects.pch = *consumed;
+        sched.pch.consume_failed(*consumed);
+        return true;
+    }
+    record_crash(session, feature::RequestKind::Compile, worker::death_of(error), error.message);
+    return false;
+}
+
+void ServedProject::republish(const std::shared_ptr<Session>& session) {
+    if(!owns(*session)) {
+        return;
+    }
+    if(auto previous = latest(session->path_id); !previous || !previous->output.has_value()) {
+        set_output(session->path_id, CompileOutput{.text = session->source});
+    }
+    push_output(*session, true);
+}
+
+bool ServedProject::compile_stopped(const Session& session) const {
+    auto now = Session::Clock::now();
+    return session.stops(feature::RequestKind::Compile, now) ||
+           session.stops(feature::RequestKind::PCH, now);
+}
+
+void ServedProject::retry_after_save(Session& session) {
+    auto path_id = session.path_id;
+    session.saved();
+    // An AST compiled while a clang-tidy crash stopped the pass stays
+    // current until the next edit: the save that retries the pass
+    // recompiles.
+    if(session.find(feature::RequestKind::Tidy)) {
+        invalidate(path_id);
+    }
+    // Typing never re-runs the self-containment trial, yet an edit can
+    // make a header lean on its includer: a save showing what an includer
+    // would provide, or saving a buffer whose compile has not finished yet,
+    // runs it again. A result that stands holds for the text saved.
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto resolution = resolve_command(path_id, directory, arguments);
+    if(resolution.trial) {
+        auto compiled = latest_at(path_id, session.version);
+        bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
+        if(saved_trial(project,
+                       *resolution.trial,
+                       project.file_table.intern_version(path_id, session.hash),
+                       leans)) {
+            invalidate(path_id);
+        }
+    }
+    // The modules it is and imports, directly or through other modules,
+    // retry with it: a build that crashed or failed is otherwise refused
+    // until what it read, or is known to have read, changes. A failed
+    // build's inputs miss a lookup in a directory that did not exist yet,
+    // so a save retries its failed preamble too. Either refusal leaves the
+    // compile standing, so only a fresh round asks for the artifact again.
+    bool retry = session.find(feature::RequestKind::PCM) != nullptr;
+    llvm::SmallVector<Fid> modules{session.path_id};
+    llvm::DenseSet<Fid> seen{session.path_id};
+    auto add_imports = [&](NodeId importer) {
+        for(auto dep: sched.graph.dependencies(importer)) {
+            if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
+                continue;
+            }
+            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            if(seen.insert(module).second) {
+                modules.push_back(module);
+            }
+        }
+    };
+    add_imports(node(session.path_id));
+    for(std::size_t i = 0; i < modules.size(); i += 1) {
+        retry |= sched.pcm.forget_failure(modules[i]);
+        add_imports({Family::PCM, modules[i].raw});
+    }
+    // A PCH that kept its preamble's errors misses the same lookups as a
+    // failed build: a save rebuilds it.
+    if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
+        if(compiled->pch_failed) {
+            retry |= sched.pch.forget_failure(*compiled->pch_key);
+        } else if(auto preamble = sched.pch.preamble_state(*compiled->pch_key);
+                  preamble && ranges::any_of(preamble_diagnostics(*preamble),
+                                             [](const feature::FileDiagnostic& diagnostic) {
+                                                 return diagnostic.level >= DiagnosticLevel::Error;
+                                             })) {
+            sched.pch.invalidate(*compiled->pch_key);
+            retry = true;
+        }
+    }
+    if(retry) {
+        invalidate(path_id);
+    }
+}
+
+std::vector<feature::FileDiagnostic>
+    ServedProject::shown_skipped(const Session& session, const CompileOutput& output) const {
+    auto it = skipped.find(session.path_id);
+    if(it == skipped.end() || it->second.text_hash != session.hash ||
+       output.diagnostics.source != CommandSource::CDBExact || active_choice(session.path_id)) {
+        return {};
+    }
+    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
+}
+
+bool ServedProject::lacks_skipped(Fid path_id) const {
+    auto* document = find(path_id);
+    if(!document || document->serving != ServingMode::Escalated ||
+       project.build.entries(path_id).empty()) {
+        return false;
+    }
+    auto it = skipped.find(path_id);
+    return it == skipped.end() || it->second.text_hash != document->session->hash;
+}
+
+void ServedProject::report_skipped(Fid path_id,
+                                   std::uint64_t text_hash,
+                                   std::vector<feature::FileDiagnostic> diagnostics) {
+    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+    // A compile owed shows them as it commits (run).
+    auto* document = find(path_id);
+    if(!document || !document->current) {
+        return;
+    }
+    auto& session = *document->session;
+    auto compiled = latest_at(path_id, session.version);
+    if(!compiled) {
+        return;
+    }
+    auto shown = shown_skipped(session, *compiled->output);
+    if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
+        return;
+    }
+    auto output = *compiled->output;
+    output.diagnostics.skipped = std::move(shown);
+    set_output(path_id, std::move(output));
+    push_output(session, false);
+}
+
+void ServedProject::each_input(Fid path_id,
+                               llvm::function_ref<void(const DepsSnapshot&)> visit) const {
+    auto* document = find(path_id);
+    if(!document) {
+        return;
+    }
+    if(document->deps) {
+        visit(*document->deps);
+    }
+    if(auto& compiled = document->latest; compiled && compiled->loaded_pch()) {
+        if(auto it = project.pch_cache.find(*compiled->loaded_pch());
+           it != project.pch_cache.end()) {
+            visit(it->second.deps);
+        }
+    }
+    for(auto dep: sched.graph.dependencies(node(path_id))) {
+        if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
+            continue;
+        }
+        if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
+            visit(*inputs);
+        }
+    }
+}
+
+bool ServedProject::is_stale(const Session& session) {
+    // No early return: the changes one check finds cascade together.
+    bool stale = false;
+    each_input(session.path_id, [&](const DepsSnapshot& deps) {
+        stale = deps_changed(project.file_table, deps) || stale;
+    });
+    return stale;
+}
+
+void ServedProject::mark_not_current(Fid path_id) {
+    if(auto* document = find(path_id)) {
+        document->current = false;
+        document->epoch += 1;
+    }
+}
+
+void ServedProject::edited(Session& session) {
+    auto path_id = session.path_id;
+    mark_not_current(path_id);
+    sched.graph.update(node(path_id));
+    // The round still observes the real reply to its cancelled send
+    // (crash accounting depends on it — contract 2).
+    if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
+        it->second->cancel();
+    }
+    // Editing is the canonical escalation trigger: from here on the
+    // document invests in PCH/AST.
+    escalate(path_id);
+}
+
+void ServedProject::invalidate(Fid path_id) {
+    mark_not_current(path_id);
+    // The in-flight round's token fires, but its parse keeps running: the
+    // buffer is unchanged, so the product is worth publishing as bounded
+    // staleness before the round reports Stale.
+    sched.graph.update(node(path_id));
+}
+
+void ServedProject::choice_changed(Session& session) {
+    auto path_id = session.path_id;
+    // Invalidate any in-flight compile: without the bump it would pass
+    // its commit validity check and publish results for the superseded
+    // identity.
+    session.generation += 1;
+    session.changed(Session::Clock::now());
+    auto& document = *find(path_id);
+    if(document.latest) {
+        // The TU index describes the buffer under the old identity, though
+        // it compiled the same bytes.
+        auto next = DocumentCompile(*document.latest);
+        next.pch_key.reset();
+        next.pch_failed = false;
+        next.base_pch_key.reset();
+        next.index.reset();
+        document.latest = std::make_shared<const DocumentCompile>(std::move(next));
+    }
+    document.deps.reset();
+    mark_not_current(path_id);
+    sched.graph.update(node(path_id));
+    if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
+        it->second->cancel();
+    }
+}
+
+void ServedProject::inputs_changed(Session& session) {
+    invalidate(session.path_id);
+    session.changed(Session::Clock::now());
+}
+
+void ServedProject::escalate(Fid path_id) {
+    auto& document = *find(path_id);
+    if(document.serving != ServingMode::IndexOnly ||
+       project.settings.project.readonly == ReadonlyMode::On) {
+        return;
+    }
+    document.serving = ServingMode::Escalated;
+}
+
+void ServedProject::request_compile(std::shared_ptr<Session> session) {
+    auto compile = [](ServedProject& self, std::shared_ptr<Session> session) -> kota::task<> {
+        co_await self.ensure_compiled(std::move(session));
+    };
+    if(!started_compiles.spawn(compile(*this, std::move(session)))) {
+        LOG_WARN("request_compile: task group stopped, dropping the compile");
+    }
+}
+
+kota::task<> ServedProject::stop_compiles() {
+    loaded.set();
+    for(auto& [path_id, interrupt]: compile_interrupts) {
+        interrupt->cancel();
+    }
+    started_compiles.cancel();
+    co_await started_compiles.join();
+}
+
+kota::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session) {
+    auto path_id = session->path_id;
+
+    LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} current={}",
+              path_id,
+              session->version,
+              session->generation,
+              current(path_id));
+
+    if(!loaded.is_set()) {
+        co_await loaded.wait();
+    }
+
+    // A document closed or moved to another project never compiles here
+    // again, and the join below cannot tell: a closed one's generation
+    // stopped moving at the close.
+    if(!owns(*session)) {
+        co_return false;
+    }
+
+    // A document whose compile keeps killing workers waits for a change
+    // or a save instead of feeding the same content to one more worker;
+    // the crash note was published when the crash was recorded.
+    if(compile_stopped(*session)) {
+        LOG_DEBUG("ensure_compiled: {} is stopped by a crash", project.file_table.resolve(path_id));
+        co_return false;
+    }
+
+    // The latest compile's current flag alone cannot clear this fast path: another
+    // consumer's PCH staleness discovery dirties this node through the
+    // graph cascade without touching the compile table, and a PCH
+    // rebuilt before the next request would read fresh again here.
+    if(current(path_id) && !sched.graph.is_dirty(node(path_id))) {
+        if(!is_stale(*session)) {
+            co_return true;
+        }
+        // A dependency changed on disk behind this document's back — the
+        // lazy twin of the background ticks. The changes the check's looks
+        // queued cascade first, then the document recompiles now, whether
+        // or not the dependency graph knows the edge (a macro include) —
+        // both synchronously: applied on a later turn, the cascade would
+        // void the round about to compile the new content.
+        server.apply_disk_changes();
+        inputs_changed(*session);
+    }
+
+    // Join the document's round, retrying through stale attempts (a Lost
+    // invalidation mid-flight yields Stale and the next attempt recompiles)
+    // until a terminal outcome. A buffer edit or session replacement ends
+    // the join instead: the result would describe a buffer that no longer
+    // exists, and the editor re-requests after an edit.
+    auto gen = session->generation;
+    auto outcome = co_await sched.graph.request(
+        node(path_id),
+        {.foreground = true, .validity = [session, gen] { return session->generation == gen; }});
+    co_return outcome == JoinOutcome::Success;
+}
+
+kota::task<std::optional<PCMBuilder::ModuleDeps>>
+    ServedProject::depend_modules(RoundContext& ctx,
+                                  const Ticket& ticket,
+                                  const Resolution& resolution,
+                                  llvm::StringRef directory,
+                                  const std::vector<std::string>& arguments,
+                                  llvm::StringRef text) {
+    auto& session = ticket.session;
+    auto path_id = session->path_id;
+    // Imports come from the round's buffer snapshot under the round's own
+    // resolved command — the same text and flags the parse will consume,
+    // so a context choice or donated header host cannot enable an import
+    // the scan missed. An unsaved `import m;` builds its PCM now, and the
+    // next edit's round re-resolves — the superseded round's build loses
+    // interest and winds down on its own (the PCH pattern). Module names
+    // still resolve against the on-disk module map; a module unit is
+    // somebody else's saved file. The remap stays engaged even for an
+    // empty buffer: its own text has no imports, but the command's
+    // injected -include prefix can still carry them.
+    //
+    // The import list is scanner truth, not build output: commit it as
+    // durable edges before waiting, so a document whose compile fails
+    // stays cascade-reachable from its imports — fixing or providing an
+    // import must re-dirty the documents it broke. The per-round resolve
+    // keeps the edges honest across CDB, buffer and import changes, and
+    // the empty truth of a document that can import nothing is published
+    // too: a durable import edge earned earlier must stop cascading here.
+    llvm::SmallVector<const char*, 32> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
+    }
+    auto deps = co_await sched.pcm.direct_deps(path_id,
+                                               resolution,
+                                               argv,
+                                               directory,
+                                               std::optional<llvm::StringRef>(text));
+    sched.graph.declare(node(path_id), deps.declared);
+    // Sentinels join the round's candidates too: a successful commit
+    // replaces the declaration with them, and a declare-only edge would
+    // vanish with it.
+    for(auto dep: deps.declared) {
+        if(PCMBuilder::is_unresolved(dep)) {
+            ctx.reference(dep);
+        }
+    }
+    auto kind = feature::RequestKind::PCM;
+    if(deps.resolved.empty()) {
+        ticket.session->succeeded(kind, ticket.generation);
+        co_return deps;
+    }
+
+    // A module whose build crashed a worker is refused to every importer
+    // until the record of one lets it retry: a change to its inputs, or a
+    // save (see Session).
+    // FIXME: an edit within the spacing of the module's crash is spent here:
+    // the round runs without the module and finishes current, so the module waits
+    // for the next edit or save, not for the spacing to pass.
+    bool retry = session->find(kind) && !session->stops(kind, Session::Clock::now());
+    Session::Attempt attempt(*session, kind);
+    bool crashed = false;
+
+    // Building a dependency can itself evict another clean module's PCM
+    // under budget pressure, reopening the window the previous pass's
+    // revalidation closed — hence the bounded retry until the set is
+    // stable. Past the bound the parse fails visibly on the missing file.
+    for(int pass = 0; pass < 3; pass += 1) {
+        bool any_evicted = sched.pcm.revalidate_blobs();
+        if(pass > 0 && !any_evicted) {
+            break;
+        }
+
+        for(auto dep: deps.resolved) {
+            if(auto* crash = sched.pcm.crashed(dep)) {
+                if(!retry) {
+                    // Booked once: a round on unchanged inputs is no new
+                    // crash.
+                    if(!session->find(kind)) {
+                        record_crash(session, kind, crash->death, crash->cause);
+                    }
+                    crashed = true;
+                    // Still an input: a later build of it, by an importer
+                    // whose record lets it retry, must re-dirty this
+                    // document.
+                    ctx.reference({Family::PCM, dep.raw});
+                    continue;
+                }
+                sched.pcm.forget_failure(dep);
+            }
+            switch(co_await ctx.depend({Family::PCM, dep.raw})) {
+                case DependResult::Ready: break;
+                case DependResult::Failed:
+                    LOG_INFO("Import {} of {} failed to build; the parse reports it",
+                             project.file_table.resolve(dep),
+                             project.file_table.resolve(path_id));
+                    if(auto* crash = sched.pcm.crashed(dep)) {
+                        record_crash(session, kind, crash->death, crash->cause);
+                        crashed = true;
+                        retry = false;
+                    }
+                    break;
+                case DependResult::Cancelled: co_return std::nullopt;
+            }
+        }
+    }
+    if(!crashed) {
+        ticket.session->succeeded(kind, ticket.generation);
+    }
+    co_return deps;
+}
+
+kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
+    // Only a join for a document of this project spawns a round, and the
+    // round gets here before its first suspension: nothing can have closed
+    // or moved it.
+    auto* document = find(path_id);
+    assert(document && "AST round for a document not this project's");
+    auto session = document->session;
+
+    // The round's content identity. The graph's round identity covers
+    // invalidation (ctx.current()); this covers the buffer itself — a
+    // didChange or session replacement makes every product describe text
+    // that no longer exists, so the commit discards wholesale, while a
+    // Lost invalidation (generation unchanged) still publishes salvage.
+    auto ticket = Ticket::take(session);
+
+    // Covers every spawn path, including waiter-driven respawns: content
+    // that just crashed a worker must not reach one more.
+    if(compile_stopped(*session)) {
+        co_return RoundOutcome::Failed;
+    }
+
+    ScopedTimer timer;
+    auto file_path = std::string(project.file_table.resolve(path_id));
+
+    LOG_INFO("compile round: starting path_id={} gen={}", path_id, ticket.generation);
+    enter_phase(path_id, CompilePhase::Command);
+
+    // A round past the gate on a crashed compile or preamble is its retry,
+    // and stops the others until its outcome (Session invariant 2).
+    using enum feature::RequestKind;
+    Session::Attempt compile_attempt(*session, Compile);
+    bool pch_retry = session->find(PCH) != nullptr;
+    Session::Attempt pch_attempt(*session, PCH);
+
+    // clang-tidy runs where `clice lint` checks, unless its configuration
+    // does not parse, which `clice lint` refuses too, a crash of its is
+    // suspected or stops it, or the compile retries a crash it is cleared of
+    // (on a retracted preamble, or after the document's own). The places
+    // resolving its configuration looked at join the deps either way: a
+    // fix there is a change that retries a stopped pass.
+    std::optional<tidy::TidyResolution> tidy_config;
+    std::optional<Session::Attempt> tidy_attempt;
+    if(project.settings.diagnostics.clang_tidy &&
+       project.build.lintable(project.file_table.resolve(path_id))) {
+        tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        auto& suspects = session->suspects;
+        if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
+           !session->find(Compile) && !session->stops(Tidy, Session::Clock::now())) {
+            tidy_attempt.emplace(*session, Tidy);
+        }
+    }
+
+    // At most two worker sends: a header with unknown self-containment
+    // compiles without a prefix first; if the diagnostics indicate missing
+    // includer context, the second send re-compiles with a synthesized
+    // prefix. The trial's diagnostics are never published.
+    bool artifact_retried = false;
+    auto known_instantiations =
+        project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
+    for(int attempt = 0; attempt < 2; attempt += 1) {
+        worker::CompileParams params;
+        params.known_instantiations = known_instantiations;
+        params.standard_library_instantiations =
+            project.settings.project.standard_library_instantiations;
+        params.skip_bodies = project.settings.project.skip_header_bodies;
+        params.path = file_path;
+        params.version = session->version;
+        params.text = session->text().str();
+        params.project_root = project.root.str();
+        if(tidy_attempt) {
+            params.tidy = tidy_config->params;
+        }
+        // The include trees the header's host search needs are taken first:
+        // a header compiles under the host every process finds for it.
+        auto resolution =
+            co_await document_command(path_id, params.directory, params.arguments, nullptr, [&] {
+                return ticket.fresh();
+            });
+        if(!ticket.fresh()) {
+            co_return RoundOutcome::Stale;
+        }
+        auto source = resolution.source;
+        auto* synthesized = resolution.synthesized.get();
+        if(synthesized) {
+            params.synthesized = synthesized->files;
+        }
+        params.hidden = resolution.hidden;
+
+        // A header no trial says compiles alone compiles without its
+        // includer's context first: this compile is the trial, and the
+        // commit gates what it may write.
+        auto trial = attempt == 0 && !resolution.self_contained ? resolution.trial : std::nullopt;
+
+        enter_phase(path_id, CompilePhase::Modules);
+        auto imports = co_await depend_modules(ctx,
+                                               ticket,
+                                               resolution,
+                                               params.directory,
+                                               params.arguments,
+                                               params.text);
+        if(!imports) {
+            co_return RoundOutcome::Stale;
+        }
+
+        if(!ticket.fresh()) {
+            LOG_INFO("compile round: superseded before PCH for {}", file_path);
+            co_return RoundOutcome::Stale;
+        }
+
+        // Build or reuse the PCH through its family — the depend records
+        // the Ast→Pch edge, so a staleness discovery on the shared pair
+        // cascades here. Under readonly = "on" the build compiles without
+        // a preamble instead — completion and signature help pay full
+        // parses, the profile's stated trade. A failed pair is the same
+        // degradation: the compile proceeds preamble-less.
+        std::optional<std::string> adopted_pch;
+        std::optional<std::string> failed_pch;
+        // The precompiled header the build declares for the command: the
+        // preamble's PCH is built over it, and with none the parse loads
+        // it itself. One that did not build leaves the header the command
+        // forces in to parse what it holds.
+        std::optional<std::string> base_pch;
+        if(project.settings.project.readonly != ReadonlyMode::On) {
+            enter_phase(path_id, CompilePhase::Preamble);
+            if(auto request = declared_pch(path_id, resolution, *imports)) {
+                auto key = request->pch_key;
+                switch(co_await ctx.depend(sched.pch.prepare(std::move(*request)))) {
+                    case DependResult::Ready:
+                        if(!sched.pch.reads(key, path_id)) {
+                            base_pch = key;
+                        }
+                        break;
+                    case DependResult::Failed: break;
+                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                }
+            }
+            auto plan = plan_pch(path_id,
+                                 params.text,
+                                 std::nullopt,
+                                 params.directory,
+                                 params.arguments,
+                                 resolution,
+                                 *imports,
+                                 base_pch.value_or(""));
+            switch(plan.decision) {
+                // No PCH build left to crash on.
+                case PCHPlan::Decision::None:
+                    ticket.session->succeeded(PCH, ticket.generation);
+                    break;
+                case PCHPlan::Decision::Acquire: {
+                    auto pch_key = plan.request.pch_key;
+                    // A preamble whose build crashed a worker — for this
+                    // document or another sharing it — is refused until
+                    // this one's record lets it retry.
+                    if(auto* crash = sched.pch.crashed(pch_key)) {
+                        if(!pch_retry) {
+                            record_crash(session, PCH, crash->death, crash->cause);
+                            co_return RoundOutcome::Failed;
+                        }
+                        sched.pch.forget_failure(pch_key);
+                    }
+                    auto dep = sched.pch.prepare(std::move(plan.request));
+                    switch(co_await ctx.depend(dep)) {
+                        case DependResult::Ready:
+                            // Adoption is gated on the round outcome and on
+                            // this round's own validity: a supersede or a
+                            // Lost-type invalidation while we waited means
+                            // the resolved command may describe nothing —
+                            // neither the key nor the record it clears
+                            // belongs to this round anymore. Adopting a
+                            // proven-good artifact clears the document's
+                            // PCH record as surely as building one — but
+                            // only its own; every consumer clears for
+                            // itself.
+                            if(ctx.current() && ticket.fresh()) {
+                                adopted_pch = pch_key;
+                                ticket.session->succeeded(PCH, ticket.generation);
+                            }
+                            break;
+                        case DependResult::Failed:
+                            // The build itself crashed a worker: this round
+                            // stops before the parse, which would feed the
+                            // same preamble to one more worker.
+                            if(auto* crash = sched.pch.crashed(pch_key)) {
+                                record_crash(session, PCH, crash->death, crash->cause);
+                                co_return RoundOutcome::Failed;
+                            }
+                            // A build that failed without a crash answered:
+                            // the preamble no longer crashes.
+                            if(ctx.current()) {
+                                ticket.session->succeeded(PCH, ticket.generation);
+                            }
+                            failed_pch = pch_key;
+                            break;
+                        case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                    }
+                    break;
+                }
+            }
+        }
+        if(adopted_pch.has_value()) {
+            if(auto pch_it = project.pch_cache.find(*adopted_pch);
+               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
+                params.pch = {pch_it->second.path, pch_it->second.bound};
+            } else {
+                adopted_pch.reset();
+            }
+        }
+        if(!adopted_pch && base_pch) {
+            if(auto pch_it = project.pch_cache.find(*base_pch);
+               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
+                params.pch = {pch_it->second.path, 0};
+            } else {
+                base_pch.reset();
+            }
+        }
+        // What the parse loads, a crash or a failed read of which may be
+        // the pair's fault: the preamble's PCH, else the build's.
+        auto consumed_pch = adopted_pch ? adopted_pch : base_pch;
+
+        project.fill_pcm_deps(params.pcms, sched.pcm.closure(imports->resolved).getArrayRef());
+
+        if(!ticket.fresh()) {
+            LOG_INFO("compile round: superseded before send for {}", file_path);
+            co_return RoundOutcome::Stale;
+        }
+
+        // Seed the worker's inactive-region state from the PCH's preamble:
+        // the conditional stack it left open (a #if cut by the bound) and
+        // the regions of the preamble share itself. Copy the state out:
+        // concurrent compiles can insert into pch_cache across the await
+        // below and rehash the map from under a held pointer.
+        std::shared_ptr<index::TUIndex> preamble_state;
+        if(adopted_pch.has_value()) {
+            preamble_state = sched.pch.preamble_state(*adopted_pch);
+        }
+        if(preamble_state) {
+            auto regions = preamble_state->inactive_regions();
+            params.preamble_inactive_regions.assign(regions.begin(), regions.end());
+            auto conditionals = preamble_state->open_conditionals();
+            params.open_conditionals.assign(conditionals.begin(), conditionals.end());
+        }
+
+        enter_phase(path_id, CompilePhase::Parsing);
+
+        // The send carries the interrupt, not the round's advisory token:
+        // the master must observe the request's real outcome — the crash
+        // accounting below depends on it (contract 2) — and a cancelled
+        // send still awaits the worker's answer. Only a supersede or stop
+        // interrupts the parse (see supersede/stop), and the stale reply
+        // is discarded at the validity gate below. A death
+        // that is not this compile's doing resends it once — the attempt
+        // only stops early once the buffer moved on, since the next round
+        // compiles that.
+        //
+        // Crash accounting runs even for superseded rounds: the crash came
+        // from content this document dispatched, and skipping it would let a
+        // poison file dodge its stop by being edited between dispatch and
+        // the crash response (contract 12).
+        bool consuming_pch = consumed_pch.has_value();
+        bool retry_without_suspect = false;
+        auto interrupt = std::make_unique<kota::cancellation_source>();
+        auto interrupt_token = interrupt->token();
+        auto* own_interrupt = interrupt.get();
+        compile_interrupts[path_id] = std::move(interrupt);
+        auto release_interrupt = llvm::make_scope_exit([&] {
+            auto it = compile_interrupts.find(path_id);
+            if(it != compile_interrupts.end() && it->second.get() == own_interrupt) {
+                compile_interrupts.erase(it);
+            }
+        });
+        std::optional<CacheStore::PendingEntry> transfer;
+        if(project.store) {
+            transfer = project.store->begin_transfer();
+            params.index_output_path = transfer->tmp_path;
+        }
+        auto result = co_await deliver(
+            server.pool,
+            true,
+            [&]() -> RequestResult<worker::CompileParams> {
+                if(!ticket.fresh()) {
+                    co_await kota::fail(
+                        ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
+                }
+                co_return co_await server.pool.send_stateful(path_id.raw,
+                                                             params,
+                                                             {.token = interrupt_token});
+            },
+            [&](const ipc::Error& error) {
+                retry_without_suspect =
+                    attribute_crash(session, params.tidy.has_value(), consumed_pch, error);
+            });
+        if(retry_without_suspect) {
+            co_return RoundOutcome::Stale;
+        }
+
+        if(!ticket.fresh()) {
+            LOG_INFO("compile round: superseded reply for {}", file_path);
+            co_return RoundOutcome::Stale;
+        }
+
+        if(!result.has_value()) {
+            if(worker::is_operational_error(result.error())) {
+                LOG_WARN("Compile did not complete for {}: {}", file_path, result.error().message);
+            } else {
+                // The worker accepts arbitrary user code; a non-operational
+                // failure at this layer is IPC/worker breakage, never a
+                // user-code problem.
+                LOG_ANOMALY(CompileFail,
+                            "Compile failed for {}: {}",
+                            file_path,
+                            result.error().message);
+            }
+            // Short of a crash of its own (published as it was recorded),
+            // the document keeps what it showed: a worker outage or a
+            // second death of somebody else's doing says nothing about its
+            // code.
+            co_return RoundOutcome::Failed;
+        }
+
+        // The artifact quality gate: a failed parse whose diagnostics name
+        // the consumed PCH (worker-side pch_suspect — setup failure and
+        // fatal error alike). The builder validated the pair fresh via its
+        // deps, yet the frontend could not read it — the bytes on disk
+        // are the suspect. Retract the pair (store + cache) and rerun the
+        // round once; the next attempt misses and rebuilds both halves.
+        // Without this write-back a corrupt blob is trusted for the life
+        // of the store and the file stays broken on every restart. A
+        // setup failure whose diagnostics do NOT name the blob (bad
+        // invocation, broken module input) deliberately falls through to
+        // the non-Done path below: retracting a healthy shared PCH over
+        // someone else's failure would rebuild it on every request for as
+        // long as that failure persists.
+        if(result.value().pch_suspect && consuming_pch) {
+            LOG_WARN("Compile could not read PCH pair {} for {}; retracting the pair",
+                     *consumed_pch,
+                     file_path);
+            // Retract unconditionally — an unreadable pair never survives,
+            // even when its consumption is stopped — but rerun only once.
+            // The consumption's record bounds the cross-round shape: this
+            // round finishes Stale (the retract re-dirties the key its
+            // candidate edge points at), the waiter respawns it, and without
+            // the stopped key each respawn would rebuild and fail forever.
+            sched.pch.consume_failed(*consumed_pch);
+            if(!artifact_retried) {
+                artifact_retried = true;
+                // Rerun the same attempt so the trial semantics are
+                // untouched (the loop counter is about trial rounds, not
+                // artifact retries).
+                attempt -= 1;
+                continue;
+            }
+            // The rebuilt pair is unreadable again: the storage itself is
+            // failing, and another rebuild would fare no better. The
+            // round proceeds — a Done reply publishes its real fatal
+            // diagnostics, a non-Done one falls to the honest gap below.
+        }
+
+        // A non-Done reply past the gate is a non-result: committing it
+        // would freeze the document on a product that never existed —
+        // no index, an empty deps snapshot nothing can invalidate.
+        // Superseded rounds were already discarded at the validity gate
+        // above, so this round's inputs are broken in a way a PCH rebuild
+        // cannot fix.
+        if(result.value().status != worker::CompileStatus::Done) {
+            LOG_WARN("Compile produced no result for {} (status={})",
+                     file_path,
+                     static_cast<int>(result.value().status));
+            // The latest compile stays non-current: the next request
+            // recompiles instead of trusting the phantom product. What is
+            // published is the honest gap: why the compile failed before
+            // parsing, of this text, else versionless empty diagnostics
+            // rather than a stale list posing as current.
+            bool setup_fail = result.value().status == worker::CompileStatus::SetupFail;
+            set_output(path_id,
+                       CompileOutput{
+                           .version = setup_fail ? std::optional(session->version) : std::nullopt,
+                           .text = session->source,
+                           .diagnostics =
+                               {
+                                             .source = source,
+                                             .own = std::move(result.value().diagnostics),
+                                             .query_failure = resolution.query_failure,
+                                             },
+                           .failed = setup_fail,
+            });
+            push_output(*session, true);
+            co_return RoundOutcome::Failed;
+        }
+
+        // A trial invalidated mid-flight is discarded whole: its result is
+        // a conditional write like the latest compile's current flag, and its
+        // diagnostics come from a compile deliberately run without includer
+        // context — they are never published, including on this path.
+        if(trial && !ctx.current()) {
+            LOG_INFO("Discarding invalidated self-containment trial for {}", file_path);
+            co_return RoundOutcome::Stale;
+        }
+
+        auto& diagnostics = result.value().diagnostics;
+        if(preamble_state && preamble_state->matches_preamble(params.text)) {
+            diagnostics = feature::with_preamble(std::move(diagnostics),
+                                                 preamble_diagnostics(*preamble_state));
+        }
+        feature::explain_failed_imports(
+            diagnostics,
+            module_failures(imports->resolved, sched.pcm, project.dep_graph));
+        for(auto& choice: module_choices(*imports, project)) {
+            diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
+        }
+        if(tidy_config && !tidy_config->error.empty()) {
+            diagnostics.insert(diagnostics.begin(),
+                               feature::invalid_tidy_config(tidy_config->error));
+        }
+
+        // The trial's result stands for every process while what it read
+        // holds; typing never runs it again (self_contained), a save may.
+        if(trial) {
+            auto trace = capture_deps_snapshot(project.file_table,
+                                               result.value().deps,
+                                               result.value().build_at);
+            // The compile reports nothing it read through the PCH.
+            if(consumed_pch) {
+                if(auto it = project.pch_cache.find(*consumed_pch); it != project.pch_cache.end()) {
+                    trace.append(it->second.deps.begin(), it->second.deps.end());
+                }
+            }
+            commit_trial(project,
+                         *trial,
+                         diagnostics,
+                         project.file_table.intern_version(path_id, session->hash),
+                         std::move(trace));
+            if(missing_context_errors(diagnostics) > 0) {
+                LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
+                continue;
+            }
+        }
+
+        // The commit: build the whole package off to the side, then
+        // install it with no suspension before the outcome becomes
+        // visible (contract 16) — a joiner must never see Success before
+        // the latest compile describes the buffer it compiled. A Lost
+        // invalidation mid-flight (ctx no longer current, generation
+        // unchanged) commits the same package as bounded staleness —
+        // recorded, published, but not current — and reports Stale so
+        // waiters drive the recompile.
+        bool still_current = ctx.current();
+
+        // The parse read the pair and completed without finding it
+        // unreadable — and the round still describes live inputs: the
+        // key's consumption failures were transient, not the storage. A
+        // voided round clears nothing: the void may BE another consumer's
+        // fresh failure to read the shared key, and clearing here would
+        // reset the count it just paid for.
+        if(still_current && consuming_pch && !result.value().pch_suspect) {
+            sched.pch.consume_succeeded(*consumed_pch);
+        }
+
+        auto& index_data = result.value().tu_index_data;
+        auto next = std::make_shared<DocumentCompile>();
+        next->pch_key = failed_pch ? failed_pch : consumed_pch;
+        next->pch_failed = failed_pch.has_value();
+        next->base_pch_key = base_pch;
+        next->host = resolution.host;
+        // The AST and the file index commit together — that pairing is
+        // what lets navigation trust the index after ensure_compiled. A
+        // compile that produced no index data (no AST, or an index it could
+        // not hand over) must
+        // therefore drop the previous buffer's index rather than leave it
+        // posing as current: an honest gap over yesterday's offsets.
+        if(result.value().index_in_file) {
+            // Copied, not mapped: the index outlives the transfer file.
+            auto file = fs::File::open(transfer->tmp_path);
+            auto read = file ? llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                               transfer->tmp_path,
+                                                               /*FileSize=*/-1,
+                                                               /*RequiresNullTerminator=*/false,
+                                                               /*IsVolatile=*/true)
+                             : file.error();
+            if(read) {
+                next->index =
+                    std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
+            } else {
+                diagnostics.push_back(feature::index_unavailable(
+                    std::format("reading this file's index from {} failed: {}",
+                                transfer->tmp_path,
+                                read.getError().message())));
+            }
+        } else if(!index_data.empty()) {
+            next->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
+                llvm::MemoryBuffer::getMemBufferCopy(as_chars(index_data))));
+        }
+
+        LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+        auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
+                                              : std::vector<feature::FileDiagnostic>();
+        next->output = CompileOutput{
+            .version = session->version,
+            .text = session->source,
+            .diagnostics =
+                {
+                              .source = source,
+                              .own = std::move(diagnostics),
+                              .unconfirmed = std::move(unconfirmed),
+                              .unmatched_host = resolution.unmatched_host.valid()
+                                          ? project.file_table.display(resolution.unmatched_host)
+                                          : std::string(),
+                              .query_failure = resolution.query_failure,
+                              },
+        };
+        next->output->diagnostics.skipped = shown_skipped(*session, *next->output);
+
+        // The fresh ticket above holds the document here: a move bumps the
+        // generation, and nothing suspends since.
+        auto& entry = *find(path_id);
+        // A document moving off a preamble it failed on releases that
+        // failure: only the preamble's consumers would ever retry it. A
+        // crash stays, for the next consumer to book without a build.
+        // FIXME: released even while another open document still fails on that
+        // preamble: its next compile runs the failing build once more.
+        if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
+           !sched.pch.crashed(*entry.latest->pch_key)) {
+            sched.pch.forget_failure(*entry.latest->pch_key);
+        }
+        entry.latest = std::move(next);
+        if(tidy_config) {
+            result.value().deps.append_range(tidy_config->files);
+        }
+        // A compile that finishes clears its suspects: the pair it read
+        // was at fault, or the pass it ran without.
+        auto& suspects = session->suspects;
+        suspects.pch.clear();
+        auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
+        if(tidy_attempt) {
+            ticket.session->succeeded(Tidy, ticket.generation);
+        } else if(tidy_crash) {
+            record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
+        }
+        // The files the synthesized context embeds are read too, though
+        // clang never opens them.
+        entry.deps =
+            capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+        entry.deps->append(resolution.embedded.begin(), resolution.embedded.end());
+        entry.current = still_current;
+        ticket.session->succeeded(Compile, ticket.generation);
+        push_output(*session, true);
+        // The push above told the client to re-pull what the fresh AST now
+        // answers better; one refresh per commit.
+        if(server.client && owns(*session)) {
+            server.client->index_served.erase(session->path_id);
+        }
+        sched.pump.schedule();
+        co_return still_current ? RoundOutcome::Success : RoundOutcome::Stale;
+    }
+    // Every arm of the two-send loop commits or returns; the trial's
+    // continue only fires on the first send, the artifact retry only once.
+    std::unreachable();
+}
+
+kota::task<std::optional<std::string>>
+    ServedProject::ensure_pch(const Ticket& ticket,
+                              std::uint64_t epoch,
+                              llvm::StringRef text,
+                              std::optional<std::uint32_t> point,
+                              const std::string& directory,
+                              const std::vector<std::string>& arguments,
+                              const Resolution& resolution,
+                              const PCMBuilder::ModuleDeps& imports) {
+    auto& session = ticket.session;
+    auto path_id = session->path_id;
+    auto adoptable = [&] {
+        auto* document = find(path_id);
+        return ticket.fresh() && document && document->epoch == epoch;
+    };
+
+    // The precompiled header the build declares for the command, as a
+    // compile round takes it (see run()).
+    std::optional<std::string> base;
+    if(auto request = declared_pch(path_id, resolution, imports)) {
+        auto key = request->pch_key;
+        if(co_await sched.pch.acquire(std::move(*request)) == PCHBuilder::Outcome::Ready &&
+           !sched.pch.reads(key, path_id)) {
+            base = key;
+        }
+    }
+
+    auto plan = plan_pch(path_id,
+                         text,
+                         point,
+                         directory,
+                         arguments,
+                         resolution,
+                         imports,
+                         base.value_or(""));
+    switch(plan.decision) {
+        case PCHPlan::Decision::None:
+            if(adoptable() && !plan.partial) {
+                set_pch_keys(path_id, base, base);
+                ticket.session->succeeded(feature::RequestKind::PCH, ticket.generation);
+            }
+            co_return base;
+        case PCHPlan::Decision::Acquire: break;
+    }
+    auto pch_key = plan.request.pch_key;
+
+    // A preamble that crashed a worker stops the document's content builds
+    // (the caller checks); only a compile round the document's record lets
+    // retry builds it again.
+    auto kind = feature::RequestKind::PCH;
+    if(auto* crash = sched.pch.crashed(pch_key)) {
+        // Booked once: a request on unchanged inputs is no new crash.
+        if(!session->find(kind)) {
+            record_crash(session, kind, crash->death, crash->cause);
+        }
+        co_return base;
+    }
+    if(co_await sched.pch.acquire(std::move(plan.request)) != PCHBuilder::Outcome::Ready) {
+        if(auto* crash = sched.pch.crashed(pch_key)) {
+            record_crash(session, kind, crash->death, crash->cause);
+        }
+        co_return base;
+    }
+
+    // Adoption is gated on the round outcome, never on leftover cache
+    // paths, and on the buffer and compile this request was taken on: a
+    // supersede or a Lost-type invalidation while we waited means the
+    // resolved command may describe nothing — neither the key write nor
+    // the record it clears belongs to this request anymore. The request
+    // itself still compiles against the artifact: it was planned from the
+    // text it sends. Adopting a proven-good artifact clears the document's
+    // PCH record as surely as building one — but only its own; every
+    // consumer clears for itself.
+    if(adoptable() && !plan.partial) {
+        set_pch_keys(path_id, pch_key, base);
+        ticket.session->succeeded(kind, ticket.generation);
+    }
+    co_return pch_key;
+}
+
+kota::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
+                                                         llvm::StringRef text,
+                                                         std::uint32_t point,
+                                                         const std::string& directory,
+                                                         const std::vector<std::string>& arguments,
+                                                         const Resolution& resolution,
+                                                         StatelessInputs& inputs) {
+    auto* synthesized = resolution.synthesized.get();
+    auto path_id = ticket.session->path_id;
+    auto* document = find(path_id);
+    auto epoch = document ? document->epoch : 0;
+
+    // The scan runs under the request's command with the text the dispatch
+    // will compile, so an unsaved `import m;` builds its PCM before the parse
+    // needs it.
+    llvm::SmallVector<const char*, 32> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
+    }
+    auto imports = co_await sched.pcm.prepare_deps(path_id, resolution, argv, directory, text);
+    if(!imports) {
+        co_return false;
+    }
+
+    if(project.settings.project.readonly != ReadonlyMode::On) {
+        auto pch_key = co_await ensure_pch(ticket,
+                                           epoch,
+                                           text,
+                                           point,
+                                           directory,
+                                           arguments,
+                                           resolution,
+                                           *imports);
+        if(pch_key) {
+            if(auto pch_it = project.pch_cache.find(*pch_key); pch_it != project.pch_cache.end()) {
+                inputs.pch = {pch_it->second.path, pch_it->second.bound};
+            }
+        }
+    }
+
+    project.fill_pcm_deps(inputs.pcms, sched.pcm.closure(imports->resolved).getArrayRef());
+
+    co_return true;
+}
+
+void ServedProject::enter_phase(Fid path_id, CompilePhase phase) {
+    if(server.client) {
+        server.client->report_compile_phase(path_id, phase);
+    }
+}
+
+void ServedProject::push_output(const Session& session, bool compiled) {
+    if(server.client && owns(session)) {
+        server.client->push_output(*this, session, compiled);
+    }
+}
+
+std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const {
+    auto* document = find(path_id);
+    return document ? document->latest : nullptr;
+}
+
+std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->output && compiled->output->version == version ? compiled
+                                                                                : nullptr;
+}
+
+bool ServedProject::current(Fid path_id) const {
+    auto* document = find(path_id);
+    return document && document->current;
+}
+
+bool ServedProject::index_current(Fid path_id) const {
+    auto* document = find(path_id);
+    return document && document->current && document->latest && document->latest->index &&
+           document->latest->index->loaded();
+}
+
+void ServedProject::set_pch_keys(Fid path_id,
+                                 std::optional<std::string> pch_key,
+                                 std::optional<std::string> base_pch_key) {
+    auto& document = *find(path_id);
+    auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
+    next.pch_key = std::move(pch_key);
+    next.pch_failed = false;
+    next.base_pch_key = std::move(base_pch_key);
+    document.latest = std::make_shared<const DocumentCompile>(std::move(next));
+}
+
+void ServedProject::set_output(Fid path_id, CompileOutput output) {
+    auto& document = *find(path_id);
+    auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
+    next.output = std::move(output);
+    document.latest = std::make_shared<const DocumentCompile>(std::move(next));
+}
+
+std::vector<feature::FileDiagnostic>
+    ServedProject::shown_diagnostics(const Session& session, const CompileOutput& output) const {
+    auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.settings.diagnostics);
+    for(auto& note: session.notes()) {
+        diagnostics.push_back(feature::crash_note(note));
+    }
+    return diagnostics;
+}
+
+std::vector<feature::FileDiagnostic>
+    ServedProject::finished_diagnostics(const Session& session) const {
+    if(session.closed) {
+        return {};
+    }
+    // A compile that failed or is stopped left an output of an older
+    // buffer, whose ranges a versionless report would place on this one.
+    if(auto compiled = latest_at(session.path_id, session.version)) {
+        return shown_diagnostics(session, *compiled->output);
+    }
+    return shown_diagnostics(session, {});
+}
+
+}  // namespace clice

@@ -6,7 +6,6 @@ import :feature.rename;
 import :index.symbol_query;
 import :project.build;
 import :project.project;
-import :project.project_reader;
 import :project.queries;
 import :vfs.file_system;
 
@@ -194,10 +193,10 @@ int run_rename(const RenameOptions& opts) {
     if(!opened) {
         return fail(std::move(opened.error()));
     }
-    auto& reader = *opened->reader;
-    auto& failed = opened->failed;
-    auto ctx = reader.context();
-    EditableFiles editable_files(reader.project.root, reader.project.settings);
+    auto& project = (*opened)->project;
+    auto& failed = (*opened)->failed;
+    auto ctx = query_context(project);
+    EditableFiles editable_files(project.root, project.settings);
     auto editable = [&](llvm::StringRef path) {
         return editable_files.editable(path);
     };
@@ -206,16 +205,16 @@ int run_rename(const RenameOptions& opts) {
                                           {
                                               .files = editable_files.sources(),
                                               .editable = editable,
-                                              .units_pending = units_pending(reader.project),
+                                              .units_pending = units_pending(project),
                                           });
-    if(reader.project.index.damaged()) {
-        return fail(damaged_index_error(reader.project));
+    if(project.index.damaged()) {
+        return fail(damaged_index_error(project));
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.
     bool blocked = planned.blocked() || !failed.empty();
     if(!blocked && !opts.dry_run && !planned.plan.edits.empty()) {
-        if(auto applied = apply(reader.files, planned.plan); !applied) {
+        if(auto applied = apply(project.file_table, planned.plan); !applied) {
             result.conflicts.push_back(applied.error());
             blocked = true;
         } else {
@@ -225,7 +224,7 @@ int run_rename(const RenameOptions& opts) {
     auto listed = result.stale;
     listed.append_range(ctx.unindexed);
     listed.append_range(failed);
-    auto stale = reader.stale(std::move(listed));
+    auto stale = stale_files(project, std::move(listed));
     print_json(Answer{.result = std::move(result), .stale = std::move(stale)});
     return blocked ? 1 : 0;
 }

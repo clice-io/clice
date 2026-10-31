@@ -11,7 +11,7 @@ import :support.prelude;
 
 namespace clice {
 
-class ProjectServer;
+class ServedProject;
 
 }  // namespace clice
 
@@ -41,7 +41,7 @@ std::expected<IndexResult, std::string> request_index(const index::ServerEndpoin
 /// Serve a project's control channel: accept connections on `acceptor`
 /// for as long as the task runs, each answering the control requests
 /// against the project.
-kota::task<> serve(ProjectServer& project, kota::tcp::acceptor acceptor);
+kota::task<> serve(ServedProject& project, kota::tcp::acceptor acceptor);
 
 }  // namespace clice::control
 

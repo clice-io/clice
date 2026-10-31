@@ -98,16 +98,16 @@ range = "int ⟦add⟧(int a, int b) {"
 ["an open resent with other text retries"."crashes after the resent open"]
 value = 1
 
-["reopening keeps the bar".hover]
+["a reopen retries".hover]
 hover = {}
 
-["reopening keeps the bar".crashes]
+["a reopen retries".crashes]
 value = 1
 
-["reopening keeps the bar"."hover after a reopen"]
+["a reopen retries"."hover after a reopen"]
 hover = {}
 
-["reopening keeps the bar".pushes]
+["a reopen retries".pushes]
 pushes = [
     [
         {
@@ -128,14 +128,14 @@ pushes = [
     ],
 ]
 
-["reopening keeps the bar"."crashes after a reopen"]
-value = 1
+["a reopen retries"."crashes after a reopen"]
+value = 2
 
-["reopening keeps the bar"."hover after a save"]
+["a reopen retries"."hover after a save"]
 hover = {}
 
-["reopening keeps the bar"."crashes after a save"]
-value = 2
+["a reopen retries"."crashes after a save"]
+value = 3
 
 ["an edit that changes nothing is no retry".hover]
 hover = {}
