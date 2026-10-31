@@ -133,7 +133,7 @@ void time_scans(std::unique_ptr<OpenedProject> first,
         auto rescan = scan_dependency_graph(project.cdb,
                                             project.toolchain,
                                             project.dep_graph,
-                                            project.build.units(loaded->opened.members));
+                                            project.scan_commands(loaded->opened.members));
         cold.push_back(loaded->opened.scan.elapsed_ms);
         warm.push_back(rescan.elapsed_ms);
         driver::println("Run {}: cold {}ms, warm {}ms", run + 1, cold.back(), warm.back());

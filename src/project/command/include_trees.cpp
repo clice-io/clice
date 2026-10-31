@@ -4,7 +4,7 @@ import :compile.compilation;
 import :index.include_tree;
 import :index.project_index;
 import :index.tu_manifest;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :vfs.file_system;
 import :vfs.path;
@@ -129,7 +129,7 @@ static std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
 }
 
 TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
-    auto command = build.apply_rules(unit, candidate);
+    auto command = apply_rules(unit, candidate);
     return {
         .key = {unit, commands.command_hash(command.command)},
         .command = command
@@ -141,7 +141,7 @@ std::optional<llvm::SmallVector<Host>> Project::include_chains(const UnitCommand
     auto [host, command] = unit;
     // The index runs a unit under its first command, and its tree is that
     // command's while the index records it was built under it.
-    if(auto commands = build.commands(host);
+    if(auto commands = candidates(host);
        !commands.empty() && tree_request(host, commands.front()).key.second == command &&
        index.indexed_command(host) == command_identity(host)) {
         if(auto manifest = index.manifest(host)) {

@@ -416,7 +416,7 @@ async::task<> Project::run_index_pass() {
 bool Project::enqueue_reindex(Fid path_id, ReindexReason reason) {
     // The one admission point of the background index: a rule's
     // `index = false` keeps its files out here, whichever path asked.
-    if(!build.indexed(file_table.resolve(path_id))) {
+    if(!rules.indexable(file_table.resolve(path_id))) {
         return false;
     }
     // A new pending reindex voids the running pass's freshness memos: one

@@ -6,21 +6,35 @@ import :command.normalize;
 import :command.toolchains.nvcc;
 import :command.table;
 import :support.logging;
+import :vfs.path;
 
 namespace clice {
 
-std::string CommandEdits::key() const {
+std::string CommandEdits::key(llvm::StringRef root) const {
     std::string key;
+    auto append_text = [&](llvm::StringRef text) {
+        while(!root.empty()) {
+            auto at = text.find(root);
+            if(at == llvm::StringRef::npos) {
+                break;
+            }
+            key += text.take_front(at);
+            key += path::workspace_anchor;
+            text = text.drop_front(at + root.size());
+        }
+        key += text;
+    };
     auto append_section = [&](llvm::ArrayRef<std::string> section) {
         for(auto& item: section) {
-            key += item;
+            append_text(item);
             key += '\0';
         }
         key += '\1';
     };
     for(auto& edit: edits) {
         key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
-        key += edit.directory;
+        llvm::SmallString<256> storage;
+        key += path::portable(edit.directory, root, storage);
         key += '\0';
         append_section(edit.flags);
     }
@@ -28,6 +42,18 @@ std::string CommandEdits::key() const {
     append_section(extra_append);
     key += query_toolchain ? 'q' : 'u';
     return key;
+}
+
+CommandID EditedCommands::apply(CommandID command, const CommandEdits& edits) {
+    if(edits.empty()) {
+        return command;
+    }
+    auto key = keys.try_emplace(edits.key(), keys.size()).first->second;
+    auto [it, inserted] = edited.try_emplace({static_cast<std::uint32_t>(command), key});
+    if(inserted) {
+        it->second = apply_edits(commands, files, command, edits);
+    }
+    return it->second;
 }
 
 CommandID

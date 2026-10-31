@@ -2,7 +2,7 @@ module clice;
 
 import :command.file_kind;
 import :command.search_config;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :vfs.path;
 
@@ -15,14 +15,14 @@ const static BorrowableCommands& borrowable_commands(Project& project) {
     }
     index.commands.clear();
     index.search_dirs.clear();
-    auto members = project.build.members();
+    auto members = project.members();
     ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule covers with a default command that is no compile
         // command has none; lending the builtin one would only name a guess
         // borrowed.
-        for(auto& candidate: project.build.commands(member)) {
+        for(auto& candidate: project.candidates(member)) {
             if(candidate.source == CommandSource::Fallback) {
                 continue;
             }
@@ -61,7 +61,7 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
 
     using Command = BorrowableCommands::Command;
     auto lent = [](const Command& command) {
-        return command.command.lent(command.member, CommandSource::Borrowed);
+        return command.command.passed_on(command.member, CommandSource::Borrowed);
     };
     // Every member with its first command of the family, in path order.
     llvm::SmallVector<const Command*> units;

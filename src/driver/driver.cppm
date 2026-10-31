@@ -484,9 +484,13 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
 /// A project opened for a subcommand reading it: the project over a file
 /// table of its own, which names files as the command line does.
 struct OpenedProject {
+    explicit OpenedProject(const Spelling& root) : project(files, CanonicalPath(root)) {
+        files.spell_root(root);
+    }
+
     FileTable files;
 
-    Project project{files};
+    Project project;
 
     /// What its opening found.
     Project::Opened opened;
@@ -505,33 +509,30 @@ inline std::unique_ptr<OpenedProject> open_at(const Spelling& root,
                                               LoadedSettings loaded,
                                               Project::OpenOptions options,
                                               bool check_disk = true) {
-    auto opened = std::make_unique<OpenedProject>();
+    auto opened = std::make_unique<OpenedProject>(root);
     auto& project = opened->project;
-    opened->files.spell_root(root);
-    project.root = CanonicalPath(root);
     project.settings = std::move(loaded.settings);
-    project.freshness.options = check_disk ? index::FreshnessOptions{.check_disk = true}
-                                           : index::FreshnessOptions{.withhold = false};
     options.configuration = loaded.configuration;
+    options.freshness = check_disk ? index::FreshnessOptions{.check_disk = true}
+                                   : index::FreshnessOptions{.withhold = false};
     opened->opened = project.open(options);
     return opened;
 }
 
 /// The project at `root` under `loaded` with its index, read-only, and
-/// `build` of its build; why the index cannot be read is logged, and
+/// `load` of its build; why the index cannot be read is logged, and
 /// `unusable` the error.
 inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     open_index(const Spelling& root,
                LoadedSettings loaded,
-               Project::OpenOptions::Build build,
+               Project::OpenOptions::Load load,
                std::string_view unusable,
                bool check_disk = true) {
     auto opened = open_at(root,
                           std::move(loaded),
                           {
-                              .build = build,
-                              .store = Project::OpenOptions::Store::ReadOnly,
-                              .index = Project::OpenOptions::Index::Read,
+                              .load = load,
+                              .cache = Project::OpenOptions::Cache::Read,
                           },
                           check_disk);
     if(!opened->opened.unreadable.empty()) {
@@ -867,7 +868,7 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
 inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     open_project(const ProjectOptions& where,
                  const FreshOption& fresh,
-                 Project::OpenOptions::Build build) {
+                 Project::OpenOptions::Load load) {
     auto read = read_project(where);
     if(!read) {
         return std::unexpected(std::move(read.error()));
@@ -883,7 +884,7 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     }
     auto opened = open_index(root,
                              std::move(loaded),
-                             build,
+                             load,
                              "the index could not be opened (the log above says why); run "
                              "`clice index` or pass --fresh");
     if(opened) {
@@ -903,7 +904,7 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     auto& [root, loaded] = *read;
     return open_index(root,
                       std::move(loaded),
-                      Project::OpenOptions::Build::None,
+                      Project::OpenOptions::Load::Rules,
                       "no usable index; run `clice index` first");
 }
 

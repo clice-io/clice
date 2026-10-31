@@ -67,7 +67,7 @@ struct PCHBuild {
 
 /// One acquisition of a preamble's PCH (a PCH and its pch.idx index,
 /// committed as one pair) or of a precompiled header the build declares
-/// (Build::pch_unit), built a whole file each: the key naming it plus the
+/// (Project::pch_writer), built a whole file each: the key naming it plus the
 /// inputs a build needs if the acquisition ends up dispatching one. A
 /// preamble's PCH is built over the declared one its command reads.
 ///

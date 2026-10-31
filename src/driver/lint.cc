@@ -101,9 +101,9 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
     auto file = project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     UnitRequest request;
-    request.index = with_index && project.build.indexed(file);
+    request.index = with_index && project.rules.indexable(file);
     bool failed = false;
-    if(project.build.lintable(file)) {
+    if(project.rules.lintable(file)) {
         auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         // Checked under a configuration it does not have, the unit would
         // report what was not asked for and miss what was.
@@ -172,7 +172,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
                             [&](const worker::TidyDiagnostic& d) {
                                 auto& files = project.file_table;
                                 return d.compiler_error || d.file.empty() ||
-                                       project.build.lintable(
+                                       project.rules.lintable(
                                            files.resolve(files.intern(Spelling::absolute(d.file))));
                             });
             break;
@@ -270,9 +270,8 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
 
     auto opened = project.open({
         .configuration = batch.loaded.configuration,
-        .store = Project::OpenOptions::Store::Writable,
-        .index =
-            with_index ? Project::OpenOptions::Index::Write : Project::OpenOptions::Index::Read,
+        .cache =
+            with_index ? Project::OpenOptions::Cache::Write : Project::OpenOptions::Cache::Build,
     });
     project.apply_report(opened.report);
     if(with_index) {
@@ -301,7 +300,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     llvm::SmallVector<Fid> tus;
     for(auto member: members) {
         auto file = project.file_table.resolve(member);
-        if(project.build.lintable(file) || (with_index && project.build.indexed(file))) {
+        if(project.rules.lintable(file) || (with_index && project.rules.indexable(file))) {
             tus.push_back(member);
         }
     }

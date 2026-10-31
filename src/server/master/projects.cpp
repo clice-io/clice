@@ -55,7 +55,7 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     // A provisional member is no listing: the project it was recorded in
     // holds it until a database lists it.
     auto lists = [&](ServedProject& project) {
-        return project.project.build.declared(path_id);
+        return project.project.declared(path_id);
     };
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;

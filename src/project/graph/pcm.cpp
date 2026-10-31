@@ -177,7 +177,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // same one. One that did not build leaves the header to the unit's own
     // parse, as for any other unit.
     std::optional<std::string> pch_key;
-    if(auto unit = project.pch_unit(path_id, resolution)) {
+    if(auto unit = project.pch_writer(path_id, resolution)) {
         auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {

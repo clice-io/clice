@@ -5,11 +5,10 @@ import :index.project_index;
 import :index.symbol_query;
 import :project.indexer;
 import :project.project;
-import :project.save;
+import :unittests.utils;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {

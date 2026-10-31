@@ -746,7 +746,7 @@ ZEST_CASE(CDBRemovedStillCovered) {
     project.settings.rules.push_back(Rule{.default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto gone_id = fixture.intern(tmp.path("gone.cpp"));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
@@ -834,7 +834,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
         .project = &served,
     };
     auto generation = session->generation;
-    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
 
     fixture.entry(header).current = true;
     fixture.served->recheck_choices();
@@ -866,7 +866,7 @@ ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
         .choice = ContextChoice{host, 1, ""},
         .project = &served,
     };
-    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
 
     fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);

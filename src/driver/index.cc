@@ -93,8 +93,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
 
     auto opened = project.open({
         .configuration = batch.loaded.configuration,
-        .store = Project::OpenOptions::Store::Writable,
-        .index = Project::OpenOptions::Index::Write,
+        .cache = Project::OpenOptions::Cache::Write,
     });
     project.apply_report(opened.report);
     project.enqueue_outdated(opened.members);

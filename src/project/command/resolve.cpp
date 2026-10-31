@@ -5,7 +5,6 @@ import :command.file_kind;
 import :command.search_config;
 import :index.project_index;
 import :project.command;
-import :project.hosting;
 import :project.project;
 import :support.logging;
 import :syntax.header_context;
@@ -118,7 +117,7 @@ struct Tiers {
                                          host_file,
                                          chosen ? llvm::StringRef(choice->command_hash) : "",
                                          chosen ? llvm::StringRef(choice->base_hash) : "");
-        auto candidate = picked.lent(host_file, CommandSource::Host);
+        auto candidate = picked.passed_on(host_file, CommandSource::Host);
         resolution.host = host_file;
         // Until the host's include tree the search waits on is taken, the
         // header stands on that host's command, without its includer's
@@ -160,7 +159,7 @@ struct Tiers {
     /// host's command alone (Resolution::unmatched_host).
     void in_context(const Host& host, const Candidate& candidate, bool chosen) {
         // What the header borrows is the host's command whatever a run adds.
-        auto lent = project.build.apply_rules(file, candidate);
+        auto lent = project.apply_rules(file, candidate);
         std::optional<bool> alone = false;
         if(!chosen) {
             auto key = SelfContainmentKey{file, project.commands.command_hash(lent.command)};
@@ -197,10 +196,10 @@ struct Tiers {
     ///    user's chosen entry, matched by command hash so the choice
     ///    survives reordering.
     std::optional<Candidate> own() {
-        if(!project.build.unit(file)) {
+        if(!project.is_unit(file)) {
             return std::nullopt;
         }
-        auto commands = project.build.commands(file);
+        auto commands = project.candidates(file);
         auto* choice = host_choice() ? nullptr : request.choice;
         return project
             .chosen_candidate(file,
@@ -220,7 +219,7 @@ struct Tiers {
     /// 4. A rule's default command for a file the build does not compile
     ///    as a unit (a header under a default-command rule).
     std::optional<Candidate> default_command() {
-        auto commands = project.build.commands(file);
+        auto commands = project.candidates(file);
         if(commands.empty()) {
             return std::nullopt;
         }
@@ -234,7 +233,7 @@ struct Tiers {
         if(borrowed) {
             LOG_INFO("resolve_command: {} borrows the command of {}",
                      path,
-                     project.file_table.resolve(borrowed->from));
+                     project.file_table.resolve(borrowed->from()));
         }
         return borrowed;
     }
@@ -242,7 +241,7 @@ struct Tiers {
     /// 6. The builtin fallback, so the file still compiles and produces
     ///    diagnostics instead of failing silently.
     std::optional<Candidate> fallback() {
-        return Candidate{.base = project.build.builtin(path), .source = CommandSource::Fallback};
+        return Candidate{.base = project.fallback_command(path), .source = CommandSource::Fallback};
     }
 };
 
@@ -273,7 +272,7 @@ Resolution resolve(Project& project,
     }
 
     auto ref =
-        project.build.apply_rules(path_id, *candidate, request.extra_prepend, request.extra_append);
+        project.apply_rules(path_id, *candidate, request.extra_prepend, request.extra_append);
     // A header borrowing its host's command compiles as the host's
     // language, with the header injected as the input; the synthesized
     // prefix lands after the host's own user-content flags (its -includes
@@ -319,8 +318,8 @@ std::optional<Candidate> Project::chosen_candidate(Fid file,
     if(!chosen_hash.empty()) {
         for(auto& entry: candidates) {
             auto ref =
-                build.apply_rules(file,
-                                  host.valid() ? entry.lent(host, CommandSource::Host) : entry);
+                apply_rules(file,
+                            host.valid() ? entry.passed_on(host, CommandSource::Host) : entry);
             if(commands.command_hash_hex(ref.command) == chosen_hash) {
                 return entry;
             }
@@ -334,10 +333,10 @@ CommandRef Project::lent_command(Fid header,
                                  const Candidate& command,
                                  llvm::ArrayRef<std::string> extra_prepend,
                                  llvm::ArrayRef<std::string> extra_append) {
-    return build.apply_rules(header,
-                             command.lent(host, CommandSource::Host),
-                             extra_prepend,
-                             extra_append);
+    return apply_rules(header,
+                       command.passed_on(host, CommandSource::Host),
+                       extra_prepend,
+                       extra_append);
 }
 
 std::optional<Candidate> Project::chosen_host_command(Fid header,
@@ -369,7 +368,7 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
     auto path = file_table.resolve(file);
     bool host_choice = choice && choice->host_path_id.valid();
     std::optional<CommandRef> own;
-    if(auto commands = build.commands(file); !commands.empty()) {
+    if(auto commands = candidates(file); !commands.empty()) {
         auto* own_choice = host_choice ? nullptr : choice;
         auto candidate =
             chosen_candidate(file,
@@ -378,7 +377,7 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
                              own_choice ? llvm::StringRef(own_choice->command_hash) : "",
                              own_choice ? llvm::StringRef(own_choice->base_hash) : "")
                 .value_or(commands.front());
-        own = build.apply_rules(file, candidate);
+        own = apply_rules(file, candidate);
     }
     auto own_facts = own ? std::optional(language_facts(*this, *own)) : std::nullopt;
     // A file's entry is its command; a default command yields to the host
@@ -433,24 +432,24 @@ Resolution Project::resolve_command(Fid path_id,
 }
 
 std::uint64_t Project::command_identity(Fid unit) {
-    auto commands = build.commands(unit);
+    auto commands = candidates(unit);
     if(commands.empty()) {
         return 0;
     }
     auto& candidate = commands.front();
     std::uint64_t parts[] = {this->commands.command_hash(candidate.base),
-                             build.edit_hash(unit, candidate)};
+                             rules.identity(rule_edits(unit, candidate))};
     return llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(parts), sizeof(parts)));
 }
 
-std::optional<CommandRef> Project::pch_unit(Fid path_id,
-                                            const Resolution& resolution,
-                                            const CommandRequest& request) {
-    return build.pch_unit(path_id,
-                          resolution.candidate,
-                          resolution.ref.command,
-                          request.extra_prepend,
-                          request.extra_append);
+std::optional<CommandRef> Project::pch_writer(Fid path_id,
+                                              const Resolution& resolution,
+                                              const CommandRequest& request) {
+    return pch_writer(path_id,
+                      resolution.candidate,
+                      resolution.ref.command,
+                      request.extra_prepend,
+                      request.extra_append);
 }
 
 }  // namespace clice

@@ -2,7 +2,7 @@ module clice;
 
 import :command.file_kind;
 import :compile.diagnostic;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :vfs.disk_state;
 

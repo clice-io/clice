@@ -3,13 +3,12 @@ module clice;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :settings.settings;
 import :feature.code_completion;
-import :project.build;
+import :settings.settings;
 import :support.shell;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -76,7 +75,7 @@ void match_rules(const Settings& settings,
     CompilationDatabase cdb{files, commands};
     CanonicalPath root;
     Build build{const_cast<Settings&>(settings), root, cdb, files};
-    for(auto& edit: build.edits(CanonicalPath(Spelling::absolute(path))).edits) {
+    for(auto& edit: rules.edits(CanonicalPath(Spelling::absolute(path))).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
         out.insert(out.end(), edit.flags.begin(), edit.flags.end());
     }
@@ -974,7 +973,7 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     CompilationDatabase cdb{files, commands};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
     Build build{settings, project_root, cdb, files};
-    auto edits = build.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
+    auto edits = rules.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
     ZASSERT(edits.edits.size() == 2u);
     ZEXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
     ZEXPECT(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())) ==

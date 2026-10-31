@@ -2,11 +2,10 @@ module clice;
 
 import :command.table;
 import :project.command;
-import :project.hosting;
 import :project.project;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 
 namespace clice::testing {
 namespace {
@@ -29,7 +28,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
     auto part = project.file_table.intern(Spelling::absolute(tmp.path("src/part.cpp")));
@@ -61,7 +60,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
@@ -105,8 +104,8 @@ ZEST_CASE(TreeSkipsFirstHost) {
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
-    for(auto source: project.build.declared_sources()) {
+    project.rules = Rules(project.settings, project.root, "");
+    for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
     project.rebuild_dependency_graph();
@@ -167,8 +166,8 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
-    for(auto source: project.build.declared_sources()) {
+    project.rules = Rules(project.settings, project.root, "");
+    for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
     project.rebuild_dependency_graph();

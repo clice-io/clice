@@ -51,16 +51,16 @@ default_configuration = "debug"
 configuration = "debug"
 append = ["-DDEBUG"]
 )");
-    auto opened = open(project, {.build = Project::OpenOptions::Build::None});
-    ZEXPECT(project.build.active_configuration() == "debug");
+    auto opened = open(project, {.load = Project::OpenOptions::Load::Rules});
+    ZEXPECT(project.rules.configuration() == "debug");
     ZEXPECT(project.cdb.source_count() == 0U);
     ZEXPECT(opened.members.empty());
 }
 
 ZEST_CASE(DatabasesWithoutGraph) {
-    auto opened = open(project, {.build = Project::OpenOptions::Build::Databases});
+    auto opened = open(project, {.load = Project::OpenOptions::Load::Databases});
     ZEXPECT(project.cdb.source_count() == 1U);
-    ZEXPECT(!project.build.entries(fid("main.cpp")).empty());
+    ZEXPECT(!project.entries(fid("main.cpp")).empty());
     ZEXPECT(opened.members.empty());
     ZEXPECT(!project.dep_graph.knows(fid("util.h")));
 }
@@ -81,18 +81,17 @@ ZEST_CASE(DatabaseAboveFile) {
     }));
     open(project,
          {
-             .build = Project::OpenOptions::Build::Databases,
+             .load = Project::OpenOptions::Load::Databases,
              .file = CanonicalPath(Spelling::absolute(tmp.path("deep/er/tool.cpp"))),
          });
     ZEXPECT(project.cdb.source_count() == 2U);
-    ZEXPECT(!project.build.entries(fid("deep/er/tool.cpp")).empty());
+    ZEXPECT(!project.entries(fid("deep/er/tool.cpp")).empty());
 }
 
 ZEST_CASE(ReaderWithoutIndex) {
     auto opened = open(project,
                        {
-                           .store = Project::OpenOptions::Store::ReadOnly,
-                           .index = Project::OpenOptions::Index::Read,
+                           .cache = Project::OpenOptions::Cache::Read,
                        });
     ZEXPECT(llvm::StringRef(opened.unreadable).starts_with("No index cache at"));
     ZEXPECT(!project.store.has_value());
@@ -104,8 +103,7 @@ ZEST_CASE(ReaderWithoutIndex) {
 ZEST_CASE(WriterThenReader) {
     auto written = open(project,
                         {
-                            .store = Project::OpenOptions::Store::Writable,
-                            .index = Project::OpenOptions::Index::Write,
+                            .cache = Project::OpenOptions::Cache::Write,
                         });
     ZEXPECT(written.unreadable.empty());
     ZASSERT(project.database != nullptr);
@@ -118,8 +116,7 @@ ZEST_CASE(WriterThenReader) {
     Project reader{reader_files};
     auto read = open(reader,
                      {
-                         .store = Project::OpenOptions::Store::ReadOnly,
-                         .index = Project::OpenOptions::Index::Read,
+                         .cache = Project::OpenOptions::Cache::Read,
                      });
     ZEXPECT(read.unreadable.empty());
     ZASSERT(reader.database != nullptr);

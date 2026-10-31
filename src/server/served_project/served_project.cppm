@@ -8,7 +8,6 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command;
-import :project.hosting;
 import :project.indexer;
 import :project.pch;
 import :project.pcm;
@@ -283,15 +282,9 @@ public:
     /// about a document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
-    /// After the editor saved a file routed here: record it as a member
-    /// (record_member).
+    /// After the editor saved a file routed here: record it as a provisional
+    /// member (Project::record_provisional).
     void record_saved(Fid path_id);
-
-    /// Record `path_id`, an open or saved source of the project the build
-    /// does not declare, as a provisional member (Build::record). Whether
-    /// it was recorded now: the build then follows it as a database reload
-    /// would (build_changed), which the caller asks for.
-    bool record_member(Fid path_id);
 
     // compile.cpp
 
@@ -1039,7 +1032,7 @@ private:
     /// its inputs have held the same other content for two consecutive
     /// ticks (or `force`), it reloads. A discovered database vanishing or
     /// returning flips its presence, and the files whose default entry
-    /// moves with it change command (see Build::source_order); its entries
+    /// moves with it change command (see Project::source_order); its entries
     /// keep serving meanwhile.
     void tick_database(WatchedDatabase& database, bool force, CDBDiff& delta);
 

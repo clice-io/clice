@@ -281,14 +281,14 @@ ZEST_CASE(CDBTickRelocates) {
     auto build =
         *project.cdb.find_source(Spelling::absolute(tmp.path("build/compile_commands.json")));
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
-    ZEXPECT(project.build.entries(main_id).front().source == build);
-    ZEXPECT(project.build.entries(only_id).front().source == root);
+    ZEXPECT(project.entries(main_id).front().source == build);
+    ZEXPECT(project.entries(only_id).front().source == root);
 
     tmp.touch("compile_commands.json", original);
     delta = tick(fixture, /*force=*/true);
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
-    ZEXPECT(project.build.entries(main_id).front().source == root);
-    ZEXPECT(project.build.entries(main_id).size() == 2u);
+    ZEXPECT(project.entries(main_id).front().source == root);
+    ZEXPECT(project.entries(main_id).size() == 2u);
 }
 
 ZEST_CASE(CDBDeletedBeforeWatch) {
@@ -399,7 +399,7 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     auto& served = *fixture.served;
     auto& project = served.project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     fixture.watch_databases();
     auto main = fixture.intern(tmp.path("a/main.cpp"));
@@ -415,7 +415,7 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     }));
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
-    ZEXPECT(!project.build.entries(main).empty());
+    ZEXPECT(!project.entries(main).empty());
     ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue) ==
             llvm::SmallVector<Fid>{main});
     ZEXPECT(project.cdb.loaded(id));
@@ -466,7 +466,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     auto& served = *fixture.served;
     auto& project = served.project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
@@ -480,7 +480,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     auto epoch = project.commands_epoch;
     served.discover_around(main_id);
     ZASSERT(project.commands_epoch == epoch + 1);
-    ZASSERT(!project.build.entries(main_id).empty());
+    ZASSERT(!project.entries(main_id).empty());
     ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue) ==
             llvm::SmallVector<Fid>{main_id});
     served.discover_around(main_id);
@@ -534,7 +534,7 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     }));
     auto delta = tick(fixture, /*force=*/true);
     ZASSERT(delta.added == llvm::SmallVector<Fid>{other_id});
-    ZEXPECT(project.build.entries(main_id).size() == 1u);
+    ZEXPECT(project.entries(main_id).size() == 1u);
     ZEXPECT(!project.cdb.candidate_entries(other_id).empty());
 }
 
@@ -546,7 +546,7 @@ ZEST_CASE(CDBTickCoalescesSources) {
     Fixture fixture(tmp.root);
     auto& project = fixture.served->project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
     fixture.watch_databases();
@@ -708,7 +708,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({

@@ -3,13 +3,9 @@ module clice;
 import :command.database;
 import :index.database;
 import :index.project_index;
-import :project.build;
-import :project.build_snapshot;
 import :project.discovery;
-import :project.pch;
-import :project.pcm;
+import :project.listings;
 import :project.project;
-import :project.unit;
 import :settings.settings;
 import :support.json;
 import :support.logging;
@@ -28,175 +24,23 @@ Project::Project(FileTable& file_table,
                  WorkerPool* pool) :
     loop(loop), pool(pool), root(std::move(root)), file_table(file_table) {}
 
-async::task<> Project::checkpoint() {
-    if(store) {
-        co_await async::queue([this] { store->checkpoint(); });
-    }
-    // A full search build or a fold here could still be running on the
-    // thread pool when a shutdown cancels the checkpoint, holding up the
-    // final save behind seconds of derived work: the pass end does them,
-    // and a pass with nothing queued builds what the search index is owed.
-    co_await save(index::SearchRebuild::Never);
-    schedule_index();
-}
-
-async::task<> Project::shutdown() {
-    co_await graph.shutdown();
-    // Editors kill a server that is slow to exit, and building the search
-    // index dominates a cold pass's save: the index commits with no more
-    // than a run of the changes since the last save, and the next session's
-    // first idle save builds the rest.
-    co_await save(index::SearchRebuild::Never);
-}
-
-void Project::close() {
-    if(store) {
-        store->shutdown();
-    }
-}
-
-void Project::rescan_disk_file(Fid path_id) {
-    rescan_dependency_graph(cdb, toolchain, dep_graph, path_id);
-    context_epoch += 1;
-}
-
-void Project::forget_file(Fid path_id) {
-    dep_graph.update_module_decl(path_id, {});
-    dep_graph.forget_scan(path_id);
-    dep_graph.clear_includes(path_id);
-    context_epoch += 1;
-}
-
-Project::Rebuilt Project::rebuild_dependency_graph() {
-    llvm::StringMap<llvm::SmallVector<Fid, 2>> providers;
-    for(auto& entry: dep_graph.modules()) {
-        if(!entry.getValue().empty()) {
-            providers[entry.getKey()] = entry.getValue();
-        }
-    }
-
-    // TODO: every CDB change rescans the whole graph synchronously on the
-    // event loop, twice when provisional members change; make it
-    // incremental or move it off the dispatch path.
-    auto scan = [&] {
-        dep_graph.reset();
-        scan_dependency_graph(cdb, toolchain, dep_graph, build.units(build.members()));
-        dep_graph.build_reverse_map();
-    };
-    scan();
-    Rebuilt changes{.provisional = refresh_provisional()};
-    if(!changes.provisional.empty()) {
-        scan();
-    }
-    context_epoch += 1;
-
-    for(auto& entry: dep_graph.modules()) {
-        if(entry.getValue().empty()) {
-            continue;
-        }
-        auto it = providers.find(entry.getKey());
-        if(it == providers.end()) {
-            changes.appeared.push_back(entry.getKey().str());
-            continue;
-        }
-        auto now = ranges::to<llvm::SmallVector<Fid>>(entry.getValue());
-        ranges::sort(it->second);
-        ranges::sort(now);
-        if(it->second != now) {
-            changes.replaced.append(it->second.begin(), it->second.end());
-        }
-    }
-    return changes;
-}
-
-CDBDiff Project::refresh_provisional() {
-    CDBDiff diff;
-    auto recorded = ranges::to<llvm::SmallVector<Fid>>(build.recorded());
-    ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
-    for(auto file: recorded) {
-        if(build.declared(file)) {
-            build.forget(file);
-            continue;
-        }
-        // A file a declared unit includes compiles in its includer's
-        // context, as the part of a unity build does.
-        auto hosted = ranges::any_of(dep_graph.find_host_sources(file), [&](Fid root) {
-            return root != file && build.declared(root);
-        });
-        // One no unit lends a command compiles under the builtin one, a
-        // member all the same: the host of the headers it includes.
-        std::optional<Candidate> command;
-        if(!hosted) {
-            if(auto borrowed = borrowed_command(file, false)) {
-                command = borrowed;
-            } else {
-                command = {.base = build.builtin(file_table.resolve(file)),
-                           .source = CommandSource::Fallback};
-            }
-        }
-        auto before = build.set_command(file, command);
-        if(before == command) {
-            continue;
-        }
-        (!before ? diff.added : !command ? diff.removed : diff.changed).push_back(file);
-    }
-    return diff;
-}
-
 namespace {
-
-/// The real path of a declared database file, also of one whose directory
-/// does not exist yet: a path without the .json extension names the
-/// directory holding it.
-std::string real_path(const Spelling& database) {
-    if(path::extension(database) == ".json") {
-        return CanonicalPath(database).str();
-    }
-    return CanonicalPath(Spelling("compile_commands.json", database)).str();
-}
-
-/// The real paths of the databases the rules active under `configuration`
-/// declare, in priority order.
-std::vector<std::string> real_databases(const Settings& settings, llvm::StringRef configuration) {
-    std::vector<std::string> paths;
-    for(auto& database: settings.declared_databases(configuration)) {
-        paths.push_back(real_path(database));
-    }
-    return paths;
-}
-
-/// What the rules active under `configuration` do besides naming
-/// databases, one string each in declaration order: configurations alike in
-/// it and in the databases they read build alike.
-std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef configuration) {
-    std::vector<std::string> edits;
-    for(auto rule: settings.rules) {
-        if(!rule.configuration.empty() && rule.configuration != configuration) {
-            continue;
-        }
-        rule.configuration.clear();
-        rule.compile_commands.clear();
-        rule.resolve_symlinks = false;
-        edits.push_back(json::to_string(rule).value_or(""));
-    }
-    return edits;
-}
 
 /// Register and load the build's sources: the databases the rules declare
 /// (existing or not; the server watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
-/// meet later — the persisted index's (see BuildSnapshot::remembered),
+/// meet later — the persisted index's (see SavedListings::databases),
 /// those above the file a run is about (see databases_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
     ScopedTimer cdb_timer;
     std::size_t entries = 0;
-    auto paths = project.build.declared_sources();
-    if(!project.build.declares_sources()) {
+    auto paths = project.rules.declared_databases();
+    if(!project.rules.declares_sources()) {
         paths = discovered_databases(root);
         // Registered whether still there or not, like a declared one: the
         // server watches for its return, and the index it built keeps
-        // serving meanwhile. Sorted like Build::source_order ranks them, so
+        // serving meanwhile. Sorted like Project::source_order ranks them, so
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
         auto stable = ranges::to<llvm::SmallVector<Spelling>>(
@@ -219,7 +63,7 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     // database. A rule's spelling stays its own, which its patterns rank.
     llvm::SmallVector<SourceID> sources;
     for(auto& path: paths) {
-        if(!project.build.declares_sources() && !project.cdb.find_source(path) &&
+        if(!project.rules.declares_sources() && !project.cdb.find_source(path) &&
            project.cdb.find_same_file(path)) {
             continue;
         }
@@ -227,7 +71,7 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
             sources.push_back(id);
         }
     }
-    if(!project.build.declares_sources() && sources.size() > 1) {
+    if(!project.rules.declares_sources() && sources.size() > 1) {
         LOG_WARN(
             "No rule names a compilation database; the {} found apply in this order, "
             "an earlier one winning for a file both list: {}. To switch between them "
@@ -263,21 +107,21 @@ void load_members(Project& project,
     // keeps its entry, and is back the moment the file is.
     for(auto& path: provisional) {
         if(fs::is_file(path)) {
-            project.build.record(project.file_table.intern(path));
+            project.record_provisional(project.file_table.intern(path));
         }
     }
 
     // A recorded file is a member once it has its command, which the
     // refresh below gives it, the builtin one when no unit lends one.
-    opened.members = project.build.members();
-    if(opened.members.empty() && project.build.recorded().empty()) {
+    opened.members = project.members();
+    if(opened.members.empty() && project.provisional.files().empty()) {
         return;
     }
 
     auto scan = scan_dependency_graph(project.cdb,
                                       project.toolchain,
                                       project.dep_graph,
-                                      project.build.units(opened.members));
+                                      project.scan_commands(opened.members));
     project.dep_graph.build_reverse_map();
 
     auto found = scan.includes_resolved + scan.unresolved.size();
@@ -306,7 +150,7 @@ void load_members(Project& project,
     // whether a unit includes one, and the graph takes them in.
     if(!project.refresh_provisional().empty()) {
         project.rebuild_dependency_graph();
-        opened.members = project.build.members();
+        opened.members = project.members();
     }
 }
 
@@ -331,13 +175,12 @@ std::string unreadable_index(index::LoadResult result, std::string_view where) {
 /// Open the cache store and the index database as `options` say; why the
 /// index cannot be read, for a run that reads it, else empty.
 std::string open_store(Project& project, const Project::OpenOptions& options) {
-    using Store = Project::OpenOptions::Store;
-    using Index = Project::OpenOptions::Index;
+    using Cache = Project::OpenOptions::Cache;
     auto& cache_dir = project.settings.project.cache_dir;
-    if(options.store == Store::None || cache_dir.empty()) {
+    if(options.cache == Cache::None || cache_dir.empty()) {
         return {};
     }
-    bool read_only = options.store == Store::ReadOnly;
+    bool read_only = options.cache == Cache::Read;
     // Read-only, the default cache directory exists as soon as the settings
     // resolves it, so only the versioned store inside it proves an index
     // was ever built — and a live server (even one on an older layout)
@@ -360,7 +203,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     // scans the whole namespace, which a run reading the index alone
     // does not pay for. Size budgets are deliberately generous: eviction
     // exists to bound disk usage, not to keep the working set tight.
-    if(options.build == Project::OpenOptions::Build::Members) {
+    if(options.load == Project::OpenOptions::Load::Members) {
         constexpr std::uint64_t GiB = 1ull << 30;
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
@@ -374,7 +217,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     }
 
     auto& key = project.database_key;
-    if(options.index == Index::Read) {
+    if(options.cache != Cache::Write) {
         // No writer lock: a concurrent server or index run keeps owning it,
         // while the persisted versions and precompiled records still seed this
         // run. What it changes stays in memory and exits with it.
@@ -389,8 +232,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         return std::format("The index database at {} cannot be opened; the log above says why",
                            index::database_directory(*project.store, key));
     }
-    if(options.index != Index::Write ||
-       !(project.writer_lock = index::WriterLock::acquire(cache_dir))) {
+    if(!(project.writer_lock = index::WriterLock::acquire(cache_dir))) {
         return {};
     }
     // The owner is recorded, and checked again, under the lock: another
@@ -415,42 +257,6 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
 
 }  // namespace
 
-std::string resolved_databases(const Settings& settings, llvm::StringRef configuration) {
-    std::string resolved;
-    for(auto& rule: settings.compiled_rules) {
-        if(!rule.resolve_symlinks || !rule.active_under(configuration)) {
-            continue;
-        }
-        for(auto& database: rule.compile_commands) {
-            if(!resolved.empty()) {
-                resolved += '\n';
-            }
-            resolved += real_path(database);
-        }
-    }
-    return resolved;
-}
-
-index::DatabaseKey database_key(const Settings& settings,
-                                llvm::StringRef configuration,
-                                llvm::StringRef resolved) {
-    if(resolved.empty()) {
-        return {.configuration = configuration.str()};
-    }
-    auto databases = real_databases(settings, configuration);
-    auto edits = edits_of(settings, configuration);
-    for(auto tag: settings.configurations()) {
-        auto resolves = [&](const CompiledRule& rule) {
-            return rule.resolve_symlinks && rule.active_under(tag);
-        };
-        if(tag != configuration && ranges::none_of(settings.compiled_rules, resolves) &&
-           real_databases(settings, tag) == databases && edits_of(settings, tag) == edits) {
-            return {.configuration = tag.str()};
-        }
-    }
-    return {.configuration = configuration.str(), .resolved = resolved.str()};
-}
-
 std::string Project::damaged_index_error() const {
     return std::format(
         "the index database at {} is damaged (the log above says where); delete that "
@@ -459,16 +265,15 @@ std::string Project::damaged_index_error() const {
 }
 
 Project::Opened Project::open(const OpenOptions& options) {
-    using Build = OpenOptions::Build;
-    using Index = OpenOptions::Index;
-    assert((options.index != Index::Write || options.store == OpenOptions::Store::Writable) &&
-           "the index's writer builds into a writable store");
+    using Load = OpenOptions::Load;
+    using Cache = OpenOptions::Cache;
     Opened opened;
     index.project_root = root;
     commands.set_project_root(root);
-    build.reset_active(options.configuration);
-    resolved_databases = clice::resolved_databases(settings, options.configuration);
-    database_key = clice::database_key(settings, options.configuration, resolved_databases);
+    rules = Rules(settings, root, options.configuration);
+    freshness.options = options.freshness;
+    resolved_databases = rules.resolved_databases();
+    database_key = rules.database_key(resolved_databases);
     if(database_key.configuration != options.configuration) {
         LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",
                  options.configuration,
@@ -481,17 +286,18 @@ Project::Opened Project::open(const OpenOptions& options) {
 
     opened.unreadable = open_store(*this, options);
 
-    auto remembered = BuildSnapshot::remembered(*this);
+    if(database) {
+        listings.read(*database);
+    }
+    auto nearby = listings.databases(index);
     if(!options.file.empty()) {
         auto above = databases_above(CanonicalRef(options.file).parent(), root);
-        remembered.sources.append(above.begin(), above.end());
+        nearby.append(above.begin(), above.end());
     }
-    switch(options.build) {
-        case Build::None: break;
-        case Build::Databases: load_sources(*this, remembered.sources); break;
-        case Build::Members:
-            load_members(*this, remembered.sources, remembered.provisional, opened);
-            break;
+    switch(options.load) {
+        case Load::Rules: break;
+        case Load::Databases: load_sources(*this, nearby); break;
+        case Load::Members: load_members(*this, nearby, listings.provisional(index), opened); break;
     }
 
     if(database && opened.unreadable.empty()) {
@@ -500,15 +306,15 @@ Project::Opened Project::open(const OpenOptions& options) {
         // The tables a run reading the index alone binds in place, fetched
         // on first use.
         auto& cache_dir = settings.project.cache_dir;
-        if(options.index == Index::Read && options.build != Build::Members) {
+        bool reads = options.cache != Cache::Write;
+        if(reads && options.load != Load::Members) {
             opened.unreadable = unreadable_index(index.open(*database), cache_dir);
         } else {
-            auto saved = load_saved(options.build == Build::Members);
-            opened.report = std::move(saved.report);
+            bool decoded = load_saved(options.load == Load::Members, opened.report);
             // A reader takes no fresh database for one it cannot read.
-            if(!saved.decoded && database && database->read_only()) {
+            if(!decoded && database && database->read_only()) {
                 opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
-            } else if(!database && options.index == Index::Read) {
+            } else if(!database && reads) {
                 opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
             }
             // A unit deleted while no server ran keeps its index until a

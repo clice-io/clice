@@ -64,10 +64,9 @@ enum class BlobKind : std::uint8_t {
     /// Per-symbol records (SharedLocalBlob) of the symbols below external
     /// scope several files hold.
     SharedLocal,
-    /// The single build snapshot (BuildSnapshot) the persisted index was
-    /// saved with, key "cdb": which databases listed each file, and the
-    /// provisional members.
-    BuildSnapshot,
+    /// The listings the persisted index was saved with (SavedListings), key
+    /// "cdb": which databases listed each file, and the provisional members.
+    Listings,
     /// The single precompiled records blob (PCH/PCM records with their deps,
     /// self-containment checks), key "artifacts".
     PrecompiledRecords,

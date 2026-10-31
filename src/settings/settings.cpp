@@ -250,32 +250,6 @@ bool CompiledRule::active_under(llvm::StringRef configuration) const {
     return this->configuration.empty() || this->configuration == configuration;
 }
 
-llvm::SmallVector<const CompiledRule*>
-    Settings::matching_rules(CanonicalRef path, llvm::StringRef configuration) const {
-    llvm::SmallVector<const CompiledRule*> result;
-    for(auto& rule: compiled_rules) {
-        if(rule.active_under(configuration) && rule.matches(path)) {
-            result.push_back(&rule);
-        }
-    }
-    return result;
-}
-
-llvm::SmallVector<Spelling> Settings::declared_databases(llvm::StringRef configuration) const {
-    llvm::SmallVector<Spelling> result;
-    for(auto& rule: compiled_rules) {
-        if(!rule.active_under(configuration)) {
-            continue;
-        }
-        for(auto& database: rule.compile_commands) {
-            if(!ranges::contains(result, database)) {
-                result.push_back(database);
-            }
-        }
-    }
-    return result;
-}
-
 llvm::SmallVector<llvm::StringRef> Settings::configurations() const {
     llvm::SmallVector<llvm::StringRef> tags;
     for(auto& rule: compiled_rules) {

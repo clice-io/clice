@@ -1,7 +1,7 @@
 module clice;
 
 import :index.format;
-import :project.hosting;
+import :project.command;
 import :project.precompiled;
 import :project.project;
 import :project.task_graph;

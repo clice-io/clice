@@ -234,11 +234,11 @@ int run_file(const FileOptions& opts) {
     auto opened =
         open_at(root,
                 std::move(loaded),
-                {.build = Project::OpenOptions::Build::Databases, .file = CanonicalPath(path)});
+                {.load = Project::OpenOptions::Load::Databases, .file = CanonicalPath(path)});
     auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
-    auto entries = project.build.entries(file);
+    auto entries = project.entries(file);
     if(entries.empty()) {
         LOG_ERROR("No compilation database lists {}", files.display(file));
         return 1;
@@ -246,8 +246,7 @@ int run_file(const FileOptions& opts) {
     llvm::SmallVector<CommandRef> refs;
     for(auto& entry: entries) {
         refs.push_back(
-            project.build.apply_rules(file,
-                                      {.base = entry.command, .source = CommandSource::Database}));
+            project.apply_rules(file, {.base = entry.command, .source = CommandSource::Database}));
     }
     project.toolchain.warm(refs);
     FileCommands commands{.file = files.display(file)};
@@ -352,9 +351,8 @@ int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool 
         LOG_ERROR("Not a compile command: {}", join_command(command));
         return 1;
     }
-    auto ref =
-        project.build.apply_rules(entry->file,
-                                  {.base = entry->command, .source = CommandSource::Database});
+    auto ref = project.apply_rules(entry->file,
+                                   {.base = entry->command, .source = CommandSource::Database});
     project.toolchain.warm(ref);
     auto rendered = render_command(project, ref, {.shadowed_dirs = false});
     if(json) {
@@ -403,9 +401,8 @@ int convert_database(Project& project, const Spelling& path) {
     llvm::DenseMap<std::uint32_t, CommandRef> refs;
     std::vector<CommandRef> all;
     for(auto& entry: cdb.entries()) {
-        auto ref =
-            project.build.apply_rules(entry.file,
-                                      {.base = entry.command, .source = CommandSource::Database});
+        auto ref = project.apply_rules(entry.file,
+                                       {.base = entry.command, .source = CommandSource::Database});
         refs.try_emplace(entry.ordinal, ref);
         all.push_back(ref);
     }
@@ -469,7 +466,7 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
     }
     auto& [root, loaded] = *read;
     // The rules alone: what converts is the database or the command given.
-    auto opened = open_at(root, std::move(loaded), {.build = Project::OpenOptions::Build::None});
+    auto opened = open_at(root, std::move(loaded), {.load = Project::OpenOptions::Load::Rules});
     auto& project = opened->project;
     if(!command.empty()) {
         return convert_command(project, command, static_cast<bool>(opts.json));

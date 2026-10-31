@@ -232,7 +232,7 @@ struct BuildPCHParams {
     uint32_t preamble_bound = UINT32_MAX;
 
     /// Build the PCH of the whole file as it is on disk: a precompiled
-    /// header the build declares (Build::pch_unit). content and
+    /// header the build declares (Project::pch_writer). content and
     /// preamble_bound are unused.
     bool whole_file = false;
 

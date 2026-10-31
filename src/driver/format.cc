@@ -4,7 +4,6 @@ import :command.database;
 import :command.file_kind;
 import :driver.driver;
 import :feature.formatting;
-import :project.build;
 import :project.discovery;
 import :project.project;
 import :support.timer;
@@ -102,7 +101,6 @@ struct Target {
 /// a type clang-format formats, no matching rule saying `format = false`;
 /// none in a project nested in the root (nested_project).
 std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members) {
-    auto& build = project.build;
     auto& files = project.file_table;
 
     CanonicalRef root = project.root;
@@ -126,13 +124,10 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
             skip(std::move(directory));
         }
     }
-    for(auto member: members) {
-        for(auto& candidate: build.commands(member)) {
-            auto ref = build.apply_rules(member, candidate);
-            auto search = project.toolchain.search_config(ref);
-            for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                skip(CanonicalPath(Spelling::absolute(dir.path)));
-            }
+    for(auto& ref: project.scan_commands(members)) {
+        auto search = project.toolchain.search_config(ref);
+        for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
+            skip(CanonicalPath(Spelling::absolute(dir.path)));
         }
     }
 
@@ -163,7 +158,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
         // A header only a command forces in, which no unit's text
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
-        if(!formats(path) || !build.formattable(path) || in_nested(path) ||
+        if(!formats(path) || !project.rules.formattable(path) || in_nested(path) ||
            (unit.contains(fid) ? !project_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
                                      ranges::any_of(skipped_dirs, [&](auto& dir) {
@@ -243,18 +238,16 @@ Result format_project(const Request& options) {
     ScopedTimer timer;
     Result result;
 
-    FileTable file_table;
-    file_table.spell_root(options.root);
-    Project project{file_table, CanonicalPath(options.root)};
-    project.settings = options.loaded.settings;
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
     bool whole = options.paths.empty() ||
                  ranges::any_of(options.paths, [](auto& path) { return fs::is_directory(path); });
-    auto opened = project.open({
-        .configuration = options.loaded.configuration,
-        .build = whole ? Project::OpenOptions::Build::Members : Project::OpenOptions::Build::None,
-    });
+    auto opened_project = open_at(
+        options.root,
+        options.loaded,
+        {.load = whole ? Project::OpenOptions::Load::Members : Project::OpenOptions::Load::Rules});
+    auto& project = opened_project->project;
+    auto& opened = opened_project->opened;
 
     std::vector<Target> files;
     std::vector<CanonicalPath> directories;
@@ -280,7 +273,7 @@ Result format_project(const Request& options) {
                     result.error = std::format("{}: links outside the project", path);
                     return result;
                 }
-            } else if(project.build.formattable(target)) {
+            } else if(project.rules.formattable(target)) {
                 files.push_back({.path = std::move(target), .name = path});
             }
         }

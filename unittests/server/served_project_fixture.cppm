@@ -80,7 +80,8 @@ struct ServedProjectFixture {
                                  const std::vector<std::string>& arguments) {
         auto& project = served->project;
         Resolution resolution{
-            .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},
+            .ref = {.command =
+                        project.fallback_command(project.file_table.resolve(session->path_id))},
         };
         auto key = co_await served->ensure_pch(Ticket{session, generation},
                                                epoch,
@@ -113,7 +114,7 @@ struct ServedProjectFixture {
     /// databases found at the watched places registered, then every watched
     /// database ticked.
     CDBDiff database_delta(bool force) {
-        if(!served->project.build.declares_sources()) {
+        if(!served->project.rules.declares_sources()) {
             served->discover_databases();
         }
         CDBDiff delta;

@@ -39,7 +39,7 @@ async::task<UnitResult>
     // or never built, read by nothing) stays uncovered — count that as a
     // failure so a batch run reports the missing index instead of exiting
     // clean.
-    if(!project.build.unit(path_id)) {
+    if(!project.is_unit(path_id)) {
         bool read = !project.dep_graph.find_readers(path_id).empty();
         project.index.for_each_contributor(path_id, [&](Fid) { read = true; });
         if(!project.index.indexed(path_id) && !read) {
@@ -105,8 +105,9 @@ async::task<UnitResult>
     Inputs precompiled;
     std::string consumed_pch;
     std::string left_out_pch;
-    if(auto unit = project.pch_unit(path_id, resolved, extra);
-       unit && (deps.modular() || project.build.indexed(project.file_table.resolve(unit->file)))) {
+    if(auto unit = project.pch_writer(path_id, resolved, extra);
+       unit &&
+       (deps.modular() || project.rules.indexable(project.file_table.resolve(unit->file)))) {
         auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         if(auto crashed = project.crashed_over_pch.find(path_id);

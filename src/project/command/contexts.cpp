@@ -2,7 +2,6 @@ module clice;
 
 import :index.project_index;
 import :project.command;
-import :project.contexts;
 import :project.project;
 import :support.json;
 import :support.logging;
@@ -58,8 +57,7 @@ std::string flags_label(Project& project, CommandID command, llvm::ArrayRef<Comm
 
 /// The command the file's own entry `entry` compiles it as.
 CommandID own_command(Project& project, Fid file, CommandID entry) {
-    return project.build.apply_rules(file, {.base = entry, .source = CommandSource::Database})
-        .command;
+    return project.apply_rules(file, {.base = entry, .source = CommandSource::Database}).command;
 }
 
 CommandID base_command(const CompilationEntry& entry) {
@@ -136,7 +134,7 @@ ListedContext
 bool command_alive(Project& project, Fid file, Fid host, const ContextChoice& choice) {
     return project
         .chosen_candidate(file,
-                          project.build.commands(host.valid() ? host : file),
+                          project.candidates(host.valid() ? host : file),
                           host,
                           choice.command_hash,
                           choice.base_hash)
@@ -211,7 +209,7 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    auto own = own_commands(*this, file, build.entries(file));
+    auto own = own_commands(*this, file, entries(file));
     for(std::size_t i = 0; i < own.size(); i += 1) {
         if(seen_commands.insert(commands.command_hash_hex(own[i])).second) {
             items.push_back(own_item(*this, file, i, own));
@@ -240,7 +238,7 @@ std::optional<ListedContext> Project::current_context_item(Fid file,
                          several ? std::optional(occurrence) : std::nullopt);
     };
     auto own = [&](llvm::StringRef hash, llvm::StringRef base) -> std::optional<ListedContext> {
-        auto commands = build.commands(file);
+        auto commands = candidates(file);
         if(commands.empty()) {
             return std::nullopt;
         }
@@ -261,8 +259,8 @@ std::optional<ListedContext> Project::current_context_item(Fid file,
     if(choice) {
         return own(choice->command_hash, choice->base_hash);
     }
-    if(build.unit(file)) {
-        if(build.entries(file).empty()) {
+    if(is_unit(file)) {
+        if(entries(file).empty()) {
             return std::nullopt;
         }
         return own({}, {});
@@ -295,7 +293,7 @@ ContextChoice Project::choice_of(Fid file,
     ContextChoice choice;
     if(listed == file) {
         choice.command_hash = *command_hash;
-        choice.base_hash = base_of(build.commands(file), [&](const Candidate& entry) {
+        choice.base_hash = base_of(candidates(file), [&](const Candidate& entry) {
             return own_command(*this, file, entry.base);
         });
         return choice;
@@ -315,7 +313,7 @@ bool Project::choice_holds(Fid file, const ContextChoice& choice) {
     auto path = file_table.resolve(file);
     if(choice.host_path_id.valid()) {
         auto host = choice.host_path_id;
-        if(build.commands(host).empty()) {
+        if(candidates(host).empty()) {
             return false;
         }
         // The host's current include tree tells how often its compile
@@ -333,7 +331,7 @@ bool Project::choice_holds(Fid file, const ContextChoice& choice) {
         }
         return choice.command_hash.empty() || command_alive(*this, file, host, choice);
     }
-    return !choice.command_hash.empty() && !build.commands(file).empty() &&
+    return !choice.command_hash.empty() && !candidates(file).empty() &&
            command_alive(*this, file, {}, choice);
 }
 

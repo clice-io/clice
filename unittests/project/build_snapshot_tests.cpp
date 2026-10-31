@@ -2,16 +2,15 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :project.build_snapshot;
 import :project.indexer;
 import :settings.settings;
 import :support.bytes;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -163,7 +162,7 @@ ZEST_CASE(UndeclaredSourceDropsIndex) {
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
-        for(auto source: f.project.build.declared_sources()) {
+        for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
     };
@@ -204,7 +203,7 @@ ZEST_CASE(SourceRelocationPersists) {
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
-        for(auto source: f.project.build.declared_sources()) {
+        for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
     };
@@ -506,11 +505,11 @@ ZEST_CASE(CDBWriteFailureRetried) {
     // The snapshot rides the batch with the index state it describes: the
     // failed batch takes both, and both stay owed until a save commits them
     // (`clice index` fails on unsaved state after the final save).
-    ZASSERT(!storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
+    ZASSERT(!storage->real->contains(index::BlobKind::Listings, "cdb"));
     ZASSERT(f.project.has_unsaved_state());
     storage->fail = false;
     f.save();
-    ZASSERT(storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
+    ZASSERT(storage->real->contains(index::BlobKind::Listings, "cdb"));
     ZASSERT(!f.project.has_unsaved_state());
 }
 
@@ -532,7 +531,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
         f.project.database->write(
             {
         },
-            {{index::BlobKind::BuildSnapshot, "cdb"}});
+            {{index::BlobKind::Listings, "cdb"}});
     }
 
     // A rerun that dirties nothing must still recreate the snapshot —
@@ -544,7 +543,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
     f.load();
     ZASSERT(f.project.has_unsaved_state());
     f.save();
-    ZASSERT(f.project.database->contains(index::BlobKind::BuildSnapshot, "cdb"));
+    ZASSERT(f.project.database->contains(index::BlobKind::Listings, "cdb"));
     ZASSERT(!f.project.has_unsaved_state());
 }
 
@@ -564,14 +563,14 @@ ZEST_CASE(SnapshotHoldsSourcesOnly) {
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
     f.project.cdb.load(tmp.path("compile_commands.json"));
-    ZASSERT(f.project.build.record(
+    ZASSERT(f.project.record_provisional(
         f.project.file_table.intern(Spelling::absolute(tmp.path("new.cpp")))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
     f.save();
 
-    auto blob = f.project.database->read(index::BlobKind::BuildSnapshot, "cdb");
+    auto blob = f.project.database->read(index::BlobKind::Listings, "cdb");
     ZASSERT(bool(blob));
     auto bytes = blob.buffer->getBuffer().str();
     ZEXPECT(llvm::StringRef(bytes).contains("compile_commands.json"));
@@ -584,7 +583,7 @@ ZEST_CASE(SnapshotHoldsSourcesOnly) {
         pos,
         file.size(),
         R"({"hashes":["0123456789abcdef"],"selected":"0123456789abcdef","rules":"","file":)");
-    index::BlobDatabase::Blob older{index::BlobKind::BuildSnapshot, "cdb", copy_bytes(bytes)};
+    index::BlobDatabase::Blob older{index::BlobKind::Listings, "cdb", copy_bytes(bytes)};
     ZASSERT(f.project.database->write(older, {}));
     ZASSERT(f.project.database->advance_read_snapshot());
     auto remembered = BuildSnapshot::remembered(f.project);
@@ -718,7 +717,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     f.project.apply_report(report);
 
     f.save();
-    auto blob = f.project.database->read(index::BlobKind::BuildSnapshot, "cdb");
+    auto blob = f.project.database->read(index::BlobKind::Listings, "cdb");
     ZASSERT(bool(blob));
     ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("compile_commands.json"));
 }

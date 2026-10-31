@@ -1,7 +1,7 @@
 module clice;
 
 import :command.search_config;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :support.logging;
 import :syntax.include_resolver;

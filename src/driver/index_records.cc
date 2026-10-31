@@ -137,7 +137,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Version,            "versions"            },
     {index::BlobKind::Header,             "header"              },
     {index::BlobKind::SearchSegment,      "search segments"     },
-    {index::BlobKind::BuildSnapshot,      "cdb"                 },
+    {index::BlobKind::Listings,           "cdb"                 },
     {index::BlobKind::PrecompiledRecords, "precompiled records" },
     {index::BlobKind::ContextChoices,     "contexts"            },
 };
@@ -298,7 +298,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
                         share(bytes, whole));
     };
 
-    auto configuration = project.build.active_configuration();
+    auto configuration = project.rules.configuration();
     driver::println("Index cache: {}",
                     index::database_directory(*project.store, project.database_key));
     if(!configuration.empty()) {
@@ -751,7 +751,7 @@ int read_index(const ProjectOptions& where, Run run) {
     auto& [root, loaded] = *read;
     auto opened = open_index(root,
                              std::move(loaded),
-                             Project::OpenOptions::Build::None,
+                             Project::OpenOptions::Load::Rules,
                              {},
                              /*check_disk=*/false);
     if(!opened) {

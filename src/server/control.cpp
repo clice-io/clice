@@ -48,7 +48,7 @@ async::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndp
 void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
     peer.on_request(
         [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
-            auto active = srv.project.build.active_configuration();
+            auto active = srv.project.rules.configuration();
             if(params.configuration != active) {
                 co_await async::fail(ipc::Error{
                     std::format("the running clice server indexes configuration '{}', not '{}'",
@@ -70,7 +70,7 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
                     "the compilation databases of the running clice server now resolve to another "
                     "build, which it opens once it restarts"});
             }
-            auto members = srv.project.build.members();
+            auto members = srv.project.members();
             if(members.empty()) {
                 co_await async::fail(ipc::Error{
                     "nothing to index: the running clice server's build has no translation units"});

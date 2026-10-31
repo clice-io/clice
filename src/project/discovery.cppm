@@ -59,4 +59,31 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
 /// may compile from.
 llvm::SmallVector<Spelling> databases_above(CanonicalRef start, CanonicalRef project_root);
 
+/// How discovered databases rank among themselves: shallower before
+/// deeper, then by path.
+std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database);
+
+/// Whether `file` is the project's own — what a refactoring may edit and
+/// a save may record as a provisional member: it lies under `root`,
+/// whatever its suffix, outside the directories holding no sources a
+/// refactoring edits — hidden ones, package caches, `cache_dir` and build
+/// trees (a directory holding CMakeCache.txt or build.ninja).
+bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
+
+/// What a refactoring may edit of the project at `root`, outside its cache
+/// directory (feature::RenameScope).
+struct EditableFiles {
+    /// The C-family sources and headers of the project, as absolute
+    /// paths: the files under `root` a rename's scan reads, outside the
+    /// directories project_file leaves out.
+    std::vector<std::string> sources() const;
+
+    /// project_file of an absolute path.
+    bool editable(llvm::StringRef path) const;
+
+    CanonicalPath root;
+
+    CanonicalPath cache_dir;
+};
+
 }  // namespace clice

@@ -2,29 +2,54 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :project.build;
-import :project.build_snapshot;
+import :project.listings;
 import :project.project;
-import :project.save;
 import :support.bytes;
 import :support.logging;
 import :support.timer;
 
 namespace clice {
 
+async::task<> Project::checkpoint() {
+    if(store) {
+        co_await async::queue([this] { store->checkpoint(); });
+    }
+    // A full search build or a fold here could still be running on the
+    // thread pool when a shutdown cancels the checkpoint, holding up the
+    // final save behind seconds of derived work: the pass end does them,
+    // and a pass with nothing queued builds what the search index is owed.
+    co_await save(index::SearchRebuild::Never);
+    schedule_index();
+}
+
+async::task<> Project::shutdown() {
+    co_await graph.shutdown();
+    // Editors kill a server that is slow to exit, and building the search
+    // index dominates a cold pass's save: the index commits with no more
+    // than a run of the changes since the last save, and the next session's
+    // first idle save builds the rest.
+    co_await save(index::SearchRebuild::Never);
+}
+
+void Project::close() {
+    if(store) {
+        store->shutdown();
+    }
+}
+
 void Project::recover_corrupt_database(index::IndexReport& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-    for(auto unit: build.members()) {
+    for(auto unit: members()) {
         report.add_reindex(unit);
     }
     // No pass over the build reaches a unit of its own (a header indexed
     // with a borrowed command): as many as the records still name.
     index.for_each_unit([&](Fid unit) {
-        if(build.entries(unit).empty()) {
+        if(entries(unit).empty()) {
             report.add_reindex(unit);
         }
     });
-    // The fresh database records the build snapshot at the next save.
+    // The fresh database records the listings at the next save.
     report.owes_retry = true;
     reopen_fresh_database();
 }
@@ -33,9 +58,9 @@ void Project::reopen_fresh_database() {
     database->condemn();
     database.reset();
     // The index reads its records in place: it starts over with the
-    // database, as does the snapshot of the build it was saved with.
+    // database, as do the listings it was saved with.
     index.clear();
-    build_snapshot.forget_persisted();
+    listings.forget_persisted();
     database = index::open_database(*store, database_key);
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
@@ -46,7 +71,7 @@ void Project::reopen_fresh_database() {
 }
 
 bool Project::has_unsaved_state() const {
-    return index.has_unsaved_state() || build_snapshot.owes_save(*this);
+    return index.has_unsaved_state() || listings.owes_save(provisional.changes());
 }
 
 async::task<index::IndexReport> Project::write_database(index::SearchRebuild search) {
@@ -65,7 +90,6 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
         co_return report;
     }
     auto& db = *database;
-    auto& snapshot = build_snapshot;
     ScopedTimer timer;
 
     // A read since the last save met a damaged page or record: nothing more
@@ -81,15 +105,15 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     index.begin_save(batch, report);
     auto& blobs = batch.blobs;
 
-    // The build snapshot commits in the same transaction as the index
-    // state it describes. A save that commits nothing skips it (unless the
-    // snapshot itself is owed a rewrite): a pure CDB change dirties no blob
-    // on its own, so the next dirtying save carries the fresh snapshot.
-    std::optional<std::string> snapshot_bytes;
-    if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(*this)) {
-        snapshot_bytes = snapshot.serialize(*this);
-        if(snapshot_bytes) {
-            blobs.push_back({index::BlobKind::BuildSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
+    // The listings commit in the same transaction as the index state they
+    // describe. A save that commits nothing skips them (unless they are owed
+    // a rewrite themselves): a pure CDB change dirties no blob on its own,
+    // so the next dirtying save carries the fresh listings.
+    std::optional<std::string> listings_bytes;
+    if(!blobs.empty() || !batch.removals.empty() || listings.owes_save(provisional.changes())) {
+        listings_bytes = listings.serialize(listed(), provisional.changes());
+        if(listings_bytes) {
+            blobs.push_back({index::BlobKind::Listings, "cdb", copy_bytes(*listings_bytes)});
         }
     }
 
@@ -126,8 +150,8 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     // reports saved progress that is absent after restart.
     auto restore = [&] {
         index.abandon_save(batch);
-        if(snapshot_bytes) {
-            snapshot.unsaved();
+        if(listings_bytes) {
+            listings.unsaved();
         }
         precompiled_dirty = precompiled_dirty || carries_precompiled;
         choices.dirty = choices.dirty || carries_choices;
@@ -138,8 +162,8 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
 
     if(!committed) {
         restore();
-    } else if(snapshot_bytes) {
-        snapshot.saved(std::move(*snapshot_bytes));
+    } else if(listings_bytes) {
+        listings.saved(std::move(*listings_bytes));
     }
 
     // Corruption can show up first at write time (a damaged page only the
@@ -231,28 +255,9 @@ async::task<index::IndexReport> Project::shrink_database() {
     co_return report;
 }
 
-/// Drop the index of every TU a rule's `index = false` keeps out: an index
-/// built before the rule would otherwise serve on, since the background
-/// index never rebuilds an excluded unit.
-static void drop_excluded(Project& project, index::IndexReport& report) {
-    llvm::SmallVector<Fid> excluded;
-    project.index.for_each_unit([&](Fid tu) {
-        if(!project.build.indexed(project.file_table.resolve(tu))) {
-            excluded.push_back(tu);
-        }
-    });
-    for(auto tu: excluded) {
-        LOG_INFO("A rule keeps {} out of the index; dropping its entries",
-                 project.file_table.resolve(tu));
-        project.index.drop(tu, report);
-    }
-}
-
-SavedLoad Project::load_saved(bool reconcile) {
-    SavedLoad result;
-    auto& report = result.report;
+bool Project::load_saved(bool reconcile, index::IndexReport& report) {
     if(!database) {
-        return result;
+        return true;
     }
     auto& db = *database;
     bool read_only = db.read_only();
@@ -271,7 +276,7 @@ SavedLoad Project::load_saved(bool reconcile) {
 
     switch(index.open(db)) {
         // A database with no index yet may still hold the metadata and the
-        // build snapshot of a session whose index was discarded.
+        // listings of a session whose index was discarded.
         case index::LoadResult::Empty: break;
         case index::LoadResult::Unreadable:
             // Run this session memory-only — saving a fresh lineage over
@@ -293,22 +298,20 @@ SavedLoad Project::load_saved(bool reconcile) {
                     "session");
                 database.reset();
             }
-            return result;
+            return true;
         case index::LoadResult::Undecodable:
             // Another format discards the index; the metadata, read first,
             // goes into the fresh database at its first save.
-            result.decoded = false;
             if(!read_only) {
                 load_metadata();
                 reopen_fresh_database();
             }
-            return result;
+            return false;
         case index::LoadResult::Loaded: break;
     }
     load_metadata();
     if(reconcile) {
-        drop_excluded(*this, report);
-        build_snapshot.reconcile(*this, report);
+        reconcile_index(report);
     }
 
     // The reads above may have met a damaged page or record: heal it like
@@ -316,11 +319,11 @@ SavedLoad Project::load_saved(bool reconcile) {
     // tree every session. The session starts over as a first run.
     if(!read_only && index.damaged()) {
         recover_corrupt_database(report);
-        return result;
+        return true;
     }
 
     LOG_PERF("startup", "phase=index_load elapsed_ms={}", timer.ms());
-    return result;
+    return true;
 }
 
 }  // namespace clice

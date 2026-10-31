@@ -1,6 +1,7 @@
 module clice;
 
 import :command.database;
+import :command.file_kind;
 import :project.discovery;
 import :project.project;
 import :settings.settings;
@@ -169,7 +170,7 @@ Spelling find_project_root(const Spelling& start) {
 }
 
 std::string Project::deeper_databases_hint() const {
-    if(build.declares_sources()) {
+    if(rules.declares_sources()) {
         return {};
     }
     CanonicalRef root = this->root;
@@ -213,7 +214,7 @@ std::string Project::why_no_members(llvm::StringRef root) const {
                            llvm::join(empty, ", "),
                            empty.size() == 1 ? "lists" : "list");
     }
-    if(build.declares_sources()) {
+    if(rules.declares_sources()) {
         return "no file on disk matches a rule with a default_command.";
     }
     std::vector<std::string> nested;
@@ -258,6 +259,70 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
 
 llvm::SmallVector<Spelling> databases_above(CanonicalRef start, CanonicalRef project_root) {
     return existing(database_places_above(start, project_root));
+}
+
+std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database) {
+    auto depth = ranges::count_if(database, [](char c) { return path::is_separator(c); });
+    return {static_cast<std::uint32_t>(depth), database};
+}
+
+/// Whether a project directory holds no sources a refactoring edits:
+/// hidden, a package cache, the cache directory or a build tree.
+static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
+    auto name = path::filename(dir);
+    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
+           fs::exists(path::join(dir, "CMakeCache.txt")) ||
+           fs::exists(path::join(dir, "build.ninja"));
+}
+
+bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
+    if(!path::is_within(file, root) || file == root) {
+        return false;
+    }
+    bool inside = true;
+    path::walk_ancestors(CanonicalRef(file).parent(), [&](CanonicalRef dir) {
+        if(dir == root) {
+            return false;
+        }
+        inside = !outside_sources(dir, cache_dir);
+        return inside;
+    });
+    return inside;
+}
+
+EditableFiles Project::editable_files() const {
+    return {.root = root, .cache_dir = settings.project.cache_identity};
+}
+
+std::vector<std::string> EditableFiles::sources() const {
+    CanonicalRef project_root = root;
+    std::vector<std::string> found;
+    auto entries = fs::walk(project_root);
+    for(auto& entry: entries) {
+        if(!entry) {
+            vfs::warn_unreadable(entry.error());
+            continue;
+        }
+        if(entry->type == fs::FileType::Directory) {
+            if(outside_sources(project_root.entry(entry->path), cache_dir)) {
+                entries.skip();
+            }
+            continue;
+        }
+        if(entry->type != fs::FileType::Regular) {
+            continue;
+        }
+        auto path = project_root.entry(entry->path);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path).str());
+        }
+    }
+    return found;
+}
+
+bool EditableFiles::editable(llvm::StringRef path) const {
+    return project_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
 }
 
 }  // namespace clice

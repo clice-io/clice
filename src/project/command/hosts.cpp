@@ -2,7 +2,7 @@ module clice;
 
 import :command.file_kind;
 import :index.project_index;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :vfs.path;
 
@@ -55,7 +55,7 @@ llvm::SmallVector<Candidate, 2> Project::host_commands(Fid header, Fid host) {
     auto header_path = file_table.resolve(header);
     auto host_path = file_table.resolve(host);
     llvm::SmallVector<Candidate, 2> fitting;
-    for(auto& candidate: build.commands(host)) {
+    for(auto& candidate: candidates(host)) {
         auto command = tree_request(host, candidate).command;
         if(!commands.pch_output(command.command) &&
            compatible(header_path, host_path, language_of(command))) {
@@ -76,7 +76,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
     auto header_path = files.resolve(header);
     auto header_stem = path::stem(header_path);
     auto header_dir = path::parent(header_path);
-    auto sources = build.source_order(header_path);
+    auto sources = source_order(header_path);
 
     // The lexical scan follows each header's includes under the first
     // command that reached it; a unit whose compile resolved them
@@ -96,8 +96,8 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
         // first; one living on a default command comes after every
         // database.
         std::size_t source_rank = sources.size();
-        if(auto entries = build.entries(candidate); !entries.empty()) {
-            source_rank = ranges::find(sources, entries.front().source) - sources.begin();
+        if(auto own = entries(candidate); !own.empty()) {
+            source_rank = ranges::find(sources, own.front().source) - sources.begin();
         }
         int stem_match = path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = path::parent(host_path) == header_dir ? 0 : 1;
@@ -111,7 +111,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
     };
     // A source another one includes still compiles on its own.
     auto unit = [&](Fid file) {
-        return build.unit(file);
+        return is_unit(file);
     };
     for(auto candidate: dep_graph.find_readers(header, unit)) {
         add(candidate);

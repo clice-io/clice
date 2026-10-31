@@ -47,9 +47,10 @@ struct CommandEdits {
         return edits.empty() && extra_prepend.empty() && extra_append.empty() && query_toolchain;
     }
 
-    /// The identity of the edits, to memoize apply_edits by: their exact
-    /// content and the directory each edit's relative paths are anchored at.
-    std::string key() const;
+    /// The identity of the edits: their content and the directory each
+    /// edit's relative paths are anchored at, `root` taken as `${workspace}`
+    /// — so a moved checkout keeps the identity a record persists.
+    std::string key(llvm::StringRef root = {}) const;
 };
 
 /// Apply edits to a base command, producing a (deduped) result command.
@@ -59,5 +60,23 @@ struct CommandEdits {
 /// translated, reading the options files they name.
 CommandID
     apply_edits(CommandTable& commands, FileTable& files, CommandID id, const CommandEdits& edits);
+
+/// apply_edits, memoized by the command and the edits.
+class EditedCommands {
+public:
+    EditedCommands(CommandTable& commands, FileTable& files) : commands(commands), files(files) {}
+
+    CommandID apply(CommandID command, const CommandEdits& edits);
+
+private:
+    CommandTable& commands;
+    FileTable& files;
+
+    /// The ids of the edits' keys apply has seen.
+    llvm::StringMap<std::uint32_t> keys;
+
+    /// apply's results by (command, the id of the edits' key).
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, CommandID> edited;
+};
 
 }  // namespace clice

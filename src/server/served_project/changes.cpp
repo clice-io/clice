@@ -1,8 +1,7 @@
 module clice;
 
 import :index.project_index;
-import :project.build_snapshot;
-import :project.contexts;
+import :project.command;
 import :project.discovery;
 import :project.indexer;
 import :project.pcm;
@@ -341,7 +340,7 @@ void ServedProject::build_changed(CDBDiff delta) {
         // that no longer exists; one whose first compile is still in
         // flight may be borrowing it.
         for(auto& [header, document]: documents) {
-            if(document.latest ? document.latest->host == path_id : !project.build.unit(header)) {
+            if(document.latest ? document.latest->host == path_id : !project.is_unit(header)) {
                 mark_stale(header, refresh);
             }
         }
@@ -361,7 +360,7 @@ void ServedProject::build_changed(CDBDiff delta) {
         // missing file never reloads — so this is not a removal from
         // disk.) The graph rebuild above already dropped the removed file's
         // source role, and the choices' recheck sees it.
-        invalidate_entry(path_id, /*removed_from_build=*/project.build.commands(path_id).empty());
+        invalidate_entry(path_id, /*removed_from_build=*/project.candidates(path_id).empty());
     }
     finish_changes(refresh);
 
@@ -426,7 +425,7 @@ bool ServedProject::knows(Fid path_id) {
     if(broken()) {
         return false;
     }
-    return find_document(path_id) != nullptr || !project.build.commands(path_id).empty() ||
+    return find_document(path_id) != nullptr || !project.candidates(path_id).empty() ||
            project.dep_graph.knows(path_id) || !readers(path_id).empty();
 }
 
@@ -441,8 +440,7 @@ void ServedProject::append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const 
 }
 
 bool ServedProject::databases_moved() const {
-    return resolved_databases(project.settings, project.build.active_configuration()) !=
-           project.resolved_databases;
+    return project.rules.resolved_databases() != project.resolved_databases;
 }
 
 std::size_t ServedProject::reload_databases(bool force) {
@@ -459,7 +457,7 @@ std::size_t ServedProject::reload_databases(bool force) {
         });
         return 0;
     }
-    if(!project.build.declares_sources()) {
+    if(!project.rules.declares_sources()) {
         discover_databases();
     }
     CDBDiff delta;
@@ -478,8 +476,8 @@ async::task<bool> ServedProject::poll_sources() {
         co_return false;
     }
     auto walked =
-        co_await async::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
-    auto added = project.build.refresh_default_sources(walked);
+        co_await async::queue([walk = project.rules.source_walk()] { return walk_sources(walk); });
+    auto added = project.refresh_default_sources(walked);
     if(added.empty()) {
         co_return false;
     }
@@ -488,7 +486,7 @@ async::task<bool> ServedProject::poll_sources() {
 }
 
 void ServedProject::discover_around(Fid path_id) {
-    if(!watching || project.build.declares_sources() || !project.build.entries(path_id).empty()) {
+    if(!watching || project.rules.declares_sources() || !project.entries(path_id).empty()) {
         return;
     }
     auto path = project.file_table.resolve(path_id);
@@ -540,7 +538,7 @@ std::vector<CanonicalPath> ServedProject::configuration_dirs() const {
     for(std::uint32_t i = 0; i < project.cdb.source_count(); i += 1) {
         down_to(CanonicalPath(Spelling::absolute(project.cdb.source_path(SourceID(i)))));
     }
-    for(auto file: project.build.recorded()) {
+    for(auto file: project.provisional.files()) {
         down_to(project.file_table.resolve(file));
     }
     for(auto& entry: documents) {
@@ -607,7 +605,7 @@ llvm::SmallVector<std::optional<SourceID>>
     ServedProject::default_sources(llvm::ArrayRef<Fid> files) const {
     return ranges::to<llvm::SmallVector<std::optional<SourceID>>>(
         views::transform(files, [&](Fid file) -> std::optional<SourceID> {
-            auto entries = project.build.entries(file);
+            auto entries = project.entries(file);
             if(entries.empty()) {
                 return std::nullopt;
             }
@@ -634,10 +632,9 @@ void ServedProject::tick_database(WatchedDatabase& database, bool force, CDBDiff
     // an empty diff.
     database.pending.reset();
     bool exists = database.inputs.front()->stamp.has_value();
-    // A discovered database's presence ranks it (see Build::source_order):
+    // A discovered database's presence ranks it (see Project::source_order):
     // the files whose default entry moves with it change command.
-    bool flips =
-        project.cdb.present(database.id) != exists && project.build.discovered(database.id);
+    bool flips = project.cdb.present(database.id) != exists && project.discovered(database.id);
     llvm::SmallVector<Fid> shared;
     llvm::SmallVector<std::optional<SourceID>> before;
     if(flips) {
@@ -703,7 +700,7 @@ void ServedProject::discover_databases() {
     want(listed);
     for(auto& [path_id, document]: documents) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.entries(path_id).empty() && path::is_within(path, project.root)) {
+        if(project.entries(path_id).empty() && path::is_within(path, project.root)) {
             want(database_places_above(path.parent(), project.root));
         }
     }

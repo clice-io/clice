@@ -1,7 +1,6 @@
 module clice;
 
 import :project.command;
-import :project.hosting;
 import :project.project;
 import :server.master;
 import :server.served_project;

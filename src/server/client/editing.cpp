@@ -6,7 +6,6 @@ import :feature.code_completion;
 import :feature.protocol;
 import :feature.rename;
 import :feature.signature_help;
-import :project.build;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -464,7 +463,7 @@ void LSPClient::register_editing() {
 
             // The walk, the reads and the scan run off the loop; only the
             // files spelling a name come back with their text.
-            EditableFiles editable_files(project.root, project.settings);
+            auto editable_files = project.editable_files();
             auto texts = co_await async::queue(
                 [editable_files,
                  names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {

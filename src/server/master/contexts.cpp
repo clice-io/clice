@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.protocol;
-import :project.contexts;
+import :project.command;
 import :project.project;
 import :server.master;
 import :server.served_project;
@@ -249,7 +249,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
         command.arguments.emplace_back(argument);
     }
     command.source = source_name(resolution.ref.source);
-    auto from = resolution.host.valid() ? resolution.host : resolution.candidate.from;
+    auto from = resolution.host.valid() ? resolution.host : resolution.candidate.from();
     if(from.valid()) {
         command.from = feature::to_uri(project.file_table.display(from));
     }

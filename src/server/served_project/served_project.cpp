@@ -9,8 +9,7 @@ import :command.table;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
-import :project.build;
-import :project.contexts;
+import :project.command;
 import :project.indexer;
 import :project.task_graph;
 import :server.client;
@@ -149,7 +148,6 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
         return;
     }
     auto& cfg = project.settings.project;
-    project.freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
@@ -163,8 +161,8 @@ void ServedProject::start() {
     if(!project.root.empty()) {
         auto opened = project.open({
             .configuration = configuration,
-            .store = Project::OpenOptions::Store::Writable,
-            .index = Project::OpenOptions::Index::Write,
+            .cache = Project::OpenOptions::Cache::Write,
+            .freshness = {.withhold = project.settings.project.enable_indexing.value},
         });
         project.apply_report(opened.report);
         project.enqueue_outdated(opened.members);
@@ -174,7 +172,7 @@ void ServedProject::start() {
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        commands_missing = opened.members.empty() && !project.build.declares_sources() &&
+        commands_missing = opened.members.empty() && !project.rules.declares_sources() &&
                            !project.found_unreadable_database();
     }
     server.load_choices(*this);
@@ -186,7 +184,7 @@ void ServedProject::start() {
     // unindexed).
     bool recorded = false;
     for(auto& [path_id, document]: documents) {
-        recorded = record_member(path_id) || recorded;
+        recorded = project.record_provisional(path_id) || recorded;
     }
     if(recorded) {
         build_changed({});
@@ -253,7 +251,7 @@ bool ServedProject::owns(const Session& session) const {
 void ServedProject::adopt(std::shared_ptr<Session> session) {
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now.
-    if(std::exchange(commands_missing, false) && project.build.members().empty() &&
+    if(std::exchange(commands_missing, false) && project.members().empty() &&
        !project.found_unreadable_database()) {
         auto why = project.why_no_members(project.file_table.display(project.root));
         why.front() = llvm::toUpper(why.front());
@@ -275,12 +273,14 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     if(!started || broken()) {
         return;
     }
-    if(record_member(path_id)) {
+    if(project.record_provisional(path_id)) {
         build_changed({});
         schedule_metadata_flush();
     }
     server.recheck_choice(path_id);
-    decide_serving(document);
+    // The change may have moved other documents in: the table may have
+    // grown since the reference above was taken.
+    decide_serving(documents.find(path_id)->second);
 }
 
 void ServedProject::decide_serving(ServedDocument& document) {
@@ -314,7 +314,7 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
     // escalates through the adapter's attempt-finished check.
-    if(project.settings.project.enable_indexing.value && project.build.unit(path_id)) {
+    if(project.settings.project.enable_indexing.value && project.is_unit(path_id)) {
         project.index_first(path_id);
     } else {
         escalate(path_id);
@@ -360,23 +360,10 @@ void ServedProject::record_saved(Fid path_id) {
             }
         }
     }
-    if(record_member(path_id)) {
+    if(project.record_provisional(path_id)) {
         build_changed({});
         schedule_metadata_flush();
     }
-}
-
-bool ServedProject::record_member(Fid path_id) {
-    // A header compiles through a host or a lender, never as a member; a
-    // build tree or the cache holds no sources of the project's own.
-    auto path = project.file_table.resolve(path_id);
-    if(project.root.empty() || !is_source_path(path) || project.build.declared(path_id) ||
-       !project_file(project.root, project.settings.project.cache_identity, path) ||
-       !project.build.record(path_id)) {
-        return false;
-    }
-    LOG_INFO("Recorded {} as a provisional member", path);
-    return true;
 }
 
 void ServedProject::schedule_metadata_flush() {

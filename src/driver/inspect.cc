@@ -559,8 +559,7 @@ std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const
     auto opened = open_at(root,
                           std::move(loaded),
                           {
-                              .store = Project::OpenOptions::Store::ReadOnly,
-                              .index = Project::OpenOptions::Index::Read,
+                              .cache = Project::OpenOptions::Cache::Read,
                               .file = CanonicalPath(path),
                           });
     if(!opened->opened.unreadable.empty()) {
@@ -667,7 +666,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
-    if(auto writer = project.pch_unit(path_id, resolution)) {
+    if(auto writer = project.pch_writer(path_id, resolution)) {
         if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }

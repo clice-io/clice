@@ -4,7 +4,6 @@ import :driver.driver;
 import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
-import :project.build;
 import :project.project;
 import :vfs.file_system;
 
@@ -188,14 +187,14 @@ int run_rename(const RenameOptions& opts) {
     }
     // The build tells a unit the index never reached from a file outside
     // the build, so the writer's load restores it.
-    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Build::Members);
+    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Load::Members);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
     auto& project = (*opened)->project;
     auto& failed = (*opened)->failed;
     auto ctx = query_context(project);
-    EditableFiles editable_files(project.root, project.settings);
+    auto editable_files = project.editable_files();
     auto editable = [&](llvm::StringRef path) {
         return editable_files.editable(path);
     };

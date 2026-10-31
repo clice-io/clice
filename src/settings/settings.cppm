@@ -543,11 +543,6 @@ struct Settings {
     /// settings read from it stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
-    /// The compiled rules applying to `path`, in declaration order,
-    /// restricted to untagged rules and rules tagged `configuration`.
-    llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
-                                                          llvm::StringRef configuration) const;
-
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 
@@ -558,10 +553,6 @@ struct Settings {
     /// `default_configuration`, else the first declared tag; empty when the
     /// rules declare none.
     llvm::StringRef fallback_configuration() const;
-
-    /// The databases the rules active under `configuration` declare, in
-    /// declaration order, each once.
-    llvm::SmallVector<Spelling> declared_databases(llvm::StringRef configuration) const;
 
     /// The configuration's JSON schema (draft 2020-12), pretty-printed.
     /// Fields whose defaults derive from the running machine (the worker

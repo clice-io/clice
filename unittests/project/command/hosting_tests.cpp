@@ -11,11 +11,11 @@ import :compile.diagnostic;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.tu_manifest;
-import :project.hosting;
+import :project.command;
 import :project.project;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 
 namespace clice::testing {
 
@@ -32,7 +32,7 @@ struct TreeProject {
             Rule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
         project.root = CanonicalPath(Spelling::absolute(tmp.root));
         project.settings.finalize(project.root);
-        project.build.reset_active("");
+        project.rules = Rules(project.settings, project.root, "");
     }
 
     /// Write the file and name it.
@@ -48,7 +48,7 @@ struct TreeProject {
 
     /// The include tree `host`'s first command takes.
     TreeRequest tree(Fid host) {
-        return project.tree_request(host, project.build.commands(host).front());
+        return project.tree_request(host, project.candidates(host).front());
     }
 
     /// The host ranking first for `header`.
@@ -96,8 +96,8 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
     project.settings.rules.push_back(Rule{.compile_commands = {"cmake"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
-    for(auto source: project.build.declared_sources()) {
+    project.rules = Rules(project.settings, project.root, "");
+    for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
 
@@ -132,7 +132,7 @@ ZEST_CASE(ProximityWithinSource) {
     });
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
     auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("other/x.cpp")));
@@ -174,7 +174,7 @@ ZEST_CASE(ProximityByDirectories) {
         Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("a/b/x.h")));
     auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
@@ -201,7 +201,7 @@ ZEST_CASE(HostsMatchLanguage) {
         Rule{.patterns = {"c/**"}, .default_command = std::string("clang")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto hpp = project.file_table.intern(Spelling::absolute(tmp.path("shared/types.hpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("shared/plain.h")));
@@ -225,7 +225,7 @@ ZEST_CASE(HostsMatchLanguage) {
         Rule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     project.commands_epoch += 1;
     auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
@@ -238,7 +238,7 @@ ZEST_CASE(HostsMatchLanguage) {
         Rule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     project.commands_epoch += 1;
     auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
@@ -249,7 +249,7 @@ ZEST_CASE(HostsMatchLanguage) {
     /// command would compile as CUDA.
     auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
     auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
-    ZEXPECT(project.borrowed_command(gpu_header, false)->from == kernel);
+    ZEXPECT(project.borrowed_command(gpu_header, false)->from() == kernel);
     ZEXPECT(!project.borrowed_command(gpu_source, false).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
@@ -286,15 +286,15 @@ ZEST_CASE(BorrowSibling) {
         Rule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
     auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("src/x.cpp")));
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
-    ZEXPECT(project.borrowed_command(header, false)->from == same_stem);
-    ZEXPECT(project.borrowed_command(other, false)->from == first);
+    ZEXPECT(project.borrowed_command(header, false)->from() == same_stem);
+    ZEXPECT(project.borrowed_command(other, false)->from() == first);
     ZEXPECT(!project.borrowed_command(plain, false).has_value());
 };
 
@@ -308,11 +308,11 @@ ZEST_CASE(BorrowCxxDriverC) {
         Rule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
     auto unit = project.file_table.intern(Spelling::absolute(tmp.path("lib/a.c")));
-    ZEXPECT(project.borrowed_command(borrower, false)->from == unit);
+    ZEXPECT(project.borrowed_command(borrower, false)->from() == unit);
 };
 
 ZEST_CASE(BorrowByDirectories) {
@@ -327,11 +327,11 @@ ZEST_CASE(BorrowByDirectories) {
         Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
     auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
-    ZEXPECT(project.borrowed_command(borrower, false)->from == parent);
+    ZEXPECT(project.borrowed_command(borrower, false)->from() == parent);
 };
 
 ZEST_CASE(BorrowSearchDir) {
@@ -344,7 +344,7 @@ ZEST_CASE(BorrowSearchDir) {
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
@@ -357,11 +357,11 @@ ZEST_CASE(BorrowSearchDir) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
     auto borrowed = project.borrowed_command(header, false);
     ZASSERT(borrowed);
-    ZEXPECT(borrowed->from == searching.file);
+    ZEXPECT(borrowed->from() == searching.file);
     ZEXPECT(borrowed->base == searching.command);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
-    ZEXPECT(project.borrowed_command(source, false)->from == near.file);
+    ZEXPECT(project.borrowed_command(source, false)->from() == near.file);
 };
 
 #ifndef _WIN32
@@ -376,7 +376,7 @@ ZEST_CASE(BorrowSearchDirSymlink) {
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
@@ -388,7 +388,7 @@ ZEST_CASE(BorrowSearchDirSymlink) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("vendor/real/orphan.h")));
     auto borrowed = project.borrowed_command(header, false);
     ZASSERT(borrowed);
-    ZEXPECT(borrowed->from == searching.file);
+    ZEXPECT(borrowed->from() == searching.file);
 };
 #endif
 
@@ -403,8 +403,8 @@ ZEST_CASE(BorrowIgnoresCommandless) {
     project.settings.rules.push_back(Rule{.default_command = std::string("ccache")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
-    ZASSERT(project.build.members().size() == 2u);
+    project.rules = Rules(project.settings, project.root, "");
+    ZASSERT(project.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
     ZEXPECT(!project.borrowed_command(header, false).has_value());
 };
@@ -424,13 +424,14 @@ ZEST_CASE(BorrowAcrossModules) {
         Rule{.patterns = {"mods/*.cppm"}, .default_command = std::string("clang++ -std=c++20")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
 
     auto intern = [&](llvm::StringRef file) {
         return project.file_table.intern(Spelling::absolute(tmp.path(file)));
     };
-    ZEXPECT(project.borrowed_command(intern("src/first.cppm"), false)->from == intern("src/a.cpp"));
-    ZEXPECT(project.borrowed_command(intern("mods/m_impl.cpp"), false)->from ==
+    ZEXPECT(project.borrowed_command(intern("src/first.cppm"), false)->from() ==
+            intern("src/a.cpp"));
+    ZEXPECT(project.borrowed_command(intern("mods/m_impl.cpp"), false)->from() ==
             intern("mods/m.cppm"));
 };
 
@@ -442,14 +443,15 @@ ZEST_CASE(NestedProjectRecordsNothing) {
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     tmp.touch("sub/clice.toml", "");
     tmp.touch("sub/new.cpp", "");
     tmp.touch("plain/new.cpp", "");
 
-    ZEXPECT(!project.build.record(files.intern(Spelling::absolute(tmp.path("sub/new.cpp")))));
-    ZEXPECT(project.build.record(files.intern(Spelling::absolute(tmp.path("plain/new.cpp")))));
-    ZEXPECT(project.build.recorded().size() == 1u);
+    ZEXPECT(!project.record_provisional(files.intern(Spelling::absolute(tmp.path("sub/new.cpp")))));
+    ZEXPECT(
+        project.record_provisional(files.intern(Spelling::absolute(tmp.path("plain/new.cpp")))));
+    ZEXPECT(project.provisional.files().size() == 1u);
 };
 
 ZEST_CASE(ProvisionalMembers) {
@@ -463,7 +465,7 @@ ZEST_CASE(ProvisionalMembers) {
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto add = [&](llvm::StringRef driver, llvm::StringRef file) {
         tmp.touch(file, "");
         auto command = std::format("{} {}", driver, tmp.path(file));
@@ -476,23 +478,23 @@ ZEST_CASE(ProvisionalMembers) {
     auto unit = add("clang++", "src/b.cpp");
 
     auto saved = intern("src/a_new.cpp");
-    ZEXPECT(project.build.record(saved));
-    ZEXPECT(!project.build.record(saved));
+    ZEXPECT(project.record_provisional(saved));
+    ZEXPECT(!project.record_provisional(saved));
     ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{saved});
-    ZEXPECT(project.build.unit(saved));
-    auto commands = project.build.commands(saved);
+    ZEXPECT(project.is_unit(saved));
+    auto commands = project.candidates(saved);
     ZASSERT(commands.size() == 1u);
     ZEXPECT(commands.front().source == CommandSource::Borrowed);
-    ZEXPECT(project.build.members().back() == saved);
+    ZEXPECT(project.members().back() == saved);
 
     /// `a_new.cpp` sorts first in the directory: it lends to a file outside
     /// the build, never to a member, and what it lends is `b.cpp`'s.
     project.commands_epoch += 1;
     auto other = intern("src/other.cpp");
-    ZEXPECT(project.borrowed_command(other, false)->from == unit.file);
+    ZEXPECT(project.borrowed_command(other, false)->from() == unit.file);
     auto chained = project.borrowed_command(other, true);
     ZASSERT(chained);
-    ZEXPECT(chained->from == unit.file);
+    ZEXPECT(chained->from() == unit.file);
     ZEXPECT(chained->base == unit.command);
 
     /// A unit sorting before `b.cpp` lends instead: the member's command
@@ -504,36 +506,36 @@ ZEST_CASE(ProvisionalMembers) {
     /// No C unit lends to a `.c` yet: a member under the builtin command
     /// until one does.
     auto c_file = intern("src/new.c");
-    project.build.record(c_file);
+    project.record_provisional(c_file);
     ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{c_file});
-    ZEXPECT(project.build.commands(c_file).front().source == CommandSource::Fallback);
+    ZEXPECT(project.candidates(c_file).front().source == CommandSource::Fallback);
     add("clang", "src/legacy.c");
     project.commands_epoch += 1;
     ZEXPECT(project.refresh_provisional().changed == llvm::SmallVector<Fid>{c_file});
-    ZEXPECT(project.build.commands(c_file).front().source == CommandSource::Borrowed);
+    ZEXPECT(project.candidates(c_file).front().source == CommandSource::Borrowed);
 
     /// A file a unit includes keeps compiling in its includer's context.
     auto included = intern("src/table.cpp");
-    project.build.record(included);
+    project.record_provisional(included);
     project.dep_graph.set_includes(unit.file, 0, {{included}});
     project.dep_graph.build_reverse_map();
     ZEXPECT(project.refresh_provisional().empty());
-    ZEXPECT(!project.build.unit(included));
+    ZEXPECT(!project.is_unit(included));
 
     /// Only a declared unit's include keeps a file out: one a provisional
     /// member includes joins too, whichever of the two sorts first.
     auto inner = intern("src/c_inner.cpp");
     auto outer = intern("src/c_outer.cpp");
-    project.build.record(inner);
-    project.build.record(outer);
+    project.record_provisional(inner);
+    project.record_provisional(outer);
     project.dep_graph.set_includes(outer, 0, {{inner}});
     ZEXPECT(project.refresh_provisional().added == (llvm::SmallVector<Fid>{inner, outer}));
 
     /// An entry listing the file takes over; the record goes.
     add("clang++", "src/a_new.cpp");
     ZEXPECT(project.refresh_provisional().empty());
-    ZEXPECT(!project.build.recorded().contains(saved));
-    ZEXPECT(project.build.commands(saved).front().source == CommandSource::Database);
+    ZEXPECT(!project.provisional.files().contains(saved));
+    ZEXPECT(project.candidates(saved).front().source == CommandSource::Database);
 };
 
 ZEST_CASE(ChainsFollowTree) {
@@ -1100,7 +1102,7 @@ ZEST_CASE(UnmatchedContextKeepsHost) {
     };
     p.index(main, std::move(manifest));
 
-    auto lent = p.project.lent_command(t, main, p.project.build.commands(main).front());
+    auto lent = p.project.lent_command(t, main, p.project.candidates(main).front());
     auto version = current_input(p.project.file_table, t)->version;
     p.project.hosting.self_containment.commit(
         {t, p.project.commands.command_hash(lent.command)},

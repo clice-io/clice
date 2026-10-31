@@ -1,15 +1,15 @@
 module clice;
 
 import :command.table;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :server.master;
 import :server.served_project;
 import :support.shell;
 import :unittests.server.served_project_fixture;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -135,7 +135,7 @@ ZEST_CASE(StaleHostChoiceKeepsUnit) {
     project.dep_graph.set_includes(ranked, 0, {{part}});
     project.dep_graph.build_reverse_map();
     for(auto host: {chosen, ranked}) {
-        project.take_tree(project.tree_request(host, project.build.commands(host).front()));
+        project.take_tree(project.tree_request(host, project.candidates(host).front()));
     }
 
     ContextChoice choice{.host_path_id = chosen};
@@ -259,7 +259,7 @@ ZEST_CASE(GoneOccurrenceGoesInactive) {
     // the choice holds until one does.
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
-    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
     ZASSERT(!project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);

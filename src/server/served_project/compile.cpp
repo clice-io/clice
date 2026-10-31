@@ -7,7 +7,6 @@ import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.command;
-import :project.hosting;
 import :project.pch;
 import :project.pcm;
 import :project.precompiled;
@@ -93,7 +92,7 @@ static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
 std::optional<PCHRequest> ServedProject::declared_pch(Fid path_id,
                                                       const Resolution& resolution,
                                                       const Imports& imports) {
-    auto unit = project.pch_unit(path_id, resolution);
+    auto unit = project.pch_writer(path_id, resolution);
     if(!unit) {
         return std::nullopt;
     }
@@ -414,7 +413,7 @@ std::vector<feature::FileDiagnostic>
 bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
     auto* document = find_document(path_id);
     if(!document || document->serving != ServingMode::Escalated ||
-       project.build.entries(path_id).empty()) {
+       project.entries(path_id).empty()) {
         return false;
     }
     auto it = skipped.find(path_id);
@@ -765,7 +764,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
     std::optional<tidy::TidyResolution> tidy_config;
     std::optional<Session::Dispatch> tidy_dispatch;
     if(project.settings.diagnostics.clang_tidy &&
-       project.build.lintable(project.file_table.resolve(path_id))) {
+       project.rules.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
