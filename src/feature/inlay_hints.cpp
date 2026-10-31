@@ -512,6 +512,8 @@ public:
 
     void run() {
         auto nodes = unit.get<Semantics>().node_entries();
+        /// The nodes before it lie wholly inside the range asked for.
+        std::uint32_t inside_until = 0;
         std::uint32_t index = 0;
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
@@ -528,6 +530,18 @@ public:
             if(entry.flags.in_instantiation) {
                 index = entry.subtree_end;
                 continue;
+            }
+
+            if(restrict_range.valid() && index >= inside_until) {
+                if(auto reach = hint_reach(entry)) {
+                    if(!restrict_range.intersects(*reach)) {
+                        index = entry.subtree_end;
+                        continue;
+                    }
+                    if(restrict_range.contains(*reach)) {
+                        inside_until = entry.subtree_end;
+                    }
+                }
             }
 
             current = index;
@@ -560,6 +574,20 @@ public:
     }
 
 private:
+    /// Where the hints of `entry`'s subtree can lie: the code that produced
+    /// it, through the end of its last line, where a block's end hint takes
+    /// in what follows its `}`. None when it lies outside the focus file.
+    std::optional<LocalSourceRange> hint_reach(const Semantics::Node& entry) {
+        auto focus = unit.focus_file();
+        auto reach = focus.produced_range(entry.node.source_range());
+        if(!reach) {
+            return std::nullopt;
+        }
+        auto content = focus.content();
+        reach->end = static_cast<std::uint32_t>(std::min(content.find('\n', reach->end), content.size()));
+        return reach;
+    }
+
     // Compute the LSP range to attach the block end hint to, if any allowed.
     // 1. "}" is the last non-whitespace character on the line. The range of "}"
     // is returned.
