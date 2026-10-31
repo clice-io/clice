@@ -291,7 +291,7 @@ Completables completables(const IndexQuery& index,
     llvm::DenseSet<SymbolHash> taken;
     /// Adds the best of the names `query` finds that `wanted` keeps, up to
     /// the limit.
-    auto gather = [&](const SymbolQuery& query, auto wanted) {
+    auto gather = [&](const SymbolQuery& query, auto wanted, bool& exhausted) {
         // Members outnumber the names of namespaces, and a qualifier's
         // scopes hold more below them: the ranking is fetched wider than
         // the names wanted.
@@ -327,7 +327,7 @@ Completables completables(const IndexQuery& index,
         });
         ranges::sort(ranked.hits, ranked_before);
 
-        result.exhausted = result.exhausted && ranked.exhausted;
+        exhausted = ranked.exhausted;
         for(auto& hit: ranked.hits) {
             if(!has_flag(hit.symbol.flags, SymbolFlags::Completable) ||
                taken.contains(hit.symbol.hash)) {
@@ -346,7 +346,7 @@ Completables completables(const IndexQuery& index,
                 continue;
             }
             if(result.names.size() == limit) {
-                result.exhausted = false;
+                exhausted = false;
                 break;
             }
             taken.insert(hit.symbol.hash);
@@ -355,15 +355,18 @@ Completables completables(const IndexQuery& index,
         }
     };
 
+    auto any = [](llvm::ArrayRef<SymbolInfo>) {
+        return true;
+    };
     if(!scope.qualified()) {
-        gather(scoped, [](llvm::ArrayRef<SymbolInfo>) { return true; });
+        gather(scoped, any, result.exhausted);
         return result;
     }
-    gather(scoped, direct);
+    gather(scoped, direct, result.exhausted);
     // A namespace's using-declarations and using-directives bring in the
     // names of others, which the index does not tell: the compile looks
     // these up in it as well.
-    gather(SymbolQuery{.pattern = prefix.str()}, [](llvm::ArrayRef<SymbolInfo>) { return true; });
+    gather(SymbolQuery{.pattern = prefix.str()}, any, result.others_exhausted);
     return result;
 }
 

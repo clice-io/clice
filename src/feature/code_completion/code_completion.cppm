@@ -161,6 +161,10 @@ struct CompileCompletion {
     std::vector<ScopeCandidate> candidates;
     bool more_candidates = false;
 
+    /// After a qualifier, whether the index holds more names of other
+    /// scopes, which the qualifier's namespace may bring in.
+    bool more_elsewhere = false;
+
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares: the compile reads no others of them (clang's
     /// LoadExternal off), none after `.`. Not where the index names
@@ -294,13 +298,12 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 constexpr inline std::size_t scope_candidate_limit = 100;
 
 /// The names the index offers where `typed` is completed in `file`
-/// (ScopeCandidate), appended to `candidates`; whether they are all of
-/// them.
-bool scope_candidates(const index::IndexQuery& query,
+/// (ScopeCandidate), into `compile`, with whether it holds more.
+void scope_candidates(const index::IndexQuery& query,
                       const DependencyGraph& graph,
                       const TypedName& typed,
                       Fid file,
-                      std::vector<ScopeCandidate>& candidates);
+                      CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring

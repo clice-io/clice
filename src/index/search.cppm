@@ -52,10 +52,11 @@ struct CompletionScope {
 /// `file`'s preamble. An empty prefix takes the names used most. After a
 /// qualifier, its scopes' own names come first, then those of any other
 /// scope, which a using-declaration or using-directive there may bring
-/// in. Whether the limit cut them short.
+/// in. Whether the limit cut each short.
 struct Completables {
     std::vector<Completable> names;
     bool exhausted = true;
+    bool others_exhausted = true;
 };
 
 Completables completables(const IndexQuery& index,

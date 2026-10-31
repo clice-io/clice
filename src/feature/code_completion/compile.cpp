@@ -1178,15 +1178,18 @@ clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::Completi
 /// (CompileCompletion::from_index): the declarations unqualified lookup
 /// finds, or those of the namespace a qualifier names. A namespace the
 /// index searched under another name, through an alias, is read whole.
-void load_names(clang::Sema& sema,
+/// Whether the qualifier's namespace brings in names of others, through a
+/// using-directive or a using-declaration.
+bool load_names(clang::Sema& sema,
                 const index::CompletionScope& scope,
                 llvm::ArrayRef<ScopeCandidate> candidates) {
     auto& ast = sema.getASTContext();
     clang::DeclContext* space = nullptr;
+    bool brought = false;
     if(scope.qualified()) {
         space = qualified_namespace(sema, scope);
         if(!space) {
-            return;
+            return false;
         }
         llvm::SmallVector<llvm::StringRef, 4> names;
         for(auto* context = space; !context->isTranslationUnit(); context = context->getParent()) {
@@ -1203,8 +1206,9 @@ void load_names(clang::Sema& sema,
                           {},
                           [](const std::string& name) { return llvm::StringRef(name); })) {
             space->lookups();
-            return;
+            return false;
         }
+        brought = !space->using_directives().empty();
     }
     for(const auto& candidate: candidates) {
         // Its identifier comes with the macro the PCH defines by its name.
@@ -1215,10 +1219,16 @@ void load_names(clang::Sema& sema,
         found.suppressDiagnostics();
         if(space) {
             sema.LookupQualifiedName(found, space);
+            brought |= llvm::any_of(found, [&](const clang::NamedDecl* decl) {
+                return llvm::isa<clang::UsingShadowDecl>(decl) ||
+                       !space->InEnclosingNamespaceSetOf(
+                           decl->getDeclContext()->getRedeclContext());
+            });
         } else if(!candidate.macro) {
             sema.LookupName(found, sema.getCurScope());
         }
     }
+    return brought;
 }
 
 /// The function template `context` is in, through the lambdas and local
@@ -1262,12 +1272,13 @@ public:
             bool from_index,
             const InstantiatedTemplates& instantiated,
             bool& includes_pending,
-            bool& member_access) :
+            bool& member_access,
+            bool& brought_in) :
         clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
         focus(unit.focus_file()), offset(offset), encoding(encoding), output(output),
         documented(documented), options(options), argument_style(options.arguments), client(client),
         names(names), names_pending(from_index), instantiated(instantiated),
-        includes_pending(includes_pending), member_access(member_access),
+        includes_pending(includes_pending), member_access(member_access), brought_in(brought_in),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
@@ -1277,7 +1288,7 @@ public:
         // parse tries skipping the body holding the point.
         if(names_pending) {
             names_pending = false;
-            load_names(unit.sema(), names.scope, names.candidates);
+            brought_in = load_names(unit.sema(), names.scope, names.candidates);
         }
         return info.getAllocator();
     }
@@ -2574,6 +2585,9 @@ private:
     /// Whether Sema completes a member after `.` or `->`, where the
     /// candidates play no part.
     bool& member_access;
+    /// Whether the qualifier's namespace brings in names of others
+    /// (load_names).
+    bool& brought_in;
     clang::CodeCompletionTUInfo info;
     bool resolving = false;
     bool resolved_candidates = false;
@@ -2600,6 +2614,7 @@ auto code_complete(CompilationParams params,
     std::vector<const clang::NamedDecl*> documented;
     bool includes = false;
     bool member_access = false;
+    bool brought_in = false;
     // The index holds no module's names a module file brings in.
     bool from_index = names.from_index && params.input.pcms.empty() &&
                       (!names.preamble || *names.preamble == params.input.pch.second);
@@ -2615,7 +2630,8 @@ auto code_complete(CompilationParams params,
                                          from_index,
                                          instantiated,
                                          includes,
-                                         member_access);
+                                         member_access,
+                                         brought_in);
     };
     auto unit = compile(std::move(params));
 
@@ -2639,7 +2655,8 @@ auto code_complete(CompilationParams params,
     Completion completion{
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     completion.list.is_incomplete =
-        completion.list.is_incomplete || (names.more_candidates && !member_access);
+        completion.list.is_incomplete ||
+        ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access);
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {

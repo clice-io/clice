@@ -74,11 +74,11 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
     return list;
 }
 
-bool scope_candidates(const index::IndexQuery& query,
+void scope_candidates(const index::IndexQuery& query,
                       const DependencyGraph& graph,
                       const TypedName& typed,
                       Fid file,
-                      std::vector<ScopeCandidate>& candidates) {
+                      CompileCompletion& compile) {
     auto kind_of = [](SymbolKind kind) {
         using Kind = protocol::CompletionItemKind;
         switch(kind) {
@@ -127,9 +127,10 @@ bool scope_candidates(const index::IndexQuery& query,
         if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
             candidate.module = graph.module_of(declared).str();
         }
-        candidates.push_back(std::move(candidate));
+        compile.candidates.push_back(std::move(candidate));
     }
-    return found.exhausted;
+    compile.more_candidates = !found.exhausted;
+    compile.more_elsewhere = !found.others_exhausted;
 }
 
 /// The header, quotes or brackets included, an `#include` for `candidate`
@@ -485,11 +486,7 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
        typed && completing.directive.empty()) {
         if(!typed->member) {
-            compile.more_candidates = !scope_candidates(inputs.query,
-                                                        inputs.graph,
-                                                        *typed,
-                                                        inputs.file,
-                                                        compile.candidates);
+            scope_candidates(inputs.query, inputs.graph, *typed, inputs.file, compile);
         }
         if(typed->member) {
             compile.from_index = true;
