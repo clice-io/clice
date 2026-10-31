@@ -2484,7 +2484,7 @@ auto code_complete(CompilationParams params,
     bool brought_in = false;
     // The index holds no module's names a module file brings in.
     bool from_index = names.from_index && params.input.pcms.empty() &&
-                      (!names.preamble || *names.preamble == params.input.pch.second);
+                      (names.pch.empty() || names.pch == params.input.pch.first);
     params.completion.consumer = [&](CompilationUnit& unit) {
         return std::make_unique<Builder>(unit,
                                          offset,

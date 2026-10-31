@@ -183,6 +183,7 @@ void LSPClient::register_editing() {
             .query = query,
             .graph = project.project.dep_graph,
             .files = files,
+            .pch = project.preamble_pch(path_id),
             .search = [&] { return project.search_of(path_id); },
             .scope = scope,
         });

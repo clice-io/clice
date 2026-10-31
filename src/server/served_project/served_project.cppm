@@ -695,6 +695,10 @@ public:
     void for_each_pch_index(Fid file,
                             llvm::function_ref<void(const index::TUIndex&)> visit) const override;
 
+    /// The file of the PCH whose index preamble_index serves; empty when it
+    /// serves none.
+    std::string preamble_pch(Fid file) const;
+
     /// The project's shard of the file while the document's buffer holds
     /// the very bytes it indexed.
     const index::Shard* matching_shard(const Session& session) const;

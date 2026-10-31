@@ -49,3 +49,17 @@ test("a namespace bringing in names", async (t) => {
         parts: ["insert"],
     });
 });
+
+// A header edited since the document's compile: the completion's PCH, built
+// anew, holds names the index of the one before does not.
+test("a header edited before the compile", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await s.diagnostics("main.cpp");
+    const park = await s.park("compile", "main.cpp", { at: "worker" });
+    s.open("lib.h");
+    s.edit("lib.h", { after: "int helper_value(int x);\n", insert: "int helper_added();\n" });
+    await t.show("names", s.completion(t.at("main.cpp", "return lib::helper|")), {
+        parts: ["insert"],
+    });
+    await park.release();
+});

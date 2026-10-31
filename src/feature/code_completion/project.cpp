@@ -9,7 +9,6 @@ import :feature.protocol;
 import :index.query;
 import :index.search;
 import :index.symbol;
-import :index.tu_index;
 import :semantic.symbol;
 import :semantic.token_class;
 import :support.fuzzy_matcher;
@@ -490,9 +489,9 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
         }
         if(typed->member) {
             compile.from_index = true;
-        } else if(auto pch = inputs.query.preamble_index(inputs.file)) {
+        } else if(!inputs.pch.empty()) {
             compile.from_index = true;
-            compile.preamble = pch->preamble_size();
+            compile.pch = inputs.pch;
         }
         compile.scope = std::move(typed->scope);
     }

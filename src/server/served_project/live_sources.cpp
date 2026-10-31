@@ -189,6 +189,14 @@ std::shared_ptr<index::TUIndex> ServedProject::preamble_index(Fid file) const {
     return state;
 }
 
+std::string ServedProject::preamble_pch(Fid file) const {
+    if(!preamble_index(file)) {
+        return {};
+    }
+    auto entry = project.pch_cache.find(*find_document(file)->latest->loaded_pch());
+    return entry == project.pch_cache.end() ? std::string() : entry->second.path;
+}
+
 void
     ServedProject::for_each_pch_index(Fid file,
                                       llvm::function_ref<void(const index::TUIndex&)> visit) const {

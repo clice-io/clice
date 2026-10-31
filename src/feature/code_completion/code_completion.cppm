@@ -172,10 +172,10 @@ struct CompileCompletion {
     /// is at hand: the compile reads them all then.
     bool from_index = false;
 
-    /// How much of the buffer the PCH whose index named the candidates
-    /// stands for: a compile behind another PCH, as after an include added
-    /// since, reads all of its names. None after `.`.
-    std::optional<std::uint32_t> preamble;
+    /// The PCH whose index named the candidates: a compile behind another
+    /// one, as after an include added since or a header edited, reads all
+    /// of its names. None after `.`.
+    std::string pch;
 
     /// Where the name being typed is looked up, with from_index.
     index::CompletionScope scope;
@@ -294,6 +294,10 @@ struct CompletionInputs {
     const index::IndexQuery& query;
     const DependencyGraph& graph;
     FileTable& files;
+
+    /// The PCH whose index the query serves for the file's preamble; empty
+    /// for none.
+    std::string pch;
 
     /// The header search of the file's command, asked only where an
     /// include path is completed.
