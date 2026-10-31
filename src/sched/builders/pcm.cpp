@@ -68,11 +68,12 @@ async::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
     co_return co_await direct_deps(path_id, resolution, argv, directory, std::nullopt);
 }
 
-async::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id,
-                                                           const Resolution& resolution,
-                                                           llvm::ArrayRef<const char*> arguments,
-                                                           llvm::StringRef directory,
-                                                           std::optional<llvm::StringRef> content) {
+async::task<PCMBuilder::ModuleDeps>
+    PCMBuilder::direct_deps(Fid path_id,
+                            const Resolution& resolution,
+                            llvm::ArrayRef<const char*> arguments,
+                            llvm::StringRef directory,
+                            std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));

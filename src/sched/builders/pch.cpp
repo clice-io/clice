@@ -414,9 +414,9 @@ void PCHBuilder::consume_failed(llvm::StringRef pch_key) {
                 (project.store && !project.store->lookup("pch", it->second.blob));
     if(!gone) {
         project.failures.pch_consumes.entry(pch_key).result.fail(consume_policy,
-                                                                  {},
-                                                                  {},
-                                                                  FailureRecord::Clock::now());
+                                                                 {},
+                                                                 {},
+                                                                 FailureRecord::Clock::now());
     }
     invalidate(pch_key);
 }

@@ -24,10 +24,10 @@ namespace clice {
 class PCMBuilder {
 public:
     PCMBuilder(TaskGraph& graph,
-              Project& project,
-              CommandResolver& commands,
-              PCHBuilder& pch,
-              WorkerPool& pool);
+               Project& project,
+               CommandResolver& commands,
+               PCHBuilder& pch,
+               WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -71,10 +71,10 @@ public:
     /// not build is the compile's to report, as the stateful compile does;
     /// none only when the graph shut down.
     async::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
-                                                       const Resolution& resolution,
-                                                       llvm::ArrayRef<const char*> arguments,
-                                                       llvm::StringRef directory,
-                                                       llvm::StringRef content);
+                                                        const Resolution& resolution,
+                                                        llvm::ArrayRef<const char*> arguments,
+                                                        llvm::StringRef directory,
+                                                        llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob, or the PCH it was built over, while its node is still clean, so
@@ -192,10 +192,10 @@ public:
     /// project's disk state (context_epoch) stay the same, a buffer's while
     /// its directive stream does too.
     async::task<ModuleDeps> direct_deps(Fid path_id,
-                                       const Resolution& resolution,
-                                       llvm::ArrayRef<const char*> arguments,
-                                       llvm::StringRef directory,
-                                       std::optional<llvm::StringRef> content);
+                                        const Resolution& resolution,
+                                        llvm::ArrayRef<const char*> arguments,
+                                        llvm::StringRef directory,
+                                        std::optional<llvm::StringRef> content);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see
