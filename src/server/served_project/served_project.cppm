@@ -512,6 +512,13 @@ public:
     /// has a command already, or it lies outside the root.
     void discover_around(Fid path_id);
 
+    /// The directories below the root whose configuration file decides what
+    /// the project loads (nested_project): each direct subdirectory, and
+    /// each one on the way down to a database it loads or waits for, a
+    /// provisional member or an open document, the ones the rule left out
+    /// among them.
+    std::vector<CanonicalPath> configuration_dirs() const;
+
     /// The ASTs a worker held of these documents are gone — it crashed, or
     /// evicted one: they compile again, with nothing of their inputs
     /// changed.

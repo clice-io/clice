@@ -426,6 +426,24 @@ ZEST_CASE(LenderAcrossModules) {
     ZEXPECT(command_lender(project, intern("mods/m_impl.cpp"))->unit == intern("mods/m.cppm"));
 };
 
+ZEST_CASE(NestedProjectRecordsNothing) {
+    /// A file saved in a subdirectory with a configuration file of its own
+    /// is that project's: it is recorded as no provisional member here.
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
+    project.build.reset_active("");
+    tmp.touch("sub/clice.toml", "");
+    tmp.touch("sub/new.cpp", "");
+    tmp.touch("plain/new.cpp", "");
+
+    ZEXPECT(!project.build.record(files.intern(Spelling::absolute(tmp.path("sub/new.cpp")))));
+    ZEXPECT(project.build.record(files.intern(Spelling::absolute(tmp.path("plain/new.cpp")))));
+    ZEXPECT(project.build.recorded().size() == 1u);
+};
+
 ZEST_CASE(ProvisionalMembers) {
     /// A recorded file is a member under its lender's command while it has
     /// a lender and no host; it lends to no one, and an entry listing it

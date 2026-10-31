@@ -6,20 +6,20 @@ module clice;
 
 import :command.file_kind;
 import :command.table;
-import :settings.settings;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
+import :project.background_index;
 import :project.build;
 import :project.contexts;
-import :server.client;
-import :server.control;
-import :server.master;
-import :project.background_index;
 import :project.graph;
 import :project.pch;
 import :project.pcm;
+import :server.client;
+import :server.control;
+import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.cache_store;
 import :vfs.path;
@@ -213,6 +213,7 @@ void ServedProject::start() {
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
     }
+    server.watch_settings();
     if(poll_seconds.count() > 0) {
         bg_tasks.spawn(sources_poll_task());
         server.polling_files = true;

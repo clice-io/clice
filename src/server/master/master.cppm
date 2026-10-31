@@ -2,8 +2,8 @@ module clice:server.master;
 
 import :feature.semantic_tokens;
 import :index.query;
-import :project.project;
 import :project.background_index;
+import :project.project;
 import :server.extension;
 import :server.served_project;
 import :server.session;
@@ -158,9 +158,16 @@ public:
     /// the server runs on again.
     void withdraw_restart(llvm::StringRef topic);
 
-    /// Look at the configuration files of every folder served, as each of
+    /// Watch the configuration files of the folders served now and of the
+    /// directories that decide what their projects load
+    /// (ServedProject::configuration_dirs; see look_at_settings), keeping
+    /// what earlier looks saw.
+    void watch_settings();
+
+    /// Look at the configuration files watch_settings watches, as each of
     /// the master's ticks does whatever the polling setting: a change asks
-    /// for a restart. clice.toml is the one in use where it exists, else
+    /// for a restart, and so does one appearing where a project's rule
+    /// looked. clice.toml is the one in use where it exists, else
     /// .clice/config.toml.
     void look_at_settings();
 
@@ -424,10 +431,6 @@ private:
     /// cache directory first.
     void serve_folders();
 
-    /// Watch the configuration files of the folders served now (see
-    /// look_at_settings), keeping what earlier looks saw.
-    void watch_settings();
-
     /// The cache directories in use: a cache directory belongs to one
     /// project at a time, a removed one's until it is gone — but for the
     /// project serving its root again, `successor`, which opens it then.
@@ -528,9 +531,10 @@ private:
     /// still running in them.
     std::vector<std::weak_ptr<ServedProject>> removed_projects;
 
-    /// The configuration files of a folder served.
+    /// The configuration files of a folder served, or of a directory that
+    /// decides what a project loads.
     struct SettingsWatch {
-        CanonicalPath folder;
+        CanonicalPath dir;
 
         /// clice.toml, and .clice/config.toml, which applies without it.
         vfs::Flag file;

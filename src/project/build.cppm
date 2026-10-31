@@ -142,7 +142,8 @@ public:
     /// Record that the user saved `file`, a source the build does not
     /// declare: a provisional member while it has a lender and no host (see
     /// Project::refresh_provisional), until an entry or a rule covers it.
-    /// False when it is recorded already.
+    /// False when it is recorded already, or lies in a project nested in
+    /// the root (nested_project).
     bool record(Fid file);
 
     /// Drop the record of `file`, and its borrowed command.

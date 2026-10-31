@@ -405,17 +405,26 @@ void MasterServer::fold_index_progress() {
 }
 
 void MasterServer::watch_settings() {
+    std::vector<CanonicalPath> dirs(folders.begin(), folders.end());
+    for(auto& project: projects) {
+        auto more = project->configuration_dirs();
+        dirs.insert(dirs.end(),
+                    std::make_move_iterator(more.begin()),
+                    std::make_move_iterator(more.end()));
+    }
+    ranges::sort(dirs);
+    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
     std::vector<SettingsWatch> watches;
-    for(auto& folder: folders) {
-        if(auto it = ranges::find(settings_watches, folder, &SettingsWatch::folder);
+    for(auto& dir: dirs) {
+        if(auto it = ranges::find(settings_watches, dir, &SettingsWatch::dir);
            it != settings_watches.end()) {
             watches.push_back(std::move(*it));
             continue;
         }
         auto& watch = watches.emplace_back(SettingsWatch{
-            .folder = folder,
-            .file = {.path = path::join(folder, settings_file_names[0])},
-            .hidden = {.path = path::join(folder, settings_file_names[1])},
+            .dir = dir,
+            .file = {.path = path::join(dir, settings_file_names[0])},
+            .hidden = {.path = path::join(dir, settings_file_names[1])},
         });
         watch.file.look();
         watch.hidden.look();
@@ -440,7 +449,7 @@ void MasterServer::look_at_settings() {
         auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
         if(!in_use.stamp) {
             ask_restart({.message = std::format("The configuration file of {} was deleted",
-                                                files.display(watch.folder))});
+                                                files.display(watch.dir))});
             continue;
         }
         ask_restart({

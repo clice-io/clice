@@ -1,12 +1,12 @@
 module clice;
 
-import :settings.settings;
 import :index.database;
 import :index.project_index;
 import :project.build;
 import :project.build_snapshot;
 import :project.project;
 import :project.save;
+import :settings.settings;
 import :support.json;
 import :support.logging;
 import :support.timer;
@@ -77,8 +77,10 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
                 // Where the database sits, as the walks below the root spell
                 // it, not what it links to: a compile_commands.json or a build
                 // directory symlinked to a tree outside still belongs to the
-                // root.
-                return path::is_within(llvm::StringRef(source), llvm::StringRef(root));
+                // root, unless a directory on the way is a project of its
+                // own.
+                return path::is_within(llvm::StringRef(source), llvm::StringRef(root)) &&
+                       nested_project(root, CanonicalPath(source)).empty();
             }));
         ranges::sort(stable, {}, [](const Spelling& source) {
             return discovery_rank(llvm::StringRef(source));

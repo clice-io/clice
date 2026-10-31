@@ -1,7 +1,7 @@
 module clice;
 
-import :settings.settings;
 import :driver.driver;
+import :feature.query;
 import :index.database;
 import :index.format;
 import :index.instantiation_shard;
@@ -12,8 +12,8 @@ import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
 import :index.writer_lock;
-import :feature.query;
 import :project.project;
+import :settings.settings;
 import :support.text;
 import :support.timer;
 

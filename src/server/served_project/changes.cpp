@@ -1,13 +1,13 @@
 module clice;
 
 import :index.project_index;
+import :project.background_index;
 import :project.build_snapshot;
 import :project.contexts;
+import :project.graph;
 import :project.pcm;
 import :server.client;
 import :server.master;
-import :project.background_index;
-import :project.graph;
 import :server.served_project;
 import :support.logging;
 import :vfs.file_system;
@@ -369,6 +369,9 @@ void ServedProject::build_changed(CDBDiff delta) {
     if(!delta.added.empty() || !delta.removed.empty()) {
         server.reroute();
     }
+    // A database found or a member recorded: the directories on the way to
+    // it decide what loads too.
+    server.watch_settings();
 }
 
 void ServedProject::finish_changes(bool refresh) {
@@ -513,6 +516,45 @@ void ServedProject::discover_around(Fid path_id) {
     if(!found.empty()) {
         build_changed(std::move(found));
     }
+}
+
+std::vector<CanonicalPath> ServedProject::configuration_dirs() const {
+    std::vector<CanonicalPath> dirs;
+    CanonicalRef root = project.root;
+    if(root.empty()) {
+        return dirs;
+    }
+    if(auto entries = fs::Directory::open(root)) {
+        for(auto& entry: *entries) {
+            if(!entry) {
+                break;
+            }
+            if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
+                dirs.emplace_back(Spelling::absolute(path::join(root, entry->name)));
+            }
+        }
+    }
+    auto down_to = [&](CanonicalRef path) {
+        path::walk_ancestors(path.parent(), [&](CanonicalRef dir) {
+            if(dir == root || !path::is_within(dir, root)) {
+                return false;
+            }
+            dirs.emplace_back(dir);
+            return true;
+        });
+    };
+    for(std::uint32_t i = 0; i < project.cdb.source_count(); i += 1) {
+        down_to(CanonicalPath(Spelling::absolute(project.cdb.source_path(SourceID(i)))));
+    }
+    for(auto file: project.build.recorded()) {
+        down_to(project.file_table.resolve(file));
+    }
+    for(auto& entry: documents) {
+        down_to(project.file_table.resolve(entry.first));
+    }
+    ranges::sort(dirs);
+    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
+    return dirs;
 }
 
 void ServedProject::watch_checkout() {

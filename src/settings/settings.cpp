@@ -574,6 +574,28 @@ static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
     return !owner.empty() && owner != root && fs::is_directory(owner);
 }
 
+bool configured(const Spelling& dir) {
+    return ranges::any_of(settings_file_names,
+                          [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
+}
+
+CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path) {
+    CanonicalPath found;
+    if(project_root.empty() || !path::is_within(path, project_root)) {
+        return found;
+    }
+    path::walk_ancestors(path, [&](CanonicalRef dir) {
+        if(dir == project_root) {
+            return false;
+        }
+        if(configured(Spelling(dir))) {
+            found = dir;
+        }
+        return true;
+    });
+    return found;
+}
+
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root) {
     return !path::is_within(CanonicalPath(Spelling::absolute(cache_dir)), project_root) &&
            live_owner(cache_dir_owner(cache_dir), project_root);

@@ -6,6 +6,7 @@ import :index.project_index;
 import :project.build_snapshot;
 import :project.command;
 import :project.project;
+import :settings.settings;
 import :support.json;
 import :support.logging;
 import :vfs.path;
@@ -161,10 +162,11 @@ void BuildSnapshot::reconcile(Project& project, index::IndexReport& report) {
         dirty = true;
     }
 
-    // One the configuration stopped declaring is gone on purpose; one
-    // discovery no longer finds may come back. Under discovery a database
-    // that is no longer registered was either replaced by one that loaded,
-    // or merely vanished and may come back.
+    // One the configuration stopped declaring is gone on purpose, and so is
+    // one in a project nested in the root; one discovery no longer finds
+    // may come back. Under discovery a database that is no longer
+    // registered was either replaced by one that loaded, or merely vanished
+    // and may come back.
     bool declared = project.build.declares_sources();
     bool replaced = false;
     for(std::uint32_t i = 0; !declared && i < project.cdb.source_count(); i += 1) {
@@ -172,8 +174,12 @@ void BuildSnapshot::reconcile(Project& project, index::IndexReport& report) {
     }
     auto healthy = [&](const Entry& entry) {
         return ranges::all_of(entry.sources, [&](const std::string& source) {
-            auto id = project.cdb.find_source(project_index.local(source));
-            return id ? project.cdb.loaded(*id) : declared || replaced;
+            auto path = project_index.local(source);
+            if(auto id = project.cdb.find_source(path)) {
+                return project.cdb.loaded(*id);
+            }
+            return declared || replaced ||
+                   !nested_project(project.root, CanonicalPath(path)).empty();
         });
     };
 

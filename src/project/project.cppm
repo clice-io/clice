@@ -4,7 +4,6 @@ import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
-import :settings.settings;
 import :index.database;
 import :index.project_index;
 import :index.query;
@@ -21,6 +20,7 @@ import :project.pch;
 import :project.pcm;
 import :project.unit_run;
 import :semantic.symbol;
+import :settings.settings;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.dependency_graph;
@@ -570,7 +570,8 @@ struct Project {
 std::string damaged_index_error(const Project& project);
 
 /// Where a `compile_commands.json` is looked for when no rule declares
-/// one: the project root, then its direct subdirectories in name order.
+/// one: the project root, then its direct subdirectories in name order,
+/// but for those with a configuration file of their own (nested_project).
 llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
 
 /// The `compile_commands.json` files to load when no rule declares one:
@@ -580,8 +581,9 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root)
 
 /// The `compile_commands.json` files discovery passes over, deeper than
 /// the root's direct subdirectories down to three directories below it
-/// (hidden directories, `node_modules` and the cache directory skipped),
-/// by path: what the guidance of a project without a database names.
+/// (hidden directories, `node_modules`, the cache directory and the
+/// directories with a configuration file of their own skipped), by path:
+/// what the guidance of a project without a database names.
 llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
                                                     CanonicalRef cache_dir);
 
@@ -626,12 +628,14 @@ bool found_unreadable_database(const Project& project);
 /// Why the build has no member, completing a batch command's "Nothing to
 /// <verb>: ": a database it found that cannot be read, does not exist yet
 /// or lists no file; the rules' default commands claiming no file; else
-/// that no database was found in `root` or its direct subdirectories, and
-/// the deeper ones there are.
+/// that no database was found in `root` or its direct subdirectories, the
+/// subdirectories left out as projects of their own, and the deeper ones
+/// there are.
 std::string why_no_members(const Project& project, llvm::StringRef root);
 
 /// Where a `compile_commands.json` is looked for in `start` and its
-/// ancestors up to `project_root`, nearest first.
+/// ancestors up to `project_root`, nearest first: none in or below a
+/// directory with a configuration file of its own (nested_project).
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root);
 
 /// The `compile_commands.json` files of database_places_above that exist:

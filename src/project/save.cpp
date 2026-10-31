@@ -2,9 +2,9 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :project.precompiled_records;
 import :project.build;
 import :project.build_snapshot;
+import :project.precompiled_records;
 import :project.project;
 import :project.save;
 import :support.bytes;

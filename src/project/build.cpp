@@ -4,6 +4,7 @@ import :command.edit;
 import :command.file_kind;
 import :command.normalize;
 import :project.build;
+import :settings.settings;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -366,7 +367,7 @@ std::vector<Fid> Build::members() {
 }
 
 bool Build::record(Fid file) {
-    if(!records.insert(file).second) {
+    if(!nested_project(root, files.resolve(file)).empty() || !records.insert(file).second) {
         return false;
     }
     records_generation += 1;

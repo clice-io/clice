@@ -549,6 +549,42 @@ ZEST_CASE(DiscoverEveryNearby) {
             CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
 };
 
+ZEST_CASE(NestedProjectsLeftOut) {
+    /// A subdirectory with a configuration file of its own is its own
+    /// project's: discovery, the walk above a file and the deeper walk
+    /// leave it and everything below it out, and keep a plain one.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", "[]");
+    tmp.touch("plain/compile_commands.json", "[]");
+    tmp.touch("sub/clice.toml", "");
+    tmp.touch("sub/compile_commands.json", "[]");
+    tmp.touch("sub/deep/build/x/compile_commands.json", "[]");
+    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("hidden/compile_commands.json", "[]");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    Spelling spelled(root);
+    auto found = discover_compile_commands(root);
+    ZASSERT(found.size() == 2u);
+    ZEXPECT(found[0].str() == Spelling("compile_commands.json", spelled).str());
+    ZEXPECT(found[1].str() == Spelling("plain/compile_commands.json", spelled).str());
+
+    auto above =
+        compile_commands_above(CanonicalPath(Spelling::absolute(tmp.path("sub/deep/src"))), root);
+    ZASSERT(above.size() == 1u);
+    ZEXPECT(CanonicalPath(above[0]) ==
+            CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
+    ZEXPECT(deeper_compile_commands(root, CanonicalPath()).empty());
+
+    ZEXPECT(nested_project(root, CanonicalPath(Spelling::absolute(tmp.path("sub/deep/a.cpp")))) ==
+            CanonicalPath(Spelling::absolute(tmp.path("sub"))));
+    ZEXPECT(
+        nested_project(root, CanonicalPath(Spelling::absolute(tmp.path("plain/a.cpp")))).empty());
+    // The root's own configuration does not count.
+    tmp.touch("clice.toml", "");
+    ZEXPECT(
+        nested_project(root, CanonicalPath(Spelling::absolute(tmp.path("plain/a.cpp")))).empty());
+};
+
 ZEST_CASE(DeeperDatabasesNamed) {
     /// The walk names what discovery passes over, three directories deep
     /// at most.

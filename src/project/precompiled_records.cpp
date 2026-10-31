@@ -1,8 +1,8 @@
 module clice;
 
 import :index.format;
-import :project.precompiled_records;
 import :project.hosting;
+import :project.precompiled_records;
 import :project.project;
 import :support.json;
 import :support.logging;

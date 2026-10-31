@@ -111,6 +111,41 @@ ZEST_CASE(VanishedDatabaseKeepsIndex) {
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
+ZEST_CASE(NestedDatabaseRetires) {
+    TempDir tmp;
+    tmp.touch("sub/a.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("sub/a.cpp");
+    tmp.touch("sub/compile_commands.json",
+              std::format(R"([{{"directory": "{}", "file": "a.cpp", )"
+                          R"("arguments": ["clang++", "-c", "a.cpp"]}}])",
+                          json_escape(tmp.path("sub"))));
+    auto open = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
+        f.project.settings.finalize(f.project.root);
+    };
+
+    {
+        IndexerFixture f;
+        open(f);
+        f.project.cdb.load(tmp.path("sub/compile_commands.json"));
+        auto indexed = index_file(tmp, src);
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+    }
+
+    // sub became a project of its own: the database the last session
+    // remembers is gone on purpose, unlike a vanished one, and its units
+    // leave this project's index.
+    tmp.touch("sub/clice.toml", "");
+    IndexerFixture f;
+    open(f);
+    f.load();
+
+    ZEXPECT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
+}
+
 ZEST_CASE(UndeclaredSourceRetires) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");

@@ -247,8 +247,7 @@ async::task<>
 /// stays off during the pass — the plan's own runs are the only consumer
 /// of the graph; with --index it then drains the reindexes the pass's
 /// merges owed before the final save.
-async::task<>
-    lint_batch(BatchRun& run, const BatchProject& batch, bool with_index, Report& result) {
+async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Report& result) {
     ScopedTimer timer;
     auto& project = run.project;
 

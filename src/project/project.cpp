@@ -8,6 +8,7 @@ import :project.pch;
 import :project.pcm;
 import :project.project;
 import :project.unit_run;
+import :settings.settings;
 import :support.logging;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -164,11 +165,6 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
     return places;
 }
 
-bool configured(const Spelling& dir) {
-    return ranges::any_of(settings_file_names,
-                          [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
-}
-
 }  // namespace
 
 llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
@@ -187,9 +183,13 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
                 break;
             }
             // A symlinked build directory is a build directory too, even
-            // before its target exists.
+            // before its target exists. One with a configuration file of
+            // its own is a project of its own.
             if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
-                subdirectories.push_back(Spelling::absolute(path::join(project_root, entry->name)));
+                auto subdirectory = Spelling::absolute(path::join(project_root, entry->name));
+                if(!configured(subdirectory)) {
+                    subdirectories.push_back(std::move(subdirectory));
+                }
             }
         }
     }
@@ -220,7 +220,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
         if(entry->type == fs::FileType::Directory) {
             auto name = entry->name();
             if(name.starts_with(".") || name == "node_modules" ||
-               project_root.entry(spelled) == cache_dir) {
+               project_root.entry(spelled) == cache_dir || configured(spelled)) {
                 walk.skip();
             }
             continue;
@@ -332,16 +332,47 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
     if(project.build.declares_sources()) {
         return "no file on disk matches a rule with a default_command.";
     }
-    return std::format("no compile_commands.json found in {} or its direct subdirectories.{}",
+    std::vector<std::string> nested;
+    if(auto entries = fs::Directory::open(root)) {
+        for(auto& entry: *entries) {
+            if(!entry) {
+                break;
+            }
+            if(entry->type == fs::FileType::Directory &&
+               configured(Spelling::absolute(path::join(root, entry->name)))) {
+                nested.push_back(entry->name);
+            }
+        }
+    }
+    ranges::sort(nested);
+    std::string projects;
+    if(nested.size() == 1) {
+        projects = std::format(" {} has its own configuration file and is a project of its own.",
+                               nested.front());
+    } else if(!nested.empty()) {
+        projects =
+            std::format(" {} have their own configuration files and are projects of their own.",
+                        llvm::join(nested, ", "));
+    }
+    return std::format("no compile_commands.json found in {} or its direct subdirectories.{}{}",
                        root.str(),
+                       projects,
                        deeper_databases_hint(project));
 }
 
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root) {
     llvm::SmallVector<Spelling> places;
     for(auto dir: path::ancestors(start)) {
-        places.emplace_back(database_name, Spelling::absolute(dir));
-        if(dir == std::string_view(project_root)) {
+        auto spelled = Spelling::absolute(dir);
+        bool root = dir == std::string_view(project_root);
+        // A directory with a configuration file of its own and everything
+        // below it are that project's.
+        if(!root && configured(spelled)) {
+            places.clear();
+        } else {
+            places.emplace_back(database_name, std::move(spelled));
+        }
+        if(root) {
             break;
         }
     }

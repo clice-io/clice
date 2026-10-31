@@ -1,8 +1,8 @@
 module clice;
 
 import :index.peer_queries;
-import :server.master;
 import :project.background_index;
+import :server.master;
 import :server.served_project;
 import :support.logging;
 import :support.timer;

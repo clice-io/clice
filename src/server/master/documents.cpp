@@ -100,6 +100,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     auto& owner = route(path_id);
     document.owner = &owner;
     owner.adopt(document.session);
+    watch_settings();
 }
 
 void MasterServer::change_document(Fid path_id,

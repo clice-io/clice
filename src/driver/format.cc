@@ -6,6 +6,7 @@ import :driver.driver;
 import :feature.formatting;
 import :project.build;
 import :project.project;
+import :settings.settings;
 import :support.timer;
 import :vfs.path;
 
@@ -98,7 +99,8 @@ struct Target {
 /// outside the cache directory, the build trees (the directories below the
 /// root holding one of the build's databases: what a build generates or
 /// fetches lives there) and the commands' system include directories, of
-/// a type clang-format formats, no matching rule saying `format = false`.
+/// a type clang-format formats, no matching rule saying `format = false`;
+/// none in a project nested in the root (nested_project).
 std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members) {
     auto& build = project.build;
     auto& files = project.file_table;
@@ -135,6 +137,23 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
         }
     }
 
+    llvm::StringMap<bool> nested;
+    auto in_nested = [&](CanonicalRef path) {
+        bool found = false;
+        path::walk_ancestors(path.parent(), [&](CanonicalRef dir) {
+            if(dir == root || !path::is_within(dir, root)) {
+                return false;
+            }
+            auto [it, inserted] = nested.try_emplace(llvm::StringRef(dir));
+            if(inserted) {
+                it->second = configured(Spelling(dir));
+            }
+            found = it->second;
+            return !found;
+        });
+        return found;
+    };
+
     // A unit beside a database of its own directory, or in a directory its
     // own command searches as a system one, is still the project's: the
     // directories keep out only what units include.
@@ -145,7 +164,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
         // A header only a command forces in, which no unit's text
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
-        if(!formats(path) || !build.formattable(path) ||
+        if(!formats(path) || !build.formattable(path) || in_nested(path) ||
            (unit.contains(fid) ? !project_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
                                      ranges::any_of(skipped_dirs, [&](auto& dir) {
