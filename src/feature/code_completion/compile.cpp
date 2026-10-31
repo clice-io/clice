@@ -903,7 +903,8 @@ bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {
 /// point is instantiated. Its parse reads a name at the point, where there
 /// may be none yet, so that the expression there parses whole; and skips
 /// the focus file's function bodies but those that may instantiate the
-/// template. Run at most once, when asked.
+/// template (CompilationParams::Instantiating). Run at most once, when
+/// asked.
 class LaterCompile {
 public:
     explicit LaterCompile(const CompilationParams& completion) :
@@ -950,37 +951,6 @@ private:
     std::shared_ptr<std::atomic_bool> stop;
     std::unique_ptr<CompilationUnit> compiled;
 };
-
-/// The names of `templated` and of the templates the focus file declares,
-/// as far as `sema` parsed it: a body naming none of them instantiates
-/// none of them.
-llvm::StringSet<> template_names(clang::Sema& sema, const clang::NamedDecl* templated) {
-    auto& sources = sema.getSourceManager();
-    llvm::StringSet<> names;
-    if(auto* name = templated->getIdentifier()) {
-        names.insert(name->getName());
-    }
-    auto visit = [&](this auto& self, const clang::DeclContext* context) -> void {
-        for(auto* decl: context->noload_decls()) {
-            if(!sources.isWrittenInMainFile(decl->getLocation())) {
-                continue;
-            }
-            if(llvm::isa<clang::FunctionTemplateDecl, clang::ClassTemplateDecl>(decl)) {
-                if(auto* name = llvm::cast<clang::NamedDecl>(decl)->getIdentifier()) {
-                    names.insert(name->getName());
-                }
-            }
-            if(auto* pattern = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
-                self(pattern->getTemplatedDecl());
-            } else if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::CXXRecordDecl>(
-                          decl)) {
-                self(llvm::cast<clang::DeclContext>(decl));
-            }
-        }
-    };
-    visit(sema.getASTContext().getTranslationUnitDecl());
-    return names;
-}
 
 /// The function template `context` is in, through the lambdas and local
 /// classes inside it.
@@ -1170,7 +1140,11 @@ public:
            !later || (!loop && name && !focus.content().substr(offset).contains(name->getName()))) {
             return false;
         }
-        auto* whole = later->unit(template_names(sema, templated));
+        llvm::StringSet<> names;
+        if(auto* name = templated->getIdentifier()) {
+            names.insert(name->getName());
+        }
+        auto* whole = later->unit(std::move(names));
         if(!whole) {
             return false;
         }

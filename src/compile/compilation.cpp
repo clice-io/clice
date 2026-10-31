@@ -326,7 +326,11 @@ static bool likely_forwarding(const clang::Decl* decl) {
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
     ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
-        clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
+        clang::MultiplexConsumer(std::move(consumer)), unit(unit) {
+        if(auto& instantiating = unit.params.instantiating) {
+            instantiating_names = instantiating->names;
+        }
+    }
 
     void collect_decl(clang::Decl* decl) {
         if(!unit.focus_file().contains(unit.produced_at(decl->getLocation()).file) &&
@@ -397,7 +401,24 @@ public:
         auto file = unit.produced_at(decl->getLocation()).file;
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
-            return !may_instantiate(*instantiating);
+            if(!may_instantiate(instantiating->point)) {
+                return true;
+            }
+            // A body that names one of a template it is part of may
+            // instantiate the template, and through it what this one names.
+            if(auto* function = decl->getAsFunction(); function && function->isTemplated()) {
+                if(auto* name = function->getIdentifier()) {
+                    instantiating_names.insert(name->getName());
+                }
+                for(auto* context = function->getDeclContext(); context;
+                    context = context->getParent()) {
+                    if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
+                       record && record->isTemplated() && record->getIdentifier()) {
+                        instantiating_names.insert(record->getName());
+                    }
+                }
+            }
+            return false;
         }
         return unit.in_preamble(file) && !likely_forwarding(decl);
     }
@@ -460,10 +481,10 @@ public:
 
 private:
     /// Whether the body the parse stands before holds the point or names
-    /// one of the names, read raw from its `{` to the matching `}`. One
+    /// one of instantiating_names, read raw from its `{` to the matching `}`. One
     /// starting otherwise, at a constructor's initializers, a `try` or a
     /// `{` a macro writes, is kept.
-    bool may_instantiate(const CompilationParams::Instantiating& instantiating) {
+    bool may_instantiate(std::uint32_t point) {
         auto& sources = unit.context().getSourceManager();
         if(!last.is(clang::tok::l_brace) || !last.getLocation().isFileID()) {
             return true;
@@ -486,18 +507,21 @@ private:
             } else if(token.is(clang::tok::r_brace)) {
                 depth -= 1;
             } else if(token.is(clang::tok::raw_identifier) &&
-                      instantiating.names.contains(token.getRawIdentifier())) {
+                      instantiating_names.contains(token.getRawIdentifier())) {
                 return true;
             }
         }
-        return begin <= instantiating.point &&
-               instantiating.point <= sources.getFileOffset(token.getLocation());
+        return begin <= point && point <= sources.getFileOffset(token.getLocation());
     }
 
     CompilationUnit& unit;
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
     llvm::DenseSet<const clang::Decl*> instantiations;
     clang::Token last;
+
+    /// CompilationParams::Instantiating::names, and the templates a body
+    /// kept for naming one is part of.
+    llvm::StringSet<> instantiating_names;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
