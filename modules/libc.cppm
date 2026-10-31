@@ -22,6 +22,7 @@ module;
 
 export module libc;
 
+export using ::abs;
 export using ::fileno;
 export using ::strcasecmp;
 

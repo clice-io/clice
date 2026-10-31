@@ -65,7 +65,7 @@ void stderr_logger(std::string_view name, const Options& options) {
 }
 
 std::string session_log_directory(std::string_view logging_dir) {
-    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    auto now = chrono::system_clock::to_time_t(chrono::system_clock::now());
     std::tm local{};
 #ifdef _WIN32
     localtime_s(&local, &now);

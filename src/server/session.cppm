@@ -44,8 +44,8 @@ public:
     /// The policy of every request kind.
     constexpr static FailurePolicy policy{
         .change_limit = 3,
-        .spacing = std::chrono::seconds(2),
-        .editing_window = std::chrono::seconds(10),
+        .spacing = chrono::seconds(2),
+        .editing_window = chrono::seconds(10),
     };
 
     Session(Fid path_id, std::string text, int version);

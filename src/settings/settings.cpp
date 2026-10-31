@@ -71,19 +71,19 @@ std::uint32_t default_max_stateless_worker_count() {
 static std::expected<CompiledRule::Pattern, std::string>
     compile_pattern(std::string pattern, const Spelling& anchor, CanonicalRef project_root) {
     // A substituted project root is path, never glob syntax.
-    substitute_workspace(pattern, kota::GlobPattern::escape(project_root));
+    substitute_workspace(pattern, kotatsu::GlobPattern::escape(project_root));
     std::string text = pattern;
     CanonicalPath root = project_root;
     if(!pattern.starts_with("**")) {
-        auto [directory, rest] = kota::GlobPattern::split_root(pattern);
+        auto [directory, rest] = kotatsu::GlobPattern::split_root(pattern);
         root = CanonicalPath(Spelling(directory, anchor));
-        text = kota::GlobPattern::escape(root);
+        text = kotatsu::GlobPattern::escape(root);
         if(!text.ends_with('/')) {
             text += '/';
         }
         text += rest;
     }
-    auto glob = kota::GlobPattern::create(text);
+    auto glob = kotatsu::GlobPattern::create(text);
     if(!glob) {
         return std::unexpected(
             std::format("invalid glob pattern '{}': {}", pattern, glob.error().message));

@@ -68,14 +68,14 @@ static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project
 }
 
 LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
-                                            kota::cancellation_token token,
+                                            async::cancellation_token token,
                                             TokensRequest request) {
     auto& [path, path_id, session, served, version, ticket] = document;
     auto& query = served->project.index_query;
     std::optional<index::IndexSource> source;
     std::optional<std::vector<feature::SemanticToken>> tokens;
     switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
-        case Route::Outdated: co_await kota::fail(content_modified());
+        case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
             index_served.insert(path_id);
             tokens = feature::semantic_tokens(served->text_of(*session),
@@ -177,7 +177,7 @@ void LSPClient::register_document_requests() {
         };
 
         switch(co_await project.pick_route(ticket, {})) {
-            case Route::Outdated: co_await kota::fail(content_modified());
+            case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 if(on_directive) {
                     if(auto shown = directive_card(
@@ -278,7 +278,7 @@ void LSPClient::register_document_requests() {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto encoding = server.position_encoding;
             if(!ticket.fresh()) {
-                co_await kota::fail(content_modified());
+                co_await async::fail(content_modified());
             }
             // Inlay hints are Sema products the index cannot compute; a document
             // the policy keeps un-compiled answers honestly empty. The compile
@@ -324,7 +324,7 @@ void LSPClient::register_document_requests() {
             };
             std::optional<index::IndexSource> source;
             switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
-                case Route::Outdated: co_await kota::fail(content_modified());
+                case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     auto folds = feature::folding_ranges(served->text_of(*session),
                                                          served->project.index_query,
@@ -388,7 +388,7 @@ void LSPClient::register_document_requests() {
         };
 
         switch(co_await served->pick_route(ticket, {})) {
-            case Route::Outdated: co_await kota::fail(content_modified());
+            case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index:
             case Route::Empty: co_return lexical();
             case Route::Ast: break;
@@ -428,7 +428,7 @@ void LSPClient::register_document_requests() {
         switch(co_await served->pick_route(ticket,
                                            {.full_lex = true, .await_cold_attempt = true},
                                            &source)) {
-            case Route::Outdated: co_await kota::fail(content_modified());
+            case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 auto symbols = feature::document_symbols(served->text_of(*session),
                                                          served->project.index_query,
@@ -463,7 +463,7 @@ void LSPClient::register_document_requests() {
             auto encoding = server.position_encoding;
             auto& files = served->project.file_table;
             switch(co_await served->pick_route(ticket, {.await_cold_attempt = true})) {
-                case Route::Outdated: co_await kota::fail(content_modified());
+                case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     // Manifest edges cover the whole document (the background
                     // index has no preamble split); guard-skipped lines and

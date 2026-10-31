@@ -14,9 +14,9 @@ namespace clice {
 
 using Cursor = index::IndexQuery::Cursor;
 
-kota::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop) {
+async::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop) {
     if(stop.error) {
-        co_await kota::fail(std::move(*stop.error));
+        co_await async::fail(std::move(*stop.error));
     }
     co_return codec::RawValue{"null"};
 }
@@ -265,7 +265,7 @@ void LSPClient::register_navigation() {
             auto& project = *document.project;
             auto symbol = item_symbol(project, document.path_id, params.item, "call hierarchy");
             if(!symbol) {
-                co_await kota::fail(std::move(symbol.error()));
+                co_await async::fail(std::move(symbol.error()));
             }
             co_return to_raw(feature::incoming_calls(project.peer_queries(),
                                                      *symbol,
@@ -279,7 +279,7 @@ void LSPClient::register_navigation() {
             auto& project = *document.project;
             auto symbol = item_symbol(project, document.path_id, params.item, "call hierarchy");
             if(!symbol) {
-                co_await kota::fail(std::move(symbol.error()));
+                co_await async::fail(std::move(symbol.error()));
             }
             co_return to_raw(feature::outgoing_calls(project.peer_queries(),
                                                      *symbol,
@@ -314,7 +314,7 @@ void LSPClient::register_navigation() {
             auto& project = *document.project;
             auto symbol = item_symbol(project, document.path_id, params.item, "type hierarchy");
             if(!symbol) {
-                co_await kota::fail(std::move(symbol.error()));
+                co_await async::fail(std::move(symbol.error()));
             }
             co_return to_raw(feature::supertypes(project.peer_queries(),
                                                  *symbol,
@@ -328,7 +328,7 @@ void LSPClient::register_navigation() {
             auto& project = *document.project;
             auto symbol = item_symbol(project, document.path_id, params.item, "type hierarchy");
             if(!symbol) {
-                co_await kota::fail(std::move(symbol.error()));
+                co_await async::fail(std::move(symbol.error()));
             }
             co_return to_raw(feature::subtypes(project.peer_queries(),
                                                *symbol,

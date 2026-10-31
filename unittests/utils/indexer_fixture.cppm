@@ -35,7 +35,7 @@ struct IndexerFixture {
 
     constexpr static unsigned budget = IndexPump::max_requeue_attempts;
 
-    kota::event_loop loop;
+    async::event_loop loop;
     FileTable files;
     Project project{files};
     WorkerPool pool{loop};
@@ -61,7 +61,7 @@ struct IndexerFixture {
 
     /// One save with the pump's debt snapshot, its report taken back —
     /// without persist()'s retry, so a test observes each save.
-    kota::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
+    async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
         pump.apply_report(co_await save_project(project, loop, pump.save_debt(), search));
     }
 
@@ -125,7 +125,7 @@ struct IndexerFixture {
     /// Complete an attempt for `seq` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
     void wake_waiters(Fid id, std::uint64_t seq) {
-        auto body = [&]() -> kota::task<> {
+        auto body = [&]() -> async::task<> {
             pump.wake_attempt_waits(id, seq);
             co_return;
         };
@@ -160,7 +160,7 @@ struct IndexerFixture {
 
     /// One background round as a schedulable task, for tests that need to
     /// interleave other tasks with it.
-    kota::task<> round_task() {
+    async::task<> round_task() {
         return pump.run_background_indexing();
     }
 

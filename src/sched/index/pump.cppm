@@ -31,7 +31,7 @@ struct IndexerFixture;
 /// `on_attempt_finished`; a batch driver installs neither.
 class IndexPump {
 public:
-    IndexPump(kota::event_loop& loop, Project& project, TURunFamily& turun, WorkerPool& pool);
+    IndexPump(async::event_loop& loop, Project& project, TURunFamily& turun, WorkerPool& pool);
 
     /// Invoked when an index attempt finished with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
@@ -125,7 +125,7 @@ public:
     /// refresh request (outline, links): answered while the didOpen
     /// boost is still running, the empty result would freeze until the
     /// next edit.
-    kota::task<> await_attempt(Fid server_path_id);
+    async::task<> await_attempt(Fid server_path_id);
 
     /// Why the file awaits re-indexing (queued or currently being indexed),
     /// or nullopt when its index is not pending an update. O(1), no I/O —
@@ -184,10 +184,10 @@ public:
     /// while a save owes a retry (a grown map can still be too small); an
     /// idle save then shrinks the database file when that is worth it
     /// (shrink_database).
-    kota::task<> persist(index::SearchRebuild search = index::SearchRebuild::Behind);
+    async::task<> persist(index::SearchRebuild search = index::SearchRebuild::Behind);
 
     /// Cancel background indexing and wait for all tasks to finish.
-    kota::task<> stop();
+    async::task<> stop();
 
     /// Whether background indexing is currently idle (no active or queued work).
     bool is_idle() const {
@@ -196,7 +196,7 @@ public:
 
     /// Wait until is_idle(): every round, requeue rounds included, has run
     /// and saved its results.
-    kota::task<> wait_idle();
+    async::task<> wait_idle();
 
     /// Number of files remaining in the indexing queue.
     std::size_t pending_files() const {
@@ -269,7 +269,7 @@ private:
     struct AttemptWait {
         std::uint64_t seq;
 
-        std::shared_ptr<kota::event> event;
+        std::shared_ptr<async::event> event;
     };
 
     /// Merge a failed dispatch's taken debt back through the table and apply
@@ -303,32 +303,32 @@ private:
         std::size_t inflight = 0;
 
         /// Set whenever a task finishes, waking a feeder waiting out the cap.
-        kota::event task_done{false};
+        async::event task_done{false};
     };
 
-    kota::task<> run_background_indexing();
+    async::task<> run_background_indexing();
 
     /// The round's dispatch loop, spawned as a child of `workers` so that a
     /// shutdown cancel reaches it through the round frame's join — see the
     /// spawn site. Consumes [index_queue_pos, round_end) and spawns one
     /// run_index_task per live slot, bounded by the feeder window.
-    kota::task<> run_round_feeder(kota::task_group<>& workers,
-                                  RoundState& round,
-                                  std::size_t total,
-                                  std::size_t& dispatched);
+    async::task<> run_round_feeder(async::task_group<>& workers,
+                                   RoundState& round,
+                                   std::size_t total,
+                                   std::size_t& dispatched);
 
     /// One dispatched unit of a background round: admit, run the TU through
     /// its TURun node, take the merge report, finish the taken debt and
     /// report progress.
-    kota::task<> run_index_task(PendingTable::TakenDebt taken,
-                                std::size_t index,
-                                std::size_t total,
-                                RoundState& round);
+    async::task<> run_index_task(PendingTable::TakenDebt taken,
+                                 std::size_t index,
+                                 std::size_t total,
+                                 RoundState& round);
 
 private:
-    kota::event_loop& loop;
+    async::event_loop& loop;
 
-    kota::task_group<> bg_tasks;
+    async::task_group<> bg_tasks;
 
     Project& project;
 
@@ -380,22 +380,22 @@ private:
     bool indexing_scheduled = false;
 
     /// Set whenever a round ends; wait_idle() waits on it.
-    kota::event round_ended{false};
+    async::event round_ended{false};
 
-    std::shared_ptr<kota::timer> index_idle_timer;
+    std::shared_ptr<async::timer> index_idle_timer;
 
     /// Pause/resume: when paused, new index tasks wait on this event.
     /// Uses a counter so nested pause/resume pairs work correctly.
     std::size_t pause_depth = 0;
 
-    kota::event resume_event{true};
+    async::event resume_event{true};
 
     /// Dispatches left before pause_after() pauses; zero when none is due.
     std::size_t dispatches_before_pause = 0;
 
     /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
     /// stateless worker" the moment a slot (re)enters service.
-    kota::event capacity_event{false};
+    async::event capacity_event{false};
 
     Signal<>::Connection capacity_conn;
 

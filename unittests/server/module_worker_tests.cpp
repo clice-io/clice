@@ -38,7 +38,7 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
     std::string pcm_path;
     bool phase1_done = false;
 
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
@@ -69,7 +69,7 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
 
     bool phase2_done = false;
 
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
@@ -124,7 +124,7 @@ ZEST_CASE(BuildPCMChainThenCompile) {
     std::string pcm_a, pcm_b;
     bool pcm_done = false;
 
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         // Build PCM for A first.
         {
             worker::BuildPCMParams params;
@@ -178,7 +178,7 @@ ZEST_CASE(BuildPCMChainThenCompile) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
@@ -229,7 +229,7 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
     std::string pcm_path;
     bool pcm_done = false;
 
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
@@ -258,7 +258,7 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = impl;
         params.version = 1;
@@ -299,7 +299,7 @@ ZEST_CASE(BuildPCMFirstError) {
     ZASSERT(sl.spawn());
 
     bool done = false;
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";

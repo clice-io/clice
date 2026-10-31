@@ -608,7 +608,7 @@ constexpr inline bool is_build =
 
 }  // namespace clice::worker
 
-namespace kota::ipc::protocol {
+namespace kotatsu::ipc::protocol {
 
 template <>
 struct RequestTraits<clice::worker::CompileParams> {
@@ -736,4 +736,4 @@ struct NotificationTraits<clice::worker::GateReleaseParams> {
     constexpr inline static std::string_view method = "clice/worker/gateRelease";
 };
 
-}  // namespace kota::ipc::protocol
+}  // namespace kotatsu::ipc::protocol

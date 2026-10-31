@@ -147,16 +147,16 @@ ZEST_CASE(TurnEndsBeforeIO) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     std::vector<CheckResult> results;
-    kota::event_loop loop;
-    auto body = [&]() -> kota::task<> {
-        kota::task_group<> turns;
+    async::event_loop loop;
+    auto body = [&]() -> async::task<> {
+        async::task_group<> turns;
         turns.spawn(f.disk.end_turns(loop));
         results.push_back(f.disk.check(fid, hash));
         f.rewrite("src/a.h", "int b;\n");
         results.push_back(f.disk.check(fid, hash));
         // No event: a turn ends in the loop's prepare phase, which a timer
         // resumes after.
-        co_await kota::sleep(1, loop);
+        co_await async::sleep(1, loop);
         results.push_back(f.disk.check(fid, hash));
         turns.cancel();
         co_await turns.join();

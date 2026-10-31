@@ -16,7 +16,7 @@ import :vfs.file_table;
 namespace clice::testing {
 namespace {
 
-using DispatchFn = std::function<kota::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
+using DispatchFn = std::function<async::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
 using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
 constexpr Family test_family = Family{1};
@@ -35,7 +35,7 @@ struct GraphShim {
         graph.register_family(test_family,
                               [dispatch = std::move(dispatch), resolve = std::move(resolve)](
                                   RoundContext& ctx,
-                                  NodeId id) -> kota::task<RoundOutcome> {
+                                  NodeId id) -> async::task<RoundOutcome> {
                                   auto path_id = static_cast<std::uint32_t>(id.key);
                                   for(auto dep: resolve(path_id)) {
                                       switch(co_await ctx.depend(nid(dep))) {
@@ -49,7 +49,7 @@ struct GraphShim {
                               });
     }
 
-    kota::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
+    async::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
         auto outcome = co_await graph.request(nid(path_id), {.foreground = foreground});
         co_return outcome == JoinOutcome::Success;
     }
@@ -78,7 +78,7 @@ struct GraphShim {
         return graph.idle();
     }
 
-    kota::task<> shutdown() {
+    async::task<> shutdown() {
         return graph.shutdown();
     }
 };
@@ -94,7 +94,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
                          const TempDir& tmp,
                          std::uint32_t& builds,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
+    return [&](std::uint32_t path_id, bool) -> async::task<RoundOutcome> {
         auto file_path = cdb.files().resolve(Fid{path_id});
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
@@ -186,7 +186,7 @@ struct ModuleTestEnv {
     }
 };
 
-ZEST_SUITE(PCMGraphIntegration, kota::zest::LoopFixture) {
+ZEST_SUITE(PCMGraphIntegration, zest::LoopFixture) {
 
 ModuleTestEnv env;
 std::optional<GraphShim> cg;
@@ -212,8 +212,8 @@ template <typename F>
 void execute(F&& fn) {
     // Hang detection: the modules compile for real, slowly on a loaded
     // machine.
-    watchdog = std::chrono::seconds(45);
-    auto wrapper = [&]() -> kota::task<> {
+    watchdog = chrono::seconds(45);
+    auto wrapper = [&]() -> async::task<> {
         co_await fn();
         co_await cg->shutdown();
         ZEXPECT(cg->idle());
@@ -239,7 +239,7 @@ ZEST_CASE(single_module) {
     auto pid_a = env.lookup("A");
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_a).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -268,7 +268,7 @@ ZEST_CASE(chained_modules) {
     ZASSERT(pid_b != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_b).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -307,7 +307,7 @@ ZEST_CASE(diamond_modules) {
     ZASSERT(pid_top != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_top).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -338,7 +338,7 @@ ZEST_CASE(dotted_module_name) {
     ZASSERT(pid_app != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_app).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -375,7 +375,7 @@ ZEST_CASE(re_export) {
     ZASSERT(pid_user != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_user).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -412,7 +412,7 @@ ZEST_CASE(export_block) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -442,7 +442,7 @@ ZEST_CASE(global_module_fragment) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -471,7 +471,7 @@ ZEST_CASE(private_module_fragment) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -506,7 +506,7 @@ ZEST_CASE(partition_interface) {
     ZASSERT(env.lookup("M:Part") != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_m).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -543,7 +543,7 @@ ZEST_CASE(multiple_partitions) {
     ZASSERT(pid_lib != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_lib).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -580,7 +580,7 @@ ZEST_CASE(partition_chain) {
     ZASSERT(pid_sys != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_sys).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -615,7 +615,7 @@ ZEST_CASE(export_namespace) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -650,7 +650,7 @@ ZEST_CASE(gmf_with_import) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -696,7 +696,7 @@ ZEST_CASE(deep_chain) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -728,7 +728,7 @@ ZEST_CASE(independent_modules) {
     ZASSERT(pid_y != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto r1 = co_await cg->compile(pid_x).catch_cancel();
         ZEXPECT((r1.has_value() && *r1));
         auto r2 = co_await cg->compile(pid_y).catch_cancel();
@@ -763,7 +763,7 @@ ZEST_CASE(template_export) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -803,7 +803,7 @@ ZEST_CASE(class_export_inheritance) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -836,7 +836,7 @@ ZEST_CASE(recompile_after_update) {
     ZASSERT(pid_mid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         // First compile.
         auto r1 = co_await cg->compile(pid_mid).catch_cancel();
         ZEXPECT((r1.has_value() && *r1));
@@ -883,7 +883,7 @@ ZEST_CASE(partition_with_gmf) {
     ZASSERT(pid != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -921,7 +921,7 @@ ZEST_CASE(partition_external_import) {
     ZASSERT(pid_app != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_app).catch_cancel();
         ZEXPECT(result);
         ZEXPECT(*result);
@@ -968,7 +968,7 @@ ZEST_CASE(diamond_update_cascade) {
     ZASSERT(pid_top != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         // Initial compile.
         auto r1 = co_await cg->compile(pid_top).catch_cancel();
         ZEXPECT((r1.has_value() && *r1));
@@ -1039,7 +1039,7 @@ ZEST_CASE(re_resolve_after_update) {
     };
 
     make_graph(default_dispatch(), std::move(counting_resolver));
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         // First compile: resolve_fn called once for Mid.
         auto r1 = co_await cg->compile(pid_mid).catch_cancel();
         ZEXPECT((r1.has_value() && *r1));
@@ -1080,7 +1080,7 @@ ZEST_CASE(compile_failure_propagation) {
     ZASSERT(pid_bad != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto result = co_await cg->compile(pid_bad).catch_cancel();
         ZEXPECT(result);
         // Compilation should fail due to undefined symbol.
@@ -1118,7 +1118,7 @@ ZEST_CASE(module_implementation_unit) {
     ZASSERT(pid_iface != UINT32_MAX);
 
     make_graph();
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         // Build the interface PCM via CompileGraph.
         auto r1 = co_await cg->compile(pid_iface).catch_cancel();
         ZEXPECT((r1.has_value() && *r1));
@@ -1187,11 +1187,11 @@ ZEST_CASE(shared_dep_import_switch) {
 
     // Gate the shared module's dispatch so the import switch can be injected
     // while it is still compiling.
-    kota::event shared_started;
-    kota::event shared_proceed;
+    async::event shared_started;
+    async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<RoundOutcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<RoundOutcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1202,18 +1202,18 @@ ZEST_CASE(shared_dep_import_switch) {
 
     make_graph(std::move(dispatch), default_resolver());
 
-    kota::cancellation_source req_a;
-    kota::event start_c;
+    async::cancellation_source req_a;
+    async::event start_c;
     std::optional<bool> result_a, result_c;
 
-    auto request_a = [&]() -> kota::task<> {
-        auto r = co_await kota::with_token(cg->compile(pid_a), req_a.token());
+    auto request_a = [&]() -> async::task<> {
+        auto r = co_await async::with_token(cg->compile(pid_a), req_a.token());
         if(r.has_value()) {
             result_a = *r;
         }
     };
 
-    auto request_c = [&]() -> kota::task<> {
+    auto request_c = [&]() -> async::task<> {
         co_await start_c.wait();
         auto r = co_await cg->compile(pid_c).catch_cancel();
         if(r.has_value()) {
@@ -1221,8 +1221,8 @@ ZEST_CASE(shared_dep_import_switch) {
         }
     };
 
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await shared_started.wait();
             ZEXPECT(cg->refcount(pid_shared) == 1u);
             ZEXPECT(shared_calls == 1);
@@ -1243,7 +1243,7 @@ ZEST_CASE(shared_dep_import_switch) {
             co_return;
         };
 
-        co_await kota::when_all(request_a(), request_c(), driver());
+        co_await async::when_all(request_a(), request_c(), driver());
 
         // A was cancelled; C completed using the surviving shared build.
         ZEXPECT(!result_a.has_value());
@@ -1285,11 +1285,11 @@ ZEST_CASE(shared_dep_fails_both) {
     ZASSERT(pid_shared != UINT32_MAX);
 
     // Gate the shared module so both consumers join the same failing round.
-    kota::event shared_started;
-    kota::event shared_proceed;
+    async::event shared_started;
+    async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<RoundOutcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<RoundOutcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1301,21 +1301,21 @@ ZEST_CASE(shared_dep_fails_both) {
     make_graph(std::move(dispatch), default_resolver());
 
     std::optional<bool> result_a, result_c;
-    auto request_a = [&]() -> kota::task<> {
+    auto request_a = [&]() -> async::task<> {
         auto r = co_await cg->compile(pid_a).catch_cancel();
         if(r.has_value()) {
             result_a = *r;
         }
     };
-    auto request_c = [&]() -> kota::task<> {
+    auto request_c = [&]() -> async::task<> {
         auto r = co_await cg->compile(pid_c).catch_cancel();
         if(r.has_value()) {
             result_c = *r;
         }
     };
 
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await shared_started.wait();
             // Both chains hold interest in the same round.
             co_await wait_until([&] { return cg->refcount(pid_shared) == 2u; });
@@ -1323,7 +1323,7 @@ ZEST_CASE(shared_dep_fails_both) {
             co_return;
         };
 
-        co_await kota::when_all(request_a(), request_c(), driver());
+        co_await async::when_all(request_a(), request_c(), driver());
 
         // One failing round, both consumers fail without retry.
         ZEXPECT(result_a == false);

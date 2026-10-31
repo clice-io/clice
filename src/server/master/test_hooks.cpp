@@ -21,7 +21,7 @@ static auto awaited_requests(const ipc::JSONPeer& editor) {
     return requests;
 }
 
-kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
+async::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
     auto quiet = [&] {
         apply_disk_changes();
         return awaited_requests(editor).empty() && waiting_projects.empty() &&
@@ -36,13 +36,13 @@ kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
         if(quiet()) {
             // What a commit scheduled on the loop — a refresh request, a
             // progress handshake — goes out before the answer.
-            co_await kota::yield();
+            co_await async::yield();
             if(quiet()) {
                 co_return;
             }
         }
         // No event: none of them announces its end.
-        co_await kota::sleep(std::chrono::milliseconds(1), loop);
+        co_await async::sleep(chrono::milliseconds(1), loop);
     }
 }
 

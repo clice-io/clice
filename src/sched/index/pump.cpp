@@ -15,7 +15,7 @@ import :worker.protocol;
 
 namespace clice {
 
-IndexPump::IndexPump(kota::event_loop& loop,
+IndexPump::IndexPump(async::event_loop& loop,
                      Project& project,
                      TURunFamily& turun,
                      WorkerPool& pool) : loop(loop), project(project), turun(turun), pool(pool) {
@@ -99,7 +99,7 @@ llvm::SmallVector<Fid> IndexPump::save_debt() const {
     return debt;
 }
 
-kota::task<> IndexPump::persist(index::SearchRebuild search) {
+async::task<> IndexPump::persist(index::SearchRebuild search) {
     bool retry = true;
     while(retry) {
         auto report = co_await save_project(project, loop, save_debt(), search);
@@ -117,7 +117,7 @@ kota::task<> IndexPump::persist(index::SearchRebuild search) {
     }
 }
 
-kota::task<> IndexPump::await_attempt(Fid server_path_id) {
+async::task<> IndexPump::await_attempt(Fid server_path_id) {
     auto pending = pending_table.peek(server_path_id);
     if(!pending) {
         co_return;
@@ -126,7 +126,7 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     auto& waits = attempt_waits[server_path_id];
     auto it = ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.seq == seq; });
     if(it == waits.end()) {
-        waits.push_back({seq, std::make_shared<kota::event>()});
+        waits.push_back({seq, std::make_shared<async::event>()});
         it = waits.end() - 1;
     }
     // Hold the shared_ptr across the await: the wake moves the event out
@@ -141,7 +141,7 @@ void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t seq) {
     if(it == attempt_waits.end()) {
         return;
     }
-    llvm::SmallVector<std::shared_ptr<kota::event>, 2> woken;
+    llvm::SmallVector<std::shared_ptr<async::event>, 2> woken;
     for(auto& wait: it->second) {
         if(wait.seq <= seq) {
             woken.push_back(std::move(wait.event));
@@ -180,7 +180,7 @@ void IndexPump::resume_indexing() {
     }
 }
 
-kota::task<> IndexPump::stop() {
+async::task<> IndexPump::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
     // Cancelling the round that waited on the idle timer leaves it armed,
@@ -207,14 +207,14 @@ void IndexPump::schedule(bool immediate) {
         // it to fire now — dropped, a boosted reader would wait out the
         // full idle window an earlier ordinary schedule started (s#9).
         if(immediate && index_idle_timer) {
-            index_idle_timer->start(std::chrono::milliseconds(0));
+            index_idle_timer->start(chrono::milliseconds(0));
         }
         return;
     }
     indexing_scheduled = true;
 
     if(!index_idle_timer) {
-        index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
+        index_idle_timer = std::make_shared<async::timer>(async::timer::create(loop));
     }
     // Time is the feature: the idle timeout batches edit storms into one
     // round. A follow-up round for work requeued during the round that just
@@ -222,7 +222,7 @@ void IndexPump::schedule(bool immediate) {
     // a crashed file's retry must not owe an extra idle window on top of
     // the round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
+        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
         test_jitter());
 
     if(!bg_tasks.spawn(run_background_indexing())) {
@@ -247,10 +247,10 @@ auto IndexPump::note_dispatch_failure(const PendingTable::TakenDebt& taken,
     return outcome.decision;
 }
 
-kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
-                                         RoundState& round,
-                                         std::size_t total,
-                                         std::size_t& dispatched) {
+async::task<> IndexPump::run_round_feeder(async::task_group<>& workers,
+                                          RoundState& round,
+                                          std::size_t total,
+                                          std::size_t& dispatched) {
     while(index_queue_pos < round_end) {
         // Every wait loops back to re-check ALL gates: a pause arriving
         // while parked on capacity (or a capacity loss while parked on the
@@ -342,10 +342,10 @@ void IndexPump::record_too_big(Fid file, std::uint64_t memory) {
     too_big_ids[file] = memory;
 }
 
-kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
-                                       std::size_t index,
-                                       std::size_t total,
-                                       RoundState& round) {
+async::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
+                                        std::size_t index,
+                                        std::size_t total,
+                                        RoundState& round) {
     auto server_path_id = taken.id;
     auto file_path = std::string(project.file_table.resolve(server_path_id));
     // The engine's own observation is authoritative for content
@@ -520,14 +520,14 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     on_progress_changed.emit();
 }
 
-kota::task<> IndexPump::wait_idle() {
+async::task<> IndexPump::wait_idle() {
     while(!is_idle()) {
         round_ended.reset();
         co_await round_ended.wait();
     }
 }
 
-kota::task<> IndexPump::run_background_indexing() {
+async::task<> IndexPump::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
     }
@@ -583,7 +583,7 @@ kota::task<> IndexPump::run_background_indexing() {
     ScopedTimer timer;
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
-    co_await kota::with_task_group([&](kota::task_group<>& workers) {
+    co_await async::with_task_group([&](async::task_group<>& workers) {
         return run_round_feeder(workers, round, total, dispatched);
     });
 
@@ -615,7 +615,7 @@ kota::task<> IndexPump::run_background_indexing() {
                                                            : index::SearchRebuild::Behind);
     // The round's merge buffers are freed by now; glibc would keep their
     // pages, and the master its round's peak, for the rest of the session.
-    co_await kota::queue([] { release_free_memory(); });
+    co_await async::queue([] { release_free_memory(); });
 
     // The round owns the "active" gate through its save: releasing it
     // before the write await would let a next round's save overlap this

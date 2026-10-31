@@ -7,8 +7,8 @@ namespace clice::testing {
 namespace {
 
 using Clock = FailureRecord::Clock;
-using std::chrono::minutes;
-using std::chrono::seconds;
+using chrono::minutes;
+using chrono::seconds;
 
 ZEST_SUITE(FailureRecord) {
 

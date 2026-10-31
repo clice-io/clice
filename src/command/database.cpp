@@ -301,7 +301,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                 if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
                     written.emplace_back(tokens[compiler]);
                 }
-                auto [found] = kota::run(find_mount_table({}, std::move(written)));
+                auto [found] = async::run(find_mount_table({}, std::move(written)));
                 if(!*found) {
                     LOG_GUIDANCE(
                         "Compilation database {} spells its paths POSIX-style ({}), and they "

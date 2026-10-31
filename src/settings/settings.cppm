@@ -381,7 +381,7 @@ struct CompiledRule {
     struct Pattern {
         /// Matches the canonical absolute path: a relative pattern was
         /// anchored at the configuration file's directory when compiled.
-        kota::GlobPattern glob;
+        kotatsu::GlobPattern glob;
 
         /// The literal directory the pattern starts in (the project root
         /// for `**`-led patterns): where the files it covers are enumerated.

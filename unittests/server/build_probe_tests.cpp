@@ -7,7 +7,7 @@ import :worker.probe;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(BuildProbe, kota::zest::LoopFixture) {
+ZEST_SUITE(BuildProbe, zest::LoopFixture) {
 
 BuildProbe probe;
 
@@ -40,13 +40,13 @@ ZEST_CASE(hold_parks_until_release) {
     // The matching reply parks and is announced; the release lets it on.
     auto id = probe.hold(BuildKind::Compile, "/w/main.cpp");
     bool delivered = false;
-    auto reply = [&]() -> kota::task<> {
+    auto reply = [&]() -> async::task<> {
         co_await probe.returned(BuildKind::Compile, "/w/main.cpp");
         delivered = true;
     };
-    auto test = [&]() -> kota::task<> {
+    auto test = [&]() -> async::task<> {
         while(held.empty()) {
-            co_await kota::yield();
+            co_await async::yield();
         }
         ZEXPECT(held == std::vector{id});
         ZEXPECT(probe.holds().front().parked);
@@ -63,13 +63,13 @@ ZEST_CASE(hold_parks_one_reply) {
     // or file never park.
     auto id = probe.hold(BuildKind::Index, "/w/lib.cpp");
     int delivered = 0;
-    auto reply = [&](BuildKind kind, llvm::StringRef file) -> kota::task<> {
+    auto reply = [&](BuildKind kind, llvm::StringRef file) -> async::task<> {
         co_await probe.returned(kind, file);
         delivered += 1;
     };
-    auto test = [&]() -> kota::task<> {
+    auto test = [&]() -> async::task<> {
         while(held.empty()) {
-            co_await kota::yield();
+            co_await async::yield();
         }
         // The other kind and the other file went through; the second index
         // reply finds the hold taken and goes through too.
@@ -91,7 +91,7 @@ ZEST_CASE(release_before_arrival) {
     ZEXPECT(probe.release(id));
     ZEXPECT(!probe.release(id));
     bool delivered = false;
-    auto reply = [&]() -> kota::task<> {
+    auto reply = [&]() -> async::task<> {
         co_await probe.returned(BuildKind::PCM, "/w/m.cppm");
         delivered = true;
     };
@@ -104,13 +104,13 @@ ZEST_CASE(release_all_frees_parked) {
     probe.hold(BuildKind::Compile, "/w/a.cpp");
     probe.hold(BuildKind::PCH, "/w/b.cpp");
     int delivered = 0;
-    auto reply = [&](BuildKind kind, llvm::StringRef file) -> kota::task<> {
+    auto reply = [&](BuildKind kind, llvm::StringRef file) -> async::task<> {
         co_await probe.returned(kind, file);
         delivered += 1;
     };
-    auto test = [&]() -> kota::task<> {
+    auto test = [&]() -> async::task<> {
         while(held.size() < 2) {
-            co_await kota::yield();
+            co_await async::yield();
         }
         probe.release_all();
     };

@@ -6,7 +6,7 @@ import :vfs.path;
 
 namespace clice {
 
-static kota::task<std::expected<fs::cygwin::MountTable, std::string>>
+static async::task<std::expected<fs::cygwin::MountTable, std::string>>
     read_mount_table(std::string runtime) {
     auto mount = path::join(runtime, "mount.exe");
     auto output = co_await execute({mount}, "");
@@ -23,7 +23,7 @@ static kota::task<std::expected<fs::cygwin::MountTable, std::string>>
     co_return std::move(*table);
 }
 
-kota::task<std::expected<fs::cygwin::MountTable, std::string>>
+async::task<std::expected<fs::cygwin::MountTable, std::string>>
     find_mount_table(std::string program, std::vector<std::string> written) {
     std::string search;
     sys::get_env(search, "PATH");

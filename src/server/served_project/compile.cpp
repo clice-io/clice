@@ -540,7 +540,7 @@ void ServedProject::escalate(Fid path_id) {
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {
-    auto compile = [](ServedProject& self, std::shared_ptr<Session> session) -> kota::task<> {
+    auto compile = [](ServedProject& self, std::shared_ptr<Session> session) -> async::task<> {
         co_await self.ensure_compiled(std::move(session));
     };
     if(!started_compiles.spawn(compile(*this, std::move(session)))) {
@@ -548,7 +548,7 @@ void ServedProject::request_compile(std::shared_ptr<Session> session) {
     }
 }
 
-kota::task<> ServedProject::stop_compiles() {
+async::task<> ServedProject::stop_compiles() {
     loaded.set();
     for(auto& [path_id, interrupt]: compile_interrupts) {
         interrupt->cancel();
@@ -557,7 +557,7 @@ kota::task<> ServedProject::stop_compiles() {
     co_await started_compiles.join();
 }
 
-kota::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session) {
+async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session) {
     auto path_id = session->path_id;
 
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} current={}",
@@ -625,7 +625,7 @@ kota::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<std::optional<PCMBuilder::ModuleDeps>>
+async::task<std::optional<PCMBuilder::ModuleDeps>>
     ServedProject::depend_modules(RoundContext& ctx,
                                   const Ticket& ticket,
                                   const Resolution& resolution,
@@ -736,7 +736,7 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
     co_return deps;
 }
 
-kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
+async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
     // Only a join for a document of this project spawns a round, and the
     // round gets here before its first suspension: nothing can have closed
     // or moved it.
@@ -997,7 +997,7 @@ kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id
         // the crash response (contract 12).
         bool consuming_pch = consumed_pch.has_value();
         bool retry_without_suspect = false;
-        auto interrupt = std::make_unique<kota::cancellation_source>();
+        auto interrupt = std::make_unique<async::cancellation_source>();
         auto interrupt_token = interrupt->token();
         auto* own_interrupt = interrupt.get();
         compile_interrupts[path_id] = std::move(interrupt);
@@ -1017,7 +1017,7 @@ kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id
             true,
             [&]() -> RequestResult<worker::CompileParams> {
                 if(!ticket.fresh()) {
-                    co_await kota::fail(
+                    co_await async::fail(
                         ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
                 co_return co_await server.pool.send_stateful(path_id.raw,
@@ -1295,7 +1295,7 @@ kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id
     std::unreachable();
 }
 
-kota::task<std::optional<std::string>>
+async::task<std::optional<std::string>>
     ServedProject::ensure_pch(const Ticket& ticket,
                               std::uint64_t epoch,
                               llvm::StringRef text,
@@ -1375,13 +1375,13 @@ kota::task<std::optional<std::string>>
     co_return pch_key;
 }
 
-kota::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
-                                                         llvm::StringRef text,
-                                                         std::uint32_t point,
-                                                         const std::string& directory,
-                                                         const std::vector<std::string>& arguments,
-                                                         const Resolution& resolution,
-                                                         StatelessInputs& inputs) {
+async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
+                                                          llvm::StringRef text,
+                                                          std::uint32_t point,
+                                                          const std::string& directory,
+                                                          const std::vector<std::string>& arguments,
+                                                          const Resolution& resolution,
+                                                          StatelessInputs& inputs) {
     auto* synthesized = resolution.synthesized.get();
     auto path_id = ticket.session->path_id;
     auto* document = find_document(path_id);

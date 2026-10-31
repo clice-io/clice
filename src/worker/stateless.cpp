@@ -1,6 +1,6 @@
 module;
 
-#include "kota/ipc/framing.h"
+#include "kotatsu/ipc/framing.h"
 
 module clice;
 
@@ -609,7 +609,7 @@ static void
     peer.on_request([cancelled, handler, options](RequestContext&,
                                                   const Params& params) -> RequestResult<Params> {
         auto stop = std::make_shared<std::atomic_bool>(false);
-        co_return co_await kota::queue(
+        co_return co_await async::queue(
             [&]() -> Result {
                 if(stop->load(std::memory_order_relaxed)) {
                     return cancelled;
@@ -630,7 +630,7 @@ static void
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     // Limit libuv thread pool to 1 thread so each stateless worker executes
-    // only one compilation at a time. Must be set before any kota::queue call.
+    // only one compilation at a time. Must be set before any async::queue call.
 #ifdef _WIN32
     _putenv_s("UV_THREADPOOL_SIZE", "1");
 #else
@@ -648,7 +648,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     install_crash_report();
     purge_freed_memory();
 
-    kota::event_loop loop;
+    async::event_loop loop;
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {

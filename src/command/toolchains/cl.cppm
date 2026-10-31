@@ -40,9 +40,9 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
 /// builds the job in that standard and version. clang-cl's version is the
 /// one that detection finds, from the toolset its flags select
 /// (`/winsysroot`), as it does here.
-kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                   CompilerFamily family,
-                                                   llvm::StringRef input,
-                                                   std::string cwd);
+async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
+                                                    CompilerFamily family,
+                                                    llvm::StringRef input,
+                                                    std::string cwd);
 
 }  // namespace clice

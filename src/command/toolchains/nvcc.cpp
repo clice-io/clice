@@ -635,8 +635,8 @@ void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
         auto& arg = args[i];
         std::optional<ArchFlagKind> kind;
         switch(arg.opt_id) {
-            case option::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
-            case option::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
+            case clang_options::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
+            case clang_options::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
         }
         if(kind && arg.values.size() == 1) {
             sequence.push_back({*kind, arg.values[0]});
@@ -802,10 +802,10 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
     return info;
 }
 
-kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
-                                                     llvm::StringRef input,
-                                                     llvm::StringRef kind,
-                                                     std::string cwd) {
+async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                      llvm::StringRef input,
+                                                      llvm::StringRef kind,
+                                                      std::string cwd) {
     /// nvcc only offloads CUDA-language inputs; a host-language entry
     /// (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles in a single
     /// host step. The dryrun query follows the effective language so it

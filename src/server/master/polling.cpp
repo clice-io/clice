@@ -6,15 +6,15 @@ import :worker.probe;
 
 namespace clice {
 
-kota::task<> MasterServer::poll_task() {
+async::task<> MasterServer::poll_task() {
     // A tick's looks run on the event loop: bounded, so a backlog (a
     // checkout making every file of a project due) spreads over ticks instead
     // of stalling requests.
-    constexpr auto interval = std::chrono::milliseconds(250);
-    constexpr auto budget = std::chrono::milliseconds(2);
+    constexpr auto interval = chrono::milliseconds(250);
+    constexpr auto budget = chrono::milliseconds(2);
     while(true) {
         // Time is the feature: the disk loop's pace.
-        co_await kota::sleep(interval);
+        co_await async::sleep(interval);
         if(polling_files) {
             if(files.disk.tick(budget) > 0) {
                 probe.happened(LoopEvent::DiskChange);

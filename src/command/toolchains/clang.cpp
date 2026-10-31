@@ -114,14 +114,14 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
     // (`-Xpreprocessor -Werror`) they stay that option's.
     std::vector<std::string> result;
     std::size_t next = 0;
-    auto parse_options = kota::option::ParseOptions{.visibility = family_visibility(family)};
-    for(auto& parsed: option::table().parse(flags, parse_options)) {
+    auto parse_options = option::ParseOptions{.visibility = family_visibility(family)};
+    for(auto& parsed: clang_options::table().parse(flags, parse_options)) {
         if(!parsed) {
             continue;
         }
-        bool modules = family == CompilerFamily::GCC && parsed->id == option::OPT_fmodules;
+        bool modules = family == CompilerFamily::GCC && parsed->id == clang_options::OPT_fmodules;
         llvm::StringRef warning =
-            parsed->id == option::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
+            parsed->id == clang_options::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
         if(!modules && warning != "error" && !warning.starts_with("error=")) {
             continue;
         }
@@ -170,9 +170,9 @@ bool TargetNames::knows(unsigned id, llvm::StringRef name) {
         return true;
     }
     switch(id) {
-        case option::OPT_target_cpu: return target->isValidCPUName(name);
-        case option::OPT_tune_cpu: return target->isValidTuneCPUName(name);
-        case option::OPT_target_abi: return target->setABI(name.str());
+        case clang_options::OPT_target_cpu: return target->isValidCPUName(name);
+        case clang_options::OPT_tune_cpu: return target->isValidTuneCPUName(name);
+        case clang_options::OPT_target_abi: return target->setABI(name.str());
         default: return true;
     }
 }

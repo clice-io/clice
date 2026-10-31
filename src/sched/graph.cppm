@@ -113,7 +113,7 @@ struct RoundContext {
     /// edge takes effect for cascade and interest the moment this is
     /// called; it becomes durable only if this round commits Success while
     /// still current.
-    kota::task<DependResult> depend(NodeId dep);
+    async::task<DependResult> depend(NodeId dep);
 
     /// depend() without the dispatch or the wait: record the candidate
     /// edge to a node that never runs (a sentinel a scan consumed the
@@ -132,19 +132,19 @@ struct RoundContext {
     /// Advisory cancellation: fires when the round is overtaken or loses
     /// all interest. The closure picks its response points and still
     /// reports a real outcome — the graph never destroys a running round.
-    const kota::cancellation_token& token() const {
+    const async::cancellation_token& token() const {
         return tok;
     }
 
 private:
     friend class TaskGraph;
 
-    RoundContext(TaskGraph& graph, NodeId self, kota::cancellation_token tok) :
+    RoundContext(TaskGraph& graph, NodeId self, async::cancellation_token tok) :
         graph(graph), self(self), tok(std::move(tok)) {}
 
     TaskGraph& graph;
     NodeId self;
-    kota::cancellation_token tok;
+    async::cancellation_token tok;
 };
 
 /// Multi-family dependency graph with interest-counted cancellation — the
@@ -180,13 +180,13 @@ public:
     /// Produces one round of a node. The returned task runs to a real
     /// reply: cancellation is advisory (RoundContext::token()), and the
     /// graph never destroys a running round.
-    using RoundRunner = std::function<kota::task<RoundOutcome>(RoundContext& ctx, NodeId id)>;
+    using RoundRunner = std::function<async::task<RoundOutcome>(RoundContext& ctx, NodeId id)>;
 
     /// Families register once, before any request for their nodes.
     void register_family(Family family, RoundRunner run);
 
     /// Join a node's compilation from outside the graph (root interest).
-    kota::task<JoinOutcome> request(NodeId id, JoinOptions options = {});
+    async::task<JoinOutcome> request(NodeId id, JoinOptions options = {});
 
     /// Mark a node and all transitive dependents dirty, firing in-flight
     /// rounds' advisory tokens (their results are stale). Returns the set
@@ -219,7 +219,7 @@ public:
     /// Fire every round's token, refuse new rounds, and wait for all round
     /// frames to unwind. Must be awaited exactly once before the graph is
     /// destroyed.
-    kota::task<> shutdown();
+    async::task<> shutdown();
 
     bool has_node(NodeId id) const;
     bool is_dirty(NodeId id) const;
@@ -253,7 +253,7 @@ private:
     /// suspending so the completion event outlives map mutations and the
     /// round task that publishes the outcome.
     struct Round {
-        kota::event completion;
+        async::event completion;
         RoundOutcome outcome = RoundOutcome::Stale;
 
         /// Node generation this round was spawned against; the commit
@@ -301,8 +301,8 @@ private:
 
         /// Advisory cancellation scope of the current round; replaced
         /// after every cancel so the next round starts with a fresh token.
-        std::unique_ptr<kota::cancellation_source> source =
-            std::make_unique<kota::cancellation_source>();
+        std::unique_ptr<async::cancellation_source> source =
+            std::make_unique<async::cancellation_source>();
 
         /// Current (or most recent) round.
         std::shared_ptr<Round> round;
@@ -319,7 +319,7 @@ private:
     /// event-loop tick after release() saw it drop. The delay lets
     /// transient drops survive: a retry respawning after update()
     /// re-acquires its retained dependencies within the same drain cycle.
-    kota::task<> zero_interest_check(NodeId id);
+    async::task<> zero_interest_check(NodeId id);
 
     /// Fire the current round's advisory token and install a fresh scope.
     void cancel_round(Node& node);
@@ -332,9 +332,9 @@ private:
     /// false when the graph is shutting down.
     bool spawn_round(NodeId id);
 
-    kota::task<> round_task(NodeId id,
-                            std::shared_ptr<Round> round,
-                            kota::cancellation_token token);
+    async::task<> round_task(NodeId id,
+                             std::shared_ptr<Round> round,
+                             async::cancellation_token token);
 
     /// Synchronous commit: filter the reported outcome through round
     /// identity, retire candidate back-edges, promote candidates to the
@@ -353,7 +353,7 @@ private:
     void record_candidate(NodeId self, NodeId dep);
 
     /// RoundContext::depend() body.
-    kota::task<DependResult> depend_from(NodeId self, kota::cancellation_token token, NodeId dep);
+    async::task<DependResult> depend_from(NodeId self, async::cancellation_token token, NodeId dep);
 
     /// See RoundContext::reference().
     void reference_from(NodeId self, NodeId dep);
@@ -362,7 +362,7 @@ private:
     /// whenever a stale one invalidates the previous attempt. `waiter` is
     /// the node doing the waiting (for deadlock detection); requests pass
     /// none.
-    kota::task<bool> join_node(NodeId id, std::optional<NodeId> waiter);
+    async::task<bool> join_node(NodeId id, std::optional<NodeId> waiter);
 
     /// Whether waiting on `target` would deadlock: walks live rounds'
     /// candidate edges to see if the wait chain reaches back to `waiter`.
@@ -376,7 +376,7 @@ private:
 
     /// Owns every round task; structured shutdown via shutdown().
     /// Completed child frames are reclaimed eagerly by the group.
-    kota::task_group<> tasks;
+    async::task_group<> tasks;
 };
 
 }  // namespace clice

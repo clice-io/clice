@@ -54,13 +54,13 @@ defending against ghosts.
   `import :<partition>;` per partition it names. The partition
   `:support.prelude` imports `std.compat`, the C library's names past it
   (`libc`) and the third-party module (`modules/`), and gives the namespaces
-  clice uses everywhere their short names in `clice` — `ranges`, `views`,
-  `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`. The primary
-  interface (`src/module.cppm`) re-exports it, which brings it to every
-  implementation unit; every partition imports it. Code inside `clice`
-  writes those names (`ranges::sort`, `protocol::Range`), never
-  `std::ranges::` or `kota::ipc::protocol::`, and no file declares them
-  again.
+  clice writes their short names in `clice` — `ranges`, `views`, `chrono`,
+  `this_thread`, `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`,
+  `async`, `deco`, `meta`, `option`, `zest`. The primary interface
+  (`src/module.cppm`) re-exports it, which brings it to every implementation
+  unit; every partition imports it. Code inside `clice` writes those names
+  (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
+  or `kotatsu::ipc::protocol::`, and no file declares them again.
 - No module carries a macro: every compilation force-includes
   `support/macros.h`, the libraries' (`modules/macros.h`) and clice's own
   (`*.macros.h`). A unit opens a global module fragment (`module;`) only
@@ -95,7 +95,7 @@ defending against ghosts.
   `throw`/`try`/`catch`, no `dynamic_cast`/`typeid`. Polymorphic
   inspection uses `llvm::isa<>` / `cast<>` / `dyn_cast<>`.
 - Fallible synchronous operations return `std::expected<T, E>` with `E` =
-  `std::string` or `std::error_code`; async code uses kota's outcome
+  `std::string` or `std::error_code`; async code uses kotatsu's outcome
   types. `llvm::Error` only where an LLVM API forces it.
 - `assert` pins preconditions; impossible branches end in
   `std::unreachable()` — never `llvm_unreachable` (project convention).
@@ -117,7 +117,7 @@ defending against ghosts.
 
 ## Concurrency & Async
 
-- Async code is kota coroutines (`kota::task`, `co_await`) — no callback
+- Async code is kotatsu coroutines (`async::task`, `co_await`) — no callback
   style. A public interface may stay synchronous and drive a coroutine
   internally when the caller has no event loop (see `Toolchain`).
 - Review coroutine code by interleavings, not function by function: list
@@ -131,7 +131,7 @@ defending against ghosts.
   tokens and sources exist only to cross an ownership boundary — the serve
   mode shutdown source in `MasterServer`, the batch commands' in
   `Lifetime` (`sched/batch.cpp`). Graceful shutdown is not
-  cancellation — kota has no shield, a cancel cascades all the way down — so
+  cancellation — kotatsu has no shield, a cancel cascades all the way down — so
   a shutdown is a cancellable serving phase bounded by `with_token`, then a
   non-cancellable drain that joins each task in order.
 - `cancellation_token::wait()` completes by cancelling itself. Awaited
@@ -261,7 +261,7 @@ Domain words with one meaning each — use them only in that meaning:
 - Prefer `ranges` / `views` APIs over raw loops and traditional `<algorithm>` calls.
 - Range helpers come from the standard library, never LLVM's `STLExtras`: `ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
 - Prefer LLVM's efficient data structures (e.g., `llvm::SmallVector`, `llvm::DenseMap`, `llvm::StringMap`, `llvm::StringRef`) over their `std` counterparts when appropriate.
-- The operating system is reached through kotatsu: paths, files and directories through `fs` (`kota::fs`), the environment, programs and processes through `sys` (`kota::sys`), never `llvm::sys` or `std::filesystem`. LLVM stays where an interface takes its types — `llvm::vfs` for clang's file manager, a `llvm::MemoryBuffer` clang or the index adopts, filled from an `fs::File` — and for what kotatsu does not do: crash stack traces.
+- The operating system is reached through kotatsu: paths, files and directories through `fs` (`kotatsu::fs`), the environment, programs and processes through `sys` (`kotatsu::sys`), never `llvm::sys` or `std::filesystem`. LLVM stays where an interface takes its types — `llvm::vfs` for clang's file manager, a `llvm::MemoryBuffer` clang or the index adopts, filled from an `fs::File` — and for what kotatsu does not do: crash stack traces.
 
 ## Parameter Passing Preferences
 

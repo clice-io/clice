@@ -56,11 +56,11 @@ void close_document(ServedProjectFixture& fixture, Fid path_id) {
 
 /// The hover at `position` of the ticket's buffer, asked of the worker
 /// holding the document's AST as the hover request asks it.
-kota::task<std::optional<feature::HoverInfo>, ipc::Error>
+async::task<std::optional<feature::HoverInfo>, ipc::Error>
     ask_hover(ServedProject& served,
               const Ticket& ticket,
               protocol::Position position,
-              kota::cancellation_token token = {}) {
+              async::cancellation_token token = {}) {
     auto encoding = served.server.position_encoding;
     co_return co_await served.ast_request(
         ticket,
@@ -75,9 +75,9 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
 
 /// A completion at `position` of the ticket's buffer, built on a stateless
 /// worker as the completion request asks for it.
-kota::task<worker::CompletionResult, ipc::Error> ask_completion(ServedProject& served,
-                                                                const Ticket& ticket,
-                                                                protocol::Position position) {
+async::task<worker::CompletionResult, ipc::Error> ask_completion(ServedProject& served,
+                                                                 const Ticket& ticket,
+                                                                 protocol::Position position) {
     auto encoding = served.server.position_encoding;
     co_return co_await served.stateless_request(
         ticket,
@@ -146,7 +146,7 @@ ZEST_CASE(ClosedSessionSkipsCompile) {
 
     bool compiled = true;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         compiled = co_await served.ensure_compiled(session);
         co_await served.shutdown();
         done = true;
@@ -246,7 +246,7 @@ ZEST_CASE(CrashPublishesNote) {
     ZEXPECT(message.contains("save it"));
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         ZASSERT(!co_await served.ensure_compiled(session));
         done = true;
     };
@@ -280,15 +280,15 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     bool waiter_done = false;
     bool waiter_ok = true;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        kota::task_group<> group;
-        auto waiter = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto waiter = [&]() -> async::task<> {
             waiter_ok = co_await served.ensure_compiled(session);
             waiter_done = true;
         };
@@ -341,15 +341,15 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     bool waiter_done = false;
     bool waiter_ok = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        kota::task_group<> group;
-        auto waiter = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto waiter = [&]() -> async::task<> {
             waiter_ok = co_await served.ensure_compiled(session);
             waiter_done = true;
         };
@@ -405,15 +405,15 @@ ZEST_CASE(SupersededCompileCancelled) {
     bool first_done = false;
     bool second_ok = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        kota::task_group<> group;
-        auto first = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto first = [&]() -> async::task<> {
             [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
             first_done = true;
         };
@@ -427,7 +427,7 @@ ZEST_CASE(SupersededCompileCancelled) {
         session->generation += 1;
         served.edited(*session);
 
-        auto second = [&]() -> kota::task<> {
+        auto second = [&]() -> async::task<> {
             second_ok = co_await served.ensure_compiled(session);
         };
         group.spawn(second());
@@ -480,7 +480,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
 
     bool ok = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -541,7 +541,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     auto session = fixture.open(src, "import top;\nint main() { return t(); }\n");
 
     bool ok = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -606,7 +606,7 @@ ZEST_CASE(ImportScanPerUnit) {
     std::uint64_t body_scans = 0;
     std::uint64_t import_scans = 0;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -659,7 +659,7 @@ ZEST_CASE(BufferImportRecorded) {
     auto session = fixture.open(src, "import m;\nint main() { return 0; }\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -709,7 +709,7 @@ ZEST_CASE(IncludeImportRecorded) {
     auto session = fixture.open(src, "int main() { return 0; }\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -756,7 +756,7 @@ ZEST_CASE(HostImportRecorded) {
     auto session = fixture.open(tmp.path("part.inc"), "int part();\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -805,7 +805,7 @@ ZEST_CASE(SuffixImportRecorded) {
     auto session = fixture.open(tmp.path("part.inc"), "int part();\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -856,7 +856,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     bool unit_ok = false;
     bool header_ok = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -895,7 +895,7 @@ ZEST_CASE(CrashedCompileStopsBuilds) {
     session->crashed(feature::RequestKind::Compile, "d1", "cause", Session::Clock::now());
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         // With no worker at all, only the stop can answer without an error.
         auto result = co_await ask_completion(served, Ticket::take(session), {});
         ZASSERT(result);
@@ -915,7 +915,7 @@ ZEST_CASE(CrashedFormatStopsFormat) {
     session->crashed(feature::RequestKind::Format, "d1", "cause", Session::Clock::now());
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         auto result = co_await served.format(Ticket::take(session), std::nullopt, {});
         ZASSERT(result);
         ZEXPECT(!result.value().has_value());
@@ -946,7 +946,7 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     std::string directory = "/proj";
     std::vector<std::string> arguments = {"clang++", "-fsyntax-only", "/proj/a.cpp"};
     bool wrote = true;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         wrote = co_await fixture.ensure_pch(session, gen, epoch, directory, arguments);
     };
     auto task = body();
@@ -979,7 +979,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
     auto arguments = make_args(src);
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1025,7 +1025,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     auto session = fixture.open(src, "#pragma clang __debug crash\nint value;\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1074,7 +1074,7 @@ ZEST_CASE(QueuedRequestStops) {
     };
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1082,13 +1082,13 @@ ZEST_CASE(QueuedRequestStops) {
         opts.max_stateless = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        auto complete = [&]() -> kota::task<> {
+        auto complete = [&]() -> async::task<> {
             auto result =
                 co_await ask_completion(served, Ticket::take(session), {.line = 2, .character = 0});
             ZASSERT(result);
             ZEXPECT(result.value().list.data == "null");
         };
-        co_await kota::when_all(complete(), complete());
+        co_await async::when_all(complete(), complete());
         ZEXPECT(deaths == 1);
         auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
@@ -1124,26 +1124,26 @@ ZEST_CASE(ClientCancelSparesCompile) {
     bool cancelled_returned = false;
     bool other_answered = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        kota::cancellation_source source;
-        kota::task_group<> group;
-        auto cancelled_waiter = [&]() -> kota::task<> {
-            auto hover = [&]() -> kota::task<std::optional<feature::HoverInfo>, ipc::Error> {
+        async::cancellation_source source;
+        async::task_group<> group;
+        auto cancelled_waiter = [&]() -> async::task<> {
+            auto hover = [&]() -> async::task<std::optional<feature::HoverInfo>, ipc::Error> {
                 co_return co_await ask_hover(served,
                                              Ticket::take(session),
                                              protocol::Position{0, 4},
                                              source.token());
             };
-            auto r = co_await kota::with_token(hover(), source.token());
+            auto r = co_await async::with_token(hover(), source.token());
             cancelled_returned = r.is_cancelled();
         };
-        auto other_waiter = [&]() -> kota::task<> {
+        auto other_waiter = [&]() -> async::task<> {
             auto result =
                 co_await ask_hover(served, Ticket::take(session), protocol::Position{0, 4});
             other_answered = result.has_value();
@@ -1191,7 +1191,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
 
     bool stale = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1203,8 +1203,8 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         ZASSERT(warm);
 
         auto ticket = Ticket::take(session);
-        kota::task_group<> group;
-        auto tokens = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto tokens = [&]() -> async::task<> {
             auto result = co_await served.ast_request(ticket,
                                                       feature::RequestKind::SemanticTokens,
                                                       "SemanticTokens",
@@ -1252,7 +1252,7 @@ ZEST_CASE(HarmlessKindKeepsStop) {
     session->crashed(tokens, "w-1", "cause", Session::Clock::now());
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1304,7 +1304,7 @@ ZEST_CASE(PoisonPreambleShared) {
     };
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1367,7 +1367,7 @@ ZEST_CASE(EpochGuardsPCHClear) {
     auto arguments = make_args(src);
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1377,16 +1377,16 @@ ZEST_CASE(EpochGuardsPCHClear) {
         auto gen = session->generation;
         auto epoch = fixture.entry(session->path_id).epoch;
         bool built = true;
-        auto launch = [&]() -> kota::task<> {
+        auto launch = [&]() -> async::task<> {
             built = co_await fixture.ensure_pch(session, gen, epoch, directory, arguments);
         };
         // Runs after the launch suspended on its dispatched build: a
         // Lost-type invalidation arrives behind the in-flight request.
-        auto invalidate = [&]() -> kota::task<> {
+        auto invalidate = [&]() -> async::task<> {
             served.invalidate(session->path_id);
             co_return;
         };
-        co_await kota::when_all(launch(), invalidate());
+        co_await async::when_all(launch(), invalidate());
 
         // The build finished (the shared artifact is cached) and the stale
         // request compiles against it, but it adopted nothing and cleared
@@ -1447,7 +1447,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     };
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -1466,13 +1466,13 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
         bool first_built = true;
         bool second_built = true;
-        auto acquire_first = [&]() -> kota::task<> {
+        auto acquire_first = [&]() -> async::task<> {
             first_built = co_await build();
         };
-        auto acquire_second = [&]() -> kota::task<> {
+        auto acquire_second = [&]() -> async::task<> {
             second_built = co_await build();
         };
-        co_await kota::when_all(acquire_first(), acquire_second());
+        co_await async::when_all(acquire_first(), acquire_second());
 
         ZEXPECT(!first_built);
         ZEXPECT(!second_built);
@@ -1506,7 +1506,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1552,7 +1552,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
     });
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1590,7 +1590,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     a->saved();
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1627,7 +1627,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
 
     bool modified = false;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 0;
@@ -1640,8 +1640,8 @@ ZEST_CASE(CloseDuringQueryEnds) {
             worker::EvictParams{std::string(served.project.file_table.resolve(path_id))});
 
         auto ticket = Ticket::take(a);
-        kota::task_group<> group;
-        auto hover = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto hover = [&]() -> async::task<> {
             auto result = co_await ask_hover(served, ticket, protocol::Position{0, 5});
             modified = !result.has_value() && result.error().code == content_modified().code;
         };

@@ -27,7 +27,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     bool handler_cancelled = false;
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         std::string text;
         text.reserve(1 << 22);
         for(int i = 0; i < 200'000; i += 1) {
@@ -43,19 +43,19 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        kota::cancellation_source source;
+        async::cancellation_source source;
 
         // handler-shaped: the task itself is raced against the token, and
         // the send inside passes the same token down.
-        auto handler = [&]() -> kota::task<> {
+        auto handler = [&]() -> async::task<> {
             [[maybe_unused]] auto result =
                 co_await w.peer->send_request(cp, {.token = source.token()});
             handler_resumed = true;
         };
 
-        kota::task_group<> group;
-        auto wrapper = [&]() -> kota::task<> {
-            auto result = co_await kota::with_token(handler(), source.token());
+        async::task_group<> group;
+        auto wrapper = [&]() -> async::task<> {
+            auto result = co_await async::with_token(handler(), source.token());
             handler_cancelled = result.is_cancelled();
         };
         auto gate = w.gate(cp);
@@ -71,7 +71,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
-        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(!symbols.value().has_value());
 
@@ -108,21 +108,21 @@ ZEST_CASE(IpcCancelStopsBuild) {
     ZASSERT(w.spawn());
 
     bool test_done = false;
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::TURunParams bp;
         bp.index = true;
         bp.file = src;
         bp.directory = "/tmp";
         bp.arguments = make_args(src);
 
-        kota::cancellation_source source;
-        auto build = [&]() -> kota::task<> {
+        async::cancellation_source source;
+        auto build = [&]() -> async::task<> {
             auto result = co_await w.peer->send_request(bp, {.token = source.token()});
             ZASSERT(!result);
             ZEXPECT(result.error().code == worker::dispatch_errc::cancelled);
         };
 
-        kota::task_group<> group;
+        async::task_group<> group;
         auto gate = w.gate(bp);
         group.spawn(build());
         co_await w.parked(gate);

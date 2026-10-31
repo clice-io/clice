@@ -39,7 +39,7 @@ extern "C++" int main(int argc, const char** argv) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    namespace deco = kota::deco;
+    namespace deco = kotatsu::deco;
     namespace driver = clice::driver;
 
     auto args = deco::util::argvify(argc, argv);

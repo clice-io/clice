@@ -484,7 +484,7 @@ public:
     /// the classes it instantiated.
     auto instantiations() -> llvm::ArrayRef<const clang::Decl*>;
 
-    std::chrono::milliseconds build_at();
+    chrono::milliseconds build_at();
 
     clang::LangOptions& lang_options();
 
@@ -611,7 +611,7 @@ private:
     std::optional<unsigned> errors_at_end;
 
     /// When the compile started.
-    std::chrono::milliseconds build_time;
+    chrono::milliseconds build_time;
 
     /// Every place a failed include or `__has_include` lookup looked, see
     /// CompilationUnit::absent.

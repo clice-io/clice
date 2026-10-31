@@ -17,7 +17,7 @@ ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
     ZASSERT(w.spawn(true));
 
-    w.run([]() -> kota::task<> { co_return; });
+    w.run([]() -> async::task<> { co_return; });
 }
 
 ZEST_CASE(CompileRequest) {
@@ -30,7 +30,7 @@ ZEST_CASE(CompileRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = src;
         params.version = 1;
@@ -59,7 +59,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
@@ -69,13 +69,13 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        kota::cancellation_source source;
+        async::cancellation_source source;
         ipc::request_options opts;
         opts.token = source.token();
 
         bool first_failed = false;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             auto result = co_await w.peer->send_request(cp, opts);
             first_failed = !result.has_value();
         };
@@ -98,7 +98,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here,
         // attributably, rather than the whole run at its timeout.
-        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        retry_opts.timeout = chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(cp, retry_opts);
         ZASSERT(retry);
         ZEXPECT(retry.value().version == 2);
@@ -119,7 +119,7 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         std::string text;
         text.reserve(1 << 22);
         for(int i = 0; i < 200'000; ++i) {
@@ -140,15 +140,15 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
         // An interrupted parse leaves the document without an AST, which
         // the next query reports — the content, not the clock, is the
         // assertion.
-        kota::cancellation_source source;
+        async::cancellation_source source;
         bool cancelled = false;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             // Hang detection: a reply that never comes fails here, before
             // the watchdog.
             auto result = co_await w.peer->send_request(
                 cp,
-                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+                {.token = source.token(), .timeout = chrono::seconds(30)});
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
@@ -183,7 +183,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
@@ -196,25 +196,25 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         // Stopped, the worker reads the request and its cancel in one read
         // once it resumes, so the compile's task never starts.
         ZASSERT(!w.proc.kill(SIGSTOP));
-        kota::cancellation_source source;
+        async::cancellation_source source;
         bool cancelled = false;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             // Hang detection: a reply that never comes fails here, before
             // the watchdog.
             auto result = co_await w.peer->send_request(
                 cp,
-                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+                {.token = source.token(), .timeout = chrono::seconds(30)});
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         group.spawn(sender());
         // No event: the request's write into the stopped worker's pipe
         // ends unannounced.
-        co_await kota::sleep(50, w.loop);
+        co_await async::sleep(50, w.loop);
         source.cancel();
         // No event: so does the cancel's.
-        co_await kota::sleep(50, w.loop);
+        co_await async::sleep(50, w.loop);
         ZASSERT(!w.proc.kill(SIGCONT));
         co_await group.join();
         ZASSERT(cancelled);
@@ -223,7 +223,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
-        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(!symbols.value().has_value());
 
@@ -244,7 +244,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
@@ -261,12 +261,12 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         worker::SemanticTokensParams qp;
         qp.path = src;
 
-        kota::cancellation_source source;
+        async::cancellation_source source;
         ipc::request_options opts;
         opts.token = source.token();
 
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             [[maybe_unused]] auto result = co_await w.peer->send_request(qp, opts);
         };
         group.spawn(sender());
@@ -275,7 +275,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
 
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here.
-        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        retry_opts.timeout = chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(qp, retry_opts);
         ZASSERT(retry);
 
@@ -291,7 +291,7 @@ ZEST_CASE(HoverWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::HoverParams params;
         params.path = "/tmp/nonexistent.cpp";
         params.offset = 0;
@@ -318,7 +318,7 @@ ZEST_CASE(CompileThenHover) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         // First compile
         worker::CompileParams cp;
         cp.path = src;
@@ -358,7 +358,7 @@ ZEST_CASE(InvalidUTF8Replaced) {
     ZASSERT(w.spawn(true));
 
     std::string hover;
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
@@ -394,7 +394,7 @@ ZEST_CASE(CodeActionWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CodeActionParams params;
         params.path = "/tmp/test.cpp";
         params.range = {0, 0};
@@ -414,7 +414,7 @@ ZEST_CASE(SemanticTokensWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::SemanticTokensParams params;
         params.path = "/tmp/nonexistent.cpp";
 
@@ -433,7 +433,7 @@ ZEST_CASE(FoldingRangeWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::FoldingRangeParams params;
         params.path = "/tmp/nonexistent.cpp";
 
@@ -452,7 +452,7 @@ ZEST_CASE(DocumentSymbolWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::DocumentSymbolParams params;
         params.path = "/tmp/nonexistent.cpp";
 
@@ -471,7 +471,7 @@ ZEST_CASE(DocumentLinkWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::DocumentLinkParams params;
         params.path = "/tmp/nonexistent.cpp";
 
@@ -490,7 +490,7 @@ ZEST_CASE(InlayHintsWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::InlayHintParams params{.path = "/tmp/nonexistent.cpp"};
 
         auto result = co_await w.peer->send_request(params);
@@ -518,7 +518,7 @@ ZEST_CASE(MultipleSequentialRequests) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         // Compile first so feature requests return real data.
         worker::CompileParams cp;
         cp.path = src;
@@ -576,7 +576,7 @@ ZEST_CASE(MultipleDocuments) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         // Compile 3 different documents.
         for(int i = 0; i < 3; i++) {
             worker::CompileParams cp;
@@ -612,7 +612,7 @@ ZEST_CASE(EvictNotification) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         // Send an evict notification — worker should remove the document without crashing.
         worker::EvictParams ep;
         ep.path = "/tmp/evict_test.cpp";
@@ -654,7 +654,7 @@ ZEST_CASE(DocumentLimitEvicts) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         for(int i = 0; i < 3; i++) {
             worker::CompileParams cp;
             cp.path = paths[i];
@@ -710,8 +710,8 @@ ZEST_CASE(BusyDocumentsStay) {
         [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
 
     bool test_done = false;
-    w.run([&]() -> kota::task<> {
-        auto compile = [&](std::size_t i) -> kota::task<> {
+    w.run([&]() -> async::task<> {
+        auto compile = [&](std::size_t i) -> async::task<> {
             worker::CompileParams cp;
             cp.path = documents[i].first;
             cp.version = 1;
@@ -721,7 +721,7 @@ ZEST_CASE(BusyDocumentsStay) {
             auto result = co_await w.peer->send_request(cp);
             ZEXPECT(result);
         };
-        co_await kota::when_all(compile(0), compile(1));
+        co_await async::when_all(compile(0), compile(1));
         test_done = true;
     });
 

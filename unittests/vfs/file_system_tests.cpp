@@ -189,7 +189,7 @@ ZEST_CASE(StampSeesKeptTimes) {
     ZASSERT(before);
     auto stamp = vfs::Stamp::of(*before);
     // Time is the feature: past the coarse clock inode times are taken from.
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    this_thread::sleep_for(chrono::milliseconds(50));
     tmp.touch("a.h", "int y;\n");
     ZASSERT(set_file_mtime(path, stamp.mtime_ns));
     auto after = fs::status(path);

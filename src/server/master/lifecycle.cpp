@@ -23,7 +23,7 @@ namespace clice {
 /// working-set size.
 constexpr static std::size_t notify_log_limit = 128;
 
-MasterServer::MasterServer(kota::event_loop& loop, std::string requested_configuration) :
+MasterServer::MasterServer(async::event_loop& loop, std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)) {
     std::string unused;
     files.disk.shadow = sys::get_env(unused, "CLICE_SHADOW_FRESHNESS");
@@ -32,8 +32,8 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string requested_configu
     // turn, outside it, before any compile that read the change can
     // finish; applied later, they would mark that compile's AST stale.
     files.disk.on_change = [this] {
-        bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
-            co_await kota::sleep(std::chrono::milliseconds(0));
+        bg_tasks.spawn([](MasterServer& server) -> async::task<> {
+            co_await async::sleep(chrono::milliseconds(0));
             server.apply_disk_changes();
         }(*this));
     };
@@ -124,7 +124,7 @@ void MasterServer::initialize() {
     // deadline, and drive eviction through a real server.
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
-            std::chrono::milliseconds(*ms);
+            chrono::milliseconds(*ms);
     }
     pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
@@ -234,10 +234,10 @@ feature::SemanticTokensOptions MasterServer::startup_token_options() const {
         .settings.semantic_tokens;
 }
 
-kota::task<> MasterServer::stop() {
+async::task<> MasterServer::stop() {
     if(!stop_started) {
         stop_started = true;
-        stop_run.spawn([](MasterServer& server) -> kota::task<> {
+        stop_run.spawn([](MasterServer& server) -> async::task<> {
             // A client that went away skipped the shutdown request; no
             // project may start from here on (a project stop finishing below
             // would serve the folders again, see make_project).
@@ -255,7 +255,7 @@ kota::task<> MasterServer::stop() {
     co_await stopped.wait();
 }
 
-kota::task<> MasterServer::close() {
+async::task<> MasterServer::close() {
     co_await stop();
     co_await stop_run.join();
     client_watch.cancel();
@@ -267,10 +267,10 @@ kota::task<> MasterServer::close() {
 }
 
 void MasterServer::watch_client(std::uint32_t pid) {
-    client_watch.spawn([](MasterServer& server, std::uint32_t pid) -> kota::task<> {
+    client_watch.spawn([](MasterServer& server, std::uint32_t pid) -> async::task<> {
         while(sys::process_alive(static_cast<int>(pid))) {
             // No event: the editor is no child of the server's to wait for.
-            co_await kota::sleep(std::chrono::seconds(2), server.loop);
+            co_await async::sleep(chrono::seconds(2), server.loop);
         }
         LOG_INFO("Client process {} exited; shutting down", pid);
         server.schedule_shutdown();

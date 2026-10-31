@@ -179,7 +179,7 @@ private:
         std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
     };
 
-    using RawResult = kota::task<codec::RawValue, ipc::Error>;
+    using RawResult = async::task<codec::RawValue, ipc::Error>;
     using RequestContext = ipc::JSONPeer::RequestContext;
 
     // handshake.cpp
@@ -241,7 +241,7 @@ private:
     };
 
     RawResult send_tokens(ResolvedDoc document,
-                          kota::cancellation_token token,
+                          async::cancellation_token token,
                           TokensRequest request);
 
     // navigation.cpp
@@ -256,7 +256,7 @@ private:
     /// clice/switchContext, clice/resetContext and clice/switchConfiguration,
     /// which an editor asks for directly or through the commands of the
     /// source actions switching them (context_actions, configuration_actions).
-    kota::task<ext::SwitchContextResult> switch_context(const ext::SwitchContextParams& params);
+    async::task<ext::SwitchContextResult> switch_context(const ext::SwitchContextParams& params);
     ext::SwitchContextResult reset_context(const ext::ResetContextParams& params);
     ext::SwitchConfigurationResult
         switch_configuration(const ext::SwitchConfigurationParams& params);
@@ -271,7 +271,7 @@ private:
     // progress.cpp
 
     /// Wait out the delay, then announce `state`'s compile unless it ended.
-    kota::task<> announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id);
+    async::task<> announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id);
 
     // test_hooks.cpp
     void register_test_hooks();
@@ -424,7 +424,7 @@ void LSPClient::on_request(Handler handler) {
     peer.on_request(
         [this, handler = std::move(handler)](RequestContext& ctx, const Params& params) -> Result {
             if(auto error = refused(std::is_same_v<Params, protocol::ShutdownParams>)) {
-                return kota::outcome_error(std::move(*error));
+                return kotatsu::outcome_error(std::move(*error));
             }
             return handler(ctx, params);
         });
@@ -437,7 +437,7 @@ void LSPClient::on_request(std::string_view method, Handler handler) {
         method,
         [this, handler = std::move(handler)](RequestContext& ctx, const Params& params) -> Result {
             if(auto error = refused()) {
-                return kota::outcome_error(std::move(*error));
+                return kotatsu::outcome_error(std::move(*error));
             }
             return handler(ctx, params);
         });
@@ -460,19 +460,19 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.
             if(second_name(document.path)) {
-                return kota::outcome_error(content_modified());
+                return kotatsu::outcome_error(content_modified());
             }
-            return kota::outcome_error(
+            return kotatsu::outcome_error(
                 ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"});
         }
         // A project whose settings have errors serves nothing under its root.
         if(document.project->broken()) {
             if constexpr(std::same_as<Params, protocol::DocumentDiagnosticParams>) {
-                return kota::co_invoke([]() -> RawResult {
+                return async::co_invoke([]() -> RawResult {
                     co_return full_report(std::vector<protocol::Diagnostic>());
                 });
             } else {
-                return kota::co_invoke([]() -> RawResult { co_return codec::RawValue{"null"}; });
+                return async::co_invoke([]() -> RawResult { co_return codec::RawValue{"null"}; });
             }
         }
         return answer(ctx, params, std::move(document));
@@ -483,19 +483,19 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
 using NavigationReply = std::expected<codec::RawValue, ipc::Error>;
 
 /// Answer with what a gate decided instead (GateStop).
-kota::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop);
+async::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop);
 
 /// A navigation request's answer from the symbol at its position,
 /// `answer`'s, once the compile gate passed (ServedProject::navigation_gate);
 /// `none` where no symbol is. A document not open is answered from the
 /// index alone.
 template <typename Answer>
-kota::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
-                                                 const Ticket& ticket,
-                                                 Fid path_id,
-                                                 const protocol::Position& position,
-                                                 llvm::StringRef none,
-                                                 Answer answer) {
+async::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
+                                                  const Ticket& ticket,
+                                                  Fid path_id,
+                                                  const protocol::Position& position,
+                                                  llvm::StringRef none,
+                                                  Answer answer) {
     if(ticket.session) {
         if(auto stop = co_await project.navigation_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
@@ -507,7 +507,7 @@ kota::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
     }
     auto reply = answer(*cursor);
     if(!reply) {
-        co_await kota::fail(std::move(reply.error()));
+        co_await async::fail(std::move(reply.error()));
     }
     co_return std::move(*reply);
 }

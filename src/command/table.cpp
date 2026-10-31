@@ -26,14 +26,14 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
             continue;
         }
         switch(arg.opt_id) {
-            case option::OPT_x:
+            case clang_options::OPT_x:
                 if(before_slot && arg.values.size() == 1) {
                     llvm::StringRef value = arg.values[0];
                     x_state = value == "none" ? llvm::StringRef() : value;
                 }
                 break;
-            case option::OPT__SLASH_TC: cl_state = "c"; break;
-            case option::OPT__SLASH_TP: cl_state = "c++"; break;
+            case clang_options::OPT__SLASH_TC: cl_state = "c"; break;
+            case clang_options::OPT__SLASH_TP: cl_state = "c++"; break;
         }
     }
     return cl_state.empty() ? x_state : cl_state;
@@ -48,7 +48,7 @@ bool cxx_driver(const Command& command) {
         return llvm::StringRef(command.subcommand) == "c++";
     }
     for(auto& arg: views::reverse(command.args)) {
-        if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
+        if(arg.opt_id == clang_options::OPT_driver_mode && arg.values.size() == 1) {
             return llvm::StringRef(arg.values[0]) == "g++";
         }
     }
@@ -79,12 +79,12 @@ const Command& CommandTable::get(CommandID id) const {
     return *commands.get(static_cast<std::uint32_t>(id));
 }
 
-LocalArg CommandTable::local_arg(
-    const std::expected<kota::option::ParsedArg, kota::option::ParseError>& parsed,
-    llvm::ArrayRef<std::string> tokens) {
-    if(!parsed || parsed->id == option::OPT_UNKNOWN || parsed->id == option::OPT_INPUT) {
+LocalArg CommandTable::local_arg(const std::expected<option::ParsedArg, option::ParseError>& parsed,
+                                 llvm::ArrayRef<std::string> tokens) {
+    if(!parsed || parsed->id == clang_options::OPT_UNKNOWN ||
+       parsed->id == clang_options::OPT_INPUT) {
         auto index = parsed ? parsed->index : parsed.error().index;
-        return {.opt_id = option::OPT_UNKNOWN,
+        return {.opt_id = clang_options::OPT_UNKNOWN,
                 .cls = ArgClass::Unknown,
                 .spelling = strings.save(tokens[index]).data()};
     }
@@ -163,7 +163,7 @@ void CommandTable::render_identity(CommandID id, std::string& out) {
             // The precompiled header a command reads decides what it
             // compiles, though no render passes it on.
             case ArgClass::Discarded:
-                if(arg.opt_id == option::OPT_include_pch) {
+                if(arg.opt_id == clang_options::OPT_include_pch) {
                     render_portable(arg);
                 }
                 break;
@@ -204,9 +204,9 @@ std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
     bool emits = type != types::TY_INVALID && types::onlyPrecompileType(type);
     const char* output = nullptr;
     for(auto& arg: get(id).args) {
-        if(arg.opt_id == option::OPT_emit_pch) {
+        if(arg.opt_id == clang_options::OPT_emit_pch) {
             emits = true;
-        } else if(arg.opt_id == option::OPT_o && arg.values.size() == 1) {
+        } else if(arg.opt_id == clang_options::OPT_o && arg.values.size() == 1) {
             output = arg.values[0];
         }
     }
@@ -220,7 +220,7 @@ llvm::SmallVector<Spelling, 2> CommandTable::pch_inputs(CommandID id) const {
     auto& args = get(id).args;
     auto directory = Spelling::absolute(get(id).directory);
     for(auto& arg: args) {
-        if(arg.opt_id == option::OPT_working_directory && arg.values.size() == 1) {
+        if(arg.opt_id == clang_options::OPT_working_directory && arg.values.size() == 1) {
             directory = Spelling::absolute(arg.values[0]);
         }
     }
@@ -229,9 +229,9 @@ llvm::SmallVector<Spelling, 2> CommandTable::pch_inputs(CommandID id) const {
         if(arg.values.size() != 1) {
             continue;
         }
-        if(arg.opt_id == option::OPT_include_pch) {
+        if(arg.opt_id == clang_options::OPT_include_pch) {
             inputs.push_back(Spelling::absolute(arg.values[0]));
-        } else if(arg.opt_id == option::OPT_include) {
+        } else if(arg.opt_id == clang_options::OPT_include) {
             Spelling header(arg.values[0], directory);
             inputs.push_back(Spelling::absolute(header.str() + ".pch"));
             inputs.push_back(Spelling::absolute(header.str() + ".gch"));
@@ -270,7 +270,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     // Inject our resource dir if the command names none, so the embedded
     // frontend and its builtin headers stay version-matched.
     bool has_resource_dir = ranges::any_of(command.args, [](const Arg& arg) {
-        return arg.opt_id == option::OPT_resource_dir;
+        return arg.opt_id == clang_options::OPT_resource_dir;
     });
     if(!has_resource_dir && !resource_dir().empty()) {
         argv.push_back("-resource-dir");
@@ -286,7 +286,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
 
     std::size_t includes = 0;
     for(auto& arg: command.args) {
-        if(arg.opt_id == option::OPT_include) {
+        if(arg.opt_id == clang_options::OPT_include) {
             includes += 1;
             if(includes > opts.kept_includes) {
                 continue;

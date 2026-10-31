@@ -69,7 +69,7 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err);
 /// answers: the command it runs is what clice compiles, and fails the same
 /// way there (an unknown `--target`). A GCC job answers only when it
 /// succeeds: GCC prints its macros and LIBRARY_PATH only then.
-kota::task<std::expected<GCCStyleOutput, std::string>>
+async::task<std::expected<GCCStyleOutput, std::string>>
     run_gcc_style(llvm::ArrayRef<std::string> args, std::size_t driver_tokens, std::string cwd);
 
 /// The job clang's own driver builds for `args` (a driver, its flags and
@@ -88,9 +88,9 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
 /// emcc, a `c++` that is clang) from GCC. There is neither for an input the
 /// driver only passes on (assembler), or a driver that is neither GCC nor
 /// clang (Intel's icc).
-kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
-                                                          std::size_t driver_tokens,
-                                                          std::string cwd);
+async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
+                                                           std::size_t driver_tokens,
+                                                           std::string cwd);
 
 /// Whether clang knows the warning option `-W<value>`, read the way its
 /// frontend reads one (clang/lib/Basic/Warnings.cpp): a warning group,

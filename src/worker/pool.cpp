@@ -1,6 +1,6 @@
 module;
 
-#include "kota/ipc/framing.h"
+#include "kotatsu/ipc/framing.h"
 
 module clice;
 
@@ -19,9 +19,9 @@ namespace {
 /// Coroutine that drains a worker's stderr pipe.
 /// Workers write their own log files, so this only captures unexpected output
 /// (crash stacktraces, assertion failures, sanitizer reports, etc.).
-kota::task<> drain_stderr(kota::pipe stderr_pipe,
-                          std::string prefix,
-                          std::shared_ptr<StderrTail> tail) {
+async::task<> drain_stderr(async::pipe stderr_pipe,
+                           std::string prefix,
+                           std::shared_ptr<StderrTail> tail) {
     while(true) {
         auto read = co_await stderr_pipe.read_line();
         if(!read.has_value() || !read.value()) {
@@ -45,7 +45,7 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
 
 /// How a worker died, worded for the user.
 std::string describe_exit(std::int64_t exit_code, int exit_signal) {
-    kota::process::exit_status exit{.code = exit_code, .term_signal = exit_signal};
+    async::process::exit_status exit{.code = exit_code, .term_signal = exit_signal};
     if(exit_signal != 0) {
         return "killed by " + exit.to_string();
     }
@@ -99,7 +99,7 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
                                                                     bool stateful,
                                                                     unsigned generation) {
     auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
-    kota::process::options opts;
+    async::process::options opts;
     // Asked at every spawn: on macOS it fails once an update has replaced
     // the file this program runs from.
     opts.program = options.program;
@@ -137,12 +137,12 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     opts.creation.process_group = true;
     opts.creation.exit_with_parent = can_exit_with_parent;
     opts.streams = {
-        kota::process::stdio::pipe(),
-        kota::process::stdio::pipe(),
-        kota::process::stdio::pipe(),
+        async::process::stdio::pipe(),
+        async::process::stdio::pipe(),
+        async::process::stdio::pipe(),
     };
 
-    auto result = kota::process::spawn(opts, loop);
+    auto result = async::process::spawn(opts, loop);
     if(!result) {
         LOG_ANOMALY(WorkerSpawnFail,
                     "Failed to spawn worker {}: {}",
@@ -167,10 +167,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     return SpawnedProcess{std::move(spawn.proc), std::move(peer), std::move(stderr_tail)};
 }
 
-kota::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
-                                  std::size_t index,
-                                  bool stateful,
-                                  unsigned generation) {
+async::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
+                                   std::size_t index,
+                                   bool stateful,
+                                   unsigned generation) {
     co_await peer->run();
     // The worker closed its end, as it does once it dies: no request may be
     // dispatched to it in the while before its exit is observed.
@@ -221,7 +221,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
         .stderr_tail = std::move(spawned->stderr_tail),
         .name = name,
         .state = SlotState::Alive,
-        .spawn_time = std::chrono::steady_clock::now(),
+        .spawn_time = chrono::steady_clock::now(),
     });
 
     if(stateful)
@@ -248,7 +248,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.preempted = false;
     w.memory = 0;
     w.swapped = 0;
-    w.spawn_time = std::chrono::steady_clock::now();
+    w.spawn_time = chrono::steady_clock::now();
     w.death = std::make_shared<WorkerDeath>();
     // generation was bumped at death; crash_streak carries across restarts
     // until a healthy uptime resets it.
@@ -321,7 +321,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     return true;
 }
 
-kota::task<> WorkerPool::stop() {
+async::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     stop_scope.cancel();
     fail_pending_requests();
@@ -348,7 +348,7 @@ kota::task<> WorkerPool::stop() {
 
     // A wedged worker that ignores SIGTERM would otherwise block the join
     // below forever; escalate after a grace period.
-    kota::task_group<> watchdog;
+    async::task_group<> watchdog;
     watchdog.spawn(kill_stragglers());
 
     co_await worker_tasks.join();
@@ -358,9 +358,9 @@ kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopped");
 }
 
-kota::task<> WorkerPool::kill_stragglers() {
+async::task<> WorkerPool::kill_stragglers() {
     // Time is the feature: the grace a worker gets after SIGTERM.
-    co_await kota::sleep(std::chrono::milliseconds(5000), loop);
+    co_await async::sleep(chrono::milliseconds(5000), loop);
     LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
     for(auto& w: stateless_workers)
         if(w.state == SlotState::Alive)
@@ -461,7 +461,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     execute();
 }
 
-kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
+async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
 
     // Every exit marks this incarnation's record done, shutdown included:
@@ -521,7 +521,7 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         LOG_INFO("Worker {} killed on purpose, respawning", workers[index].name);
         workers[index].state = SlotState::Respawning;
         mark_done.death->done.set();
-        worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
+        worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
         co_return;
     }
 
@@ -530,12 +530,12 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // drain reaches EOF first. The slot is already dying, so a shutdown
     // meanwhile skips its reaped pid.
     if(auto tail = workers[index].stderr_tail) {
-        auto drained = [](std::shared_ptr<StderrTail> tail) -> kota::task<> {
+        auto drained = [](std::shared_ptr<StderrTail> tail) -> async::task<> {
             co_await tail->drained.wait();
         };
         // Hang detection: a short bound runs out on a stalled master (a
         // loaded machine), and the crash then blames no request.
-        co_await kota::with_timeout(drained(std::move(tail)), std::chrono::minutes(1), loop);
+        co_await async::with_timeout(drained(std::move(tail)), chrono::minutes(1), loop);
         if(stop_scope.cancelled())
             co_return;
     }
@@ -553,8 +553,8 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 }
 
 void WorkerPool::reset_streak_if_healthy(WorkerProcess& w) {
-    auto now = std::chrono::steady_clock::now();
-    if(w.spawn_time != std::chrono::steady_clock::time_point{} &&
+    auto now = chrono::steady_clock::now();
+    if(w.spawn_time != chrono::steady_clock::time_point{} &&
        now - w.spawn_time >= options.healthy_uptime) {
         w.fresh_budget();
     }
@@ -722,7 +722,7 @@ ipc::Error WorkerPool::death_error(const WorkerDeath& death,
     return ipc::Error{code, death.cause, std::move(identity)};
 }
 
-kota::task<bool> WorkerPool::await_capacity(bool stateful) {
+async::task<bool> WorkerPool::await_capacity(bool stateful) {
     while(!stop_scope.cancelled()) {
         auto& workers = stateful ? stateful_workers : stateless_workers;
         auto serving = ranges::any_of(workers, [](const WorkerProcess& w) {
@@ -745,16 +745,16 @@ kota::task<bool> WorkerPool::await_capacity(bool stateful) {
     co_return false;
 }
 
-std::chrono::milliseconds WorkerPool::backoff_delay(unsigned crash_streak) const {
+chrono::milliseconds WorkerPool::backoff_delay(unsigned crash_streak) const {
     if(crash_streak <= 1)
-        return std::chrono::milliseconds(0);
+        return chrono::milliseconds(0);
     auto shift = std::min(crash_streak - 2, 4u);
     return options.respawn_backoff * (1u << shift);
 }
 
-kota::task<> WorkerPool::respawn_after(std::size_t index,
-                                       bool stateful,
-                                       std::chrono::milliseconds delay) {
+async::task<> WorkerPool::respawn_after(std::size_t index,
+                                        bool stateful,
+                                        chrono::milliseconds delay) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
     while(true) {
         if(delay.count() > 0) {
@@ -763,7 +763,7 @@ kota::task<> WorkerPool::respawn_after(std::size_t index,
                      delay.count(),
                      workers[index].crash_streak);
             // Time is the feature: the crash streak's backoff.
-            co_await kota::with_token(kota::sleep(delay, loop), stop_scope.token());
+            co_await async::with_token(async::sleep(delay, loop), stop_scope.token());
         }
         if(stop_scope.cancelled())
             co_return;
@@ -801,9 +801,9 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     }
 }
 
-kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
+async::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     // Time is the feature: the cooldown of a slot given up.
-    co_await kota::with_token(kota::sleep(options.revive_after, loop), stop_scope.token());
+    co_await async::with_token(async::sleep(options.revive_after, loop), stop_scope.token());
     if(stop_scope.cancelled()) {
         co_return;
     }
@@ -817,7 +817,7 @@ kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     LOG_INFO("Worker {} reviving after cooldown", w.name);
     w.fresh_budget();
     w.state = SlotState::Respawning;
-    worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
+    worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
 }
 
 std::uint64_t WorkerPool::PendingStateless::finish() {
@@ -912,14 +912,13 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
         w.death->ignored_cancel = true;
         w.death->cause = std::format(
             "killed after ignoring a cancel for {} seconds",
-            std::chrono::duration_cast<std::chrono::seconds>(WorkerScheduler::cancel_grace)
-                .count());
+            chrono::duration_cast<chrono::seconds>(WorkerScheduler::cancel_grace).count());
     } else {
         // Timed only once their sends started.
         auto* request = flights.at(kill.requests.front());
         auto limit = request->build ? options.build_deadline : options.query_deadline;
         auto seconds = [](auto duration) {
-            return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+            return chrono::duration_cast<chrono::seconds>(duration).count();
         };
         if(kill.stateful) {
             w.death->cause =
@@ -957,11 +956,11 @@ void WorkerPool::retire_worker(std::size_t index) {
     LOG_INFO("Retiring worker {}", w.name);
 }
 
-kota::task<> WorkerPool::monitor_loop() {
+async::task<> WorkerPool::monitor_loop() {
     while(true) {
         // Time is the feature: the pace of the samples.
-        co_await kota::with_token(kota::sleep(scheduler.sample_interval(), loop),
-                                  stop_scope.token());
+        co_await async::with_token(async::sleep(scheduler.sample_interval(), loop),
+                                   stop_scope.token());
         if(stop_scope.cancelled())
             co_return;
         sample();
@@ -989,8 +988,8 @@ void WorkerPool::sample() {
             w.swapped = read->swapped;
             usage.push_back(*read);
             if(!stateful) {
-                auto cpu = std::chrono::duration_cast<std::chrono::milliseconds>(read->user_time +
-                                                                                 read->system_time);
+                auto cpu = chrono::duration_cast<chrono::milliseconds>(read->user_time +
+                                                                       read->system_time);
                 sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = cpu});
             }
         }

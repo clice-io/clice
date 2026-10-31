@@ -55,14 +55,14 @@ std::expected<Annotation, std::string> git_churn(llvm::StringRef project_root,
                                                  llvm::StringRef since) {
     // --relative names the files from the project root and keeps only
     // those under it, whatever the repository root is.
-    auto [ended] = kota::run(execute({"git",
-                                      "log",
-                                      std::format("--since={}", std::string_view(since)),
-                                      "--format=",
-                                      "--name-only",
-                                      "--relative",
-                                      "-z"},
-                                     project_root.str()));
+    auto [ended] = async::run(execute({"git",
+                                       "log",
+                                       std::format("--since={}", std::string_view(since)),
+                                       "--format=",
+                                       "--name-only",
+                                       "--relative",
+                                       "-z"},
+                                      project_root.str()));
     auto& log = *ended;
     if(!log) {
         return std::unexpected(log.error());

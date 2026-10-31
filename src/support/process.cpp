@@ -18,13 +18,13 @@ import :support.process;
 
 namespace clice {
 
-kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
-                                                              std::string cwd) {
+async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
+                                                               std::string cwd) {
     auto file = arguments[0];
     LOG_INFO("Execute command: {}", file);
 
     arguments.erase(arguments.begin());
-    auto captured = co_await kota::process::capture({
+    auto captured = co_await async::process::capture({
         .program = file,
         .args = std::move(arguments),
         // Keeps the output callers parse unlocalized. Not LANG alone: GCC
@@ -74,7 +74,7 @@ void purge_freed_memory() {
     }
 }
 
-kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
+async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
     // Runs after the watcher closes, which restores the default action: a
     // repeated SIGTERM or SIGHUP would then kill a process that is only left
     // to report and exit.
@@ -83,7 +83,7 @@ kota::task<> watch_termination(int signum, bool& requested, std::function<void()
             std::signal(signum, SIG_IGN);
         }
     });
-    auto watcher = kota::signal::create();
+    auto watcher = async::signal::create();
     if(!watcher || watcher->start(signum).has_error()) {
         co_return;
     }

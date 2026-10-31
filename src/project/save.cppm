@@ -31,7 +31,7 @@ SavedLoad load_saved(Project& project, bool reconcile);
 
 /// Persist what the project's database carries: the index's dirty state
 /// (ProjectIndex::begin_save), then the command snapshot, the artifact
-/// records and the context choices, in one write offloaded to the kota
+/// records and the context choices, in one write offloaded to the kotatsu
 /// thread pool. What the write fails to commit stays dirty for the next
 /// save; a database the write finds corrupt is replaced by a fresh one.
 ///
@@ -41,9 +41,9 @@ SavedLoad load_saved(Project& project, bool reconcile);
 /// serializing joins the same snapshot; debt that shows up after it
 /// (write-time corruption recovery) comes back in the report with
 /// owes_retry set.
-kota::task<index::IndexReport>
+async::task<index::IndexReport>
     save_project(Project& project,
-                 kota::event_loop& loop,
+                 async::event_loop& loop,
                  llvm::SmallVector<Fid> debt,
                  index::SearchRebuild search = index::SearchRebuild::Behind);
 
@@ -67,7 +67,7 @@ bool shrink_due(const index::PageUsage& usage);
 /// indexing is idle: the copy takes seconds on a large project, and it
 /// replaces the file only while no other process has the database open —
 /// else the file shrinks at a later call.
-kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loop& loop);
+async::task<index::IndexReport> shrink_database(Project& project, async::event_loop& loop);
 
 /// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty

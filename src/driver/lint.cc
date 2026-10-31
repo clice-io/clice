@@ -9,7 +9,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoFlag(names = {"--index"},
              help = "Also build and persist the project index from the same parses",

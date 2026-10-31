@@ -28,7 +28,7 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root)),
     sched(server.loop, project, commands, server.pool) {
     sched.graph.register_family(Family::AST,
-                                [this](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+                                [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
                                     auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
                                     auto outcome = co_await run_round(ctx, path_id);
                                     enter_phase(path_id, CompilePhase::Idle);
@@ -195,7 +195,7 @@ void ServedProject::start() {
     if(project.root.empty()) {
         return;
     }
-    auto poll_seconds = std::chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+    auto poll_seconds = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
@@ -213,7 +213,7 @@ void ServedProject::start() {
     }
 }
 
-kota::task<> ServedProject::shutdown() {
+async::task<> ServedProject::shutdown() {
     if(endpoint_recorded) {
         index::remove_endpoint(project.settings.project.cache_dir);
         endpoint_recorded = false;
@@ -223,7 +223,7 @@ kota::task<> ServedProject::shutdown() {
     tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(sched.pump.stop(), stop_compiles(), tree_tasks.join());
+    co_await async::when_all(sched.pump.stop(), stop_compiles(), tree_tasks.join());
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass.
     co_await sched.shutdown();
@@ -370,27 +370,27 @@ void ServedProject::schedule_metadata_flush() {
     bg_tasks.spawn(metadata_flush_task());
 }
 
-kota::task<> ServedProject::metadata_flush_task() {
+async::task<> ServedProject::metadata_flush_task() {
     // One loop turn of debounce coalesces a burst of marks into one save;
     // the save itself batches whatever else is dirty by then. Marks
     // arriving while the save runs re-schedule through request_flush, and
     // a save that could not clear the flags (serialization or write
     // failure) retries on the next spawn with this backoff.
     // Time is the feature: the debounce.
-    co_await kota::sleep(std::chrono::milliseconds(50));
+    co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
     if(project.artifacts_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
-        co_await kota::sleep(std::chrono::seconds(5));
+        co_await async::sleep(chrono::seconds(5));
         schedule_metadata_flush();
     }
 }
 
-kota::task<> ServedProject::checkpoint_task() {
+async::task<> ServedProject::checkpoint_task() {
     while(true) {
         // Time is the feature: the checkpoints' pace.
-        co_await kota::sleep(SchedulingStack::checkpoint_interval());
+        co_await async::sleep(SchedulingStack::checkpoint_interval());
         co_await sched.checkpoint();
         if(project.index.last_save_shards() > 0) {
             server.probe.happened(LoopEvent::Checkpoint);
@@ -421,7 +421,7 @@ void ServedProject::forget_evicted_pchs() {
 
 void ServedProject::start_control_listener() {
     constexpr llvm::StringLiteral host = "127.0.0.1";
-    auto acceptor = kota::tcp::listen(host, 0, {}, server.loop);
+    auto acceptor = async::tcp::listen(host, 0, {}, server.loop);
     std::optional<int> port;
     if(acceptor) {
         if(auto bound = acceptor->getsockname()) {
@@ -445,11 +445,11 @@ void ServedProject::start_control_listener() {
     bg_tasks.spawn(control::serve(*this, std::move(*acceptor)));
 }
 
-kota::task<> ServedProject::sources_poll_task() {
-    auto interval = std::chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+async::task<> ServedProject::sources_poll_task() {
+    auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
     while(true) {
         // Time is the feature: the workspace loop's pace.
-        co_await kota::sleep(interval);
+        co_await async::sleep(interval);
         co_await poll_sources();
     }
 }

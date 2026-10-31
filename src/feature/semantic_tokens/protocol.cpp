@@ -91,11 +91,11 @@ private:
 }  // namespace
 
 std::string legend_name(SemanticTokenKind kind) {
-    return lower_first(kota::meta::enum_name(kind));
+    return lower_first(meta::enum_name(kind));
 }
 
 std::string legend_name(SemanticTokenModifier modifier) {
-    return lower_first(kota::meta::enum_name(modifier));
+    return lower_first(meta::enum_name(modifier));
 }
 
 auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticTokenLegend {
@@ -114,7 +114,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
     };
 
     llvm::StringSet<> known;
-    for(auto kind: kota::meta::reflection<SemanticTokenKind>::member_values) {
+    for(auto kind: meta::reflection<SemanticTokenKind>::member_values) {
         auto name = legend_name(kind);
         known.insert(name);
         if(kind == SemanticTokenKind::None) {
@@ -131,7 +131,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
     }
 
     known.clear();
-    for(auto modifier: kota::meta::reflection<SemanticTokenModifier>::member_values) {
+    for(auto modifier: meta::reflection<SemanticTokenModifier>::member_values) {
         auto name = legend_name(modifier);
         known.insert(name);
         if(auto sent = renamed(options.modifiers, name); !sent.empty()) {

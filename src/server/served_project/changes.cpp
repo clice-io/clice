@@ -465,12 +465,12 @@ std::size_t ServedProject::reload_databases(bool force) {
     return 1;
 }
 
-kota::task<bool> ServedProject::poll_sources() {
+async::task<bool> ServedProject::poll_sources() {
     if(!watching) {
         co_return false;
     }
     auto walked =
-        co_await kota::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
+        co_await async::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
     auto added = project.build.refresh_default_sources(walked);
     if(added.empty()) {
         co_return false;

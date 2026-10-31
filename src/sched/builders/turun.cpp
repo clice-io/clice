@@ -28,7 +28,7 @@ void TURunFamily::register_runner() {
     });
 }
 
-kota::task<TURunFamily::Outcome> TURunFamily::run(Fid path_id, Plan plan, Guards guards) {
+async::task<TURunFamily::Outcome> TURunFamily::run(Fid path_id, Plan plan, Guards guards) {
     inputs[path_id] = {std::move(plan), std::move(guards)};
     // A clean node left by an earlier success must not satisfy this request
     // without running: the request's existence means work is owed, so
@@ -47,7 +47,7 @@ kota::task<TURunFamily::Outcome> TURunFamily::run(Fid path_id, Plan plan, Guards
     co_return outcome;
 }
 
-kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
+async::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     auto it = inputs.find(path_id);
     assert(it != inputs.end() && "a TURun round spawns only under run()'s stash");
     // Copied: the map may rehash under a concurrent run() for another

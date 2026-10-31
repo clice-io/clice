@@ -24,10 +24,10 @@ namespace clice {
 class PCMBuilder {
 public:
     PCMBuilder(TaskGraph& graph,
-              Project& project,
-              CommandResolver& commands,
-              PCHBuilder& pch,
-              WorkerPool& pool);
+               Project& project,
+               CommandResolver& commands,
+               PCHBuilder& pch,
+               WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -70,11 +70,11 @@ public:
     /// hence the bounded retry until the set is stable. A module that did
     /// not build is the compile's to report, as the stateful compile does;
     /// none only when the graph shut down.
-    kota::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
-                                                       const Resolution& resolution,
-                                                       llvm::ArrayRef<const char*> arguments,
-                                                       llvm::StringRef directory,
-                                                       llvm::StringRef content);
+    async::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
+                                                        const Resolution& resolution,
+                                                        llvm::ArrayRef<const char*> arguments,
+                                                        llvm::StringRef directory,
+                                                        llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob, or the PCH it was built over, while its node is still clean, so
@@ -171,7 +171,7 @@ public:
     /// re-resolve is inherent, so a CDB or import change is always seen
     /// by the next round). Consumers declare the full edge set and wait
     /// on the resolved subset.
-    kota::task<ModuleDeps> direct_deps(Fid path_id);
+    async::task<ModuleDeps> direct_deps(Fid path_id);
 
     /// The already-resolved-command variant: scans under exactly the
     /// arguments the caller will compile with, rendered by `resolution`.
@@ -191,11 +191,11 @@ public:
     /// dependency scan saw. A scan is reused while its arguments and the
     /// project's disk state (context_epoch) stay the same, a buffer's while
     /// its directive stream does too.
-    kota::task<ModuleDeps> direct_deps(Fid path_id,
-                                       const Resolution& resolution,
-                                       llvm::ArrayRef<const char*> arguments,
-                                       llvm::StringRef directory,
-                                       std::optional<llvm::StringRef> content);
+    async::task<ModuleDeps> direct_deps(Fid path_id,
+                                        const Resolution& resolution,
+                                        llvm::ArrayRef<const char*> arguments,
+                                        llvm::StringRef directory,
+                                        std::optional<llvm::StringRef> content);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see
@@ -204,7 +204,7 @@ private:
 
     /// One PCM round: declare dependency edges, wait on the imports, keep
     /// the last build while it holds, else dispatch a new one.
-    kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
+    async::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
 
     /// Move the build's PCM to `previous`, removing the one it replaced.
     void retire_blob(PCMBuild& build);

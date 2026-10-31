@@ -69,7 +69,7 @@ struct WeightOptions {
 };
 
 struct OverviewOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoKV(help = "Most hotspots, move and split candidates to list (default 20)", required = false)
     <int> limit;
@@ -80,14 +80,14 @@ struct OverviewOptions {
 };
 
 struct ImpactOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     ModelOptions model;
     WeightOptions weights;
     LogLevelOption log;
 };
 
 struct FileViewOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     FileTarget target;
     ModelOptions model;
     WeightOptions weights;
@@ -95,7 +95,7 @@ struct FileViewOptions {
 };
 
 struct EdgeOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<FROM> <TO>",
               help = "The module whose files name the other's entities, and the module named",
@@ -107,7 +107,7 @@ struct EdgeOptions {
 };
 
 struct ModuleViewOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<MODULE>", help = "The module")
     <std::string> module;
@@ -117,7 +117,7 @@ struct ModuleViewOptions {
 };
 
 struct InterfaceOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
     <std::string> module;
@@ -127,7 +127,7 @@ struct InterfaceOptions {
 };
 
 struct PlainViewOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     ModelOptions model;
     LogLevelOption log;
 };

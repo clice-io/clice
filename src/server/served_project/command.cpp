@@ -31,11 +31,11 @@ Resolution ServedProject::resolve_command(Fid path_id,
     return resolution;
 }
 
-kota::task<Resolution> ServedProject::document_command(Fid path_id,
-                                                       std::string& directory,
-                                                       std::vector<std::string>& arguments,
-                                                       const ContextChoice* candidate,
-                                                       llvm::function_ref<bool()> current) {
+async::task<Resolution> ServedProject::document_command(Fid path_id,
+                                                        std::string& directory,
+                                                        std::vector<std::string>& arguments,
+                                                        const ContextChoice* candidate,
+                                                        llvm::function_ref<bool()> current) {
     auto resolution = resolve_command(path_id, directory, arguments, candidate);
     llvm::SmallVector<UnitCommand, 2> taken;
     while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
@@ -48,13 +48,13 @@ kota::task<Resolution> ServedProject::document_command(Fid path_id,
     co_return resolution;
 }
 
-kota::task<bool> ServedProject::take_include_tree(TreeRequest request) {
+async::task<bool> ServedProject::take_include_tree(TreeRequest request) {
     auto key = request.key;
-    std::shared_ptr<kota::event> done;
+    std::shared_ptr<async::event> done;
     if(auto it = tree_runs.find(key); it != tree_runs.end()) {
         done = it->second;
     } else {
-        done = std::make_shared<kota::event>(false);
+        done = std::make_shared<async::event>(false);
         tree_runs.try_emplace(key, done);
         if(!tree_tasks.spawn(run_include_tree(std::move(request), done))) {
             tree_runs.erase(key);
@@ -65,8 +65,8 @@ kota::task<bool> ServedProject::take_include_tree(TreeRequest request) {
     co_return project.hosting.trees.find(key) != nullptr;
 }
 
-kota::task<> ServedProject::run_include_tree(TreeRequest request,
-                                             std::shared_ptr<kota::event> done) {
+async::task<> ServedProject::run_include_tree(TreeRequest request,
+                                              std::shared_ptr<async::event> done) {
     auto finish = llvm::make_scope_exit([&] {
         tree_runs.erase(request.key);
         done->set();

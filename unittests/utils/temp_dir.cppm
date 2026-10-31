@@ -30,7 +30,7 @@ struct TempDir {
     /// path-keyed index lookup in tests miss.
     std::string root{directory.path()};
 
-    kota::zest::FatalHook cleanup{[this] { directory.remove(); }};
+    zest::FatalHook cleanup{[this] { directory.remove(); }};
 
     /// Build an absolute path under this temporary root.
     std::string path(llvm::StringRef relative) const {
@@ -79,7 +79,7 @@ private:
 /// tree older than the server). Returns false on failure so callers can
 /// assert.
 inline bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns) {
-    using namespace std::chrono;
+    using namespace chrono;
     return !fs::set_times(path, {.mtime = sys_time<nanoseconds>(nanoseconds(mtime_ns))});
 }
 

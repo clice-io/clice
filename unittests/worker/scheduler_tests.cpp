@@ -7,9 +7,9 @@ namespace clice::testing {
 
 namespace {
 
-using std::chrono::milliseconds;
-using std::chrono::minutes;
-using std::chrono::seconds;
+using chrono::milliseconds;
+using chrono::minutes;
+using chrono::seconds;
 using worker::Priority;
 
 constexpr std::uint64_t GiB = 1ull << 30;
@@ -36,7 +36,7 @@ struct Core {
         ranges::move(scheduler.take_actions(), std::back_inserter(actions));
     }
 
-    void advance(std::chrono::milliseconds by) {
+    void advance(chrono::milliseconds by) {
         now += by;
     }
 

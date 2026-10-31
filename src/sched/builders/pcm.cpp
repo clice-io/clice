@@ -52,7 +52,7 @@ void PCMBuilder::register_runner() {
     });
 }
 
-kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
+async::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
@@ -68,11 +68,12 @@ kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
     co_return co_await direct_deps(path_id, resolution, argv, directory, std::nullopt);
 }
 
-kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id,
-                                                           const Resolution& resolution,
-                                                           llvm::ArrayRef<const char*> arguments,
-                                                           llvm::StringRef directory,
-                                                           std::optional<llvm::StringRef> content) {
+async::task<PCMBuilder::ModuleDeps>
+    PCMBuilder::direct_deps(Fid path_id,
+                            const Resolution& resolution,
+                            llvm::ArrayRef<const char*> arguments,
+                            llvm::StringRef directory,
+                            std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
@@ -132,7 +133,7 @@ kota::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id,
             content = text;
         }
         import_scans += 1;
-        auto scanned = co_await kota::queue(
+        auto scanned = co_await async::queue(
             [&] { return scan_precise(arguments, directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
@@ -188,7 +189,7 @@ void PCMBuilder::retire_blob(PCMBuild& build) {
     build.previous = std::exchange(build.blob, {});
 }
 
-kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
+async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
     if(auto* inputs = project.build_inputs(path_id);
@@ -446,7 +447,7 @@ kota::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
-        co_await kota::queue([&] { return project.store->commit(std::move(pending)); });
+        co_await async::queue([&] { return project.store->commit(std::move(pending)); });
     auto& build = project.pcm_builds[path_id];
     retire_blob(build);
     if(!committed.has_value()) {
@@ -569,7 +570,7 @@ bool PCMBuilder::revalidate_blobs() {
     return true;
 }
 
-kota::task<std::optional<PCMBuilder::ModuleDeps>>
+async::task<std::optional<PCMBuilder::ModuleDeps>>
     PCMBuilder::prepare_deps(Fid path_id,
                              const Resolution& resolution,
                              llvm::ArrayRef<const char*> arguments,
@@ -607,12 +608,12 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
         // A user request waits on these builds: foreground, so the
         // background budget cannot throttle them. A module that did not
         // build is the compile's to report.
-        std::vector<kota::task<JoinOutcome>> waits;
+        std::vector<async::task<JoinOutcome>> waits;
         waits.reserve(deps.resolved.size());
         for(auto dep: deps.resolved) {
             waits.push_back(graph.request(node(dep), {.foreground = true}));
         }
-        auto results = co_await kota::when_all(std::move(waits));
+        auto results = co_await async::when_all(std::move(waits));
         if(ranges::contains(results, JoinOutcome::Shutdown)) {
             co_return std::nullopt;
         }

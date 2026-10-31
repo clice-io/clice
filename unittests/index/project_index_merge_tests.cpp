@@ -38,7 +38,7 @@ std::string strip_content_hashes(llvm::StringRef data) {
 ZEST_SUITE(ProjectIndexMerge) {
 
 IndexerFixture fx;
-kota::event_loop& loop = fx.loop;
+async::event_loop& loop = fx.loop;
 Project& project = fx.project;
 IndexPump& pump = fx.pump;
 
@@ -153,7 +153,7 @@ ZEST_CASE(MergeHitWritesNothing) {
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
     merge(indexed.data);
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await fx.async_save();
     };
     auto task = save_body();

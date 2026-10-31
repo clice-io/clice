@@ -38,7 +38,7 @@ void show_path(FileTable& files, std::string& path) {
 /// The lean batch assembly: the scheduling stack the server also runs on,
 /// minus everything serving-side.
 struct Stack {
-    kota::event_loop& loop;
+    async::event_loop& loop;
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
@@ -49,13 +49,13 @@ struct Stack {
     /// logging is off.
     std::string log_dir;
 
-    explicit Stack(kota::event_loop& loop) : loop(loop) {}
+    explicit Stack(async::event_loop& loop) : loop(loop) {}
 };
 
-kota::task<> checkpoint_task(Stack& stack) {
+async::task<> checkpoint_task(Stack& stack) {
     while(true) {
         // Time is the feature: the checkpoints' pace.
-        co_await kota::sleep(SchedulingStack::checkpoint_interval());
+        co_await async::sleep(SchedulingStack::checkpoint_interval());
         co_await stack.sched.checkpoint();
     }
 }
@@ -74,11 +74,11 @@ void report_progress(Stack& stack, const BatchOptions& options) {
 
 /// A paced report on top of the round boundaries: one unit can take
 /// longer than the pace, and a run must not fall silent while it runs.
-kota::task<> progress_ticker(Stack& stack, const BatchOptions& options) {
-    constexpr auto pace = std::chrono::seconds(10);
+async::task<> progress_ticker(Stack& stack, const BatchOptions& options) {
+    constexpr auto pace = chrono::seconds(10);
     while(true) {
         // Time is the feature: the report's pace.
-        co_await kota::sleep(pace);
+        co_await async::sleep(pace);
         report_progress(stack, options);
     }
 }
@@ -108,7 +108,7 @@ std::optional<TestPause> test_pause() {
 }
 
 /// Quiesce the pump, then the shared contract-11 tail.
-kota::task<> shutdown(Stack& stack) {
+async::task<> shutdown(Stack& stack) {
     co_await stack.sched.pump.stop();
     co_await stack.sched.shutdown();
     co_await stack.pool.stop();
@@ -122,8 +122,8 @@ kota::task<> shutdown(Stack& stack) {
 struct Lifetime {
     Stack& stack;
     bool stop_requested = false;
-    kota::cancellation_source stop;
-    kota::task_group<> aux;
+    async::cancellation_source stop;
+    async::task_group<> aux;
 
     explicit Lifetime(Stack& stack) : stack(stack) {
         // Every signal stops gracefully: in-flight files are abandoned,
@@ -142,13 +142,13 @@ struct Lifetime {
         aux.spawn(stack.files.disk.end_turns(stack.loop));
     }
 
-    kota::cancellation_token token() {
+    async::cancellation_token token() {
         return stop.token();
     }
 
     /// Shuts the stack down and stops the watchers; whether the run was
     /// interrupted.
-    kota::task<bool> finish() {
+    async::task<bool> finish() {
         co_await shutdown(stack);
         aux.cancel();
         co_await aux.join();
@@ -202,7 +202,7 @@ bool start_batch(Stack& stack,
     return true;
 }
 
-kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result) {
+async::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result) {
     ScopedTimer timer;
     auto& project = stack.project;
 
@@ -269,7 +269,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
     }
     Lifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
-    co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    co_await async::with_token(stack.sched.pump.wait_idle(), lifetime.token());
     // The counts read every shard and symbol record: taken before the final
     // save, damage they meet first is discarded there like any other.
     if(!lifetime.stop_requested) {
@@ -325,7 +325,7 @@ struct LintPass {
     /// The .clang-tidy errors reported so far, each once for all the units
     /// it fails.
     llvm::StringSet<> config_errors;
-    kota::event task_done{false};
+    async::event task_done{false};
 };
 
 auto finding_key(const worker::TidyDiagnostic& d) {
@@ -343,7 +343,7 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
-kota::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass) {
+async::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass) {
     auto file = stack.project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
@@ -454,11 +454,11 @@ kota::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass
     pass.task_done.set();
 }
 
-kota::task<> run_lint_pass(Stack& stack,
-                           const BatchLintOptions& options,
-                           llvm::ArrayRef<Fid> tus,
-                           LintPass& pass) {
-    kota::task_group<> workers;
+async::task<> run_lint_pass(Stack& stack,
+                            const BatchLintOptions& options,
+                            llvm::ArrayRef<Fid> tus,
+                            LintPass& pass) {
+    async::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the pump's
     // round feeder: a cancel cascades through the join and every in-flight
@@ -467,7 +467,7 @@ kota::task<> run_lint_pass(Stack& stack,
                      const BatchLintOptions& options,
                      llvm::ArrayRef<Fid> tus,
                      LintPass& pass,
-                     kota::task_group<>& workers) -> kota::task<> {
+                     async::task_group<>& workers) -> async::task<> {
         for(auto path_id: tus) {
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
@@ -483,7 +483,7 @@ kota::task<> run_lint_pass(Stack& stack,
     co_await workers.join();
 }
 
-kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintResult& result) {
+async::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintResult& result) {
     ScopedTimer timer;
     auto& project = stack.project;
 
@@ -541,7 +541,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
 
     Lifetime lifetime(stack);
     LintPass pass;
-    co_await kota::with_token(run_lint_pass(stack, options, tus, pass), lifetime.token());
+    co_await async::with_token(run_lint_pass(stack, options, tus, pass), lifetime.token());
     // What arrived is the report, whole or cut short by an interruption.
     for(auto& finding: pass.findings) {
         show_path(project.file_table, finding.file);
@@ -560,7 +560,7 @@ kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintRe
         // the run exits clean.
         project.settings.project.enable_indexing.value = true;
         stack.sched.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+        co_await async::with_token(stack.sched.pump.wait_idle(), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -850,7 +850,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
 }
 
 BatchResult run_batch_index(const BatchOptions& options) {
-    kota::event_loop loop;
+    async::event_loop loop;
     Stack stack(loop);
     BatchResult result;
     loop.schedule(run(stack, options, result));
@@ -859,7 +859,7 @@ BatchResult run_batch_index(const BatchOptions& options) {
 }
 
 BatchLintResult run_batch_lint(const BatchLintOptions& options) {
-    kota::event_loop loop;
+    async::event_loop loop;
     Stack stack(loop);
     BatchLintResult result;
     loop.schedule(run_lint(stack, options, result));

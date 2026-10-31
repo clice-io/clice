@@ -58,7 +58,7 @@ ZEST_CASE(ModuleLintScanParity) {
     auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
     TURunFamily::Outcome outcome;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -116,7 +116,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     std::vector<TURunFamily::Result> results;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -175,7 +175,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     std::vector<TURunFamily::Result> results;
     std::size_t pcms_before_impl = 0;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -245,7 +245,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
         {*read});
 
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -339,7 +339,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     std::vector<TURunFamily::Result> results;
     std::vector<unsigned> counts;
     bool done = false;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;

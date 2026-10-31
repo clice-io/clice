@@ -115,7 +115,7 @@ void LSPClient::register_lifecycle() {
         this->server.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
-            return kota::outcome_error(protocol::Error{"Server already initialized"});
+            return kotatsu::outcome_error(protocol::Error{"Server already initialized"});
         }
 
         if(auto& general = params.capabilities.general; general && general->position_encodings) {
@@ -329,7 +329,7 @@ void LSPClient::register_lifecycle() {
         info.version = std::string(clice::version);
         result.server_info = std::move(info);
 
-        return kota::co_invoke(
+        return async::co_invoke(
             [result = std::move(result)]() mutable -> RequestResult<protocol::InitializeParams> {
                 co_return std::move(result);
             });

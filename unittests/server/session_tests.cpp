@@ -13,7 +13,7 @@ namespace {
 
 using Clock = Session::Clock;
 using feature::RequestKind;
-using std::chrono::seconds;
+using chrono::seconds;
 
 protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line,
                                                         std::uint32_t start_char,
@@ -392,7 +392,7 @@ ZEST_CASE(ColdCrashShows) {
 /// didOpen before initialize waits in the table with no owner.
 ZEST_SUITE(DocumentTable) {
 
-kota::event_loop loop;
+async::event_loop loop;
 MasterServer server{loop, ""};
 Spelling spelled = Spelling::absolute("/proj/a.cpp");
 Fid path_id = server.files.intern(spelled);

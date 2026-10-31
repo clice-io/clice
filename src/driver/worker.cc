@@ -12,7 +12,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoFlag(names = {"--stateful"},
              help = "Run as stateful worker (default: stateless)",
@@ -33,7 +33,7 @@ struct Options {
 }  // namespace
 
 int run_worker(std::span<std::string> args) {
-    auto cmd = kota::deco::cli::command<Options>("clice worker [OPTIONS]");
+    auto cmd = deco::cli::command<Options>("clice worker [OPTIONS]");
     cmd.match_all([](Options opts) {
 #ifdef __APPLE__
         // See WorkerPool::spawn_process.

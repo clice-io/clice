@@ -16,7 +16,7 @@ import :syntax.preamble;
 namespace clice {
 
 CompilationUnit::CompilationUnit(CompilationParams params) : params(std::move(params)) {
-    using namespace std::chrono;
+    using namespace chrono;
     build_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 }
 

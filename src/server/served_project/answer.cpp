@@ -25,9 +25,9 @@ bool ServedProject::ast_answerable(const Session& session) const {
     return index_current(session.path_id) && !compile_stopped(session);
 }
 
-kota::task<Route> ServedProject::pick_route(const Ticket& ticket,
-                                            RouteOptions options,
-                                            std::optional<index::IndexSource>* source) {
+async::task<Route> ServedProject::pick_route(const Ticket& ticket,
+                                             RouteOptions options,
+                                             std::optional<index::IndexSource>* source) {
     for(bool waited = false;;) {
         if(!ticket.fresh()) {
             co_return Route::Outdated;
@@ -80,7 +80,7 @@ kota::task<Route> ServedProject::pick_route(const Ticket& ticket,
     }
 }
 
-kota::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket& ticket) {
+async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket& ticket) {
     switch(co_await pick_route(ticket, {})) {
         case Route::Outdated: co_return GateStop{content_modified()};
         // The index sources resolve the cursor under clauses 1/4 — or
@@ -96,7 +96,7 @@ kota::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket&
     co_return co_await await_compile(ticket);
 }
 
-kota::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
+async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
     // A failed compile yields null rather than a lookup against a buffer
     // with no finished index; a superseded one tells the client to re-pull.
     bool compiled = co_await ensure_compiled(ticket.session);
@@ -148,8 +148,8 @@ std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& se
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 
-kota::task<std::vector<index::DocumentLink>, ipc::Error>
-    ServedProject::directive_links(const Ticket& ticket, kota::cancellation_token token) {
+async::task<std::vector<index::DocumentLink>, ipc::Error>
+    ServedProject::directive_links(const Ticket& ticket, async::cancellation_token token) {
     auto result = co_await ast_request(ticket,
                                        feature::RequestKind::DocumentLink,
                                        "DocumentLink",
@@ -174,10 +174,10 @@ bool ServedProject::admits(const Session& session,
     return !parses || !compile_stopped(session);
 }
 
-kota::task<std::optional<worker::FormatResult>, ipc::Error>
+async::task<std::optional<worker::FormatResult>, ipc::Error>
     ServedProject::format(const Ticket& ticket,
                           std::optional<protocol::Range> range,
-                          kota::cancellation_token token) {
+                          async::cancellation_token token) {
     auto& session = *ticket.session;
     auto& files = project.file_table;
     auto path = std::string(files.resolve(session.path_id));
@@ -202,13 +202,13 @@ kota::task<std::optional<worker::FormatResult>, ipc::Error>
     if(refused) {
         LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
         if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         co_return std::nullopt;
     }
     result = finish(ticket, kind, "Format", std::move(result));
     if(!result.has_value()) {
-        co_return kota::outcome_error(std::move(result.error()));
+        co_return kotatsu::outcome_error(std::move(result.error()));
     }
     LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     co_return std::move(*result);

@@ -100,7 +100,7 @@ SortIncludes: true
 SortUsingDeclarations: Never
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^["<](spdlog|toml\+\+|coraing|cpptrace|kota)/'
+  - Regex: '^["<](spdlog|toml\+\+|coraing|cpptrace|kotatsu)/'
     Priority: 30
     SortPriority: 31
 

@@ -24,7 +24,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
@@ -32,7 +32,7 @@ struct Options {
 };
 
 struct StatsOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoKV(help = "How many of the largest file shards to list (default 20)", required = false)
     <std::uint32_t> limit;
@@ -47,14 +47,14 @@ struct StatsOptions {
 };
 
 struct SymbolOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     SymbolTarget target;
     ProjectOptions where;
     LogLevelOption log;
 };
 
 struct FileOptions {
-    kota::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     FileTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -89,15 +89,14 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     // only at info level. The batch paces the reports, and a tick with the
     // counts unchanged is the heartbeat of a unit that takes longer than
     // the pace.
-    auto started = std::chrono::steady_clock::now();
+    auto started = chrono::steady_clock::now();
     auto report_progress = [&](const BatchProgress& progress) {
-        driver::println(
-            stderr,
-            "progress {}/{} units, {} failed, {:.0f}s elapsed",
-            progress.completed,
-            progress.total,
-            progress.failed,
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
+        driver::println(stderr,
+                        "progress {}/{} units, {} failed, {:.0f}s elapsed",
+                        progress.completed,
+                        progress.total,
+                        progress.failed,
+                        chrono::duration<double>(chrono::steady_clock::now() - started).count());
     };
     auto indexed =
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
@@ -621,7 +620,7 @@ std::string flag_names(index::SymbolFlags flags) {
 }
 
 llvm::StringRef kind_name(SymbolKind kind) {
-    return kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
+    return meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
 }
 
 /// What the index records about every symbol `text`, a locator, names:
@@ -678,7 +677,7 @@ int run_show_symbol(Project& project, llvm::StringRef text) {
                         info->args,
                         query.qualified_name(hash, anchor),
                         flag_names(info->flags),
-                        kota::meta::enum_name(index::name_form(info->flags), "Other"));
+                        meta::enum_name(index::name_form(info->flags), "Other"));
         // Persisted parents can form a cycle: the records only reject
         // reserved values.
         llvm::DenseSet<index::SymbolHash> visited{hash};
@@ -696,7 +695,7 @@ int run_show_symbol(Project& project, llvm::StringRef text) {
         }
         if(auto symbol = project.index.find_symbol(hash)) {
             driver::println("  scope={}  file={}  reference files={}",
-                            kota::meta::enum_name(symbol->scope, "External"),
+                            meta::enum_name(symbol->scope, "External"),
                             symbol->file == index::no_file
                                 ? "-"
                                 : project.file_table.display(Fid{symbol->file}),
@@ -791,7 +790,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
         if(relation.target != 0 && !RelationKind(relation.kind).carries_extent()) {
             symbols.insert(relation.target);
         }
-        by_kind[kota::meta::enum_name(relation.kind, "Invalid")] += 1;
+        by_kind[meta::enum_name(relation.kind, "Invalid")] += 1;
         relations += 1;
         return true;
     });

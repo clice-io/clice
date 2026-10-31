@@ -25,8 +25,8 @@ constexpr inline bool can_exit_with_parent = true;
 
 /// Run `arguments[0]` to completion and hand back what it wrote, however it
 /// ended. Fails only when the program cannot start.
-kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
-                                                              std::string cwd);
+async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
+                                                               std::string cwd);
 
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without
@@ -46,7 +46,7 @@ void purge_freed_memory();
 /// Ctrl-C exits at once; a repeated SIGTERM or SIGHUP does not: supervisors
 /// send it more than once (GNU timeout signals the child, then its whole
 /// process group) and escalate with SIGKILL themselves.
-kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
+async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
 
 #ifdef __APPLE__
 /// End this process the moment its parent exits, or now when it already

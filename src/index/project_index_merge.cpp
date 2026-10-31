@@ -472,9 +472,9 @@ void ProjectIndex::drop(Fid tu_path_id, IndexReport& report) {
 }
 
 void ProjectIndex::mark_behind(Fid tu) {
-    behind[tu] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::system_clock::now().time_since_epoch())
-                     .count();
+    behind[tu] =
+        chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch())
+            .count();
 }
 
 void ProjectIndex::requeue_owners(Fid path_id, IndexReport& report) {

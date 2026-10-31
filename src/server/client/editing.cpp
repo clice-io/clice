@@ -149,7 +149,7 @@ void LSPClient::register_editing() {
         // a reopen, or moved it to another project: the request belongs to
         // the buffer this project served.
         if(!project.owns(*session)) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         auto ticket = Ticket::take(session);
         // Asking for code completion is edit intent: the document is
@@ -230,7 +230,7 @@ void LSPClient::register_editing() {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto& project = *served;
             if(!ticket.fresh()) {
-                co_await kota::fail(content_modified());
+                co_await async::fail(content_modified());
             }
             if(auto offset = session->positions().offset(params.position, server.position_encoding);
                offset &&
@@ -262,7 +262,7 @@ void LSPClient::register_editing() {
     // background indexing for the request's span.
     auto format = [this](ResolvedDoc document,
                          std::optional<protocol::Range> range,
-                         kota::cancellation_token token) -> RawResult {
+                         async::cancellation_token token) -> RawResult {
         auto& project = *document.project;
         auto pause = project.sched.pump.scoped_pause();
         auto result = co_await project.format(document.ticket, range, token).or_fail();
@@ -270,7 +270,7 @@ void LSPClient::register_editing() {
             co_return codec::RawValue{"null"};
         }
         if(!result->error.empty()) {
-            co_await kota::fail(request_failed(std::move(result->error)));
+            co_await async::fail(request_failed(std::move(result->error)));
         }
         auto edits = feature::to_protocol(result->edits,
                                           document.session->positions(),
@@ -308,7 +308,7 @@ void LSPClient::register_editing() {
             params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
 
         if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         // Code actions are AST products the index cannot compute; a document
         // the policy keeps un-compiled answers honestly empty rather than
@@ -411,7 +411,7 @@ void LSPClient::register_editing() {
             auto& project = *document.project;
             // Refused up front, before the cursor costs a compile.
             if(auto refused = feature::rename_refusal(project.project.root)) {
-                co_await kota::fail(request_failed(std::move(*refused)));
+                co_await async::fail(request_failed(std::move(*refused)));
             }
             co_return co_await navigate(
                 project,
@@ -445,7 +445,7 @@ void LSPClient::register_editing() {
             auto& new_name = params.new_name;
             // Refused up front, before the cursor costs a compile.
             if(auto refused = feature::rename_refusal(project.root)) {
-                co_await kota::fail(request_failed(std::move(*refused)));
+                co_await async::fail(request_failed(std::move(*refused)));
             }
             if(session) {
                 if(auto stop = co_await served->navigation_gate(ticket)) {
@@ -460,33 +460,33 @@ void LSPClient::register_editing() {
             }
             auto at = feature::rename_at(query, *cursor);
             if(!at) {
-                co_await kota::fail(request_failed(std::move(at.error())));
+                co_await async::fail(request_failed(std::move(at.error())));
             }
 
             // The walk, the reads and the scan run off the loop; only the
             // files spelling a name come back with their text.
             EditableFiles editable_files(project.root, project.settings);
-            auto texts = co_await kota::queue(
+            auto texts = co_await async::queue(
                 [editable_files,
                  names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
                     return feature::RenameTexts(editable_files.sources(), names);
                 });
             if(session && !ticket.fresh()) {
-                co_await kota::fail(content_modified());
+                co_await async::fail(content_modified());
             }
             // Entries indexed during the scan may link the symbol to more:
             // plan with the group they give now.
             cursor = served->cursor_at(path_id, position);
             if(!cursor) {
-                co_await kota::fail(content_modified());
+                co_await async::fail(content_modified());
             }
             auto old_name = std::move(at->target.symbol.symbol.name);
             at = feature::rename_at(query, *cursor);
             if(!at) {
-                co_await kota::fail(request_failed(std::move(at.error())));
+                co_await async::fail(request_failed(std::move(at.error())));
             }
             if(at->target.symbol.symbol.name != old_name) {
-                co_await kota::fail(content_modified());
+                co_await async::fail(content_modified());
             }
 
             auto editable = [&](llvm::StringRef file) {
@@ -511,7 +511,7 @@ void LSPClient::register_editing() {
                                               .read = read,
                                               .units_pending = units_pending(project)});
             if(plan.blocked()) {
-                co_await kota::fail(request_failed(feature::refusal(plan)));
+                co_await async::fail(request_failed(feature::refusal(plan)));
             }
             auto renamed = feature::to_protocol(
                 plan,

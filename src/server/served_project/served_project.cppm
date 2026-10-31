@@ -256,7 +256,7 @@ public:
     /// right away for a project removed while the pool serves others (a
     /// worker still finishing a cancelled build of it only fails its
     /// write).
-    kota::task<> shutdown();
+    async::task<> shutdown();
 
     /// The settings have errors: the project starts nothing, and the
     /// files under its root answer every request at once with nothing.
@@ -296,7 +296,7 @@ public:
     /// latest compile is current on return. A new generation of the
     /// document abandons the join — the editor re-requests after an edit,
     /// so the result would describe a buffer that no longer exists.
-    kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
+    async::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
     /// Start (or join) the document's compile detached — the caller keeps
     /// serving from the index until it finishes. The graph's
@@ -359,13 +359,13 @@ public:
     /// that outlives its ticket still compiles against a PCH of its own
     /// preamble. False only when the graph shut down: an import that did
     /// not build is the compile's to report.
-    kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
-                                              llvm::StringRef text,
-                                              std::uint32_t point,
-                                              const std::string& directory,
-                                              const std::vector<std::string>& arguments,
-                                              const Resolution& resolution,
-                                              StatelessInputs& inputs);
+    async::task<bool> prepare_stateless_inputs(const Ticket& ticket,
+                                               llvm::StringRef text,
+                                               std::uint32_t point,
+                                               const std::string& directory,
+                                               const std::vector<std::string>& arguments,
+                                               const Resolution& resolution,
+                                               StatelessInputs& inputs);
 
     /// What the document's compile read, one snapshot at a time: its own
     /// deps, its header context's chain, its PCH's and those of the modules
@@ -439,7 +439,7 @@ public:
     /// interruption is what keeps that finish prompt (a round's stateful
     /// send carries the interrupt, not its advisory token: contract 2 wants
     /// the real reply, and the interrupt makes it arrive early).
-    kota::task<> stop_compiles();
+    async::task<> stop_compiles();
 
     // command.cpp
 
@@ -457,11 +457,11 @@ public:
     /// once: a header compiles under the host every process finds for it.
     /// Stops with the tree missing when a run does not answer, or once
     /// `current` no longer holds.
-    kota::task<Resolution> document_command(Fid path_id,
-                                            std::string& directory,
-                                            std::vector<std::string>& arguments,
-                                            const ContextChoice* candidate = nullptr,
-                                            llvm::function_ref<bool()> current = {});
+    async::task<Resolution> document_command(Fid path_id,
+                                             std::string& directory,
+                                             std::vector<std::string>& arguments,
+                                             const ContextChoice* candidate = nullptr,
+                                             llvm::function_ref<bool()> current = {});
 
     /// The file's context choice while it is this project's and holds.
     const ContextChoice* active_choice(Fid path_id) const;
@@ -497,7 +497,7 @@ public:
     /// database reload adds a command: whether one did. One deleted leaves
     /// through disk_changed, like any file. The walk runs off the event
     /// loop.
-    kota::task<bool> poll_sources();
+    async::task<bool> poll_sources();
 
     /// Whether the build's databases resolve elsewhere than at the load
     /// (resolved_databases): another build, whose commands a reload would
@@ -575,9 +575,9 @@ public:
     /// for. A Route::Index decision stores the admitted source into `source`
     /// (when given) — callers must serve from it rather than re-derive, or
     /// the state could shift between the decision and the read.
-    kota::task<Route> pick_route(const Ticket& ticket,
-                                 RouteOptions options,
-                                 std::optional<index::IndexSource>* source = nullptr);
+    async::task<Route> pick_route(const Ticket& ticket,
+                                  RouteOptions options,
+                                  std::optional<index::IndexSource>* source = nullptr);
 
     /// The compile gate of index-navigation requests: awaits the compile
     /// exactly when the routing decided the AST is the serving source
@@ -585,11 +585,11 @@ public:
     /// index-served documents resolve through clauses 1/4 without forcing
     /// the build. A GateStop means answer with it instead: the compile
     /// failed, or the request was superseded.
-    kota::task<std::optional<GateStop>> navigation_gate(const Ticket& ticket);
+    async::task<std::optional<GateStop>> navigation_gate(const Ticket& ticket);
 
     /// Await the document's compile; a GateStop when it failed or the
     /// request was superseded.
-    kota::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
+    async::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
 
     /// The symbol under a position of the file's serving source, if any.
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
@@ -612,8 +612,8 @@ public:
     /// The include-like directive links of a document's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
-    kota::task<std::vector<index::DocumentLink>, ipc::Error>
-        directive_links(const Ticket& ticket, kota::cancellation_token token);
+    async::task<std::vector<index::DocumentLink>, ipc::Error>
+        directive_links(const Ticket& ticket, async::cancellation_token token);
 
     /// Whether a dispatch of `kind` may reach a worker: its record does not
     /// stop it — or, once an attempt holds it, `kind` did not crash during
@@ -638,12 +638,12 @@ public:
     /// shared compile a query waits on is deliberately NOT cancelled: it
     /// serves every waiter, not this request.
     template <typename Params>
-    kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
+    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         ast_request(const Ticket& ticket,
                     feature::RequestKind kind,
                     llvm::StringRef label,
                     Params params,
-                    kota::cancellation_token token);
+                    async::cancellation_token token);
 
     /// The interactive stateless builds (completion, signature help): the
     /// buffer and its compile inputs go to a stateless worker, which
@@ -651,19 +651,19 @@ public:
     /// at `offset` of it. `params` arrives with the fields particular to its
     /// request filled in.
     template <typename Params>
-    kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
+    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         stateless_request(const Ticket& ticket,
                           feature::RequestKind kind,
                           llvm::StringRef label,
                           std::uint32_t offset,
                           Params params,
-                          kota::cancellation_token token);
+                          async::cancellation_token token);
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
-    kota::task<std::optional<worker::FormatResult>, ipc::Error>
+    async::task<std::optional<worker::FormatResult>, ipc::Error>
         format(const Ticket& ticket,
                std::optional<protocol::Range> range,
-               kota::cancellation_token token);
+               async::cancellation_token token);
 
     /// The single exit of every dispatch: a fresh reply clears the kind's
     /// crash record, a stale one never leaves as a value — unless it is a
@@ -704,7 +704,7 @@ public:
     /// (MasterServer::serve_folders) holds documents before it loads, which
     /// would compile under no build at all; stop_compiles() lets them go
     /// too.
-    kota::event loaded{true};
+    async::event loaded{true};
 
     MasterServer& server;
 
@@ -749,10 +749,10 @@ private:
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
     void schedule_metadata_flush();
-    kota::task<> metadata_flush_task();
+    async::task<> metadata_flush_task();
 
     /// The periodic SchedulingStack::checkpoint().
-    kota::task<> checkpoint_task();
+    async::task<> checkpoint_task();
 
     /// Drop pch_cache metadata for blobs the store's LRU evicted from
     /// disk (see checkpoint_task).
@@ -760,7 +760,7 @@ private:
 
     /// The default-sources loop, poll_sources on the workspace poll's pace.
     /// Spawned by start() unless polling is off.
-    kota::task<> sources_poll_task();
+    async::task<> sources_poll_task();
 
     // compile.cpp
 
@@ -769,7 +769,7 @@ private:
     void inputs_changed(Session& session);
 
     /// One compile round; see run_round's comments for its obligations.
-    kota::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
+    async::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
 
     /// The module-dependency phase of a round: resolve imports from the
     /// round's buffer snapshot under the round's resolved command,
@@ -781,7 +781,7 @@ private:
     /// the import next to the file's own diagnostics; one whose build
     /// crashed a worker also goes into the document's records, and is
     /// refused until the document's record lets it retry.
-    kota::task<std::optional<PCMBuilder::ModuleDeps>>
+    async::task<std::optional<PCMBuilder::ModuleDeps>>
         depend_modules(RoundContext& ctx,
                        const Ticket& ticket,
                        const Resolution& resolution,
@@ -842,14 +842,14 @@ private:
     /// document's `epoch` hold (see prepare_stateless_inputs), but for a
     /// partial plan's. Returns the key the request compiles against,
     /// adopted or not; none when it compiles without a PCH.
-    kota::task<std::optional<std::string>> ensure_pch(const Ticket& ticket,
-                                                      std::uint64_t epoch,
-                                                      llvm::StringRef text,
-                                                      std::optional<std::uint32_t> point,
-                                                      const std::string& directory,
-                                                      const std::vector<std::string>& arguments,
-                                                      const Resolution& resolution,
-                                                      const PCMBuilder::ModuleDeps& imports);
+    async::task<std::optional<std::string>> ensure_pch(const Ticket& ticket,
+                                                       std::uint64_t epoch,
+                                                       llvm::StringRef text,
+                                                       std::optional<std::uint32_t> point,
+                                                       const std::string& directory,
+                                                       const std::vector<std::string>& arguments,
+                                                       const Resolution& resolution,
+                                                       const PCMBuilder::ModuleDeps& imports);
 
     /// The document's round moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
@@ -899,7 +899,7 @@ private:
     RequestResult<Params> send_ast(const Ticket& ticket,
                                    feature::RequestKind kind,
                                    const Params& params,
-                                   kota::cancellation_token token,
+                                   async::cancellation_token token,
                                    bool& unanswered);
 
     /// Send a stateless request of `kind` carrying the document's content,
@@ -912,7 +912,7 @@ private:
                                          const Params& params,
                                          const Session::Attempt& attempt,
                                          bool parses,
-                                         kota::cancellation_token token,
+                                         async::cancellation_token token,
                                          bool& refused);
 
     // command.cpp
@@ -920,11 +920,11 @@ private:
     /// Take the tree `request` names, or wait for the run taking it. False
     /// when the run took none: the pool stopped, the run was cancelled, or
     /// the worker failed for a cause not the unit's.
-    kota::task<bool> take_include_tree(TreeRequest request);
+    async::task<bool> take_include_tree(TreeRequest request);
 
     /// The run taking the tree, which belongs to no asker: one cancelled
     /// leaves it to the others waiting on `done`, set when it ends.
-    kota::task<> run_include_tree(TreeRequest request, std::shared_ptr<kota::event> done);
+    async::task<> run_include_tree(TreeRequest request, std::shared_ptr<async::event> done);
 
     // changes.cpp
 
@@ -1066,11 +1066,11 @@ private:
 
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
-    kota::task_group<> started_compiles;
+    async::task_group<> started_compiles;
 
     /// The cancel of each document's in-flight compile send, which edited()
     /// and stop_compiles() fire to interrupt the worker's parse.
-    llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
+    llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
 
     /// A background run's diagnostics of a file (see
     /// report_skipped_diagnostics).
@@ -1085,9 +1085,9 @@ private:
 
     /// The include-tree runs in flight, by tree: a second asker waits for
     /// the first.
-    llvm::DenseMap<UnitCommand, std::shared_ptr<kota::event>> tree_runs;
+    llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
 
-    kota::task_group<> tree_tasks;
+    async::task_group<> tree_tasks;
 
     /// Whether start() began watching the databases: never for the rootless
     /// project, nor before it starts.
@@ -1118,7 +1118,7 @@ private:
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().
-    kota::task_group<> bg_tasks;
+    async::task_group<> bg_tasks;
 };
 
 template <typename Outcome>
@@ -1144,7 +1144,7 @@ Outcome ServedProject::finish(const Ticket& ticket,
     }
     // Answered or not, a stale request tells the client to re-pull.
     if(!ticket.fresh() && !snapshot) {
-        return Outcome{kota::outcome_error(content_modified())};
+        return Outcome{kotatsu::outcome_error(content_modified())};
     }
     if(!result.has_value()) {
         LOG_INFO("{} for {} answers empty: {}",
@@ -1168,12 +1168,13 @@ template <typename Params>
 RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
                                               feature::RequestKind kind,
                                               const Params& params,
-                                              kota::cancellation_token token,
+                                              async::cancellation_token token,
                                               bool& unanswered) {
     auto& session = *ticket.session;
     auto unsent = [&] {
         unanswered = true;
-        return kota::outcome_error(ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
+        return kotatsu::outcome_error(
+            ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
     };
     // The caller's compile gave a crash of the kind time to be booked.
     if(!admits(session, kind, nullptr, false)) {
@@ -1219,12 +1220,12 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
 }
 
 template <typename Params>
-kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
+async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ServedProject::ast_request(const Ticket& ticket,
                                feature::RequestKind kind,
                                llvm::StringRef label,
                                Params params,
-                               kota::cancellation_token token) {
+                               async::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     params.path = std::string(project.file_table.resolve(session.path_id));
@@ -1236,12 +1237,12 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ScopedTimer timer;
     if(!co_await ensure_compiled(ticket.session)) {
         if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         co_return Result{};
     }
     if(!ticket.fresh()) {
-        co_await kota::fail(content_modified());
+        co_await async::fail(content_modified());
     }
     auto wait_ms = timer.ms_f();
 
@@ -1249,7 +1250,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     auto result = co_await send_ast(ticket, kind, params, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         co_return Result{};
     }
@@ -1271,7 +1272,7 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
                                                     const Params& params,
                                                     const Session::Attempt& attempt,
                                                     bool parses,
-                                                    kota::cancellation_token token,
+                                                    async::cancellation_token token,
                                                     bool& refused) {
     auto& session = *ticket.session;
     auto admitted = [&] {
@@ -1292,13 +1293,13 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
 }
 
 template <typename Params>
-kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
+async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ServedProject::stateless_request(const Ticket& ticket,
                                      feature::RequestKind kind,
                                      llvm::StringRef label,
                                      std::uint32_t offset,
                                      Params params,
-                                     kota::cancellation_token token) {
+                                     async::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -1329,7 +1330,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                                           params.arguments,
                                           resolution,
                                           inputs)) {
-        co_await kota::fail(
+        co_await async::fail(
             ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }
     params.pch = std::move(inputs.pch);
@@ -1345,7 +1346,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                session.text().starts_with(carried);
     };
     if(!ticket.fresh() && !snapshot()) {
-        co_await kota::fail(content_modified());
+        co_await async::fail(content_modified());
     }
 
     if(resolution.synthesized) {
@@ -1361,7 +1362,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(refused) {
         LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
         if(!ticket.fresh() && !snapshot()) {
-            co_await kota::fail(content_modified());
+            co_await async::fail(content_modified());
         }
         co_return empty_value<Result>();
     }

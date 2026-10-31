@@ -8,7 +8,7 @@ namespace clice {
 /// own: a document's requests, a PCH's build and its consumption, a
 /// module's build, a toolchain query.
 struct FailurePolicy {
-    using Clock = std::chrono::steady_clock;
+    using Clock = chrono::steady_clock;
 
     /// Failures in a row that stop the operation.
     unsigned limit = 1;

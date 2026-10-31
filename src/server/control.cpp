@@ -16,9 +16,9 @@ namespace {
 using ipc::RequestResult;
 using RequestContext = ipc::JSONPeer::RequestContext;
 
-kota::task<> exchange(ipc::JSONPeer& peer,
-                      IndexParams params,
-                      std::expected<IndexResult, std::string>& out) {
+async::task<> exchange(ipc::JSONPeer& peer,
+                       IndexParams params,
+                       std::expected<IndexResult, std::string>& out) {
     auto result = co_await peer.send_request(std::move(params));
     if(result) {
         out = std::move(*result);
@@ -28,9 +28,9 @@ kota::task<> exchange(ipc::JSONPeer& peer,
     peer.close();
 }
 
-kota::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpoint& endpoint,
-                                                        IndexParams params) {
-    auto& loop = kota::event_loop::current();
+async::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpoint& endpoint,
+                                                         IndexParams params) {
+    auto& loop = async::event_loop::current();
     auto transport = co_await ipc::StreamTransport::connect_tcp(endpoint.host, endpoint.port, loop);
     if(!transport) {
         co_return std::unexpected(
@@ -42,7 +42,7 @@ kota::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpo
     ipc::JSONPeer peer(loop, std::move(*transport));
     std::expected<IndexResult, std::string> out =
         std::unexpected(std::string("the clice server closed the connection"));
-    co_await kota::when_all(peer.run(), exchange(peer, std::move(params), out));
+    co_await async::when_all(peer.run(), exchange(peer, std::move(params), out));
     co_return out;
 }
 
@@ -51,13 +51,13 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
         [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
             auto active = srv.project.build.active_configuration();
             if(params.configuration != active) {
-                co_await kota::fail(ipc::Error{
+                co_await async::fail(ipc::Error{
                     std::format("the running clice server indexes configuration '{}', not '{}'",
                                 std::string_view(active),
                                 params.configuration)});
             }
             if(!srv.project.settings.project.enable_indexing.value) {
-                co_await kota::fail(
+                co_await async::fail(
                     ipc::Error{"the running clice server has background indexing disabled"});
             }
             // Build changes arrive through the databases' poll; a request right
@@ -67,13 +67,13 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             // Indexing would fill the old build's index while a --fresh answer
             // then opens the new one's.
             if(srv.databases_moved()) {
-                co_await kota::fail(ipc::Error{
+                co_await async::fail(ipc::Error{
                     "the compilation databases of the running clice server now resolve to another "
                     "build, which it opens once it restarts"});
             }
             auto members = srv.project.build.members();
             if(members.empty()) {
-                co_await kota::fail(ipc::Error{
+                co_await async::fail(ipc::Error{
                     "nothing to index: the running clice server's build has no translation units"});
             }
             IndexResult result;
@@ -95,7 +95,7 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             // index must be there before the answer.
             co_await srv.sched.pump.persist();
             if(has_unsaved_state(srv.project)) {
-                co_await kota::fail(
+                co_await async::fail(
                     ipc::Error{"part of the index could not be persisted; see the server log"});
             }
             // Not current after the pass: the attempt failed, or the serving
@@ -117,11 +117,11 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
 
 std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint,
                                                       llvm::StringRef configuration) {
-    auto [ended] = kota::run(ask(endpoint, IndexParams{.configuration = configuration.str()}));
+    auto [ended] = async::run(ask(endpoint, IndexParams{.configuration = configuration.str()}));
     return std::move(*ended);
 }
 
-kota::task<> serve(ServedProject& project, kota::tcp::acceptor acceptor) {
+async::task<> serve(ServedProject& project, async::tcp::acceptor acceptor) {
     co_await accept_peers(std::move(acceptor), "Control client", [&project](ipc::JSONPeer& peer) {
         register_requests(project, peer);
         return std::shared_ptr<void>();

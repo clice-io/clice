@@ -290,7 +290,7 @@ struct Project {
     /// save, the master's metadata flush and the shutdown save may overlap
     /// on the event loop, and a save moves the dirty state into its batch
     /// assuming one save at a time.
-    kota::semaphore save_gate{1};
+    async::semaphore save_gate{1};
 
     /// A compact copy of the database failed this session, or could not
     /// replace the file: the file shrinks no more until the next session.

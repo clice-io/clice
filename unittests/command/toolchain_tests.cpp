@@ -169,7 +169,7 @@ ZEST_CASE(FailedQueryCooldown, skip = Windows) {
 ZEST_CASE(FailedQueryRetries, skip = Windows) {
     // A transient driver failure must not poison the key for the session:
     // past the cooldown, resolve() and warm() query the driver again.
-    f.toolchain.set_failed_retry(std::chrono::seconds(0));
+    f.toolchain.set_failed_retry(chrono::seconds(0));
     auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
     auto b = add("b.cpp", {tmp.c_path("clang"), "-std=c++20"});
     llvm::SmallVector<CommandRef> refs = {a, b};

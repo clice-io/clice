@@ -1,6 +1,6 @@
 module;
 
-#include "kota/ipc/framing.h"
+#include "kotatsu/ipc/framing.h"
 
 module clice;
 
@@ -42,7 +42,7 @@ struct DocumentEntry {
 
     // Signaled when the first compilation finishes. Feature handlers
     // co_await this before accessing the AST.
-    kota::event ast_ready{false};
+    async::event ast_ready{false};
 
     // Compilation context (from CompileParams)
     std::string directory;
@@ -63,7 +63,7 @@ struct DocumentEntry {
     }
 
     // Per-document serialization mutex
-    kota::mutex strand;
+    async::mutex strand;
 
     // Requests holding the entry: a compile queued on or running under the
     // strand, a query waiting for or reading the AST. The LRU passes such
@@ -181,11 +181,11 @@ class StatefulWorker {
     /// perf series: query kinds have very different costs and must not
     /// collapse into one distribution.
     template <typename Params, typename R, typename F>
-    kota::task<R, ipc::Error>
+    async::task<R, ipc::Error>
         with_ast_or(llvm::StringRef kind, const Params& params, R missing, F fn) {
         auto it = documents.find(params.path);
         if(it == documents.end()) {
-            return kota::outcome_error(
+            return kotatsu::outcome_error(
                 ipc::Error{worker::dispatch_errc::document_unloaded, "Document is not loaded"});
         }
         touch_lru(params.path);
@@ -193,11 +193,11 @@ class StatefulWorker {
     }
 
     template <typename Params, typename R, typename F>
-    kota::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
-                                        PendingGuard pending,
-                                        const Params& params,
-                                        R missing,
-                                        F fn) {
+    async::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
+                                         PendingGuard pending,
+                                         const Params& params,
+                                         R missing,
+                                         F fn) {
         auto& doc = *pending.doc;
         ScopedTimer timer;
         co_await doc.ast_ready.wait();
@@ -210,7 +210,7 @@ class StatefulWorker {
         // hook just lets a cancelled query return its missing value instead
         // of walking the whole AST for a result nobody will read.
         std::atomic<bool> cancelled{false};
-        auto result = co_await kota::queue(
+        auto result = co_await async::queue(
             [&]() -> R {
                 if(cancelled.load(std::memory_order_relaxed)) {
                     return std::move(missing);
@@ -279,7 +279,7 @@ RequestResult<worker::CompileParams>
     // !completed() and the phases after it are skipped like any other
     // incomplete compile.
     auto stop = std::make_shared<std::atomic_bool>(false);
-    auto compile_result = co_await kota::queue(
+    auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
             CrashScope crash_scope(worker::crash_tag(params));
             ScopedTimer timer;
@@ -521,7 +521,7 @@ int run_stateful_worker_mode(const std::string& worker_name,
     LOG_INFO("Starting stateful worker");
     install_crash_report();
 
-    kota::event_loop loop;
+    async::event_loop loop;
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {

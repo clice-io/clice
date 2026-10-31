@@ -203,7 +203,7 @@ private:
         }
     };
 
-    /// Calls `convert(text, known...)` with what kota's conversions take of
+    /// Calls `convert(text, known...)` with what kotatsu's conversions take of
     /// this text: a text at hand, then the encoding and what is known of its
     /// ASCII lines; or the size of one known by its size, then its "\r\n"
     /// endings.

@@ -372,7 +372,7 @@ ZEST_CASE(CrashMarksLostDirty) {
     ZASSERT(invalidated(second->path_id));
     // A crash loses build products, not compile inputs: what crashed on
     // them gets no retry.
-    auto later = now + std::chrono::minutes(1);
+    auto later = now + chrono::minutes(1);
     ZASSERT(first->crash_stops(feature::RequestKind::Compile, later));
     ZASSERT(second->crash_stops(feature::RequestKind::Compile, later));
 }
@@ -386,7 +386,7 @@ ZEST_CASE(EvictionMarksLost) {
 
     // Same loss as a crash, scoped to one document.
     ZASSERT(invalidated(session->path_id));
-    ZASSERT(session->crash_stops(feature::RequestKind::Compile, now + std::chrono::minutes(1)));
+    ZASSERT(session->crash_stops(feature::RequestKind::Compile, now + chrono::minutes(1)));
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {

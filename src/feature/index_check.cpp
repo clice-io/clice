@@ -192,7 +192,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
                            converted->end.character + 1);
     };
     auto kind_name = [](SymbolKind kind) {
-        return std::string(kota::meta::enum_name(to_protocol(kind), "?"));
+        return std::string(meta::enum_name(to_protocol(kind), "?"));
     };
     auto parent_name = [](const std::vector<Flat>& flats, std::int32_t parent) {
         return parent == -1 ? std::string("(top level)") : flats[parent].symbol->name;

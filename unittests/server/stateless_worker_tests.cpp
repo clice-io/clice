@@ -110,7 +110,7 @@ ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
     ZASSERT(w.spawn());
 
-    w.run([]() -> kota::task<> { co_return; });
+    w.run([]() -> async::task<> { co_return; });
 }
 
 ZEST_CASE(GateParksWork) {
@@ -119,7 +119,7 @@ ZEST_CASE(GateParksWork) {
     WorkerHandle w;
     ZASSERT(w.spawn());
 
-    kota::event parked;
+    async::event parked;
     std::uint64_t parked_id = 0;
     w.peer->on_notification([&](const worker::GateParkedParams& params) {
         parked_id = params.id;
@@ -127,16 +127,16 @@ ZEST_CASE(GateParksWork) {
     });
 
     bool test_done = false;
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::FormatParams params{.file = "/w/main.cpp", .text = "int  x;\n"};
         w.peer->send_notification(worker::GateParams{.id = 7, .tag = worker::crash_tag(params)});
         bool answered = false;
-        auto format = [&]() -> kota::task<> {
+        auto format = [&]() -> async::task<> {
             auto result = co_await w.peer->send_request(params);
             ZEXPECT(result);
             answered = true;
         };
-        kota::task_group<> group;
+        async::task_group<> group;
         group.spawn(format());
         co_await parked.wait();
         ZEXPECT(parked_id == 7u);
@@ -161,7 +161,7 @@ ZEST_CASE(BuildPCHRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::BuildPCHParams params;
         params.file = hdr;
         params.directory = "/tmp";
@@ -197,7 +197,7 @@ ZEST_CASE(IndexRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::TURunParams params;
         params.index = true;
         params.file = src;
@@ -232,7 +232,7 @@ ZEST_CASE(BuildPCMRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::BuildPCMParams params;
         params.file = src;
         params.directory = "/tmp";
@@ -283,7 +283,7 @@ ZEST_CASE(CompletionRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompletionParams params;
         params.file = src;
         params.text = text;
@@ -311,7 +311,7 @@ ZEST_CASE(SignatureHelpRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::SignatureHelpParams params;
         params.file = src;
         params.text = text;
@@ -349,7 +349,7 @@ template <class, class...> struct V {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         worker::CompletionParams completion;
         completion.file = src;
         completion.text = text;
@@ -390,7 +390,7 @@ ZEST_CASE(MultipleStatelessRequests) {
 
     bool test_done = false;
 
-    w.run([&]() -> kota::task<> {
+    w.run([&]() -> async::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
             worker::TURunParams params;

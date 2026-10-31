@@ -93,8 +93,8 @@ void DiskState::end_turn() {
     turn_open = false;
 }
 
-kota::task<> DiskState::end_turns(kota::event_loop& loop) {
-    auto before_io = kota::prepare::create(loop);
+async::task<> DiskState::end_turns(async::event_loop& loop) {
+    auto before_io = async::prepare::create(loop);
     on_turn = [&before_io] {
         before_io.start();
     };
