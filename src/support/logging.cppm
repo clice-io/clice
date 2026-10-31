@@ -60,7 +60,7 @@ import :support.prelude;
 /// time until a worker was ready, total_ms = end-to-end), "query"
 /// (worker-side share of a request: acquire_ms = AST wait + strand lock,
 /// compute_ms = the feature call itself), "build" (stateless-worker build
-/// tasks: kind=pch|pcm|unit_run with per-stage splits — compile_ms, then
+/// tasks: kind=pch|pcm|compile_unit with per-stage splits — compile_ms, then
 /// preamble_index_ms/flush_ms/state_write_ms for a pch, flush_ms for a
 /// pcm, index_ms/teardown_ms for a unit run),
 /// "index_query" (master-side index lookups: kind=relations|search),

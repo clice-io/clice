@@ -434,7 +434,7 @@ ZEST_CASE(MergedRecordsRoundTrip) {
 
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    ZASSERT(loaded.open(*db) == index::LoadOutcome::Loaded);
+    ZASSERT(loaded.open(*db) == index::LoadResult::Loaded);
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
     auto fresh_id = fresh.find(Spelling::absolute(pool.resolve(focus)));
@@ -521,7 +521,7 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
     commit(project, *db);
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    ZASSERT(loaded.open(*db) == index::LoadOutcome::Loaded);
+    ZASSERT(loaded.open(*db) == index::LoadResult::Loaded);
     check(loaded, fresh);
 }
 
@@ -558,7 +558,7 @@ ZEST_CASE(LazyShardsStayPut) {
     ZASSERT(db->write(puts, {}));
     ZASSERT(db->advance_read_snapshot());
 
-    ZASSERT(project.open(*db) == index::LoadOutcome::Loaded);
+    ZASSERT(project.open(*db) == index::LoadResult::Loaded);
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ZASSERT(held != nullptr);
@@ -644,7 +644,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
 
     clice::FileTable files;
     index::ProjectIndex reader{files};
-    ZASSERT(reader.open(*db) == index::LoadOutcome::Loaded);
+    ZASSERT(reader.open(*db) == index::LoadResult::Loaded);
     check(reader, files);
 
     // A unit leaving takes its set along: c.cpp's files no longer answer,

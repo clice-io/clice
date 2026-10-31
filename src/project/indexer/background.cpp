@@ -15,9 +15,9 @@ namespace clice {
 
 namespace {
 
-/// A round's shared counters, living on run_round's frame, which outlives
+/// A pass's shared counters, living on run_index_pass's frame, which outlives
 /// every spawned task (it joins them before returning).
-struct RoundState {
+struct PassState {
     /// Dispatched tasks not yet finished.
     std::size_t inflight = 0;
 
@@ -48,14 +48,14 @@ void record_too_big(BackgroundIndex& background, Fid file, std::uint64_t memory)
     background.too_big[file] = memory;
 }
 
-/// One dispatched unit of a background round: admit, compile the TU
+/// One dispatched unit of a background pass: admit, compile the TU
 /// through its unit node, take the merge report, finish the taken reindex
 /// and report progress.
 async::task<> run_index_task(Project& project,
                              ReindexQueue::TakenReindex taken,
                              std::size_t index,
                              std::size_t total,
-                             RoundState& round) {
+                             PassState& pass) {
     using Status = UnitResult::Status;
     auto& background = project.background_index;
     auto& queue = background.queue;
@@ -64,7 +64,7 @@ async::task<> run_index_task(Project& project,
     // A booked content change is authoritative: whoever booked it saw
     // the edit. The dep-hash check cannot be trusted
     // to see a file's own edit (it validates the recorded
-    // dependencies), so only deps-only slots — where it exists to
+    // dependencies), so only deps-only reindexes — where it exists to
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = queue.pending_reason(path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && background.compiled_by_session &&
@@ -83,11 +83,11 @@ async::task<> run_index_task(Project& project,
         if(!result) {
             // The graph shut down: nothing ran, so the reindex
             // stays booked for the final snapshot and the next session;
-            // only the round bookkeeping below still runs so a live feeder
-            // is not left waiting on this slot.
+            // only the pass bookkeeping below still runs so a live feeder
+            // is not left waiting on this task.
             background.progress.completed += 1;
-            round.inflight -= 1;
-            round.task_done.set();
+            pass.inflight -= 1;
+            pass.task_done.set();
             co_return;
         }
         // The report's reindexes are booked before the finish and the
@@ -129,7 +129,7 @@ async::task<> run_index_task(Project& project,
             case Status::OutOfMemory: {
                 // Preempted, killed for memory beside other work or lost to
                 // a worker death: the work itself is fine — requeue the
-                // file with its original reason so the next round redoes it
+                // file with its original reason so the next pass redoes it
                 // instead of silently dropping coverage; only lost runs
                 // spend the bounded budget. A run that crashed its worker,
                 // or that ran out of memory alone, waits for the file to
@@ -226,28 +226,28 @@ async::task<> run_index_task(Project& project,
     // flight bound the fresh sequence number and stay parked for that newer
     // attempt.
     project.wake_attempt_waits(path_id, taken.seq);
-    round.inflight -= 1;
-    round.task_done.set();
+    pass.inflight -= 1;
+    pass.task_done.set();
     background.progress.stage = BackgroundIndex::Progress::Stage::Report;
     background.progress.completed += 1;
     background.on_progress_changed.emit();
 }
 
-/// The round's dispatch loop, spawned as a child of `workers` so that a
-/// shutdown cancel reaches it through the round frame's join — see the
-/// spawn site. Takes the round's slots and spawns one run_index_task per
-/// live slot, bounded by the feeder window.
-async::task<> run_round_feeder(Project& project,
-                               async::task_group<>& workers,
-                               RoundState& round,
-                               std::size_t total,
-                               std::size_t& dispatched) {
+/// The pass's dispatch loop, spawned as a child of `workers` so that a
+/// shutdown cancel reaches it through the pass frame's join — see the
+/// spawn site. Takes the pass's files and spawns one run_index_task per
+/// live one, bounded by the feeder window.
+async::task<> run_pass_feeder(Project& project,
+                              async::task_group<>& workers,
+                              PassState& pass,
+                              std::size_t total,
+                              std::size_t& dispatched) {
     auto& background = project.background_index;
     auto& pool = *project.pool;
-    while(background.queue.round_left()) {
+    while(background.queue.pass_left()) {
         // Every wait loops back to re-check ALL gates: a pause arriving
         // while parked on capacity (or a capacity loss while parked on the
-        // pause) must not let one slot slip through on wake-up.
+        // pause) must not let one file slip through on wake-up.
         while(true) {
             if(background.pause_depth > 0) {
                 co_await background.resume_event.wait();
@@ -255,7 +255,7 @@ async::task<> run_round_feeder(Project& project,
             }
 
             // With no schedulable worker but one returning, a dispatch would
-            // only convert the queue slot into an instant worker_unavailable
+            // only convert the taken file into an instant worker_unavailable
             // failure; park until a slot returns to service. With none ever
             // returning such failures are terminal and take the normal
             // failure path.
@@ -267,9 +267,9 @@ async::task<> run_round_feeder(Project& project,
             // workers never idle waiting for the feeder, shallow enough
             // that the pool queue holds little when a pause or budget cut
             // arrives.
-            if(round.inflight >= 2 * pool.background_limit()) {
-                round.task_done.reset();
-                co_await round.task_done.wait();
+            if(pass.inflight >= 2 * pool.background_limit()) {
+                pass.task_done.reset();
+                co_await pass.task_done.wait();
                 continue;
             }
             break;
@@ -288,7 +288,7 @@ async::task<> run_round_feeder(Project& project,
         }
 
         dispatched += 1;
-        round.inflight += 1;
+        pass.inflight += 1;
         if(background.dispatches_before_pause > 0) {
             background.dispatches_before_pause -= 1;
             if(background.dispatches_before_pause == 0) {
@@ -299,7 +299,7 @@ async::task<> run_round_feeder(Project& project,
         // lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(project, *taken, dispatched, total, round));
+        workers.spawn(run_index_task(project, *taken, dispatched, total, pass));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
@@ -332,7 +332,7 @@ void Project::wake_attempt_waits(Fid path_id, std::uint64_t seq) {
     }
 }
 
-async::task<> Project::run_index_round() {
+async::task<> Project::run_index_pass() {
     auto& background = background_index;
     auto& queue = background.queue;
     if(background.idle_timer) {
@@ -347,9 +347,9 @@ async::task<> Project::run_index_round() {
         // scans the symbol records — or a run of the entries it left
         // pending, or the start-up scan met a damaged record, which only a
         // save discards (a damaged database the save discarded queues
-        // every unit, and the save starts their round).
+        // every unit, and the save starts their pass).
         if(index.damaged() || index.search_update_due(index::SearchRebuild::Idle)) {
-            co_await persist(index::SearchRebuild::Idle);
+            co_await save(index::SearchRebuild::Idle);
         }
         co_return;
     }
@@ -357,15 +357,15 @@ async::task<> Project::run_index_round() {
     background.active = true;
     LOG_DEBUG("Background indexing: starting, {} files queued", queue.queued());
 
-    // FileVersion results hold for one round: the disk can change under a
-    // running round, but staleness is re-judged per round anyway.
-    index.begin_round();
+    // FileVersion results hold for one pass: the disk can change under a
+    // running pass, but staleness is re-judged per pass anyway.
+    index.clear_staleness_cache();
 
-    auto total = queue.begin_round([&](Fid id) { return !dep_graph.module_of(id).empty(); });
+    auto total = queue.begin_pass([&](Fid id) { return !dep_graph.module_of(id).empty(); });
     std::size_t dispatched = 0;
-    RoundState round;
+    PassState pass;
 
-    // Announce the round; a progress reporter reads the counts from
+    // Announce the pass; a progress reporter reads the counts from
     // `progress` and owns the LSP token's begin/report/end handshake. With
     // no subscriber the signal is simply a no-op.
     background.progress = {.stage = BackgroundIndex::Progress::Stage::Begin, .total = total};
@@ -377,15 +377,15 @@ async::task<> Project::run_index_round() {
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
     co_await async::with_task_group([&](async::task_group<>& workers) {
-        return run_round_feeder(*this, workers, round, total, dispatched);
+        return run_pass_feeder(*this, workers, pass, total, dispatched);
     });
 
     background.progress.stage = BackgroundIndex::Progress::Stage::End;
     background.progress.dispatched = dispatched;
     background.on_progress_changed.emit();
 
-    // No dispatch loop holds a slot of the queue any more.
-    queue.end_round();
+    // No dispatch loop takes from the queue any more.
+    queue.end_pass();
 
     LOG_PERF("index",
              "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
@@ -393,19 +393,18 @@ async::task<> Project::run_index_round() {
              total - dispatched,
              total,
              timer.ms());
-    co_await persist(queue.queued() == 0 ? index::SearchRebuild::Idle
-                                         : index::SearchRebuild::Behind);
-    // The round's merge buffers are freed by now; glibc would keep their
-    // pages, and the master its round's peak, for the rest of the session.
+    co_await save(queue.queued() == 0 ? index::SearchRebuild::Idle : index::SearchRebuild::Behind);
+    // The pass's merge buffers are freed by now; glibc would keep their
+    // pages, and the master its pass's peak, for the rest of the session.
     co_await async::queue([] { release_free_memory(); });
 
-    // The round owns the "active" gate through its save: releasing it
-    // before the write await would let a next round's save overlap this
+    // The pass owns the "active" gate through its save: releasing it
+    // before the write await would let a next pass's save overlap this
     // one's in-flight batch, racing same-key blob writes on the pool.
     background.active = false;
-    background.round_ended.set();
+    background.pass_ended.set();
 
-    // Files enqueued or requeued while the round ran saw their schedule
+    // Files enqueued or requeued while the pass ran saw their schedule
     // no-op against `active`; without this kick they would wait for the
     // next external event — and a content-changed pending file's index
     // stays skipped for that whole wait.
@@ -420,11 +419,11 @@ bool Project::enqueue_reindex(Fid path_id, ReindexReason reason) {
     if(!build.indexed(file_table.resolve(path_id))) {
         return false;
     }
-    // A new pending reindex voids the running round's freshness memos: one
+    // A new pending reindex voids the running pass's freshness memos: one
     // taken after this recording must re-judge against the disk, or its
     // skip would finish the fresh sequence number on a result memoized
     // before the change and the file would never re-index.
-    index.begin_round();
+    index.clear_staleness_cache();
     background_index.queue.record(path_id, reason);
     return true;
 }
@@ -471,12 +470,12 @@ void Project::apply_report(const index::IndexReport& report) {
     }
 }
 
-async::task<> Project::persist(index::SearchRebuild search) {
+async::task<> Project::save(index::SearchRebuild search) {
     auto& queue = background_index.queue;
     bool retry = true;
     bool owed = false;
     while(retry) {
-        auto report = co_await save_project(search);
+        auto report = co_await write_database(search);
         retry = report.owes_retry;
         owed |= !report.reindex().empty();
         apply_report(report);
@@ -491,7 +490,7 @@ async::task<> Project::persist(index::SearchRebuild search) {
         }
     }
     // A save the compaction or a discarded database owed reindexes to queued
-    // them: they need a round of their own when none is running.
+    // them: they need a pass of their own when none is running.
     if(owed) {
         schedule_index();
     }
@@ -560,7 +559,7 @@ async::task<> Project::stop_background_index() {
     background.stopped = true;
     background.tasks.cancel();
     co_await background.tasks.join();
-    // Cancelling the round that waited on the idle timer leaves it armed,
+    // Cancelling the pass that waited on the idle timer leaves it armed,
     // and an armed timer keeps the loop running until it fires.
     if(background.idle_timer) {
         background.idle_timer->stop();
@@ -596,16 +595,16 @@ void Project::schedule_index(bool immediate) {
         background.idle_timer = std::make_shared<async::timer>(async::timer::create(*loop));
     }
     // Time is the feature: the idle timeout batches edit storms into one
-    // round. A follow-up round for work requeued during the round that just
-    // ended has already been batched by that round and starts right away —
+    // pass. A follow-up pass for work requeued during the pass that just
+    // ended has already been batched by that pass and starts right away —
     // a crashed file's retry must not owe an extra idle window on top of
-    // the round boundary it already waited out.
+    // the pass boundary it already waited out.
     background.idle_timer->start(
         chrono::milliseconds(immediate ? 0 : settings.project.idle_timeout_ms.value) +
         test_jitter());
 
-    [[maybe_unused]] bool spawned = background.tasks.spawn(run_index_round());
-    assert(spawned && "the background index's task group refused a round before it stopped");
+    [[maybe_unused]] bool spawned = background.tasks.spawn(run_index_pass());
+    assert(spawned && "the background index's task group refused a pass before it stopped");
 }
 
 bool Project::index_idle() const {
@@ -615,8 +614,8 @@ bool Project::index_idle() const {
 
 async::task<> Project::wait_index_idle() {
     while(!index_idle()) {
-        background_index.round_ended.reset();
-        co_await background_index.round_ended.wait();
+        background_index.pass_ended.reset();
+        co_await background_index.pass_ended.wait();
     }
 }
 

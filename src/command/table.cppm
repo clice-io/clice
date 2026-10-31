@@ -78,7 +78,7 @@ enum class CommandSource : std::uint8_t {
 struct CommandRef {
     Fid file;
     CommandID command = invalid_command;
-    InputKind input;
+    InputKind language;
     CommandSource source = CommandSource::Fallback;
 };
 

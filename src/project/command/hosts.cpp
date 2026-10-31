@@ -11,7 +11,7 @@ namespace clice {
 namespace types = clang::driver::types;
 
 types::ID language_of(const CommandRef& command) {
-    return types::lookupTypeForTypeSpecifier(command.input.value);
+    return types::lookupTypeForTypeSpecifier(command.language.value);
 }
 
 /// Whether `type` is C++ or a C++ module unit: the two share flags, so

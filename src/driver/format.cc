@@ -145,7 +145,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
             }
             auto [it, inserted] = nested.try_emplace(llvm::StringRef(dir));
             if(inserted) {
-                it->second = configured(Spelling(dir));
+                it->second = has_configuration_file(Spelling(dir));
             }
             found = it->second;
             return !found;
@@ -177,7 +177,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
 }
 
 /// What formatting one file came to.
-struct Outcome {
+struct FileResult {
     /// --check: where the edits fall, as `clang-format --dry-run --Werror`
     /// reports them; empty for a formatted file.
     std::string violations;
@@ -204,7 +204,7 @@ std::string violations(const Target& file,
     return report;
 }
 
-Outcome format_file(const Target& file, bool check) {
+FileResult format_file(const Target& file, bool check) {
     std::string content;
     if(auto error = fs::read_file(content, file.path)) {
         return {.error = std::format("cannot read {}: {}", file.path, error.message())};
@@ -326,7 +326,7 @@ Result format_project(const Request& options) {
 
     std::uint32_t jobs =
         options.jobs != 0 ? options.jobs : std::max(1u, std::thread::hardware_concurrency());
-    std::vector<Outcome> formats(files.size());
+    std::vector<FileResult> formats(files.size());
     std::atomic<std::size_t> next = 0;
     std::vector<llvm::thread> threads;
     for(std::uint32_t i = 0; i < jobs && i < files.size(); i += 1) {

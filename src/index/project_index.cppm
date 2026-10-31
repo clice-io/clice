@@ -94,7 +94,7 @@ enum class MergeError : std::uint8_t {
 };
 
 /// What opening the database (ProjectIndex::open) found.
-enum class LoadOutcome : std::uint8_t {
+enum class LoadResult : std::uint8_t {
     /// The persisted index opened.
     Loaded,
     /// There was no header: a first run.
@@ -296,7 +296,7 @@ public:
     /// Read the persisted index from `db`'s read snapshot — the header and
     /// the search index — and fetch everything else from it on first use.
     /// The snapshot stays pinned until a save of this index moves it on.
-    LoadOutcome open(BlobDatabase& db);
+    LoadResult open(BlobDatabase& db);
 
     /// The writer's start-up scan: every file record checked against the
     /// disk, and the TUs depending on a file whose content changed, on a
@@ -317,7 +317,7 @@ public:
     /// identity of the command it was indexed under and `peak` the memory
     /// its worker reached, which the manifest keeps.
     std::expected<IndexReport, MergeError> merge(llvm::StringRef tu_index,
-                                                 llvm::ArrayRef<DepState> imports,
+                                                 llvm::ArrayRef<Input> imports,
                                                  std::uint64_t command = 0,
                                                  std::uint64_t peak = 0);
 
@@ -347,16 +347,16 @@ public:
     /// later merges, the instantiation keys its index walked do not hold.
     void mark_outdated(Fid tu);
 
-    /// Start a freshness round: FileVersion results hold for one round —
-    /// the disk can change under a running round, but staleness is
-    /// re-judged per round anyway.
-    void begin_round() {
+    /// Clear the staleness cache: FileVersion results hold for one pass —
+    /// the disk can change under a running pass, but staleness is
+    /// re-judged per pass anyway.
+    void clear_staleness_cache() {
         version_stale.clear();
     }
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
-    /// FileVersion among its dependencies. Valid only within one round:
-    /// the results are cleared by begin_round(), never here.
+    /// FileVersion among its dependencies. Valid only within one pass:
+    /// the results are cleared by clear_staleness_cache(), never here.
     bool needs_reindex(Fid file);
 
     /// Whether a save that may rebuild as much as `search` says changes the
@@ -618,7 +618,7 @@ private:
     /// reindex (owed_units) and the report asks for one.
     void owe(Fid tu, IndexReport& report);
 
-    /// Two-layer staleness test on a FileVersion, cached per round; a hash
+    /// Two-layer staleness test on a FileVersion, cached per pass; a hash
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
     bool file_version_stale(VersionID version);
@@ -744,8 +744,8 @@ private:
 
     std::uint32_t saved_shards = 0;
 
-    /// Per-round FileVersion staleness results: many TUs share the same
-    /// versions, and one stat (or repair) per version per round is enough.
+    /// Per-pass FileVersion staleness results: many TUs share the same
+    /// versions, and one stat (or repair) per version per pass is enough.
     llvm::DenseMap<VersionID, bool> version_stale;
 };
 

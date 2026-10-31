@@ -924,13 +924,13 @@ ZEST_CASE(AppearedFileWaits) {
     p.project.dep_graph.build_reverse_map();
     ZEXPECT(!p.chains(unity, part).has_value());
 
-    /// A preprocess run's tree the same: its trace names the place.
+    /// A preprocess run's tree the same: its inputs name the place.
     p.project.index.remove_manifest(unity);
     p.project.hosting.trees.commit(p.tree(unity).key,
                                    {
                                        .root = root
     },
-                                   {{.path_id = part, .missing = true}});
+                                   {{.file = part, .absent = true}});
     ZEXPECT(!p.chains(unity, part).has_value());
 };
 
@@ -999,7 +999,7 @@ ZEST_CASE(TreeFollowsItsInputs) {
     p.project.hosting.trees.commit(key,
                                    {.root = VersionID{p.version(main, main_text)},
                                     .nodes = {{.file = p.version(a, "#pragma once\n"), .line = 1}}},
-                                   {*current_dep(p.project.file_table, other)});
+                                   {*current_input(p.project.file_table, other)});
     ZEXPECT(p.chains(main, a)->size() == 1u);
     ZEXPECT(!p.project.include_chains({main, key.second + 1}, a).has_value());
 
@@ -1030,15 +1030,15 @@ ZEST_CASE(FailedTreeHostsNothing) {
     ZEXPECT(!p.chains(a, t).has_value());
 };
 
-ZEST_CASE(TrialFollowsItsInputs) {
-    /// A trial's result holds while what its compile read holds, and the
-    /// header's text: for an open header, whose buffer moves with every
-    /// keystroke, its disk content.
+ZEST_CASE(SelfContainmentFollowsItsInputs) {
+    /// A self-containment check's result holds while what its compile read
+    /// holds, and the header's text: for an open header, whose buffer moves
+    /// with every keystroke, its disk content.
     TreeProject p;
     auto header = p.write("t.h", "Widget w;\n");
     auto dep = p.write("dep.h", "struct Widget;\n");
     auto& files = p.project.file_table;
-    TrialKey key{header, 7};
+    SelfContainmentKey key{header, 7};
     ZEXPECT(!p.project.self_contained(key, false).has_value());
 
     feature::FileDiagnostic missing{
@@ -1047,22 +1047,22 @@ ZEST_CASE(TrialFollowsItsInputs) {
     };
     // The result changes what the listing folds: one taken before is stale.
     auto epoch = p.project.context_epoch;
-    p.project.commit_trial(key,
-                           {missing},
-                           current_dep(files, header)->version,
-                           {*current_dep(files, dep)});
+    p.project.commit_self_containment(key,
+                                      {missing},
+                                      current_input(files, header)->version,
+                                      {*current_input(files, dep)});
     ZEXPECT(p.project.context_epoch != epoch);
     ZEXPECT(p.project.self_contained(key, false) == false);
     ZEXPECT(p.project.self_contained(key, true) == false);
     ZEXPECT(!p.project.self_contained({header, 8}, false).has_value());
 
-    // A trial of a buffer the disk does not hold: the editor takes it, a
+    // A check of a buffer the disk does not hold: the editor takes it, a
     // reader of the disk does not.
-    TrialKey buffer{header, 9};
-    p.project.commit_trial(buffer,
-                           {},
-                           files.intern_version(header, 42),
-                           {*current_dep(files, dep)});
+    SelfContainmentKey buffer{header, 9};
+    p.project.commit_self_containment(buffer,
+                                      {},
+                                      files.intern_version(header, 42),
+                                      {*current_input(files, dep)});
     ZEXPECT(p.project.self_contained(buffer, true) == true);
     ZEXPECT(!p.project.self_contained(buffer, false).has_value());
 
@@ -1072,11 +1072,11 @@ ZEST_CASE(TrialFollowsItsInputs) {
     ZEXPECT(!p.project.self_contained(key, true).has_value());
     ZEXPECT(!p.project.self_contained(buffer, true).has_value());
 
-    TrialKey other{header, 10};
-    p.project.commit_trial(other,
-                           {},
-                           current_dep(files, header)->version,
-                           {*current_dep(files, dep)});
+    SelfContainmentKey other{header, 10};
+    p.project.commit_self_containment(other,
+                                      {},
+                                      current_input(files, header)->version,
+                                      {*current_input(files, dep)});
     p.write("dep.h", "struct Widget {};\n");
     files.disk.end_turn();
     ZEXPECT(!p.project.self_contained(other, true).has_value());
@@ -1101,10 +1101,11 @@ ZEST_CASE(UnmatchedContextKeepsHost) {
     p.index(main, std::move(manifest));
 
     auto lent = p.project.lent_command(t, main, p.project.build.commands(main).front());
-    auto version = current_dep(p.project.file_table, t)->version;
-    p.project.hosting.trials.commit({t, p.project.commands.command_hash(lent.command)},
-                                    {.self_contained = false, .text = version, .disk = version},
-                                    {});
+    auto version = current_input(p.project.file_table, t)->version;
+    p.project.hosting.self_containment.commit(
+        {t, p.project.commands.command_hash(lent.command)},
+        {.self_contained = false, .text = version, .disk = version},
+        {});
 
     std::string directory;
     std::vector<std::string> arguments;
@@ -1128,7 +1129,7 @@ ZEST_CASE(FailedContextRemembered) {
     auto command = p.tree(main).command;
     auto failed = p.project.synthesize(t, host, command);
     ZEXPECT(failed.result.synthesized == nullptr);
-    ZEXPECT(ranges::contains(failed.trace, main, &DepState::path_id));
+    ZEXPECT(ranges::contains(failed.inputs, main, &Input::file));
 
     p.write("main.cpp", "#include \"t.h\"\n");
     p.project.file_table.disk.end_turn();

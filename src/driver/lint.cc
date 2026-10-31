@@ -126,7 +126,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
     }
 
     // One retry: a lost compile or a preemption says nothing about the TU,
-    // and a one-shot pass has no later round to requeue into. A compile
+    // and a one-shot pass has no later pass to requeue into. A compile
     // that crashed its worker would crash the retry too. One whose memory
     // ran out beside other work compiles again until it fits or is found
     // too big: each retry waits for at least the memory the last one
@@ -222,7 +222,7 @@ async::task<>
     async::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the background
-    // index's round feeder: a cancel cascades through the join and every
+    // index's pass feeder: a cancel cascades through the join and every
     // in-flight task unwinds before the group is destroyed.
     auto feeder = [](BatchRun& run,
                      bool with_index,

@@ -7,19 +7,19 @@ import :support.logging;
 
 namespace clice::index {
 
-LoadOutcome ProjectIndex::open(BlobDatabase& db) {
+LoadResult ProjectIndex::open(BlobDatabase& db) {
     auto blob = db.read(BlobKind::Header, "header");
     if(!blob) {
         if(db.contains(BlobKind::Header, "header")) {
-            return LoadOutcome::Unreadable;
+            return LoadResult::Unreadable;
         }
         this->db = &db;
-        return LoadOutcome::Empty;
+        return LoadResult::Empty;
     }
     auto decoded = decode_header(blob.buffer->getBuffer());
     if(!decoded) {
         LOG_INFO("The index database is of another format; discarding it");
-        return LoadOutcome::Undecodable;
+        return LoadResult::Undecodable;
     }
     header = std::move(*decoded);
     this->db = &db;
@@ -55,7 +55,7 @@ LoadOutcome ProjectIndex::open(BlobDatabase& db) {
         }
         first = end;
     }
-    return LoadOutcome::Loaded;
+    return LoadResult::Loaded;
 }
 
 llvm::SmallVector<Fid> ProjectIndex::stale_units() {

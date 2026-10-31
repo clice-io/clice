@@ -69,7 +69,7 @@ enum class BlobKind : std::uint8_t {
     /// provisional members.
     BuildSnapshot,
     /// The single precompiled records blob (PCH/PCM records with their deps,
-    /// self-containment trials), key "artifacts".
+    /// self-containment checks), key "artifacts".
     PrecompiledRecords,
     /// The single context choices blob (saved context choices, synthesized
     /// context hosts), key "contexts" — sovereignty records, never

@@ -708,7 +708,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
 
     index::IndexReport report;
     auto body = [&]() -> async::task<> {
-        report = co_await f.project.save_project();
+        report = co_await f.project.write_database();
     };
     auto task = body();
     f.loop.schedule(task);

@@ -9,10 +9,10 @@ namespace {
 using Decision = ReindexQueue::FailureDecision;
 using Failure = ReindexQueue::Failure;
 
-/// The take/finish contract and the slot order in isolation: a pending
+/// The take/finish contract and the order in isolation: a pending
 /// reindex is taken atomically at dispatch, flight-time recordings book a
 /// newer one, success consumes only the taken one, failure merges it back
-/// — bounded for crashes — and a round runs over the slots queued when it
+/// — bounded for crashes — and a pass runs over the files queued when it
 /// began.
 ZEST_SUITE(ReindexQueue) {
 
@@ -20,30 +20,30 @@ constexpr static unsigned budget = 3;
 
 clice::ReindexQueue queue{budget};
 
-/// Take the next slot as a dispatch does, in a round of its own.
+/// Take the next place as a dispatch does, in a pass of its own.
 std::optional<clice::ReindexQueue::TakenReindex> take() {
-    queue.begin_round([](Fid) { return false; });
+    queue.begin_pass([](Fid) { return false; });
     auto taken = queue.take_next();
-    queue.end_round();
+    queue.end_pass();
     return taken;
 }
 
-/// The files of the slots not taken yet, in their order, taking them.
+/// The files of the places not taken yet, in their order, taking them.
 std::vector<Fid> drain() {
     std::vector<Fid> order;
-    queue.begin_round([](Fid) { return false; });
+    queue.begin_pass([](Fid) { return false; });
     while(auto taken = queue.take_next()) {
         order.push_back(taken->id);
         queue.finish(*taken);
     }
-    queue.end_round();
+    queue.end_pass();
     return order;
 }
 
 ZEST_CASE(content_absorbs_queued) {
-    // Within one queued slot ContentChanged absorbs: a deps-only cascade
+    // Within one queued place ContentChanged absorbs: a deps-only cascade
     // cannot downgrade a file whose own content already changed, and no
-    // second slot is owed.
+    // second place is owed.
     queue.record(Fid{1}, ReindexReason::ContentChanged);
     queue.record(Fid{1}, ReindexReason::DepsOnly);
     ZEXPECT(queue.queued() == 1u);
@@ -55,7 +55,7 @@ ZEST_CASE(content_absorbs_queued) {
 }
 
 ZEST_CASE(consumed_pass_owns_reindex) {
-    // A deps-only recording after the slot was taken is a new reindex of its
+    // A deps-only recording after the place was taken is a new reindex of its
     // own kind: the in-flight pass owns the earlier content change, and
     // keeping ContentChanged would suppress the file's index past it.
     queue.record(Fid{1}, ReindexReason::ContentChanged);
@@ -180,9 +180,9 @@ ZEST_CASE(cleared_entry_drops) {
     ZEXPECT(!queue.contains(Fid{1}));
 }
 
-ZEST_CASE(cleared_slot_reused) {
-    // A file removed from disk and recreated before its slot was consumed
-    // owes no second slot: both would dispatch it in one round.
+ZEST_CASE(cleared_place_reused) {
+    // A file removed from disk and recreated before its place was consumed
+    // owes no second place: both would dispatch it in one pass.
     queue.record(Fid{1}, ReindexReason::ContentChanged);
     queue.clear(Fid{1});
     queue.record(Fid{1}, ReindexReason::ContentChanged);
@@ -191,8 +191,8 @@ ZEST_CASE(cleared_slot_reused) {
     ZEXPECT(queue.queued() == 0u);
 }
 
-ZEST_CASE(cleared_slot_skipped) {
-    // A slot whose file was cleared before its turn dispatches nothing.
+ZEST_CASE(cleared_place_skipped) {
+    // A place whose file was cleared before its turn dispatches nothing.
     queue.record(Fid{1}, ReindexReason::ContentChanged);
     queue.record(Fid{2}, ReindexReason::ContentChanged);
     queue.clear(Fid{1});
@@ -200,14 +200,14 @@ ZEST_CASE(cleared_slot_skipped) {
     ZEXPECT(queue.queued() == 0u);
 }
 
-ZEST_CASE(round_takes_its_slots) {
-    // A round runs over the slots queued when it began, those `first` picks
-    // ahead: one queued during the round, a requeue of its own failures
+ZEST_CASE(pass_takes_its_places) {
+    // A pass runs over the files queued when it began, those `first` picks
+    // ahead: one queued during the pass, a requeue of its own failures
     // among them, waits for the next.
     queue.record(Fid{1}, ReindexReason::DepsOnly);
     queue.record(Fid{2}, ReindexReason::DepsOnly);
     queue.record(Fid{3}, ReindexReason::DepsOnly);
-    ZEXPECT(queue.begin_round([](Fid id) { return id == Fid{3}; }) == 3u);
+    ZEXPECT(queue.begin_pass([](Fid id) { return id == Fid{3}; }) == 3u);
 
     auto first = queue.take_next();
     ZASSERT(first);
@@ -220,18 +220,18 @@ ZEST_CASE(round_takes_its_slots) {
         order.push_back(taken->id);
         queue.finish(*taken);
     }
-    queue.end_round();
+    queue.end_pass();
     ZEXPECT(order == std::vector<Fid>{Fid{1}, Fid{2}});
     ZEXPECT(queue.queued() == 2u);
     ZEXPECT(drain() == std::vector<Fid>{Fid{3}, Fid{4}});
 }
 
-ZEST_CASE(move_to_front_within_round) {
-    // A file someone reads leads the slots the running round has left.
+ZEST_CASE(move_to_front_within_pass) {
+    // A file someone reads leads the places the running pass has left.
     queue.record(Fid{1}, ReindexReason::DepsOnly);
     queue.record(Fid{2}, ReindexReason::DepsOnly);
     queue.record(Fid{3}, ReindexReason::DepsOnly);
-    queue.begin_round([](Fid) { return false; });
+    queue.begin_pass([](Fid) { return false; });
     auto taken = queue.take_next();
     ZASSERT(taken);
     queue.finish(*taken);
@@ -242,16 +242,16 @@ ZEST_CASE(move_to_front_within_round) {
         order.push_back(next->id);
         queue.finish(*next);
     }
-    queue.end_round();
+    queue.end_pass();
     ZEXPECT(order == std::vector<Fid>{Fid{3}, Fid{2}});
 }
 
-ZEST_CASE(move_to_front_spares_round) {
-    // A slot queued past the running round leads the next one instead of
-    // joining this one: the round may have the file in flight.
+ZEST_CASE(move_to_front_spares_pass) {
+    // A place queued past the running pass leads the next one instead of
+    // joining this one: the pass may have the file in flight.
     queue.record(Fid{1}, ReindexReason::DepsOnly);
     queue.record(Fid{2}, ReindexReason::DepsOnly);
-    queue.begin_round([](Fid) { return false; });
+    queue.begin_pass([](Fid) { return false; });
     auto taken = queue.take_next();
     ZASSERT(taken);
     queue.record(Fid{3}, ReindexReason::DepsOnly);
@@ -264,7 +264,7 @@ ZEST_CASE(move_to_front_spares_round) {
     ZEXPECT(rest->id == Fid{2});
     queue.finish(*rest);
     ZEXPECT(!queue.take_next());
-    queue.end_round();
+    queue.end_pass();
     ZEXPECT(drain() == std::vector<Fid>{Fid{1}, Fid{3}});
 }
 

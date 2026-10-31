@@ -101,7 +101,7 @@ async::task<> ServedProject::run_include_tree(TreeRequest request,
                         tree.content_hashes,
                         std::move(tree.nodes),
                         tree.deps,
-                        tree.build_at);
+                        tree.started_at);
 }
 
 const ContextChoice* ServedProject::active_choice(Fid path_id) const {

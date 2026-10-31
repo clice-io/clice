@@ -47,8 +47,8 @@ ZEST_CASE(StaleFormatDropsPch) {
         auto& st = f.project.pch_cache["k"];
         st.blob = "k";
         st.path = "k.pch";
-        st.deps.push_back(
-            {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
+        st.inputs.push_back(
+            {.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
         f.project.mark_precompiled_dirty();
         f.save();
 
@@ -83,7 +83,7 @@ ZEST_CASE(StaleFormatDropsPch) {
 }
 
 ZEST_CASE(OlderRecordsLoad) {
-    // Records an older binary wrote have no trials, but its header modes:
+    // Records an older binary wrote have no `trials`, but its header modes:
     // the PCH and PCM entries beside them still load.
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
@@ -107,8 +107,8 @@ ZEST_CASE(OlderRecordsLoad) {
         auto& st = f.project.pch_cache["k"];
         st.blob = "k";
         st.path = "k.pch";
-        st.deps.push_back(
-            {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
+        st.inputs.push_back(
+            {.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
         f.project.mark_precompiled_dirty();
         f.save();
 
@@ -171,10 +171,11 @@ ZEST_CASE(DeplessPcmDropped) {
     ZASSERT(f.project.pcm_builds.empty());
 }
 
-ZEST_CASE(TrialsPersisted) {
-    // A trial's result rides the precompiled records, either outcome, with
-    // what it read: a restart over unchanged files adopts it instead of
-    // running the trial again; one over a changed file it read does not.
+ZEST_CASE(SelfContainmentPersisted) {
+    // A self-containment check's result rides the precompiled records,
+    // either result, with what it read: a restart over unchanged files
+    // adopts it instead of running the check again; one over a changed file
+    // it read does not.
     TempDir tmp;
     tmp.touch("utils.h", "inline int f();\n");
     tmp.touch("dep.h", "int x;\n");
@@ -194,11 +195,11 @@ ZEST_CASE(TrialsPersisted) {
             .level = DiagnosticLevel::Error,
             .id = clang::diag::err_unknown_typename,
         };
-        f.project.commit_trial({id, 1},
-                               {missing},
-                               current_dep(files, id)->version,
-                               {*current_dep(files, dep)});
-        f.project.commit_trial({alone, 1}, {}, current_dep(files, alone)->version, {});
+        f.project.commit_self_containment({id, 1},
+                                          {missing},
+                                          current_input(files, id)->version,
+                                          {*current_input(files, dep)});
+        f.project.commit_self_containment({alone, 1}, {}, current_input(files, alone)->version, {});
         f.save();
     }
 

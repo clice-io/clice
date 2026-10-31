@@ -302,7 +302,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
     auto m = id("m.cppm");
-    auto read = current_dep(f.project.file_table, m);
+    auto read = current_input(f.project.file_table, m);
     ZASSERT(read.has_value());
     f.project.failures.pcm_builds.commit(
         m,

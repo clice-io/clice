@@ -14,23 +14,23 @@ void LSPClient::report_index_progress() {
     auto& st = *index_progress;
     switch(p.stage) {
         case Stage::Begin: {
-            st.round_active = true;
+            st.pass_active = true;
             st.total = static_cast<std::uint32_t>(p.total);
             // Progress-token creation is a server→client request, forbidden
-            // until the initialize response; a round that begins before the
-            // handshake stays unannounced (the next round announces).
+            // until the initialize response; a pass that begins before the
+            // handshake stays unannounced (the next pass announces).
             if(!client_ready) {
                 break;
             }
             // Register a fresh work-done token; once the client acknowledges
-            // it, announce the round. This is the create()+begin() handshake
+            // it, announce the pass. This is the create()+begin() handshake
             // the indexer used to run inline, now driven from the transport so
             // the indexer no longer needs a peer. The dispatch it once gated on
             // proceeds independently; reports before the token is announced are
-            // dropped, so the first sub-second of a round may report fewer
-            // increments than before. If a previous round's handshake is still
+            // dropped, so the first sub-second of a pass may report fewer
+            // increments than before. If a previous pass's handshake is still
             // in flight, the token is reused: its continuation reconciles
-            // against the current round below, so at most one create() is ever
+            // against the current pass below, so at most one create() is ever
             // outstanding and the reporter is never replaced mid-await.
             if(st.create_inflight || st.token_active) {
                 break;
@@ -57,7 +57,7 @@ void LSPClient::report_index_progress() {
             server.loop.schedule([](std::shared_ptr<IndexProgressState> state) -> async::task<> {
                 // Hang detection: the bound ends the handshake of a client
                 // that never responds; a short one drops the progress of a
-                // round whose client is merely busy.
+                // pass whose client is merely busy.
                 auto create_result =
                     co_await state->reporter->create({.timeout = chrono::minutes(1)});
                 state->create_inflight = false;
@@ -68,9 +68,9 @@ void LSPClient::report_index_progress() {
                     co_return;
                 }
                 // The client keeps a created token until it ends, and refuses
-                // to create it again meanwhile: a round that ended during the
-                // handshake ends it, or no later round could show.
-                if(!state->round_active) {
+                // to create it again meanwhile: a pass that ended during the
+                // handshake ends it, or no later pass could show.
+                if(!state->pass_active) {
                     state->reporter->begin("Indexing");
                     state->reporter->end();
                     state->reporter.reset();
@@ -90,14 +90,14 @@ void LSPClient::report_index_progress() {
             break;
         }
         case Stage::End: {
-            st.round_active = false;
+            st.pass_active = false;
             if(st.token_active) {
                 st.reporter->end(std::format("Indexed {} files", p.dispatched));
                 st.reporter.reset();
                 st.token_active = false;
             }
             // With a handshake still in flight, its continuation sees the
-            // round is gone and drops the token.
+            // pass is gone and drops the token.
             break;
         }
     }

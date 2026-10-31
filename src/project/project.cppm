@@ -162,7 +162,7 @@ struct Project {
     /// open() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
-    /// database, written by save_project.
+    /// database, written by write_database.
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
@@ -208,7 +208,7 @@ struct Project {
     /// The editor's context choices, as the index database carries them.
     ContextChoices choices;
 
-    /// Serializes concurrent saves (save_project): the background index's round-end
+    /// Serializes concurrent saves (write_database): the background index's pass-end
     /// save, the master's metadata flush and the shutdown save may overlap
     /// on the event loop, and a save moves the dirty state into its batch
     /// assuming one save at a time.
@@ -236,7 +236,7 @@ struct Project {
     /// Persistence signal for the precompiled records (the PCH and PCM
     /// records, self-containment results) the index database carries
     /// beyond the index itself: producers mark, the single write pipeline
-    /// (save_project) flushes it on its next run.
+    /// (write_database) flushes it on its next run.
     bool precompiled_dirty = false;
 
     /// Connected by the master to schedule a flush soon after a mark; unset
@@ -255,11 +255,11 @@ struct Project {
     /// The PCHs the cache holds, keyed by content key (preamble text +
     /// canonical flags), so files with identical preambles share one PCH:
     /// a mirror of the cache store's state, which names their paths.
-    llvm::StringMap<PCHState> pch_cache;
+    llvm::StringMap<PCHBuild> pch_cache;
 
     /// Keys of pch_cache entries whose pch.idx index is currently loaded,
     /// most recently used first (see enforce_loaded_budget).
-    llvm::SmallVector<std::string, 8> loaded_pch_states;
+    llvm::SmallVector<std::string, 8> loaded_pch_indexes;
 
     /// Open-document count provider, connected by the server. Sizes the
     /// loaded-state budget; unset (tests, tools) falls back to a small
@@ -277,7 +277,7 @@ struct Project {
 
     llvm::DenseMap<Fid, ImportScan> disk_scans;
 
-    /// Preprocessor passes direct_deps() ran.
+    /// Preprocessor passes scan_imports() ran.
     std::uint64_t import_scans = 0;
 
     /// TUs whose last result named a variant by hash that the project index
@@ -349,8 +349,8 @@ struct Project {
     CDBDiff refresh_provisional();
 
     /// Persist the index and the cache store's manifest as they stand, a
-    /// round running or not: a cold round covers the whole project, and a
-    /// process killed mid-round loses only what merged since the last
+    /// pass running or not: a cold pass covers the whole project, and a
+    /// process killed mid-pass loses only what merged since the last
     /// checkpoint.
     async::task<> checkpoint();
 
@@ -451,7 +451,7 @@ struct Project {
 
     /// The sentence the guidance of a project without a database ends with:
     /// the rule that loads the compile_commands.json files discovery passes
-    /// over (deeper_compile_commands). Empty when there is none, or the rules
+    /// over (deeper_databases). Empty when there is none, or the rules
     /// declare the build's sources.
     std::string deeper_databases_hint() const;
 
@@ -593,13 +593,13 @@ struct Project {
     /// Remember the tree a preprocess run under `request` took: the files it
     /// read (`paths` with the hashes of the bytes read, the unit's own last),
     /// its include nodes over them, and every file it read or looked for
-    /// (`deps`), the run started at `build_at`.
+    /// (`deps`), the run started at `started_at`.
     void commit_tree(const TreeRequest& request,
                      llvm::ArrayRef<std::string> paths,
                      llvm::ArrayRef<std::uint64_t> hashes,
                      std::vector<index::IncludeNode> nodes,
-                     llvm::ArrayRef<DepFile> deps,
-                     std::int64_t build_at);
+                     llvm::ArrayRef<ReportedInput> deps,
+                     std::int64_t started_at);
 
     /// Remember that the run under `request` failed: the unit's command cannot
     /// preprocess it as the unit stands now.
@@ -612,26 +612,26 @@ struct Project {
 
     // command/self_contained.cpp
 
-    /// The self-containment trial's result for `key`; nullopt when no trial
+    /// The self-containment check's result for `key`; nullopt when no check
     /// stands for it. `open`: the header is a document the user edits, whose
     /// text moves with every keystroke: a result holds while its disk content
-    /// stays as it was when the trial ran, as typing never runs the trial
-    /// again; otherwise while the disk holds the text the trial compiled.
-    std::optional<bool> self_contained(const TrialKey& key, bool open);
+    /// stays as it was when the check ran, as typing never runs the check
+    /// again; otherwise while the disk holds the text the check compiled.
+    std::optional<bool> self_contained(const SelfContainmentKey& key, bool open);
 
-    /// Remember what the trial of `key` found: `diagnostics`, what the header's
-    /// compile without its includer's context raised over `text`, having read
-    /// `trace`.
-    void commit_trial(const TrialKey& key,
-                      llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
-                      VersionID text,
-                      DepsSnapshot trace);
+    /// Remember what the self-containment check of `key` found: `diagnostics`,
+    /// what the header's compile without its includer's context raised over
+    /// `text`, having read `inputs`.
+    void commit_self_containment(const SelfContainmentKey& key,
+                                 llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                 VersionID text,
+                                 Inputs inputs);
 
-    /// The header's buffer was saved as `text`: the trial of `key`, when one
+    /// The header's buffer was saved as `text`: the check of `key`, when one
     /// found it self-contained and `leans` says the compile of that text shows
     /// what an includer provides, is forgotten, to run again; any other result
     /// holds for the saved text. Whether it was forgotten.
-    bool saved_trial(const TrialKey& key, VersionID text, bool leans);
+    bool header_saved(const SelfContainmentKey& key, VersionID text, bool leans);
 
     // command/synthesis.cpp
 
@@ -766,7 +766,7 @@ struct Project {
     /// degrades again. With the pair gone the next acquisition is a miss and
     /// rebuilds both halves. Loads count against the loaded-state budget (see
     /// enforce_loaded_budget).
-    std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
+    std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
     /// Unload pch.idx indexes beyond the budget (two per open document, plus
     /// 2), least recently used first. Without this every preamble key ever
@@ -803,12 +803,12 @@ struct Project {
     /// edges of `consumer`, the file's node, and wait for their modules,
     /// foreground. A module that did not build is the compile's to report, as
     /// the stateful compile does; none only when the graph shut down.
-    async::task<std::optional<ModuleDeps>> build_imports(NodeId consumer,
-                                                         Fid path_id,
-                                                         const Resolution& resolution,
-                                                         llvm::ArrayRef<std::string> arguments,
-                                                         llvm::StringRef directory,
-                                                         llvm::StringRef content);
+    async::task<std::optional<Imports>> build_imports(NodeId consumer,
+                                                      Fid path_id,
+                                                      const Resolution& resolution,
+                                                      llvm::ArrayRef<std::string> arguments,
+                                                      llvm::StringRef directory,
+                                                      llvm::StringRef content);
 
     /// Whether the graph has a node for this module unit (it was built or
     /// depended on before).
@@ -864,11 +864,11 @@ struct Project {
     /// saw. A scan is reused while its arguments and the project's disk state
     /// (context_epoch) stay the same, a buffer's while its directive stream
     /// does too.
-    async::task<ModuleDeps> direct_deps(Fid path_id,
-                                        const Resolution& resolution,
-                                        llvm::ArrayRef<std::string> arguments,
-                                        llvm::StringRef directory,
-                                        std::optional<llvm::StringRef> content);
+    async::task<Imports> scan_imports(Fid path_id,
+                                      const Resolution& resolution,
+                                      llvm::ArrayRef<std::string> arguments,
+                                      llvm::StringRef directory,
+                                      std::optional<llvm::StringRef> content);
 
     /// The PCMs a compile importing `modules` reads, under their modules'
     /// names: theirs and, below each that built, those of the modules it
@@ -880,11 +880,11 @@ struct Project {
     /// read, or — for a build an import failed — what the import's failure
     /// rests on, down to the module whose own build failed. Null for a module
     /// never built and for a cycle of imports failing each other.
-    const DepsSnapshot* build_inputs(Fid module) const;
+    const Inputs* module_inputs(Fid module) const;
 
-    /// The build_inputs of `modules`, each once: what their PCMs were built
+    /// The module_inputs of `modules`, each once: what their PCMs were built
     /// from, their imports' inputs included, or what keeps them failing.
-    DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
+    Inputs module_inputs(llvm::ArrayRef<Fid> modules) const;
 
     // graph/unit.cpp
 
@@ -899,21 +899,20 @@ struct Project {
 
     /// The precompiled records as the index database carries them (blob kind
     /// PrecompiledRecords): the PCH and PCM validity metadata and the
-    /// self-containment trials, serialized from live state; empty on
+    /// self-containment checks, serialized from live state; empty on
     /// serialization failure.
     std::string serialize_precompiled_records();
 
     /// Restore the precompiled records a database held: the PCH and PCM entries
-    /// whose blobs the cache store still has, and the trials.
+    /// whose blobs the cache store still has, and the self-containment checks.
     void load_precompiled_records(llvm::StringRef bytes);
 
     /// What a PCH or PCM build read: what the worker reports, and `before`,
     /// what the modules it imports and the PCH it is built over were built from
     /// as it started — one rebuilt meanwhile stales it.
-    DepsSnapshot read_inputs(const worker::PrecompiledBuildResult& built,
-                             const DepsSnapshot& before);
+    Inputs read_inputs(const worker::PrecompiledBuildResult& built, const Inputs& before);
 
-    /// Send a PCH or PCM build, `whom` naming what it builds in the log (a
+    /// Send a PCH or PCM build, `label` naming what it builds in the log (a
     /// file, a module), and keep what did not build: a build that
     /// crashed its worker is recorded through `fail` on what it was known to
     /// read (`known`), and one that failed on the user's code on what it read
@@ -927,18 +926,18 @@ struct Project {
     async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCHParams& params,
-                         llvm::StringRef whom,
-                         DepsSnapshot known,
-                         const DepsSnapshot& before,
-                         llvm::function_ref<void(FailureRecord, DepsSnapshot)> fail);
+                         llvm::StringRef label,
+                         Inputs known,
+                         const Inputs& before,
+                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
     async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCMParams& params,
-                         llvm::StringRef whom,
-                         DepsSnapshot known,
-                         const DepsSnapshot& before,
-                         llvm::function_ref<void(FailureRecord, DepsSnapshot)> fail);
+                         llvm::StringRef label,
+                         Inputs known,
+                         const Inputs& before,
+                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
     // indexer/background.cpp
 
@@ -950,8 +949,8 @@ struct Project {
     bool enqueue_reindex(Fid path_id, ReindexReason reason);
 
     /// Someone is reading the file through the index and nothing serves it
-    /// yet: enqueue it at the front of the queue and start a round without the
-    /// idle delay. A running round finishes undisturbed; the file then leads
+    /// yet: enqueue it at the front of the queue and start a pass without the
+    /// idle delay. A running pass finishes undisturbed; the file then leads
     /// the next one.
     void index_first(Fid path_id);
 
@@ -977,16 +976,16 @@ struct Project {
     void clear_reindex(Fid path_id);
 
     /// Schedule background indexing (respects idle timeout and dedup).
-    /// `immediate` skips the idle batching window — used by the round tail for
-    /// work requeued during the round that just ended, and by index_first, which re-arms an
+    /// `immediate` skips the idle batching window — used by the pass tail for
+    /// work requeued during the pass that just ended, and by index_first, which re-arms an
     /// already-armed timer to fire now (waiting out a previously scheduled idle window would starve
     /// the reader).
     void schedule_index(bool immediate = false);
 
-    /// One round, once the idle delay schedule_index armed has passed: index
-    /// the files queued when it starts, save, and schedule the next round for
+    /// One pass, once the idle delay schedule_index armed has passed: index
+    /// the files queued when it starts, save, and schedule the next pass for
     /// what it queued.
-    async::task<> run_index_round();
+    async::task<> run_index_pass();
 
     /// At the start of a run writing the index: queue every member the index
     /// holds nothing of and every unit depending on a file that changed while
@@ -1006,16 +1005,16 @@ struct Project {
     /// Save the index and take the report, again while a save owes a retry (a
     /// grown map can still be too small); an idle save then shrinks the
     /// database file when that is worth it (shrink_database). Reindexes the
-    /// saves queued start a round when none runs.
-    async::task<> persist(index::SearchRebuild search = index::SearchRebuild::Behind);
+    /// saves queued start a pass when none runs.
+    async::task<> save(index::SearchRebuild search = index::SearchRebuild::Behind);
 
     /// Cancel background indexing and wait for all its tasks to finish.
     async::task<> stop_background_index();
 
-    /// No round runs and nothing is queued.
+    /// No pass runs and nothing is queued.
     bool index_idle() const;
 
-    /// Wait until index_idle(): every round, requeue rounds included, has run
+    /// Wait until index_idle(): every pass, requeue passes included, has run
     /// and saved its results.
     async::task<> wait_index_idle();
 
@@ -1052,7 +1051,7 @@ struct Project {
     /// and the reindexes that owes come back in the report with owes_retry
     /// set.
     async::task<index::IndexReport>
-        save_project(index::SearchRebuild search = index::SearchRebuild::Behind);
+        write_database(index::SearchRebuild search = index::SearchRebuild::Behind);
 
     /// Whether state remains that no save committed. After a final save this
     /// means write failures whose retry never came — the one-shot `clice index`
@@ -1113,26 +1112,5 @@ std::string resolved_databases(const Settings& settings, llvm::StringRef configu
 index::DatabaseKey database_key(const Settings& settings,
                                 llvm::StringRef configuration,
                                 llvm::StringRef resolved);
-
-/// Capture a staleness snapshot from a build's reported inputs, interning
-/// the consumed versions into the shared table.
-///
-/// `deps` carries the consumed-content hashes the worker computed at build
-/// time; `build_at` is milliseconds since epoch, sampled before the build
-/// started. A dependency the worker could not hash takes its hash from
-/// the disk only when the file is untouched since `build_at`.
-DepsSnapshot capture_deps_snapshot(FileTable& files,
-                                   llvm::ArrayRef<DepFile> deps,
-                                   std::int64_t build_at);
-
-/// The file as the disk holds it now, as a dependency of a build that
-/// reported nothing it read: a crash. None when the file cannot be read.
-std::optional<DepState> current_dep(FileTable& files, Fid file);
-
-/// Append the entries of `parts` that `into` lacks. A module's snapshot
-/// already carries its imports', so a plain concatenation of several
-/// repeats a module's inputs once per import path to it — exponentially
-/// many over a deep partition graph.
-void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts);
 
 }  // namespace clice

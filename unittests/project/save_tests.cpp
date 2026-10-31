@@ -364,7 +364,7 @@ ZEST_CASE(IdleSaveShrinks) {
     ShrinkProject p;
     auto& space = p.spy();
     auto save = [&](index::SearchRebuild search) {
-        auto task = p.f.project.persist(search);
+        auto task = p.f.project.save(search);
         p.f.loop.schedule(task);
         p.f.loop.run();
     };
@@ -373,7 +373,7 @@ ZEST_CASE(IdleSaveShrinks) {
     ZEXPECT(space.copies == 0u);
     save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
-    // Off, the reindex stays queued: on, the save starts its round, whose
+    // Off, the reindex stays queued: on, the save starts its pass, whose
     // own idle save shrinks.
     p.f.project.settings.project.enable_indexing.value = false;
     p.f.project.enqueue_reindex(p.unit("b.cpp"), ReindexReason::ContentChanged);
@@ -389,7 +389,7 @@ ZEST_CASE(LostShrinkSavesAgain) {
     space.forced_swap = index::BlobDatabase::Swap::Lost;
     p.f.project.choices.bytes = "choices";
     p.f.project.choices.dirty = true;
-    auto task = p.f.project.persist(index::SearchRebuild::Idle);
+    auto task = p.f.project.save(index::SearchRebuild::Idle);
     p.f.loop.schedule(task);
     p.f.loop.run();
     ZEXPECT(!p.f.project.choices.dirty);

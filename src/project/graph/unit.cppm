@@ -96,7 +96,7 @@ struct UnitResult {
     /// The errors a completed compile reported (UnitRequest::errors).
     std::vector<worker::LocatedMessage> errors;
 
-    /// See worker::UnitRunResult::skipped_diagnostics
+    /// See worker::CompileUnitResult::skipped_diagnostics
     /// (UnitRequest::skipped_diagnostics).
     std::vector<feature::FileDiagnostic> skipped_diagnostics;
 

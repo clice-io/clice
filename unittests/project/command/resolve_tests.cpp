@@ -193,13 +193,14 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     ZEXPECT(forced(part).second == std::vector<std::string>{"config.h"});
     ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
 
-    // Its trial found it needs its includer's context.
-    auto trial = forced(part).first.trial;
-    ZASSERT(trial);
-    auto version = current_dep(project.file_table, part)->version;
-    project.hosting.trials.commit(*trial,
-                                  {.self_contained = false, .text = version, .disk = version},
-                                  {});
+    // Its self-containment check found it needs its includer's context.
+    auto key = forced(part).first.self_containment;
+    ZASSERT(key);
+    auto version = current_input(project.file_table, part)->version;
+    project.hosting.self_containment.commit(
+        *key,
+        {.self_contained = false, .text = version, .disk = version},
+        {});
     auto [resolution, names] = forced(part);
     ZASSERT(resolution.synthesized);
     ZEXPECT(resolution.forced == pch);

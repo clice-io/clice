@@ -349,7 +349,7 @@ llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
             bool seen = ranges::any_of(llvm::ArrayRef(result).drop_front(first),
                                        [&](const CommandRef& other) {
                                            return other.command == unit.command &&
-                                                  other.input.value == unit.input.value;
+                                                  other.language.value == unit.language.value;
                                        });
             if(!seen) {
                 result.push_back(unit);
@@ -582,7 +582,7 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
                 if(name == ".git" ||
                    (name == path::filename(walk.cache_dir) &&
                     root.entry(entry->path) == walk.cache_dir) ||
-                   configured(Spelling::absolute(entry->path))) {
+                   has_configuration_file(Spelling::absolute(entry->path))) {
                     entries.skip();
                 }
                 continue;

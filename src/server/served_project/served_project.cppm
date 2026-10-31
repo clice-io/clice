@@ -138,7 +138,7 @@ struct ServedDocument {
 
     /// Dependency snapshot from the last successful compile, used for
     /// staleness detection.
-    std::optional<DepsSnapshot> deps;
+    std::optional<Inputs> inputs;
 
     /// Whether the latest compile describes the current buffer: the last
     /// compile finished and no invalidation arrived since. Written by the
@@ -326,7 +326,7 @@ public:
     /// The document compiles in another context now: a different
     /// compilation identity. Make any in-flight compile outdated and drop the
     /// state earned under the old one — including the self-containment
-    /// trial, since a different host can change the macro environment.
+    /// check, since a different host can change the macro environment.
     void choice_changed(Session& session);
 
     /// A Lost-type invalidation (dependency changed on disk, worker crash,
@@ -340,7 +340,7 @@ public:
     /// request, the PCH and PCMs it consumes included, and so do the ones
     /// whose build failed; a header found self-contained whose compile
     /// misses names, or has not finished, re-runs its self-containment
-    /// trial.
+    /// check.
     void retry_after_save(Session& session);
 
     /// The inputs of a stateless build carrying the document's buffer:
@@ -364,21 +364,21 @@ public:
     /// that outlives its ticket still compiles against a PCH of its own
     /// preamble. False only when the graph shut down: an import that did
     /// not build is the compile's to report.
-    async::task<bool> prepare_stateless_inputs(const Ticket& ticket,
-                                               llvm::StringRef text,
-                                               std::uint32_t point,
-                                               const std::string& directory,
-                                               const std::vector<std::string>& arguments,
-                                               const Resolution& resolution,
-                                               StatelessInputs& inputs);
+    async::task<bool> prepare_precompiled(const Ticket& ticket,
+                                          llvm::StringRef text,
+                                          std::uint32_t point,
+                                          const std::string& directory,
+                                          const std::vector<std::string>& arguments,
+                                          const Resolution& resolution,
+                                          StatelessInputs& inputs);
 
     /// What the document's compile read, one snapshot at a time: its own
-    /// deps, its header context's chain, its PCH's and those of the modules
+    /// inputs, its header context's chain, its PCH's and those of the modules
     /// it imports — of a module that failed to build, what the failure
-    /// rests on (Project::build_inputs). Both the staleness check and the
+    /// rests on (Project::module_inputs). Both the staleness check and the
     /// change handling's readers go through it: what a request finds
     /// changed and what a disk change reaches are the same files.
-    void each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const;
+    void each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const;
 
     /// A dispatch of `kind` killed a worker on the document's content:
     /// `death` is the death's identity (worker::death_of), `cause` how it
@@ -684,12 +684,12 @@ public:
     /// dispatch the workers could not serve answers empty: the crash note on
     /// the document says why, and an error would only show as a client
     /// popup.
-    template <typename Outcome>
-    Outcome finish(const Ticket& ticket,
-                   feature::RequestKind kind,
-                   llvm::StringRef label,
-                   Outcome result,
-                   bool snapshot = false);
+    template <typename R>
+    R finish(const Ticket& ticket,
+             feature::RequestKind kind,
+             llvm::StringRef label,
+             R result,
+             bool snapshot = false);
 
     // live_sources.cpp: the open documents' own file indexes (current per
     // their latest compiles), the PCH overlays their preambles were
@@ -773,7 +773,7 @@ private:
     // compile.cpp
 
     /// A file the open document reads changed: its compile, its
-    /// self-containment trial and its stopped request kinds start over.
+    /// self-containment check and its stopped request kinds start over.
     void inputs_changed(Session& session);
 
     /// How to compile the open document: its AST node's work.
@@ -793,12 +793,12 @@ private:
     /// diagnostics; one whose build crashed a worker also goes into the
     /// document's records, and is refused until the document's record lets
     /// it retry.
-    async::task<std::optional<ModuleDeps>> depend_modules(Attempt& attempt,
-                                                          const Ticket& ticket,
-                                                          const Resolution& resolution,
-                                                          llvm::StringRef directory,
-                                                          const std::vector<std::string>& arguments,
-                                                          llvm::StringRef text);
+    async::task<std::optional<Imports>> depend_modules(Attempt& attempt,
+                                                       const Ticket& ticket,
+                                                       const Resolution& resolution,
+                                                       llvm::StringRef directory,
+                                                       const std::vector<std::string>& arguments,
+                                                       llvm::StringRef text);
 
     /// Whose fault a worker death under the document's compile is, tried
     /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
@@ -828,11 +828,11 @@ private:
 
     /// The request for the precompiled header the build declares for the
     /// command `resolution` gave the document: the editor's build, skipping
-    /// function bodies, but for a modular parse (ModuleDeps::modular), which
+    /// function bodies, but for a modular parse (Imports::modular), which
     /// reads the index's, the one every PCM is built over.
     std::optional<PCHRequest> declared_pch(Fid path_id,
                                            const Resolution& resolution,
-                                           const ModuleDeps& imports);
+                                           const Imports& imports);
 
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none. `point` is where a
@@ -844,13 +844,13 @@ private:
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const Resolution& resolution,
-                     const ModuleDeps& imports,
+                     const Imports& imports,
                      llvm::StringRef base);
 
     /// Revalidate or build the preamble PCH of `text` through the project,
     /// over the precompiled header the build declares for the command, and
     /// adopt the key of what the request loads while the ticket and the
-    /// document's `epoch` hold (see prepare_stateless_inputs), but for a
+    /// document's `epoch` hold (see prepare_precompiled), but for a
     /// partial plan's. Returns the key the request compiles against,
     /// adopted or not; none when it compiles without a PCH.
     async::task<std::optional<std::string>> ensure_pch(const Ticket& ticket,
@@ -860,7 +860,7 @@ private:
                                                        const std::string& directory,
                                                        const std::vector<std::string>& arguments,
                                                        const Resolution& resolution,
-                                                       const ModuleDeps& imports);
+                                                       const Imports& imports);
 
     /// The document's round moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
@@ -1133,12 +1133,12 @@ private:
     async::task_group<> bg_tasks;
 };
 
-template <typename Outcome>
-Outcome ServedProject::finish(const Ticket& ticket,
-                              feature::RequestKind kind,
-                              llvm::StringRef label,
-                              Outcome result,
-                              bool snapshot) {
+template <typename R>
+R ServedProject::finish(const Ticket& ticket,
+                        feature::RequestKind kind,
+                        llvm::StringRef label,
+                        R result,
+                        bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -1156,14 +1156,14 @@ Outcome ServedProject::finish(const Ticket& ticket,
     }
     // Answered or not, a stale request tells the client to re-pull.
     if(!ticket.fresh() && !snapshot) {
-        return Outcome{kotatsu::outcome_error(content_modified())};
+        return R{kotatsu::outcome_error(content_modified())};
     }
     if(!result.has_value()) {
         LOG_INFO("{} for {} answers empty: {}",
                  label,
                  project.file_table.resolve(session.path_id),
                  result.error().message);
-        return empty_value<typename Outcome::value_type>();
+        return empty_value<typename R::value_type>();
     }
     // The reply proves this kind on the DISPATCHED content answers; an edit
     // that arrived mid-flight must not clear the new content's record —
@@ -1335,13 +1335,13 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
 
     ScopedTimer timer;
     StatelessInputs inputs;
-    if(!co_await prepare_stateless_inputs(ticket,
-                                          params.text,
-                                          params.offset,
-                                          params.directory,
-                                          params.arguments,
-                                          resolution,
-                                          inputs)) {
+    if(!co_await prepare_precompiled(ticket,
+                                     params.text,
+                                     params.offset,
+                                     params.directory,
+                                     params.arguments,
+                                     resolution,
+                                     inputs)) {
         co_await async::fail(
             ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }

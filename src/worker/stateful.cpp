@@ -336,7 +336,7 @@ RequestResult<worker::CompileParams>
 
             std::optional<std::string> index_error;
             if(unit->completed() && !stop->load(std::memory_order_relaxed)) {
-                result.build_at = unit->build_at().count();
+                result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
                 index_error = hand_over_index(

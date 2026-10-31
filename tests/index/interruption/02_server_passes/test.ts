@@ -2,10 +2,10 @@ import { expect } from "vitest";
 import * as proto from "vscode-languageserver-protocol";
 import { generate, test, type Serve, type TestContext } from "@clice/tools/testing";
 
-// A background round cut short, and what the next `clice index` finds on
+// A background pass cut short, and what the next `clice index` finds on
 // disk: it reindexes only what no save committed. Of the two units, the
 // first one's index is let through and merged, the second one's is held at
-// its reply, so the round cannot end and save on its own. The units join
+// its reply, so the pass cannot end and save on its own. The units join
 // the database once the holds are placed. A kill saves nothing itself; a
 // shutdown or SIGTERM lets the held reply through and saves both.
 
@@ -47,7 +47,7 @@ test("shutdown reply follows the save", async (t) => {
 });
 
 test(
-    "sigterm saves the round",
+    "sigterm saves the pass",
     { except: { win32: "Windows has no SIGTERM to send" } },
     async (t) => {
         const s = await serve(t);

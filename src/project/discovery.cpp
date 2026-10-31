@@ -32,7 +32,7 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
 
 }  // namespace
 
-bool configured(const Spelling& dir) {
+bool has_configuration_file(const Spelling& dir) {
     return ranges::any_of(settings_file_names,
                           [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
 }
@@ -46,7 +46,7 @@ CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path) {
         if(dir == project_root) {
             return false;
         }
-        if(configured(Spelling(dir))) {
+        if(has_configuration_file(Spelling(dir))) {
             found = dir;
         }
         return true;
@@ -79,19 +79,18 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
     }
     places.emplace_back(database_name, Spelling(project_root));
     for(auto& subdirectory: direct_subdirectories(project_root)) {
-        if(!configured(subdirectory)) {
+        if(!has_configuration_file(subdirectory)) {
             places.emplace_back(database_name, subdirectory);
         }
     }
     return places;
 }
 
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root) {
+llvm::SmallVector<Spelling> discovered_databases(CanonicalRef project_root) {
     return existing(database_places(project_root));
 }
 
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
-                                                    CanonicalRef cache_dir) {
+llvm::SmallVector<Spelling> deeper_databases(CanonicalRef project_root, CanonicalRef cache_dir) {
     // Deep enough for a CMake preset's out/build/<preset> and a nested
     // project's build directory, and no deeper: a project root with no
     // database at all may be a home directory.
@@ -106,7 +105,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
         if(entry->type == fs::FileType::Directory) {
             auto name = entry->name();
             if(name.starts_with(".") || name == "node_modules" ||
-               project_root.entry(spelled) == cache_dir || configured(spelled)) {
+               project_root.entry(spelled) == cache_dir || has_configuration_file(spelled)) {
                 walk.skip();
             }
             continue;
@@ -130,7 +129,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
 }
 
 bool defines_project(CanonicalRef dir) {
-    return configured(Spelling(dir)) || !discover_compile_commands(dir).empty();
+    return has_configuration_file(Spelling(dir)) || !discovered_databases(dir).empty();
 }
 
 Spelling find_project_root(const Spelling& start) {
@@ -138,7 +137,8 @@ Spelling find_project_root(const Spelling& start) {
     // directory reached through a symlink belongs to the project of the one
     // it links to.
     auto defines = [](const Spelling& dir) {
-        return configured(dir) || database_in(dir) || database_in(Spelling("build", dir));
+        return has_configuration_file(dir) || database_in(dir) ||
+               database_in(Spelling("build", dir));
     };
     CanonicalPath found;
     path::walk_ancestors(CanonicalPath(start), [&](CanonicalRef dir) {
@@ -151,8 +151,8 @@ Spelling find_project_root(const Spelling& start) {
         // is a project, whose discovery loads its direct subdirectories': a
         // build directory beside the sources.
         auto parent = dir.parent();
-        if(!configured(spelled) && !database_in(Spelling("build", spelled)) && !parent.empty() &&
-           defines(Spelling(parent))) {
+        if(!has_configuration_file(spelled) && !database_in(Spelling("build", spelled)) &&
+           !parent.empty() && defines(Spelling(parent))) {
             found = std::move(parent);
         }
         return false;
@@ -174,7 +174,7 @@ std::string Project::deeper_databases_hint() const {
     }
     CanonicalRef root = this->root;
     std::vector<std::string> names;
-    for(auto& database: deeper_compile_commands(root, settings.project.cache_identity)) {
+    for(auto& database: deeper_databases(root, settings.project.cache_identity)) {
         auto directory = database.parent();
         auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
         path::to_slash(name);
@@ -218,7 +218,7 @@ std::string Project::why_no_members(llvm::StringRef root) const {
     }
     std::vector<std::string> nested;
     for(auto& subdirectory: direct_subdirectories(CanonicalPath(Spelling::absolute(root)))) {
-        if(configured(subdirectory)) {
+        if(has_configuration_file(subdirectory)) {
             nested.emplace_back(path::filename(subdirectory));
         }
     }
@@ -244,7 +244,7 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
         bool root = dir == std::string_view(project_root);
         // A directory with a configuration file of its own and everything
         // below it are that project's.
-        if(!root && configured(spelled)) {
+        if(!root && has_configuration_file(spelled)) {
             places.clear();
         } else {
             places.emplace_back(database_name, std::move(spelled));
@@ -256,7 +256,7 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
     return places;
 }
 
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root) {
+llvm::SmallVector<Spelling> databases_above(CanonicalRef start, CanonicalRef project_root) {
     return existing(database_places_above(start, project_root));
 }
 

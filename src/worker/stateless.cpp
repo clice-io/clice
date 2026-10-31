@@ -101,12 +101,12 @@ static std::expected<std::string, std::string> precompiled_output(llvm::StringRe
 static worker::PrecompiledBuildResult finish_precompiled(llvm::StringRef label,
                                                          bool success,
                                                          const std::string& tmp_path,
-                                                         std::int64_t build_at,
+                                                         std::int64_t started_at,
                                                          const auto& deps,
                                                          llvm::ArrayRef<std::string> errors,
                                                          bool internal_error) {
     worker::PrecompiledBuildResult result;
-    result.build_at = build_at;
+    result.started_at = started_at;
     result.deps = deps;
     if(success) {
         result.success = true;
@@ -133,8 +133,8 @@ static worker::PrecompiledBuildResult finish_precompiled(llvm::StringRef label,
 /// embed no content: only the deps see the source change. Named by its
 /// identity like every other dep: the command spells it as written, which
 /// consumers cannot stat reliably.
-static std::vector<DepFile> precompiled_deps(CompilationUnit& unit, bool source) {
-    std::vector<DepFile> deps;
+static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool source) {
+    std::vector<ReportedInput> deps;
     if(!unit.completed()) {
         return deps;
     }
@@ -180,7 +180,7 @@ static worker::PrecompiledBuildResult
     // cancellation arriving between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit->build_at().count();
+    auto started_at = unit->started_at().count();
     auto deps = precompiled_deps(*unit, params.whole_file);
 
     std::vector<std::string> errors;
@@ -232,7 +232,7 @@ static worker::PrecompiledBuildResult
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_precompiled("PCH", success, *output, build_at, deps, errors, internal_error);
+    return finish_precompiled("PCH", success, *output, started_at, deps, errors, internal_error);
 }
 
 static worker::PrecompiledBuildResult
@@ -259,7 +259,7 @@ static worker::PrecompiledBuildResult
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit->build_at().count();
+    auto started_at = unit->started_at().count();
     auto deps = precompiled_deps(*unit, true);
 
     std::vector<std::string> errors;
@@ -288,7 +288,7 @@ static worker::PrecompiledBuildResult
     return finish_precompiled("PCM",
                               success,
                               *output,
-                              build_at,
+                              started_at,
                               deps,
                               errors,
                               /*internal_error=*/false);
@@ -399,12 +399,13 @@ static worker::IncludeTreeResult
         .content_hashes = std::move(tree.content_hashes),
         .nodes = std::move(tree.nodes),
         .deps = unit->deps(),
-        .build_at = unit->build_at().count(),
+        .started_at = unit->started_at().count(),
     };
 }
 
-static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params,
-                                             const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::CompileUnitResult
+    handle_compile_unit(const worker::CompileUnitParams& params,
+                        const std::shared_ptr<std::atomic_bool>& stop) {
     LOG_INFO("Unit run request: file={}", params.file);
     ScopedTimer timer;
 
@@ -434,7 +435,7 @@ static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params
         }
         // A command clang rejects before parsing: lint reports why, as
         // clang-tidy does.
-        worker::UnitRunResult result{.success = false, .error = llvm::join(errors, "; ")};
+        worker::CompileUnitResult result{.success = false, .error = llvm::join(errors, "; ")};
         if(params.tidy) {
             for(auto& error: errors) {
                 result.tidy_diagnostics.push_back({
@@ -454,7 +455,7 @@ static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params
     if(stop->load(std::memory_order_relaxed)) {
         return {false, "Unit run cancelled"};
     }
-    worker::UnitRunResult result;
+    worker::CompileUnitResult result;
     result.success = true;
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
@@ -490,7 +491,7 @@ static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params
 
     LOG_PERF(
         "build",
-        "kind=unit_run file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
+        "kind=compile_unit file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
         params.file,
         index_bytes,
         result.tidy_diagnostics.size(),
@@ -666,10 +667,10 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                                                          .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
     serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
-    serve<worker::UnitRunParams>(
+    serve<worker::CompileUnitParams>(
         peer,
-        worker::UnitRunResult{.success = false, .error = "Build cancelled"},
-        &handle_unit_run,
+        worker::CompileUnitResult{.success = false, .error = "Build cancelled"},
+        &handle_compile_unit,
         {.lowered = true});
     serve<worker::IncludeTreeParams>(
         peer,

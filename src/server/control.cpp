@@ -90,9 +90,9 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
                     co_await srv.project.await_index_attempt(file);
                 }
             }
-            // The round persists at its end; the asker reads the disk, so its
+            // The pass saves at its end; the asker reads the disk, so its
             // index must be there before the answer.
-            co_await srv.project.persist();
+            co_await srv.project.save();
             if(srv.project.has_unsaved_state()) {
                 co_await async::fail(
                     ipc::Error{"part of the index could not be persisted; see the server log"});

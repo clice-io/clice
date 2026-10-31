@@ -145,8 +145,8 @@ struct Tiers {
                 if(chained == file) {
                     continue;
                 }
-                if(auto dep = current_dep(project.file_table, chained)) {
-                    resolution.embedded.push_back(*dep);
+                if(auto dep = current_input(project.file_table, chained)) {
+                    resolution.inputs.push_back(*dep);
                 }
             }
         }
@@ -163,9 +163,9 @@ struct Tiers {
         auto lent = project.build.apply_rules(file, candidate);
         std::optional<bool> alone = false;
         if(!chosen) {
-            auto trial = TrialKey{file, project.commands.command_hash(lent.command)};
-            alone = project.self_contained(trial, request.open);
-            resolution.trial = trial;
+            auto key = SelfContainmentKey{file, project.commands.command_hash(lent.command)};
+            alone = project.self_contained(key, request.open);
+            resolution.self_containment = key;
             resolution.self_contained = alone;
         }
         if(alone != false) {
@@ -177,7 +177,7 @@ struct Tiers {
             return;
         }
         resolution.synthesized = std::move(context.result.synthesized);
-        resolution.embedded = std::move(context.trace);
+        resolution.inputs = std::move(context.inputs);
     }
 
     /// 1. The host the user chose (clice/switchContext), while its compile

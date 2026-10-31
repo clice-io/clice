@@ -26,7 +26,7 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
 /// preamble's symbol index, document links, inactive regions, the open
 /// conditional stack — lives in the paired pch.idx index (the store's
 /// `.pch.idx` aux file), committed and evicted together with the PCH.
-struct PCHState {
+struct PCHBuild {
     /// The pair's name in the store: the key and a nonce of the build that
     /// produced it. A rebuild publishes under a new name, never over the
     /// old pair, which workers may still have mapped — Windows refuses to
@@ -40,7 +40,7 @@ struct PCHState {
 
     std::string path;
     std::uint32_t bound = 0;
-    DepsSnapshot deps;
+    Inputs inputs;
 
     /// The key of the precompiled header the build declares that this
     /// preamble's PCH is built over and chains onto; empty for none.
@@ -56,13 +56,13 @@ struct PCHState {
 
     /// Lazily opened blob; shared so a consumer holding it across an await
     /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::TUIndex> state;
+    std::shared_ptr<index::TUIndex> index;
 
     /// Open the blob on first use (memory-mapped, no deserialization).
     /// Returns nullptr when the blob is missing or unreadable — consumers
     /// degrade (no overlay, no preamble links) and the next PCH attempt
     /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::TUIndex>& load_state();
+    const std::shared_ptr<index::TUIndex>& load_index();
 };
 
 /// One acquisition of a preamble's PCH (a PCH and its pch.idx index,

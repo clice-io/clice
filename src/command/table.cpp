@@ -311,16 +311,16 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
                     auto type = suffix_type(source);
                     llvm::StringRef driver_lang =
                         type == types::TY_INVALID ? "" : types::getTypeName(type);
-                    if(driver_lang != llvm::StringRef(ref.input.value)) {
+                    if(driver_lang != llvm::StringRef(ref.language.value)) {
                         if(cl_mode(command.family)) {
-                            if(llvm::StringRef(ref.input.value) == "c++") {
+                            if(llvm::StringRef(ref.language.value) == "c++") {
                                 emit("/TP");
-                            } else if(llvm::StringRef(ref.input.value) == "c") {
+                            } else if(llvm::StringRef(ref.language.value) == "c") {
                                 emit("/TC");
                             }
                         } else {
                             emit("-x");
-                            emit(ref.input.value);
+                            emit(ref.language.value);
                         }
                     }
                 }

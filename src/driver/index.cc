@@ -22,19 +22,19 @@ struct Options {
     LogLevelOption log;
 };
 
-/// The current round's progress to the driver's callback; nothing before
-/// the first round has a total.
+/// The current pass's progress to the driver's callback; nothing before
+/// the first pass has a total.
 void report_progress(BatchRun& run, const BatchOptions& options) {
     auto& background = run.project.background_index;
-    auto& round = background.progress;
-    if(!options.on_progress || round.total == 0) {
+    auto& pass = background.progress;
+    if(!options.on_progress || pass.total == 0) {
         return;
     }
     options.on_progress(
-        {.completed = round.completed, .total = round.total, .failed = background.failed.size()});
+        {.completed = pass.completed, .total = pass.total, .failed = background.failed.size()});
 }
 
-/// A paced report on top of the round boundaries: one unit can take
+/// A paced report on top of the pass boundaries: one unit can take
 /// longer than the pace, and a run must not fall silent while it runs.
 async::task<> progress_ticker(BatchRun& run, const BatchOptions& options) {
     constexpr auto pace = chrono::seconds(10);

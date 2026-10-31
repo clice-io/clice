@@ -48,16 +48,16 @@ struct TreeRequest {
     CommandRef command;
 };
 
-/// What a self-containment trial found of a header under the command it
+/// What a self-containment check found of a header under the command it
 /// borrows: whether it compiles alone, or misses names its includer
 /// provides (missing_context_errors) and needs the includer's context.
-struct Trial {
+struct SelfContainment {
     bool self_contained = false;
 
-    /// The header's text the trial compiled.
+    /// The header's text the check compiled.
     VersionID text;
 
-    /// The header's disk content when the trial ran, which an open
+    /// The header's disk content when the check ran, which an open
     /// header's result holds while: its buffer may differ, by typing or
     /// from the start.
     VersionID disk;
@@ -65,7 +65,7 @@ struct Trial {
 
 /// A header and the command it borrows (CommandTable::command_hash of it,
 /// the rules of both files applied).
-using TrialKey = std::pair<Fid, std::uint64_t>;
+using SelfContainmentKey = std::pair<Fid, std::uint64_t>;
 
 /// The context of a header under a host: what it was synthesized for, and
 /// the files restoring the includer's preprocessor state.
@@ -114,8 +114,9 @@ struct Ranking {
 
 /// What clice knows of the headers that borrow a unit's command, the
 /// answers every process reads alike: the CLI and the server resolve a
-/// header the same way from the same answers. The trials, each a compile,
-/// ride the precompiled records; the rest a process learns again.
+/// header the same way from the same answers. The self-containment checks,
+/// each a compile, ride the precompiled records; the rest a process learns
+/// again.
 struct Hosting {
     /// A header with thousands of hosts takes milliseconds to rank, and
     /// every resolution of it asks.
@@ -125,8 +126,8 @@ struct Hosting {
     /// manifest that tells (include_chains).
     Memo<UnitCommand, PreprocessedTree> trees;
 
-    /// What the self-containment trials found.
-    Memo<TrialKey, Trial> trials;
+    /// What the self-containment checks found.
+    Memo<SelfContainmentKey, SelfContainment> self_containment;
 
     /// The latest context synthesized for each header, a failed synthesis
     /// included.
@@ -171,7 +172,7 @@ struct HostSearch {
 /// undeclared name, a missing member or template of a namespace, a call to
 /// an undeclared C function, an #error guarding against a standalone
 /// compile, a conditional the includer closes. A typo raises the same
-/// ones; the self-containment trial runs when a header opens or its
+/// ones; the self-containment check runs when a header opens or its
 /// inputs change, never per edit, so one costs at most a compile under
 /// the includer's context.
 std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);

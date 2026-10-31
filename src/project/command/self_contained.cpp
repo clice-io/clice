@@ -8,13 +8,13 @@ import :vfs.disk_state;
 
 namespace clice {
 
-std::optional<bool> Project::self_contained(const TrialKey& key, bool open) {
+std::optional<bool> Project::self_contained(const SelfContainmentKey& key, bool open) {
     auto& files = file_table;
     // An X-macro list and the like compile only inside their includer.
     if(is_context_header_path(files.resolve(key.first))) {
         return false;
     }
-    auto* entry = hosting.trials.lookup(files, key);
+    auto* entry = hosting.self_containment.lookup(files, key);
     if(!entry) {
         return std::nullopt;
     }
@@ -58,33 +58,34 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
     });
 }
 
-void Project::commit_trial(const TrialKey& key,
-                           llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
-                           VersionID text,
-                           DepsSnapshot trace) {
-    auto disk = current_dep(file_table, key.first);
-    hosting.trials.commit(key,
-                          {
-                              .self_contained = missing_context_errors(diagnostics) == 0,
-                              .text = text,
-                              // A header gone from disk holds no result.
-                              .disk = disk && disk->version.valid() ? disk->version : text,
-                          },
-                          std::move(trace));
+void Project::commit_self_containment(const SelfContainmentKey& key,
+                                      llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                      VersionID text,
+                                      Inputs inputs) {
+    auto disk = current_input(file_table, key.first);
+    hosting.self_containment.commit(
+        key,
+        {
+            .self_contained = missing_context_errors(diagnostics) == 0,
+            .text = text,
+            // A header gone from disk holds no result.
+            .disk = disk && disk->version.valid() ? disk->version : text,
+        },
+        std::move(inputs));
     // A header found self-contained lists hosts lending the same command
     // once (list_contexts).
     context_epoch += 1;
     mark_precompiled_dirty();
 }
 
-bool Project::saved_trial(const TrialKey& key, VersionID text, bool leans) {
-    auto* entry = hosting.trials.find(key);
+bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool leans) {
+    auto* entry = hosting.self_containment.find(key);
     if(!entry) {
         return false;
     }
     mark_precompiled_dirty();
     if(entry->result.self_contained && leans) {
-        hosting.trials.forget(key);
+        hosting.self_containment.forget(key);
         context_epoch += 1;
         return true;
     }

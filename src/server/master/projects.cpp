@@ -349,9 +349,9 @@ void MasterServer::serve_folders() {
     reroute();
     for(auto& project: leaving) {
         LOG_INFO("No longer serving project {}", project->project.root);
-        if(auto it = index_round.find(project.get()); it != index_round.end()) {
-            add_progress(ended_rounds, it->second);
-            index_round.erase(it);
+        if(auto it = index_pass.find(project.get()); it != index_pass.end()) {
+            add_progress(ended_passes, it->second);
+            index_pass.erase(it);
             fold_index_progress();
         }
         bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
@@ -366,20 +366,20 @@ void MasterServer::serve_folders() {
 
 void MasterServer::index_progress_changed(ServedProject& changed) {
     using Stage = BackgroundIndex::Progress::Stage;
-    // A stopping project's background index winds down outside the round.
+    // A stopping project's background index winds down outside the pass.
     if(ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
     auto& now = changed.project.background_index.progress;
-    auto it = index_round.find(&changed);
-    if(it == index_round.end()) {
+    auto it = index_pass.find(&changed);
+    if(it == index_pass.end()) {
         if(now.stage == Stage::End) {
             return;
         }
-        it = index_round.try_emplace(&changed).first;
+        it = index_pass.try_emplace(&changed).first;
     } else if(it->second.stage == Stage::End && now.stage != Stage::End) {
-        // Another round of a project whose last one ended within this one.
-        add_progress(ended_rounds, it->second);
+        // Another pass of a project whose last one ended within this one.
+        add_progress(ended_passes, it->second);
     }
     it->second = now;
     fold_index_progress();
@@ -387,10 +387,10 @@ void MasterServer::index_progress_changed(ServedProject& changed) {
 
 void MasterServer::fold_index_progress() {
     using Stage = BackgroundIndex::Progress::Stage;
-    BackgroundIndex::Progress all = ended_rounds;
+    BackgroundIndex::Progress all = ended_passes;
     bool active = false;
     for(auto& one:
-        views::transform(index_round, [](auto& entry) -> auto& { return entry.second; })) {
+        views::transform(index_pass, [](auto& entry) -> auto& { return entry.second; })) {
         active = active || one.stage != Stage::End;
         add_progress(all, one);
     }
@@ -398,8 +398,8 @@ void MasterServer::fold_index_progress() {
         all.stage = index_progress.stage == Stage::End ? Stage::Begin : Stage::Report;
     } else {
         all.stage = Stage::End;
-        index_round.clear();
-        ended_rounds = {};
+        index_pass.clear();
+        ended_passes = {};
     }
     index_progress = all;
     if(client) {

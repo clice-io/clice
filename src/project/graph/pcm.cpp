@@ -105,8 +105,8 @@ llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key
     llvm::StringRef miss;
     if(build.key != pcm_key) {
         miss = "key_changed";
-    } else if(deps_changed(project.file_table, build.deps)) {
-        miss = "deps_changed";
+    } else if(!inputs_hold(project.file_table, build.inputs)) {
+        miss = "inputs_changed";
     } else if(build.path.empty() || !project.store->lookup("pcm", build.blob) ||
               !fs::exists(build.path)) {
         miss = "evicted";
@@ -148,8 +148,8 @@ bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::String
 async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id) {
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
-    if(auto* inputs = project.build_inputs(path_id);
-       inputs && deps_changed(project.file_table, *inputs)) {
+    if(auto* inputs = project.module_inputs(path_id);
+       inputs && !inputs_hold(project.file_table, *inputs)) {
         project.disk_scans.erase(path_id);
     }
 
@@ -161,8 +161,11 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     worker::BuildPCMParams bp;
     auto resolution = project.resolve_command(path_id, bp.directory, bp.arguments);
     bp.hidden = resolution.hidden;
-    auto deps =
-        co_await project.direct_deps(path_id, resolution, bp.arguments, bp.directory, std::nullopt);
+    auto deps = co_await project.scan_imports(path_id,
+                                              resolution,
+                                              bp.arguments,
+                                              bp.directory,
+                                              std::nullopt);
     project.graph.set_edges(attempt.node(), deps.declared);
 
     // A unit of a target with precompiled headers builds over clice's own
@@ -231,13 +234,13 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
 
     // The PCH as the build starts, like the imports.
     std::string pch_blob;
-    DepsSnapshot precompiled;
+    Inputs precompiled;
     if(pch_key) {
         if(auto it = project.pch_cache.find(*pch_key);
            it != project.pch_cache.end() && !it->second.path.empty()) {
             bp.pch = it->second.path;
             pch_blob = it->second.blob;
-            precompiled = it->second.deps;
+            precompiled = it->second.inputs;
         }
     }
 
@@ -297,11 +300,11 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // imports', so the snapshot is transitive. Taken before the build, with
     // the PCH it reads: an eviction arriving during it must not drop them.
     auto before = project.module_inputs(resolved);
-    merge_deps(before, {&precompiled});
+    merge_inputs(before, {&precompiled});
     // What a build that crashes is known to read, sampled before it runs: a
     // save arriving mid-build is not what crashed.
     auto known = before;
-    if(auto own = current_dep(project.file_table, path_id)) {
+    if(auto own = current_input(project.file_table, path_id)) {
         known.push_back(*own);
     }
     auto built = co_await project.send_precompiled(
@@ -310,7 +313,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         std::format("module {}", module_name),
         std::move(known),
         before,
-        [&](FailureRecord record, DepsSnapshot inputs) {
+        [&](FailureRecord record, Inputs inputs) {
             // An attempt overtaken in flight records its inputs
             // all the same: they no longer match, and its
             // successor rebuilds.
@@ -338,7 +341,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     build.blob = std::move(blob);
     build.path = std::move(committed.value());
     build.pch = std::move(bp.pch);
-    build.deps = project.read_inputs(*built, before);
+    build.inputs = project.read_inputs(*built, before);
     LOG_INFO("PCM built for module {}: {}", module_name, build.path);
 
     project.mark_precompiled_dirty();
@@ -359,7 +362,7 @@ bool Project::imports_present(llvm::ArrayRef<Fid> modules) {
     return present;
 }
 
-llvm::SmallVector<Fid> ModuleDeps::resolved() const {
+llvm::SmallVector<Fid> Imports::resolved() const {
     llvm::SmallVector<Fid> modules;
     for(auto dep: declared) {
         if(!is_unresolved_import(dep)) {
@@ -369,16 +372,16 @@ llvm::SmallVector<Fid> ModuleDeps::resolved() const {
     return modules;
 }
 
-bool ModuleDeps::modular() const {
+bool Imports::modular() const {
     return module_unit ||
            ranges::any_of(declared, [](NodeId dep) { return !is_unresolved_import(dep); });
 }
 
-async::task<ModuleDeps> Project::direct_deps(Fid path_id,
-                                             const Resolution& resolution,
-                                             llvm::ArrayRef<std::string> arguments,
-                                             llvm::StringRef directory,
-                                             std::optional<llvm::StringRef> content) {
+async::task<Imports> Project::scan_imports(Fid path_id,
+                                           const Resolution& resolution,
+                                           llvm::ArrayRef<std::string> arguments,
+                                           llvm::StringRef directory,
+                                           std::optional<llvm::StringRef> content) {
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
     std::uint64_t directives = 0;
@@ -394,7 +397,7 @@ async::task<ModuleDeps> Project::direct_deps(Fid path_id,
         bound = preamble_bound(*content);
     }
     if(!may_import) {
-        co_return ModuleDeps{};
+        co_return Imports{};
     }
 
     llvm::SmallString<1024> joined(directory);
@@ -463,7 +466,7 @@ async::task<ModuleDeps> Project::direct_deps(Fid path_id,
     // unresolved name edges to its unresolved-import node, which is what
     // lets the name's first provider re-dirty this unit through the
     // ordinary cascade later — no side bookkeeping of who failed against it.
-    ModuleDeps deps{
+    Imports deps{
         .offsets = {scan.offsets.begin(), scan.offsets.end()},
         .module_unit = scan.module_unit
     };
@@ -520,22 +523,22 @@ const FailureRecord* Project::build_crash(Fid module) {
     return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
 }
 
-async::task<std::optional<ModuleDeps>> Project::build_imports(NodeId consumer,
-                                                              Fid path_id,
-                                                              const Resolution& resolution,
-                                                              llvm::ArrayRef<std::string> arguments,
-                                                              llvm::StringRef directory,
-                                                              llvm::StringRef content) {
+async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
+                                                           Fid path_id,
+                                                           const Resolution& resolution,
+                                                           llvm::ArrayRef<std::string> arguments,
+                                                           llvm::StringRef directory,
+                                                           llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The consumer's edges must live in the graph: a saved
     // module (or a provider appearing for an unresolved import) cascades to
     // the open TUs importing it through them. Declared even when empty, so
     // a removed import stops cascading.
-    auto deps = co_await direct_deps(path_id,
-                                     resolution,
-                                     arguments,
-                                     directory,
-                                     std::optional<llvm::StringRef>(content));
+    auto deps = co_await scan_imports(path_id,
+                                      resolution,
+                                      arguments,
+                                      directory,
+                                      std::optional<llvm::StringRef>(content));
     graph.set_edges(consumer, deps.declared);
     // A user request waits on these builds: foreground, so the background
     // budget cannot throttle them. A module that did not build is the
@@ -560,16 +563,16 @@ async::task<std::optional<ModuleDeps>> Project::build_imports(NodeId consumer,
     co_return deps;
 }
 
-const DepsSnapshot* Project::build_inputs(Fid module) const {
+const Inputs* Project::module_inputs(Fid module) const {
     llvm::SmallVector<Fid, 4> chain;
     for(auto current = module; !ranges::contains(chain, current);) {
         auto* failed = failures.pcm_builds.find(current);
         if(!failed) {
             auto it = pcm_builds.find(current);
-            return it != pcm_builds.end() ? &it->second.deps : nullptr;
+            return it != pcm_builds.end() ? &it->second.inputs : nullptr;
         }
         if(!failed->result.import.valid()) {
-            return &failed->trace;
+            return &failed->inputs;
         }
         chain.push_back(current);
         current = failed->result.import;
@@ -577,15 +580,15 @@ const DepsSnapshot* Project::build_inputs(Fid module) const {
     return nullptr;
 }
 
-DepsSnapshot Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
-    llvm::SmallVector<const DepsSnapshot*> parts;
+Inputs Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
+    llvm::SmallVector<const Inputs*> parts;
     for(auto module: modules) {
-        if(auto* inputs = build_inputs(module)) {
+        if(auto* inputs = module_inputs(module)) {
             parts.push_back(inputs);
         }
     }
-    DepsSnapshot inputs;
-    merge_deps(inputs, parts);
+    Inputs inputs;
+    merge_inputs(inputs, parts);
     return inputs;
 }
 

@@ -298,7 +298,7 @@ ZEST_CASE(DeathCountsOnce) {
     ZEXPECT(doc.crash_notes()[0].count == 1u);
 }
 
-ZEST_CASE(AttemptHoldsRetry) {
+ZEST_CASE(DispatchHoldsRetry) {
     auto t0 = Clock::now();
     doc.crashed(RequestKind::Compile, "d1", "cause", t0);
     doc.saved();

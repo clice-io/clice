@@ -116,12 +116,12 @@ vfs::DiskState::CheckResult FileTable::check_version(VersionID vid) {
     return disk.check(version.fid, version.content_hash);
 }
 
-bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
-    auto changed = [&](const DepState& dep) {
+bool inputs_hold(FileTable& files, const Inputs& snap) {
+    auto changed = [&](const Input& dep) {
         // Gone at build time: reappearing is the change; still-missing
-        // stays unchanged (see capture_deps_snapshot).
-        if(dep.missing) {
-            return files.disk.present(dep.path_id);
+        // stays unchanged (see intern_inputs).
+        if(dep.absent) {
+            return files.disk.present(dep.file);
         }
         // No version names the consumed bytes: rebuild once to converge.
         if(!dep.version.valid()) {
@@ -132,7 +132,89 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // — conservative, retried by the rebuild's capture.
         return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
     };
-    return ranges::count_if(snap, changed) != 0;
+    return ranges::count_if(snap, changed) == 0;
+}
+
+Inputs intern_inputs(FileTable& files,
+                     llvm::ArrayRef<ReportedInput> deps,
+                     std::int64_t started_at) {
+    // Files whose mtime falls within the guard of the build start count as
+    // "possibly modified during the build".
+    auto baseline_before_ns = vfs::stat_baseline_before_ns(started_at);
+
+    Inputs snap;
+    snap.reserve(deps.size());
+    vfs::StatusBatch statuses;
+    for(const auto& file: deps) {
+        auto& dep = snap.emplace_back();
+        dep.file = files.intern(Spelling::absolute(file.path));
+        auto hash = file.hash;
+
+        // A place a failed lookup looked: the build saw nothing there,
+        // whatever is there by now. The file table watches it from here on;
+        // a file there is a change.
+        if(file.absent) {
+            dep.absent = true;
+            files.disk.current(dep.file);
+            continue;
+        }
+
+        auto status = statuses.status(file.path);
+        if(!status) {
+            // A file the build read that is gone already: record the
+            // absence, reappearing counts as a change. Still-missing
+            // deliberately counts as unchanged — flagging it would rebuild
+            // on every check without ever converging, while the product is
+            // the last remaining truth for the file (and dependents'
+            // recovery is the DiskRemoved cascade's job, not this
+            // snapshot's).
+            dep.absent = true;
+            files.disk.saw_missing(dep.file);
+            continue;
+        }
+
+        if(hash == 0) {
+            // The worker could not hash the consumed bytes: when nothing
+            // else names them, the dep stays version-less and reads as
+            // changed until the rebuild's capture retries.
+            hash = files.disk.unchanged_hash(dep.file, *status, baseline_before_ns);
+            if(hash == 0) {
+                continue;
+            }
+        } else {
+            files.disk.consumed(dep.file, hash);
+        }
+
+        dep.version = files.intern_version(dep.file, hash);
+    }
+    return snap;
+}
+
+std::optional<Input> current_input(FileTable& files, Fid file) {
+    if(auto seen = files.disk.current(file)) {
+        return Input{.file = file, .version = files.intern_version(file, seen->hash)};
+    }
+    if(files.disk.seen_missing(file)) {
+        return Input{.file = file, .absent = true};
+    }
+    return std::nullopt;
+}
+
+void merge_inputs(Inputs& into, llvm::ArrayRef<const Inputs*> parts) {
+    auto key = [](const Input& dep) {
+        return std::tuple(dep.file.raw, dep.version.raw, std::uint8_t(dep.absent));
+    };
+    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, std::uint8_t>> seen;
+    for(auto& dep: into) {
+        seen.insert(key(dep));
+    }
+    for(auto* part: parts) {
+        for(auto& dep: *part) {
+            if(seen.insert(key(dep)).second) {
+                into.push_back(dep);
+            }
+        }
+    }
 }
 
 }  // namespace clice

@@ -1,9 +1,9 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// An edit makes a header the trial found self-contained use what its
-// includer declares; the save that shows it missing a name compiles it in
-// the includer's context.
+// An edit makes a header the self-containment check found self-contained use
+// what its includer declares; the save that shows it missing a name compiles
+// it in the includer's context.
 test("the save switches", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);

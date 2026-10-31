@@ -563,9 +563,9 @@ inline std::vector<std::string> stale_files(const Project& project,
     return listed;
 }
 
-/// A snapshot of a batch index run's progress within the current round:
+/// A snapshot of a batch index run's progress within the current pass:
 /// units finished (indexed, skipped as fresh, or failed) against the
-/// round's total, and the files failed for good so far.
+/// pass's total, and the files failed for good so far.
 struct BatchProgress {
     std::size_t completed = 0;
     std::size_t total = 0;
@@ -589,7 +589,7 @@ struct BatchProject {
 struct BatchOptions {
     BatchProject project;
 
-    /// Called on the event loop when a round begins or ends and every ten
+    /// Called on the event loop when a pass begins or ends and every ten
     /// seconds in between; null for no progress reporting.
     llvm::function_ref<void(const BatchProgress&)> on_progress;
 };
@@ -654,7 +654,7 @@ struct BatchResult {
 /// One-shot batch indexing on the project's own builds — no sessions, no
 /// transports: open the project, drain the background index, persist, and
 /// wind down in contract-11 order. Runs its own event loop to completion.
-/// Rounds start immediately and indexing happens even when the settings
+/// Passes start immediately and indexing happens even when the settings
 /// keep the background index disabled — running the command is the
 /// request itself.
 BatchResult run_batch_index(const BatchOptions& options);

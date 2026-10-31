@@ -156,13 +156,13 @@ struct CompileParams {
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
-    /// See UnitRunParams::index_output_path.
+    /// See CompileUnitParams::index_output_path.
     std::string index_output_path;
 
-    /// See UnitRunParams::known_instantiations.
+    /// See CompileUnitParams::known_instantiations.
     std::vector<std::uint64_t> known_instantiations;
 
-    /// See UnitRunParams::standard_library_instantiations.
+    /// See CompileUnitParams::standard_library_instantiations.
     bool standard_library_instantiations = false;
 
     /// Run clang-tidy over the parse with this frozen configuration.
@@ -204,12 +204,12 @@ struct CompileResult {
     std::vector<feature::FileDiagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
-    std::int64_t build_at = 0;
-    std::vector<DepFile> deps;
+    std::int64_t started_at = 0;
+    std::vector<ReportedInput> deps;
     /// Serialized TUIndex of the focus file.
     std::vector<std::byte> tu_index_data;
 
-    /// See UnitRunResult::index_in_file.
+    /// See CompileUnitResult::index_in_file.
     bool index_in_file = false;
 };
 
@@ -281,7 +281,7 @@ struct BuildPCMParams {
 
 /// One unit run: a single parse serving the products the frozen plan
 /// names — the full index, a clang-tidy pass, or both.
-struct UnitRunParams {
+struct CompileUnitParams {
     std::string file;
     std::string directory;
     /// See CompilationInput::project_root.
@@ -417,10 +417,10 @@ struct PrecompiledBuildResult {
 
     /// Milliseconds since epoch, sampled before the build started. Files
     /// whose mtime is past this moment may differ from what the build read.
-    std::int64_t build_at = 0;
+    std::int64_t started_at = 0;
     /// What the build read and looked for — on failure too: a build that
     /// failed on the user's errors fails again until one of them changes.
-    std::vector<DepFile> deps;
+    std::vector<ReportedInput> deps;
 };
 
 /// A message where it is, located for CLI presentation: 1-based line and
@@ -456,7 +456,7 @@ struct TidyDiagnostic {
     std::vector<LocatedMessage> notes;
 };
 
-struct UnitRunResult {
+struct CompileUnitResult {
     bool success = true;
     std::string error;
 
@@ -507,10 +507,10 @@ struct IncludeTreeResult {
 
     /// Every file the run read or looked for: its includes, what its
     /// `__has_include` checks found, the places its failed lookups looked.
-    std::vector<DepFile> deps;
+    std::vector<ReportedInput> deps;
 
     /// Milliseconds since epoch, sampled before the run started.
-    std::int64_t build_at = 0;
+    std::int64_t started_at = 0;
 };
 
 /// Request the document links of an open file's AST. Only the focus file's
@@ -603,7 +603,7 @@ struct GateReleaseParams {
 template <typename Params>
 constexpr inline bool is_build =
     std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
-    std::same_as<Params, BuildPCMParams> || std::same_as<Params, UnitRunParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, CompileUnitParams> ||
     std::same_as<Params, IncludeTreeParams>;
 
 }  // namespace clice::worker
@@ -682,9 +682,9 @@ struct RequestTraits<clice::worker::BuildPCMParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::UnitRunParams> {
-    using Result = clice::worker::UnitRunResult;
-    constexpr inline static std::string_view method = "clice/worker/unitRun";
+struct RequestTraits<clice::worker::CompileUnitParams> {
+    using Result = clice::worker::CompileUnitResult;
+    constexpr inline static std::string_view method = "clice/worker/compileUnit";
 };
 
 template <>

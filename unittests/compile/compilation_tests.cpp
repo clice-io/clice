@@ -27,7 +27,7 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
                    entry.command,
                    cdb.commands().input_kind(entry.command, path),
                    CommandSource::Database};
-    ZEXPECT(toolchain.resolve(ref.command, ref.input));
+    ZEXPECT(toolchain.resolve(ref.command, ref.language));
     auto argv = toolchain.render(ref, cdb.spelling(ref.file)).argv;
     return std::vector<std::string>(argv.begin(), argv.end());
 }
@@ -248,7 +248,8 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
     ZASSERT(built->completed());
     ZASSERT(built->diagnostics().empty());
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
-    ZEXPECT(ranges::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
+    ZEXPECT(
+        ranges::any_of(built->deps(), [&](const ReportedInput& dep) { return dep.path == real; }));
 }
 
 ZEST_CASE(StopCompilation) {
@@ -431,8 +432,8 @@ int main() { return 0; }
     ZASSERT(preamble_unit->completed());
     ZASSERT(preamble_unit->has_output());
 
-    // build_at is sampled before the compile runs (non-zero, recent).
-    ZASSERT(preamble_unit->build_at().count() > 0);
+    // started_at is sampled before the compile runs (non-zero, recent).
+    ZASSERT(preamble_unit->started_at().count() > 0);
 
     // The deps should list files involved in building the PCH, each with
     // the hash of the consumed bytes.

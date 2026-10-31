@@ -1,9 +1,9 @@
 import { expect } from "vitest";
 import { generate, test, type Park, type Serve } from "@clice/tools/testing";
 
-// With the only indexing worker past its crash budget, the round parks
+// With the only indexing worker past its crash budget, the pass parks
 // until the pool revives the slot instead of spinning the lost files
-// through instant failures, the server answers meanwhile, and the round
+// through instant failures, the server answers meanwhile, and the pass
 // then indexes every file (#611).
 
 const UNITS = 8;
@@ -11,7 +11,9 @@ const UNITS = 8;
 /// Parks for every unit's next index run in its worker.
 function parkAll(s: Serve): Promise<Park[]> {
     return Promise.all(
-        Object.keys(generate.units(UNITS)).map((unit) => s.park("unitRun", unit, { at: "worker" })),
+        Object.keys(generate.units(UNITS)).map((unit) =>
+            s.park("compileUnit", unit, { at: "worker" }),
+        ),
     );
 }
 
@@ -23,7 +25,7 @@ function firstReached(parks: readonly Park[]): Promise<Park> {
 test({ errors: ["exceeded crash budget"] }, async (t) => {
     t.disk.write(generate.units(UNITS));
     // The units join the database once every index run of theirs is
-    // parked: the round that indexes them starts after the parks.
+    // parked: the pass that indexes them starts after the parks.
     t.disk.database({ "main.cpp": [] });
     const s = await t.start({
         config: {
@@ -50,9 +52,9 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
         await park.release();
     }
     await t.show("symbols during the outage", s.workspaceSymbols("unit_"));
-    // The first run the revived slot starts finds the round as the
+    // The first run the revived slot starts finds the pass as the
     // outage left it: parked dispatch sent nothing, where a spin would
-    // show a round counted far past its files. The raw client: what
+    // show a pass counted far past its files. The raw client: what
     // sync reports still running is the observation.
     const revival = await parkAll(s);
     await firstReached(revival);

@@ -196,7 +196,7 @@ class ConfigReads : public llvm::vfs::ProxyFileSystem {
 public:
     ConfigReads() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
 
-    std::vector<DepFile> files;
+    std::vector<ReportedInput> files;
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
         // clang-tidy's walk up a Windows path ends at the bare drive (`c:`,

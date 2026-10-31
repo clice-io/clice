@@ -5,13 +5,13 @@ import :project.indexer;
 namespace clice {
 
 void ReindexQueue::record(Fid id, ReindexReason reason) {
-    // A fresh slot means any prior slot was already consumed (or none
-    // existed); a queued-and-unconsumed slot makes this call a duplicate.
-    bool fresh_slot = queued_files.insert(id).second;
+    // A fresh place means any prior place was already consumed (or none
+    // existed); a queued-and-unconsumed place makes this call a duplicate.
+    bool fresh_place = queued_files.insert(id).second;
 
-    // Within one queued slot ContentChanged is absorbing: a deps-only
+    // Within one queued place ContentChanged is absorbing: a deps-only
     // cascade cannot downgrade a file whose own content already changed.
-    // Across slots it is not: a deps-only requeue after the previous slot
+    // Across places it is not: a deps-only requeue after the previous place
     // was consumed is a new pending reindex of its own kind — the in-flight (or
     // finished) pass already covers the earlier content change, and
     // keeping ContentChanged would suppress the file's index past that
@@ -24,35 +24,35 @@ void ReindexQueue::record(Fid id, ReindexReason reason) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
             it->second.content_seq = seq;
-            it->second.requeue_attempts = 0;
-        } else if(fresh_slot) {
+            it->second.requeues = 0;
+        } else if(fresh_place) {
             it->second.reason = ReindexReason::DepsOnly;
         }
         it->second.seq = seq;
     }
-    if(fresh_slot) {
-        slots.push_back(id);
+    if(fresh_place) {
+        order.push_back(id);
     }
 }
 
 void ReindexQueue::move_to_front(Fid id) {
-    auto it = std::find(slots.begin() + position, slots.end(), id);
-    if(it == slots.end()) {
+    auto it = std::find(order.begin() + position, order.end(), id);
+    if(it == order.end()) {
         return;
     }
-    auto past_round = it >= slots.begin() + round_end;
-    std::rotate(slots.begin() + (past_round ? round_end : position), it, it + 1);
+    auto past_pass = it >= order.begin() + pass_end;
+    std::rotate(order.begin() + (past_pass ? pass_end : position), it, it + 1);
 }
 
-std::size_t ReindexQueue::begin_round(llvm::function_ref<bool(Fid)> first) {
-    std::stable_partition(slots.begin() + position, slots.end(), first);
-    round_end = slots.size();
-    return round_end - position;
+std::size_t ReindexQueue::begin_pass(llvm::function_ref<bool(Fid)> first) {
+    std::stable_partition(order.begin() + position, order.end(), first);
+    pass_end = order.size();
+    return pass_end - position;
 }
 
 std::optional<ReindexQueue::TakenReindex> ReindexQueue::take_next() {
-    while(position < round_end) {
-        auto id = slots[position];
+    while(position < pass_end) {
+        auto id = order[position];
         position += 1;
         queued_files.erase(id);
         if(auto it = entries.find(id); it != entries.end()) {
@@ -62,17 +62,17 @@ std::optional<ReindexQueue::TakenReindex> ReindexQueue::take_next() {
     return std::nullopt;
 }
 
-void ReindexQueue::end_round() {
-    round_end = position;
-    if(position < slots.size()) {
+void ReindexQueue::end_pass() {
+    pass_end = position;
+    if(position < order.size()) {
         return;
     }
-    // A pending reindex legitimately outlives the round (one the graph
-    // refused keeps its booking); a queued slot must not.
-    assert(queued_files.empty() && "a drained queue must leave no unconsumed slot");
-    slots.clear();
+    // A pending reindex legitimately outlives the pass (one the graph
+    // refused keeps its booking); a queued place must not.
+    assert(queued_files.empty() && "a drained queue must leave no unconsumed place");
+    order.clear();
     position = 0;
-    round_end = 0;
+    pass_end = 0;
 }
 
 std::optional<ReindexQueue::TakenReindex> ReindexQueue::peek(Fid id) const {
@@ -112,7 +112,7 @@ ReindexQueue::FailureDecision ReindexQueue::on_dispatch_failure(const TakenReind
     }
 
     if(failure == Failure::Crashed ||
-       (failure == Failure::Lost && it->second.requeue_attempts >= max_requeue_attempts)) {
+       (failure == Failure::Lost && it->second.requeues >= max_requeues)) {
         // Giving up accepts the staleness, so clear the pending state
         // here rather than relying on the attempt's sequence-guarded
         // finish: a deps-only recording that arrived mid-flight bumped
@@ -122,7 +122,7 @@ ReindexQueue::FailureDecision ReindexQueue::on_dispatch_failure(const TakenReind
         return FailureDecision::GaveUp;
     }
     if(failure == Failure::Lost) {
-        it->second.requeue_attempts += 1;
+        it->second.requeues += 1;
     }
 
     // Requeue with the reason this dispatch carried, not the entry's
@@ -131,9 +131,9 @@ ReindexQueue::FailureDecision ReindexQueue::on_dispatch_failure(const TakenReind
     // restore the entry afterwards.
     auto reason =
         it->second.content_seq == taken.seq ? ReindexReason::ContentChanged : it->second.reason;
-    auto attempts = it->second.requeue_attempts;
+    auto requeues = it->second.requeues;
     record(taken.id, reason);
-    entries.find(taken.id)->second.requeue_attempts = attempts;
+    entries.find(taken.id)->second.requeues = requeues;
     return FailureDecision::Requeued;
 }
 

@@ -27,7 +27,7 @@ namespace clice {
 ///     change_limit crashes in a row; past that only a save retries.
 ///     Nothing but a change, a save or the kind answering lets it run
 ///     again: a document that sits still is never retried.
-///  2. One retry at a time — the attempt that retries a kind stops the
+///  2. One retry at a time — the dispatch that retries a kind stops the
 ///     others until its result (Dispatch); one that crashes on inputs
 ///     changed meanwhile leaves the change standing: the newer inputs are
 ///     still untried.
@@ -134,7 +134,7 @@ public:
 
         std::uint64_t seq = 0;
 
-        /// This attempt retries the kind (FailureRecord::trying).
+        /// This dispatch retries the kind (FailureRecord::trying).
         bool retrying = false;
     };
 

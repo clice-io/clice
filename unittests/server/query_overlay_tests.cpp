@@ -55,7 +55,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto& st = project.pch_cache["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
-    st.state = nullptr;
+    st.index = nullptr;
 
     focus_path = std::string(full_index.path(full_index.focus_file()));
     auto it = sources.all_files.find(path::filename(focus_path));
@@ -573,16 +573,16 @@ int main() {{ gen(); return 0; }}
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
         ZEXPECT(index.path(i) != synthesized);
     }
-    ZEXPECT(
-        !ranges::any_of(unit->deps(), [&](const DepFile& dep) { return dep.path == synthesized; }));
+    ZEXPECT(!ranges::any_of(unit->deps(),
+                            [&](const ReportedInput& dep) { return dep.path == synthesized; }));
 }
 
 ZEST_CASE(UnreadableBlobCleared) {
     dir.touch("junk.pch.idx", "not a blob");
 
-    PCHState st;
+    PCHBuild st;
     st.index_path = dir.path("junk.pch.idx");
-    ZEXPECT(st.load_state() == nullptr);
+    ZEXPECT(st.load_index() == nullptr);
     // The cleared path makes the pair look incomplete, so the next
     // ensure_pch round rebuilds it instead of retrying the mmap forever.
     ZEXPECT(st.index_path.empty());

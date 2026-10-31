@@ -122,7 +122,7 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     }
     auto& project = (*opened)->project;
     auto ctx = query_context(project);
-    auto outcome = ask(project, ctx);
+    auto result = ask(project, ctx);
     if(project.index.damaged()) {
         return fail(project.damaged_index_error());
     }
@@ -130,11 +130,11 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     auto listed = std::move(ctx.unindexed);
     listed.append_range((*opened)->failed);
     auto stale = stale_files(project, std::move(listed));
-    if(outcome) {
-        print_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
+    if(result) {
+        print_json(Answer{.result = std::move(*result), .stale = std::move(stale)});
         return 0;
     }
-    Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
+    Failure failure{.error = std::move(result.error()), .stale = std::move(stale)};
     if(!ctx.candidates.empty()) {
         failure.candidates = std::move(ctx.candidates);
     }

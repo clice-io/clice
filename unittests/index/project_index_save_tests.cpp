@@ -829,7 +829,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     // retry: another reader finds the symbol in its file, and the unit.
     clice::FileTable files;
     index::ProjectIndex reader{files};
-    ZASSERT(reader.open(*project.database) == index::LoadOutcome::Loaded);
+    ZASSERT(reader.open(*project.database) == index::LoadResult::Loaded);
     auto unit = files.intern(Spelling::absolute(indexed.tu_path));
     ZEXPECT(reader.indexed(unit));
     ZEXPECT(reader.manifest(unit).has_value());
@@ -990,7 +990,7 @@ ZEST_CASE(GrownMapRetriesNow) {
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
-    auto task = f.project.persist();
+    auto task = f.project.save();
     f.loop.schedule(task);
     f.loop.run();
 
@@ -1018,7 +1018,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     loop.schedule(task);
     loop.run();
 
-    // The shards commit without the search index a cold round never built.
+    // The shards commit without the search index a cold pass never built.
     ZASSERT(log.writes.size() == 1u);
     ZASSERT(ranges::contains(log.writes[0], index::BlobKind::TUManifest));
     ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchSegment));

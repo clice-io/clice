@@ -49,7 +49,7 @@ bool Project::has_unsaved_state() const {
     return index.has_unsaved_state() || build_snapshot.owes_save(*this);
 }
 
-async::task<index::IndexReport> Project::save_project(index::SearchRebuild search) {
+async::task<index::IndexReport> Project::write_database(index::SearchRebuild search) {
     index::IndexReport report;
     // A read-only session (batch lint, stats) keeps its metadata in memory
     // and exits with it — it must never write into a database a concurrent
@@ -272,8 +272,8 @@ SavedLoad Project::load_saved(bool reconcile) {
     switch(index.open(db)) {
         // A database with no index yet may still hold the metadata and the
         // build snapshot of a session whose index was discarded.
-        case index::LoadOutcome::Empty: break;
-        case index::LoadOutcome::Unreadable:
+        case index::LoadResult::Empty: break;
+        case index::LoadResult::Unreadable:
             // Run this session memory-only — saving a fresh lineage over
             // records whose header was never read could alias their path
             // ids — and leave everything for a healthier restart to load.
@@ -294,7 +294,7 @@ SavedLoad Project::load_saved(bool reconcile) {
                 database.reset();
             }
             return result;
-        case index::LoadOutcome::Undecodable:
+        case index::LoadResult::Undecodable:
             // Another format discards the index; the metadata, read first,
             // goes into the fresh database at its first save.
             result.decoded = false;
@@ -303,7 +303,7 @@ SavedLoad Project::load_saved(bool reconcile) {
                 reopen_fresh_database();
             }
             return result;
-        case index::LoadOutcome::Loaded: break;
+        case index::LoadResult::Loaded: break;
     }
     load_metadata();
     if(reconcile) {

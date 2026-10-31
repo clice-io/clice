@@ -34,19 +34,19 @@ async::task<> Project::checkpoint() {
     }
     // A full search build or a fold here could still be running on the
     // thread pool when a shutdown cancels the checkpoint, holding up the
-    // final save behind seconds of derived work: the round end does them,
-    // and a round with nothing queued builds what the search index is owed.
-    co_await persist(index::SearchRebuild::Never);
+    // final save behind seconds of derived work: the pass end does them,
+    // and a pass with nothing queued builds what the search index is owed.
+    co_await save(index::SearchRebuild::Never);
     schedule_index();
 }
 
 async::task<> Project::shutdown() {
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
-    // index dominates a cold round's save: the index commits with no more
+    // index dominates a cold pass's save: the index commits with no more
     // than a run of the changes since the last save, and the next session's
     // first idle save builds the rest.
-    co_await persist(index::SearchRebuild::Never);
+    co_await save(index::SearchRebuild::Never);
 }
 
 void Project::close() {
@@ -186,14 +186,14 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
 /// (existing or not; the server watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
 /// meet later — the persisted index's (see BuildSnapshot::remembered),
-/// those above the file a run is about (see compile_commands_above).
+/// those above the file a run is about (see databases_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
     ScopedTimer cdb_timer;
     std::size_t entries = 0;
     auto paths = project.build.declared_sources();
     if(!project.build.declares_sources()) {
-        paths = discover_compile_commands(root);
+        paths = discovered_databases(root);
         // Registered whether still there or not, like a declared one: the
         // server watches for its return, and the index it built keeps
         // serving meanwhile. Sorted like Build::source_order ranks them, so
@@ -310,18 +310,18 @@ void load_members(Project& project,
     }
 }
 
-/// Why the index cache at `where` cannot be read, as `outcome` says; empty
+/// Why the index cache at `where` cannot be read, as `result` says; empty
 /// for one that loaded.
-std::string unreadable_index(index::LoadOutcome outcome, std::string_view where) {
-    switch(outcome) {
-        case index::LoadOutcome::Loaded: return {};
-        case index::LoadOutcome::Empty:
+std::string unreadable_index(index::LoadResult result, std::string_view where) {
+    switch(result) {
+        case index::LoadResult::Loaded: return {};
+        case index::LoadResult::Empty:
             return std::format("No index cache at {}; run `clice index` first", where);
-        case index::LoadOutcome::Undecodable:
+        case index::LoadResult::Undecodable:
             return std::format(
                 "Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                 where);
-        case index::LoadOutcome::Unreadable:
+        case index::LoadResult::Unreadable:
             return std::format("Failed to read the index cache at {}; the cache was left untouched",
                                where);
     }
@@ -345,7 +345,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     auto store = CacheStore::open(cache_dir, cache_format_version, read_only);
     if(!store) {
         if(read_only && store.error() == std::errc::no_such_file_or_directory) {
-            return unreadable_index(index::LoadOutcome::Empty, cache_dir);
+            return unreadable_index(index::LoadResult::Empty, cache_dir);
         }
         auto why = std::format("Failed to open cache store at {}: {}",
                                std::string_view(cache_dir),
@@ -383,7 +383,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
             return {};
         }
         if(!index::database_exists(*project.store, key)) {
-            return unreadable_index(index::LoadOutcome::Empty,
+            return unreadable_index(index::LoadResult::Empty,
                                     index::database_directory(*project.store, key));
         }
         return std::format("The index database at {} cannot be opened; the log above says why",
@@ -483,7 +483,7 @@ Project::Opened Project::open(const OpenOptions& options) {
 
     auto remembered = BuildSnapshot::remembered(*this);
     if(!options.file.empty()) {
-        auto above = compile_commands_above(CanonicalRef(options.file).parent(), root);
+        auto above = databases_above(CanonicalRef(options.file).parent(), root);
         remembered.sources.append(above.begin(), above.end());
     }
     switch(options.build) {
@@ -507,9 +507,9 @@ Project::Opened Project::open(const OpenOptions& options) {
             opened.report = std::move(saved.report);
             // A reader takes no fresh database for one it cannot read.
             if(!saved.decoded && database && database->read_only()) {
-                opened.unreadable = unreadable_index(index::LoadOutcome::Undecodable, cache_dir);
+                opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
             } else if(!database && options.index == Index::Read) {
-                opened.unreadable = unreadable_index(index::LoadOutcome::Unreadable, cache_dir);
+                opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
             }
             // A unit deleted while no server ran keeps its index until a
             // look finds it missing (see FreshnessGate).
@@ -525,88 +525,6 @@ Project::Opened Project::open(const OpenOptions& options) {
         database.reset();
     }
     return opened;
-}
-
-DepsSnapshot capture_deps_snapshot(FileTable& files,
-                                   llvm::ArrayRef<DepFile> deps,
-                                   std::int64_t build_at) {
-    // Files whose mtime falls within the guard of the build start count as
-    // "possibly modified during the build".
-    auto baseline_before_ns = vfs::stat_baseline_before_ns(build_at);
-
-    DepsSnapshot snap;
-    snap.reserve(deps.size());
-    vfs::StatusBatch statuses;
-    for(const auto& file: deps) {
-        auto& dep = snap.emplace_back();
-        dep.path_id = files.intern(Spelling::absolute(file.path));
-        auto hash = file.hash;
-
-        // A place a failed lookup looked: the build saw nothing there,
-        // whatever is there by now. The file table watches it from here on;
-        // a file there is a change.
-        if(file.absent) {
-            dep.missing = true;
-            files.disk.current(dep.path_id);
-            continue;
-        }
-
-        auto status = statuses.status(file.path);
-        if(!status) {
-            // A file the build read that is gone already: record the
-            // absence, reappearing counts as a change. Still-missing
-            // deliberately counts as unchanged — flagging it would rebuild
-            // on every check without ever converging, while the product is
-            // the last remaining truth for the file (and dependents'
-            // recovery is the DiskRemoved cascade's job, not this
-            // snapshot's).
-            dep.missing = true;
-            files.disk.saw_missing(dep.path_id);
-            continue;
-        }
-
-        if(hash == 0) {
-            // The worker could not hash the consumed bytes: when nothing
-            // else names them, the dep stays version-less and reads as
-            // changed until the rebuild's capture retries.
-            hash = files.disk.unchanged_hash(dep.path_id, *status, baseline_before_ns);
-            if(hash == 0) {
-                continue;
-            }
-        } else {
-            files.disk.consumed(dep.path_id, hash);
-        }
-
-        dep.version = files.intern_version(dep.path_id, hash);
-    }
-    return snap;
-}
-
-std::optional<DepState> current_dep(FileTable& files, Fid file) {
-    if(auto seen = files.disk.current(file)) {
-        return DepState{.path_id = file, .version = files.intern_version(file, seen->hash)};
-    }
-    if(files.disk.seen_missing(file)) {
-        return DepState{.path_id = file, .missing = true};
-    }
-    return std::nullopt;
-}
-
-void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
-    auto key = [](const DepState& dep) {
-        return std::tuple(dep.path_id.raw, dep.version.raw, std::uint8_t(dep.missing));
-    };
-    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, std::uint8_t>> seen;
-    for(auto& dep: into) {
-        seen.insert(key(dep));
-    }
-    for(auto* part: parts) {
-        for(auto& dep: *part) {
-            if(seen.insert(key(dep)).second) {
-                into.push_back(dep);
-            }
-        }
-    }
 }
 
 }  // namespace clice

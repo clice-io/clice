@@ -1,19 +1,19 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The index holds a file's shard in memory only until the round that
-// built it saves: then it lives on disk, and a later round writes only
+// The index holds a file's shard in memory only until the pass that
+// built it saves: then it lives on disk, and a later pass writes only
 // the shards it changed.
 
-test("a round leaves no shard in memory", async (t) => {
+test("a pass leaves no shard in memory", async (t) => {
     const s = await t.start();
     await s.indexed();
     const { indexInmemoryShards, lastSaveShards } = await s.stats();
-    await t.show("after the round", { indexInmemoryShards, lastSaveShards });
+    await t.show("after the pass", { indexInmemoryShards, lastSaveShards });
 });
 
 test("a save writes the changed shard", async (t) => {
-    // Open before the project starts: its first round leaves the open file
+    // Open before the project starts: its first pass leaves the open file
     // to the file's own compile, which parses every function body.
     const s = await t.spawn({ config: { project: { skip_header_bodies: false } } });
     s.open("file0.cpp", { pull: false });
@@ -30,7 +30,7 @@ test("a save writes the changed shard", async (t) => {
         indexInmemoryShards: changed.indexInmemoryShards,
         lastSaveShards: changed.lastSaveShards,
     });
-    // The open file compiles itself, so the rounds leave its disk shard
+    // The open file compiles itself, so the passes leave its disk shard
     // alone and saving the same bytes queues nothing; closing it hands the
     // file back to the background index.
     s.save("file0.cpp");

@@ -68,9 +68,9 @@ struct CounterpartsResult {
 /// the index already know: the same name among the files of `graph`, the
 /// build's dependency graph, declarations and their definitions across the
 /// two, and the module declarations of `members`, the build's units.
-query::Outcome<CounterpartsResult> counterparts(query::Context& ctx,
-                                                const DependencyGraph& graph,
-                                                llvm::ArrayRef<Fid> members,
-                                                const Spelling& path);
+query::Result<CounterpartsResult> counterparts(query::Context& ctx,
+                                               const DependencyGraph& graph,
+                                               llvm::ArrayRef<Fid> members,
+                                               const Spelling& path);
 
 }  // namespace clice::feature

@@ -173,10 +173,11 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
 
     // Contexts that would produce identical compilation results are
     // collapsed: identical canonical flags mean an identical compile
-    // — but only for a header its trial found self-contained under the
-    // command. One that needs includer context gets a different
-    // synthesized prefix per host, and an un-trialed one may turn out the
-    // same way, so every host stays a distinct context for both.
+    // — but only for a header its self-containment check found
+    // self-contained under the command. One that needs includer context
+    // gets a different synthesized prefix per host, and an unchecked one
+    // may turn out the same way, so every host stays a distinct context for
+    // both.
     llvm::StringSet<> seen_commands;
     for(auto host: ranked_hosts(file)) {
         // A multi-configuration host contributes one context per CDB

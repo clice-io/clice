@@ -169,7 +169,7 @@ ZEST_CASE(ChoiceChangedResets) {
     compiled->base_pch_key = "base";
     compiled->output = CompileOutput{.version = 3};
     entry.latest = std::move(compiled);
-    entry.deps.emplace();
+    entry.inputs.emplace();
     entry.current = true;
     auto generation = session->generation;
 
@@ -180,7 +180,7 @@ ZEST_CASE(ChoiceChangedResets) {
     // until the next compile overwrites it.
     ZASSERT(session->generation == generation + 1);
     ZASSERT(!served.current(pid));
-    ZASSERT(!fixture.entry(pid).deps.has_value());
+    ZASSERT(!fixture.entry(pid).inputs.has_value());
     auto after = served.latest(pid);
     ZASSERT(!after->pch_key.has_value());
     ZASSERT(!after->base_pch_key.has_value());
@@ -563,8 +563,8 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     auto entry = project.pcm_builds.find(top[0]);
     ZASSERT(entry != project.pcm_builds.end());
     auto base = fixture.intern(tmp.path("base.cppm"));
-    auto& deps = entry->second.deps;
-    ZEXPECT(ranges::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) == 1);
+    auto& inputs = entry->second.inputs;
+    ZEXPECT(ranges::count_if(inputs, [&](const Input& dep) { return dep.file == base; }) == 1);
 }
 
 ZEST_CASE(ImportScanPerUnit) {

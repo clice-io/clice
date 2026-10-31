@@ -202,9 +202,9 @@ void LSPClient::register_test_hooks() {
                 auto& project = served->project;
                 for(auto& entry: project.pch_cache) {
                     auto& st = entry.second;
-                    if(st.state) {
+                    if(st.index) {
                         stats.pch_loaded_states += 1;
-                        stats.pch_state_bytes += st.state->bytes().size();
+                        stats.pch_state_bytes += st.index->bytes().size();
                     }
                 }
                 stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());

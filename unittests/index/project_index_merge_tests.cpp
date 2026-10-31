@@ -94,7 +94,7 @@ int use() { return 1; }
     ZEXPECT(!merge(planted));
 
     auto header = project.file_table.intern(Spelling::absolute(*header_path));
-    DepState input{.path_id = header, .version = project.file_table.intern_version(header, 1)};
+    Input input{.file = header, .version = project.file_table.intern_version(header, 1)};
     auto report = project.index.merge(planted, {input});
     ZASSERT(report);
     fx.project.apply_report(*report);
@@ -106,7 +106,7 @@ int use() { return 1; }
     ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
 
     // One the build saw gone still came out of the precompiled header.
-    DepState gone{.path_id = header, .missing = true};
+    Input gone{.file = header, .absent = true};
     ZEXPECT(project.index.merge(planted, {gone}).has_value());
 }
 
@@ -159,7 +159,7 @@ ZEST_CASE(MergeHitWritesNothing) {
     ZASSERT(project.index.pending_shard_writes() == 0u);
 
     // A re-merge whose variant the shard already stores is the steady state of
-    // every background round: it must record contributions and touch no
+    // every background pass: it must record contributions and touch no
     // blob at all.
     merge(indexed.data);
     ZASSERT(project.index.pending_shard_writes() == 0u);
@@ -513,7 +513,7 @@ ZEST_CASE(CreatedHeaderStales) {
     ZASSERT(!f.needs_reindex(src));
 
     tmp.touch("gen.h", "int make();\n");
-    f.begin_round();
+    f.clear_staleness_cache();
     ZASSERT(f.needs_reindex(src));
 }
 
@@ -551,7 +551,7 @@ ZEST_CASE(TouchStaysFresh) {
     // Same bytes, new mtime: the stat fast path misses, the hash proves a
     // mere touch, and nothing persisted needs rewriting.
     ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
-    x.f.begin_round();
+    x.f.clear_staleness_cache();
     ZASSERT(!x.f.needs_reindex(x.src));
     ZASSERT(!x.f.project.has_unsaved_state());
 }
@@ -566,7 +566,7 @@ ZEST_CASE(PreservedMtimeEditStale) {
     // and the hash check must catch the edit.
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
     ZASSERT(set_file_mtime(x.header, recorded));
-    x.f.begin_round();
+    x.f.clear_staleness_cache();
     ZASSERT(x.f.needs_reindex(x.src));
 }
 
@@ -588,7 +588,7 @@ ZEST_CASE(AllDepsChecked) {
     auto recorded = file_mtime_ns(tmp.path("second.h"));
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
     ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZASSERT(f.needs_reindex(tmp.path("main.cpp")));
 }
 
@@ -644,7 +644,7 @@ Fid id(llvm::StringRef name) {
 
 /// Index a unit, skipping what the index offers it, and merge it.
 bool index(llvm::StringRef name) {
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id(name));
     auto indexed = index_file(tmp, tmp.path(name), {}, {}, known);
     return !indexed.data.empty() && f.merge(indexed.data);
@@ -672,7 +672,7 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     ZEXPECT(prints() == 1u);
 
     // a2.cpp skips Box<A>::show, which a.cpp walked, and uses its resolution.
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id("a2.cpp"));
     ZEXPECT(!known.empty());
     ZASSERT(index("a2.cpp"));
@@ -695,7 +695,7 @@ ZEST_CASE(ResolutionLivesWhileUsed) {
     f.drop_index(id("a.cpp"));
     ZEXPECT(prints() == 2u);
     // Without a current run behind it the key is offered no more.
-    f.begin_round();
+    f.clear_staleness_cache();
     auto key = f.known_instantiations(id("b.cpp"));
     ZEXPECT(key.empty());
 
@@ -730,7 +730,7 @@ void a2() { Box<A>{}.show(); Box<B>{}.show(); }
 
 ZEST_CASE(StaleProducerNotOffered) {
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
     // Its own run would confirm the key, not skip it.
     ZEXPECT(f.known_instantiations(id("a.cpp")).empty());
@@ -743,7 +743,7 @@ ZEST_CASE(StaleProducerNotOffered) {
 struct A { void print(); void print(int); };
 )");
     f.project.index.mark_outdated(id("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
@@ -751,17 +751,17 @@ ZEST_CASE(LaterRunCatchesUp) {
     // A run started before its unit became outdated read the old file: its
     // merge leaves the unit outdated. One started after brings it up to date.
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     auto early = index_file(tmp, tmp.path("a.cpp"), {}, {}, f.known_instantiations(id("a.cpp")));
     ZASSERT(!early.data.empty());
     f.project.index.mark_outdated(id("a.cpp"));
     ZASSERT(f.merge(early.data));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 
     IndexInternals::outdated_since(f.project.index, id("a.cpp"), 0);
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
 }
 
@@ -773,7 +773,7 @@ ZEST_CASE(ReplacedRunNotOffered) {
 void a() {}
 )");
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
@@ -812,7 +812,7 @@ struct A { void print(); };
 }
 )");
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
     ZASSERT(index("a2.cpp"));
     tmp.touch("a.cpp", R"(#include "box.h"
@@ -840,7 +840,7 @@ void a() {}
 
 ZEST_CASE(GoneKeyReruns) {
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id("a2.cpp"));
     ZASSERT(!known.empty());
     // The key leaves before a2.cpp's run that skipped it merges.

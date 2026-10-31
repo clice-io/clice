@@ -536,9 +536,9 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 /// opens it: the project root at or above it (or --workspace), its
 /// settings with --config-overlay laid over them as initializationOptions
 /// are; its index when one was built, which tells the server's hosts and
-/// what their trials found; the databases the settings name, else the
-/// ones discovered under its root and those between the root and the file;
-/// the dependency graph.
+/// what their self-containment checks found; the databases the settings
+/// name, else the ones discovered under its root and those between the root
+/// and the file; the dependency graph.
 std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const Options& opts,
                                                                            const Spelling& path) {
     LoadSettingsOptions options{.overlay_name = "--config-overlay"};
@@ -598,7 +598,7 @@ std::string build_pch(Project& project,
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
     auto self = files.intern(Spelling::absolute(file));
-    bool reads = writer.file == self || ranges::any_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = writer.file == self || ranges::any_of(unit->deps(), [&](const ReportedInput& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
     bool built = unit->has_output() && !reads;
@@ -615,7 +615,7 @@ std::string build_pch(Project& project,
 /// performs for a background compile, or for the editor under `choice` — the
 /// file's entry, a host's command for a header, a rule's default command,
 /// the builtin fallback — the include trees the host search needs taken
-/// first, and the self-containment trial run when none stands for the
+/// first, and the self-containment check run when none stands for the
 /// header, both as the server takes them; with the header context it
 /// synthesizes and the precompiled header the build declares, built
 /// (build_pch). An error when `choice` names a host whose compile does not
@@ -632,22 +632,22 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
                                        {.choice = choice, .preprocess = true});
     };
     auto resolution = resolve();
-    if(resolution.trial && !resolution.self_contained) {
-        auto trial = input;
-        trial.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
-        trial.add_focus(file.path, file.content);
+    if(resolution.self_containment && !resolution.self_contained) {
+        auto alone = input;
+        alone.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
+        alone.add_focus(file.path, file.content);
         auto unit = clice::compile({
             .kind = CompilationKind::Content,
-            .input = std::move(trial),
+            .input = std::move(alone),
             .skip_bodies = project.settings.project.skip_header_bodies,
         });
         if(unit->completed()) {
             auto& files = project.file_table;
-            project.commit_trial(
-                *resolution.trial,
+            project.commit_self_containment(
+                *resolution.self_containment,
                 feature::diagnostics(*unit),
                 files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
-                capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
+                intern_inputs(files, unit->deps(), unit->started_at().count()));
             resolution = resolve();
         }
     }

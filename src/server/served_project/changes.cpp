@@ -96,23 +96,23 @@ llvm::SmallVector<Fid> ServedProject::readers(Fid path_id) const {
     project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) { add(tu); });
     project.index.for_each_absent_lookup(path_id, add);
     project.index.for_each_importer(path_id, add);
-    auto names = [&](const DepsSnapshot& deps) {
-        return ranges::any_of(deps, [&](const DepState& dep) { return dep.path_id == path_id; });
+    auto names = [&](const Inputs& inputs) {
+        return ranges::any_of(inputs, [&](const Input& dep) { return dep.file == path_id; });
     };
     for(auto& [document, served]: documents) {
         bool read = false;
-        each_input(document, [&](const DepsSnapshot& deps) { read = read || names(deps); });
+        each_input(document, [&](const Inputs& inputs) { read = read || names(inputs); });
         if(read) {
             add(document);
         }
     }
     for(auto& [unit, build]: project.pcm_builds) {
-        if(names(build.deps)) {
+        if(names(build.inputs)) {
             add(unit);
         }
     }
     project.failures.pcm_builds.for_each([&](Fid unit, const auto& failed) {
-        if(names(failed.trace)) {
+        if(names(failed.inputs)) {
             add(unit);
         }
     });
@@ -411,8 +411,8 @@ void ServedProject::recheck_choices() {
 }
 
 void ServedProject::asts_lost(llvm::ArrayRef<Fid> lost) {
-    // Compile inputs did not change, so trial state and self-containment
-    // results stay untouched. A live round sends a compile of its own,
+    // Compile inputs did not change, so self-containment results stay
+    // untouched. A live round sends a compile of its own,
     // which puts the AST back on a worker — invalidating it would only make
     // it finish stale and compile twice.
     for(auto path_id: lost) {
@@ -432,9 +432,9 @@ bool ServedProject::knows(Fid path_id) {
 
 void ServedProject::append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const {
     for(auto& [path_id, document]: documents) {
-        each_input(path_id, [&](const DepsSnapshot& deps) {
-            for(auto& dep: deps) {
-                files.push_back(dep.path_id);
+        each_input(path_id, [&](const Inputs& inputs) {
+            for(auto& dep: inputs) {
+                files.push_back(dep.file);
             }
         });
     }
@@ -499,7 +499,7 @@ void ServedProject::discover_around(Fid path_id) {
     // A registered database whose load failed so far (absent at startup,
     // unreadable at an earlier open) gets another try: with polling off
     // nothing else would.
-    for(auto& database: compile_commands_above(path.parent(), project.root)) {
+    for(auto& database: databases_above(path.parent(), project.root)) {
         auto registered = project.cdb.find_source(database);
         if((registered && project.cdb.loaded(*registered)) ||
            (!registered && project.cdb.find_same_file(database))) {

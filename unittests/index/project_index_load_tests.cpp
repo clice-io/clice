@@ -91,7 +91,7 @@ ZEST_CASE(OpenReadsHeaderOnly) {
     auto log = std::make_unique<ReadLog>(std::move(f.project.database));
     auto* probe = log.get();
     f.project.database = std::move(log);
-    ZASSERT(f.project.index.open(*f.project.database) == index::LoadOutcome::Loaded);
+    ZASSERT(f.project.index.open(*f.project.database) == index::LoadResult::Loaded);
     ZEXPECT(probe->reads == llvm::SmallVector<index::BlobKind>{index::BlobKind::Header,
                                                                index::BlobKind::SearchSegment});
     ZEXPECT(f.project.index.search_index().loaded());
@@ -597,19 +597,18 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
         ZASSERT(f.project.store->commit(std::move(aux)));
         stored(f, "pcm", "m");
         auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-        auto dep =
-            DepState{.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
+        auto dep = Input{.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
         auto& pch = f.project.pch_cache["k"];
         pch.blob = "k";
         pch.path = "k.pch";
-        pch.deps.push_back(dep);
+        pch.inputs.push_back(dep);
         auto& pcm =
             f.project
                 .pcm_builds[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
         pcm.path = "m.pcm";
         pcm.key = "m";
         pcm.blob = "m";
-        pcm.deps.push_back(dep);
+        pcm.inputs.push_back(dep);
         f.project.mark_precompiled_dirty();
         f.project.choices.bytes = "choices";
         f.project.choices.dirty = true;

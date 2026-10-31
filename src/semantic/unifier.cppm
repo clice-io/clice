@@ -51,12 +51,12 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
                            llvm::ArrayRef<const clang::Expr*> open = {});
 
-/// The outcome of select_partial: a winner, or why there is none. Real
+/// The result of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
 /// match), and a winner whose match is Unverified may not apply at all.
 /// Callers degrade on both rather than pick arbitrarily or trust the
 /// unverified.
-enum class PartialOutcome : std::uint8_t {
+enum class PartialResult : std::uint8_t {
     None,
     Selected,
     Ambiguous,
@@ -65,7 +65,7 @@ enum class PartialOutcome : std::uint8_t {
 
 template <typename Partial>
 struct PartialChoice {
-    PartialOutcome outcome = PartialOutcome::None;
+    PartialResult result = PartialResult::None;
     /// Set for Selected only.
     Partial* winner = nullptr;
 };

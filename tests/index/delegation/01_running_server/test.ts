@@ -21,7 +21,7 @@ test("asks the running server to index", async (t) => {
 
 // A lock holder without a record (a batch run, a server of another build)
 // cannot be asked: the commands that need the writer give up, while reads
-// go on from the disk, which the finished round saved.
+// go on from the disk, which the finished pass saved.
 test("refuses a writer it cannot ask", async (t) => {
     const s = await t.start();
     await s.indexed();

@@ -50,12 +50,12 @@ The PCH build also instantiates the function templates the preamble itself uses,
 
 The PCH skips the bodies of the functions in the files the preamble enters, as clangd's does. A function template that likely forwards its arguments keeps its body (its last parameter is a pack of its own template parameters, as `make_unique`'s is), and so do the `constexpr`, `consteval` and `auto` functions clang always parses. A compile loading the PCH then instantiates no header template's body, the bulk of an edit's work on template-heavy code, and holds a far smaller AST. What those bodies would report, an error or a warning, comes from the background index, which compiles every body: its run of a file brings back the diagnostics a skipping compile misses, shown while the buffer holds the text that run read, and the run of a file opened with none for its text goes first. A use inside a skipped body goes unseen, so the editor holds back its warnings that a declaration is unused and shows those the run raises too. Without a PCH, a compile skips the same bodies, by the same preamble bound, so that every compile of the editor answers alike. `skip_header_bodies = false` turns it off.
 
-`PCHState` is a PCH cache entry, containing:
+`PCHBuild` is a PCH cache entry, containing:
 
 - The PCH file path on disk
 - A hash of the preamble content
 - The preamble byte boundary (bound)
-- A dependency snapshot (`DepsSnapshot`, see below)
+- A dependency snapshot (`Inputs`, see below)
 - A handle to the paired preamble-state blob, stored next to the PCH and sharing its lifecycle: the preamble's symbol index plus feature state extracted at build time (document links, inactive regions, the open conditional stack), opened as a memory-mapped blob and queried lazily (see [symbol index](symbol-index.md))
 
 ### Two-Layer Invalidation Detection
@@ -73,7 +73,7 @@ clice combines both into a two-layer detection strategy, implemented once in the
 
 Layer 1 filters out the vast majority of unchanged files (the common-case path). Layer 2 eliminates stat false positives (build tool touches, VCS checkouts, etc.). The combined effect: PCH is rebuilt only when the content of a dependency file has actually changed.
 
-`DepsSnapshot` is the per-artifact record for two-layer detection, captured when a PCH build completes. It stores each dependency's file identity and the content version the build consumed (plus markers for files that were missing at build time) and delegates the actual comparison to the shared file table. The stat observation belongs to the file, not to the artifact: one observation serves every artifact that depends on the file.
+`Inputs` is the per-artifact record for two-layer detection, captured when a PCH build completes. It stores each dependency's file identity and the content version the build consumed (plus markers for files that were missing at build time) and delegates the actual comparison to the shared file table. The stat observation belongs to the file, not to the artifact: one observation serves every artifact that depends on the file.
 
 ### Pull-Based Compilation
 
@@ -148,11 +148,11 @@ Multiple feature requests may simultaneously trigger a PCH build for the same co
 
 ### Dependency Snapshot Timing Guarantee
 
-The content versions in a `DepsSnapshot` are hashes of the bytes the compiler actually consumed, taken from its own buffers, so a file modified during the build is never mistaken for what the build read: its new content fails the hash comparison on the next check. The build timestamp (`build_at`), obtained **before** the build starts, covers the one remaining case -- a dependency whose consumed bytes the worker could not hash:
+The content versions in `Inputs` are hashes of the bytes the compiler actually consumed, taken from its own buffers, so a file modified during the build is never mistaken for what the build read: its new content fails the hash comparison on the next check. The build timestamp (`started_at`), obtained **before** the build starts, covers the one remaining case -- a dependency whose consumed bytes the worker could not hash:
 
-If the file's mtime is no later than `build_at`, the disk still holds the bytes the build consumed, and their hash is taken from the file table. If it is later, the file may have changed during the build: the dependency is recorded without a version, reads as changed, and the next build captures it again.
+If the file's mtime is no later than `started_at`, the disk still holds the bytes the build consumed, and their hash is taken from the file table. If it is later, the file may have changed during the build: the dependency is recorded without a version, reads as changed, and the next build captures it again.
 
-If the order were reversed -- building first, then obtaining the timestamp -- a window could arise: a file modified during the build would have an mtime no later than `build_at`, and its new content would be recorded as the version the build consumed, causing the modification to be missed.
+If the order were reversed -- building first, then obtaining the timestamp -- a window could arise: a file modified during the build would have an mtime no later than `started_at`, and its new content would be recorded as the version the build consumed, causing the modification to be missed.
 
 ### Overall Compilation Flow
 
@@ -164,7 +164,7 @@ When a feature request arrives, the compilation pipeline executes in this order:
 4. Dispatch the compilation task to a stateful worker process with the PCH path and module file paths
 5. The worker loads the PCH and compiles only the user code after the preamble
 
-AST dependency files (headers `#include`d after the preamble) are also tracked via `DepsSnapshot`, using the same two-layer invalidation detection. Even if the user has not edited the current file, if a dependency header is modified on disk, the next feature request will trigger recompilation.
+AST dependency files (headers `#include`d after the preamble) are also tracked via `Inputs`, using the same two-layer invalidation detection. Even if the user has not edited the current file, if a dependency header is modified on disk, the next feature request will trigger recompilation.
 
 ### Interaction with Compilation Context
 

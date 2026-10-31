@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // pass waits for the worker to come back and retries a.cpp there, and the
 // report is whole.
 test(async (t) => {
-    await t.cli("lint --jobs 1", { kill: { request: "unitRun", file: "a.cpp" } });
+    await t.cli("lint --jobs 1", { kill: { request: "compileUnit", file: "a.cpp" } });
 });

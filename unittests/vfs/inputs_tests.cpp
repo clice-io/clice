@@ -1,6 +1,5 @@
 module clice;
 
-import :project.project;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_system;
@@ -9,9 +8,9 @@ import :vfs.file_table;
 namespace clice::testing {
 namespace {
 
-/// A build_at (milliseconds since epoch, like the worker's `unit.build_at()`)
+/// A started_at (milliseconds since epoch, like the worker's `unit.started_at()`)
 /// far enough in the future that every existing file clears the mtime guard.
-std::int64_t generous_build_at() {
+std::int64_t generous_started_at() {
     return chrono::duration_cast<chrono::milliseconds>(
                chrono::system_clock::now().time_since_epoch())
                .count() +
@@ -40,7 +39,7 @@ bool confirmed(FileTable& pool, llvm::StringRef path) {
            pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
 }
 
-ZEST_SUITE(DepsSnapshot) {
+ZEST_SUITE(Inputs) {
 
 ZEST_CASE(FreshWhenUntouched) {
     TempDir tmp;
@@ -49,13 +48,13 @@ ZEST_CASE(FreshWhenUntouched) {
     age_file(dep);
 
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
     ZASSERT(snap.size() == 1u);
-    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(inputs_hold(pool, snap));
 
     // The check's read left the file's pair behind: the next check is a
     // stat.
@@ -69,23 +68,23 @@ ZEST_CASE(SnapshotsShareOneVersion) {
     age_file(dep);
 
     FileTable pool;
-    auto build_at = generous_build_at();
-    auto first = capture_deps_snapshot(pool,
-                                       {
-                                           DepFile{dep, consumed_hash(dep)}
+    auto started_at = generous_started_at();
+    auto first = intern_inputs(pool,
+                               {
+                                   ReportedInput{dep, consumed_hash(dep)}
     },
-                                       build_at);
-    auto second = capture_deps_snapshot(pool,
-                                        {
-                                            DepFile{dep, consumed_hash(dep)}
+                               started_at);
+    auto second = intern_inputs(pool,
+                                {
+                                    ReportedInput{dep, consumed_hash(dep)}
     },
-                                        build_at);
+                                started_at);
     ZASSERT(pool.versions.size() == 1u);
 
     // One check's read serves the other snapshot.
-    ZASSERT(!deps_changed(pool, first));
+    ZASSERT(inputs_hold(pool, first));
     ZASSERT(confirmed(pool, dep));
-    ZASSERT(!deps_changed(pool, second));
+    ZASSERT(inputs_hold(pool, second));
 }
 
 ZEST_CASE(ImmediateEditDetected) {
@@ -96,13 +95,13 @@ ZEST_CASE(ImmediateEditDetected) {
     auto dep = tmp.path("dep.h");
 
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
     tmp.touch("dep.h", "int renamed();\n");
-    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!inputs_hold(pool, snap));
 }
 
 ZEST_CASE(EveryChangeFound) {
@@ -118,15 +117,15 @@ ZEST_CASE(EveryChangeFound) {
     FileTable pool;
     pool.disk.read(pool.intern(Spelling::absolute(a)));
     pool.disk.read(pool.intern(Spelling::absolute(b)));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{a, consumed_hash(a)},
-                                          DepFile{b, consumed_hash(b)},
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{a, consumed_hash(a)},
+                                  ReportedInput{b, consumed_hash(b)},
     },
-                                      generous_build_at());
+                              generous_started_at());
     tmp.touch("a.h", "int a2();\n");
     tmp.touch("b.h", "int b2();\n");
-    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!inputs_hold(pool, snap));
     ZASSERT(pool.disk.take_changes().size() == 2u);
 }
 
@@ -141,17 +140,17 @@ ZEST_CASE(BackdatedEditDetected) {
 
     FileTable pool;
     pool.disk.read(pool.intern(Spelling::absolute(dep)));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
     auto recorded_mtime = file_mtime_ns(dep);
     ZASSERT(confirmed(pool, dep));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ZASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
-    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!inputs_hold(pool, snap));
 }
 
 ZEST_CASE(TouchRepairsFastPath) {
@@ -162,18 +161,18 @@ ZEST_CASE(TouchRepairsFastPath) {
 
     FileTable pool;
     pool.disk.read(pool.intern(Spelling::absolute(dep)));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
 
     // Rewrite identical bytes: the stat moves, the content does not.
     auto before = file_mtime_ns(dep);
     tmp.touch("dep.h", "int f();\n");
     ZASSERT(set_file_mtime(dep, before + 5'000'000'000));
     ZASSERT(!confirmed(pool, dep));
-    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(inputs_hold(pool, snap));
 
     // The check's read moved the pair to the new stat.
     ZASSERT(confirmed(pool, dep));
@@ -190,12 +189,12 @@ ZEST_CASE(PoisonedCaptureDetected) {
 
     tmp.touch("dep.h", "int v2();\n");
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed}
     },
-                                      /*build_at=*/1);
-    ZASSERT(deps_changed(pool, snap));
+                              /*started_at=*/1);
+    ZASSERT(!inputs_hold(pool, snap));
 }
 
 ZEST_CASE(StalePairRereads) {
@@ -217,13 +216,13 @@ ZEST_CASE(StalePairRereads) {
     // is the accepted mtime residual — the premise here is a stat that
     // does differ, so force it apart.
     ZASSERT(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
     ZASSERT(!confirmed(pool, dep));
-    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(inputs_hold(pool, snap));
     ZASSERT(confirmed(pool, dep));
 }
 
@@ -232,19 +231,19 @@ ZEST_CASE(MissingTransitions) {
     auto dep = tmp.path("ghost.h");
 
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, 0}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, 0}
     },
-                                      generous_build_at());
-    ZASSERT(snap[0].missing);
+                              generous_started_at());
+    ZASSERT(snap[0].absent);
 
     // Still missing: unchanged.
-    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(inputs_hold(pool, snap));
 
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
-    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!inputs_hold(pool, snap));
     ZASSERT(!pool.disk.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
@@ -257,13 +256,13 @@ ZEST_CASE(AbsentPlaceFilled) {
     age_file(place);
 
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{.path = place, .absent = true}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{.path = place, .absent = true}
     },
-                                      generous_build_at());
-    ZASSERT(snap[0].missing);
-    ZASSERT(deps_changed(pool, snap));
+                              generous_started_at());
+    ZASSERT(snap[0].absent);
+    ZASSERT(!inputs_hold(pool, snap));
 }
 
 ZEST_CASE(RemovedAfterBuild) {
@@ -272,17 +271,17 @@ ZEST_CASE(RemovedAfterBuild) {
     auto dep = tmp.path("dep.h");
 
     FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
     },
-                                      generous_build_at());
+                              generous_started_at());
 
     fs::remove(dep);
-    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!inputs_hold(pool, snap));
 }
 
-};  // ZEST_SUITE(DepsSnapshot)
+};  // ZEST_SUITE(Inputs)
 
 }  // namespace
 }  // namespace clice::testing

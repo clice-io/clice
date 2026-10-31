@@ -38,7 +38,7 @@ struct PCMBuild {
 
     /// What the build read and looked for, the inputs of the modules it
     /// imports included; none while a rebuild runs.
-    DepsSnapshot deps;
+    Inputs inputs;
 };
 
 /// A module unit's build that failed: on the user's code, on an import that
@@ -67,7 +67,7 @@ struct ModuleFailure {
 /// cancellation (an overtaken attempt tells its worker to stop and still
 /// reports the real result — contract 2). The graph owns identity, edges,
 /// attempts and interest.
-struct ModuleDeps {
+struct Imports {
     llvm::SmallVector<NodeId, 8> declared;
 
     /// Where each of `declared` is imported (see ScanResult::import_offsets);

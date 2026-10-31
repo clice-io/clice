@@ -64,15 +64,16 @@ ZEST_CASE(EditorSharesContext) {
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
 
-    // Its trial found it needs the includer's context.
+    // Its self-containment check found it needs the includer's context.
     std::string directory;
     std::vector<std::string> arguments;
     auto first = project.resolve_command(header, directory, arguments, {.preprocess = true});
-    ZASSERT(first.trial);
-    auto version = current_dep(project.file_table, header)->version;
-    project.hosting.trials.commit(*first.trial,
-                                  {.self_contained = false, .text = version, .disk = version},
-                                  {});
+    ZASSERT(first.self_containment);
+    auto version = current_input(project.file_table, header)->version;
+    project.hosting.self_containment.commit(
+        *first.self_containment,
+        {.self_contained = false, .text = version, .disk = version},
+        {});
 
     auto background = project.resolve_command(header, directory, arguments);
     ZASSERT(background.ref.source == CommandSource::Host);

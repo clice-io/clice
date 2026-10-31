@@ -130,7 +130,7 @@ private:
     };
 
     /// Progress-token lifecycle, split into orthogonal facts so the
-    /// asynchronous create() handshake can reconcile against rounds that
+    /// asynchronous create() handshake can reconcile against passes that
     /// begin or end while it is in flight. At most one create() is ever
     /// outstanding, and the reporter is never replaced while a handshake
     /// coroutine is awaiting on it.
@@ -147,14 +147,14 @@ private:
         /// begin() has been announced on the token; reports may flow.
         bool token_active = false;
 
-        /// An indexing round is running (Begin seen, End not yet).
-        bool round_active = false;
+        /// An indexing pass is running (Begin seen, End not yet).
+        bool pass_active = false;
 
         /// The owning LSPClient was destroyed; the handshake must not
         /// announce the token or touch the peer.
         bool abandoned = false;
 
-        /// Total file count captured when the round began, for the begin
+        /// Total file count captured when the pass began, for the begin
         /// message.
         std::uint32_t total = 0;
 

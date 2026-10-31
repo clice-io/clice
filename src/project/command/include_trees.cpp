@@ -169,8 +169,8 @@ void Project::commit_tree(const TreeRequest& request,
                           llvm::ArrayRef<std::string> paths,
                           llvm::ArrayRef<std::uint64_t> hashes,
                           std::vector<index::IncludeNode> nodes,
-                          llvm::ArrayRef<DepFile> deps,
-                          std::int64_t build_at) {
+                          llvm::ArrayRef<ReportedInput> deps,
+                          std::int64_t started_at) {
     auto& files = file_table;
     llvm::SmallVector<VersionID> versions;
     for(std::size_t i = 0; i < paths.size(); i += 1) {
@@ -185,22 +185,22 @@ void Project::commit_tree(const TreeRequest& request,
     }
     // The unit's own text is no dependency of its compile, but the tree's
     // root.
-    auto trace = capture_deps_snapshot(files, deps, build_at);
-    trace.push_back({.path_id = request.key.first, .version = versions.back()});
+    auto inputs = intern_inputs(files, deps, started_at);
+    inputs.push_back({.file = request.key.first, .version = versions.back()});
     hosting.trees.commit(request.key,
                          {.root = versions.back(), .nodes = std::move(nodes)},
-                         std::move(trace));
+                         std::move(inputs));
     // The tree can move the host's contexts: the listings it changes are
     // stale.
     context_epoch += 1;
 }
 
 void Project::commit_failed_tree(const TreeRequest& request) {
-    DepsSnapshot trace;
-    if(auto unit = current_dep(file_table, request.key.first)) {
-        trace.push_back(*unit);
+    Inputs inputs;
+    if(auto unit = current_input(file_table, request.key.first)) {
+        inputs.push_back(*unit);
     }
-    hosting.trees.commit(request.key, {}, std::move(trace));
+    hosting.trees.commit(request.key, {}, std::move(inputs));
     context_epoch += 1;
 }
 
@@ -224,7 +224,7 @@ void Project::take_tree(const TreeRequest& request) {
                 tree.content_hashes,
                 std::move(tree.nodes),
                 unit->deps(),
-                unit->build_at().count());
+                unit->started_at().count());
 }
 
 }  // namespace clice

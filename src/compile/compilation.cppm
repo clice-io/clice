@@ -10,6 +10,7 @@ import :syntax.position;
 import :syntax.source_text;
 import :syntax.token;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -59,22 +60,6 @@ struct TidyParams {
 class ClangTidyChecker;
 
 }  // namespace tidy
-
-/// One compile input paired with the hash of the bytes the compiler actually
-/// consumed for it — taken from the compiler's own in-memory buffers at build
-/// time, never from a later disk read. A later disk read could describe
-/// content the build never saw (the file may change while the build runs),
-/// which would poison every staleness check built on it.
-///
-/// hash == 0 means the consumed bytes were not available for hashing; the
-/// staleness check treats such an entry conservatively (rebuild once).
-struct DepFile {
-    std::string path;
-    std::uint64_t hash = 0;
-
-    /// A place a failed lookup looked: the build saw no file there.
-    bool absent = false;
-};
 
 enum class CompilationKind : std::uint8_t {
     /// Only preprocess the source file: directives are available, AST
@@ -484,7 +469,7 @@ public:
     /// the classes it instantiated.
     auto instantiations() -> llvm::ArrayRef<const clang::Decl*>;
 
-    chrono::milliseconds build_at();
+    chrono::milliseconds started_at();
 
     clang::LangOptions& lang_options();
 
@@ -501,7 +486,7 @@ public:
     /// The files this compilation read (include and __has_include targets),
     /// each with the hash of the bytes the compiler actually consumed, and
     /// the places its failed lookups looked (see absent), hash 0.
-    std::vector<DepFile> deps();
+    std::vector<ReportedInput> deps();
 
     /// The places failed include and `__has_include` lookups looked that
     /// hold no file: creating one changes what this compilation would see.

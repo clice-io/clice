@@ -731,7 +731,7 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& par
         return std::pair{BuildKind::PCH, llvm::StringRef(params.file)};
     } else if constexpr(std::same_as<Params, worker::BuildPCMParams>) {
         return std::pair{BuildKind::PCM, llvm::StringRef(params.file)};
-    } else if constexpr(std::same_as<Params, worker::UnitRunParams>) {
+    } else if constexpr(std::same_as<Params, worker::CompileUnitParams>) {
         return std::pair{BuildKind::Index, llvm::StringRef(params.file)};
     } else {
         return std::nullopt;

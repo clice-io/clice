@@ -64,19 +64,19 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
     std::vector<std::string> contents;
     std::vector<Spelling> spellings;
     llvm::SmallVector<ChainEntry> entries;
-    DepsSnapshot trace;
+    Inputs inputs;
     contents.reserve(chain.size() - 1);
     spellings.reserve(chain.size() - 1);
     auto commit = [&] {
-        return contexts.commit(header, std::move(context), std::move(trace));
+        return contexts.commit(header, std::move(context), std::move(inputs));
     };
     for(std::size_t i = 0; i + 1 < chain.size(); i += 1) {
         auto path = files.resolve(chain[i]);
         auto observed = vfs::read_observed(path);
         if(!observed) {
             LOG_WARN("Cannot read {} for the context of {}", path, files.resolve(header));
-            if(auto missing = current_dep(files, chain[i])) {
-                trace.push_back(*missing);
+            if(auto missing = current_input(files, chain[i])) {
+                inputs.push_back(*missing);
             }
             return commit();
         }
@@ -85,8 +85,8 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         entries.push_back(
             {.path = spellings.back(), .content = contents.back(), .line = host.lines[i]});
         files.disk.observe(chain[i], observed->obs);
-        trace.push_back(
-            {.path_id = chain[i], .version = files.intern_version(chain[i], observed->obs.hash)});
+        inputs.push_back(
+            {.file = chain[i], .version = files.intern_version(chain[i], observed->obs.hash)});
     }
 
     // Snapshot the header itself for other occurrences along the chain:
@@ -110,8 +110,8 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         return commit();
     }
     if(synthesized->snapshot) {
-        trace.push_back({.path_id = header,
-                         .version = files.intern_version(header, target_observed->obs.hash)});
+        inputs.push_back(
+            {.file = header, .version = files.intern_version(header, target_observed->obs.hash)});
     }
     context.synthesized = std::make_shared<const SynthesizedContext>(std::move(*synthesized));
     return commit();

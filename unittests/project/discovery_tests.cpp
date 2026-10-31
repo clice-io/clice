@@ -29,14 +29,14 @@ ZEST_CASE(DiscoverEveryNearby) {
     tmp.touch("deep/proj/compile_commands.json", "[]");
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
-    auto found = discover_compile_commands(root);
+    auto found = discovered_databases(root);
     ZASSERT(found.size() == 3u);
     ZEXPECT(found[0].str() == Spelling("compile_commands.json", spelled).str());
     ZEXPECT(found[1].str() == Spelling("build/compile_commands.json", spelled).str());
     ZEXPECT(found[2].str() == Spelling("out/compile_commands.json", spelled).str());
 
     auto above =
-        compile_commands_above(CanonicalPath(Spelling::absolute(tmp.path("deep/proj/src"))), root);
+        databases_above(CanonicalPath(Spelling::absolute(tmp.path("deep/proj/src"))), root);
     ZASSERT(above.size() == 2u);
     ZEXPECT(CanonicalPath(above[0]) ==
             CanonicalPath(
@@ -59,17 +59,16 @@ ZEST_CASE(NestedProjectsLeftOut) {
     tmp.touch("hidden/compile_commands.json", "[]");
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
-    auto found = discover_compile_commands(root);
+    auto found = discovered_databases(root);
     ZASSERT(found.size() == 2u);
     ZEXPECT(found[0].str() == Spelling("compile_commands.json", spelled).str());
     ZEXPECT(found[1].str() == Spelling("plain/compile_commands.json", spelled).str());
 
-    auto above =
-        compile_commands_above(CanonicalPath(Spelling::absolute(tmp.path("sub/deep/src"))), root);
+    auto above = databases_above(CanonicalPath(Spelling::absolute(tmp.path("sub/deep/src"))), root);
     ZASSERT(above.size() == 1u);
     ZEXPECT(CanonicalPath(above[0]) ==
             CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
-    ZEXPECT(deeper_compile_commands(root, CanonicalPath()).empty());
+    ZEXPECT(deeper_databases(root, CanonicalPath()).empty());
 
     ZEXPECT(nested_project(root, CanonicalPath(Spelling::absolute(tmp.path("sub/deep/a.cpp")))) ==
             CanonicalPath(Spelling::absolute(tmp.path("sub"))));
@@ -92,7 +91,7 @@ ZEST_CASE(DeeperDatabasesNamed) {
     tmp.touch("a/b/c/d/compile_commands.json", "[]");
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
-    auto deeper = deeper_compile_commands(root, CanonicalPath());
+    auto deeper = deeper_databases(root, CanonicalPath());
     ZASSERT(deeper.size() == 2u);
     ZEXPECT(deeper[0].str() == Spelling("build/debug/compile_commands.json", spelled).str());
     ZEXPECT(deeper[1].str() ==
@@ -110,11 +109,11 @@ ZEST_CASE(DiscoverSymlinkedBuild) {
     ZASSERT(::symlink(tmp.path("elsewhere/build").c_str(), tmp.path("ws/sub/build").c_str()) == 0);
     CanonicalPath root(Spelling::absolute(tmp.path("ws")));
 
-    auto found = discover_compile_commands(root);
+    auto found = discovered_databases(root);
     ZASSERT(found.size() == 1u);
     ZEXPECT(found[0].str() == Spelling("build/compile_commands.json", Spelling(root)).str());
 
-    auto deeper = deeper_compile_commands(root, CanonicalPath());
+    auto deeper = deeper_databases(root, CanonicalPath());
     ZASSERT(deeper.size() == 1u);
     ZEXPECT(deeper[0].str() == Spelling("sub/build/compile_commands.json", Spelling(root)).str());
 };

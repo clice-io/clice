@@ -143,7 +143,7 @@ public:
     /// (change_owner).
     void reroute();
 
-    /// A project's indexing progress moved: fold every project's round
+    /// A project's indexing progress moved: fold every project's pass
     /// into index_progress and tell the client.
     void index_progress_changed(ServedProject& project);
 
@@ -349,9 +349,9 @@ public:
     /// The users' context choices, at most one per file.
     llvm::DenseMap<Fid, ChoiceEntry> choices;
 
-    /// The projects' indexing rounds as one: it begins with the first
-    /// project's round and ends with the last one's, and a project whose
-    /// round ended keeps its counts in it until then.
+    /// The projects' indexing passes as one: it begins with the first
+    /// project's pass and ends with the last one's, and a project whose
+    /// pass ended keeps its counts in it until then.
     BackgroundIndex::Progress index_progress{.stage = BackgroundIndex::Progress::Stage::End};
 
     /// Why the server must restart, oldest first (ask_restart).
@@ -464,7 +464,7 @@ private:
     /// nothing, so what the client shows is taken down.
     void replace_shown(Document& document);
 
-    /// Fold every project's round into index_progress.
+    /// Fold every project's pass into index_progress.
     void fold_index_progress();
 
     // documents.cpp
@@ -499,10 +499,10 @@ private:
     std::uint64_t projects_generation = 0;
 
     /// The last progress of each project taking part in the current
-    /// index_progress round, and the counts of the rounds that ended within
+    /// index_progress pass, and the counts of the passes that ended within
     /// it and were followed by another (or whose project was removed).
-    llvm::DenseMap<ServedProject*, BackgroundIndex::Progress> index_round;
-    BackgroundIndex::Progress ended_rounds;
+    llvm::DenseMap<ServedProject*, BackgroundIndex::Progress> index_pass;
+    BackgroundIndex::Progress ended_passes;
 
     /// Cancellation scope of the serving phase. run_serve_mode serves until
     /// it fires; schedule_shutdown() cancels the source, unwinding the

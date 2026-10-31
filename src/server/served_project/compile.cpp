@@ -60,8 +60,8 @@ static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> i
 }
 
 /// The imports of a module several units provide, each resolved to the
-/// nearest of them (direct_deps).
-static std::vector<feature::ModuleChoice> module_choices(const ModuleDeps& imports,
+/// nearest of them (scan_imports).
+static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
                                                          const Project& project) {
     auto& graph = project.dep_graph;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
@@ -92,7 +92,7 @@ static std::vector<feature::ModuleChoice> module_choices(const ModuleDeps& impor
 
 std::optional<PCHRequest> ServedProject::declared_pch(Fid path_id,
                                                       const Resolution& resolution,
-                                                      const ModuleDeps& imports) {
+                                                      const Imports& imports) {
     auto unit = project.pch_unit(path_id, resolution);
     if(!unit) {
         return std::nullopt;
@@ -108,7 +108,7 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
                                                const std::string& directory,
                                                const std::vector<std::string>& arguments,
                                                const Resolution& resolution,
-                                               const ModuleDeps& imports,
+                                               const Imports& imports,
                                                llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
     auto* synthesized = resolution.synthesized.get();
@@ -340,19 +340,19 @@ void ServedProject::retry_after_save(Session& session) {
     if(session.crash_record(feature::RequestKind::Tidy)) {
         invalidate(path_id);
     }
-    // Typing never re-runs the self-containment trial, yet an edit can
+    // Typing never re-runs the self-containment check, yet an edit can
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again. A result that stands holds for the text saved.
     std::string directory;
     std::vector<std::string> arguments;
     auto resolution = resolve_command(path_id, directory, arguments);
-    if(resolution.trial) {
+    if(resolution.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
-        if(project.saved_trial(*resolution.trial,
-                               project.file_table.intern_version(path_id, session.hash),
-                               leans)) {
+        if(project.header_saved(*resolution.self_containment,
+                                project.file_table.intern_version(path_id, session.hash),
+                                leans)) {
             invalidate(path_id);
         }
     }
@@ -386,7 +386,7 @@ void ServedProject::retry_after_save(Session& session) {
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
             retry |= project.forget_build_failure(*compiled->pch_key);
-        } else if(auto preamble = project.preamble_state(*compiled->pch_key);
+        } else if(auto preamble = project.preamble_index(*compiled->pch_key);
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
@@ -445,26 +445,25 @@ void ServedProject::report_skipped_diagnostics(Fid path_id,
     push_output(session, false);
 }
 
-void ServedProject::each_input(Fid path_id,
-                               llvm::function_ref<void(const DepsSnapshot&)> visit) const {
+void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const {
     auto* document = find_document(path_id);
     if(!document) {
         return;
     }
-    if(document->deps) {
-        visit(*document->deps);
+    if(document->inputs) {
+        visit(*document->inputs);
     }
     if(auto& compiled = document->latest; compiled && compiled->loaded_pch()) {
         if(auto it = project.pch_cache.find(*compiled->loaded_pch());
            it != project.pch_cache.end()) {
-            visit(it->second.deps);
+            visit(it->second.inputs);
         }
     }
     for(auto dep: project.graph.dependencies(node(path_id))) {
         if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
             continue;
         }
-        if(auto* inputs = project.build_inputs(dep.file())) {
+        if(auto* inputs = project.module_inputs(dep.file())) {
             visit(*inputs);
         }
     }
@@ -517,7 +516,7 @@ void ServedProject::choice_changed(Session& session) {
         next.index.reset();
         document.latest = std::make_shared<const DocumentCompile>(std::move(next));
     }
-    document.deps.reset();
+    document.inputs.reset();
     mark_not_current(path_id);
     project.graph.invalidate(node(path_id));
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
@@ -592,8 +591,8 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
     if(current(path_id) && !project.graph.is_dirty(node(path_id))) {
         // No early return: the changes one check finds cascade together.
         bool stale = false;
-        each_input(path_id, [&](const DepsSnapshot& deps) {
-            stale = deps_changed(project.file_table, deps) || stale;
+        each_input(path_id, [&](const Inputs& inputs) {
+            stale = !inputs_hold(project.file_table, inputs) || stale;
         });
         if(!stale) {
             co_return true;
@@ -630,7 +629,7 @@ Work ServedProject::compile_work(Fid path_id) {
     return {.run = [this, path_id](Attempt& attempt) { return compile(attempt, path_id); }};
 }
 
-async::task<std::optional<ModuleDeps>>
+async::task<std::optional<Imports>>
     ServedProject::depend_modules(Attempt& attempt,
                                   const Ticket& ticket,
                                   const Resolution& resolution,
@@ -657,11 +656,11 @@ async::task<std::optional<ModuleDeps>>
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
     // too: a durable import edge earned earlier must stop cascading here.
-    auto deps = co_await project.direct_deps(path_id,
-                                             resolution,
-                                             arguments,
-                                             directory,
-                                             std::optional<llvm::StringRef>(text));
+    auto deps = co_await project.scan_imports(path_id,
+                                              resolution,
+                                              arguments,
+                                              directory,
+                                              std::optional<llvm::StringRef>(text));
     project.graph.set_edges(attempt.node(), deps.declared);
     auto kind = feature::RequestKind::PCM;
     auto modules = deps.resolved();
@@ -677,7 +676,7 @@ async::task<std::optional<ModuleDeps>>
     // the attempt runs without the module and finishes current, so the module waits
     // for the next edit or save, not for the spacing to pass.
     bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
-    Session::Dispatch pcm_attempt(*session, kind);
+    Session::Dispatch pcm_dispatch(*session, kind);
     bool crashed = false;
 
     for(int pass = 0; pass < import_passes; pass += 1) {
@@ -753,9 +752,9 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
     // An attempt past the gate on a crashed compile or preamble is its retry,
     // and stops the others until its result (Session invariant 2).
     using enum feature::RequestKind;
-    Session::Dispatch compile_attempt(*session, Compile);
+    Session::Dispatch compile_dispatch(*session, Compile);
     bool pch_retry = session->crash_record(PCH) != nullptr;
-    Session::Dispatch pch_attempt(*session, PCH);
+    Session::Dispatch pch_dispatch(*session, PCH);
 
     // clang-tidy runs where `clice lint` checks, unless its configuration
     // does not parse, which `clice lint` refuses too, a crash of its is
@@ -764,21 +763,21 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
     // resolving its configuration looked at join the deps either way: a
     // fix there is a change that retries a stopped pass.
     std::optional<tidy::TidyResolution> tidy_config;
-    std::optional<Session::Dispatch> tidy_attempt;
+    std::optional<Session::Dispatch> tidy_dispatch;
     if(project.settings.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
            !session->crash_record(Compile) && !session->crash_stops(Tidy, Session::Clock::now())) {
-            tidy_attempt.emplace(*session, Tidy);
+            tidy_dispatch.emplace(*session, Tidy);
         }
     }
 
     // At most two worker sends: a header with unknown self-containment
     // compiles without a prefix first; if the diagnostics indicate missing
     // includer context, the second send re-compiles with a synthesized
-    // prefix. The trial's diagnostics are never published.
+    // prefix. The check's diagnostics are never published.
     bool precompiled_retried = false;
     auto known_instantiations =
         project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
@@ -792,7 +791,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         params.version = session->version;
         params.text = session->text().str();
         params.project_root = project.root.str();
-        if(tidy_attempt) {
+        if(tidy_dispatch) {
             params.tidy = tidy_config->params;
         }
         // The include trees the header's host search needs are taken first:
@@ -811,10 +810,11 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         }
         params.hidden = resolution.hidden;
 
-        // A header no trial says compiles alone compiles without its
-        // includer's context first: this compile is the trial, and the
-        // commit gates what it may write.
-        auto trial = send == 0 && !resolution.self_contained ? resolution.trial : std::nullopt;
+        // A header no self-containment check says compiles alone compiles
+        // without its includer's context first: this compile is the check,
+        // and the commit gates what it may write.
+        auto self_containment =
+            send == 0 && !resolution.self_contained ? resolution.self_containment : std::nullopt;
 
         enter_phase(path_id, CompilePhase::Modules);
         auto imports = co_await depend_modules(attempt,
@@ -956,14 +956,14 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // the regions of the preamble share itself. Copy the state out:
         // concurrent compiles can insert into pch_cache across the await
         // below and rehash the map from under a held pointer.
-        std::shared_ptr<index::TUIndex> preamble_state;
+        std::shared_ptr<index::TUIndex> preamble_index;
         if(adopted_pch.has_value()) {
-            preamble_state = project.preamble_state(*adopted_pch);
+            preamble_index = project.preamble_index(*adopted_pch);
         }
-        if(preamble_state) {
-            auto regions = preamble_state->inactive_regions();
+        if(preamble_index) {
+            auto regions = preamble_index->inactive_regions();
             params.preamble_inactive_regions.assign(regions.begin(), regions.end());
-            auto conditionals = preamble_state->open_conditionals();
+            auto conditionals = preamble_index->open_conditionals();
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
@@ -1071,8 +1071,9 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             project.pch_consume_failed(*consumed_pch);
             if(!precompiled_retried) {
                 precompiled_retried = true;
-                // Redo the same send so the trial semantics are untouched
-                // (the loop counter is about trial sends, not PCH retries).
+                // Redo the same send so the check's semantics are untouched
+                // (the loop counter is about the check's sends, not PCH
+                // retries).
                 send -= 1;
                 continue;
             }
@@ -1114,19 +1115,19 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             co_return Result::Failed;
         }
 
-        // A trial invalidated mid-flight is discarded whole: its result is
+        // A check invalidated mid-flight is discarded whole: its result is
         // a conditional write like the latest compile's current flag, and its
         // diagnostics come from a compile deliberately run without includer
         // context — they are never published, including on this path.
-        if(trial && !attempt.current()) {
-            LOG_INFO("Discarding invalidated self-containment trial for {}", file_path);
+        if(self_containment && !attempt.current()) {
+            LOG_INFO("Discarding invalidated self-containment check for {}", file_path);
             co_return Result::Stale;
         }
 
         auto& diagnostics = result.value().diagnostics;
-        if(preamble_state && preamble_state->matches_preamble(params.text)) {
+        if(preamble_index && preamble_index->matches_preamble(params.text)) {
             diagnostics = feature::with_preamble(std::move(diagnostics),
-                                                 preamble_diagnostics(*preamble_state));
+                                                 preamble_diagnostics(*preamble_index));
         }
         feature::explain_failed_imports(diagnostics, module_failures(imports->resolved(), project));
         for(auto& choice: module_choices(*imports, project)) {
@@ -1137,22 +1138,22 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                                feature::invalid_tidy_config(tidy_config->error));
         }
 
-        // The trial's result stands for every process while what it read
+        // The check's result stands for every process while what it read
         // holds; typing never runs it again (self_contained), a save may.
-        if(trial) {
-            auto trace = capture_deps_snapshot(project.file_table,
-                                               result.value().deps,
-                                               result.value().build_at);
+        if(self_containment) {
+            auto inputs =
+                intern_inputs(project.file_table, result.value().deps, result.value().started_at);
             // The compile reports nothing it read through the PCH.
             if(consumed_pch) {
                 if(auto it = project.pch_cache.find(*consumed_pch); it != project.pch_cache.end()) {
-                    trace.append(it->second.deps.begin(), it->second.deps.end());
+                    inputs.append(it->second.inputs.begin(), it->second.inputs.end());
                 }
             }
-            project.commit_trial(*trial,
-                                 diagnostics,
-                                 project.file_table.intern_version(path_id, session->hash),
-                                 std::move(trace));
+            project.commit_self_containment(
+                *self_containment,
+                diagnostics,
+                project.file_table.intern_version(path_id, session->hash),
+                std::move(inputs));
             if(missing_context_errors(diagnostics) > 0) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
                 continue;
@@ -1254,16 +1255,16 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         auto& suspects = session->suspects;
         suspects.pch.clear();
         auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
-        if(tidy_attempt) {
+        if(tidy_dispatch) {
             ticket.session->succeeded(Tidy, ticket.generation);
         } else if(tidy_crash) {
             record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
         }
         // The files the synthesized context embeds are read too, though
         // clang never opens them.
-        entry.deps =
-            capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-        entry.deps->append(resolution.embedded.begin(), resolution.embedded.end());
+        entry.inputs =
+            intern_inputs(project.file_table, result.value().deps, result.value().started_at);
+        entry.inputs->append(resolution.inputs.begin(), resolution.inputs.end());
         entry.current = still_current;
         ticket.session->succeeded(Compile, ticket.generation);
         push_output(*session, true);
@@ -1275,7 +1276,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         project.schedule_index();
         co_return still_current ? Result::Success : Result::Stale;
     }
-    // Every arm of the two-send loop commits or returns; the trial's
+    // Every arm of the two-send loop commits or returns; the check's
     // continue only fires on the first send, the PCH retry only once.
     std::unreachable();
 }
@@ -1288,7 +1289,7 @@ async::task<std::optional<std::string>>
                               const std::string& directory,
                               const std::vector<std::string>& arguments,
                               const Resolution& resolution,
-                              const ModuleDeps& imports) {
+                              const Imports& imports) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
     auto adoptable = [&] {
@@ -1360,13 +1361,13 @@ async::task<std::optional<std::string>>
     co_return pch_key;
 }
 
-async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
-                                                          llvm::StringRef text,
-                                                          std::uint32_t point,
-                                                          const std::string& directory,
-                                                          const std::vector<std::string>& arguments,
-                                                          const Resolution& resolution,
-                                                          StatelessInputs& inputs) {
+async::task<bool> ServedProject::prepare_precompiled(const Ticket& ticket,
+                                                     llvm::StringRef text,
+                                                     std::uint32_t point,
+                                                     const std::string& directory,
+                                                     const std::vector<std::string>& arguments,
+                                                     const Resolution& resolution,
+                                                     StatelessInputs& inputs) {
     auto* synthesized = resolution.synthesized.get();
     auto path_id = ticket.session->path_id;
     auto* document = find_document(path_id);

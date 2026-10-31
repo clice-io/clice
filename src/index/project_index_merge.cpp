@@ -15,7 +15,7 @@ import :vfs.file_table;
 namespace clice::index {
 
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
-                                                           llvm::ArrayRef<DepState> imports,
+                                                           llvm::ArrayRef<Input> imports,
                                                            std::uint64_t command,
                                                            std::uint64_t peak) {
     // Zero-copy consumption: the result stays serialized; a new variant's
@@ -239,7 +239,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     }
     llvm::DenseSet<Fid> read_precompiled;
     for(auto& dep: imports) {
-        read_precompiled.insert(dep.path_id);
+        read_precompiled.insert(dep.file);
     }
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         if(read_precompiled.contains(file_ids_map[i])) {
@@ -329,11 +329,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // event reaching the module rebuilds. An input the module's build
     // could not version reads as stale until a rebuild names its bytes.
     for(auto& dep: imports) {
-        if(dep.missing) {
-            manifest.absent.push_back(files.intern_version(dep.path_id, 0));
+        if(dep.absent) {
+            manifest.absent.push_back(files.intern_version(dep.file, 0));
         } else {
             manifest.imports.push_back(dep.version.valid() ? dep.version
-                                                           : files.intern_version(dep.path_id, 0));
+                                                           : files.intern_version(dep.file, 0));
         }
     }
 

@@ -9,25 +9,43 @@ import :vfs.path;
 
 namespace clice {
 
+/// One compile input paired with the hash of the bytes the compiler actually
+/// consumed for it — taken from the compiler's own in-memory buffers at build
+/// time, never from a later disk read. A later disk read could describe
+/// content the build never saw (the file may change while the build runs),
+/// which would poison every staleness check built on it.
+///
+/// hash == 0 means the consumed bytes were not available for hashing; the
+/// staleness check treats such an entry conservatively (rebuild once).
+struct ReportedInput {
+    std::string path;
+    std::uint64_t hash = 0;
+
+    /// A place a failed lookup looked: the build saw no file there.
+    bool absent = false;
+};
+
 /// One dependency of a build's product.
 ///
 /// `version` names the FileVersion the build actually consumed (interned
 /// from the worker-reported content hash); its check is paid once per
 /// turn for every product and TU referencing it (FileTable::
 /// check_version). An invalid version means the build saw no nameable
-/// bytes: `missing` distinguishes "the file was absent" — a place a failed
+/// bytes: `absent` distinguishes "the file was absent" — a place a failed
 /// lookup looked, or a file gone by the capture — (appearing is the
 /// change) from "the bytes could not be hashed" (stale until a rebuild's
 /// capture converges).
-struct DepState {
-    Fid path_id;
+struct Input {
+    Fid file;
     VersionID version;
-    bool missing = false;
+    bool absent = false;
+
+    friend bool operator==(const Input&, const Input&) = default;
 };
 
 /// Staleness snapshot for build products (PCH, PCM, AST, synthesized
-/// header preambles): the consumed versions, checked via deps_changed.
-using DepsSnapshot = llvm::SmallVector<DepState>;
+/// header preambles): the consumed versions, checked via inputs_hold.
+using Inputs = llvm::SmallVector<Input>;
 
 /// The master-side table of every file the workspace touches: a path is
 /// interned once to a compact fid, and downstream code references files
@@ -160,10 +178,29 @@ struct FileTable {
     vfs::DiskState::CheckResult check_version(VersionID vid);
 };
 
-/// Whether any consumed version stopped matching the disk; see
-/// FileTable::check_version and DepState for the
-/// per-reference missing policy. Every dependency is looked at, so the
+/// Whether every consumed version still matches the disk; see
+/// FileTable::check_version and Input for the
+/// per-reference absent policy. Every dependency is looked at, so the
 /// changes one check finds cascade together.
-bool deps_changed(FileTable& files, const DepsSnapshot& snap);
+bool inputs_hold(FileTable& files, const Inputs& snap);
+
+/// Capture a staleness snapshot from a build's reported inputs, interning
+/// the consumed versions into the shared table.
+///
+/// `deps` carries the consumed-content hashes the worker computed at build
+/// time; `started_at` is milliseconds since epoch, sampled before the build
+/// started. A dependency the worker could not hash takes its hash from
+/// the disk only when the file is untouched since `started_at`.
+Inputs intern_inputs(FileTable& files, llvm::ArrayRef<ReportedInput> deps, std::int64_t started_at);
+
+/// The file as the disk holds it now, as a dependency of a build that
+/// reported nothing it read: a crash. None when the file cannot be read.
+std::optional<Input> current_input(FileTable& files, Fid file);
+
+/// Append the entries of `parts` that `into` lacks. A module's snapshot
+/// already carries its imports', so a plain concatenation of several
+/// repeats a module's inputs once per import path to it — exponentially
+/// many over a deep partition graph.
+void merge_inputs(Inputs& into, llvm::ArrayRef<const Inputs*> parts);
 
 }  // namespace clice

@@ -38,13 +38,13 @@ enum class ReindexReason : std::uint8_t {
 /// attempt:
 ///
 /// - record() books a pending reindex and queues the file unless it holds a
-///   slot not taken yet; within one queued slot ContentChanged absorbs,
-///   while a fresh slot after consumption carries its own kind (the
+///   place not taken yet; within one queued place ContentChanged absorbs,
+///   while a fresh place after consumption carries its own kind (the
 ///   consumed pass owns the earlier one).
-/// - A round runs over the slots queued when it began (begin_round):
+/// - A pass runs over the files queued when it began (begin_pass):
 ///   take_next() atomically takes the next file's pending reindex at
 ///   dispatch; events arriving during the flight book into the entry as a
-///   newer one, and anything queued meanwhile waits for the next round.
+///   newer one, and anything queued meanwhile waits for the next pass.
 /// - finish() consumes exactly the taken reindex: a newer recording
 ///   survives an older attempt's completion.
 /// - on_dispatch_failure() merges a failed taken reindex back into the
@@ -85,51 +85,51 @@ public:
         /// file is abandoned and its pending state cleared.
         GaveUp,
         /// The taken reindex merged back into the pending one, queued for
-        /// the next round.
+        /// the next pass.
         Requeued,
     };
 
-    explicit ReindexQueue(unsigned max_requeue_attempts) :
-        max_requeue_attempts(max_requeue_attempts) {}
+    explicit ReindexQueue(unsigned max_requeues) : max_requeues(max_requeues) {}
 
     /// Record (or refresh) why a file is pending, queueing it when it holds
-    /// no slot not taken yet. Every recording shields the entry from an
+    /// no place not taken yet. Every recording shields the entry from an
     /// in-flight attempt's finish; ContentChanged additionally starts a
     /// fresh crash budget — the crashes the old bytes caused say nothing
     /// about the fixed ones.
     void record(Fid id, ReindexReason reason);
 
-    /// Move the file's slot to the front of the slots not taken yet. A slot
-    /// past the running round stays past it and leads the next round: the
-    /// round may have the file in flight, and a second attempt there would
-    /// join the same node, where only one of the two commits an outcome.
+    /// Move the file's place to the front of the places not taken yet. A
+    /// place past the running pass stays past it and leads the next pass:
+    /// the pass may have the file in flight, and a second attempt there
+    /// would join the same node, where only one of the two commits an
+    /// outcome.
     void move_to_front(Fid id);
 
-    /// Start a round over every slot queued now, those `first` picks ahead
-    /// of the others; how many slots it has. Anything queued during the
-    /// round — its own failures' requeues included — waits for the next
-    /// one: consuming a requeue in the round that produced it is what let a
+    /// Start a pass over every file queued now, those `first` picks ahead
+    /// of the others; how many places it has. Anything queued during the
+    /// pass — its own failures' requeues included — waits for the next
+    /// one: consuming a requeue in the pass that produced it is what let a
     /// worker outage spin the dispatch loop against instant failures (#611).
-    std::size_t begin_round(llvm::function_ref<bool(Fid)> first);
+    std::size_t begin_pass(llvm::function_ref<bool(Fid)> first);
 
-    /// Whether the running round has slots not taken yet.
-    bool round_left() const {
-        return position < round_end;
+    /// Whether the running pass has places not taken yet.
+    bool pass_left() const {
+        return position < pass_end;
     }
 
-    /// Take the next slot of the running round: its file's pending
-    /// reindex. A slot whose entry was cleared while it sat in the queue
-    /// (the file was removed) is skipped; none when the round has no slot
+    /// Take the next place of the running pass: its file's pending
+    /// reindex. A place whose entry was cleared while it sat in the queue
+    /// (the file was removed) is skipped; none when the pass has no place
     /// left.
     std::optional<TakenReindex> take_next();
 
-    /// The running round is over: its slots not taken stay for the next
-    /// one, and a queue whose every slot was taken starts over empty.
-    void end_round();
+    /// The running pass is over: its places not taken stay for the next
+    /// one, and a queue whose every place was taken starts over empty.
+    void end_pass();
 
-    /// The slots not taken yet.
+    /// The places not taken yet.
     std::size_t queued() const {
-        return slots.size() - position;
+        return order.size() - position;
     }
 
     /// The TakenReindex a dispatch of the file's pending reindex would
@@ -181,9 +181,9 @@ public:
     /// Forget a file's pending reindex (file removed from disk, or given
     /// up): nothing is left to reindex, and a lingering ContentChanged
     /// reason would suppress its deliberately still-serving shard forever.
-    /// A slot still in the queue stays: take_next skips it, and a file
-    /// recorded again before then reuses it — a second slot would dispatch
-    /// the file twice in one round.
+    /// A place still in the queue stays: take_next skips it, and a file
+    /// recorded again before then reuses it — a second place would dispatch
+    /// the file twice in one pass.
     void clear(Fid id) {
         entries.erase(id);
     }
@@ -203,39 +203,39 @@ private:
         /// Lost-run requeues of this entry. Bounds the damage of a file
         /// whose runs keep dying without the worker naming it (an OOM
         /// kill): without a cap, every requeue would burn another worker.
-        unsigned requeue_attempts = 0;
+        unsigned requeues = 0;
     };
 
     llvm::DenseMap<Fid, Entry> entries;
 
     /// The files in the order they are indexed; those before `position`
     /// are taken.
-    std::vector<Fid> slots;
+    std::vector<Fid> order;
 
     std::size_t position = 0;
 
-    /// Where the running round's slots end; `position` once it is over.
-    std::size_t round_end = 0;
+    /// Where the running pass's places end; `position` once it is over.
+    std::size_t pass_end = 0;
 
-    /// The files holding a slot not taken yet, for record()'s fresh-slot
+    /// The files holding a place not taken yet, for record()'s fresh-place
     /// decision.
     llvm::DenseSet<Fid> queued_files;
 
     std::uint64_t seq = 0;
 
-    unsigned max_requeue_attempts;
+    unsigned max_requeues;
 };
 
 /// The background index's state: the standing-interest scheduler that
 /// drives the build's units through unit runs, by its queue, the idle
 /// batching timer and the feeder window — and nothing about what a run
-/// produces (unit_run) or where results live (the project's index).
+/// produces (compile_unit) or where results live (the project's index).
 ///
 /// It is serving-neutral: it never sees the open documents. The server
 /// injects its policy through `compiled_by_session` and
 /// `on_attempt_finished`; a command-line run installs neither.
 struct BackgroundIndex {
-    constexpr static unsigned max_requeue_attempts = 3;
+    constexpr static unsigned max_requeues = 3;
 
     /// Invoked when an index attempt finished with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
@@ -273,7 +273,7 @@ struct BackgroundIndex {
     /// refreshes those clients.
     Signal<llvm::ArrayRef<Fid>> on_index_changed;
 
-    /// Progress of the current (or last) indexing round. The reporter reads
+    /// Progress of the current (or last) indexing pass. The reporter reads
     /// it on each on_progress_changed emission — the signal only wakes it.
     struct Progress {
         enum class Stage : std::uint8_t { Begin, Report, End };
@@ -282,7 +282,7 @@ struct BackgroundIndex {
 
         std::size_t total = 0;
 
-        /// The round's units finished: indexed, skipped as fresh, failed,
+        /// The pass's units finished: indexed, skipped as fresh, failed,
         /// or refused by the graph.
         std::size_t completed = 0;
 
@@ -291,8 +291,8 @@ struct BackgroundIndex {
 
     Progress progress;
 
-    /// Emitted whenever the indexing progress changes (round begins, a file
-    /// completes, round ends).
+    /// Emitted whenever the indexing progress changes (pass begins, a file
+    /// completes, pass ends).
     Signal<> on_progress_changed;
 
     /// The pending reindexes and their order. The rules on top of it, each
@@ -300,10 +300,10 @@ struct BackgroundIndex {
     /// 1. The freshness check inside the index task is the ONLY place
     ///    that decides to skip work. Duplicating it at the feeder
     ///    reintroduces reason-blind skips.
-    /// 2. needs_reindex() may shortcut deps-only slots ONLY: whoever booked
+    /// 2. needs_reindex() may shortcut deps-only reindexes ONLY: whoever booked
     ///    a content change saw the edit itself, and the dep-hash check
     ///    cannot see a file's own edit.
-    ReindexQueue queue{max_requeue_attempts};
+    ReindexQueue queue{max_requeues};
 
     /// What a file's latest attempt left, kept by record_* in
     /// background.cpp alone: an index, with the errors its compile
@@ -342,14 +342,14 @@ struct BackgroundIndex {
     /// wait promises one attempt, not an idle file.
     llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
 
-    /// A round runs, through its save.
+    /// A pass runs, through its save.
     bool active = false;
 
-    /// A round waits on the idle timer.
+    /// A pass waits on the idle timer.
     bool scheduled = false;
 
-    /// Set whenever a round ends; wait_index_idle() waits on it.
-    async::event round_ended{false};
+    /// Set whenever a pass ends; wait_index_idle() waits on it.
+    async::event pass_ended{false};
 
     std::shared_ptr<async::timer> idle_timer;
 
@@ -363,7 +363,7 @@ struct BackgroundIndex {
     /// is due.
     std::size_t dispatches_before_pause = 0;
 
-    /// stop_background_index() ran: no round starts again.
+    /// stop_background_index() ran: no pass starts again.
     bool stopped = false;
 
     async::task_group<> tasks;

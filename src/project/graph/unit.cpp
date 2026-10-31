@@ -23,7 +23,7 @@ async::task<UnitResult>
     using Status = UnitResult::Status;
     auto file_path = std::string(project.file_table.resolve(path_id));
 
-    worker::UnitRunParams params;
+    worker::CompileUnitParams params;
     params.file = file_path;
     params.project_root = project.root.str();
     params.index = request.index;
@@ -76,11 +76,11 @@ async::task<UnitResult>
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    auto deps = co_await project.direct_deps(path_id,
-                                             resolved,
-                                             params.arguments,
-                                             params.directory,
-                                             std::nullopt);
+    auto deps = co_await project.scan_imports(path_id,
+                                              resolved,
+                                              params.arguments,
+                                              params.directory,
+                                              std::nullopt);
     project.graph.set_edges(attempt.node(), deps.declared);
     auto modules = deps.resolved();
     for(int pass = 0; pass < import_passes; pass += 1) {
@@ -101,8 +101,8 @@ async::task<UnitResult>
     // building them. One that did not build leaves that header to every
     // unit's own parse, as the command alone does; so does one whose writing
     // unit a rule keeps out of the index, but for a modular unit
-    // (ModuleDeps::modular).
-    DepsSnapshot precompiled;
+    // (Imports::modular).
+    Inputs precompiled;
     std::string consumed_pch;
     std::string left_out_pch;
     if(auto unit = project.pch_unit(path_id, resolved, extra);
@@ -119,7 +119,7 @@ async::task<UnitResult>
                                                               !it->second.path.empty() &&
                                                               !project.pch_reads(key, path_id)) {
                         params.pch = it->second.path;
-                        precompiled = it->second.deps;
+                        precompiled = it->second.inputs;
                         consumed_pch = key;
                     }
                     break;
@@ -133,7 +133,7 @@ async::task<UnitResult>
     // The modules and the precompiled header the parse reads, taken with
     // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(modules);
-    merge_deps(imports, {&precompiled});
+    merge_inputs(imports, {&precompiled});
     if(request.index && !project.send_in_full.erase(path_id)) {
         auto include_closure = project.dep_graph.include_closure(path_id);
         params.known_variants = project.index.known_variants(path_id, include_closure);

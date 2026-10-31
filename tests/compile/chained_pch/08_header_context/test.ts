@@ -3,8 +3,8 @@ import { test } from "@clice/tools/testing";
 
 // widget.h is no file of its own: it opens in the context of main.cpp,
 // whose command loads the target's PCH. Its preamble's PCH, built over the
-// target's, holds main.cpp's text before the include; its trial without
-// that text, which fails to stand alone, builds one too. The chain answers
+// target's, holds main.cpp's text before the include; its self-containment
+// check without that text, which fails to stand alone, builds one too. The chain answers
 // what the same database with -include-pch dropped answers.
 
 const DATABASE = "build/compile_commands.json";

@@ -193,8 +193,8 @@ ZEST_CASE(ChainHitAndMiss) {
     auto hit = fixture.open("/proj/hit.h", "")->path_id;
     auto miss = fixture.open("/proj/miss.h", "")->path_id;
     // The chain files a header's context embeds are inputs of its compile.
-    fixture.entry(hit).deps = DepsSnapshot{DepState{.path_id = saved}};
-    fixture.entry(miss).deps = DepsSnapshot{DepState{.path_id = other}};
+    fixture.entry(hit).inputs = Inputs{Input{.file = saved}};
+    fixture.entry(miss).inputs = Inputs{Input{.file = other}};
 
     served.disk_changed({saved});
 
@@ -472,7 +472,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
     served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
-    project.pcm_builds[mod].deps.push_back({.path_id = header});
+    project.pcm_builds[mod].inputs.push_back({.file = header});
 
     served.disk_changed({header});
 
@@ -488,7 +488,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
-    project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
+    project.failures.pcm_builds.commit(mod, {.record = error}, {{.file = header}});
 
     ZASSERT(ranges::contains(served.readers(header), mod));
     served.disk_changed({header});
@@ -512,8 +512,8 @@ ZEST_CASE(AppearedHeaderCascades) {
     manifest.tu_version = project.file_table.intern_version(closed, 1);
     manifest.absent = {project.file_table.intern_version(header, 0)};
     project.index.apply_manifest(closed, std::move(manifest));
-    fixture.entry(open).deps = DepsSnapshot{
-        DepState{.path_id = header, .missing = true}
+    fixture.entry(open).inputs = Inputs{
+        Input{.file = header, .absent = true}
     };
 
     served.disk_changed({header});

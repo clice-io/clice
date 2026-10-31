@@ -13,7 +13,7 @@ namespace clice {
 namespace {
 
 /// Forget an entry and discard the pairs it names.
-void drop(Project& project, llvm::StringMap<PCHState>::iterator entry) {
+void drop(Project& project, llvm::StringMap<PCHBuild>::iterator entry) {
     if(project.store) {
         for(auto& blob: {entry->second.blob, entry->second.previous}) {
             if(!blob.empty()) {
@@ -28,7 +28,7 @@ void drop(Project& project, llvm::StringMap<PCHState>::iterator entry) {
 /// when it can: complete, both halves in the store, the PCH on disk, and
 /// what it read unchanged. Both halves must be present: a PCH whose pch.idx
 /// index is gone (crash between commits, failed aux commit) rebuilds whole.
-/// The store lookup refreshes the blob's LRU position, and a passing deps
+/// The store lookup refreshes the blob's LRU position, and a passing inputs
 /// check may repair the snapshot's stat fast path in place. An entry whose
 /// blobs the store's LRU evicted, or whose PCH left the disk behind the
 /// store's back, goes, or the content-keyed map grows for the server's
@@ -47,7 +47,7 @@ llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
         drop(project, it);
         return "evicted";
     }
-    // load_state() found the blob unreadable earlier; republish the pair
+    // load_index() found the blob unreadable earlier; republish the pair
     // rather than serving a PCH with no index forever.
     if(st.index_path.empty()) {
         return "idx_unreadable";
@@ -58,8 +58,8 @@ llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
             return "base_rebuilt";
         }
     }
-    if(deps_changed(project.file_table, st.deps)) {
-        return "deps_changed";
+    if(!inputs_hold(project.file_table, st.inputs)) {
+        return "inputs_changed";
     }
     return {};
 }
@@ -94,10 +94,10 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
     return false;
 }
 
-/// Move a pch key to the front of the loaded-state LRU. Called whenever an
+/// Move a pch key to the front of the loaded-index LRU. Called whenever an
 /// entry's pch.idx index is opened or replaced.
-void touch_loaded_state(Project& project, llvm::StringRef pch_key) {
-    auto& lru = project.loaded_pch_states;
+void touch_loaded_index(Project& project, llvm::StringRef pch_key) {
+    auto& lru = project.loaded_pch_indexes;
     if(auto it = ranges::find(lru, pch_key); it != lru.end()) {
         lru.erase(it);
     }
@@ -162,15 +162,15 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
         }
         bp.pch = it->second.path;
         base_blob = it->second.blob;
-        merge_deps(before, {&it->second.deps});
+        merge_inputs(before, {&it->second.inputs});
     }
     // What a build that crashes is known to read, sampled before it runs:
     // the modules and the PCH it builds over, and a whole file's own text,
     // which its key leaves out.
     auto known = before;
     if(bp.whole_file) {
-        if(auto own = current_dep(project.file_table,
-                                  project.file_table.intern(Spelling::absolute(bp.file)))) {
+        if(auto own = current_input(project.file_table,
+                                    project.file_table.intern(Spelling::absolute(bp.file)))) {
             known.push_back(*own);
         }
     }
@@ -187,7 +187,7 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
         bp.file,
         std::move(known),
         before,
-        [&](FailureRecord record, DepsSnapshot inputs) {
+        [&](FailureRecord record, Inputs inputs) {
             project.failures.pch_builds.commit(pch_key, std::move(record), std::move(inputs));
         });
     if(!built) {
@@ -203,7 +203,7 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
     struct PairCommit {
         std::optional<std::string> pch_path;
         std::optional<std::string> index_path;
-        std::shared_ptr<index::TUIndex> state;
+        std::shared_ptr<index::TUIndex> index;
     };
 
     auto committed = co_await async::queue([&]() -> PairCommit {
@@ -223,11 +223,11 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
             return commit;
         }
         commit.index_path = std::move(*index_path);
-        commit.state = load_pch_index(*commit.index_path);
+        commit.index = load_pch_index(*commit.index_path);
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
-        // whose preamble state every consumer would fail to load.
-        if(!commit.state) {
+        // whose preamble index every consumer would fail to load.
+        if(!commit.index) {
             project.store->invalidate("pch", blob);
         }
         return commit;
@@ -236,7 +236,7 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
         LOG_WARN("Failed to commit PCH for {}", bp.file);
         co_return Result::Failed;
     }
-    if(!committed.index_path.has_value() || !committed.state) {
+    if(!committed.index_path.has_value() || !committed.index) {
         if(!committed.index_path.has_value()) {
             LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
         } else {
@@ -260,12 +260,12 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
     st.bound = request.preamble_bound;
     st.base = request.base;
     st.base_blob = std::move(base_blob);
-    st.deps = project.read_inputs(*built, before);
+    st.inputs = project.read_inputs(*built, before);
     st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
-    st.state = committed.state;
-    touch_loaded_state(project, pch_key);
+    st.index = committed.index;
+    touch_loaded_index(project, pch_key);
     project.enforce_loaded_budget();
 
     LOG_INFO("PCH built for {}: {}", bp.file, st.path);
@@ -301,10 +301,10 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
     return std::make_shared<index::TUIndex>(std::move(tu_index));
 }
 
-const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
-    if(!state && !index_path.empty()) {
-        state = load_pch_index(index_path);
-        if(!state) {
+const std::shared_ptr<index::TUIndex>& PCHBuild::load_index() {
+    if(!index && !index_path.empty()) {
+        index = load_pch_index(index_path);
+        if(!index) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks
             // incomplete and the next acquisition rebuilds it.
@@ -312,7 +312,7 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
             index_path.clear();
         }
     }
-    return state;
+    return index;
 }
 
 PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodies) {
@@ -336,9 +336,8 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodie
 
 bool Project::pch_reads(llvm::StringRef key, Fid file) const {
     auto it = pch_cache.find(key);
-    return it != pch_cache.end() && ranges::any_of(it->second.deps, [&](const DepState& dep) {
-               return dep.path_id == file;
-           });
+    return it != pch_cache.end() &&
+           ranges::any_of(it->second.inputs, [&](const Input& dep) { return dep.file == file; });
 }
 
 Work Project::pch_work(PCHRequest request) {
@@ -405,7 +404,7 @@ void Project::pch_consume_succeeded(llvm::StringRef pch_key) {
     failures.pch_consumes.forget(pch_key);
 }
 
-std::shared_ptr<index::TUIndex> Project::preamble_state(llvm::StringRef pch_key) {
+std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key) {
     auto it = pch_cache.find(pch_key);
     if(it == pch_cache.end()) {
         return nullptr;
@@ -413,9 +412,9 @@ std::shared_ptr<index::TUIndex> Project::preamble_state(llvm::StringRef pch_key)
 
     auto& st = it->second;
     bool had_blob = !st.index_path.empty();
-    auto state = st.load_state();
-    if(!state && had_blob && store) {
-        // The blob was just found unreadable (load_state cleared the
+    auto loaded = st.load_index();
+    if(!loaded && had_blob && store) {
+        // The blob was just found unreadable (load_index cleared the
         // path): a pair that looks complete on disk but cannot be opened
         // would be served to every session for the rest of the store's
         // life. Discard it now; the entry itself stays until the next acquisition
@@ -423,17 +422,17 @@ std::shared_ptr<index::TUIndex> Project::preamble_state(llvm::StringRef pch_key)
         LOG_WARN("Discarding PCH pair {} with unreadable pch.idx envelope", pch_key);
         store->invalidate("pch", st.blob);
     }
-    if(state) {
-        touch_loaded_state(*this, pch_key);
+    if(loaded) {
+        touch_loaded_index(*this, pch_key);
         enforce_loaded_budget();
     }
-    return state;
+    return loaded;
 }
 
 void Project::enforce_loaded_budget() {
     // Two keys per open document — its preamble's and the build's
     // precompiled header that preamble is built over — and two extra
-    // slots: a closed file's recently used state survives a quick
+    // slots: a closed file's recently used index survives a quick
     // close/reopen, and a shared key serving several documents stays warm
     // while its consumers churn.
     // Open documents' keys always fit the budget, so an unload can only
@@ -444,14 +443,14 @@ void Project::enforce_loaded_budget() {
     constexpr std::size_t default_open_documents = 6;
     std::size_t budget = 2 + 2 * (open_documents ? open_documents() : default_open_documents);
 
-    auto& lru = loaded_pch_states;
+    auto& lru = loaded_pch_indexes;
     std::size_t kept = 0;
     std::size_t i = 0;
     while(i < lru.size()) {
         auto it = pch_cache.find(lru[i]);
         // Erased entries and already-unloaded keys just fall out of the
         // list (invalidation and store eviction bypass the LRU).
-        if(it == pch_cache.end() || !it->second.state) {
+        if(it == pch_cache.end() || !it->second.index) {
             lru.erase(lru.begin() + i);
             continue;
         }
@@ -461,7 +460,7 @@ void Project::enforce_loaded_budget() {
             continue;
         }
         LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", lru[i], budget);
-        it->second.state.reset();
+        it->second.index.reset();
         lru.erase(lru.begin() + i);
     }
 }

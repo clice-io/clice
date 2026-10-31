@@ -58,13 +58,13 @@ describe("gateLogs", () => {
         workspace.write(
             ".clice/logs/session/lint.log",
             `${[
-                `[t] [warning] [thread 1] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/unitRun ${workspace.displayPath("a.cpp")}`,
+                `[t] [warning] [thread 1] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/compileUnit ${workspace.displayPath("a.cpp")}`,
                 "[t] [error] [thread 1] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (crash streak: 0)",
             ].join("\n")}\n`,
         );
         expect(gateLogs(workspace, {}, false)).not.toEqual([]);
-        const unitRun = { crash: { request: "unitRun", file: "a.cpp" } };
-        expect(gateLogs(workspace, { commands: [unitRun] }, false)).toEqual([]);
+        const compileUnit = { crash: { request: "compileUnit", file: "a.cpp" } };
+        expect(gateLogs(workspace, { commands: [compileUnit] }, false)).toEqual([]);
         workspace.remove();
     });
 

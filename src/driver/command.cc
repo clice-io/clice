@@ -162,7 +162,7 @@ struct Rendered {
 
 Rendered render_command(Project& project, const CommandRef& ref, const RenderOptions& opts = {}) {
     auto path = project.cdb.spelling(ref.file);
-    auto resolution = project.toolchain.resolve(ref.command, ref.input);
+    auto resolution = project.toolchain.resolve(ref.command, ref.language);
     if(resolution && resolution->query_failure.empty()) {
         // The resolution is cached: rendering resolves it the same.
         auto rendered = project.toolchain.render(ref, path, opts);

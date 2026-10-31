@@ -71,7 +71,7 @@ struct Resolution {
     /// chain the host enters it by, whose text a synthesized context
     /// embeds. Inputs of every compile under the arguments that clang never
     /// reads from disk.
-    DepsSnapshot embedded;
+    Inputs inputs;
 
     /// The host whose includer context the header needed but whose include
     /// chain the synthesis could not follow: the header compiles under its
@@ -83,13 +83,13 @@ struct Resolution {
     /// taken.
     std::optional<TreeRequest> missing_tree;
 
-    /// The self-containment trial deciding whether the header compiles in
+    /// The self-containment check deciding whether the header compiles in
     /// its includer's context; none for a header chosen to a host, which
     /// always does, or one its host's command forces in itself.
-    std::optional<TrialKey> trial;
+    std::optional<SelfContainmentKey> self_containment;
 
-    /// What the trial found; nullopt while no result stands: a compile
-    /// under the arguments, without the includer's context, is the trial.
+    /// What the check found; nullopt while no result stands: a compile
+    /// under the arguments, without the includer's context, is the check.
     std::optional<bool> self_contained;
 
     /// Why the compiler of the command could not be queried, which leaves

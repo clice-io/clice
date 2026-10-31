@@ -27,7 +27,7 @@ namespace clice::testing {
 struct IndexerFixture {
     using Decision = ReindexQueue::FailureDecision;
 
-    constexpr static unsigned budget = BackgroundIndex::max_requeue_attempts;
+    constexpr static unsigned budget = BackgroundIndex::max_requeues;
 
     async::event_loop loop;
     FileTable files;
@@ -69,9 +69,9 @@ struct IndexerFixture {
     }
 
     /// One save, its report taken back —
-    /// without persist()'s retry, so a test observes each save.
+    /// without Project::save's retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        project.apply_report(co_await project.save_project(search));
+        project.apply_report(co_await project.write_database(search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
@@ -123,17 +123,17 @@ struct IndexerFixture {
                                          : it->second.seq;
     }
 
-    unsigned attempts(Fid id) {
+    unsigned requeues(Fid id) {
         auto it = queue.entries.find(id);
-        return it == queue.entries.end() ? 0u : it->second.requeue_attempts;
+        return it == queue.entries.end() ? 0u : it->second.requeues;
     }
 
-    void set_attempts(Fid id, unsigned n) {
-        queue.entries.find(id)->second.requeue_attempts = n;
+    void set_requeues(Fid id, unsigned n) {
+        queue.entries.find(id)->second.requeues = n;
     }
 
-    /// Consume the queued slot as a dispatch would, so a later enqueue
-    /// takes the fresh-slot (mid-flight) path.
+    /// Consume the queued place as a dispatch would, so a later enqueue
+    /// takes the fresh-place (mid-flight) path.
     void consume(Fid id) {
         queue.queued_files.erase(id);
     }
@@ -150,10 +150,10 @@ struct IndexerFixture {
         loop.run();
     }
 
-    /// Start a fresh staleness round: per-round FileVersion results are
-    /// cleared by run_index_round, which these tests bypass.
-    void begin_round() {
-        project.index.begin_round();
+    /// Clear the staleness cache: per-pass FileVersion results are
+    /// cleared by run_index_pass, which these tests bypass.
+    void clear_staleness_cache() {
+        project.index.clear_staleness_cache();
     }
 
     /// The instantiation keys the worker indexing `tu` may skip, as the
@@ -162,7 +162,7 @@ struct IndexerFixture {
         return project.index.known_instantiations(tu, project.dep_graph.include_closure(tu));
     }
 
-    /// Judge staleness inside the current round (see begin_round).
+    /// Judge staleness inside the current pass (see clear_staleness_cache).
     bool needs_reindex(llvm::StringRef path) {
         return project.index.needs_reindex(project.file_table.intern(Spelling::absolute(path)));
     }
@@ -174,15 +174,15 @@ struct IndexerFixture {
         loop.run();
     }
 
-    /// One background round as a schedulable task, for tests that need to
+    /// One background pass as a schedulable task, for tests that need to
     /// interleave other tasks with it.
-    async::task<> round_task() {
-        return project.run_index_round();
+    async::task<> pass_task() {
+        return project.run_index_pass();
     }
 
-    /// Run one background round to completion on the fixture's loop.
-    void run_round() {
-        auto task = round_task();
+    /// Run one background pass to completion on the fixture's loop.
+    void run_pass() {
+        auto task = pass_task();
         loop.schedule(task);
         loop.run();
     }

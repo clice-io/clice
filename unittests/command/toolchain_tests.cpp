@@ -177,7 +177,7 @@ ZEST_CASE(FailedQueryRetries, skip = Windows) {
     ZEXPECT(f.toolchain.failed_count() == std::size_t(2));
 
     fake_clang(clang_job);
-    ZEXPECT(f.toolchain.resolve(a.command, a.input).has_value());
+    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
     f.toolchain.warm(refs);
     ZEXPECT(f.toolchain.failed_count() == std::size_t(0));
@@ -262,7 +262,7 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     // re-querying the driver.
     ZEXPECT(f.toolchain.query_count() == std::size_t(1));
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
-    ZEXPECT(f.toolchain.resolve(good.command, good.input).has_value());
+    ZEXPECT(f.toolchain.resolve(good.command, good.language).has_value());
     ZEXPECT(llvm::StringRef(f.failure(bad)).contains("clice-nonexistent-driver"));
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 }
@@ -279,7 +279,7 @@ ZEST_CASE(WarmDedupesQueries, skip = Windows) {
 
     // With the driver gone, only the query cache can still resolve.
     ZASSERT(fs::remove(driver));
-    ZEXPECT(f.toolchain.resolve(a.command, a.input).has_value());
+    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
 }
 
 ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
@@ -461,7 +461,7 @@ ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {
         alias,
         theirs));
     auto ref = add("a.cpp", {driver.c_str()});
-    ZASSERT(f.toolchain.resolve(ref.command, ref.input));
+    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
     auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
 }

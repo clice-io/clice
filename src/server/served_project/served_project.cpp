@@ -396,7 +396,7 @@ async::task<> ServedProject::metadata_flush_task() {
     // Time is the feature: the debounce.
     co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
-    co_await project.persist();
+    co_await project.save();
     if(project.precompiled_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
         co_await async::sleep(chrono::seconds(5));
