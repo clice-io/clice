@@ -18,7 +18,7 @@ test("action from the second name", POSIX, async (t) => {
     const at = { line: 1, character: 4 };
     const actions = await s.client.codeActions(s.uri("link/main.cpp"), { start: at, end: at });
     const edited = (actions ?? []).flatMap((action) => {
-        if (!("edit" in action) || action.edit === undefined) {
+        if (!("edit" in action)) {
             return [];
         }
         const { changes, documentChanges } = action.edit;

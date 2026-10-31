@@ -19,7 +19,7 @@ test(async (t) => {
     const actions = await s.client.codeActions(s.uri("repo/widget.h"), { start: at, end: at });
     const versions = (actions ?? []).flatMap((action) =>
         "edit" in action
-            ? (action.edit?.documentChanges ?? []).flatMap((change) =>
+            ? (action.edit.documentChanges ?? []).flatMap((change) =>
                   "textDocument" in change &&
                   decodeURIComponent(new URL(change.textDocument.uri).pathname).endsWith(
                       "/repo/sub/widget.cpp",
