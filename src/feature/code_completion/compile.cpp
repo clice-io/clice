@@ -1141,6 +1141,15 @@ public:
         if(auto* name = templated->getIdentifier()) {
             names.insert(name->getName());
         }
+        // A generic lambda is called through the variable it initializes.
+        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
+           method && method->getParent()->isLambda()) {
+            if(auto* variable = llvm::dyn_cast_or_null<clang::NamedDecl>(
+                   method->getParent()->getLambdaContextDecl());
+               variable && variable->getIdentifier()) {
+                names.insert(variable->getName());
+            }
+        }
         auto* whole = later->unit(std::move(names));
         if(!whole) {
             return false;
@@ -1190,20 +1199,29 @@ public:
 
             bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* name) {
                 if(at(sources.getFileLoc(name->getLocation()))) {
-                    scoped = name;
+                    qualifier = name->getQualifierLoc();
+                }
+                return !found();
+            }
+
+            bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc name) {
+                if(at(sources.getFileLoc(name.getNameLoc()))) {
+                    qualifier = name.getQualifierLoc();
                 }
                 return !found();
             }
 
             bool found() const {
-                return member || scoped;
+                return member || qualifier;
             }
 
             const clang::SourceManager& sources;
             std::uint32_t target;
             clang::FunctionDecl* context = nullptr;
             clang::CXXDependentScopeMemberExpr* member = nullptr;
-            clang::DependentScopeDeclRefExpr* scoped = nullptr;
+            /// Of a name a dependent scope qualifies, in an expression or a
+            /// type.
+            clang::NestedNameSpecifierLoc qualifier;
         };
 
         auto& other = whole->sema();
@@ -1259,16 +1277,17 @@ public:
                        : nullptr) {
                 answered = nested.complete_members(other, &scope, loc, record, object, {});
             }
-        } else if(auto qualifier = finder.scoped->getQualifier();
+        } else if(auto qualifier = finder.qualifier.getNestedNameSpecifier();
                   qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            auto range = finder.qualifier.getSourceRange();
             auto* tag = resolver.resolve_tag(clang::QualType(qualifier.getAsType(), 0));
-            tag = tag ? definition(other, finder.scoped->getLocation(), tag) : nullptr;
+            tag = tag ? definition(other, range.getEnd(), tag) : nullptr;
             if(tag) {
                 answered = nested.complete_scope(
                     other,
                     &scope,
                     tag,
-                    finder.scoped->getQualifierLoc().getSourceRange(),
+                    range,
                     clang::CodeCompletionContext(clang::CodeCompletionContext::CCC_Symbol));
             }
         }
