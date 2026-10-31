@@ -53,18 +53,20 @@ struct Candidate {
 /// host to borrow a command from, or one of the file's own entries.
 /// Persisted in the context choices; validated on didOpen.
 struct ContextChoice {
-    /// Header context host; invalid = none.
-    Fid host_path_id;
+    /// The host the header compiles in; invalid for one of the file's own
+    /// entries.
+    Fid host;
 
-    /// Chosen include occurrence; no value = automatic.
+    /// The place among those the host's compile enters the header at; none
+    /// for the first.
     std::optional<std::uint32_t> occurrence;
 
-    std::string command_hash;  ///< Chosen CDB entry (rules applied); empty = none.
-
-    /// Base command hash of the chosen entry, resolved when chosen. The
-    /// applied hash is the protocol identity; the base disambiguates
-    /// candidates whose applied hashes collapse under the current rules.
-    std::string base_hash;
+    /// The chosen command (CommandTable::command_hash_hex of its
+    /// Candidate::base): one of the host's, or one of the file's own
+    /// entries; empty for the host's first. Only the command as written
+    /// identifies it: a rule's edit changes no choice, and a change of the
+    /// command in its database, even of a flag a rule removes, ends it.
+    std::string base;
 };
 
 /// A translation unit standing in for a header, with the include chain
@@ -237,8 +239,9 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
 /// several, or one of the file's own entries.
 struct ListedContext {
     /// The host's file name, or the flags setting the own entry apart; the
-    /// lent command's flags in brackets when the host lends several, and the
-    /// place, from #1, when it enters the header at several.
+    /// command's flags in brackets when the host has several the header can
+    /// compile under, and the place, from #1, when it enters the header at
+    /// several.
     std::string label;
 
     /// The host's path, or the own entry's directory, as shown.
@@ -250,8 +253,8 @@ struct ListedContext {
     /// The place among those the host's compile enters the header at.
     std::optional<std::uint32_t> occurrence;
 
-    /// The command's hash when the item stands for one of several: one of
-    /// the commands the host lends, or an own entry.
+    /// The command as written (ContextChoice::base) when the item stands for
+    /// one of several: one of the host's commands, or an own entry.
     std::optional<std::string> command_hash;
 };
 
@@ -282,13 +285,19 @@ struct CommandRequest {
     bool preprocess = false;
 };
 
-/// How a file's command was resolved.
-struct Resolution {
+/// What a file compiles under, before anything is rendered
+/// (Project::select_command).
+struct Selection {
     /// The command the file compiles under before the rules edit it, and
-    /// the file it is from.
+    /// the files it is from.
     Candidate candidate;
 
-    /// The host a Host resolution compiles the file in; invalid for every
+    /// `candidate` as the file compiles under it — the rules' edits and a
+    /// run's extras applied — and where it came from (CommandRef::source),
+    /// for structured consumers (search config, language queries).
+    CommandRef ref;
+
+    /// The host a Host selection compiles the file in; invalid for every
     /// other source.
     Fid host;
 
@@ -303,26 +312,14 @@ struct Resolution {
     /// which the host's compile enters after the header.
     Fid forced;
 
-    /// The command selection behind the rendered arguments, for
-    /// structured consumers (search config, language queries), and where it
-    /// came from (CommandRef::source).
-    CommandRef ref;
+    /// Where the host's compile enters the header; none while its include
+    /// tree is not taken, and for every other source.
+    std::optional<Host> entry;
 
-    /// The header context the arguments name (-include of its prefix),
-    /// which exists only in memory: every compile under them must be
-    /// served its files. Null when nothing was synthesized.
-    std::shared_ptr<const SynthesizedContext> synthesized;
-
-    /// The files the header's context rests on, at the versions read: the
-    /// chain the host enters it by, whose text a synthesized context
-    /// embeds. Inputs of every compile under the arguments that clang never
-    /// reads from disk.
-    Inputs inputs;
-
-    /// The host whose includer context the header needed but whose include
-    /// chain the synthesis could not follow: the header compiles under its
-    /// command without it.
-    Fid unmatched_host;
+    /// The header compiles in its includer's context (render synthesizes
+    /// it): a host the user chose, or one a self-containment check found it
+    /// needs.
+    bool in_context = false;
 
     /// The include tree the header's host search needs and no run took: the
     /// command is that host's, without its includer's context, until it is
@@ -338,13 +335,43 @@ struct Resolution {
     /// under the arguments, without the includer's context, is the check.
     std::optional<bool> self_contained;
 
+    /// The tiers tried, the one selecting last.
+    llvm::SmallVector<llvm::StringRef, 6> tried;
+};
+
+/// A command as a compile runs it (Project::render).
+struct Rendered {
+    std::string directory;
+
+    std::vector<std::string> arguments;
+
+    /// The files on disk every compile under the arguments must not see.
+    vfs::HiddenFiles hidden;
+
     /// Why the compiler of the command could not be queried, which leaves
     /// the arguments clang's own reading of the command; empty when it
     /// answered.
     std::string query_failure;
+};
 
-    /// The files on disk every compile under the arguments must not see.
-    vfs::HiddenFiles hidden;
+/// How a file's command was resolved (Project::resolve_command): what was
+/// selected, rendered with the header's context.
+struct Resolution : Selection, Rendered {
+    /// The header context the arguments name (-include of its prefix),
+    /// which exists only in memory: every compile under them must be
+    /// served its files. Null when nothing was synthesized.
+    std::shared_ptr<const SynthesizedContext> synthesized;
+
+    /// The files the header's context rests on, at the versions read: the
+    /// chain the host enters it by, whose text a synthesized context
+    /// embeds. Inputs of every compile under the arguments that clang never
+    /// reads from disk.
+    Inputs inputs;
+
+    /// The host whose includer context the header needed but whose include
+    /// chain the synthesis could not follow: the header compiles under its
+    /// command without it.
+    Fid unmatched_host;
 };
 
 }  // namespace clice

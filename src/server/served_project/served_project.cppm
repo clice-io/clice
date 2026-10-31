@@ -445,10 +445,7 @@ public:
     /// under `candidate` instead, recording whether the command was borrowed
     /// or guessed (but for a candidate's). Takes no include tree: the host
     /// search runs on the trees there are.
-    Resolution resolve_command(Fid path_id,
-                               std::string& directory,
-                               std::vector<std::string>& arguments,
-                               const ContextChoice* candidate = nullptr);
+    Resolution resolve_command(Fid path_id, const ContextChoice* candidate = nullptr);
 
     /// resolve_command again until the host search it runs misses no
     /// include tree, taking each tree it misses first from a worker, each
@@ -456,8 +453,6 @@ public:
     /// Stops with the tree missing when a run does not answer, or once
     /// `current` no longer holds.
     async::task<Resolution> document_command(Fid path_id,
-                                             std::string& directory,
-                                             std::vector<std::string>& arguments,
                                              const ContextChoice* candidate = nullptr,
                                              llvm::function_ref<bool()> current = {});
 
@@ -470,8 +465,7 @@ public:
 
     /// The dialect the server lexes an open file's text in, for the results
     /// computed from its index, hover's directive lookup and completion's
-    /// context checks: clice::dialect under the file's active choice and
-    /// host.
+    /// context checks: Project::dialect under the file's active choice.
     const clang::LangOptions& dialect(Fid path_id);
 
     // changes.cpp
@@ -1294,7 +1288,9 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
-    auto resolution = co_await document_command(path_id, params.directory, params.arguments);
+    auto resolution = co_await document_command(path_id);
+    params.directory = resolution.directory;
+    params.arguments = resolution.arguments;
     params.settings = project.settings;
 
     ScopedTimer timer;

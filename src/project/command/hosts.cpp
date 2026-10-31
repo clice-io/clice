@@ -51,7 +51,7 @@ std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::St
             static_cast<std::size_t>(ranges::count_if(other.substr(shared), separator))};
 }
 
-llvm::SmallVector<Candidate, 2> Project::host_commands(Fid header, Fid host) {
+llvm::SmallVector<Candidate, 2> Project::candidates(Fid header, Fid host) {
     auto header_path = file_table.resolve(header);
     auto host_path = file_table.resolve(host);
     llvm::SmallVector<Candidate, 2> fitting;
@@ -88,7 +88,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
     auto add = [&](Fid candidate) {
         // A header with an entry of its own contributes to itself.
         if(candidate == header || !seen.insert(candidate).second ||
-           host_commands(header, candidate).empty()) {
+           candidates(header, candidate).empty()) {
             return;
         }
         auto host_path = files.resolve(candidate);
@@ -110,10 +110,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
         });
     };
     // A source another one includes still compiles on its own.
-    auto unit = [&](Fid file) {
-        return is_unit(file);
-    };
-    for(auto candidate: dep_graph.find_readers(header, unit)) {
+    for(auto candidate: dep_graph.find_readers(header, [&](Fid file) { return is_unit(file); })) {
         add(candidate);
     }
     index.for_each_contributor(header, add);
@@ -149,18 +146,20 @@ std::optional<HostSearch> enter_at(Project& project,
 }  // namespace
 
 HostSearch Project::find_chosen_host(Fid header, const ContextChoice& choice) {
-    auto host = choice.host_path_id;
-    if(auto picked = chosen_host_command(header, host, choice.command_hash, choice.base_hash)) {
-        if(auto found = enter_at(*this, header, host, *picked, choice.occurrence.value_or(0))) {
-            return std::move(*found);
-        }
+    auto offered = candidates(header, choice.host);
+    if(offered.empty()) {
+        return {};
+    }
+    auto picked = chosen_candidate(offered, choice.base).value_or(offered.front());
+    if(auto found = enter_at(*this, header, choice.host, picked, choice.occurrence.value_or(0))) {
+        return std::move(*found);
     }
     return {};
 }
 
 HostSearch Project::find_ranked_host(Fid header) {
     for(auto host: ranked_hosts(header)) {
-        if(auto found = enter_at(*this, header, host, host_commands(header, host).front(), 0)) {
+        if(auto found = enter_at(*this, header, host, candidates(header, host).front(), 0)) {
             return std::move(*found);
         }
     }
@@ -176,11 +175,11 @@ Fid Project::host_of(Fid header) {
 }
 
 std::optional<std::uint32_t> Project::count_occurrences(Fid host, Fid header) {
-    auto commands = host_commands(header, host);
-    if(commands.empty()) {
+    auto offered = candidates(header, host);
+    if(offered.empty()) {
         return 0;
     }
-    auto chains = include_chains(tree_request(host, commands.front()).key, header);
+    auto chains = include_chains(tree_request(host, offered.front()).key, header);
     if(!chains) {
         return std::nullopt;
     }

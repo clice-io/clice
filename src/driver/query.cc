@@ -435,20 +435,19 @@ CommandHandler build() {
     operations.push_back({
         .name = "document-symbols",
         .description = "A file's outline",
-        .run = file_question<FileQuestion>(
-            "clice query document-symbols <PATH> [OPTIONS]",
-            /*with_build=*/false,
-            [](Project& project,
-               feature::query::Context& ctx,
-               const Spelling& path,
-               const FileQuestion&) {
-                return feature::query::document_symbols(
-                    ctx,
-                    path,
-                    [&](Fid file) -> const clang::LangOptions& {
-                        return project.dialect(file, nullptr, project.host_of(file));
-                    });
-            }),
+        .run = file_question<FileQuestion>("clice query document-symbols <PATH> [OPTIONS]",
+                                           /*with_build=*/false,
+                                           [](Project& project,
+                                              feature::query::Context& ctx,
+                                              const Spelling& path,
+                                              const FileQuestion&) {
+                                               return feature::query::document_symbols(
+                                                   ctx,
+                                                   path,
+                                                   [&](Fid file) -> const clang::LangOptions& {
+                                                       return project.dialect(file, nullptr);
+                                                   });
+                                           }),
     });
     operations.push_back({
         .name = "definition",

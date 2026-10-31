@@ -320,13 +320,13 @@ const std::shared_ptr<index::TUIndex>& PCHEntry::load_index() {
 PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodies) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
+    auto rendered = render(unit);
     PCHRequest request{.file = std::string(file_table.resolve(unit.file)),
-                       .directory = commands.get(unit.command).directory,
+                       .directory = std::move(rendered.directory),
+                       .arguments = std::move(rendered.arguments),
+                       .hidden = std::move(rendered.hidden),
                        .whole_file = true,
                        .skip_bodies = skip_bodies};
-    auto rendered = toolchain.render(unit, cdb.spelling(unit.file));
-    request.arguments.assign(rendered.argv.begin(), rendered.argv.end());
-    request.hidden = std::move(rendered.hidden);
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule(skip_bodies),
                                  database_key.str(),

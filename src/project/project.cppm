@@ -519,63 +519,35 @@ struct Project {
 
     // command/resolve.cpp
 
-    /// The candidate a chosen command names (multi-configuration files and
-    /// hosts): its base command hash, resolved when chosen, else its hash as
-    /// `file` compiles under it now — `host`'s candidates lent by `host`, the
-    /// file's own for none; none when no candidate is it.
-    std::optional<Candidate> chosen_candidate(Fid file,
-                                              llvm::ArrayRef<Candidate> candidates,
-                                              Fid host,
-                                              llvm::StringRef chosen_hash,
-                                              llvm::StringRef chosen_base);
+    /// The one of `candidates` whose base is `base` (ContextChoice::base);
+    /// none when no candidate is it.
+    std::optional<Candidate> chosen_candidate(llvm::ArrayRef<Candidate> candidates,
+                                              llvm::StringRef base);
 
-    /// `command`, one of `host`'s, as `host` lends it to `header`: edited by
-    /// the rules of the file it is from and the header's, and a run's extras,
-    /// compiled as the host's language (apply_rules).
-    CommandRef lent_command(Fid header,
-                            Fid host,
-                            const Candidate& command,
-                            llvm::ArrayRef<std::string> extra_prepend = {},
-                            llvm::ArrayRef<std::string> extra_append = {});
+    /// The dialect a file's text is lexed in, `choice` the user's context
+    /// choice for it, null for none: the one of the command it compiles under
+    /// (select_command).
+    const clang::LangOptions& dialect(Fid file, const ContextChoice* choice);
 
-    /// Of `host`'s commands fit for `header`, the chosen one, else the first;
-    /// nullopt when none fits.
-    std::optional<Candidate> chosen_host_command(Fid header,
-                                                 Fid host,
-                                                 llvm::StringRef chosen_hash,
-                                                 llvm::StringRef chosen_base);
+    /// The command a file compiles under, before anything is rendered: tries,
+    /// in order, the chosen host, the file's own command, the host ranking
+    /// first, a default command, a nearby member's command and finally the
+    /// builtin command — so it always succeeds — then the rule edits and a
+    /// run's extras. The rules (`rules`) and the members say what a file
+    /// compiles as; the hosts (find_chosen_host, find_ranked_host) which unit
+    /// stands in for a header without a command of its own, and the
+    /// self-containment check whether it needs its includer's context.
+    Selection select_command(Fid file, const CommandRequest& request = {});
 
-    /// The command `host` lends `header`: chosen_host_command, as lent_command
-    /// lends it.
-    std::optional<CommandRef> host_command(Fid header,
-                                           Fid host,
-                                           llvm::StringRef chosen_hash,
-                                           llvm::StringRef chosen_base,
-                                           llvm::ArrayRef<std::string> extra_prepend = {},
-                                           llvm::ArrayRef<std::string> extra_append = {});
+    /// `command` as a compile runs it: the arguments the toolchain renders,
+    /// from its working directory.
+    Rendered render(const CommandRef& command, const RenderOptions& options = {});
 
-    /// The dialect a file's text is lexed in, `choice` the user's context choice
-    /// for it and `host` the source whose context it is read in, either absent
-    /// for none: an explicit -x in the file's own database entry decides
-    /// outright; else the host's command; else C when the file is a C source
-    /// or every TU contributing its indexed entries is one, C++ else (mixed
-    /// inclusion favors the superset).
-    const clang::LangOptions& dialect(Fid file, const ContextChoice* choice, Fid host);
-
-    /// Compose a file's final compile command from the project on disk, fill
-    /// its arguments and report where they came from. The build (`Build`) says
-    /// what a file compiles as; hosting (find_chosen_host, find_ranked_host)
-    /// says which unit stands in for a header without a command of its own,
-    /// whether the header compiles alone, and the context restoring its
-    /// includer's preprocessor state when it does not. Tries, in order: the
-    /// chosen host, the file's own command, the host ranking first, a default
-    /// command, a nearby member's command and finally the builtin command — so it always
-    /// succeeds — then the rule edits and a run's extras. Emits a per-file
-    /// decision log (tiers tried, tier hit, command hash).
-    Resolution resolve_command(Fid path_id,
-                               std::string& directory,
-                               std::vector<std::string>& arguments,
-                               const CommandRequest& request = {});
+    /// A file's final compile command: select_command, then the context
+    /// restoring the includer's preprocessor state of a header that needs
+    /// it, rendered. Emits a per-file decision log (tiers tried, tier hit,
+    /// command hash).
+    Resolution resolve_command(Fid file, const CommandRequest& request = {});
 
     /// The identity of the command the build compiles `unit` under, as its
     /// index records it: the default selection (candidates' first) with
@@ -583,11 +555,11 @@ struct Project {
     /// it under none. A run's extras are not part of it.
     std::uint64_t command_identity(Fid unit);
 
-    /// Project::pch_writer for the command `resolution` and `request` gave
-    /// `path_id`: edited by the rules the command was edited by and the
-    /// request's extras.
-    std::optional<CommandRef> pch_writer(Fid path_id,
-                                         const Resolution& resolution,
+    /// pch_writer for the command `selection` and `request` gave `file`:
+    /// edited by the rules the command was edited by and the request's
+    /// extras.
+    std::optional<CommandRef> pch_writer(Fid file,
+                                         const Selection& selection,
                                          const CommandRequest& request = {});
 
     // command/hosts.cpp
@@ -605,7 +577,7 @@ struct Project {
     /// The commands of `host` that compile `header` in a language it can be
     /// part of, in the host's order: what the header may compile under, its
     /// first the default. Empty when the host cannot stand in for it.
-    llvm::SmallVector<Candidate, 2> host_commands(Fid header, Fid host);
+    llvm::SmallVector<Candidate, 2> candidates(Fid header, Fid host);
 
     /// The host the user chose for a header, while its compile enters the
     /// header at the chosen place; none else.
@@ -719,21 +691,10 @@ struct Project {
     /// one command list once.
     std::vector<ListedContext> list_contexts(Fid file);
 
-    /// The listing's item for the context the file compiles in: `choice`, its
-    /// user's active context choice, else what `resolution` picked — the file's
-    /// own entry, else the host it borrows a command from. None when the file
-    /// compiles under a rule's default command or a lender's.
-    std::optional<ListedContext> current_context_item(Fid file,
-                                                      const ContextChoice* choice,
-                                                      const Resolution& resolution);
-
-    /// The context choice of the item `listed` names (switchContext's
-    /// parameters): a host at an occurrence, under one of its commands when it
-    /// names one, or one of the file's own entries.
-    ContextChoice choice_of(Fid file,
-                            Fid listed,
-                            std::optional<std::uint32_t> occurrence,
-                            const std::optional<std::string>& command_hash);
+    /// The listing's item for the context the file compiles in as `resolution`
+    /// picked it: the host it compiles in, else its own entry; none for a
+    /// rule's default command or a borrowed one.
+    std::optional<ListedContext> current_context_item(Fid file, const Resolution& resolution);
 
     /// Whether `choice` holds against the build and the include trees: its host
     /// still compiles and enters the file, at its occurrence when it names one,

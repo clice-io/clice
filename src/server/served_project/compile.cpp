@@ -208,13 +208,12 @@ void ServedProject::retry_after_save(Session& session) {
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again. A result that stands holds for the text saved.
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto resolution = resolve_command(path_id, directory, arguments);
-    if(resolution.self_containment) {
+    auto selection =
+        project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+    if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
-        if(project.header_saved(*resolution.self_containment,
+        if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.hash),
                                 leans)) {
             invalidate(path_id);
@@ -654,9 +653,9 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // The include trees the header's host search needs are taken first:
         // a header compiles under the host every process finds for it.
         auto resolution =
-            co_await document_command(path_id, params.directory, params.arguments, nullptr, [&] {
-                return ticket.fresh();
-            });
+            co_await document_command(path_id, nullptr, [&] { return ticket.fresh(); });
+        params.directory = resolution.directory;
+        params.arguments = resolution.arguments;
         if(!ticket.fresh()) {
             co_return Result::Stale;
         }

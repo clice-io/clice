@@ -584,11 +584,11 @@ std::string build_pch(Project& project,
         LOG_WARN("cannot create a temporary PCH: {}", created.error().message());
         return {};
     }
-    auto rendered = project.toolchain.render(writer, project.cdb.spelling(writer.file));
+    auto rendered = project.render(writer);
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
-        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
-                  .directory = project.commands.get(writer.command).directory,
+        .input = {.arguments = std::move(rendered.arguments),
+                  .directory = std::move(rendered.directory),
                   .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
@@ -625,10 +625,10 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        return project.resolve_command(path_id,
-                                       input.directory,
-                                       input.arguments,
-                                       {.choice = choice, .preprocess = true});
+        auto resolution = project.resolve_command(path_id, {.choice = choice, .preprocess = true});
+        input.directory = resolution.directory;
+        input.arguments = resolution.arguments;
+        return resolution;
     };
     auto resolution = resolve();
     if(resolution.self_containment && !resolution.self_contained) {
@@ -650,9 +650,9 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             resolution = resolve();
         }
     }
-    if(choice && (resolution.host != choice->host_path_id ||
+    if(choice && (resolution.host != choice->host ||
                   resolution.occurrence != choice->occurrence.value_or(0))) {
-        auto host = project.file_table.resolve(choice->host_path_id);
+        auto host = project.file_table.resolve(choice->host);
         auto times = choice->occurrence.value_or(0) + 1;
         return std::unexpected(
             times == 1 ? std::format("the compile of {} does not enter {}", host, file.path)
@@ -772,7 +772,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     std::optional<ContextChoice> choice;
     if(opts.host) {
         choice = ContextChoice{
-            .host_path_id = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
+            .host = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
             .occurrence = opts.occurrence.as_optional(),
         };
     }

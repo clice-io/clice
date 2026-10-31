@@ -181,7 +181,9 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // The scan runs under the command the build compiles with, resolved on
     // every attempt: a CDB or import change is always seen by the next one.
     worker::BuildPCMParams bp;
-    auto resolution = project.resolve_command(path_id, bp.directory, bp.arguments);
+    auto resolution = project.resolve_command(path_id);
+    bp.directory = resolution.directory;
+    bp.arguments = resolution.arguments;
     bp.hidden = resolution.hidden;
     auto imports = co_await project.scan_imports(path_id,
                                                  resolution,

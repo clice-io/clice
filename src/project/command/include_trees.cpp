@@ -205,12 +205,11 @@ void Project::commit_failed_tree(const TreeRequest& request) {
 }
 
 void Project::take_tree(const TreeRequest& request) {
-    auto& command = request.command;
-    auto rendered = toolchain.render(command, cdb.spelling(command.file));
+    auto rendered = render(request.command);
     auto unit = clice::compile({
         .kind = CompilationKind::Preprocess,
-        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
-                  .directory = commands.get(command.command).directory,
+        .input = {.arguments = std::move(rendered.arguments),
+                  .directory = std::move(rendered.directory),
                   .project_root = root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
     });

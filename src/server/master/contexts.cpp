@@ -158,10 +158,8 @@ async::task<ext::SwitchContextResult>
     auto offers = [&](ServedProject& project) -> async::task<bool> {
         // The listing counts the places the host's compile enters the file
         // by its include tree.
-        ContextChoice wanted{.host_path_id = context_path_id};
-        std::string directory;
-        std::vector<std::string> arguments;
-        co_await project.document_command(path_id, directory, arguments, &wanted);
+        ContextChoice wanted{.host = context_path_id};
+        co_await project.document_command(path_id, &wanted);
         co_return ranges::any_of(project.project.list_contexts(path_id),
                                  [&](const ListedContext& item) {
                                      return item.file == context_path_id &&
@@ -191,11 +189,11 @@ async::task<ext::SwitchContextResult>
         co_return result;
     }
     auto* previous = choice(path_id) ? choice(path_id)->project : nullptr;
+    // Of the listed items only the file's own entries name the file itself.
     choices[path_id] = {
-        .choice = target->project.choice_of(path_id,
-                                            context_path_id,
-                                            params.occurrence,
-                                            params.command_hash),
+        .choice = {.host = context_path_id != path_id ? context_path_id : Fid{},
+                   .occurrence = params.occurrence,
+                   .base = params.command_hash.value_or("")},
         .project = target.get(),
     };
     save_choices(*target);
@@ -237,10 +235,10 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     auto owner = document->owner->shared_from_this();
     auto& project = owner->project;
     auto& command = result.command.emplace();
-    std::vector<std::string> resolved;
     // As the document's compile does, with the tree of the host it waits
     // for: the compile in flight takes the same one.
-    auto resolution = co_await owner->document_command(path_id, command.directory, resolved);
+    auto resolution = co_await owner->document_command(path_id);
+    command.directory = resolution.directory;
     // The command line as its database or rule writes it, the rules
     // applied, rather than the frontend's the compile gets: the one a user
     // recognizes, and could run.
@@ -258,20 +256,19 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
-    if(auto item = project.current_context_item(path_id, active, resolution)) {
+    if(auto item = project.current_context_item(path_id, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
     if(auto* entry = choice(path_id); entry && !entry->active) {
         auto& waiting = entry->choice;
-        auto chosen = waiting.host_path_id.valid() ? waiting.host_path_id : path_id;
+        auto chosen = waiting.host.valid() ? waiting.host : path_id;
         auto shown = files.display(chosen);
         result.inactive_choice = ext::ContextItem{
             .label = std::string(path::filename(shown)),
             .description = shown,
             .uri = feature::to_uri(shown),
             .occurrence = waiting.occurrence,
-            .command_hash =
-                waiting.command_hash.empty() ? std::nullopt : std::optional(waiting.command_hash),
+            .command_hash = waiting.base.empty() ? std::nullopt : std::optional(waiting.base),
         };
     }
     result.epoch = context_epoch();

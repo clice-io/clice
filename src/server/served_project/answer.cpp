@@ -138,9 +138,8 @@ SourceText& ServedProject::text_of(Session& session) {
 SearchConfig ServedProject::search_of(Fid path_id) {
     // Editor use: the search follows the command (context choice, chosen
     // database entry) the open buffer compiles under.
-    std::string directory;
-    std::vector<std::string> arguments;
-    return project.toolchain.search_config(resolve_command(path_id, directory, arguments).ref);
+    return project.toolchain.search_config(
+        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
 }
 
 std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {

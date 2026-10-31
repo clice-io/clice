@@ -58,7 +58,9 @@ async::task<UnitResult>
         extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
     }
     CommandRequest extra{.extra_prepend = extras.prepend, .extra_append = extras.append};
-    auto resolved = project.resolve_command(path_id, params.directory, params.arguments, extra);
+    auto resolved = project.resolve_command(path_id, extra);
+    params.directory = resolved.directory;
+    params.arguments = resolved.arguments;
     params.hidden = resolved.hidden;
     // Taken with the command, not at the merge: a command changing during
     // the build leaves the unit's index recorded under the old one, and the

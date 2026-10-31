@@ -55,54 +55,40 @@ std::string flags_label(Project& project, CommandID command, llvm::ArrayRef<Comm
     return label;
 }
 
-/// The command the file's own entry `entry` compiles it as.
-CommandID own_command(Project& project, Fid file, CommandID entry) {
-    return project.apply_rules(file, {.base = entry, .source = CommandSource::Database}).command;
-}
-
-CommandID base_command(const CompilationEntry& entry) {
-    return entry.command;
-}
-
-CommandID base_command(const Candidate& candidate) {
-    return candidate.base;
-}
-
-/// The commands the file's own `entries` compile it as, one per entry.
-llvm::SmallVector<CommandID, 2> own_commands(Project& project, Fid file, const auto& entries) {
+/// The commands `candidates` compile `file` as, `host`'s passed on to it for
+/// a host.
+llvm::SmallVector<CommandID, 2>
+    applied(Project& project, Fid file, Fid host, llvm::ArrayRef<Candidate> candidates) {
     llvm::SmallVector<CommandID, 2> commands;
-    for(auto& entry: entries) {
-        commands.push_back(own_command(project, file, base_command(entry)));
+    for(auto& candidate: candidates) {
+        commands.push_back(project
+                               .apply_rules(file,
+                                            host.valid()
+                                                ? candidate.passed_on(host, CommandSource::Host)
+                                                : candidate)
+                               .command);
     }
     return commands;
 }
 
-/// The commands `host` lends the header `file`, one per command of the
-/// host's.
-llvm::SmallVector<CommandID, 2> lent_commands(Project& project, Fid file, Fid host) {
-    llvm::SmallVector<CommandID, 2> lent;
-    for(auto& candidate: project.host_commands(file, host)) {
-        lent.push_back(project.lent_command(file, host, candidate).command);
-    }
-    return lent;
-}
-
-/// The listing's item for `host` lending the command `applied`, one of the
-/// commands `lent` it lends the header: named by the host, the flags that
-/// set the command apart when it lends several, and the place it enters
-/// the header at when it does at more than one.
+/// The listing's item for `host` passing on its `index`th of `offered`, the
+/// commands it can compile the header `file` under: named by the host, the
+/// flags that set the command apart when there are several, and the place
+/// it enters the header at when it does at more than one.
 ListedContext host_item(Project& project,
+                        Fid file,
                         Fid host,
-                        CommandID applied,
-                        llvm::ArrayRef<CommandID> lent,
+                        llvm::ArrayRef<Candidate> offered,
+                        std::size_t index,
                         std::optional<std::uint32_t> occurrence) {
     auto shown = project.file_table.display(host);
     ListedContext item{.label = std::string(path::filename(shown)), .file = host};
-    if(lent.size() > 1) {
-        if(auto desc = flags_label(project, applied, lent); !desc.empty()) {
+    if(offered.size() > 1) {
+        auto commands = applied(project, file, host, offered);
+        if(auto desc = flags_label(project, commands[index], commands); !desc.empty()) {
             item.label = std::format("{} [{}]", item.label, desc);
         }
-        item.command_hash = project.commands.command_hash_hex(applied);
+        item.command_hash = project.commands.command_hash_hex(offered[index].base);
     }
     if(occurrence) {
         item.label = std::format("{} (#{})", item.label, *occurrence + 1);
@@ -112,33 +98,27 @@ ListedContext host_item(Project& project,
     return item;
 }
 
-/// The listing's item for the file's own entry `index` of `own`, the
-/// commands its entries compile it as.
+/// The listing's item for the file's own entry `index` of `own`.
 ListedContext
-    own_item(Project& project, Fid file, std::size_t index, llvm::ArrayRef<CommandID> own) {
-    auto applied = own[index];
-    auto desc = flags_label(project, applied, own);
+    own_item(Project& project, Fid file, std::size_t index, llvm::ArrayRef<Candidate> own) {
+    auto commands = applied(project, file, {}, own);
+    auto desc = flags_label(project, commands[index], commands);
     return {
         .label = desc.empty() ? std::format("command #{}", index) : desc,
         .description = project.file_table.display(
-            CanonicalPath(Spelling::absolute(project.commands.get(applied).directory))),
+            CanonicalPath(Spelling::absolute(project.commands.get(commands[index]).directory))),
         .file = file,
-        .command_hash = project.commands.command_hash_hex(applied),
+        .command_hash = project.commands.command_hash_hex(own[index].base),
     };
 }
 
-/// Whether a chosen command still has a live basis among the candidates of
-/// `host`, or of `file` itself for none: its hash as the file compiles under
-/// one now matches, or its recorded base command hash still names one (a
-/// rule edit moves every applied hash; the base survives it).
-bool command_alive(Project& project, Fid file, Fid host, const ContextChoice& choice) {
-    return project
-        .chosen_candidate(file,
-                          project.candidates(host.valid() ? host : file),
-                          host,
-                          choice.command_hash,
-                          choice.base_hash)
-        .has_value();
+/// The file's own database entries, as candidates.
+llvm::SmallVector<Candidate, 2> own_entries(Project& project, Fid file) {
+    llvm::SmallVector<Candidate, 2> own;
+    for(auto& entry: project.entries(file)) {
+        own.push_back({.base = entry.command, .source = CommandSource::Database});
+    }
+    return own;
 }
 
 /// The context choices as the database's blob lays them out, field for
@@ -171,11 +151,10 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
 
     // Contexts that would produce identical compilation results are
     // collapsed: identical canonical flags mean an identical compile
-    // — but only for a header its self-containment check found
-    // self-contained under the command. One that needs includer context
-    // gets a different synthesized prefix per host, and an unchecked one
-    // may turn out the same way, so every host stays a distinct context for
-    // both.
+    // — but only for a header its check found self-contained under the
+    // command. One that needs includer context gets a different
+    // synthesized prefix per host, and an unchecked one may turn out the
+    // same way, so every host stays a distinct context for both.
     llvm::StringSet<> seen_commands;
     for(auto host: ranked_hosts(file)) {
         // A multi-configuration host contributes one context per CDB
@@ -187,133 +166,70 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
         if(occurrences == 0) {
             continue;
         }
-        auto lent = lent_commands(*this, file, host);
-        for(auto applied: lent) {
-            auto hash = commands.command_hash(applied);
-            if(self_contained({file, hash}, true).value_or(false) &&
-               !seen_commands.insert(commands.command_hash_hex(applied)).second) {
+        auto offered = candidates(file, host);
+        auto commands = applied(*this, file, host, offered);
+        for(std::size_t i = 0; i < offered.size(); i += 1) {
+            if(self_contained({file, this->commands.command_hash(commands[i])}, true)
+                   .value_or(false) &&
+               !seen_commands.insert(this->commands.command_hash_hex(commands[i])).second) {
                 continue;
             }
             if(occurrences == 1) {
-                items.push_back(host_item(*this, host, applied, lent, std::nullopt));
+                items.push_back(host_item(*this, file, host, offered, i, std::nullopt));
                 continue;
             }
             for(std::uint32_t n = 0; n < occurrences; n += 1) {
-                items.push_back(host_item(*this, host, applied, lent, n));
+                items.push_back(host_item(*this, file, host, offered, i, n));
             }
         }
     }
 
-    // Real entries only: lookup() would synthesize a default command
-    // even for unknown files, offering a bogus context that
-    // switchContext would then reject. Offered even when hosts
-    // exist, so a host override can be switched back to the file's
-    // own command.
-    auto own = own_commands(*this, file, entries(file));
+    // Real entries only: a default command is no context to switch to.
+    // Offered even when hosts exist, so a host override can be switched back
+    // to the file's own command.
+    auto own = own_entries(*this, file);
+    auto commands = applied(*this, file, {}, own);
     for(std::size_t i = 0; i < own.size(); i += 1) {
-        if(seen_commands.insert(commands.command_hash_hex(own[i])).second) {
+        if(seen_commands.insert(this->commands.command_hash_hex(commands[i])).second) {
             items.push_back(own_item(*this, file, i, own));
         }
     }
     return items;
 }
 
-std::optional<ListedContext> Project::current_context_item(Fid file,
-                                                           const ContextChoice* choice,
-                                                           const Resolution& resolution) {
-    auto path = file_table.resolve(file);
-    auto lent = [&](Fid host,
-                    llvm::StringRef hash,
-                    llvm::StringRef base,
-                    std::uint32_t occurrence) -> std::optional<ListedContext> {
-        auto applied = host_command(file, host, hash, base);
-        if(!applied) {
+std::optional<ListedContext> Project::current_context_item(Fid file, const Resolution& resolution) {
+    // What the resolution picked: the host the file compiles in, else the
+    // file's own entry — not a rule's default command or a borrowed one.
+    auto index_of = [&](llvm::ArrayRef<Candidate> offered) {
+        auto it = ranges::find(offered, resolution.candidate.base, &Candidate::base);
+        return it != offered.end() ? std::optional(it - offered.begin()) : std::nullopt;
+    };
+    if(auto host = resolution.host; host.valid()) {
+        auto offered = candidates(file, host);
+        auto index = index_of(offered);
+        if(!index) {
             return std::nullopt;
         }
         auto several = count_occurrences(host, file).value_or(1) > 1;
         return host_item(*this,
+                         file,
                          host,
-                         applied->command,
-                         lent_commands(*this, file, host),
-                         several ? std::optional(occurrence) : std::nullopt);
-    };
-    auto own = [&](llvm::StringRef hash, llvm::StringRef base) -> std::optional<ListedContext> {
-        auto commands = candidates(file);
-        if(commands.empty()) {
-            return std::nullopt;
-        }
-        auto entry = chosen_candidate(file, commands, {}, hash, base).value_or(commands.front());
-        auto index = ranges::find(commands, entry) - commands.begin();
-        return own_item(*this, file, index, own_commands(*this, file, commands));
-    };
-
-    // The choice, else what resolve_command picks: the file's own command
-    // — listed only when it is an entry, not a rule's default — then the
-    // host it borrows a command from.
-    if(choice && choice->host_path_id.valid()) {
-        return lent(choice->host_path_id,
-                    choice->command_hash,
-                    choice->base_hash,
-                    choice->occurrence.value_or(0));
+                         offered,
+                         *index,
+                         several ? std::optional(resolution.occurrence) : std::nullopt);
     }
-    if(choice) {
-        return own(choice->command_hash, choice->base_hash);
+    if(resolution.candidate.source != CommandSource::Database) {
+        return std::nullopt;
     }
-    if(is_unit(file)) {
-        if(entries(file).empty()) {
-            return std::nullopt;
-        }
-        return own({}, {});
-    }
-    if(resolution.host.valid()) {
-        return lent(resolution.host, {}, {}, resolution.occurrence);
-    }
-    return std::nullopt;
-}
-
-ContextChoice Project::choice_of(Fid file,
-                                 Fid listed,
-                                 std::optional<std::uint32_t> occurrence,
-                                 const std::optional<std::string>& command_hash) {
-    // The base command hash of the one of `commands` listed as `listed(entry)`
-    // under the picked hash: the identity that stays unique when rules
-    // collapse two applied hashes onto one value. The caller offers only
-    // listed items.
-    auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
-        for(auto& entry: commands) {
-            if(this->commands.command_hash_hex(listed(entry)) == *command_hash) {
-                return this->commands.command_hash_hex(entry.base);
-            }
-        }
-        std::unreachable();
-    };
-
-    // Of the listed items only the file's own entries name the file itself,
-    // each with its command hash.
-    ContextChoice choice;
-    if(listed == file) {
-        choice.command_hash = *command_hash;
-        choice.base_hash = base_of(candidates(file), [&](const Candidate& entry) {
-            return own_command(*this, file, entry.base);
-        });
-        return choice;
-    }
-    choice.host_path_id = listed;
-    choice.occurrence = occurrence;
-    if(command_hash) {
-        choice.command_hash = *command_hash;
-        choice.base_hash = base_of(host_commands(file, listed), [&](const Candidate& entry) {
-            return lent_command(file, listed, entry).command;
-        });
-    }
-    return choice;
+    auto own = own_entries(*this, file);
+    auto index = index_of(own);
+    return index ? std::optional(own_item(*this, file, *index, own)) : std::nullopt;
 }
 
 bool Project::choice_holds(Fid file, const ContextChoice& choice) {
-    auto path = file_table.resolve(file);
-    if(choice.host_path_id.valid()) {
-        auto host = choice.host_path_id;
-        if(candidates(host).empty()) {
+    if(auto host = choice.host; host.valid()) {
+        auto offered = candidates(file, host);
+        if(offered.empty()) {
             return false;
         }
         // The host's current include tree tells how often its compile
@@ -329,10 +245,9 @@ bool Project::choice_holds(Fid file, const ContextChoice& choice) {
         if(occurrences && choice.occurrence.has_value() && *choice.occurrence >= *occurrences) {
             return false;
         }
-        return choice.command_hash.empty() || command_alive(*this, file, host, choice);
+        return choice.base.empty() || chosen_candidate(offered, choice.base).has_value();
     }
-    return !choice.command_hash.empty() && !candidates(file).empty() &&
-           command_alive(*this, file, {}, choice);
+    return !choice.base.empty() && chosen_candidate(own_entries(*this, file), choice.base);
 }
 
 std::string
@@ -351,10 +266,9 @@ std::string
     for(auto& [file, choice]: choices) {
         data.contexts.push_back({
             .file = intern(file),
-            .host = choice->host_path_id.valid() ? intern(choice->host_path_id) : ~0u,
+            .host = choice->host.valid() ? intern(choice->host) : ~0u,
             .occurrence = choice->occurrence.value_or(~0u),
-            .command_hash = choice->command_hash,
-            .base_hash = choice->base_hash,
+            .base_hash = choice->base,
         });
     }
     auto json = json::to_string<PathJsonConfig>(data);
@@ -383,19 +297,23 @@ std::vector<std::pair<Fid, ContextChoice>> Project::parse_choices(llvm::StringRe
         if(file.empty()) {
             continue;
         }
+        // A choice of a command saved before its base was recorded no longer
+        // names one.
+        if(file.empty() || (saved.base_hash.empty() && !saved.command_hash.empty())) {
+            continue;
+        }
         ContextChoice choice;
         if(saved.host != ~0u) {
             auto host = path(saved.host);
             if(host.empty()) {
                 continue;
             }
-            choice.host_path_id = file_table.intern(index.local(host));
+            choice.host = file_table.intern(index.local(host));
         }
         if(saved.occurrence != ~0u) {
             choice.occurrence = saved.occurrence;
         }
-        choice.command_hash = saved.command_hash;
-        choice.base_hash = saved.base_hash;
+        choice.base = saved.base_hash;
         choices.emplace_back(file_table.intern(index.local(file)), std::move(choice));
     }
     return choices;
