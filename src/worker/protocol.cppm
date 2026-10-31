@@ -211,10 +211,6 @@ struct CompileResult {
 
     /// See TURunResult::index_in_file.
     bool index_in_file = false;
-
-    /// What the compile instantiates the file's templates with, for its
-    /// completions.
-    feature::InstantiatedTemplates instantiated;
 };
 
 /// Build a PCH (and its paired pch.idx index) from preamble content, or
@@ -355,9 +351,6 @@ struct CompletionParams {
     /// of them, the list is incomplete: the editor asks again as the prefix
     /// grows.
     feature::CompileCompletion names;
-
-    /// What the document's latest compile instantiates its templates with.
-    feature::InstantiatedTemplates instantiated;
 };
 
 /// A completion's reply: the list as the client takes it, and where the

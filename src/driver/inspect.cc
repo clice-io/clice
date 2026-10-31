@@ -380,10 +380,7 @@ std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) 
         feature::code_complete(completion_at(params),
                                settings.code_completion,
                                settings.documentation,
-                               {.snippets = true, .insert_replace = true, .markdown = true},
-                               PositionEncoding::UTF16,
-                               {},
-                               feature::instantiated_templates(params.unit))
+                               {.snippets = true, .insert_replace = true, .markdown = true})
             .list);
 }
 

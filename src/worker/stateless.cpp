@@ -520,8 +520,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                                              params.settings.documentation,
                                              params.client,
                                              params.encoding,
-                                             params.names,
-                                             params.instantiated);
+                                             params.names);
     LOG_DEBUG("Completion done: {} items, {}ms", completion.list.items.size(), timer.ms());
 
     return {.list = to_raw(completion.list), .include = completion.include};

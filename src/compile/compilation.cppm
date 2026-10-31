@@ -226,6 +226,16 @@ struct CompilationParams {
     /// completion skips every body but the one holding the point regardless.
     bool skip_bodies = false;
 
+    /// A compile looking only for how the focus file's templates are
+    /// instantiated: it skips the focus file's function bodies as well, but
+    /// the one holding `point` and those naming one of `names`.
+    struct Instantiating {
+        std::uint32_t point = 0;
+        llvm::StringSet<> names;
+    };
+
+    std::optional<Instantiating> instantiating;
+
     /// Inactive regions of the consumed PCH's preamble share (flat
     /// begin/end offset pairs): the `#include`s there were never entered.
     std::vector<std::uint32_t> preamble_inactive_regions;

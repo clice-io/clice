@@ -145,8 +145,9 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
-    front_opts.SkipFunctionBodies =
-        params.skip_bodies || params.kind == CompilationKind::Completion;
+    front_opts.SkipFunctionBodies = params.skip_bodies ||
+                                    params.kind == CompilationKind::Completion ||
+                                    params.instantiating.has_value();
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -386,14 +387,25 @@ public:
         return clang::MultiplexConsumer::HandleTopLevelDecl(group);
     }
 
-    /// Asked under CompilationParams::skip_bodies, and by every completion's
-    /// parse, which skips each body but the one holding the point.
+    /// Asked under CompilationParams::skip_bodies and instantiating, and by
+    /// every completion's parse, which skips each body but the one holding
+    /// the point.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
-        return unit.in_preamble(unit.produced_at(decl->getLocation()).file) &&
-               !likely_forwarding(decl);
+        auto file = unit.produced_at(decl->getLocation()).file;
+        if(auto& instantiating = unit.params.instantiating;
+           instantiating && file == unit.focus_file().file()) {
+            return !may_instantiate(*instantiating);
+        }
+        return unit.in_preamble(file) && !likely_forwarding(decl);
+    }
+
+    /// Sees each token the preprocessor hands the parser, under
+    /// CompilationParams::instantiating.
+    void watch(const clang::Token& token) {
+        last = token;
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
@@ -447,9 +459,45 @@ public:
     }
 
 private:
+    /// Whether the body the parse stands before holds the point or names
+    /// one of the names, read raw from its `{` to the matching `}`. One
+    /// starting otherwise, at a constructor's initializers, a `try` or a
+    /// `{` a macro writes, is kept.
+    bool may_instantiate(const CompilationParams::Instantiating& instantiating) {
+        auto& sources = unit.context().getSourceManager();
+        if(!last.is(clang::tok::l_brace) || !last.getLocation().isFileID()) {
+            return true;
+        }
+        auto [file, begin] = sources.getDecomposedLoc(last.getLocation());
+        if(file != unit.focus_file().file()) {
+            return true;
+        }
+        auto buffer = sources.getBufferData(file);
+        clang::Lexer lexer(sources.getLocForStartOfFile(file),
+                           unit.lang_options(),
+                           buffer.begin(),
+                           buffer.begin() + begin + 1,
+                           buffer.end());
+        clang::Token token;
+        std::uint32_t depth = 1;
+        while(depth != 0 && !lexer.LexFromRawLexer(token)) {
+            if(token.is(clang::tok::l_brace)) {
+                depth += 1;
+            } else if(token.is(clang::tok::r_brace)) {
+                depth -= 1;
+            } else if(token.is(clang::tok::raw_identifier) &&
+                      instantiating.names.contains(token.getRawIdentifier())) {
+                return true;
+            }
+        }
+        return begin <= instantiating.point &&
+               instantiating.point <= sources.getFileOffset(token.getLocation());
+    }
+
     CompilationUnit& unit;
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
     llvm::DenseSet<const clang::Decl*> instantiations;
+    clang::Token last;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
@@ -462,7 +510,12 @@ public:
         auto consumer = WrapperFrontendAction::CreateASTConsumer(instance, file);
         if(!consumer)
             return nullptr;
-        return std::make_unique<ParseConsumer>(std::move(consumer), unit);
+        auto parse = std::make_unique<ParseConsumer>(std::move(consumer), unit);
+        if(unit.params.instantiating) {
+            instance.getPreprocessor().setTokenWatcher(
+                [parse = parse.get()](const clang::Token& token) { parse->watch(token); });
+        }
+        return parse;
     }
 
     /// Make this public.

@@ -6,9 +6,9 @@ items = [
 
 [answers.scope.completion]
 items = [
+    { label = "Settings", kind = "Class" },
     { label = "retries", kind = "Variable", detail = "int" },
     { label = "value_type", kind = "TypeParameter" },
-    { label = "Settings", kind = "Class" },
     { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Settings()", kind = "Method", detail = "void" },
 ]
