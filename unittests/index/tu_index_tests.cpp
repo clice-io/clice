@@ -91,7 +91,7 @@ ZEST_CASE(SectionsNamingCoverEntries) {
             template <typename T>
             struct Box {
                 T item;
-                int size() const { return twice(1) + once(1); }
+                int size() const { return twice(1) + once(item); }
             };
             template <typename T>
             int measure(const T& box) { return box.size(); }
