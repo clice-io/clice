@@ -6,9 +6,7 @@ module;
 
 module clice:project.queries;
 
-import :project.project;
 import :support.prelude;
-import :vfs.path;
 
 namespace clice {
 
@@ -39,24 +37,5 @@ struct ImpactAnalysisResult {
     std::vector<std::string> transitive_dependents;
     std::vector<std::string> affected_modules;
 };
-
-/// The build's files, `filter` one of all, source, header, module; the
-/// error says why the question cannot be answered.
-std::expected<ProjectFilesResult, std::string> project_files(Project& project,
-                                                             llvm::StringRef filter);
-
-/// The files reachable from `path` along include edges, `direction` one of
-/// includes, includers, both; `depth` levels at most, 0 meaning unbounded.
-std::expected<FileDepsResult, std::string>
-    file_deps(Project& project, const Spelling& path, llvm::StringRef direction, int depth);
-
-/// What a change to `path` reaches: its direct includers, the sources
-/// hosting it, and the modules among them.
-std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& project,
-                                                                 const Spelling& path);
-
-/// Whether some unit of the build the index is to hold has no record in
-/// it yet (see feature::RenameScope::units_pending).
-bool units_pending(Project& project);
 
 }  // namespace clice

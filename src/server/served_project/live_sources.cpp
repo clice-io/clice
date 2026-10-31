@@ -2,7 +2,6 @@ module clice;
 
 import :index.instantiation_shard;
 import :index.project_index;
-import :project.pch;
 import :server.served_project;
 
 namespace clice {
@@ -12,7 +11,7 @@ namespace {
 /// The preamble index of PCH `key`, loaded on its first read: the live
 /// sources are views, and the load only fills the project's cache.
 std::shared_ptr<index::TUIndex> preamble_of(const Project& project, llvm::StringRef key) {
-    return preamble_state(const_cast<Project&>(project), key);
+    return const_cast<Project&>(project).preamble_state(key);
 }
 
 /// An open document's index as the live sources hand it out: `shard` in

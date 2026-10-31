@@ -7,8 +7,8 @@ module clice:driver.driver;
 import :feature.query;
 import :index.query;
 import :index.writer_lock;
-import :project.background_index;
 import :project.discovery;
+import :project.indexer;
 import :project.project;
 import :server.control;
 import :settings.settings;
@@ -733,7 +733,7 @@ inline bool start_batch(BatchRun& run,
 
 /// Quiesce the background index, then the shared contract-11 tail.
 inline async::task<> shutdown(BatchRun& run) {
-    co_await stop_background_index(run.project);
+    co_await run.project.stop_background_index();
     co_await run.project.shutdown();
     co_await run.pool.stop();
     run.project.close();

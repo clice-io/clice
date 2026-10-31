@@ -334,7 +334,7 @@ void print_stats(const Project& project, const Stats& stats, std::uint32_t top) 
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
-        driver::println("Warning: {}", damaged_index_error(project));
+        driver::println("Warning: {}", project.damaged_index_error());
     }
 
     if(auto& usage = stats.usage) {

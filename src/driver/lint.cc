@@ -2,10 +2,7 @@ module clice;
 
 import :compile.tidy;
 import :driver.driver;
-import :project.background_index;
-import :project.discovery;
 import :project.project;
-import :project.save;
 import :project.unit;
 import :support.logging;
 import :support.timer;
@@ -136,17 +133,17 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
     // reached. Every compile waits while the pool revives a worker: a
     // dispatch then would fail at once for want of one.
     co_await run.pool.await_capacity(false);
-    auto result = co_await compile_unit(project, path_id, request);
+    auto result = co_await project.compile_unit(path_id, request);
     // FIXME: unbounded: two units whose allocations fail before the first
     // sample raise their floors by nothing and can die beside each other again
     // and again (commit exhaustion on Windows).
     while(result && result->status == OutOfMemory) {
         co_await run.pool.await_capacity(false);
-        result = co_await compile_unit(project, path_id, request);
+        result = co_await project.compile_unit(path_id, request);
     }
     if(result && (result->status == Lost || result->status == Preempted)) {
         co_await run.pool.await_capacity(false);
-        result = co_await compile_unit(project, path_id, request);
+        result = co_await project.compile_unit(path_id, request);
     }
 
     if(!result) {
@@ -164,7 +161,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
                 pass.checked += 1;
             }
             if(with_index) {
-                apply_report(project, result->report);
+                project.apply_report(result->report);
             }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
@@ -277,14 +274,14 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         .index =
             with_index ? Project::OpenOptions::Index::Write : Project::OpenOptions::Index::Read,
     });
-    apply_report(project, opened.report);
+    project.apply_report(opened.report);
     if(with_index) {
-        enqueue_outdated(project, opened.members);
+        project.enqueue_outdated(opened.members);
     }
 
     auto& members = opened.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", why_no_members(project, batch.root));
+        LOG_ERROR("Nothing to lint: {}", project.why_no_members(batch.root));
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
@@ -329,8 +326,8 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         // like the index batch does, or an already-linted owner's index
         // stays missing while the run exits clean.
         project.settings.project.enable_indexing.value = true;
-        schedule_index(project, /*immediate=*/true);
-        co_await async::with_token(wait_index_idle(project), lifetime.token());
+        project.schedule_index(/*immediate=*/true);
+        co_await async::with_token(project.wait_index_idle(), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -348,7 +345,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
-    result.unsaved = with_index && has_unsaved_state(project);
+    result.unsaved = with_index && project.has_unsaved_state();
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }

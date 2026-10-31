@@ -2,10 +2,8 @@ module clice;
 
 import :driver.driver;
 import :index.project_index;
-import :project.background_index;
-import :project.discovery;
+import :project.indexer;
 import :project.project;
-import :project.save;
 import :server.control;
 import :support.logging;
 import :support.signal;
@@ -98,8 +96,8 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         .store = Project::OpenOptions::Store::Writable,
         .index = Project::OpenOptions::Index::Write,
     });
-    apply_report(project, opened.report);
-    enqueue_outdated(project, opened.members);
+    project.apply_report(opened.report);
+    project.enqueue_outdated(opened.members);
 
     // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,
@@ -114,7 +112,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         co_return;
     }
     if(opened.members.empty()) {
-        LOG_ERROR("Nothing to index: {}", why_no_members(project, batch.root));
+        LOG_ERROR("Nothing to index: {}", project.why_no_members(batch.root));
         result.exit_code = 1;
         co_await shutdown(run);
         co_return;
@@ -127,7 +125,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     });
     Signal<>::Connection parked;
     if(auto pause = test_pause()) {
-        pause_indexing_after(project, pause->units);
+        project.pause_indexing_after(pause->units);
         parked = background.on_progress_changed.connect([&background, pause = *pause]() mutable {
             if(!pause.reached && background.progress.completed >= pause.units) {
                 pause.reached = true;
@@ -139,7 +137,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     }
     Lifetime lifetime(run);
     lifetime.aux.spawn(progress_ticker(run, options));
-    co_await async::with_token(wait_index_idle(project), lifetime.token());
+    co_await async::with_token(project.wait_index_idle(), lifetime.token());
     // The counts read every shard and symbol record: taken before the final
     // save, damage they meet first is discarded there like any other.
     if(!lifetime.stop_requested) {
@@ -151,7 +149,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
-    result.unsaved = has_unsaved_state(project);
+    result.unsaved = project.has_unsaved_state();
     if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;

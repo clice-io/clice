@@ -1,0 +1,230 @@
+module clice;
+
+import :compile.compilation;
+import :index.include_tree;
+import :index.project_index;
+import :index.tu_manifest;
+import :project.hosting;
+import :project.project;
+import :vfs.file_system;
+import :vfs.path;
+
+namespace clice {
+
+/// include_chains() by one include tree, rooted at `root`.
+static std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
+                                                          Fid host,
+                                                          Fid header,
+                                                          VersionID root,
+                                                          llvm::ArrayRef<index::IncludeNode> nodes,
+                                                          llvm::ArrayRef<VersionID> absent) {
+    using CheckResult = vfs::DiskState::CheckResult;
+    auto& files = project.file_table;
+    if(files.check_version(root) != CheckResult::Fresh ||
+       ranges::any_of(absent, [&](VersionID place) {
+           return files.disk.present(files.version(place).fid);
+       })) {
+        return std::nullopt;
+    }
+    auto file_of = [&](std::uint32_t node) {
+        return files.version(VersionID{nodes[node].file}).fid;
+    };
+    auto fresh = [&](std::uint32_t node) {
+        return files.check_version(VersionID{nodes[node].file}) == CheckResult::Fresh;
+    };
+
+    // The header's own guard decides which of its includes after the first
+    // enter it.
+    // FIXME: another file defining the same guard skips the first include too:
+    // a header included once is not checked, so fixing its guard keeps the
+    // tree's answer until the host's tree is taken again.
+    auto repeated = ranges::count_if(nodes, [&](const index::IncludeNode& node) {
+                        return files.version(VersionID{node.file}).fid == header;
+                    }) > 1;
+
+    struct Chain {
+        /// The compile enters what its command forces in ahead of the
+        /// unit's text, in the command's order: a forced chain sorts by
+        /// its line in the command-line buffer, before every other.
+        llvm::SmallVector<std::uint32_t> order;
+
+        Host host;
+    };
+
+    llvm::SmallVector<Chain> found;
+    llvm::DenseSet<Fid> named;
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        named.insert(file_of(i));
+        if(nodes[i].skipped || file_of(i) != header) {
+            continue;
+        }
+        llvm::SmallVector<std::uint32_t> path;
+        for(auto node = i; node != index::no_node; node = nodes[node].parent) {
+            path.push_back(node);
+        }
+        // A file the command forces in hangs off the unit like its own
+        // directives, at a line of the command-line buffer: the chain
+        // starts at it.
+        auto root = path.back();
+        // FIXME: by file, not by node: a file without a guard that the unit both
+        // forces in and includes at its top level is taken for the forced one at
+        // either root.
+        bool forced = ranges::contains(project.dep_graph.get_forcing_units(file_of(root)), host);
+        Chain chain{.host = {.file = host}};
+        chain.order = forced ? llvm::SmallVector<std::uint32_t>{0, nodes[root].line}
+                             : llvm::SmallVector<std::uint32_t>{1};
+        if(!forced) {
+            chain.host.chain.push_back(host);
+        }
+        for(auto node: views::reverse(path)) {
+            if((node != i || repeated) && !fresh(node)) {
+                return std::nullopt;
+            }
+            chain.host.chain.push_back(file_of(node));
+            if(!forced || node != root) {
+                chain.host.lines.push_back(nodes[node].line);
+            }
+        }
+        chain.order.append(chain.host.lines.begin(), chain.host.lines.end());
+        found.push_back(std::move(chain));
+    }
+    // Nodes are numbered by includer, not by when the compile entered
+    // them; within one file the directives run top to bottom, so the
+    // first line where two chains part orders them.
+    ranges::sort(found, [](const Chain& a, const Chain& b) {
+        return ranges::lexicographical_compare(a.order, b.order);
+    });
+    llvm::SmallVector<Host> hosts;
+    for(auto& chain: found) {
+        hosts.push_back(std::move(chain.host));
+    }
+    if(!hosts.empty()) {
+        return hosts;
+    }
+
+    // A forced file a precompiled header stands for, and everything it
+    // includes, was entered before the tree began: the tree does not name
+    // it, nor tell whether the compile enters the header through it.
+    auto& graph = project.dep_graph;
+    for(auto file: graph.get_forced_includes(host)) {
+        if(!named.contains(file) && !graph.find_include_chain(file, header).empty()) {
+            return std::nullopt;
+        }
+    }
+
+    // The files of the scan's chains to the header, from the unit and from
+    // what it forces in, which may have gained the include since.
+    llvm::DenseSet<Fid> on_chain;
+    for(auto from: llvm::concat<const Fid>(llvm::ArrayRef(host), graph.get_forced_includes(host))) {
+        auto chain = graph.find_include_chain(from, header);
+        on_chain.insert(chain.begin(), chain.end());
+    }
+    on_chain.erase(header);
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(on_chain.contains(file_of(i)) && !fresh(i)) {
+            return std::nullopt;
+        }
+    }
+    return hosts;
+}
+
+TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
+    auto command = build.apply_rules(unit, candidate);
+    return {
+        .key = {unit, commands.command_hash(command.command)},
+        .command = command
+    };
+}
+
+std::optional<llvm::SmallVector<Host>> Project::include_chains(const UnitCommand& unit,
+                                                               Fid header) {
+    auto [host, command] = unit;
+    // The index runs a unit under its first command, and its tree is that
+    // command's while the index records it was built under it.
+    if(auto commands = build.commands(host);
+       !commands.empty() && tree_request(host, commands.front()).key.second == command &&
+       index.indexed_command(host) == command_identity(host)) {
+        if(auto manifest = index.manifest(host)) {
+            if(auto found = tree_chains(*this,
+                                        host,
+                                        header,
+                                        manifest->tu_version,
+                                        manifest->nodes,
+                                        manifest->absent)) {
+                return found;
+            }
+        }
+    }
+    auto* entry = hosting.trees.lookup(file_table, unit);
+    if(!entry) {
+        return std::nullopt;
+    }
+    if(!entry->result.root.valid()) {
+        return llvm::SmallVector<Host>();
+    }
+    return tree_chains(*this, host, header, entry->result.root, entry->result.nodes, {});
+}
+
+void Project::commit_tree(const TreeRequest& request,
+                          llvm::ArrayRef<std::string> paths,
+                          llvm::ArrayRef<std::uint64_t> hashes,
+                          std::vector<index::IncludeNode> nodes,
+                          llvm::ArrayRef<DepFile> deps,
+                          std::int64_t build_at) {
+    auto& files = file_table;
+    llvm::SmallVector<VersionID> versions;
+    for(std::size_t i = 0; i < paths.size(); i += 1) {
+        auto fid = files.intern(Spelling::absolute(paths[i]));
+        if(hashes[i] != 0) {
+            files.disk.consumed(fid, hashes[i]);
+        }
+        versions.push_back(files.intern_version(fid, hashes[i]));
+    }
+    for(auto& node: nodes) {
+        node.file = versions[node.file].raw;
+    }
+    // The unit's own text is no dependency of its compile, but the tree's
+    // root.
+    auto trace = capture_deps_snapshot(files, deps, build_at);
+    trace.push_back({.path_id = request.key.first, .version = versions.back()});
+    hosting.trees.commit(request.key,
+                         {.root = versions.back(), .nodes = std::move(nodes)},
+                         std::move(trace));
+    // The tree can move the host's contexts: the listings it changes are
+    // stale.
+    context_epoch += 1;
+}
+
+void Project::commit_failed_tree(const TreeRequest& request) {
+    DepsSnapshot trace;
+    if(auto unit = current_dep(file_table, request.key.first)) {
+        trace.push_back(*unit);
+    }
+    hosting.trees.commit(request.key, {}, std::move(trace));
+    context_epoch += 1;
+}
+
+void Project::take_tree(const TreeRequest& request) {
+    auto& command = request.command;
+    auto rendered = toolchain.render(command, cdb.spelling(command.file));
+    auto unit = clice::compile({
+        .kind = CompilationKind::Preprocess,
+        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
+                  .directory = commands.get(command.command).directory,
+                  .project_root = root.str(),
+                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
+    });
+    if(!unit->completed()) {
+        commit_failed_tree(request);
+        return;
+    }
+    auto tree = index::IncludeTree::from(*unit);
+    commit_tree(request,
+                tree.paths,
+                tree.content_hashes,
+                std::move(tree.nodes),
+                unit->deps(),
+                unit->build_at().count());
+}
+
+}  // namespace clice

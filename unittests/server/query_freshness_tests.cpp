@@ -4,7 +4,7 @@ import :index.query;
 import :index.search;
 import :index.shard;
 import :index.tu_index;
-import :project.background_index;
+import :project.indexer;
 import :project.project;
 import :server.served_project;
 import :unittests.server.served_project_fixture;
@@ -56,17 +56,17 @@ ZEST_CASE(PendingReasonUpgrade) {
     auto file = project.file_table.intern(Spelling::absolute("/proj/upgrade.cpp"));
     ZASSERT(!project.background_index.queue.pending_reason(file).has_value());
 
-    enqueue_reindex(project, file, ReindexReason::DepsOnly);
+    project.enqueue_reindex(file, ReindexReason::DepsOnly);
     ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::DepsOnly);
     ZASSERT(project.background_index.queue.queued() == 1u);
 
     // ContentChanged absorbs a queued DepsOnly without a second queue entry.
-    enqueue_reindex(project, file, ReindexReason::ContentChanged);
+    project.enqueue_reindex(file, ReindexReason::ContentChanged);
     ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::ContentChanged);
     ZASSERT(project.background_index.queue.queued() == 1u);
 
     // A later deps-only cascade never downgrades it.
-    enqueue_reindex(project, file, ReindexReason::DepsOnly);
+    project.enqueue_reindex(file, ReindexReason::DepsOnly);
     ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
@@ -94,7 +94,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text its shard indexed, so the shard keeps serving.
-    enqueue_reindex(project, focus_id, ReindexReason::DepsOnly);
+    project.enqueue_reindex(focus_id, ReindexReason::DepsOnly);
     ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its index is current.

@@ -5,11 +5,9 @@ import :index.project_index;
 import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
-import :project.background_index;
 import :project.command;
+import :project.indexer;
 import :project.project;
-import :project.reindex_queue;
-import :project.save;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -213,13 +211,13 @@ ZEST_CASE(RefusedGrowthKeepsBatch) {
     fx.save();
     ZASSERT(project.index.shard(file) != nullptr);
     ZASSERT(project.index.pending_shard_writes() == 1u);
-    ZASSERT(has_unsaved_state(project));
+    ZASSERT(project.has_unsaved_state());
 
     probe->full = false;
     fx.save();
     ZASSERT(project.index.pending_shard_writes() == 0u);
     ZASSERT(project.index.last_save_shards() == 1u);
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -648,7 +646,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     probe->fail_write = true;
     fx.save(index::SearchRebuild::Idle);
     ZEXPECT(hits("second_value") == 1u);
-    ZEXPECT(has_unsaved_state(project));
+    ZEXPECT(project.has_unsaved_state());
 
     // The retry commits the build but cannot move onto a fresh snapshot;
     // the next batch, with the run of what c.cpp added, fails, and the idle
@@ -665,7 +663,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     fx.save();
     probe->fail_write = false;
     fx.save(index::SearchRebuild::Idle);
-    ZEXPECT(!has_unsaved_state(project));
+    ZEXPECT(!project.has_unsaved_state());
     ZEXPECT(hits("second_value") == 1u);
     ZEXPECT(hits("third_value") == 1u);
     ZEXPECT(stored_segments() == 1u);
@@ -754,7 +752,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
-    clear_reindex(fx.project, project.file_table.intern(Spelling::absolute(b.tu_path)));
+    fx.project.clear_reindex(project.file_table.intern(Spelling::absolute(b.tu_path)));
 
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
@@ -912,7 +910,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
 
     // The next save records the build snapshot in the fresh database.
     fx.save();
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
@@ -972,7 +970,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(project.index.last_save_shards() == 0u);
 
     fx.save();
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(GrownMapRetriesNow) {
@@ -992,13 +990,13 @@ ZEST_CASE(GrownMapRetriesNow) {
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
-    auto task = persist(f.project);
+    auto task = f.project.persist();
     f.loop.schedule(task);
     f.loop.run();
 
     ZASSERT(log.refused == 1u);
     ZASSERT(log.writes.size() == 2u);
-    ZASSERT(!has_unsaved_state(f.project));
+    ZASSERT(!f.project.has_unsaved_state());
 }
 
 ZEST_CASE(ShutdownSkipsSearchRebuild) {
@@ -1014,7 +1012,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!indexed.data.empty());
     auto report = project.index.merge(indexed.data, {});
     ZASSERT(report);
-    apply_report(project, *report);
+    project.apply_report(*report);
 
     auto task = project.shutdown();
     loop.schedule(task);

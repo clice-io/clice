@@ -5,7 +5,7 @@ command <- syntax <- compile <- semantic <- index <- feature.
 
 Each layer may include, or import the partitions of, downward only: clice is one
 module, clice, whose partitions are named after the layer they are in
-(`import :project.graph;`), and the test helpers after `unittests`
+(`import :project.task_graph;`), and the test helpers after `unittests`
 (`unittests.utils.tester`), which the check verifies too. Bazel enforces the layering
 between its targets, as it checks that every header a source includes belongs to the
 target or its dependencies; the core directories share one target, so only this check

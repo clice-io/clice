@@ -9,13 +9,10 @@ import :command.table;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
-import :project.background_index;
 import :project.build;
 import :project.contexts;
-import :project.discovery;
-import :project.graph;
-import :project.pch;
-import :project.pcm;
+import :project.indexer;
+import :project.task_graph;
 import :server.client;
 import :server.control;
 import :server.master;
@@ -169,8 +166,8 @@ void ServedProject::start() {
             .store = Project::OpenOptions::Store::Writable,
             .index = Project::OpenOptions::Index::Write,
         });
-        apply_report(project, opened.report);
-        enqueue_outdated(project, opened.members);
+        project.apply_report(opened.report);
+        project.enqueue_outdated(opened.members);
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
@@ -178,7 +175,7 @@ void ServedProject::start() {
             start_control_listener();
         }
         commands_missing = opened.members.empty() && !project.build.declares_sources() &&
-                           !found_unreadable_database(project);
+                           !project.found_unreadable_database();
     }
     server.load_choices(*this);
 
@@ -232,7 +229,7 @@ async::task<> ServedProject::shutdown() {
     tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await async::when_all(stop_background_index(project), stop_compiles(), tree_tasks.join());
+    co_await async::when_all(project.stop_background_index(), stop_compiles(), tree_tasks.join());
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass.
     co_await project.shutdown();
@@ -257,13 +254,13 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now.
     if(std::exchange(commands_missing, false) && project.build.members().empty() &&
-       !found_unreadable_database(project)) {
+       !project.found_unreadable_database()) {
+        auto why = project.why_no_members(project.file_table.display(project.root));
+        why.front() = llvm::toUpper(why.front());
         LOG_GUIDANCE(
-            "No compile_commands.json found in {} or its direct subdirectories. "
-            "Compile commands will be guessed; see "
-            "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.{}",
-            project.file_table.display(project.root),
-            deeper_databases_hint(project));
+            "{} Compile commands will be guessed; see "
+            "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
+            why);
     }
     auto path_id = session->path_id;
     auto& document = documents[path_id];
@@ -298,7 +295,7 @@ void ServedProject::decide_serving(ServedDocument& document) {
            project.settings.project.enable_indexing.value && lacks_skipped_diagnostics(path_id) &&
            !project.background_index.queue.in_flight(path_id) &&
            !project.background_index.failed.contains(path_id)) {
-            index_first(project, path_id);
+            project.index_first(path_id);
         }
         return;
     }
@@ -318,7 +315,7 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // document. An index_first the background index cannot fulfill
     // escalates through the adapter's attempt-finished check.
     if(project.settings.project.enable_indexing.value && project.build.unit(path_id)) {
-        index_first(project, path_id);
+        project.index_first(path_id);
     } else {
         escalate(path_id);
     }
@@ -331,7 +328,7 @@ void ServedProject::release(Fid path_id) {
     server.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
     server.pool.remove_owner(path_id.raw);
     project.graph.invalidate(node(path_id));
-    forget_buffer_scan(project, path_id);
+    project.forget_buffer_scan(path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
     // index (BackgroundIndex::compiled_by_session); the disk's turn again, unless
@@ -339,13 +336,13 @@ void ServedProject::release(Fid path_id) {
     // waits for a change.
     if(!project.file_table.disk.seen_missing(path_id) &&
        !project.background_index.failed.contains(path_id) &&
-       enqueue_reindex(project, path_id, ReindexReason::DepsOnly)) {
-        schedule_index(project);
+       project.enqueue_reindex(path_id, ReindexReason::DepsOnly)) {
+        project.schedule_index();
     }
     // PCH entries are content-keyed and may be shared with other documents,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
-    enforce_loaded_budget(project);
+    project.enforce_loaded_budget();
     LOG_DEBUG("Released {}", path);
 }
 
@@ -359,7 +356,7 @@ void ServedProject::record_saved(Fid path_id) {
         for(auto& [open, document]: documents) {
             if(project.background_index.queue.pending_reason(open) &&
                !project.background_index.queue.in_flight(open)) {
-                index_first(project, open);
+                project.index_first(open);
             }
         }
     }
@@ -399,7 +396,7 @@ async::task<> ServedProject::metadata_flush_task() {
     // Time is the feature: the debounce.
     co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
-    co_await persist(project);
+    co_await project.persist();
     if(project.precompiled_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
         co_await async::sleep(chrono::seconds(5));
@@ -433,7 +430,7 @@ void ServedProject::forget_evicted_pchs() {
         auto it = ranges::find_if(project.pch_cache, [&](const auto& entry) {
             return entry.second.blob == evicted.key;
         });
-        if(it != project.pch_cache.end() && !pch_building(project, it->getKey())) {
+        if(it != project.pch_cache.end() && !project.pch_building(it->getKey())) {
             project.pch_cache.erase(it);
         }
     }

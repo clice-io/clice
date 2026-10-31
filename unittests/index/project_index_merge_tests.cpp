@@ -10,10 +10,8 @@ import :index.instantiation_shard;
 import :index.project_index;
 import :index.symbol;
 import :index.tu_index;
-import :project.background_index;
+import :project.indexer;
 import :project.project;
-import :project.reindex_queue;
-import :project.save;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
@@ -99,7 +97,7 @@ int use() { return 1; }
     DepState input{.path_id = header, .version = project.file_table.intern_version(header, 1)};
     auto report = project.index.merge(planted, {input});
     ZASSERT(report);
-    apply_report(fx.project, *report);
+    fx.project.apply_report(*report);
     auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
     llvm::SmallVector<Fid> reached;
     project.index.for_each_file_of_local(helper, header, [&](Fid file) {
@@ -547,7 +545,7 @@ ZEST_CASE(TouchStaysFresh) {
     open_store(x.tmp, x.f.project);
     ZASSERT(x.setup());
     x.f.save();
-    ZASSERT(!has_unsaved_state(x.f.project));
+    ZASSERT(!x.f.project.has_unsaved_state());
     ZASSERT(!x.f.needs_reindex(x.src));
 
     // Same bytes, new mtime: the stat fast path misses, the hash proves a
@@ -555,7 +553,7 @@ ZEST_CASE(TouchStaysFresh) {
     ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.begin_round();
     ZASSERT(!x.f.needs_reindex(x.src));
-    ZASSERT(!has_unsaved_state(x.f.project));
+    ZASSERT(!x.f.project.has_unsaved_state());
 }
 
 ZEST_CASE(PreservedMtimeEditStale) {

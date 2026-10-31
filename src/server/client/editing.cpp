@@ -7,7 +7,6 @@ import :feature.protocol;
 import :feature.rename;
 import :feature.signature_help;
 import :project.build;
-import :project.queries;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -509,7 +508,7 @@ void LSPClient::register_editing() {
                                              {.files = texts.files,
                                               .editable = editable,
                                               .read = read,
-                                              .units_pending = units_pending(project)});
+                                              .units_pending = project.units_pending()});
             if(plan.blocked()) {
                 co_await async::fail(request_failed(feature::refusal(plan)));
             }

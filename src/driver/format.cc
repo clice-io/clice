@@ -290,7 +290,7 @@ Result format_project(const Request& options) {
         if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
             result.error =
-                std::format("Nothing to format: {}", why_no_members(project, options.root));
+                std::format("Nothing to format: {}", project.why_no_members(options.root));
             return result;
         }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {

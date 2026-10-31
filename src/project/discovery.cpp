@@ -168,13 +168,13 @@ Spelling find_project_root(const Spelling& start) {
     return Spelling(found);
 }
 
-std::string deeper_databases_hint(const Project& project) {
-    if(project.build.declares_sources()) {
+std::string Project::deeper_databases_hint() const {
+    if(build.declares_sources()) {
         return {};
     }
-    CanonicalRef root = project.root;
+    CanonicalRef root = this->root;
     std::vector<std::string> names;
-    for(auto& database: deeper_compile_commands(root, project.settings.project.cache_identity)) {
+    for(auto& database: deeper_compile_commands(root, settings.project.cache_identity)) {
         auto directory = database.parent();
         auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
         path::to_slash(name);
@@ -190,19 +190,17 @@ std::string deeper_databases_hint(const Project& project) {
         llvm::join(names, ", "));
 }
 
-bool found_unreadable_database(const Project& project) {
-    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
-                          [&](std::size_t i) {
-                              return !project.cdb.loaded(SourceID(i)) &&
-                                     fs::exists(project.cdb.source_path(SourceID(i)));
-                          });
+bool Project::found_unreadable_database() const {
+    return ranges::any_of(views::iota(std::size_t(0), cdb.source_count()), [&](std::size_t i) {
+        return !cdb.loaded(SourceID(i)) && fs::exists(cdb.source_path(SourceID(i)));
+    });
 }
 
-std::string why_no_members(const Project& project, llvm::StringRef root) {
+std::string Project::why_no_members(llvm::StringRef root) const {
     std::vector<std::string> empty;
-    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
-        auto path = project.cdb.source_path(SourceID(i));
-        if(project.cdb.loaded(SourceID(i))) {
+    for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
+        auto path = cdb.source_path(SourceID(i));
+        if(cdb.loaded(SourceID(i))) {
             empty.push_back(path.str());
         } else if(fs::exists(path)) {
             return std::format("{} cannot be read; the error above says why.", path.str());
@@ -215,7 +213,7 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
                            llvm::join(empty, ", "),
                            empty.size() == 1 ? "lists" : "list");
     }
-    if(project.build.declares_sources()) {
+    if(build.declares_sources()) {
         return "no file on disk matches a rule with a default_command.";
     }
     std::vector<std::string> nested;
@@ -236,7 +234,7 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
     return std::format("no compile_commands.json found in {} or its direct subdirectories.{}{}",
                        root.str(),
                        projects,
-                       deeper_databases_hint(project));
+                       deeper_databases_hint());
 }
 
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root) {

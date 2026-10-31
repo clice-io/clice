@@ -24,8 +24,6 @@ import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
-import :project.command;
-import :project.hosting;
 import :project.project;
 import :semantic.symbol;
 import :settings.settings;
@@ -628,11 +626,10 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        return resolve_command(project,
-                               path_id,
-                               input.directory,
-                               input.arguments,
-                               {.choice = choice, .preprocess = true});
+        return project.resolve_command(path_id,
+                                       input.directory,
+                                       input.arguments,
+                                       {.choice = choice, .preprocess = true});
     };
     auto resolution = resolve();
     if(resolution.trial && !resolution.self_contained) {
@@ -646,11 +643,11 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         });
         if(unit->completed()) {
             auto& files = project.file_table;
-            commit_trial(project,
-                         *resolution.trial,
-                         feature::diagnostics(*unit),
-                         files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
-                         capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
+            project.commit_trial(
+                *resolution.trial,
+                feature::diagnostics(*unit),
+                files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
+                capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
             resolution = resolve();
         }
     }
@@ -670,7 +667,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
-    if(auto writer = pch_unit(project, path_id, resolution)) {
+    if(auto writer = project.pch_unit(path_id, resolution)) {
         if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }

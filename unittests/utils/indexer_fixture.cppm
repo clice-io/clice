@@ -6,11 +6,8 @@ import :index.database;
 import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
-import :project.background_index;
-import :project.command;
+import :project.indexer;
 import :project.project;
-import :project.reindex_queue;
-import :project.save;
 import :support.bytes;
 import :support.prelude;
 import :unittests.utils.cdb_helper;
@@ -62,11 +59,11 @@ struct IndexerFixture {
         std::uint64_t command = 0;
         if(auto view = index::TUIndex::from_bytes(data); view.loaded()) {
             auto unit = files.intern(Spelling::absolute(view.path(view.focus_file())));
-            command = command_identity(project, unit);
+            command = project.command_identity(unit);
         }
         auto report = project.index.merge(data, {}, command);
         if(report) {
-            apply_report(project, *report);
+            project.apply_report(*report);
         }
         return report.has_value();
     }
@@ -74,27 +71,27 @@ struct IndexerFixture {
     /// One save, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        apply_report(project, co_await save_project(project, search));
+        project.apply_report(co_await project.save_project(search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
     /// with the build on a writable database. Returns the decode result
     /// (false = a header of another format, or corrupt).
     bool load() {
-        auto result = load_saved(project, project.database && !project.database->read_only());
-        apply_report(project, result.report);
+        auto result = project.load_saved(project.database && !project.database->read_only());
+        project.apply_report(result.report);
         return result.decoded;
     }
 
     void drop_index(Fid id) {
         index::IndexReport report;
         project.index.drop(id, report);
-        apply_report(project, report);
+        project.apply_report(report);
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
     void reopen_database() {
-        reopen_fresh_database(project);
+        project.reopen_fresh_database();
     }
 
     /// Record a terminally failed attempt, as the index task's failure
@@ -145,7 +142,7 @@ struct IndexerFixture {
     /// does — waking waiters requires a running loop.
     void wake_waiters(Fid id, std::uint64_t seq) {
         auto body = [&]() -> async::task<> {
-            wake_attempt_waits(project, id, seq);
+            project.wake_attempt_waits(id, seq);
             co_return;
         };
         auto task = body();
@@ -180,7 +177,7 @@ struct IndexerFixture {
     /// One background round as a schedulable task, for tests that need to
     /// interleave other tasks with it.
     async::task<> round_task() {
-        return run_index_round(project);
+        return project.run_index_round();
     }
 
     /// Run one background round to completion on the fixture's loop.

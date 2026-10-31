@@ -3,15 +3,12 @@ module clice;
 import :command.database;
 import :index.database;
 import :index.project_index;
-import :project.background_index;
 import :project.build;
 import :project.build_snapshot;
 import :project.discovery;
-import :project.hosting;
 import :project.pch;
 import :project.pcm;
 import :project.project;
-import :project.save;
 import :project.unit;
 import :settings.settings;
 import :support.json;
@@ -39,8 +36,8 @@ async::task<> Project::checkpoint() {
     // thread pool when a shutdown cancels the checkpoint, holding up the
     // final save behind seconds of derived work: the round end does them,
     // and a round with nothing queued builds what the search index is owed.
-    co_await persist(*this, index::SearchRebuild::Never);
-    schedule_index(*this);
+    co_await persist(index::SearchRebuild::Never);
+    schedule_index();
 }
 
 async::task<> Project::shutdown() {
@@ -49,7 +46,7 @@ async::task<> Project::shutdown() {
     // index dominates a cold round's save: the index commits with no more
     // than a run of the changes since the last save, and the next session's
     // first idle save builds the rest.
-    co_await persist(*this, index::SearchRebuild::Never);
+    co_await persist(index::SearchRebuild::Never);
 }
 
 void Project::close() {
@@ -130,7 +127,7 @@ CDBDiff Project::refresh_provisional() {
         // member all the same: the host of the headers it includes.
         std::optional<Candidate> command;
         if(!hosted) {
-            if(auto borrowed = borrowed_command(*this, file, false)) {
+            if(auto borrowed = borrowed_command(file, false)) {
                 command = borrowed;
             } else {
                 command = {.base = build.builtin(file_table.resolve(file)),
@@ -452,11 +449,11 @@ index::DatabaseKey database_key(const Settings& settings,
     return {.configuration = configuration.str(), .resolved = resolved.str()};
 }
 
-std::string damaged_index_error(const Project& project) {
+std::string Project::damaged_index_error() const {
     return std::format(
         "the index database at {} is damaged (the log above says where); delete that "
         "directory and run `clice index` to rebuild it",
-        index::database_directory(*project.store, project.database_key));
+        index::database_directory(*store, database_key));
 }
 
 Project::Opened Project::open(const OpenOptions& options) {
@@ -504,7 +501,7 @@ Project::Opened Project::open(const OpenOptions& options) {
         if(options.index == Index::Read && options.build != Build::Members) {
             opened.unreadable = unreadable_index(index.open(*database), cache_dir);
         } else {
-            auto saved = load_saved(*this, options.build == Build::Members);
+            auto saved = load_saved(options.build == Build::Members);
             opened.report = std::move(saved.report);
             // A reader takes no fresh database for one it cannot read.
             if(!saved.decoded && database && database->read_only()) {

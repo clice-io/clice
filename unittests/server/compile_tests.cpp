@@ -2,9 +2,9 @@ module clice;
 
 import :feature.diagnostics;
 import :feature.hover;
-import :project.graph;
 import :project.hosting;
 import :project.pcm;
+import :project.task_graph;
 import :server.master;
 import :server.served_project;
 import :server.session;

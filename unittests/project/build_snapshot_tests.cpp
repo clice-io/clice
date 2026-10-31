@@ -2,10 +2,8 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :project.background_index;
 import :project.build_snapshot;
-import :project.reindex_queue;
-import :project.save;
+import :project.indexer;
 import :settings.settings;
 import :support.bytes;
 import :unittests.utils.cdb_helper;
@@ -509,11 +507,11 @@ ZEST_CASE(CDBWriteFailureRetried) {
     // failed batch takes both, and both stay owed until a save commits them
     // (`clice index` fails on unsaved state after the final save).
     ZASSERT(!storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
-    ZASSERT(has_unsaved_state(f.project));
+    ZASSERT(f.project.has_unsaved_state());
     storage->fail = false;
     f.save();
     ZASSERT(storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
-    ZASSERT(!has_unsaved_state(f.project));
+    ZASSERT(!f.project.has_unsaved_state());
 }
 
 ZEST_CASE(MissingSnapshotRewritten) {
@@ -544,10 +542,10 @@ ZEST_CASE(MissingSnapshotRewritten) {
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
-    ZASSERT(has_unsaved_state(f.project));
+    ZASSERT(f.project.has_unsaved_state());
     f.save();
     ZASSERT(f.project.database->contains(index::BlobKind::BuildSnapshot, "cdb"));
-    ZASSERT(!has_unsaved_state(f.project));
+    ZASSERT(!f.project.has_unsaved_state());
 }
 
 ZEST_CASE(SnapshotHoldsSourcesOnly) {
@@ -710,14 +708,14 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
 
     index::IndexReport report;
     auto body = [&]() -> async::task<> {
-        report = co_await save_project(f.project);
+        report = co_await f.project.save_project();
     };
     auto task = body();
     f.loop.schedule(task);
     f.loop.run();
 
     ZASSERT(report.owes_retry);
-    apply_report(f.project, report);
+    f.project.apply_report(report);
 
     f.save();
     auto blob = f.project.database->read(index::BlobKind::BuildSnapshot, "cdb");

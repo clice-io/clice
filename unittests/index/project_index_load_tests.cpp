@@ -5,9 +5,8 @@ import :index.format;
 import :index.project_index;
 import :index.project_records;
 import :index.symbol_query;
+import :project.indexer;
 import :project.project;
-import :project.reindex_queue;
-import :project.save;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -563,7 +562,7 @@ ZEST_CASE(CommandRecordedAcrossSave) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    ZASSERT(load_saved(f.project, /*reconcile=*/false).decoded);
+    ZASSERT(f.project.load_saved(/*reconcile=*/false).decoded);
     auto id = f.project.file_table.intern(Spelling::absolute(src));
     ZEXPECT(f.project.index.indexed_command(id) == 42u);
     ZEXPECT(f.project.index.manifest(id)->command == 42u);

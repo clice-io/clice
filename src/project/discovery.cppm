@@ -5,8 +5,6 @@ import :vfs.path;
 
 namespace clice {
 
-struct Project;
-
 /// Whether `dir` holds a configuration file.
 bool configured(const Spelling& dir);
 
@@ -51,24 +49,6 @@ bool defines_project(CanonicalRef dir);
 /// for a file outside every served folder and the command line from the
 /// current directory. Empty when no ancestor has either.
 Spelling find_project_root(const Spelling& start);
-
-/// The sentence the guidance of a project without a database ends with:
-/// the rule that loads the compile_commands.json files discovery passes
-/// over (deeper_compile_commands). Empty when there is none, or the rules
-/// declare the build's sources.
-std::string deeper_databases_hint(const Project& project);
-
-/// Whether a database the load found on disk could not be read, which its
-/// load logged the reason for.
-bool found_unreadable_database(const Project& project);
-
-/// Why the build has no member, completing a batch command's "Nothing to
-/// <verb>: ": a database it found that cannot be read, does not exist yet
-/// or lists no file; the rules' default commands claiming no file; else
-/// that no database was found in `root` or its direct subdirectories, the
-/// subdirectories left out as projects of their own, and the deeper ones
-/// there are.
-std::string why_no_members(const Project& project, llvm::StringRef root);
 
 /// Where a `compile_commands.json` is looked for in `start` and its
 /// ancestors up to `project_root`, nearest first: none in or below a

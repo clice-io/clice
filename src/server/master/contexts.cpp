@@ -28,7 +28,7 @@ const MasterServer::ChoiceEntry* MasterServer::choice(Fid path_id) const {
 
 void MasterServer::load_choices(ServedProject& project) {
     bool dropped = false;
-    for(auto& [file, saved]: parse_choices(project.project, project.project.choices.bytes)) {
+    for(auto& [file, saved]: project.project.parse_choices(project.project.choices.bytes)) {
         auto [it, inserted] = choices.try_emplace(file);
         auto& entry = it->second;
         // Of two projects that saved a choice for one file, the deeper root
@@ -46,7 +46,7 @@ void MasterServer::load_choices(ServedProject& project) {
             entry = {};
             save_choices(*other);
         }
-        bool active = choice_holds(project.project, file, saved);
+        bool active = project.project.choice_holds(file, saved);
         entry = {.choice = std::move(saved), .project = &project, .active = active};
     }
     if(dropped) {
@@ -60,7 +60,7 @@ bool MasterServer::recheck_choice(Fid path_id) {
         return false;
     }
     auto& entry = it->second;
-    bool active = choice_holds(entry.project->project, path_id, entry.choice);
+    bool active = entry.project->project.choice_holds(path_id, entry.choice);
     if(active == entry.active) {
         return false;
     }
@@ -79,7 +79,7 @@ void MasterServer::save_choices(ServedProject& project) {
         }
     }
     auto& blob = project.project.choices;
-    blob.bytes = serialize_choices(project.project, saved);
+    blob.bytes = project.project.serialize_choices(saved);
     blob.dirty = true;
     if(project.project.request_flush) {
         project.project.request_flush();
@@ -116,12 +116,12 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                                                      const ext::QueryContextParams& params) {
     constexpr std::size_t page_size = 10;
     auto& owner = owner_of(path_id);
-    auto items = list_contexts(owner.project, path_id);
+    auto items = owner.project.list_contexts(path_id);
     for(auto& project: projects) {
         if(project.get() == &owner) {
             continue;
         }
-        for(auto& item: list_contexts(project->project, path_id)) {
+        for(auto& item: project->project.list_contexts(path_id)) {
             if(ranges::none_of(items, [&](const ListedContext& known) {
                    return known.file == item.file && known.occurrence == item.occurrence &&
                           known.command_hash == item.command_hash;
@@ -162,7 +162,7 @@ async::task<ext::SwitchContextResult>
         std::string directory;
         std::vector<std::string> arguments;
         co_await project.document_command(path_id, directory, arguments, &wanted);
-        co_return ranges::any_of(list_contexts(project.project, path_id),
+        co_return ranges::any_of(project.project.list_contexts(path_id),
                                  [&](const ListedContext& item) {
                                      return item.file == context_path_id &&
                                             item.occurrence == params.occurrence &&
@@ -192,11 +192,10 @@ async::task<ext::SwitchContextResult>
     }
     auto* previous = choice(path_id) ? choice(path_id)->project : nullptr;
     choices[path_id] = {
-        .choice = choice_of(target->project,
-                            path_id,
-                            context_path_id,
-                            params.occurrence,
-                            params.command_hash),
+        .choice = target->project.choice_of(path_id,
+                                            context_path_id,
+                                            params.occurrence,
+                                            params.command_hash),
         .project = target.get(),
     };
     save_choices(*target);
@@ -259,7 +258,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
-    if(auto item = current_context_item(project, path_id, active, resolution)) {
+    if(auto item = project.current_context_item(path_id, active, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
     if(auto* entry = choice(path_id); entry && !entry->active) {

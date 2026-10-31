@@ -1,8 +1,6 @@
 module clice;
 
 import :command.table;
-import :project.command;
-import :project.contexts;
 import :project.hosting;
 import :project.project;
 import :server.master;
@@ -48,7 +46,7 @@ void saved(Project& owner, Fid path_id, const ContextChoice& choice) {
     std::pair<Fid, const ContextChoice*> choices[] = {
         {path_id, &choice}
     };
-    owner.choices.bytes = serialize_choices(owner, choices);
+    owner.choices.bytes = owner.serialize_choices(choices);
 }
 
 ZEST_CASE(EditorSharesContext) {
@@ -69,14 +67,14 @@ ZEST_CASE(EditorSharesContext) {
     // Its trial found it needs the includer's context.
     std::string directory;
     std::vector<std::string> arguments;
-    auto first = resolve_command(project, header, directory, arguments, {.preprocess = true});
+    auto first = project.resolve_command(header, directory, arguments, {.preprocess = true});
     ZASSERT(first.trial);
     auto version = current_dep(project.file_table, header)->version;
     project.hosting.trials.commit(*first.trial,
                                   {.self_contained = false, .text = version, .disk = version},
                                   {});
 
-    auto background = resolve_command(project, header, directory, arguments);
+    auto background = project.resolve_command(header, directory, arguments);
     ZASSERT(background.ref.source == CommandSource::Host);
     ZASSERT(background.host == host);
     ZASSERT(background.synthesized != nullptr);
@@ -98,7 +96,7 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
 
-    resolve_command(project, file, directory, arguments);
+    project.resolve_command(file, directory, arguments);
     ZASSERT(!fx.entry(file).guessed);
 
     ZASSERT(served.resolve_command(file, directory, arguments).ref.source ==
@@ -110,7 +108,7 @@ ZEST_CASE(GuessedTracksEditorOnly) {
               build_cdb_json({
                   {tmp.root, path, {}}
     }));
-    resolve_command(project, file, directory, arguments);
+    project.resolve_command(file, directory, arguments);
     ZASSERT(fx.entry(file).guessed);
     ZASSERT(served.resolve_command(file, directory, arguments).ref.source ==
             CommandSource::Database);
@@ -136,13 +134,13 @@ ZEST_CASE(StaleHostChoiceKeepsUnit) {
     project.dep_graph.set_includes(ranked, 0, {{part}});
     project.dep_graph.build_reverse_map();
     for(auto host: {chosen, ranked}) {
-        take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+        project.take_tree(project.tree_request(host, project.build.commands(host).front()));
     }
 
     ContextChoice choice{.host_path_id = chosen};
     std::string directory;
     std::vector<std::string> arguments;
-    auto resolution = resolve_command(project, part, directory, arguments, {.choice = &choice});
+    auto resolution = project.resolve_command(part, directory, arguments, {.choice = &choice});
     ZEXPECT(resolution.ref.source == CommandSource::Database);
     ZEXPECT(ranges::contains(arguments, "OWN"));
 }
@@ -177,7 +175,7 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
 
     // ...but background indexing must never see user choices.
     arguments.clear();
-    resolve_command(project, file, directory, arguments);
+    project.resolve_command(file, directory, arguments);
     ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
 }
 
@@ -234,7 +232,7 @@ ZEST_CASE(ValidChoiceStaysActive) {
     project.dep_graph.build_reverse_map();
     choose(header, ContextChoice{host, std::nullopt, ""});
 
-    ZASSERT(choice_holds(project, header, server.choice(header)->choice));
+    ZASSERT(project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
 }
@@ -260,8 +258,8 @@ ZEST_CASE(GoneOccurrenceGoesInactive) {
     // the choice holds until one does.
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
-    ZASSERT(!choice_holds(project, header, server.choice(header)->choice));
+    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
+    ZASSERT(!project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);
 }
@@ -342,7 +340,7 @@ ZEST_CASE(DeeperChoiceWins) {
     ZASSERT(entry->project == &inner);
     ZASSERT(entry->choice.command_hash == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(parse_choices(project, project.choices.bytes).empty());
+    ZASSERT(project.parse_choices(project.choices.bytes).empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 
@@ -359,7 +357,7 @@ ZEST_CASE(ShallowerChoiceDropped) {
     ZASSERT(entry->project == &inner);
     ZASSERT(entry->choice.command_hash == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(parse_choices(project, project.choices.bytes).empty());
+    ZASSERT(project.parse_choices(project.choices.bytes).empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 

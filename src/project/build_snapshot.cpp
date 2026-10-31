@@ -4,7 +4,6 @@ import :command.file_kind;
 import :index.database;
 import :index.project_index;
 import :project.build_snapshot;
-import :project.command;
 import :project.discovery;
 import :project.project;
 import :support.json;
@@ -192,7 +191,7 @@ void BuildSnapshot::reconcile(Project& project, index::IndexReport& report) {
             project_index.drop(unit, report);
             continue;
         }
-        auto command = command_identity(project, unit);
+        auto command = project.command_identity(unit);
         if(command == 0) {
             if(!persisted) {
                 continue;

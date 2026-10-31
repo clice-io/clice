@@ -6,14 +6,13 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
-import :project.background_index;
 import :project.command;
-import :project.graph;
 import :project.hosting;
 import :project.pch;
 import :project.pcm;
 import :project.precompiled;
 import :project.project;
+import :project.task_graph;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -47,7 +46,7 @@ static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> i
                                                            const Project& project) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
-        auto failure = module_build_failure(project, module);
+        auto failure = project.module_build_failure(module);
         if(!failure) {
             continue;
         }
@@ -94,13 +93,13 @@ static std::vector<feature::ModuleChoice> module_choices(const ModuleDeps& impor
 std::optional<PCHRequest> ServedProject::declared_pch(Fid path_id,
                                                       const Resolution& resolution,
                                                       const ModuleDeps& imports) {
-    auto unit = pch_unit(project, path_id, resolution);
+    auto unit = project.pch_unit(path_id, resolution);
     if(!unit) {
         return std::nullopt;
     }
-    return declared_pch_request(project,
-                                *unit,
-                                project.settings.project.skip_header_bodies && !imports.modular());
+    return project.declared_pch_request(*unit,
+                                        project.settings.project.skip_header_bodies &&
+                                            !imports.modular());
 }
 
 ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
@@ -226,7 +225,7 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
         .partial = partial,
     };
     if(imported) {
-        plan.request.pcms = imported_pcms(project, imports.resolved());
+        plan.request.pcms = project.imported_pcms(imports.resolved());
         plan.request.modules = std::move(modules);
     }
     return plan;
@@ -309,7 +308,7 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
                  *consumed,
                  file);
         suspects.pch = *consumed;
-        pch_consume_failed(project, *consumed);
+        project.pch_consume_failed(*consumed);
         return true;
     }
     record_crash(session, feature::RequestKind::Compile, worker::death_of(error), error.message);
@@ -351,10 +350,9 @@ void ServedProject::retry_after_save(Session& session) {
     if(resolution.trial) {
         auto compiled = latest_at(path_id, session.version);
         bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
-        if(saved_trial(project,
-                       *resolution.trial,
-                       project.file_table.intern_version(path_id, session.hash),
-                       leans)) {
+        if(project.saved_trial(*resolution.trial,
+                               project.file_table.intern_version(path_id, session.hash),
+                               leans)) {
             invalidate(path_id);
         }
     }
@@ -380,20 +378,20 @@ void ServedProject::retry_after_save(Session& session) {
     };
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        retry |= forget_build_failure(project, modules[i]);
+        retry |= project.forget_build_failure(modules[i]);
         add_imports(module_node(modules[i]));
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
-            retry |= forget_build_failure(project, *compiled->pch_key);
-        } else if(auto preamble = preamble_state(project, *compiled->pch_key);
+            retry |= project.forget_build_failure(*compiled->pch_key);
+        } else if(auto preamble = project.preamble_state(*compiled->pch_key);
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
                                              })) {
-            discard_pch(project, *compiled->pch_key);
+            project.discard_pch(*compiled->pch_key);
             retry = true;
         }
     }
@@ -466,7 +464,7 @@ void ServedProject::each_input(Fid path_id,
         if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
             continue;
         }
-        if(auto* inputs = build_inputs(project, dep.file())) {
+        if(auto* inputs = project.build_inputs(dep.file())) {
             visit(*inputs);
         }
     }
@@ -659,12 +657,11 @@ async::task<std::optional<ModuleDeps>>
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
     // too: a durable import edge earned earlier must stop cascading here.
-    auto deps = co_await direct_deps(project,
-                                     path_id,
-                                     resolution,
-                                     arguments,
-                                     directory,
-                                     std::optional<llvm::StringRef>(text));
+    auto deps = co_await project.direct_deps(path_id,
+                                             resolution,
+                                             arguments,
+                                             directory,
+                                             std::optional<llvm::StringRef>(text));
     project.graph.set_edges(attempt.node(), deps.declared);
     auto kind = feature::RequestKind::PCM;
     auto modules = deps.resolved();
@@ -688,7 +685,7 @@ async::task<std::optional<ModuleDeps>>
             // Still an edge when skipped: the declaration above keeps it, so a
             // later build of it, by an importer whose record lets it retry,
             // re-dirties this document.
-            if(auto* crash = build_crash(project, dep)) {
+            if(auto* crash = project.build_crash(dep)) {
                 if(!retry) {
                     // Booked once: an attempt on unchanged inputs is no new
                     // crash.
@@ -698,15 +695,15 @@ async::task<std::optional<ModuleDeps>>
                     crashed = true;
                     continue;
                 }
-                forget_build_failure(project, dep);
+                project.forget_build_failure(dep);
             }
-            switch(co_await attempt.depend(module_node(dep), module_work(project, dep))) {
+            switch(co_await attempt.depend(module_node(dep), project.module_work(dep))) {
                 case Result::Success: break;
                 case Result::Failed:
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
-                    if(auto* crash = build_crash(project, dep)) {
+                    if(auto* crash = project.build_crash(dep)) {
                         record_crash(session, kind, crash->death, crash->cause);
                         crashed = true;
                         retry = false;
@@ -715,7 +712,7 @@ async::task<std::optional<ModuleDeps>>
                 case Result::Stale: co_return std::nullopt;
             }
         }
-        if(imports_present(project, modules)) {
+        if(project.imports_present(modules)) {
             break;
         }
     }
@@ -852,10 +849,10 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             enter_phase(path_id, CompilePhase::Preamble);
             if(auto request = declared_pch(path_id, resolution, *imports)) {
                 auto key = request->pch_key;
-                switch(co_await attempt.depend(pch_node(key),
-                                               pch_work(project, std::move(*request)))) {
+                switch(
+                    co_await attempt.depend(pch_node(key), project.pch_work(std::move(*request)))) {
                     case Result::Success:
-                        if(!pch_reads(project, key, path_id)) {
+                        if(!project.pch_reads(key, path_id)) {
                             base_pch = key;
                         }
                         break;
@@ -881,15 +878,15 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                     // A preamble whose build crashed a worker — for this
                     // document or another sharing it — is refused until
                     // this one's record lets it retry.
-                    if(auto* crash = build_crash(project, pch_key)) {
+                    if(auto* crash = project.build_crash(pch_key)) {
                         if(!pch_retry) {
                             record_crash(session, PCH, crash->death, crash->cause);
                             co_return Result::Failed;
                         }
-                        forget_build_failure(project, pch_key);
+                        project.forget_build_failure(pch_key);
                     }
                     switch(co_await attempt.depend(pch_node(pch_key),
-                                                   pch_work(project, std::move(plan.request)))) {
+                                                   project.pch_work(std::move(plan.request)))) {
                         case Result::Success:
                             // Adoption is gated on the attempt's result and
                             // its own validity: a newer generation or a
@@ -910,7 +907,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                             // The build itself crashed a worker: this attempt
                             // stops before the parse, which would feed the
                             // same preamble to one more worker.
-                            if(auto* crash = build_crash(project, pch_key)) {
+                            if(auto* crash = project.build_crash(pch_key)) {
                                 record_crash(session, PCH, crash->death, crash->cause);
                                 co_return Result::Failed;
                             }
@@ -947,7 +944,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // the pair's fault: the preamble's PCH, else the build's.
         auto consumed_pch = adopted_pch ? adopted_pch : base_pch;
 
-        params.pcms = imported_pcms(project, imports->resolved());
+        params.pcms = project.imported_pcms(imports->resolved());
 
         if(!ticket.fresh()) {
             LOG_INFO("compile: outdated before send for {}", file_path);
@@ -961,7 +958,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // below and rehash the map from under a held pointer.
         std::shared_ptr<index::TUIndex> preamble_state;
         if(adopted_pch.has_value()) {
-            preamble_state = clice::preamble_state(project, *adopted_pch);
+            preamble_state = project.preamble_state(*adopted_pch);
         }
         if(preamble_state) {
             auto regions = preamble_state->inactive_regions();
@@ -1071,7 +1068,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             // finds it changed, which overtakes this attempt), the waiter
             // starts another, and without the stopped key each would
             // rebuild and fail forever.
-            pch_consume_failed(project, *consumed_pch);
+            project.pch_consume_failed(*consumed_pch);
             if(!precompiled_retried) {
                 precompiled_retried = true;
                 // Redo the same send so the trial semantics are untouched
@@ -1152,11 +1149,10 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                     trace.append(it->second.deps.begin(), it->second.deps.end());
                 }
             }
-            commit_trial(project,
-                         *trial,
-                         diagnostics,
-                         project.file_table.intern_version(path_id, session->hash),
-                         std::move(trace));
+            project.commit_trial(*trial,
+                                 diagnostics,
+                                 project.file_table.intern_version(path_id, session->hash),
+                                 std::move(trace));
             if(missing_context_errors(diagnostics) > 0) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
                 continue;
@@ -1180,7 +1176,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // fresh failure to read the shared key, and clearing here would
         // reset the count it just paid for.
         if(still_current && consuming_pch && !result.value().pch_suspect) {
-            pch_consume_succeeded(project, *consumed_pch);
+            project.pch_consume_succeeded(*consumed_pch);
         }
 
         auto& index_data = result.value().tu_index_data;
@@ -1246,8 +1242,8 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // FIXME: released even while another open document still fails on that
         // preamble: its next compile runs the failing build once more.
         if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
-           !build_crash(project, *entry.latest->pch_key)) {
-            forget_build_failure(project, *entry.latest->pch_key);
+           !project.build_crash(*entry.latest->pch_key)) {
+            project.forget_build_failure(*entry.latest->pch_key);
         }
         entry.latest = std::move(next);
         if(tidy_config) {
@@ -1276,7 +1272,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         if(server.client && owns(*session)) {
             server.client->index_served.erase(session->path_id);
         }
-        schedule_index(project);
+        project.schedule_index();
         co_return still_current ? Result::Success : Result::Stale;
     }
     // Every arm of the two-send loop commits or returns; the trial's
@@ -1305,8 +1301,8 @@ async::task<std::optional<std::string>>
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
-        if(co_await acquire_pch(project, std::move(*request)) == Result::Success &&
-           !pch_reads(project, key, path_id)) {
+        if(co_await project.acquire_pch(std::move(*request)) == Result::Success &&
+           !project.pch_reads(key, path_id)) {
             base = key;
         }
     }
@@ -1334,15 +1330,15 @@ async::task<std::optional<std::string>>
     // (the caller checks); only a compile the document's record lets
     // retry builds it again.
     auto kind = feature::RequestKind::PCH;
-    if(auto* crash = build_crash(project, pch_key)) {
+    if(auto* crash = project.build_crash(pch_key)) {
         // Booked once: a request on unchanged inputs is no new crash.
         if(!session->crash_record(kind)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
     }
-    if(co_await acquire_pch(project, std::move(plan.request)) != Result::Success) {
-        if(auto* crash = build_crash(project, pch_key)) {
+    if(co_await project.acquire_pch(std::move(plan.request)) != Result::Success) {
+        if(auto* crash = project.build_crash(pch_key)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
@@ -1379,13 +1375,12 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse
     // needs it.
-    auto imports = co_await build_imports(project,
-                                          node(path_id),
-                                          path_id,
-                                          resolution,
-                                          arguments,
-                                          directory,
-                                          text);
+    auto imports = co_await project.build_imports(node(path_id),
+                                                  path_id,
+                                                  resolution,
+                                                  arguments,
+                                                  directory,
+                                                  text);
     if(!imports) {
         co_return false;
     }
@@ -1406,7 +1401,7 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
         }
     }
 
-    inputs.pcms = imported_pcms(project, imports->resolved());
+    inputs.pcms = project.imported_pcms(imports->resolved());
 
     co_return true;
 }

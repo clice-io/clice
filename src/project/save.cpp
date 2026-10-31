@@ -4,7 +4,6 @@ import :index.database;
 import :index.project_index;
 import :project.build;
 import :project.build_snapshot;
-import :project.precompiled;
 import :project.project;
 import :project.save;
 import :support.bytes;
@@ -13,69 +12,67 @@ import :support.timer;
 
 namespace clice {
 
-void recover_corrupt_database(Project& project, index::IndexReport& report) {
+void Project::recover_corrupt_database(index::IndexReport& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-    for(auto unit: project.build.members()) {
+    for(auto unit: build.members()) {
         report.add_reindex(unit);
     }
     // No pass over the build reaches a unit of its own (a header indexed
     // with a borrowed command): as many as the records still name.
-    project.index.for_each_unit([&](Fid unit) {
-        if(project.build.entries(unit).empty()) {
+    index.for_each_unit([&](Fid unit) {
+        if(build.entries(unit).empty()) {
             report.add_reindex(unit);
         }
     });
     // The fresh database records the build snapshot at the next save.
     report.owes_retry = true;
-    reopen_fresh_database(project);
+    reopen_fresh_database();
 }
 
-void reopen_fresh_database(Project& project) {
-    project.database->condemn();
-    project.database.reset();
+void Project::reopen_fresh_database() {
+    database->condemn();
+    database.reset();
     // The index reads its records in place: it starts over with the
     // database, as does the snapshot of the build it was saved with.
-    project.index.clear();
-    project.build_snapshot.forget_persisted();
-    project.database = index::open_database(*project.store, project.database_key);
+    index.clear();
+    build_snapshot.forget_persisted();
+    database = index::open_database(*store, database_key);
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every
     // rebuildable precompiled record.
-    project.mark_precompiled_dirty();
-    project.choices.dirty = !project.choices.bytes.empty();
+    mark_precompiled_dirty();
+    choices.dirty = !choices.bytes.empty();
 }
 
-bool has_unsaved_state(const Project& project) {
-    return project.index.has_unsaved_state() || project.build_snapshot.owes_save(project);
+bool Project::has_unsaved_state() const {
+    return index.has_unsaved_state() || build_snapshot.owes_save(*this);
 }
 
-async::task<index::IndexReport> save_project(Project& project, index::SearchRebuild search) {
+async::task<index::IndexReport> Project::save_project(index::SearchRebuild search) {
     index::IndexReport report;
     // A read-only session (batch lint, stats) keeps its metadata in memory
     // and exits with it — it must never write into a database a concurrent
     // writer owns.
-    if(!project.database || project.database->read_only()) {
+    if(!database || database->read_only()) {
         co_return report;
     }
-    co_await project.save_gate.acquire();
-    auto gate = llvm::make_scope_exit([&] { project.save_gate.release(); });
+    co_await save_gate.acquire();
+    auto gate = llvm::make_scope_exit([&] { save_gate.release(); });
     // Re-checked: the gate holder we just waited out may have hit
     // corruption and failed to reopen the database.
-    if(!project.database || project.database->read_only()) {
+    if(!database || database->read_only()) {
         co_return report;
     }
-    auto& db = *project.database;
-    auto& index = project.index;
-    auto& snapshot = project.build_snapshot;
-    auto& choices = project.choices;
+    auto& db = *database;
+    auto& snapshot = build_snapshot;
     ScopedTimer timer;
 
     // A read since the last save met a damaged page or record: nothing more
     // goes into the database, which is discarded, whether or not anything
     // changed since.
     if(db.corrupted() || index.damaged()) {
-        recover_corrupt_database(project, report);
+        recover_corrupt_database(report);
         co_return report;
     }
 
@@ -89,8 +86,8 @@ async::task<index::IndexReport> save_project(Project& project, index::SearchRebu
     // snapshot itself is owed a rewrite): a pure CDB change dirties no blob
     // on its own, so the next dirtying save carries the fresh snapshot.
     std::optional<std::string> snapshot_bytes;
-    if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(project)) {
-        snapshot_bytes = snapshot.serialize(project);
+    if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(*this)) {
+        snapshot_bytes = snapshot.serialize(*this);
         if(snapshot_bytes) {
             blobs.push_back({index::BlobKind::BuildSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
         }
@@ -100,8 +97,8 @@ async::task<index::IndexReport> save_project(Project& project, index::SearchRebu
     // choices flush on whatever save runs next.
     bool carries_precompiled = false;
     bool carries_choices = false;
-    if(project.precompiled_dirty) {
-        if(auto bytes = serialize_precompiled_records(project); !bytes.empty()) {
+    if(precompiled_dirty) {
+        if(auto bytes = serialize_precompiled_records(); !bytes.empty()) {
             carries_precompiled = true;
             blobs.push_back({index::BlobKind::PrecompiledRecords, "artifacts", copy_bytes(bytes)});
         }
@@ -112,7 +109,7 @@ async::task<index::IndexReport> save_project(Project& project, index::SearchRebu
     }
     // Serialization failures keep their dirty flag for the next attempt.
     if(carries_precompiled) {
-        project.precompiled_dirty = false;
+        precompiled_dirty = false;
     }
     if(carries_choices) {
         choices.dirty = false;
@@ -132,7 +129,7 @@ async::task<index::IndexReport> save_project(Project& project, index::SearchRebu
         if(snapshot_bytes) {
             snapshot.unsaved();
         }
-        project.precompiled_dirty = project.precompiled_dirty || carries_precompiled;
+        precompiled_dirty = precompiled_dirty || carries_precompiled;
         choices.dirty = choices.dirty || carries_choices;
     };
     auto cancelled = llvm::make_scope_exit(restore);
@@ -150,12 +147,12 @@ async::task<index::IndexReport> save_project(Project& project, index::SearchRebu
     // like load-time corruption instead of writing into the damaged
     // environment every save.
     if(db.corrupted() || index.damaged()) {
-        recover_corrupt_database(project, report);
+        recover_corrupt_database(report);
         co_return report;
     }
 
-    if(!co_await index.migrate_views(db, *project.loop, report)) {
-        recover_corrupt_database(project, report);
+    if(!co_await index.migrate_views(db, *loop, report)) {
+        recover_corrupt_database(report);
     }
 
     LOG_PERF("index",
@@ -172,20 +169,19 @@ bool shrink_due(const index::PageUsage& usage) {
     return free >= worth && free * 4 >= usage.pages * usage.page_size;
 }
 
-async::task<index::IndexReport> shrink_database(Project& project) {
+async::task<index::IndexReport> Project::shrink_database() {
     index::IndexReport report;
-    if(!project.database || project.database->read_only()) {
+    if(!database || database->read_only()) {
         co_return report;
     }
-    co_await project.save_gate.acquire();
-    auto gate = llvm::make_scope_exit([&] { project.save_gate.release(); });
+    co_await save_gate.acquire();
+    auto gate = llvm::make_scope_exit([&] { save_gate.release(); });
     // Re-checked: the gate holder we waited out may have failed to reopen
     // the database. A damaged one is the next save's to discard.
-    if(!project.database || project.database->corrupted() || project.index.damaged() ||
-       project.shrink_failed) {
+    if(!database || database->corrupted() || index.damaged() || shrink_failed) {
         co_return report;
     }
-    auto& db = *project.database;
+    auto& db = *database;
     auto before = db.usage();
     if(!before || !shrink_due(*before)) {
         co_return report;
@@ -198,32 +194,32 @@ async::task<index::IndexReport> shrink_database(Project& project) {
         case Database::Copy::Written: break;
         case Database::Copy::Busy: co_return report;
         case Database::Copy::Failed:
-            project.shrink_failed = true;
+            shrink_failed = true;
             // The copy read every page: a damaged one it met is discarded
             // now, as a save meeting it would.
             if(db.corrupted()) {
-                recover_corrupt_database(project, report);
+                recover_corrupt_database(report);
             }
             co_return report;
     }
     // A handle lost in the swap lists no unit any more.
     llvm::SmallVector<Fid> units;
-    project.index.for_each_unit([&](Fid unit) { units.push_back(unit); });
+    index.for_each_unit([&](Fid unit) { units.push_back(unit); });
     switch(db.swap_compact_copy()) {
         case Database::Swap::Busy:
             LOG_INFO("Another process opened the index database; its file shrinks later");
             co_return report;
         case Database::Swap::Lost:
-            recover_corrupt_database(project, report);
+            recover_corrupt_database(report);
             for(auto unit: units) {
                 report.add_reindex(unit);
             }
             co_return report;
-        case Database::Swap::Kept: project.shrink_failed = true; break;
+        case Database::Swap::Kept: shrink_failed = true; break;
         case Database::Swap::Replaced: break;
     }
-    if(!co_await project.index.rebind_views(db, *project.loop, /*at_once=*/true)) {
-        recover_corrupt_database(project, report);
+    if(!co_await index.rebind_views(db, *loop, /*at_once=*/true)) {
+        recover_corrupt_database(report);
         co_return report;
     }
     auto after = db.usage();
@@ -252,14 +248,13 @@ static void drop_excluded(Project& project, index::IndexReport& report) {
     }
 }
 
-SavedLoad load_saved(Project& project, bool reconcile) {
+SavedLoad Project::load_saved(bool reconcile) {
     SavedLoad result;
     auto& report = result.report;
-    if(!project.database) {
+    if(!database) {
         return result;
     }
-    auto& db = *project.database;
-    auto& index = project.index;
+    auto& db = *database;
     bool read_only = db.read_only();
     ScopedTimer timer;
 
@@ -267,10 +262,10 @@ SavedLoad load_saved(Project& project, bool reconcile) {
     // load (and self-validate) beside any index state.
     auto load_metadata = [&] {
         if(auto records = db.read(index::BlobKind::PrecompiledRecords, "artifacts")) {
-            load_precompiled_records(project, records.buffer->getBuffer());
+            load_precompiled_records(records.buffer->getBuffer());
         }
         if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
-            project.choices.bytes = choices.buffer->getBuffer().str();
+            this->choices.bytes = choices.buffer->getBuffer().str();
         }
     };
 
@@ -288,7 +283,7 @@ SavedLoad load_saved(Project& project, bool reconcile) {
             // persists instead of being redone at the next start.
             if(!read_only && db.corrupted()) {
                 LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-                reopen_fresh_database(project);
+                reopen_fresh_database();
             } else {
                 // Best effort before detaching: the metadata blobs may
                 // still read while only the header is unreadable.
@@ -296,7 +291,7 @@ SavedLoad load_saved(Project& project, bool reconcile) {
                 LOG_WARN(
                     "Index database header unreadable; disabling index persistence this "
                     "session");
-                project.database.reset();
+                database.reset();
             }
             return result;
         case index::LoadOutcome::Undecodable:
@@ -305,22 +300,22 @@ SavedLoad load_saved(Project& project, bool reconcile) {
             result.decoded = false;
             if(!read_only) {
                 load_metadata();
-                reopen_fresh_database(project);
+                reopen_fresh_database();
             }
             return result;
         case index::LoadOutcome::Loaded: break;
     }
     load_metadata();
     if(reconcile) {
-        drop_excluded(project, report);
-        project.build_snapshot.reconcile(project, report);
+        drop_excluded(*this, report);
+        build_snapshot.reconcile(*this, report);
     }
 
     // The reads above may have met a damaged page or record: heal it like
     // the unreadable-header case above instead of writing into a damaged
     // tree every session. The session starts over as a first run.
     if(!read_only && index.damaged()) {
-        recover_corrupt_database(project, report);
+        recover_corrupt_database(report);
         return result;
     }
 

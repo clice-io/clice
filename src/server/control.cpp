@@ -2,7 +2,6 @@ module clice;
 
 import :index.project_index;
 import :index.shard;
-import :project.save;
 import :index.writer_lock;
 import :server.control;
 import :server.master;
@@ -79,22 +78,22 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             IndexResult result;
             llvm::SmallVector<Fid> files;
             for(auto member: members) {
-                if(enqueue_reindex(srv.project, member, ReindexReason::DepsOnly)) {
+                if(srv.project.enqueue_reindex(member, ReindexReason::DepsOnly)) {
                     files.push_back(member);
                 }
             }
-            schedule_index(srv.project, /*immediate=*/true);
+            srv.project.schedule_index(/*immediate=*/true);
             for(auto file: files) {
                 // One await covers one attempt; a crash or preemption
                 // requeues the file behind it.
                 while(srv.project.background_index.queue.pending_reason(file)) {
-                    co_await await_index_attempt(srv.project, file);
+                    co_await srv.project.await_index_attempt(file);
                 }
             }
             // The round persists at its end; the asker reads the disk, so its
             // index must be there before the answer.
-            co_await persist(srv.project);
-            if(has_unsaved_state(srv.project)) {
+            co_await srv.project.persist();
+            if(srv.project.has_unsaved_state()) {
                 co_await async::fail(
                     ipc::Error{"part of the index could not be persisted; see the server log"});
             }

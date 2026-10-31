@@ -1,6 +1,6 @@
 module clice;
 
-import :project.graph;
+import :project.task_graph;
 import :server.master;
 import :server.served_project;
 import :worker.probe;
@@ -10,7 +10,7 @@ namespace clice {
 /// Whether the project's background index has work wait_idle() waits for. A queue
 /// no round will take, indexing being off, is none.
 static bool indexing(ServedProject& project) {
-    return project.project.settings.project.enable_indexing.value && !index_idle(project.project);
+    return project.project.settings.project.enable_indexing.value && !project.project.index_idle();
 }
 
 /// The requests of `editor` wait_idle() waits for: all but syncs.

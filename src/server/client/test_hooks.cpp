@@ -1,7 +1,6 @@
 module clice;
 
 import :feature.protocol;
-import :project.save;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -96,7 +95,7 @@ void LSPClient::register_test_hooks() {
                 for(auto id: project->project.background_index.failed) {
                     result.failed.push_back(feature::to_uri(srv.files.display(id)));
                 }
-                result.unsaved = result.unsaved || has_unsaved_state(project->project);
+                result.unsaved = result.unsaved || project->project.has_unsaved_state();
             }
             ranges::sort(result.failed);
             result.pending = srv.pending_work(this->peer);
@@ -225,7 +224,7 @@ void LSPClient::register_test_hooks() {
                 });
 
                 stats.import_scans += served->project.import_scans;
-                stats.index_idle = stats.index_idle && index_idle(served->project);
+                stats.index_idle = stats.index_idle && served->project.index_idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());
             stats.workers = {.stateful = this->server.pool.worker_pids(true),

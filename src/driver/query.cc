@@ -4,10 +4,7 @@ import :driver.driver;
 import :feature.counterparts;
 import :feature.query;
 import :index.symbol_query;
-import :project.command;
-import :project.hosting;
 import :project.project;
-import :project.queries;
 
 namespace clice::driver {
 
@@ -127,7 +124,7 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     auto ctx = query_context(project);
     auto outcome = ask(project, ctx);
     if(project.index.damaged()) {
-        return fail(damaged_index_error(project));
+        return fail(project.damaged_index_error());
     }
 
     auto listed = std::move(ctx.unindexed);
@@ -187,7 +184,7 @@ CommandHandler build() {
                 return run_query(opts.query,
                                  /*with_build=*/true,
                                  [&](Project& project, feature::query::Context&) {
-                                     return project_files(project, opts.filter.value_or("all"));
+                                     return project.project_files(opts.filter.value_or("all"));
                                  });
             }),
     });
@@ -200,10 +197,10 @@ CommandHandler build() {
                                                   feature::query::Context&,
                                                   const Spelling& path,
                                                   const FileDepsQuestion& opts) {
-                                                   return file_deps(project,
-                                                                    path,
-                                                                    opts.direction.value_or("both"),
-                                                                    opts.depth.value_or(1));
+                                                   return project.file_deps(
+                                                       path,
+                                                       opts.direction.value_or("both"),
+                                                       opts.depth.value_or(1));
                                                }),
     });
     operations.push_back({
@@ -215,7 +212,7 @@ CommandHandler build() {
             [](Project& project,
                feature::query::Context&,
                const Spelling& path,
-               const FileQuestion&) { return impact_analysis(project, path); }),
+               const FileQuestion&) { return project.impact_analysis(path); }),
     });
     operations.push_back({
         .name = "counterparts",
@@ -270,7 +267,7 @@ CommandHandler build() {
                     ctx,
                     path,
                     [&](Fid file) -> const clang::LangOptions& {
-                        return clice::dialect(project, file, nullptr, host_of(project, file));
+                        return project.dialect(file, nullptr, project.host_of(file));
                     });
             }),
     });

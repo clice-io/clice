@@ -84,7 +84,7 @@ The include position is important because the same header may be included multip
 
 When a file needs to be compiled, the compilation context is automatically determined by the following priority:
 
-1. **User selection takes priority**. If the user has actively selected a compilation context via `clice/switchContext`, that selection is used. Choices are persisted in the workspace cache and restored automatically when the file is opened in a later session. A choice that stops holding — its host no longer includes the file, or its entry left the database — waits, inactive, while the rules below pick the context, and applies again once it holds.
+1. **User selection takes priority**. If the user has actively selected a compilation context via `clice/switchContext`, that selection is used. Choices are persisted in the workspace cache and restored automatically when the file is opened in a later session. A choice that stops holding — its host no longer includes the file, or its entry left the database — waits, inactive, while the rules below pick the context (a file with entries of its own compiles under them), and applies again once it holds.
 
 2. **Direct CDB lookup**. If the file has an entry in the compilation database, that entry's compilation command is used. In multi-configuration projects where one file has several commands, the first one is used by default; the user can switch to another entry by command hash.
 
@@ -92,7 +92,7 @@ When a file needs to be compiled, the compilation context is automatically deter
 
 4. **Rule default command**. A file with neither an entry nor a host takes the `default_command` of the first matching rule that declares one — the way to describe a project whose files all share one set of flags.
 
-5. **Borrowed command**. For a file with neither a CDB entry nor any host, and no matching rule with a `default_command` — a freshly created source or a header nothing includes yet — the command of a nearby translation unit of the same language: a unit in the file's directory (same stem first), else the unit whose header search directories (`-I` etc.) contain the header, else the unit closest by path (see [Inference](command-resolve.md#inference)). The command source is labeled `Inferred`, the decision log names the lender, and diagnostics about missing files come with a guidance note. A borrowed command serves the editor only, until the user saves a source file (never a header): that makes it a provisional member of the build (see [Provisional Members](command-resolve.md#provisional-members)).
+5. **Borrowed command**. For a file with neither a CDB entry nor any host, and no matching rule with a `default_command` — a freshly created source or a header nothing includes yet — the command of a nearby translation unit of the same language: a unit in the file's directory (same stem first), else the unit whose header search directories (`-I` etc.) contain the header, else the unit closest by path (see [Inference](command-resolve.md#inference)). The command source is labeled `Borrowed`, the decision log names the unit it comes from, and diagnostics about missing files come with a guidance note. Opening or saving a source file (never a header) makes it a provisional member of the build (see [Provisional Members](command-resolve.md#provisional-members)), which then hosts the headers it includes.
 
 6. **Builtin fallback**. When everything above falls through, an isolated file compiles with a synthesized builtin command, so basic language services keep working.
 

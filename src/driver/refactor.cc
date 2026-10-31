@@ -6,7 +6,6 @@ import :feature.rename;
 import :index.symbol_query;
 import :project.build;
 import :project.project;
-import :project.queries;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -205,10 +204,10 @@ int run_rename(const RenameOptions& opts) {
                                           {
                                               .files = editable_files.sources(),
                                               .editable = editable,
-                                              .units_pending = units_pending(project),
+                                              .units_pending = project.units_pending(),
                                           });
     if(project.index.damaged()) {
-        return fail(damaged_index_error(project));
+        return fail(project.damaged_index_error());
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.

@@ -4,12 +4,10 @@ import :feature.diagnostics;
 import :index.shard;
 import :index.symbol;
 import :index.tu_manifest;
-import :project.background_index;
-import :project.graph;
-import :project.hosting;
+import :project.indexer;
 import :project.pcm;
 import :project.project;
-import :project.reindex_queue;
+import :project.task_graph;
 import :server.served_project;
 import :server.session;
 import :settings.settings;
@@ -114,7 +112,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     ZEXPECT(project.index.indexed(closed));
 
     // The same save again: the name already has its provider.
-    clear_reindex(served.project, closed);
+    served.project.clear_reindex(closed);
     auto epoch = fixture.entry(open).epoch;
     served.disk_changed({iface});
     ZEXPECT(!served.project.background_index.queue.pending_reason(closed).has_value());
@@ -320,7 +318,7 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     project.dep_graph.set_includes(kept, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    enqueue_reindex(served.project, removed, ReindexReason::ContentChanged);
+    served.project.enqueue_reindex(removed, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed);
 
     served.disk_changed({removed, header});
@@ -496,7 +494,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     served.disk_changed({header});
     ZASSERT(served.project.background_index.queue.pending_reason(user) == ReindexReason::DepsOnly);
 
-    clear_reindex(served.project, user);
+    served.project.clear_reindex(user);
     project.file_table.disk.saw_missing(header);
     served.disk_changed({header});
     ZASSERT(served.project.background_index.queue.pending_reason(user) == ReindexReason::DepsOnly);
@@ -532,7 +530,7 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     project.dep_graph.set_includes(other_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    enqueue_reindex(served.project, removed_tu, ReindexReason::ContentChanged);
+    served.project.enqueue_reindex(removed_tu, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed_tu);
     auto epoch = project.context_epoch;
 
@@ -836,7 +834,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
         .project = &served,
     };
     auto generation = session->generation;
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
 
     fixture.entry(header).current = true;
     fixture.served->recheck_choices();
@@ -868,7 +866,7 @@ ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
         .choice = ContextChoice{host, 1, ""},
         .project = &served,
     };
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.build.commands(host).front()));
 
     fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);

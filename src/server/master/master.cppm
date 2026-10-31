@@ -2,7 +2,7 @@ module clice:server.master;
 
 import :feature.semantic_tokens;
 import :index.query;
-import :project.background_index;
+import :project.indexer;
 import :project.project;
 import :server.extension;
 import :server.served_project;

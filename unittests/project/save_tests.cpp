@@ -3,10 +3,8 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :index.symbol_query;
-import :project.background_index;
-import :project.contexts;
+import :project.indexer;
 import :project.project;
-import :project.reindex_queue;
 import :project.save;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -39,7 +37,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         std::pair<Fid, const ContextChoice*> choices[] = {
             {header, &choice}
         };
-        f.project.choices.bytes = serialize_choices(f.project, choices);
+        f.project.choices.bytes = f.project.serialize_choices(choices);
         f.project.choices.dirty = true;
         f.save();
         ZASSERT(!f.project.choices.dirty);
@@ -50,7 +48,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     f.load();
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
     auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-    auto choices = parse_choices(f.project, f.project.choices.bytes);
+    auto choices = f.project.parse_choices(f.project.choices.bytes);
     ZASSERT(choices.size() == 1u);
     ZASSERT(choices[0].first == header);
     auto& saved = choices[0].second;
@@ -230,7 +228,7 @@ struct ShrinkProject {
     index::IndexReport shrink() {
         index::IndexReport report;
         auto run = [&]() -> async::task<> {
-            report = co_await shrink_database(f.project);
+            report = co_await f.project.shrink_database();
         };
         auto task = run();
         f.loop.schedule(task);
@@ -342,7 +340,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     auto& space = p.spy();
     ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
     auto shrink = [&]() -> async::task<> {
-        co_await shrink_database(p.f.project);
+        co_await p.f.project.shrink_database();
     };
     auto shrink_task = shrink();
     auto save_task = p.f.async_save(index::SearchRebuild::Idle);
@@ -366,7 +364,7 @@ ZEST_CASE(IdleSaveShrinks) {
     ShrinkProject p;
     auto& space = p.spy();
     auto save = [&](index::SearchRebuild search) {
-        auto task = persist(p.f.project, search);
+        auto task = p.f.project.persist(search);
         p.f.loop.schedule(task);
         p.f.loop.run();
     };
@@ -378,7 +376,7 @@ ZEST_CASE(IdleSaveShrinks) {
     // Off, the reindex stays queued: on, the save starts its round, whose
     // own idle save shrinks.
     p.f.project.settings.project.enable_indexing.value = false;
-    enqueue_reindex(p.f.project, p.unit("b.cpp"), ReindexReason::ContentChanged);
+    p.f.project.enqueue_reindex(p.unit("b.cpp"), ReindexReason::ContentChanged);
     save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
 }
@@ -391,7 +389,7 @@ ZEST_CASE(LostShrinkSavesAgain) {
     space.forced_swap = index::BlobDatabase::Swap::Lost;
     p.f.project.choices.bytes = "choices";
     p.f.project.choices.dirty = true;
-    auto task = persist(p.f.project, index::SearchRebuild::Idle);
+    auto task = p.f.project.persist(index::SearchRebuild::Idle);
     p.f.loop.schedule(task);
     p.f.loop.run();
     ZEXPECT(!p.f.project.choices.dirty);

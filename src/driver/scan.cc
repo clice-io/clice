@@ -1,7 +1,6 @@
 module clice;
 
 import :driver.driver;
-import :project.discovery;
 import :project.project;
 import :support.logging;
 import :syntax.dependency_graph;
@@ -166,7 +165,7 @@ int run_scan(const Options& opts) {
     if(first->opened.members.empty()) {
         LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
                   root,
-                  deeper_databases_hint(first->project));
+                  first->project.deeper_databases_hint());
         return 1;
     }
     auto output = describe(*first);
