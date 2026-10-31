@@ -2332,16 +2332,16 @@ public:
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
             llvm::StringRef own = module ? module->getPrimaryModuleInterfaceName() : "";
-            // A namespace's lookup finds the names of the inline namespaces
-            // in it as well, as qualified lookup does.
+            // As qualified lookup finds them: through the inline and the
+            // anonymous namespaces in the scope too.
             auto visible = [&](clang::DeclContext* scope, llvm::StringRef name) {
-                llvm::SmallVector<clang::NamedDecl*, 2> found;
-                for(auto* decl: scope->lookup(&ast.Idents.get(name))) {
-                    if(sema.isVisible(decl)) {
-                        found.push_back(decl);
-                    }
-                }
-                return found;
+                clang::LookupResult found(sema,
+                                          &ast.Idents.get(name),
+                                          {},
+                                          clang::Sema::LookupOrdinaryName);
+                found.suppressDiagnostics();
+                sema.LookupQualifiedName(found, scope);
+                return llvm::SmallVector<clang::NamedDecl*, 2>(found.begin(), found.end());
             };
             auto& language = sema.getLangOpts();
             for(const auto& candidate: scope_candidates) {

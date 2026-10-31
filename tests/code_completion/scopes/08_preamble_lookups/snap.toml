@@ -1,0 +1,96 @@
+[answers.using_declaration.completion]
+items = [
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "lib::detail::helper_detail()",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::detail::helper_detail()",
+    },
+    {
+        label = "lib::helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "lib::helper_limit", kind = "Variable", detail = "const int", insert = "lib::helper_limit" },
+    {
+        label = "lib::helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::helper_static(${1:int x})",
+        snippet = true,
+    },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[answers.using_directive.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "lib::detail::helper_detail()",
+        kind = "Function",
+        detail = "int",
+        insert = "lib::detail::helper_detail()",
+    },
+    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
+]
+
+[answers.namespace_member.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+]
+
+[answers.namespace_alias.completion]
+items = [
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+]
