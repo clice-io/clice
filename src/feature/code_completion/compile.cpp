@@ -1607,7 +1607,7 @@ public:
         // declaration. Clang's keywords know neither.
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
-        auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
+        auto completion_loc = focus.location(offset);
         auto declared = ranges::any_of(
             sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
             [&](const clang::Decl* decl) {
