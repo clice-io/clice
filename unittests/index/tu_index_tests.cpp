@@ -87,11 +87,15 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     add_file("header.h", R"(
             #pragma once
             inline int twice(int value) { return value + value; }
-            static int once(int value) { return value; }
+            namespace {
+            struct Hidden {
+                int get() const { return 1; }
+            };
+            }  // namespace
             template <typename T>
             struct Box {
                 T item;
-                int size() const { return twice(1) + once(item); }
+                int size() const { return twice(item.get()); }
             };
             template <typename T>
             int measure(const T& box) { return box.size(); }
@@ -99,7 +103,7 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     add_focus("main.cpp", R"(
             #include "header.h"
             int main() {
-                Box<int> box;
+                Box<Hidden> box;
                 return measure(box) + twice(2);
             }
         )");
