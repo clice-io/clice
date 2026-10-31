@@ -4,23 +4,23 @@ import :support.prelude;
 
 namespace clice {
 
-/// The families partitioning the graph's node space, each with its own
-/// key convention: PCM nodes are module-unit path ids (unresolved-import
-/// sentinels take the high half of the key space), PCH nodes are
-/// family-interned preamble keys, AST nodes are open documents' path ids,
-/// TURun nodes are TU path ids. 0xFF is reserved for map sentinels.
-enum class Family : std::uint8_t {
+/// The kinds partitioning the graph's node space, each with its own key
+/// convention: PCM nodes are module-unit path ids (unresolved imports take
+/// the high half of the key space), PCH nodes are interned preamble keys,
+/// AST nodes are open documents' path ids, unit-run nodes are TU path ids.
+/// 0xFF is reserved for map sentinels.
+enum class NodeKind : std::uint8_t {
     PCM = 1,
     PCH = 2,
     AST = 3,
-    TURun = 4,
+    UnitRun = 4,
 };
 
-/// Identity of a task-graph node. Each family interns its own keys —
+/// Identity of a task-graph node. Each kind interns its own keys —
 /// monotonically, never recycling: the graph may retain an id in edges or
-/// rounds long after the family dropped the underlying artifact.
+/// rounds long after its builder dropped what the node built.
 struct NodeId {
-    Family family = Family{0};
+    NodeKind kind = NodeKind{0};
     std::uint64_t key = 0;
 
     friend bool operator==(const NodeId&, const NodeId&) = default;
@@ -32,7 +32,7 @@ template <>
 struct llvm::DenseMapInfo<clice::NodeId> {
     static unsigned getHashValue(const clice::NodeId& id) {
         return llvm::detail::combineHashValue(
-            std::to_underlying(id.family),
+            std::to_underlying(id.kind),
             llvm::DenseMapInfo<std::uint64_t>::getHashValue(id.key));
     }
 
@@ -43,7 +43,7 @@ struct llvm::DenseMapInfo<clice::NodeId> {
 
 namespace clice {
 
-/// Result of one round, as reported by the family closure and then filtered
+/// Result of one round, as reported by the kind's runner and then filtered
 /// through round identity: a round that update() overtook mid-flight is
 /// recorded Stale whatever it reported — its result is about content that
 /// no longer exists.
@@ -103,7 +103,7 @@ struct JoinOptions {
 
 class TaskGraph;
 
-/// Handed to a family's round closure; valid until the round's task
+/// Handed to a kind's runner; valid until the round's task
 /// completes. Every graph-node wait inside a round MUST go through
 /// depend() — it is the only point that records the edge for cascade,
 /// interest and cycle detection; a bare request() from a round bypasses
@@ -116,7 +116,7 @@ struct RoundContext {
     async::task<DependResult> depend(NodeId dep);
 
     /// depend() without the dispatch or the wait: record the candidate
-    /// edge to a node that never runs (a sentinel a scan consumed the
+    /// edge to a node that never runs (an unresolved import a scan consumed the
     /// absence of). Same cascade/interest/foreground semantics, same
     /// durable promotion on a successful commit — which is the point: a
     /// declared-only edge would be replaced by the commit's candidates.
@@ -147,13 +147,13 @@ private:
     async::cancellation_token tok;
 };
 
-/// Multi-family dependency graph with interest-counted cancellation — the
-/// thin scheduling core. Only four things live here: node identity, data
-/// edges, rounds, and interest/priority. Everything else (artifact
-/// products, cache keys, crash tables, retry budgets) belongs to the
-/// family closures.
+/// Dependency graph over nodes of several kinds with interest-counted
+/// cancellation — the thin scheduling core. Only four things live here: node identity, data
+/// edges, rounds, and interest/priority. Everything else (what a node
+/// builds, cache keys, crash tables, retry budgets) belongs to the
+/// runners.
 ///
-/// Each dirty node is driven by rounds produced by its family's runner,
+/// Each dirty node is driven by rounds produced by its kind's runner,
 /// spawned into the graph's task group. Lifecycle by phase:
 ///
 /// - Request arrival: request() takes a root reference and joins the
@@ -182,8 +182,8 @@ public:
     /// graph never destroys a running round.
     using RoundRunner = std::function<async::task<RoundOutcome>(RoundContext& ctx, NodeId id)>;
 
-    /// Families register once, before any request for their nodes.
-    void register_family(Family family, RoundRunner run);
+    /// Each kind's runner is set once, before any request for its nodes.
+    void set_runner(NodeKind kind, RoundRunner run);
 
     /// Join a node's compilation from outside the graph (root interest).
     async::task<JoinOutcome> request(NodeId id, JoinOptions options = {});
@@ -193,12 +193,12 @@ public:
     /// of nodes that were marked dirty.
     llvm::SmallVector<NodeId> update(NodeId id);
 
-    /// The artifact tier of invalidation: the node's committed outcome is
+    /// The product tier of invalidation: the node's committed outcome is
     /// still true of its inputs — only its on-disk product vanished
     /// (cache eviction). Marks the node alone so the next depend or
     /// request rebuilds it: no dependent cascade (dependents consumed
     /// the content, which did not change) and no round voiding (an
-    /// in-flight round is already producing a fresh artifact). Content
+    /// in-flight round is already producing a fresh product). Content
     /// changes stay with update() — cascading eviction would void the
     /// very consumer round waiting to rebuild the import, and a working
     /// set larger than the cache budget would spin that waiter forever.
@@ -226,7 +226,7 @@ public:
     bool is_compiling(NodeId id) const;
 
     /// Current in-flight interest count: whether anyone still waits on the
-    /// node (a family retiring a round's inputs; testing).
+    /// node (a builder dropping a round's inputs; testing).
     std::uint32_t refcount(NodeId id) const;
 
     /// Durable edge set: the candidates of the last current successful
@@ -337,7 +337,7 @@ private:
                              async::cancellation_token token);
 
     /// Synchronous commit: filter the reported outcome through round
-    /// identity, retire candidate back-edges, promote candidates to the
+    /// identity, remove candidate back-edges, promote candidates to the
     /// durable set on current success, release edge references and wake
     /// waiters.
     void finish_round(NodeId id, Round& round, RoundOutcome reported);
@@ -368,7 +368,7 @@ private:
     /// candidate edges to see if the wait chain reaches back to `waiter`.
     bool has_wait_cycle(NodeId target, NodeId waiter) const;
 
-    llvm::DenseMap<unsigned, RoundRunner> families;
+    llvm::DenseMap<unsigned, RoundRunner> runners;
     llvm::DenseMap<NodeId, Node> nodes;
 
     /// Refuses new rounds once shutdown begins.

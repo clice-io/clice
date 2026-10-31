@@ -319,7 +319,7 @@ public:
     void edited(Session& session);
 
     /// The document compiles in another context now: a different
-    /// compilation identity. Supersede any in-flight compile and drop the
+    /// compilation identity. Make any in-flight compile outdated and drop the
     /// state earned under the old one — including the self-containment
     /// trial, since a different host can change the macro environment.
     void choice_changed(Session& session);
@@ -332,7 +332,7 @@ public:
     void invalidate(Fid path_id);
 
     /// didSave: every crashed kind of the document retries on its next
-    /// request, the artifacts it consumes included, and so do the ones
+    /// request, the PCH and PCMs it consumes included, and so do the ones
     /// whose build failed; a header found self-contained whose compile
     /// misses names, or has not finished, re-runs its self-containment
     /// trial.
@@ -349,8 +349,8 @@ public:
     };
 
     /// The PCH key is adopted only while `ticket` and the document's epoch
-    /// snapshotted here, before the first suspension, hold: a supersede
-    /// bumps the generation, a Lost-type invalidation bumps only the epoch
+    /// snapshotted here, before the first suspension, hold: an edit or a choice
+    /// change bumps the generation, a Lost-type invalidation bumps only the epoch
     /// — either way the resolved command may describe a command that no
     /// longer exists, and adopting the key would hand the document's
     /// preamble features and staleness checks a PCH of another command.
@@ -558,7 +558,7 @@ public:
     // records and finishes through one exit (finish).
 
     /// How the project serves the document of a ticket still fresh: a move
-    /// or a close supersedes every ticket of the document.
+    /// or a close makes every ticket of the document outdated.
     ServingMode serving_of(const Session& session) const;
 
     /// Whether the worker's AST can answer for this document right now:
@@ -584,11 +584,11 @@ public:
     /// (freshness clause 1 needs the finished file index), and lets
     /// index-served documents resolve through clauses 1/4 without forcing
     /// the build. A GateStop means answer with it instead: the compile
-    /// failed, or the request was superseded.
+    /// failed, or the request is outdated.
     async::task<std::optional<GateStop>> navigation_gate(const Ticket& ticket);
 
     /// Await the document's compile; a GateStop when it failed or the
-    /// request was superseded.
+    /// request is outdated.
     async::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
 
     /// The symbol under a position of the file's serving source, if any.
@@ -728,7 +728,7 @@ private:
     friend struct testing::ServedProjectFixture;
 
     static NodeId node(Fid path_id) {
-        return {Family::AST, path_id.raw};
+        return {NodeKind::AST, path_id.raw};
     }
 
     // served_project.cpp
@@ -745,7 +745,7 @@ private:
     /// index/writer_lock.cppm). The record is removed at shutdown.
     void start_control_listener();
 
-    /// Schedule a save carrying dirty artifact/context metadata; no-op
+    /// Schedule a save carrying dirty precompiled records or context choices; no-op
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
     void schedule_metadata_flush();
@@ -941,7 +941,7 @@ private:
 
     /// Rescan the file's disk state (include edges, module maps). A module
     /// name the rescan gave its first provider cascades to the consumers
-    /// holding sentinel edges against it; a name the file stopped
+    /// holding unresolved-import edges against it; a name the file stopped
     /// providing cascades through the provider's real node instead.
     void rescan_disk_state(Fid path_id, bool& refresh);
 
@@ -960,7 +960,7 @@ private:
     void mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh);
 
     /// A module name just gained its first provider: cascade through its
-    /// sentinel node and route the dirtied consumers to recompiles and
+    /// unresolved-import node and route the dirtied consumers to recompiles and
     /// ContentChanged reindexes.
     void provider_appeared(llvm::StringRef module_name, bool& refresh);
 

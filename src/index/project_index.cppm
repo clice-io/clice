@@ -49,8 +49,8 @@ public:
         }
     }
 
-    /// This save left state that an immediate retry commits: debt
-    /// that showed up after its command snapshot serialized (write-time
+    /// This save left state that an immediate retry commits: reindexes
+    /// owed after its command snapshot serialized (write-time
     /// corruption recovery), or a batch a full map refused before the
     /// map grew.
     bool owes_retry = false;
@@ -297,7 +297,7 @@ public:
     /// disk, and the TUs depending on a file whose content changed, on a
     /// place a failed lookup looked at that now holds a file, or on a
     /// changed input of a module or precompiled header. They are marked
-    /// behind the disk (mark_behind) too.
+    /// outdated (mark_outdated) too.
     llvm::SmallVector<Fid> stale_units();
 
     /// Forget everything read and merged, as after the database was
@@ -332,7 +332,7 @@ public:
     /// whose walk still holds, sorted: what the worker indexing `tu` may
     /// skip (TUIndexOptions::known_instantiations). A key holds while the
     /// run that walked it is its unit's current one and that unit is not
-    /// behind the disk (mark_behind) — the first unit to rebuild after an
+    /// outdated (mark_outdated) — the first unit to rebuild after an
     /// edit of a file the instantiation read walks the key again — and
     /// never for `tu` itself, whose rebuild is what would confirm it.
     std::vector<std::uint64_t> known_instantiations(Fid tu,
@@ -340,7 +340,7 @@ public:
 
     /// A file `tu` depends on changed now: until a run of `tu` that started
     /// later merges, the instantiation keys its index walked do not hold.
-    void mark_behind(Fid tu);
+    void mark_outdated(Fid tu);
 
     /// Start a freshness round: FileVersion results hold for one round —
     /// the disk can change under a running round, but staleness is
@@ -604,7 +604,7 @@ private:
     void retire_instantiations(Fid file);
 
     /// Add every TU contributing to `file`'s shard to the report's
-    /// reindex debt. Used when the file's resident index is lost while its
+    /// reindexes. Used when the file's resident index is lost while its
     /// manifests still read fresh: no in-process event would ever rebuild
     /// it, and no start-up scan would either.
     void requeue_owners(Fid file, IndexReport& report);
@@ -730,9 +730,9 @@ private:
 
     llvm::SmallVector<std::uint32_t> search_drops;
 
-    /// Units behind the disk (mark_behind), with when they fell behind in
+    /// Outdated units (mark_outdated), with when they became outdated in
     /// milliseconds since the epoch, the clock built_at uses.
-    llvm::DenseMap<Fid, std::int64_t> behind;
+    llvm::DenseMap<Fid, std::int64_t> outdated;
 
     /// A record failed its checks since open.
     mutable bool damage = false;

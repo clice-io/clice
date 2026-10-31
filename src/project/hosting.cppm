@@ -123,7 +123,7 @@ struct Ranking {
 /// What clice knows of the headers that borrow a unit's command, the
 /// answers every process reads alike: the CLI and the server resolve a
 /// header the same way from the same answers. The trials, each a compile,
-/// ride the artifact records; the rest a process learns again.
+/// ride the precompiled records; the rest a process learns again.
 struct Hosting {
     /// A header with thousands of hosts takes milliseconds to rank, and
     /// every resolution of it asks.

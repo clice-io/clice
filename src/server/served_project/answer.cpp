@@ -98,7 +98,7 @@ async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket
 
 async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
     // A failed compile yields null rather than a lookup against a buffer
-    // with no finished index; a superseded one tells the client to re-pull.
+    // with no finished index; an outdated one tells the client to re-pull.
     bool compiled = co_await ensure_compiled(ticket.session);
     if(!ticket.fresh()) {
         co_return GateStop{content_modified()};

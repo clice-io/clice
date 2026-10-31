@@ -333,7 +333,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // A file the build read that is gone already: record the
             // absence, reappearing counts as a change. Still-missing
             // deliberately counts as unchanged — flagging it would rebuild
-            // on every check without ever converging, while the artifact is
+            // on every check without ever converging, while the product is
             // the last remaining truth for the file (and dependents'
             // recovery is the DiskRemoved cascade's job, not this
             // snapshot's).

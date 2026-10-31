@@ -4,7 +4,7 @@ import :support.prelude;
 
 namespace clice {
 
-/// Static configuration of a cache namespace: rebuildable large artifacts
+/// Static configuration of a cache namespace: rebuildable large files
 /// (PCH, PCM), size-capped with least-recently-used eviction.
 struct CacheNamespace {
     /// Directory name under the store root, e.g. "pch".
@@ -181,7 +181,7 @@ public:
     std::expected<std::string, std::error_code> commit(PendingEntry pending);
 
     /// Remove a blob before the LRU budget would get to it — retraction of
-    /// an artifact the owner has judged unusable (corrupt, invalidated).
+    /// a blob the owner has judged unusable (corrupt, invalidated).
     void invalidate(llvm::StringRef ns, llvm::StringRef key);
 
     /// Number of in-flight tmp blobs of this instance (files under

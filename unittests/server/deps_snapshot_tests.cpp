@@ -89,7 +89,7 @@ ZEST_CASE(SnapshotsShareOneVersion) {
 }
 
 ZEST_CASE(ImmediateEditDetected) {
-    // The F44 shape: the dependency is saved right after the artifact's
+    // The F44 shape: the dependency is saved right after the build's
     // freshness was captured — no watermark may bless it.
     TempDir tmp;
     tmp.touch("dep.h", "int value();\n");
@@ -250,7 +250,7 @@ ZEST_CASE(MissingTransitions) {
 
 ZEST_CASE(AbsentPlaceFilled) {
     // A place a failed lookup looked holds a file by the capture: the build
-    // never saw it, so the artifact is stale however old the file is.
+    // never saw it, so the build is stale however old the file is.
     TempDir tmp;
     tmp.touch("gen.h", "int make();\n");
     auto place = tmp.path("gen.h");

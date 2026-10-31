@@ -78,7 +78,7 @@ ZEST_CASE(StaleCrashKeepsBudget) {
     // its pending slot.
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     ZASSERT(int(f.fail_at(id, stale, PendingTable::Failure::Lost)) ==
-            int(IndexerFixture::Decision::Superseded));
+            int(IndexerFixture::Decision::Outdated));
     ZASSERT(f.attempts(id) == 0u);
     ZASSERT(f.pump.pending_reason(id));
 }

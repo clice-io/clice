@@ -135,7 +135,7 @@ void MasterServer::change_document(Fid path_id,
     if(client) {
         client->publish_second_names(*document);
     }
-    // The edit made any in-flight compile stale. Supersede it now instead
+    // The edit made any in-flight compile outdated. Cancel it now instead
     // of waiting for the next AST-backed request to observe it: the
     // round's advisory token releases its dependency waits, and the
     // interrupt keeps a stale parse from holding up its waiters.

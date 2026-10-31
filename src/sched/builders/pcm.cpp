@@ -47,7 +47,7 @@ PCMBuilder::PCMBuilder(TaskGraph& graph,
     graph(graph), project(project), commands(commands), pch(pch), pool(pool) {}
 
 void PCMBuilder::register_runner() {
-    graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
+    graph.set_runner(NodeKind::PCM, [this](RoundContext& ctx, NodeId id) {
         return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
@@ -461,7 +461,7 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     build.deps = inputs();
     LOG_INFO("Built PCM for module {}: {}", module_name, build.path);
 
-    project.mark_artifacts_dirty();
+    project.mark_precompiled_dirty();
 
     // Signal that new index data is available for background merge.
     if(on_indexing_needed)
@@ -502,7 +502,7 @@ llvm::SetVector<Fid> PCMBuilder::closure(llvm::ArrayRef<Fid> modules) const {
             continue;
         }
         for(auto dep: graph.dependencies(node(read[i]))) {
-            if(dep.family == Family::PCM && !is_unresolved(dep)) {
+            if(dep.kind == NodeKind::PCM && !is_unresolved(dep)) {
                 read.insert(Fid{static_cast<std::uint32_t>(dep.key)});
             }
         }
@@ -560,7 +560,7 @@ bool PCMBuilder::revalidate_blobs() {
                 continue;
             }
             if(ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
-                   return dep.family == Family::PCM && !is_unresolved(dep) && graph.is_dirty(dep);
+                   return dep.kind == NodeKind::PCM && !is_unresolved(dep) && graph.is_dirty(dep);
                })) {
                 graph.mark_dirty(id);
                 marked = true;

@@ -95,7 +95,7 @@ llvm::SmallVector<Fid> ProjectIndex::stale_units() {
     for(auto unit: stale) {
         if(auto tu = fid_of(unit); tu.valid()) {
             units.push_back(tu);
-            mark_behind(tu);
+            mark_outdated(tu);
         }
     }
     return units;

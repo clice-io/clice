@@ -2,7 +2,7 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :project.artifact_records;
+import :project.precompiled_records;
 import :project.build;
 import :project.command_snapshot;
 import :project.project;
@@ -41,8 +41,8 @@ void reopen_fresh_database(Project& project) {
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every
-    // rebuildable artifact record.
-    project.mark_artifacts_dirty();
+    // rebuildable precompiled record.
+    project.mark_precompiled_dirty();
     project.choices.dirty = !project.choices.bytes.empty();
 }
 
@@ -104,14 +104,14 @@ async::task<index::IndexReport> save_project(Project& project,
         }
     }
 
-    // Metadata blobs ride every save: dirty artifact records and context
+    // Metadata blobs ride every save: dirty precompiled records and context
     // choices flush on whatever save runs next.
-    bool carries_artifacts = false;
+    bool carries_precompiled = false;
     bool carries_choices = false;
-    if(project.artifacts_dirty) {
-        if(auto bytes = serialize_artifact_records(project); !bytes.empty()) {
-            carries_artifacts = true;
-            blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
+    if(project.precompiled_dirty) {
+        if(auto bytes = serialize_precompiled_records(project); !bytes.empty()) {
+            carries_precompiled = true;
+            blobs.push_back({index::BlobKind::PrecompiledRecords, "artifacts", copy_bytes(bytes)});
         }
     }
     if(choices.dirty && !choices.bytes.empty()) {
@@ -119,8 +119,8 @@ async::task<index::IndexReport> save_project(Project& project,
         blobs.push_back({index::BlobKind::ContextChoices, "contexts", copy_bytes(choices.bytes)});
     }
     // Serialization failures keep their dirty flag for the next attempt.
-    if(carries_artifacts) {
-        project.artifacts_dirty = false;
+    if(carries_precompiled) {
+        project.precompiled_dirty = false;
     }
     if(carries_choices) {
         choices.dirty = false;
@@ -140,7 +140,7 @@ async::task<index::IndexReport> save_project(Project& project,
         if(snapshot_bytes) {
             snapshot.unsaved();
         }
-        project.artifacts_dirty = project.artifacts_dirty || carries_artifacts;
+        project.precompiled_dirty = project.precompiled_dirty || carries_precompiled;
         choices.dirty = choices.dirty || carries_choices;
     };
     auto cancelled = llvm::make_scope_exit(restore);
@@ -271,11 +271,11 @@ SavedLoad load_saved(Project& project, bool reconcile) {
     bool read_only = db.read_only();
     ScopedTimer timer;
 
-    // Artifact metadata and context choices are index-independent: they
+    // The precompiled records and context choices are index-independent: they
     // load (and self-validate) beside any index state.
     auto load_metadata = [&] {
-        if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
-            load_artifact_records(project, artifacts.buffer->getBuffer());
+        if(auto records = db.read(index::BlobKind::PrecompiledRecords, "artifacts")) {
+            load_precompiled_records(project, records.buffer->getBuffer());
         }
         if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
             project.choices.bytes = choices.buffer->getBuffer().str();

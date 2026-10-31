@@ -469,7 +469,7 @@ void commit_trial(Project& project,
     // A header found self-contained lists hosts lending the same command
     // once (list_contexts).
     project.context_epoch += 1;
-    project.mark_artifacts_dirty();
+    project.mark_precompiled_dirty();
 }
 
 bool saved_trial(Project& project, const TrialKey& key, VersionID text, bool leans) {
@@ -477,7 +477,7 @@ bool saved_trial(Project& project, const TrialKey& key, VersionID text, bool lea
     if(!entry) {
         return false;
     }
-    project.mark_artifacts_dirty();
+    project.mark_precompiled_dirty();
     if(entry->result.self_contained && leans) {
         project.hosting.trials.forget(key);
         project.context_epoch += 1;

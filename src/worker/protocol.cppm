@@ -180,7 +180,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted (superseded round).
+    /// The parse was interrupted (outdated round).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -195,7 +195,7 @@ struct CompileResult {
     /// name the blob's path, or they are AST-deserialization errors naming
     /// no other prebuilt input. Holds whether the reader rejected the blob
     /// at setup or hit a fatal error past it (a Done status with real,
-    /// publishable diagnostics). Either way the artifact is the culprit:
+    /// publishable diagnostics). Either way the PCH is the culprit:
     /// the master should retract the pair and rebuild instead of trusting
     /// the corrupt bytes until the preamble changes.
     bool pch_suspect = false;
@@ -241,7 +241,7 @@ struct BuildPCHParams {
     /// for none.
     std::string pch;
 
-    /// Every built module's PCM (module name -> artifact path), where the
+    /// Every built module's PCM (module name -> PCM path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
 
@@ -268,7 +268,7 @@ struct BuildPCMParams {
 
     std::string module_name;
 
-    /// Transitive PCM dependencies (module name -> artifact path).
+    /// Transitive PCM dependencies (module name -> PCM path).
     std::unordered_map<std::string, std::string> pcms;
 
     /// The precompiled header the build declares for the command, built by
@@ -400,8 +400,8 @@ struct FormatResult {
     std::string error;
 };
 
-/// Result of an artifact build (PCH or PCM).
-struct ArtifactBuildResult {
+/// Result of a PCH or PCM build.
+struct PrecompiledBuildResult {
     bool success = true;
     std::string error;
     /// On failure: whether `error` carries user-code compile errors. A failure
@@ -412,7 +412,7 @@ struct ArtifactBuildResult {
     /// why it did not build.
     std::string first_error;
 
-    /// The tmp path the artifact was written to.
+    /// The tmp path the PCH or PCM was written to.
     std::string output_path;
 
     /// Milliseconds since epoch, sampled before the build started. Files
@@ -671,13 +671,13 @@ struct RequestTraits<clice::worker::InlayHintParams> {
 
 template <>
 struct RequestTraits<clice::worker::BuildPCHParams> {
-    using Result = clice::worker::ArtifactBuildResult;
+    using Result = clice::worker::PrecompiledBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPch";
 };
 
 template <>
 struct RequestTraits<clice::worker::BuildPCMParams> {
-    using Result = clice::worker::ArtifactBuildResult;
+    using Result = clice::worker::PrecompiledBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPcm";
 };
 

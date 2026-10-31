@@ -20,7 +20,7 @@ struct SavedLoad {
 };
 
 /// Open what the project's database holds: the index (ProjectIndex::open),
-/// the artifact records into the project, the context choices; then, with
+/// the precompiled records into the project, the context choices; then, with
 /// `reconcile` (the build is loaded), drop the index of the units a rule
 /// keeps out and of those whose command changed while no server ran
 /// (CommandSnapshot::reconcile) — in memory only on a read-only database.
@@ -30,7 +30,7 @@ struct SavedLoad {
 SavedLoad load_saved(Project& project, bool reconcile);
 
 /// Persist what the project's database carries: the index's dirty state
-/// (ProjectIndex::begin_save), then the command snapshot, the artifact
+/// (ProjectIndex::begin_save), then the command snapshot, the precompiled
 /// records and the context choices, in one write offloaded to the kotatsu
 /// thread pool. What the write fails to commit stays dirty for the next
 /// save; a database the write finds corrupt is replaced by a fresh one.

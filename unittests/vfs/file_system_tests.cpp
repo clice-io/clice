@@ -97,7 +97,7 @@ ZEST_CASE(KeptTextFollowsEdits) {
 }
 
 ZEST_CASE(KeptMappingShared) {
-    // A store artifact's mapping serves every later compile while the file
+    // A store file's mapping serves every later compile while the file
     // stats the same; any other file is mapped afresh.
     TempDir tmp;
     tmp.touch("a.pch", std::string(64 * 1024, 'x'));

@@ -25,7 +25,7 @@ import :vfs.file_table;
 namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
-/// Bump to discard all cached artifacts after incompatible format changes.
+/// Bump to discard the whole cache after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
 
 /// The user's choice for a file in the editor (clice/switchContext): the
@@ -96,7 +96,7 @@ struct PCHState {
 
 /// The last build of a C++20 module unit that built: what it read and the
 /// PCM it wrote. Shared across all files that import the module; a build
-/// that failed is a failure record (ArtifactFailures::pcm_builds).
+/// that failed is a failure record (PrecompiledFailures::pcm_builds).
 struct PCMBuild {
     /// The build's identity: "{module}-{hash}" over the unit's path and
     /// canonical flags, the build configuration, and the key of every module
@@ -143,12 +143,12 @@ struct ModuleFailure {
     Fid import;
 };
 
-/// What failed of the artifacts, each failure with the inputs it stands on
+/// What failed of the PCH and PCM builds, each failure with the inputs it stands on
 /// (see Memo): those of a failed build are what it read, those of a crash
 /// what was known before it ran. Only a success of the same operation, a
 /// change of those inputs, or a consumer's save lets one run again — but for
 /// the consumption of a PCH, which only a consumer's success clears.
-struct ArtifactFailures {
+struct PrecompiledFailures {
     /// The PCH builds by key.
     Memo<std::string, FailureRecord> pch_builds;
 
@@ -184,7 +184,7 @@ struct ContextChoices {
 ///
 /// Project is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
-///   - compilation artifacts shared across files (PCH/PCM caches)
+///   - the PCHs and PCMs shared across files
 ///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and settings
 ///
@@ -225,7 +225,7 @@ struct Project {
     /// active configuration; the only reader of the rules.
     Build build{settings, root, cdb, file_table};
 
-    /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
+    /// Unified on-disk blob store for PCH, PCM and index blobs.  Opened by
     /// open() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
@@ -263,7 +263,7 @@ struct Project {
     /// The last PCM build of each module unit that built.
     llvm::DenseMap<Fid, PCMBuild> pcm_builds;
 
-    ArtifactFailures failures;
+    PrecompiledFailures failures;
 
     /// The persisted index, read as it is used: the symbol and file
     /// records, the per-TU manifests, the per-file shard blobs and the name
@@ -356,18 +356,18 @@ struct Project {
     /// entries. The only writer of the borrowed commands.
     CDBDiff refresh_provisional();
 
-    /// Persistence signal for the artifact validity metadata (PCH/PCM
+    /// Persistence signal for the precompiled records (the PCH and PCM
     /// records, self-containment results) the index database carries
     /// beyond the index itself: producers mark, the single write pipeline
     /// (save_project) flushes it on its next run.
-    bool artifacts_dirty = false;
+    bool precompiled_dirty = false;
 
     /// Connected by the master to schedule a flush soon after a mark; unset
     /// (tests, batch tools) means the owner saves on its own cadence.
     std::function<void()> request_flush;
 
-    void mark_artifacts_dirty() {
-        artifacts_dirty = true;
+    void mark_precompiled_dirty() {
+        precompiled_dirty = true;
         if(request_flush) {
             request_flush();
         }
@@ -408,7 +408,7 @@ struct Project {
             None,
             /// For a run reading what others built.
             ReadOnly,
-            /// For a run building artifacts (PCHs, PCMs) itself.
+            /// For a run building PCHs and PCMs itself.
             Writable,
         };
 
@@ -457,7 +457,7 @@ struct Project {
     /// Open the project over its final settings (load_settings), once,
     /// in a fixed order: the cache store and the index database; what the
     /// index remembers (the databases of earlier sessions, the provisional
-    /// members); the build; the saved state — the index, the artifact
+    /// members); the build; the saved state — the index, the precompiled
     /// records, the context choices — reconciled with the build when that
     /// is loaded: the units a rule keeps out and those whose command
     /// changed while no server ran leave the index, in memory only when the

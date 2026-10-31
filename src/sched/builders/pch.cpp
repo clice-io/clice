@@ -14,8 +14,8 @@ PCHBuilder::PCHBuilder(TaskGraph& graph, Project& project, WorkerPool& pool) :
     graph(graph), project(project), pool(pool) {}
 
 void PCHBuilder::register_runner() {
-    graph.register_family(Family::PCH,
-                          [this](RoundContext& ctx, NodeId id) { return run(ctx, id.key); });
+    graph.set_runner(NodeKind::PCH,
+                     [this](RoundContext& ctx, NodeId id) { return run(ctx, id.key); });
 }
 
 std::uint64_t PCHBuilder::intern(llvm::StringRef pch_key) {
@@ -215,7 +215,7 @@ async::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t k
         bp.pch = it->second.path;
         base = it->second.deps;
     }
-    auto inputs = [&](const worker::ArtifactBuildResult& built) {
+    auto inputs = [&](const worker::PrecompiledBuildResult& built) {
         auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
         merge_deps(deps, {&imported, &base});
         return deps;
@@ -351,7 +351,7 @@ async::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t k
 
     LOG_INFO("PCH built for {}: {}", bp.file, st.path);
 
-    project.mark_artifacts_dirty();
+    project.mark_precompiled_dirty();
 
     co_return RoundOutcome::Success;
 }

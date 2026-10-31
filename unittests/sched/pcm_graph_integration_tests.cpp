@@ -19,10 +19,10 @@ namespace {
 using DispatchFn = std::function<async::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
 using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
-constexpr Family test_family = Family{1};
+constexpr NodeKind test_kind = NodeKind{1};
 
 NodeId nid(std::uint32_t path_id) {
-    return {test_family, path_id};
+    return {test_kind, path_id};
 }
 
 /// Legacy-shaped adapter driving the generalized TaskGraph, so the case
@@ -32,21 +32,20 @@ struct GraphShim {
     TaskGraph graph;
 
     GraphShim(DispatchFn dispatch, ResolveFn resolve) {
-        graph.register_family(test_family,
-                              [dispatch = std::move(dispatch), resolve = std::move(resolve)](
-                                  RoundContext& ctx,
-                                  NodeId id) -> async::task<RoundOutcome> {
-                                  auto path_id = static_cast<std::uint32_t>(id.key);
-                                  for(auto dep: resolve(path_id)) {
-                                      switch(co_await ctx.depend(nid(dep))) {
-                                          case DependResult::Ready: break;
-                                          case DependResult::Failed: co_return RoundOutcome::Failed;
-                                          case DependResult::Cancelled:
-                                              co_return RoundOutcome::Stale;
-                                      }
-                                  }
-                                  co_return co_await dispatch(path_id, ctx.foreground());
-                              });
+        graph.set_runner(test_kind,
+                         [dispatch = std::move(dispatch),
+                          resolve = std::move(resolve)](RoundContext& ctx,
+                                                        NodeId id) -> async::task<RoundOutcome> {
+                             auto path_id = static_cast<std::uint32_t>(id.key);
+                             for(auto dep: resolve(path_id)) {
+                                 switch(co_await ctx.depend(nid(dep))) {
+                                     case DependResult::Ready: break;
+                                     case DependResult::Failed: co_return RoundOutcome::Failed;
+                                     case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                                 }
+                             }
+                             co_return co_await dispatch(path_id, ctx.foreground());
+                         });
     }
 
     async::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
@@ -87,7 +86,7 @@ struct GraphShim {
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM. Each build
 /// writes a PCM of its own under `tmp`, as the master names every build's
-/// artifact anew.
+/// PCM anew.
 DispatchFn make_dispatch(CompilationDatabase& cdb,
                          Toolchain& toolchain,
                          DependencyGraph& graph,
@@ -1229,7 +1228,7 @@ ZEST_CASE(shared_dep_import_switch) {
 
             // Simulate switching `import A` to `import C`: start the new
             // request first, then cancel the old one — the same order the
-            // supersede path in Compiler::ensure_compiled uses, so the
+            // edit path of ServedProject::ensure_compiled uses, so the
             // shared module's interest never drops to zero.
             start_c.set();
             req_a.cancel();

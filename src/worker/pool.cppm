@@ -718,7 +718,7 @@ private:
 
 /// The build a worker ran to its end, as the probe counts it: its kind and
 /// file. The request reached the worker, and it answered or died running
-/// it; a build the master withdrew — preempted, superseded — comes back
+/// it; a build the master withdrew — preempted, outdated — comes back
 /// cancelled whatever the worker had done, or as a compile the worker
 /// stopped. None for the other requests.
 template <typename Params, typename Result>
@@ -957,7 +957,7 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 
 /// Send a request through the worker deaths that are not its own doing.
 /// `send` makes one attempt (and may fail on its own to stop early, a
-/// superseded request); deliver resends once when another request's crash
+/// outdated request); deliver resends once when another request's crash
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the

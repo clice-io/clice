@@ -221,8 +221,8 @@ struct ProjectSettings {
     /// cache_identity() names the directory.
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Directory for the unified on-disk cache (PCH, PCM and "
-                         "index artifacts). Empty defaults to `${workspace}/.clice`, "
+                         "Directory for the unified on-disk cache (PCHs, PCMs and "
+                         "the index). Empty defaults to `${workspace}/.clice`, "
                          "which keeps itself out of version control and backups via "
                          "generated .gitignore and CACHEDIR.TAG markers (a "
                          "`.clice/config.toml` stays visible to Git; backup tools "

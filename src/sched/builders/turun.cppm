@@ -26,7 +26,7 @@ namespace clice {
 ///
 /// The family owns the run policy: command resolution, edges to the
 /// module PCMs and to the precompiled header the build declares, the
-/// worker dispatch, and the merge with its supersede gate. The
+/// worker dispatch, and the merge with its outdated check. The
 /// pump owns the debt table, the queue and the requeue budget; it reads
 /// this family's per-attempt outcome to update them.
 class TURunFamily {
@@ -39,7 +39,7 @@ public:
                 WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the pump against a
-    /// synthetic runner register their own under Family::TURun instead.
+    /// synthetic runner register their own under NodeKind::UnitRun instead.
     void register_runner();
 
     /// The frozen product plan of one run.
@@ -62,7 +62,7 @@ public:
         /// The run produced its planned products (the index merged into
         /// the project index, the tidy findings arrived in the outcome).
         Completed,
-        /// Deliberately produced nothing: the result was superseded, or
+        /// Deliberately produced nothing: the result is outdated, or
         /// the TU has no real command but keeps its last-known index.
         Skipped,
         /// Terminal failure on current content: the worker rejected the
@@ -129,9 +129,9 @@ public:
 
     /// Attempt context the pump threads through one run — work-input
     /// ownership (the take/finish contract), not staleness snapshots: the
-    /// supersede check asks the live pending table at merge time.
+    /// outdated check asks the live pending table at merge time.
     struct Guards {
-        std::function<bool()> superseded;
+        std::function<bool()> outdated;
     };
 
     /// Run one attempt of the plan for the TU through its graph node and
@@ -151,7 +151,7 @@ private:
     async::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
-        return {Family::TURun, path_id.raw};
+        return {NodeKind::UnitRun, path_id.raw};
     }
 
 private:

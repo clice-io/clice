@@ -31,7 +31,7 @@ public:
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
-    /// Family::PCM instead.
+    /// NodeKind::PCM instead.
     void register_runner();
 
     /// A scan's module dependencies, split by what a consumer does with
@@ -127,7 +127,7 @@ public:
     /// the edge — no side bookkeeping of who failed against the name.
     /// The high bit keeps the key space disjoint from path_ids.
     static NodeId unresolved_node(llvm::StringRef name) {
-        return {Family::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
+        return {NodeKind::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
     }
 
     /// The crash of the module's last build, while what it is known to
@@ -158,7 +158,7 @@ public:
 
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
-        return id.family == Family::PCM && (id.key >> 63) != 0;
+        return id.kind == NodeKind::PCM && (id.key >> 63) != 0;
     }
 
     /// A module name gained a provider it lacked: void the sentinel's
@@ -215,7 +215,7 @@ private:
     bool drop_evicted(Fid module, PCMBuild& build);
 
     static NodeId node(Fid path_id) {
-        return {Family::PCM, path_id.raw};
+        return {NodeKind::PCM, path_id.raw};
     }
 
     /// A unit's last precise scan and what it ran against.

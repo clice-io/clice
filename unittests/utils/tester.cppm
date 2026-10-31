@@ -14,7 +14,7 @@ namespace clice::testing {
 struct Tester {
     /// Where the PCHs and PCMs of the test are written; removed with the
     /// tester, after the units that write them when destroyed.
-    TempDir artifacts{"clice-artifacts"};
+    TempDir precompiled{"clice-precompiled"};
 
     CompilationParams params;
     FileTable file_table;
@@ -45,14 +45,14 @@ struct Tester {
 
     std::vector<ModuleFile> module_files;
 
-    /// How many paths artifact() handed out.
-    std::uint32_t artifact_count = 0;
+    /// How many paths precompiled_path() handed out.
+    std::uint32_t precompiled_paths = 0;
 
-    /// A path in `artifacts` for a file with this extension, one no other
+    /// A path in `precompiled` for a file with this extension, one no other
     /// call returns.
-    std::string artifact(llvm::StringRef extension) {
-        artifact_count += 1;
-        return artifacts.path(std::format("{}.{}", artifact_count, extension));
+    std::string precompiled_path(llvm::StringRef extension) {
+        precompiled_paths += 1;
+        return precompiled.path(std::format("{}.{}", precompiled_paths, extension));
     }
 
     void add_focus(llvm::StringRef file, llvm::StringRef content) {

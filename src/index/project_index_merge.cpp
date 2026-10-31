@@ -382,10 +382,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             }
         });
     }
-    // A run that started after the unit fell behind the disk has seen what
-    // the disk holds.
-    if(auto it = behind.find(tu_path_id); it != behind.end() && it->second < view.built_at()) {
-        behind.erase(it);
+    // A run that started after the unit became outdated has seen what the
+    // disk holds.
+    if(auto it = outdated.find(tu_path_id); it != outdated.end() && it->second < view.built_at()) {
+        outdated.erase(it);
     }
 
     LOG_INFO("Merged TUIndex: {} paths, {} sections ({} hits, {} appended, {} rebuilt)",
@@ -433,7 +433,7 @@ std::vector<std::uint64_t>
         auto [it, inserted] = holds.try_emplace(std::pair(producer.unit, producer.run));
         if(inserted) {
             auto unit = find_unit(producer.unit);
-            it->second = unit && *unit != tu && current_run(producer) && !behind.contains(*unit);
+            it->second = unit && *unit != tu && current_run(producer) && !outdated.contains(*unit);
         }
         return it->second;
     };
@@ -471,8 +471,8 @@ void ProjectIndex::drop(Fid tu_path_id, IndexReport& report) {
     }
 }
 
-void ProjectIndex::mark_behind(Fid tu) {
-    behind[tu] =
+void ProjectIndex::mark_outdated(Fid tu) {
+    outdated[tu] =
         chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch())
             .count();
 }

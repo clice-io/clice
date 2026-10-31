@@ -23,7 +23,7 @@ TURunFamily::TURunFamily(TaskGraph& graph,
     graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), pool(pool) {}
 
 void TURunFamily::register_runner() {
-    graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
+    graph.set_runner(NodeKind::UnitRun, [this](RoundContext& ctx, NodeId id) {
         return round(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
@@ -140,7 +140,7 @@ async::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             break;
         }
         for(auto dep: deps.resolved) {
-            if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
+            if(co_await ctx.depend({NodeKind::PCM, dep.raw}) == DependResult::Cancelled) {
                 finished[path_id] = {.result = Result::Preempted};
                 co_return RoundOutcome::Stale;
             }
@@ -269,8 +269,8 @@ async::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // change whose erase+re-enqueue must not be undone by an
             // in-flight merge of the old-command index. Drop the merge; the
             // follow-up slot redoes it.
-            if(guards.superseded && guards.superseded()) {
-                LOG_INFO("Discarding superseded index result for {}", file_path);
+            if(guards.outdated && guards.outdated()) {
+                LOG_INFO("Discarding outdated index result for {}", file_path);
                 finished[path_id] = {.result = Result::Skipped};
                 co_return RoundOutcome::Stale;
             }

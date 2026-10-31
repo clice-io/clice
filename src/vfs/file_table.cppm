@@ -9,11 +9,11 @@ import :vfs.path;
 
 namespace clice {
 
-/// One dependency of a compilation artifact.
+/// One dependency of a build's product.
 ///
 /// `version` names the FileVersion the build actually consumed (interned
 /// from the worker-reported content hash); its check is paid once per
-/// turn for every artifact and TU referencing it (FileTable::
+/// turn for every product and TU referencing it (FileTable::
 /// check_version). An invalid version means the build saw no nameable
 /// bytes: `missing` distinguishes "the file was absent" — a place a failed
 /// lookup looked, or a file gone by the capture — (appearing is the
@@ -25,7 +25,7 @@ struct DepState {
     bool missing = false;
 };
 
-/// Staleness snapshot for compilation artifacts (PCH, PCM, AST, synthesized
+/// Staleness snapshot for build products (PCH, PCM, AST, synthesized
 /// header preambles): the consumed versions, checked via deps_changed.
 using DepsSnapshot = llvm::SmallVector<DepState>;
 
@@ -125,7 +125,7 @@ struct FileTable {
     vfs::DiskState disk{spellings};
 
     /// A content version of a file: `content_hash` names the bytes (for
-    /// build artifacts, the bytes the build consumed — reported by the
+    /// build products, the bytes the build consumed — reported by the
     /// worker, never replaced by a later disk read). Whether the disk still
     /// holds them is asked of the file's own observation, never recorded
     /// on the version.

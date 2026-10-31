@@ -27,25 +27,26 @@ enum class ReindexReason : std::uint8_t {
     ContentChanged,
 };
 
-/// The pump's per-file debt table — the take/finish contract behind
-/// background reindexing:
+/// The background index's table of pending reindexes, per file — the
+/// take/finish contract behind background reindexing:
 ///
-/// - record() books debt; within one queued slot ContentChanged absorbs,
-///   while a fresh slot after consumption carries its own kind (the
-///   consumed pass owns the earlier debt).
-/// - take() atomically takes the file's current debt at dispatch;
-///   events arriving during the flight book into the entry as newer debt.
-/// - finish() consumes exactly the taken debt: a newer recording
+/// - record() books a pending reindex; within one queued slot
+///   ContentChanged absorbs, while a fresh slot after consumption carries
+///   its own kind (the consumed pass owns the earlier one).
+/// - take() atomically takes the file's pending reindex at dispatch;
+///   events arriving during the flight book into the entry as a newer one.
+/// - finish() consumes exactly the taken reindex: a newer recording
 ///   survives an older attempt's completion.
-/// - on_dispatch_failure() merges failed taken debt back into pending debt
-///   (bounded for worker deaths by the requeue budget), unless newer
-///   content already re-booked the work or the file's own run crashed.
+/// - on_dispatch_failure() merges a failed taken reindex back into the
+///   pending one (bounded for worker deaths by the requeue budget), unless
+///   newer content already re-booked the work or the file's own run
+///   crashed.
 ///
-/// A TakenDebt carries the recording's sequence number as its identity; the
+/// A TakenReindex carries the recording's sequence number as its identity; the
 /// table never touches queues, sessions or workers.
 class PendingTable {
 public:
-    struct TakenDebt {
+    struct TakenReindex {
         Fid id;
         std::uint64_t seq = 0;
     };
@@ -69,11 +70,11 @@ public:
         Dropped,
         /// The failed dispatch carried bytes older than the pending
         /// content; the newer content's own booking redoes the work.
-        Superseded,
+        Outdated,
         /// The file's run crashed, or its requeue budget is spent; the
         /// file is abandoned and its table state cleared.
         GaveUp,
-        /// The taken debt merged back into pending debt for the next round.
+        /// The taken reindex merged back into the pending one for the next round.
         Requeued,
     };
 
@@ -94,35 +95,35 @@ public:
     /// the crashes the old bytes caused say nothing about the fixed ones.
     bool record(Fid id, ReindexReason reason);
 
-    /// Atomically take the file's current debt at dispatch, consuming
+    /// Atomically take the file's pending reindex at dispatch, consuming
     /// its queued-slot state. Empty when the entry was cleared while the
     /// slot sat in the queue (file removed): the slot is skipped.
-    std::optional<TakenDebt> take(Fid id);
+    std::optional<TakenReindex> take(Fid id);
 
-    /// The TakenDebt a dispatch of the file's current debt would take, with
+    /// The TakenReindex a dispatch of the file's pending reindex would take, with
     /// nothing consumed — for waiters binding to the pending attempt.
-    std::optional<TakenDebt> peek(Fid id) const;
+    std::optional<TakenReindex> peek(Fid id) const;
 
-    /// Finish the taken debt after its attempt: erases the entry unless
-    /// a recording during the flight booked newer debt, which survives.
-    void finish(const TakenDebt& taken);
+    /// Finish the taken reindex after its attempt: erases the entry unless
+    /// a recording during the flight booked a newer one, which survives.
+    void finish(const TakenReindex& taken);
 
-    /// The taken debt's result no longer commits: the entry was cleared, or a
+    /// The taken reindex's result no longer commits: the entry was cleared, or a
     /// ContentChanged recording overtook the launch — its bytes describe
     /// text that no longer exists. A deps-only recording is deliberately
-    /// NOT superseding: the in-flight index is positionally right, and
+    /// NOT outdating it: the in-flight index is positionally right, and
     /// suppressing it would trade a tolerated semantic drift for a
     /// coverage hole.
-    bool superseded(const TakenDebt& taken) const;
+    bool outdated(const TakenReindex& taken) const;
 
-    /// Merge failed taken debt back into pending debt. A crash of the
+    /// Merge a failed taken reindex back into the pending one. A crash of the
     /// file's own abandons it; only lost runs spend the bounded budget — a
     /// preemption says nothing about the file, and capping it would
-    /// silently drop coverage. The requeue carries the debt class the
+    /// silently drop coverage. The requeue carries the reason the
     /// dispatch was launched for, not the entry's current one: a
     /// deps-only downgrade during the flight bet on the content pass
     /// finishing, and a failed pass leaves the edit uncovered.
-    FailureOutcome on_dispatch_failure(const TakenDebt& taken, Failure failure);
+    FailureOutcome on_dispatch_failure(const TakenReindex& taken, Failure failure);
 
     /// Why the file awaits re-indexing (queued or in flight), or nullopt
     /// when nothing is pending. O(1), no I/O.
@@ -138,13 +139,13 @@ public:
         return entries.count(id);
     }
 
-    /// Whether an attempt took the file's debt and runs still, with no
+    /// Whether an attempt took the file's pending reindex and runs still, with no
     /// newer recording queued after it.
     bool in_flight(Fid id) const {
         return entries.count(id) && !queued.contains(id);
     }
 
-    /// Forget a file's debt (file removed from disk, or given up):
+    /// Forget a file's pending reindex (file removed from disk, or given up):
     /// nothing is left to reindex, and a lingering ContentChanged reason
     /// would suppress its deliberately still-serving shard forever. A slot
     /// still in the queue keeps its mark: dispatch skips it, and a file
@@ -154,16 +155,16 @@ public:
         entries.erase(id);
     }
 
-    /// Every file with booked debt (batch debt reporting).
+    /// Every file with a pending reindex.
     llvm::SmallVector<Fid> pending_files() const;
 
-    /// No debt and no queued slots.
+    /// No pending reindex and no queued slots.
     bool empty() const {
         return entries.empty() && queued.empty();
     }
 
     /// Some file still holds a queued-and-unconsumed slot. The drained
-    /// queue's compaction invariant: debt legitimately outlives the round
+    /// queue's compaction invariant: a pending reindex legitimately outlives the round
     /// (a round the graph refused keeps its booking), a queued slot must
     /// not.
     bool has_queued_slots() const {
@@ -176,7 +177,7 @@ private:
     struct Entry {
         ReindexReason reason;
         std::uint64_t seq;
-        /// The sequence number of the newest ContentChanged recording. superseded()
+        /// The sequence number of the newest ContentChanged recording. outdated()
         /// compares against this, not `seq`: a deps-only requeue
         /// during a flight bumps `seq` (to survive the finish) but
         /// must not discard an in-flight content pass.

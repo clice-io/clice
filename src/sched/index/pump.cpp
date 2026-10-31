@@ -232,7 +232,7 @@ void IndexPump::schedule(bool immediate) {
     }
 }
 
-auto IndexPump::note_dispatch_failure(const PendingTable::TakenDebt& taken,
+auto IndexPump::note_dispatch_failure(const PendingTable::TakenReindex& taken,
                                       PendingTable::Failure failure)
     -> PendingTable::FailureDecision {
     auto outcome = pending_table.on_dispatch_failure(taken, failure);
@@ -342,7 +342,7 @@ void IndexPump::record_too_big(Fid file, std::uint64_t memory) {
     too_big_ids[file] = memory;
 }
 
-async::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
+async::task<> IndexPump::run_index_task(PendingTable::TakenReindex taken,
                                         std::size_t index,
                                         std::size_t total,
                                         RoundState& round) {
@@ -363,7 +363,7 @@ async::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         auto outcome = co_await turun.run(
             server_path_id,
             {.index = true, .errors = errors_wanted, .skipped_diagnostics = skipped},
-            {.superseded = [this, taken] { return pending_table.superseded(taken); }});
+            {.outdated = [this, taken] { return pending_table.outdated(taken); }});
         if(outcome.result == TURunFamily::Result::Shutdown) {
             // The graph refused the round: nothing ran, so the debt
             // stays booked for the final snapshot and the next
@@ -433,8 +433,8 @@ async::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                                  file_path);
                         break;
                     }
-                    case PendingTable::FailureDecision::Superseded: {
-                        LOG_INFO("[{}/{}] Index failure for superseded content of {}",
+                    case PendingTable::FailureDecision::Outdated: {
+                        LOG_INFO("[{}/{}] Index failure for outdated content of {}",
                                  index,
                                  total,
                                  file_path);

@@ -75,7 +75,7 @@ void ServedProject::reindex(Fid path_id, bool content) {
 /// An invalidated dependent recompiles when it is open, and reindexes
 /// unless its document's compile serves it.
 void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
-    project.index.mark_behind(path_id);
+    project.index.mark_outdated(path_id);
     mark_stale(path_id, refresh);
     if(!compiled_by_session(path_id)) {
         reindex(path_id, false);
@@ -133,7 +133,7 @@ void ServedProject::cascade_compile_graph(Fid path_id, bool& refresh) {
 
 void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh) {
     // Every consumer whose scan met the name unresolved holds a durable
-    // edge to its sentinel; the graph cascade is the complete list — no
+    // edge to its unresolved-import node; the graph cascade is the complete list — no
     // side bookkeeping, no reverse-map walk. Their shards lack the
     // module's symbols and their dep snapshots never named the
     // interface, so the content-hash gate would filter a DepsOnly
@@ -145,9 +145,9 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
             continue;
         }
         auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
-        if(id.family == Family::TURun) {
+        if(id.kind == NodeKind::UnitRun) {
             reindex(path_id, true);
-        } else if(id.family == Family::AST) {
+        } else if(id.kind == NodeKind::AST) {
             if(find_document(path_id)) {
                 mark_stale(path_id, refresh);
                 if(!compiled_by_session(path_id)) {
@@ -171,8 +171,8 @@ void ServedProject::rescan_disk_state(Fid path_id, bool& refresh) {
 
     // A rescan that introduced a module declaration may have given the
     // name its first provider: consumers that scanned it unresolved hold
-    // edges to its sentinel, not to any real node a module-graph cascade
-    // could reach.
+    // edges to its unresolved-import node, not to any real node a
+    // module-graph cascade could reach.
     if(!new_module.empty()) {
         if(project.dep_graph.lookup_module(new_module).size() == 1) {
             provider_appeared(new_module, refresh);
@@ -234,7 +234,7 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
             // other file compiles against and what the index describes.
             cascade_disk_content_change(path_id, refresh);
             // A unit of its own reads the file as well.
-            project.index.mark_behind(path_id);
+            project.index.mark_outdated(path_id);
             reindex(path_id, true);
             continue;
         }
@@ -288,7 +288,7 @@ void ServedProject::build_changed(CDBDiff delta) {
     auto providers = project.rebuild_dependency_graph();
     delta.append(providers.provisional);
 
-    // A module name that just gained its first provider: its sentinel's
+    // A module name that just gained its first provider: its unresolved-import node's
     // dependents are the TUs that scanned it unresolved — the delta walk
     // below cannot reach them (they hold no edge to any real node). A name
     // whose providers changed: importers hold edges to the ones they
@@ -306,7 +306,7 @@ void ServedProject::build_changed(CDBDiff delta) {
     // an input that content-based staleness cannot see, whether it
     // appeared, changed or vanished. PCH/PCM keys embed the canonical
     // flags, so pull-side caches miss naturally.
-    auto invalidate_entry = [&](Fid path_id, bool retired) {
+    auto invalidate_entry = [&](Fid path_id, bool removed_from_build) {
         // The next compile re-resolves the command (added: first real entry
         // replaces the guessed one; changed: new flags; removed: fall back).
         mark_stale(path_id, refresh);
@@ -322,7 +322,7 @@ void ServedProject::build_changed(CDBDiff delta) {
         index::IndexReport report;
         project.index.drop(path_id, report);
         sched.pump.apply_report(report);
-        if(retired) {
+        if(removed_from_build) {
             sched.pump.clear_pending(path_id);
         } else {
             reindex(path_id, true);
@@ -343,10 +343,10 @@ void ServedProject::build_changed(CDBDiff delta) {
     };
 
     for(auto path_id: delta.added) {
-        invalidate_entry(path_id, /*retired=*/false);
+        invalidate_entry(path_id, /*removed_from_build=*/false);
     }
     for(auto path_id: delta.changed) {
-        invalidate_entry(path_id, /*retired=*/false);
+        invalidate_entry(path_id, /*removed_from_build=*/false);
     }
     for(auto path_id: delta.removed) {
         // The database that owned the entry reloaded fine and no longer
@@ -354,9 +354,9 @@ void ServedProject::build_changed(CDBDiff delta) {
         // default command still covers it, which makes this a command
         // change. (A database that vanishes keeps serving its entries — a
         // missing file never reloads — so this is not a removal from
-        // disk.) The graph rebuild above already dropped a retired file's
+        // disk.) The graph rebuild above already dropped the removed file's
         // source role, and the choices' recheck sees it.
-        invalidate_entry(path_id, /*retired=*/project.build.commands(path_id).empty());
+        invalidate_entry(path_id, /*removed_from_build=*/project.build.commands(path_id).empty());
     }
     finish_changes(refresh);
 

@@ -295,7 +295,7 @@ RequestResult<worker::CompileParams>
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,
             };
-            use_artifacts(cp.input, doc->pch, doc->pcms);
+            use_precompiled(cp.input, doc->pch, doc->pcms);
             cp.input.add_focus(params.path, doc->text);
             cp.input.add_synthesized(params.synthesized);
 
@@ -371,7 +371,7 @@ RequestResult<worker::CompileParams>
                          timer.ms(),
                          unit->setup_fail());
                 // An incomplete unit can never serve a query, yet it pins
-                // the consumed artifacts — on Windows a mapped PCH cannot
+                // the consumed PCHs and PCMs — on Windows a mapped PCH cannot
                 // be replaced on disk, so holding it would block the
                 // master's rebuild of a retracted pair.
                 unit.reset();

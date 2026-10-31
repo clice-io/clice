@@ -281,8 +281,8 @@ ZEST_CASE(StaleUnitsFollowDisk) {
     auto file_of = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    ZEXPECT(IndexInternals::behind(f.project.index, file_of("main.cpp")));
-    ZEXPECT(!IndexInternals::behind(f.project.index, file_of("other.cpp")));
+    ZEXPECT(IndexInternals::outdated(f.project.index, file_of("main.cpp")));
+    ZEXPECT(!IndexInternals::outdated(f.project.index, file_of("other.cpp")));
 }
 
 ZEST_CASE(OwedUnitsPersist) {
@@ -501,7 +501,7 @@ ZEST_CASE(LoadDamageStartsOver) {
 
 ZEST_CASE(OtherFormatDiscardsAll) {
     // A database another format version wrote is discarded whole, the
-    // context choices and artifact records with it.
+    // context choices and precompiled records with it.
     TempDir tmp;
     index::HeaderBlob header;
     header.format_version = index::index_format_version + 1;

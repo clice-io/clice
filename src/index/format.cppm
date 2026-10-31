@@ -25,7 +25,7 @@ namespace clice::index {
 /// v10: an include location's `include` names the directive's containing
 /// file, not that file's includer; v11: file-version stamps are the file
 /// table's corroborated shared stamps, adopted verbatim at load, and the
-/// artifact metadata blobs joined the database; v12: symbol hashes are
+/// precompiled records blobs joined the database; v12: symbol hashes are
 /// entities computed by semantic/identity; v13: symbol entries carry the bare
 /// name, parent, specialization arguments, flags and canonical file, the
 /// include tree is one node type in the TU index and in manifests, and module

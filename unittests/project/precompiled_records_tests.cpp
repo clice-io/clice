@@ -16,7 +16,7 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(ArtifactRecords) {
+ZEST_SUITE(PrecompiledRecords) {
 
 ZEST_CASE(StaleFormatDropsPch) {
     // A .pch.idx index written under an older index format is
@@ -26,7 +26,7 @@ ZEST_CASE(StaleFormatDropsPch) {
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
     auto dep_path = tmp.path("dep.h");
-    std::string artifacts;
+    std::string records;
 
     auto setup = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
@@ -50,12 +50,12 @@ ZEST_CASE(StaleFormatDropsPch) {
         st.path = "k.pch";
         st.deps.push_back(
             {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
-        f.project.mark_artifacts_dirty();
+        f.project.mark_precompiled_dirty();
         f.save();
 
-        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        auto blob = f.project.database->read(index::BlobKind::PrecompiledRecords, "artifacts");
         ZASSERT(bool(blob));
-        artifacts = blob.buffer->getBuffer().str();
+        records = blob.buffer->getBuffer().str();
     }
 
     {
@@ -68,12 +68,12 @@ ZEST_CASE(StaleFormatDropsPch) {
         // Put back the blob as an older binary would have written it.
         auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
         auto stale = std::format("\"pch_index_format\":{}", index::index_format_version - 1);
-        auto pos = artifacts.find(current);
+        auto pos = records.find(current);
         ZASSERT(pos != std::string::npos);
-        artifacts.replace(pos, current.size(), stale);
-        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
+        records.replace(pos, current.size(), stale);
+        index::BlobDatabase::Blob blob{index::BlobKind::PrecompiledRecords,
                                        "artifacts",
-                                       copy_bytes(artifacts)};
+                                       copy_bytes(records)};
         ZASSERT(f.project.database->write(blob, {}));
     }
 
@@ -110,19 +110,19 @@ ZEST_CASE(OlderRecordsLoad) {
         st.path = "k.pch";
         st.deps.push_back(
             {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
-        f.project.mark_artifacts_dirty();
+        f.project.mark_precompiled_dirty();
         f.save();
 
-        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        auto blob = f.project.database->read(index::BlobKind::PrecompiledRecords, "artifacts");
         ZASSERT(bool(blob));
-        std::string artifacts = blob.buffer->getBuffer().str();
+        std::string records = blob.buffer->getBuffer().str();
         auto trials = std::string_view(R"("trials":[])");
-        auto pos = artifacts.find(trials);
+        auto pos = records.find(trials);
         ZASSERT(pos != std::string::npos);
-        artifacts.replace(pos, trials.size(), R"("header_modes":[])");
-        index::BlobDatabase::Blob older{index::BlobKind::ArtifactRecords,
+        records.replace(pos, trials.size(), R"("header_modes":[])");
+        index::BlobDatabase::Blob older{index::BlobKind::PrecompiledRecords,
                                         "artifacts",
-                                        copy_bytes(artifacts)};
+                                        copy_bytes(records)};
         ZASSERT(f.project.database->write(older, {}));
     }
 
@@ -156,12 +156,12 @@ ZEST_CASE(DeplessPcmDropped) {
         st.path = "m.pcm";
         st.key = "k";
         st.blob = "k";
-        f.project.mark_artifacts_dirty();
+        f.project.mark_precompiled_dirty();
         f.save();
 
         // The premise: the dep-less entry was persisted, so the tail
         // assertion exercises the load-side drop, not a write-side skip.
-        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        auto blob = f.project.database->read(index::BlobKind::PrecompiledRecords, "artifacts");
         ZASSERT(bool(blob));
         ZASSERT(blob.buffer->getBuffer().contains("\"key\":\"k\""));
     }
@@ -173,7 +173,7 @@ ZEST_CASE(DeplessPcmDropped) {
 }
 
 ZEST_CASE(TrialsPersisted) {
-    // A trial's result rides the artifact records, either outcome, with
+    // A trial's result rides the precompiled records, either outcome, with
     // what it read: a restart over unchanged files adopts it instead of
     // running the trial again; one over a changed file it read does not.
     TempDir tmp;
@@ -223,7 +223,7 @@ ZEST_CASE(TrialsPersisted) {
     ZEXPECT(!self_contained(f.project, {id, 1}, false).has_value());
 }
 
-};  // ZEST_SUITE(ArtifactRecords)
+};  // ZEST_SUITE(PrecompiledRecords)
 
 }  // namespace
 }  // namespace clice::testing

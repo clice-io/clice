@@ -15,9 +15,9 @@ namespace clice {
 
 /// Hand a compile the master's PCH and PCMs. The PCH comes from clice's
 /// store, so the process keeps its mapping for later compiles.
-inline void use_artifacts(CompilationInput& input,
-                          const std::pair<std::string, std::uint32_t>& pch,
-                          const std::unordered_map<std::string, std::string>& pcms) {
+inline void use_precompiled(CompilationInput& input,
+                            const std::pair<std::string, std::uint32_t>& pch,
+                            const std::unordered_map<std::string, std::string>& pcms) {
     if(!pch.first.empty()) {
         input.pch = pch;
         vfs::keep_mapped(pch.first);

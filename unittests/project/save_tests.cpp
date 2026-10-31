@@ -109,7 +109,7 @@ ZEST_CASE(UnownedContextsPassThrough) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    f.project.mark_artifacts_dirty();
+    f.project.mark_precompiled_dirty();
     f.save();
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));

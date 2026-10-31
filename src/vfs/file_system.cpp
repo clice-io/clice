@@ -192,9 +192,9 @@ TextCache& texts() {
     return cache;
 }
 
-/// Mappings of the artifacts keep_mapped() named, most recently named
+/// Mappings of the files keep_mapped() named, most recently named
 /// first. A mapping is used while the file stats as it did when mapped.
-class MappedArtifacts {
+class Mappings {
 public:
     void keep(llvm::StringRef path) {
         auto key = spelling(path);
@@ -259,9 +259,9 @@ private:
     std::vector<Entry> entries;
 };
 
-MappedArtifacts& mapped() {
-    static MappedArtifacts artifacts;
-    return artifacts;
+Mappings& mapped() {
+    static Mappings mappings;
+    return mappings;
 }
 
 /// A source file served from the process's texts.

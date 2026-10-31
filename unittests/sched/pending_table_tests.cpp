@@ -9,9 +9,9 @@ namespace {
 using Decision = PendingTable::FailureDecision;
 using Failure = PendingTable::Failure;
 
-/// The take/finish contract in isolation: debt is taken atomically at
-/// dispatch, flight-time recordings book newer debt, success consumes
-/// only the taken debt, and failure merges the taken debt back — bounded
+/// The take/finish contract in isolation: a pending reindex is taken
+/// atomically at dispatch, flight-time recordings book a newer one, success
+/// consumes only the taken one, and failure merges it back — bounded
 /// for crashes.
 ZEST_SUITE(PendingTable) {
 
@@ -31,8 +31,8 @@ ZEST_CASE(content_absorbs_queued) {
     ZEXPECT(table.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(consumed_pass_owns_debt) {
-    // A deps-only recording after the slot was taken is new debt of its
+ZEST_CASE(consumed_pass_owns_reindex) {
+    // A deps-only recording after the slot was taken is a new reindex of its
     // own kind: the in-flight pass owns the earlier content change, and
     // keeping ContentChanged would suppress the file's index past it.
     table.record(Fid{1}, ReindexReason::ContentChanged);
@@ -43,9 +43,9 @@ ZEST_CASE(consumed_pass_owns_debt) {
     ZEXPECT(table.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
 }
 
-ZEST_CASE(finish_spares_newer_debt) {
-    // A recording during the flight books newer debt; the older attempt's
-    // finish must leave it standing, and only the newer taken debt clears it.
+ZEST_CASE(finish_spares_newer_reindex) {
+    // A recording during the flight books a newer reindex; the older attempt's
+    // finish must leave it standing, and only the newer taken one clears it.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto old_taken = table.take(Fid{1});
     ZASSERT(old_taken);
@@ -61,28 +61,28 @@ ZEST_CASE(finish_spares_newer_debt) {
     ZEXPECT(table.empty());
 }
 
-ZEST_CASE(deps_never_supersede) {
-    // Only newer content supersedes an in-flight pass: its index describes
+ZEST_CASE(deps_never_outdate) {
+    // Only newer content makes an in-flight pass outdated: its index describes
     // text that no longer exists. A deps-only recording does not — the
     // index is positionally right and the follow-up covers the drift.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = table.take(Fid{1});
     ZASSERT(taken);
-    ZEXPECT(!table.superseded(*taken));
+    ZEXPECT(!table.outdated(*taken));
 
     table.record(Fid{1}, ReindexReason::DepsOnly);
-    ZEXPECT(!table.superseded(*taken));
+    ZEXPECT(!table.outdated(*taken));
 
     table.record(Fid{1}, ReindexReason::ContentChanged);
-    ZEXPECT(table.superseded(*taken));
+    ZEXPECT(table.outdated(*taken));
 
     // A cleared entry (file removed) also commits nothing.
     table.clear(Fid{1});
-    ZEXPECT(table.superseded(*taken));
+    ZEXPECT(table.outdated(*taken));
 }
 
-ZEST_CASE(superseded_failure_spends_nothing) {
-    // A failed dispatch of superseded bytes neither requeues nor spends
+ZEST_CASE(outdated_failure_spends_nothing) {
+    // A failed dispatch of outdated bytes neither requeues nor spends
     // the fresh content's crash budget: the newer booking redoes the
     // work with a full budget of its own.
     table.record(Fid{1}, ReindexReason::ContentChanged);
@@ -90,9 +90,9 @@ ZEST_CASE(superseded_failure_spends_nothing) {
     ZASSERT(stale);
     table.record(Fid{1}, ReindexReason::ContentChanged);
 
-    ZEXPECT(table.on_dispatch_failure(*stale, Failure::Lost).decision == Decision::Superseded);
+    ZEXPECT(table.on_dispatch_failure(*stale, Failure::Lost).decision == Decision::Outdated);
 
-    // The fresh debt still has the whole budget: `budget` crashes
+    // The fresh reindex still has the whole budget: `budget` crashes
     // requeue before the next one abandons.
     for(unsigned i = 0; i < budget; i += 1) {
         auto taken = table.take(Fid{1});
@@ -120,7 +120,7 @@ ZEST_CASE(preemption_needs_no_budget) {
 }
 
 ZEST_CASE(requeue_carries_content) {
-    // The requeue carries the debt class the dispatch was launched for: a
+    // The requeue carries the reason the dispatch was launched for: a
     // deps-only downgrade during the flight bet on the content pass
     // committing, and a failed pass leaves the edit uncovered.
     table.record(Fid{1}, ReindexReason::ContentChanged);

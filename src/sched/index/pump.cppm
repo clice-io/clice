@@ -166,8 +166,7 @@ public:
     /// the stored shards, not blanking every query until the pass drains —
     /// and the units owed the variants a rebuild discarded, read fresh by
     /// content; then schedule. With indexing off it queues nothing, but the
-    /// units whose runs walked a changed file are still marked behind the
-    /// disk.
+    /// units whose runs walked a changed file are still marked outdated.
     void enqueue_outdated(llvm::ArrayRef<Fid> members);
 
     /// Take an index report: book its reindex debt into the table — before
@@ -275,7 +274,7 @@ private:
     /// Merge a failed dispatch's taken debt back through the table and apply
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
-    PendingTable::FailureDecision note_dispatch_failure(const PendingTable::TakenDebt& taken,
+    PendingTable::FailureDecision note_dispatch_failure(const PendingTable::TakenReindex& taken,
                                                         PendingTable::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed sequence number the
@@ -320,7 +319,7 @@ private:
     /// One dispatched unit of a background round: admit, run the TU through
     /// its TURun node, take the merge report, finish the taken debt and
     /// report progress.
-    async::task<> run_index_task(PendingTable::TakenDebt taken,
+    async::task<> run_index_task(PendingTable::TakenReindex taken,
                                  std::size_t index,
                                  std::size_t total,
                                  RoundState& round);

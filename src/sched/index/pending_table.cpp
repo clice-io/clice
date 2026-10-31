@@ -12,7 +12,7 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
     // Within one queued slot ContentChanged is absorbing: a deps-only
     // cascade cannot downgrade a file whose own content already changed.
     // Across slots it is not: a deps-only requeue after the previous slot
-    // was consumed is new debt of its own kind — the in-flight (or
+    // was consumed is a new pending reindex of its own kind — the in-flight (or
     // finished) pass already covers the earlier content change, and
     // keeping ContentChanged would suppress the file's index past that
     // pass. The fresh sequence number invalidates the finish of any attempt
@@ -34,35 +34,35 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
     return fresh_slot;
 }
 
-std::optional<PendingTable::TakenDebt> PendingTable::take(Fid id) {
+std::optional<PendingTable::TakenReindex> PendingTable::take(Fid id) {
     queued.erase(id);
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return TakenDebt{id, it->second.seq};
+    return TakenReindex{id, it->second.seq};
 }
 
-std::optional<PendingTable::TakenDebt> PendingTable::peek(Fid id) const {
+std::optional<PendingTable::TakenReindex> PendingTable::peek(Fid id) const {
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return TakenDebt{id, it->second.seq};
+    return TakenReindex{id, it->second.seq};
 }
 
-void PendingTable::finish(const TakenDebt& taken) {
+void PendingTable::finish(const TakenReindex& taken) {
     if(auto it = entries.find(taken.id); it != entries.end() && it->second.seq == taken.seq) {
         entries.erase(it);
     }
 }
 
-bool PendingTable::superseded(const TakenDebt& taken) const {
+bool PendingTable::outdated(const TakenReindex& taken) const {
     auto it = entries.find(taken.id);
     return it == entries.end() || it->second.content_seq > taken.seq;
 }
 
-PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& taken,
+PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenReindex& taken,
                                                                Failure failure) {
     // Only while the entry survives: a file removed from disk mid-flight
     // was cleared and has nothing to redo.
@@ -76,7 +76,7 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
     // it neither spends the fresh budget nor requeues — the newer
     // content's own booking redoes the work.
     if(it->second.content_seq > taken.seq) {
-        return {FailureDecision::Superseded};
+        return {FailureDecision::Outdated};
     }
 
     if(failure == Failure::Crashed ||
@@ -93,7 +93,7 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
         it->second.requeue_attempts += 1;
     }
 
-    // Requeue with the debt class this dispatch carried, not the entry's
+    // Requeue with the reason this dispatch carried, not the entry's
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
     // restore the table entry afterwards.

@@ -85,7 +85,7 @@ ZEST_CASE(EmptyBatchNoEffects) {
 
 ZEST_CASE(NewProviderDirtiesImporters) {
     // Consumers that scanned the name unresolved hold durable edges to
-    // its sentinel node; the first provider cascades through them. A
+    // its unresolved-import node; the first provider cascades through them. A
     // closed TU reindexes as ContentChanged (its dep snapshot never
     // named the interface, so the hash gate cannot see the change); an
     // open document recompiles. Nothing is ever dropped — a consumer
@@ -104,8 +104,8 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     auto closed = fixture.intern("/proj/closed.cpp");
     auto open = fixture.open("/proj/open.cpp", "")->path_id;
     index_unit(closed);
-    served.sched.graph.declare({Family::TURun, closed.raw}, {PCMBuilder::unresolved_node("m")});
-    served.sched.graph.declare({Family::AST, open.raw}, {PCMBuilder::unresolved_node("m")});
+    served.sched.graph.declare({NodeKind::UnitRun, closed.raw}, {PCMBuilder::unresolved_node("m")});
+    served.sched.graph.declare({NodeKind::AST, open.raw}, {PCMBuilder::unresolved_node("m")});
 
     served.disk_changed({iface});
 
@@ -123,7 +123,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
 
 ZEST_CASE(ReloadProviderCascades) {
     // The database-reload variant of provider appearance: the provider-set
-    // diff drives the same sentinel cascade, and a consumer retired by the
+    // diff drives the same unresolved-import cascade, and a consumer removed from the build by the
     // very same reload leaves the index without a reindex being owed.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
@@ -134,14 +134,15 @@ ZEST_CASE(ReloadProviderCascades) {
                   {tmp.root, tmp.path("m.cppm"), {}}
     }));
     auto iface = fixture.intern(tmp.path("m.cppm"));
-    auto retired = fixture.intern(tmp.path("old.cpp"));
-    index_unit(retired);
-    served.sched.graph.declare({Family::TURun, retired.raw}, {PCMBuilder::unresolved_node("m")});
+    auto removed = fixture.intern(tmp.path("old.cpp"));
+    index_unit(removed);
+    served.sched.graph.declare({NodeKind::UnitRun, removed.raw},
+                               {PCMBuilder::unresolved_node("m")});
 
-    fixture.build_changed({.added = {iface}, .removed = {retired}});
+    fixture.build_changed({.added = {iface}, .removed = {removed}});
 
-    ZEXPECT(!served.sched.pump.pending_reason(retired).has_value());
-    ZEXPECT(!project.index.indexed(retired));
+    ZEXPECT(!served.sched.pump.pending_reason(removed).has_value());
+    ZEXPECT(!project.index.indexed(removed));
 }
 
 ZEST_CASE(DiskRemovedDropsProvider) {
@@ -178,7 +179,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     // The consumer edges PCMBuilder::declare_deps declares in production —
     // no rounds.
     auto node = [](Fid pid) {
-        return NodeId{Family::PCM, pid.raw};
+        return NodeId{NodeKind::PCM, pid.raw};
     };
     served.sched.graph.declare(node(open_user), {node(mod)});
     served.sched.graph.declare(node(closed_user), {node(mod)});
@@ -464,11 +465,11 @@ ZEST_CASE(CompiledIncluderCascades) {
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     ranges::sort(reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
-    // Until they are indexed again, what their runs walked is behind the
-    // disk — and the file's own, should it be a unit of its own.
-    ZEXPECT(IndexInternals::behind(project.index, compiled));
-    ZEXPECT(IndexInternals::behind(project.index, scanned));
-    ZEXPECT(IndexInternals::behind(project.index, header));
+    // Until they are indexed again, what their runs walked is outdated —
+    // and the file's own, should it be a unit of its own.
+    ZEXPECT(IndexInternals::outdated(project.index, compiled));
+    ZEXPECT(IndexInternals::outdated(project.index, scanned));
+    ZEXPECT(IndexInternals::outdated(project.index, header));
 }
 
 ZEST_CASE(ModuleReadHeaderCascades) {
@@ -479,10 +480,10 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto user = fixture.intern("/proj/user.cpp");
     served.sched.graph.declare(
         NodeId{
-            Family::PCM,
+            NodeKind::PCM,
             user.raw
     },
-        {NodeId{Family::PCM, mod.raw}});
+        {NodeId{NodeKind::PCM, mod.raw}});
     project.pcm_builds[mod].deps.push_back({.path_id = header});
 
     served.disk_changed({header});
@@ -498,10 +499,10 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     auto user = fixture.intern("/proj/user.cpp");
     served.sched.graph.declare(
         NodeId{
-            Family::PCM,
+            NodeKind::PCM,
             user.raw
     },
-        {NodeId{Family::PCM, mod.raw}});
+        {NodeId{NodeKind::PCM, mod.raw}});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
     project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
@@ -688,7 +689,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     // The consumer edges PCMBuilder::declare_deps declares in production —
     // no rounds.
     auto node = [](Fid pid) {
-        return NodeId{Family::PCM, pid.raw};
+        return NodeId{NodeKind::PCM, pid.raw};
     };
     served.sched.graph.declare(node(open_user), {node(mod)});
     served.sched.graph.declare(node(closed_user), {node(mod)});
@@ -755,7 +756,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
 
 ZEST_CASE(CDBRemovedStillCovered) {
     /// The entry left the database but a rule's default command still
-    /// covers the file: a command change, not a retirement — the index is
+    /// covers the file: a command change, not a removal from the build — the index is
     /// rebuilt under the default command instead of leaving.
     TempDir tmp;
     tmp.touch("gone.cpp", R"(int x;)");

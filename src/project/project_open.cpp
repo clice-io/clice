@@ -245,7 +245,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     auto& key = project.database_key;
     if(options.index == Index::Read) {
         // No writer lock: a concurrent server or index run keeps owning it,
-        // while the persisted versions and artifact records still seed this
+        // while the persisted versions and precompiled records still seed this
         // run. What it changes stays in memory and exits with it.
         project.database = index::open_database(*project.store, key, /*read_only=*/true);
         if(project.database || !read_only) {
@@ -387,7 +387,7 @@ Project::Opened Project::open(const OpenOptions& options) {
             file_table.disk.find_missing(units);
         }
     }
-    // The store stays: a run building artifacts (lint without --index)
+    // The store stays: a run building PCHs and PCMs (lint without --index)
     // still builds into it, only without the index's records.
     if(!opened.unreadable.empty()) {
         index.clear();

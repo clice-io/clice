@@ -269,7 +269,7 @@ int main() { return 0; }
     ZASSERT(!built->completed());
     // Pinned distinctly from setup_fail: the worker maps this status to
     // CompileStatus::Cancelled, which the master discards without blaming
-    // any artifact.
+    // any PCH or PCM.
     ZASSERT(!built->setup_fail());
 }
 
@@ -418,7 +418,7 @@ int main() { return 0; }
     // Switch to Preamble kind for PCH building.
     params.kind = CompilationKind::Preamble;
 
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
     params.output_file = pch_path;
 
     // Add truncated focus file buffer for preamble build.
@@ -464,7 +464,7 @@ int main() { return preamble_func(); }
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
 
     auto& source = sources.all_files["main.cpp"];
     auto bound = preamble_bound(source.content);
@@ -530,7 +530,7 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
     auto main_vfs_path = TestVFS::path("main.cpp");
     auto bound = preamble_bound(content);
 
@@ -647,7 +647,7 @@ export int a_value() { return b_value() + 1; }
     params_b.kind = CompilationKind::ModuleInterface;
     params_b.input.arguments = cxx20_command(cdb, toolchain, tmp, "mod_b.cppm");
 
-    auto pcm_b_path = artifact("pcm");
+    auto pcm_b_path = precompiled_path("pcm");
     params_b.output_file = pcm_b_path;
 
     auto unit_b = clice::compile(std::move(params_b));
@@ -660,7 +660,7 @@ export int a_value() { return b_value() + 1; }
     params_a.input.arguments = cxx20_command(cdb, toolchain, tmp, "mod_a.cppm");
     params_a.input.pcms.try_emplace("mod_b", pcm_b_path);
 
-    auto pcm_a_path = artifact("pcm");
+    auto pcm_a_path = precompiled_path("pcm");
     params_a.output_file = pcm_a_path;
 
     auto unit_a = clice::compile(std::move(params_a));
@@ -683,7 +683,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
     module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
-    auto pcm_path = artifact("pcm");
+    auto pcm_path = precompiled_path("pcm");
     module_params.output_file = pcm_path;
     ZASSERT(clice::compile(std::move(module_params))->has_output());
 
@@ -691,7 +691,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
     preamble.kind = CompilationKind::Preamble;
     preamble.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
     preamble.input.pcms.try_emplace("B", pcm_path);
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
     preamble.output_file = pch_path;
     auto bound = preamble_bound(content);
 
@@ -724,7 +724,7 @@ ZEST_CASE(PCHWithoutModule) {
     };
     preamble.input.pcms.try_emplace("B", tmp.path("b.pcm"));
     preamble.input.add_remapped_file(tmp.path("main.cpp"), content, preamble_bound(content));
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
     preamble.output_file = pch_path;
 
     // A preamble whose module fails to load gets no PCH.
@@ -772,7 +772,7 @@ std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content,
     add_focus(file, content);
     prepare();
     params.kind = CompilationKind::Preamble;
-    params.output_file = artifact("pch");
+    params.output_file = precompiled_path("pch");
     params.input.add_remapped_file(TestVFS::path(file), content, preamble_bound(content));
     return clice::compile(std::move(params));
 }
@@ -898,7 +898,7 @@ int main() { return scale(); }
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
     CompilationParams header{
         .kind = CompilationKind::PrecompiledHeader,
         .input = params.input,

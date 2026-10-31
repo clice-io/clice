@@ -361,13 +361,13 @@ void ServedProject::retry_after_save(Session& session) {
     // until what it read, or is known to have read, changes. A failed
     // build's inputs miss a lookup in a directory that did not exist yet,
     // so a save retries its failed preamble too. Either refusal leaves the
-    // compile standing, so only a fresh round asks for the artifact again.
+    // compile standing, so only a fresh round asks for the PCH or PCM again.
     bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
         for(auto dep: sched.graph.dependencies(importer)) {
-            if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
+            if(dep.kind != NodeKind::PCM || PCMBuilder::is_unresolved(dep)) {
                 continue;
             }
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
@@ -379,7 +379,7 @@ void ServedProject::retry_after_save(Session& session) {
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
         retry |= sched.pcm.forget_failure(modules[i]);
-        add_imports({Family::PCM, modules[i].raw});
+        add_imports({NodeKind::PCM, modules[i].raw});
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
@@ -461,7 +461,7 @@ void ServedProject::each_input(Fid path_id,
         }
     }
     for(auto dep: sched.graph.dependencies(node(path_id))) {
-        if(dep.family != Family::PCM || PCMBuilder::is_unresolved(dep)) {
+        if(dep.kind != NodeKind::PCM || PCMBuilder::is_unresolved(dep)) {
             continue;
         }
         if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
@@ -502,7 +502,7 @@ void ServedProject::invalidate(Fid path_id) {
 void ServedProject::choice_changed(Session& session) {
     auto path_id = session.path_id;
     // Invalidate any in-flight compile: without the bump it would pass
-    // its commit validity check and publish results for the superseded
+    // its commit validity check and publish results for the outdated
     // identity.
     session.generation += 1;
     session.changed(Session::Clock::now());
@@ -638,7 +638,7 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
     // resolved command — the same text and flags the parse will consume,
     // so a context choice or donated header host cannot enable an import
     // the scan missed. An unsaved `import m;` builds its PCM now, and the
-    // next edit's round re-resolves — the superseded round's build loses
+    // next edit's round re-resolves — the outdated round's build loses
     // interest and winds down on its own (the PCH pattern). Module names
     // still resolve against the on-disk module map; a module unit is
     // somebody else's saved file. The remap stays engaged even for an
@@ -663,7 +663,7 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
                                                directory,
                                                std::optional<llvm::StringRef>(text));
     sched.graph.declare(node(path_id), deps.declared);
-    // Sentinels join the round's candidates too: a successful commit
+    // Unresolved imports join the round's candidates too: a successful commit
     // replaces the declaration with them, and a declare-only edge would
     // vanish with it.
     for(auto dep: deps.declared) {
@@ -709,12 +709,12 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
                     // Still an input: a later build of it, by an importer
                     // whose record lets it retry, must re-dirty this
                     // document.
-                    ctx.reference({Family::PCM, dep.raw});
+                    ctx.reference({NodeKind::PCM, dep.raw});
                     continue;
                 }
                 sched.pcm.forget_failure(dep);
             }
-            switch(co_await ctx.depend({Family::PCM, dep.raw})) {
+            switch(co_await ctx.depend({NodeKind::PCM, dep.raw})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed:
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
@@ -792,7 +792,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
     // compiles without a prefix first; if the diagnostics indicate missing
     // includer context, the second send re-compiles with a synthesized
     // prefix. The trial's diagnostics are never published.
-    bool artifact_retried = false;
+    bool precompiled_retried = false;
     auto known_instantiations =
         project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
     for(int attempt = 0; attempt < 2; attempt += 1) {
@@ -841,7 +841,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         }
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: superseded before PCH for {}", file_path);
+            LOG_INFO("compile round: outdated before PCH for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -901,12 +901,12 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                     switch(co_await ctx.depend(dep)) {
                         case DependResult::Ready:
                             // Adoption is gated on the round outcome and on
-                            // this round's own validity: a supersede or a
+                            // this round's own validity: a newer generation or a
                             // Lost-type invalidation while we waited means
                             // the resolved command may describe nothing —
                             // neither the key nor the record it clears
                             // belongs to this round anymore. Adopting a
-                            // proven-good artifact clears the document's
+                            // proven-good PCH clears the document's
                             // PCH record as surely as building one — but
                             // only its own; every consumer clears for
                             // itself.
@@ -959,7 +959,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         project.fill_pcm_deps(params.pcms, sched.pcm.closure(imports->resolved).getArrayRef());
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: superseded before send for {}", file_path);
+            LOG_INFO("compile round: outdated before send for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -984,14 +984,14 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // The send carries the interrupt, not the round's advisory token:
         // the master must observe the request's real outcome — the crash
         // accounting below depends on it (contract 2) — and a cancelled
-        // send still awaits the worker's answer. Only a supersede or stop
-        // interrupts the parse (see supersede/stop), and the stale reply
+        // send still awaits the worker's answer. Only an edit, a choice change or a stop
+        // interrupts the parse (see edited, choice_changed and stop_compiles), and the stale reply
         // is discarded at the validity gate below. A death
         // that is not this compile's doing resends it once — the attempt
         // only stops early once the buffer moved on, since the next round
         // compiles that.
         //
-        // Crash accounting runs even for superseded rounds: the crash came
+        // Crash accounting runs even for outdated rounds: the crash came
         // from content this document dispatched, and skipping it would let a
         // poison file dodge its stop by being edited between dispatch and
         // the crash response (contract 12).
@@ -1018,7 +1018,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             [&]() -> RequestResult<worker::CompileParams> {
                 if(!ticket.fresh()) {
                     co_await async::fail(
-                        ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
+                        ipc::Error{worker::dispatch_errc::cancelled, "Compile outdated"});
                 }
                 co_return co_await server.pool.send_stateful(path_id.raw,
                                                              params,
@@ -1033,7 +1033,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         }
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: superseded reply for {}", file_path);
+            LOG_INFO("compile round: outdated reply for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -1056,7 +1056,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             co_return RoundOutcome::Failed;
         }
 
-        // The artifact quality gate: a failed parse whose diagnostics name
+        // The PCH quality gate: a failed parse whose diagnostics name
         // the consumed PCH (worker-side pch_suspect — setup failure and
         // fatal error alike). The builder validated the pair fresh via its
         // deps, yet the frontend could not read it — the bytes on disk
@@ -1080,11 +1080,11 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             // candidate edge points at), the waiter respawns it, and without
             // the stopped key each respawn would rebuild and fail forever.
             sched.pch.consume_failed(*consumed_pch);
-            if(!artifact_retried) {
-                artifact_retried = true;
+            if(!precompiled_retried) {
+                precompiled_retried = true;
                 // Rerun the same attempt so the trial semantics are
                 // untouched (the loop counter is about trial rounds, not
-                // artifact retries).
+                // PCH retries).
                 attempt -= 1;
                 continue;
             }
@@ -1097,7 +1097,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // A non-Done reply past the gate is a non-result: committing it
         // would freeze the document on a product that never existed —
         // no index, an empty deps snapshot nothing can invalidate.
-        // Superseded rounds were already discarded at the validity gate
+        // Outdated rounds were already discarded at the validity gate
         // above, so this round's inputs are broken in a way a PCH rebuild
         // cannot fix.
         if(result.value().status != worker::CompileStatus::Done) {
@@ -1291,7 +1291,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         co_return still_current ? RoundOutcome::Success : RoundOutcome::Stale;
     }
     // Every arm of the two-send loop commits or returns; the trial's
-    // continue only fires on the first send, the artifact retry only once.
+    // continue only fires on the first send, the PCH retry only once.
     std::unreachable();
 }
 
@@ -1361,11 +1361,11 @@ async::task<std::optional<std::string>>
 
     // Adoption is gated on the round outcome, never on leftover cache
     // paths, and on the buffer and compile this request was taken on: a
-    // supersede or a Lost-type invalidation while we waited means the
+    // newer generation or a Lost-type invalidation while we waited means the
     // resolved command may describe nothing — neither the key write nor
     // the record it clears belongs to this request anymore. The request
-    // itself still compiles against the artifact: it was planned from the
-    // text it sends. Adopting a proven-good artifact clears the document's
+    // itself still compiles against the PCH: it was planned from the
+    // text it sends. Adopting a proven-good PCH clears the document's
     // PCH record as surely as building one — but only its own; every
     // consumer clears for itself.
     if(adoptable() && !plan.partial) {

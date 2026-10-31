@@ -57,7 +57,7 @@ class BuildProbe {
 public:
     /// Builds a worker ran to their end — answered, or died running — per
     /// file, indexed by BuildKind. One the master withdrew (preempted,
-    /// superseded) is not counted and passes every hold.
+    /// outdated) is not counted and passes every hold.
     llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
 
     /// A worker ran a build of `kind` for `file` and its reply arrived:

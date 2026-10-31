@@ -8,15 +8,15 @@ namespace clice::testing {
 namespace {
 
 /// Two arbitrary families exercising the multi-family surface.
-constexpr Family FamA = Family{1};
-constexpr Family FamB = Family{2};
+constexpr NodeKind KindA = NodeKind{1};
+constexpr NodeKind KindB = NodeKind{2};
 
 NodeId a(std::uint64_t key) {
-    return {FamA, key};
+    return {KindA, key};
 }
 
 NodeId b(std::uint64_t key) {
-    return {FamB, key};
+    return {KindB, key};
 }
 
 using Adjacency = llvm::DenseMap<NodeId, llvm::SmallVector<NodeId>>;
@@ -149,7 +149,7 @@ async::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
 ZEST_CASE(request_no_deps) {
     // A node without dependencies runs one round and becomes clean.
     Adjacency adj;
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -165,7 +165,7 @@ ZEST_CASE(request_dep_chain) {
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(3)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -185,7 +185,7 @@ ZEST_CASE(diamond_dedup) {
     adj[a(1)] = {a(2), a(3)};
     adj[a(2)] = {a(4)};
     adj[a(3)] = {a(4)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -198,7 +198,7 @@ ZEST_CASE(diamond_dedup) {
 ZEST_CASE(second_request_skips) {
     // A clean node is not re-run by a later request.
     Adjacency adj;
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         co_await graph.request(a(1));
@@ -212,9 +212,9 @@ ZEST_CASE(reference_survives_commit) {
     // reference() records a candidate edge to a node that never runs: it
     // must survive the successful commit (candidates replace the durable
     // set) so a later update on the referenced node re-dirties this one.
-    NodeId sentinel{FamB, (1ull << 63) | 42};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
-        ctx.reference(sentinel);
+    NodeId unresolved{KindB, (1ull << 63) | 42};
+    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
+        ctx.reference(unresolved);
         ran.push_back(a(1));
         co_return RoundOutcome::Success;
     });
@@ -224,19 +224,19 @@ ZEST_CASE(reference_survives_commit) {
         co_await run_request(a(1), probe);
         ZASSERT(probe.outcome == JoinOutcome::Success);
 
-        auto dirtied = graph.update(sentinel);
+        auto dirtied = graph.update(unresolved);
         ZEXPECT(ranges::find(dirtied, a(1)) != dirtied.end());
         ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
-ZEST_CASE(artifact_dirty_no_cascade) {
+ZEST_CASE(product_dirty_no_cascade) {
     // The eviction tier: the marked node alone rebuilds on next demand.
     // Dependents stay clean — they consumed the content, which did not
     // change — so a later request through them touches nothing.
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     Probe warm, hit, rebuild;
     execute([&]() -> async::task<> {
@@ -260,12 +260,12 @@ ZEST_CASE(artifact_dirty_no_cascade) {
     ZEXPECT(rebuild.outcome == JoinOutcome::Success);
 }
 
-ZEST_CASE(artifact_dirty_inflight_commits) {
+ZEST_CASE(product_dirty_inflight_commits) {
     // Marking while a round is in flight neither voids nor re-runs it:
-    // the round is already producing the fresh artifact, and its commit
+    // the round is already producing the fresh product, and its commit
     // clears the flag it finds set.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -288,7 +288,7 @@ ZEST_CASE(concurrent_requests_share) {
     // Two concurrent requests for the same node join one round: a single
     // dispatch serves both.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe p1, p2;
     execute([&]() -> async::task<> {
@@ -308,12 +308,12 @@ ZEST_CASE(concurrent_requests_share) {
 }
 
 ZEST_CASE(cross_family_edge) {
-    // A FamA node depending on a FamB node: the edge crosses families and
+    // A KindA node depending on a KindB node: the edge crosses families and
     // update() cascades across it.
     Adjacency adj;
     adj[a(1)] = {b(7)};
-    graph.register_family(FamA, instant(adj));
-    graph.register_family(FamB, instant(adj));
+    graph.set_runner(KindA, instant(adj));
+    graph.set_runner(KindB, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -342,8 +342,8 @@ ZEST_CASE(edge_live_before_commit) {
     // edge — the round never committed, so no durable edge exists yet.
     ManualFamily mf;
     mf.adj[a(1)] = {b(5)};
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1)});
 
     Probe probe;
@@ -374,8 +374,8 @@ ZEST_CASE(success_replaces_edges) {
     // the new round commits: updating the ex-dependency no longer cascades.
     Adjacency adj;
     adj[a(1)] = {b(2)};
-    graph.register_family(FamA, instant(adj));
-    graph.register_family(FamB, instant(adj));
+    graph.set_runner(KindA, instant(adj));
+    graph.set_runner(KindB, instant(adj));
 
     execute([&]() -> async::task<> {
         co_await graph.request(a(1));
@@ -397,8 +397,8 @@ ZEST_CASE(voided_candidates_discarded) {
     // declarations of the round that update() voided.
     ManualFamily mf;
     mf.adj[a(1)] = {b(2)};
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1), b(2), b(3)});
 
     Probe probe;
@@ -486,7 +486,7 @@ ZEST_CASE(round_replaces_declared) {
     // successful round's candidates replace the declared edges.
     Adjacency adj;
     adj[a(2)] = {a(3)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         graph.declare(a(2), {a(1)});
@@ -505,7 +505,7 @@ ZEST_CASE(failed_keeps_declared) {
     // could never re-dirty it.
     ManualFamily mf;
     mf.adj[a(2)] = {a(3)};
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
     mf.gate(a(2)).result = RoundOutcome::Failed;
     mf.open({a(2), a(3)});
 
@@ -527,7 +527,7 @@ ZEST_CASE(commit_overwrites_declare) {
     // round; unchanged content resolves to the same set.
     ManualFamily mf;
     mf.adj[a(2)] = {a(3)};
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
     mf.open({a(3)});
 
     Probe probe;
@@ -560,7 +560,7 @@ ZEST_CASE(stale_success_discarded) {
     // dirty and the waiter drives a fresh round.
     ManualFamily mf;
     mf.stubborn = true;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -593,7 +593,7 @@ ZEST_CASE(stale_failure_retries) {
     ManualFamily mf;
     mf.stubborn = true;
     mf.gate(a(1)).result = RoundOutcome::Failed;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -623,7 +623,7 @@ ZEST_CASE(salvage_before_stale) {
     // the report — the side effect stands, and the join retries.
     int calls = 0;
     int salvaged = 0;
-    graph.register_family(FamA, [&](RoundContext&, NodeId) -> async::task<RoundOutcome> {
+    graph.set_runner(KindA, [&](RoundContext&, NodeId) -> async::task<RoundOutcome> {
         calls += 1;
         if(calls == 1) {
             salvaged += 1;
@@ -648,7 +648,7 @@ ZEST_CASE(one_attempt_stale) {
     // OneAttempt observes exactly one attempt: an overtaken round returns
     // Stale to the caller instead of retrying.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -670,7 +670,7 @@ ZEST_CASE(one_attempt_stale) {
 ZEST_CASE(one_attempt_clean) {
     // OneAttempt on a clean node succeeds without a round.
     Adjacency adj;
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         co_await graph.request(a(1));
@@ -686,7 +686,7 @@ ZEST_CASE(abandoned_validity) {
     // The validity predicate goes false while the join waits: the next
     // continuation point abandons instead of retrying.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     bool valid = true;
     Probe probe;
@@ -716,8 +716,8 @@ ZEST_CASE(failed_propagates) {
     ManualFamily mf;
     mf.adj[a(1)] = {b(2)};
     mf.gate(b(2)).result = RoundOutcome::Failed;
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
@@ -736,8 +736,8 @@ ZEST_CASE(failure_not_sticky) {
     ManualFamily mf;
     mf.adj[a(1)] = {b(2)};
     mf.gate(b(2)).result = RoundOutcome::Failed;
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
@@ -761,7 +761,7 @@ ZEST_CASE(requester_cancel_releases) {
     // advisory token fires after one tick, the closure winds down and the
     // graph quiesces with the node still dirty.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -789,8 +789,8 @@ ZEST_CASE(shared_dep_survives_cancel) {
     ManualFamily mf;
     mf.adj[a(1)] = {b(5)};
     mf.adj[a(3)] = {b(5)};
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1), a(3)});
 
     Probe p1, p3;
@@ -825,8 +825,8 @@ ZEST_CASE(transient_drop_handover) {
     // restarted.
     ManualFamily mf;
     mf.adj[a(1)] = {b(2)};
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
     mf.open({a(1)});
 
     Probe probe;
@@ -869,7 +869,7 @@ ZEST_CASE(foreground_late_join) {
     async::event proceed;
     int calls = 0;
     std::vector<bool> classes;
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
+    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
         calls += 1;
         classes.push_back(ctx.foreground());
         if(calls == 1) {
@@ -913,7 +913,7 @@ ZEST_CASE(foreground_spreads_edges) {
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(3)};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
+    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 switch(co_await ctx.depend(dep)) {
@@ -965,7 +965,7 @@ ZEST_CASE(foreground_skips_clean_deps) {
     std::vector<bool> dep_classes;
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
+    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 if(co_await ctx.depend(dep) != DependResult::Ready) {
@@ -1000,7 +1000,7 @@ ZEST_CASE(foreground_resets_zero) {
     // The foreground flag is sticky while any interest remains and reset
     // when the count returns to zero: a later background request runs Low.
     ManualFamily mf;
-    graph.register_family(FamA, mf.runner());
+    graph.set_runner(KindA, mf.runner());
     mf.open({a(1)});
 
     execute([&]() -> async::task<> {
@@ -1022,7 +1022,7 @@ ZEST_CASE(self_depend_fails) {
     // A node depending on itself fails immediately.
     Adjacency adj;
     adj[a(1)] = {a(1)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -1036,7 +1036,7 @@ ZEST_CASE(depend_cycle_fails) {
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(1)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
@@ -1049,7 +1049,7 @@ ZEST_CASE(update_introduces_cycle) {
     // the retry detects it and fails instead of hanging.
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.register_family(FamA, instant(adj));
+    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
         auto first = co_await graph.request(a(1));
@@ -1073,8 +1073,8 @@ ZEST_CASE(shutdown_with_inflight) {
     // Shutdown, and the graph quiesces.
     ManualFamily mf;
     mf.adj[a(1)] = {b(4)};
-    graph.register_family(FamA, mf.runner());
-    graph.register_family(FamB, mf.runner());
+    graph.set_runner(KindA, mf.runner());
+    graph.set_runner(KindB, mf.runner());
 
     Probe probe;
     auto driver = [&]() -> async::task<> {
@@ -1128,8 +1128,8 @@ ZEST_CASE(randomized_stress) {
         }
         co_return RoundOutcome::Success;
     };
-    graph.register_family(FamA, runner);
-    graph.register_family(FamB, runner);
+    graph.set_runner(KindA, runner);
+    graph.set_runner(KindB, runner);
 
     execute([&]() -> async::task<> {
         std::mt19937 rng(20260826u);

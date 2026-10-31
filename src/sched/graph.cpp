@@ -40,9 +40,9 @@ bool RoundContext::foreground() const {
     return graph.nodes.find(self)->second.foreground;
 }
 
-void TaskGraph::register_family(Family family, RoundRunner run) {
-    assert(!families.contains(std::to_underlying(family)) && "family registered twice");
-    families[std::to_underlying(family)] = std::move(run);
+void TaskGraph::set_runner(NodeKind kind, RoundRunner run) {
+    assert(!runners.contains(std::to_underlying(kind)) && "runner set twice");
+    runners[std::to_underlying(kind)] = std::move(run);
 }
 
 void TaskGraph::acquire(NodeId id) {
@@ -131,8 +131,7 @@ bool TaskGraph::spawn_round(NodeId id) {
 
     auto& node = nodes.find(id)->second;
     assert(!node.compiling && "spawn requested while a round is in flight");
-    assert(families.contains(std::to_underlying(id.family)) &&
-           "request for an unregistered family");
+    assert(runners.contains(std::to_underlying(id.kind)) && "request for a kind without a runner");
     node.compiling = true;
     node.round = std::make_shared<Round>();
     node.round->generation = node.generation;
@@ -151,7 +150,7 @@ async::task<> TaskGraph::round_task(NodeId id,
                                     std::shared_ptr<Round> round,
                                     async::cancellation_token token) {
     RoundContext ctx(*this, id, std::move(token));
-    auto reported = co_await families.find(std::to_underlying(id.family))->second(ctx, id);
+    auto reported = co_await runners.find(std::to_underlying(id.kind))->second(ctx, id);
     finish_round(id, *round, reported);
 }
 
@@ -165,7 +164,7 @@ void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
     // content. Outcome always passes through round identity.
     auto outcome = node.generation == round.generation ? reported : RoundOutcome::Stale;
 
-    // Candidate back-edges retire with the round.
+    // Candidate back-edges go with the round.
     for(auto dep: round.candidates) {
         auto& backs = nodes.find(dep)->second.candidate_dependents;
         auto pos = ranges::find(backs, id);
@@ -378,7 +377,7 @@ void TaskGraph::mark_dirty(NodeId id) {
         return;
     }
     // No generation bump and no token: an in-flight round is already
-    // producing the fresh artifact this mark asks for, and its commit
+    // producing the fresh product this mark asks for, and its commit
     // clears the flag it would find set.
     it->second.dirty = true;
 }

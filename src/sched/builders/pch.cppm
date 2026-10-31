@@ -31,7 +31,7 @@ public:
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
-    /// Family::PCH instead.
+    /// NodeKind::PCH instead.
     void register_runner();
 
     /// One acquisition's request conditions: the artifact identity plus
@@ -207,7 +207,7 @@ private:
     std::uint64_t intern(llvm::StringRef pch_key);
 
     static NodeId node(std::uint64_t key_id) {
-        return {Family::PCH, key_id};
+        return {NodeKind::PCH, key_id};
     }
 
     /// Per-key slot for the dispatch owner's stash; replaced by the

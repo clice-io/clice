@@ -740,29 +740,29 @@ ZEST_CASE(StaleProducerNotOffered) {
     // An open box.h stands in for its stored instantiations: it walks them.
     ZEXPECT(f.known_instantiations(id("box.h")).empty());
 
-    // An edit of what the instantiation read puts its producer behind the
-    // disk, as the change reaching the served project marks it.
+    // An edit of what the instantiation read makes its producer outdated,
+    // as the change reaching the served project marks it.
     tmp.touch("a.h", R"(#pragma once
 struct A { void print(); void print(int); };
 )");
-    f.project.index.mark_behind(id("a.cpp"));
+    f.project.index.mark_outdated(id("a.cpp"));
     f.begin_round();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
 ZEST_CASE(LaterRunCatchesUp) {
-    // A run started before its unit fell behind the disk read the old file:
-    // its merge leaves the unit behind. One started after catches it up.
+    // A run started before its unit became outdated read the old file: its
+    // merge leaves the unit outdated. One started after brings it up to date.
     ZASSERT(index("a.cpp"));
     f.begin_round();
     auto early = index_file(tmp, tmp.path("a.cpp"), {}, {}, f.known_instantiations(id("a.cpp")));
     ZASSERT(!early.data.empty());
-    f.project.index.mark_behind(id("a.cpp"));
+    f.project.index.mark_outdated(id("a.cpp"));
     ZASSERT(f.merge(early.data));
     f.begin_round();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 
-    IndexInternals::fell_behind_at(f.project.index, id("a.cpp"), 0);
+    IndexInternals::outdated_since(f.project.index, id("a.cpp"), 0);
     ZASSERT(index("a.cpp"));
     f.begin_round();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());

@@ -211,7 +211,7 @@ private:
     /// `version` is the document's as the request names it, a second name's
     /// own. The ticket is taken as the request is dispatched, ahead of the
     /// messages read with it: an edit among those arrives before the
-    /// handler's task starts and supersedes it.
+    /// handler's task starts and makes it outdated.
     struct ResolvedDoc {
         std::string path;
         Fid path_id;

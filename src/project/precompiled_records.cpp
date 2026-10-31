@@ -1,7 +1,7 @@
 module clice;
 
 import :index.format;
-import :project.artifact_records;
+import :project.precompiled_records;
 import :project.hosting;
 import :project.project;
 import :support.json;
@@ -13,7 +13,7 @@ namespace clice {
 
 namespace {
 
-/// The artifact records: a JSON document in the index database, the
+/// The precompiled records: a JSON document in the index database, the
 /// persisted form of PCH/PCM validity metadata and self-containment
 /// trials (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
@@ -76,7 +76,7 @@ struct TrialEntry {
     std::vector<CacheDepEntry> deps;
 };
 
-struct ArtifactRecords {
+struct Records {
     std::vector<std::string> paths;
 
     /// index_format_version the .pch.idx indexes were written with (one
@@ -96,8 +96,8 @@ struct ArtifactRecords {
 
 }  // namespace
 
-std::string serialize_artifact_records(Project& project) {
-    ArtifactRecords data;
+std::string serialize_precompiled_records(Project& project) {
+    Records data;
     data.pch_index_format = index::index_format_version;
     llvm::StringMap<std::uint32_t> index_map;
 
@@ -163,19 +163,19 @@ std::string serialize_artifact_records(Project& project) {
 
     auto json = json::to_string<PathJsonConfig>(data);
     if(!json) {
-        LOG_WARN("Failed to serialize the artifact records");
+        LOG_WARN("Failed to serialize the precompiled records");
         return {};
     }
     return std::move(*json);
 }
 
-void load_artifact_records(Project& project, llvm::StringRef bytes) {
+void load_precompiled_records(Project& project, llvm::StringRef bytes) {
     if(bytes.empty() || !project.store) {
         return;
     }
-    ArtifactRecords data;
+    Records data;
     if(!json::from_string(bytes, data)) {
-        LOG_WARN("Failed to parse the artifact records");
+        LOG_WARN("Failed to parse the precompiled records");
         return;
     }
 
@@ -265,7 +265,7 @@ void load_artifact_records(Project& project, llvm::StringRef bytes) {
             load_deps(trial.deps));
     }
 
-    LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
+    LOG_INFO("Loaded precompiled records: {} PCH entries, {} PCM entries",
              project.pch_cache.size(),
              project.pcm_builds.size());
 }

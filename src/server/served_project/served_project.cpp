@@ -27,13 +27,13 @@ namespace clice {
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root)),
     sched(server.loop, project, commands, server.pool) {
-    sched.graph.register_family(Family::AST,
-                                [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-                                    auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
-                                    auto outcome = co_await run_round(ctx, path_id);
-                                    enter_phase(path_id, CompilePhase::Idle);
-                                    co_return outcome;
-                                });
+    sched.graph.set_runner(NodeKind::AST,
+                           [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
+                               auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
+                               auto outcome = co_await run_round(ctx, path_id);
+                               enter_phase(path_id, CompilePhase::Idle);
+                               co_return outcome;
+                           });
     project.index_query.attach(*this);
     // The loaded-state budget follows the open-document count, which the
     // PCH builder cannot see.
@@ -380,7 +380,7 @@ async::task<> ServedProject::metadata_flush_task() {
     co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
-    if(project.artifacts_dirty || project.choices.dirty) {
+    if(project.precompiled_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
         co_await async::sleep(chrono::seconds(5));
         schedule_metadata_flush();
