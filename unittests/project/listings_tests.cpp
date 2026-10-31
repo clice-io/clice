@@ -3,6 +3,8 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :project.indexer;
+import :project.listings;
+import :settings.rules;
 import :settings.settings;
 import :support.bytes;
 import :unittests.utils;
@@ -16,7 +18,7 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(BuildSnapshot) {
+ZEST_SUITE(Listings) {
 
 ZEST_CASE(OfflineCommandChangeReindexed) {
     TempDir tmp;
@@ -87,6 +89,7 @@ ZEST_CASE(VanishedDatabaseKeepsIndex) {
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
     };
 
     {
@@ -124,6 +127,7 @@ ZEST_CASE(NestedDatabaseDropsIndex) {
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
     };
 
     {
@@ -162,6 +166,7 @@ ZEST_CASE(UndeclaredSourceDropsIndex) {
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
         for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
@@ -203,6 +208,7 @@ ZEST_CASE(SourceRelocationPersists) {
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
         for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
@@ -221,7 +227,7 @@ ZEST_CASE(SourceRelocationPersists) {
     }
 
     // The file moved to the other database with the same command: its
-    // index stays, and the snapshot records the database that now
+    // index stays, and the listings record the database that now
     // guarantees it.
     tmp.touch("a/compile_commands.json", "[]");
     tmp.touch("b/compile_commands.json", listing);
@@ -233,12 +239,14 @@ ZEST_CASE(SourceRelocationPersists) {
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
-    ZASSERT(f.project.build_snapshot.owes_save(f.project));
+    ZASSERT(f.project.listings.owes_save(f.project.provisional.changes()));
     f.save();
     ZASSERT(f.project.database->advance_read_snapshot());
-    auto remembered = BuildSnapshot::remembered(f.project);
-    ZASSERT(remembered.sources.size() == 1);
-    ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("b/compile_commands.json"));
+    SavedListings remembered;
+    remembered.read(*f.project.database);
+    auto databases = remembered.databases(f.project.index);
+    ZASSERT(databases.size() == 1);
+    ZEXPECT(llvm::StringRef(databases.front().str()).ends_with("b/compile_commands.json"));
 }
 
 ZEST_CASE(DiscoveredRelocationDropsIndex) {
@@ -259,6 +267,7 @@ ZEST_CASE(DiscoveredRelocationDropsIndex) {
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
         tmp.touch("compile_commands.json", listing("main.cpp"));
         f.project.cdb.load(tmp.path("compile_commands.json"));
         auto indexed = index_file(tmp, src);
@@ -276,6 +285,7 @@ ZEST_CASE(DiscoveredRelocationDropsIndex) {
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.project.cdb.load(tmp.path("build/compile_commands.json"));
     f.load();
 
@@ -291,6 +301,7 @@ ZEST_CASE(DefaultCommandKept) {
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
     };
 
     {
@@ -326,6 +337,7 @@ ZEST_CASE(UncoveredDefaultDropsIndex) {
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
@@ -367,6 +379,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     f.project.settings.rules.push_back(Rule{.patterns = {"**/*.cpp"}, .index = false});
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -401,6 +414,7 @@ ZEST_CASE(RuleChangeReindexed) {
     });
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -450,6 +464,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
@@ -467,6 +482,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
     });
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -502,7 +518,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
     ZASSERT(f.merge(indexed.data));
     f.save();
 
-    // The snapshot rides the batch with the index state it describes: the
+    // The listings ride the batch with the index state they describe: the
     // failed batch takes both, and both stay owed until a save commits them
     // (`clice index` fails on unsaved state after the final save).
     ZASSERT(!storage->real->contains(index::BlobKind::Listings, "cdb"));
@@ -534,7 +550,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
             {{index::BlobKind::Listings, "cdb"}});
     }
 
-    // A rerun that dirties nothing must still recreate the snapshot —
+    // A rerun that dirties nothing must still recreate the listings —
     // without it, a later session could not tell a unit the build stopped
     // compiling from one whose database failed to load.
     IndexerFixture f;
@@ -548,7 +564,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
 }
 
 ZEST_CASE(SnapshotHoldsSourcesOnly) {
-    // The snapshot records which databases listed each file and the
+    // The listings record which databases listed each file and the
     // provisional members, nothing of the commands; one an older clice
     // wrote, with each file's command hashes, still reads.
     TempDir tmp;
@@ -562,6 +578,7 @@ ZEST_CASE(SnapshotHoldsSourcesOnly) {
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.project.cdb.load(tmp.path("compile_commands.json"));
     ZASSERT(f.project.record_provisional(
         f.project.file_table.intern(Spelling::absolute(tmp.path("new.cpp")))));
@@ -586,11 +603,14 @@ ZEST_CASE(SnapshotHoldsSourcesOnly) {
     index::BlobDatabase::Blob older{index::BlobKind::Listings, "cdb", copy_bytes(bytes)};
     ZASSERT(f.project.database->write(older, {}));
     ZASSERT(f.project.database->advance_read_snapshot());
-    auto remembered = BuildSnapshot::remembered(f.project);
-    ZASSERT(remembered.sources.size() == 1u);
-    ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("compile_commands.json"));
-    ZASSERT(remembered.provisional.size() == 1u);
-    ZEXPECT(llvm::StringRef(remembered.provisional.front().str()).ends_with("new.cpp"));
+    SavedListings remembered;
+    remembered.read(*f.project.database);
+    auto databases = remembered.databases(f.project.index);
+    ZASSERT(databases.size() == 1u);
+    ZEXPECT(llvm::StringRef(databases.front().str()).ends_with("compile_commands.json"));
+    auto provisional = remembered.provisional(f.project.index);
+    ZASSERT(provisional.size() == 1u);
+    ZEXPECT(llvm::StringRef(provisional.front().str()).ends_with("new.cpp"));
 }
 
 ZEST_CASE(OwedReindexOutlivesSession) {
@@ -601,6 +621,7 @@ ZEST_CASE(OwedReindexOutlivesSession) {
         f.project.settings.rules.push_back(Rule{.default_command = std::move(command)});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
     };
 
     {
@@ -645,6 +666,7 @@ ZEST_CASE(DeletedUnitOwesNothing) {
         f.project.settings.rules.push_back(Rule{.default_command = std::move(command)});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
     };
 
     {
@@ -671,7 +693,7 @@ ZEST_CASE(DeletedUnitOwesNothing) {
 
 ZEST_CASE(CorruptWriteSavesSnapshot) {
     // A save whose write finds the database corrupt reopens a fresh one and
-    // owes it a save; the retry commits the snapshot there too, or the
+    // owes it a save; the retry commits the listings there too, or the
     // next session could not tell a removed unit.
     struct CorruptOnWrite final : ForwardingDatabase {
         using ForwardingDatabase::ForwardingDatabase;
@@ -698,6 +720,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.project.cdb.load(tmp.path("compile_commands.json"));
     f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
 
@@ -722,7 +745,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("compile_commands.json"));
 }
 
-};  // ZEST_SUITE(BuildSnapshot)
+};  // ZEST_SUITE(Listings)
 
 }  // namespace
 }  // namespace clice::testing

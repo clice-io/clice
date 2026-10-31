@@ -8,6 +8,7 @@ import :index.project_index;
 import :index.tu_index;
 import :project.indexer;
 import :project.project;
+import :settings.rules;
 import :support.bytes;
 import :support.prelude;
 import :unittests.utils.cdb_helper;
@@ -35,6 +36,10 @@ struct IndexerFixture {
     Project project{files, {}, &loop, &pool};
     BackgroundIndex& background = project.background_index;
     ReindexQueue& queue = project.background_index.queue;
+
+    IndexerFixture() {
+        project.rules = Rules(project.settings, project.root, "");
+    }
 
     struct Unit {
         std::string name;
@@ -78,9 +83,14 @@ struct IndexerFixture {
     /// with the build on a writable database. Returns the decode result
     /// (false = a header of another format, or corrupt).
     bool load() {
-        auto result = project.load_saved(project.database && !project.database->read_only());
-        project.apply_report(result.report);
-        return result.decoded;
+        if(project.database) {
+            project.listings.read(*project.database);
+        }
+        index::IndexReport report;
+        bool decoded =
+            project.load_saved(project.database && !project.database->read_only(), report);
+        project.apply_report(report);
+        return decoded;
     }
 
     void drop_index(Fid id) {

@@ -12,6 +12,7 @@ import :feature.diagnostics;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.command;
+import :project.members;
 import :project.project;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
@@ -199,9 +200,20 @@ ZEST_CASE(HostsMatchLanguage) {
     Project project{files};
     project.settings.rules.push_back(
         Rule{.patterns = {"c/**"}, .default_command = std::string("clang")});
+    project.settings.rules.push_back(
+        Rule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
+    project.settings.rules.push_back(
+        Rule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
+    /// A unit created later joins the build at the next workspace poll.
+    auto create = [&](llvm::StringRef path) {
+        tmp.touch(path, "");
+        project.refresh_default_sources(walk_sources(project.rules.source_walk()));
+        project.commands_epoch += 1;
+        return project.file_table.intern(Spelling::absolute(tmp.path(path)));
+    };
 
     auto hpp = project.file_table.intern(Spelling::absolute(tmp.path("shared/types.hpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("shared/plain.h")));
@@ -220,27 +232,13 @@ ZEST_CASE(HostsMatchLanguage) {
     ZEXPECT(!project.borrowed_command(objc, false).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
-    tmp.touch("mac/impl.mm", "");
-    project.settings.rules.push_back(
-        Rule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
-    project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
-    project.commands_epoch += 1;
-    auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
+    auto impl_mm = create("mac/impl.mm");
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
     ZEXPECT(project.ranked_hosts(hpp) == llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
-    tmp.touch("gpu/kernel.cu", "");
-    project.settings.rules.push_back(
-        Rule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
-    project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
-    project.commands_epoch += 1;
-    auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
+    auto kernel = create("gpu/kernel.cu");
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
     ZEXPECT(project.ranked_hosts(hpp) == (llvm::SmallVector<Fid>{kernel, impl_mm}));
@@ -534,7 +532,7 @@ ZEST_CASE(ProvisionalMembers) {
     /// An entry listing the file takes over; the record goes.
     add("clang++", "src/a_new.cpp");
     ZEXPECT(project.refresh_provisional().empty());
-    ZEXPECT(!project.provisional.files().contains(saved));
+    ZEXPECT(!project.provisional.recorded(saved));
     ZEXPECT(project.candidates(saved).front().source == CommandSource::Database);
 };
 

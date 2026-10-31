@@ -5,6 +5,7 @@ import :project.command;
 import :server.master;
 import :server.served_project;
 import :server.session;
+import :settings.rules;
 import :support.prelude;
 import :vfs.file_table;
 import :vfs.path;
@@ -25,6 +26,7 @@ struct ServedProjectFixture {
 
     explicit ServedProjectFixture(llvm::StringRef root = "/proj") {
         served = std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(root)));
+        served->project.rules = Rules(served->project.settings, served->project.root, "");
         server.projects.push_back(served);
         // The server applies the file table's changes, and the project
         // flushes its metadata, on a later turn of its running event loop;

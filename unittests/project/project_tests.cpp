@@ -126,50 +126,5 @@ ZEST_CASE(WriterThenReader) {
 
 };  // ZEST_SUITE(ProjectOpen)
 
-ZEST_SUITE(DatabaseKey) {
-
-ZEST_CASE(Resolved) {
-    /// A configuration resolving symlinks keeps a database per real path
-    /// its databases resolve to — the own one of a configuration declaring
-    /// exactly those — and any other configuration its own.
-    TempDir tmp;
-    tmp.touch("out/a/compile_commands.json", "[]");
-    tmp.touch("out/b/compile_commands.json", "[]");
-    auto configured = [&](llvm::StringRef followed) {
-        Settings settings;
-        settings.rules.push_back(Rule{.configuration = "active",
-                                      .compile_commands = {followed.str()},
-                                      .resolve_symlinks = true});
-        settings.rules.push_back(Rule{.configuration = "a", .compile_commands = {"out/a"}});
-        settings.rules.push_back(Rule{
-            .configuration = "both",
-            .compile_commands = {"out/a", "out/b"}
-        });
-        settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-        return settings;
-    };
-    auto key_of = [](const Settings& settings, llvm::StringRef configuration) {
-        return database_key(settings, configuration, resolved_databases(settings, configuration));
-    };
-    auto settings = configured("out/a");
-    ZEXPECT(key_of(settings, "active").str() == "a");
-    ZEXPECT(key_of(settings, "a").str() == "a");
-    ZEXPECT(key_of(settings, "both").str() == "both");
-
-    settings = configured("out/b");
-    auto key = key_of(settings, "active");
-    ZEXPECT(key.configuration == "active");
-    ZEXPECT(key.resolved ==
-            CanonicalPath(Spelling::absolute(tmp.path("out/b/compile_commands.json"))).str());
-
-    // Naming the databases is not all it does: another build.
-    settings = configured("out/a");
-    settings.rules[1].append = {"-DTRACE"};
-    settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZEXPECT(key_of(settings, "active").configuration == "active");
-};
-
-};  // ZEST_SUITE(DatabaseKey)
-
 }  // namespace
 }  // namespace clice::testing

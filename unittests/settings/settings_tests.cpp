@@ -4,6 +4,7 @@ import :command.database;
 import :command.edit;
 import :command.table;
 import :feature.code_completion;
+import :settings.rules;
 import :settings.settings;
 import :support.shell;
 import :unittests.utils;
@@ -64,18 +65,13 @@ static bool default_mentions(const codec::dyn::Value& value,
     return false;
 }
 
-/// The edits the rules of `settings` contribute for `path`, the way the build
-/// view accumulates them.
+/// The edits the rules of `settings` contribute for `path`.
 void match_rules(const Settings& settings,
                  llvm::StringRef path,
                  std::vector<std::string>& append,
                  std::vector<std::string>& remove) {
-    FileTable files;
-    CommandTable commands;
-    CompilationDatabase cdb{files, commands};
-    CanonicalPath root;
-    Build build{const_cast<Settings&>(settings), root, cdb, files};
-    for(auto& edit: rules.edits(CanonicalPath(Spelling::absolute(path))).edits) {
+    Rules rules(settings, CanonicalPath(), "");
+    for(auto& edit: rules.edits({CanonicalPath(Spelling::absolute(path))}).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
         out.insert(out.end(), edit.flags.begin(), edit.flags.end());
     }
@@ -469,6 +465,10 @@ patterns = ["**/*.hxx", "${{workspace}}/gen/**", "../shared/*.cpp", "*"]
 append = ["-x", "c++-header"]
 
 [[rules]]
+patterns = ["release/**"]
+configuration = "release"
+
+[[rules]]
 compile_commands = ["build", "{}"]
 )",
                           at("elsewhere/compile_commands.json")));
@@ -477,7 +477,7 @@ compile_commands = ["build", "{}"]
     ZASSERT(!loaded.broken());
     auto& settings = loaded.settings;
 
-    ZASSERT(settings.compiled_rules.size() == 3u);
+    ZASSERT(settings.compiled_rules.size() == 4u);
     ZEXPECT(settings.compiled_rules[0].compile_commands[0].str() == at(".clice/out/debug"));
     ZEXPECT(settings.compiled_rules[0].directory.str() == at(".clice"));
     ZEXPECT(settings.compiled_rules[0].patterns[0].root == identity(".clice/src"));
@@ -492,29 +492,33 @@ compile_commands = ["build", "{}"]
     ZEXPECT(settings.compiled_rules[1].patterns[1].root == identity("gen"));
     ZEXPECT(settings.compiled_rules[1].patterns[2].root == identity("shared"));
     ZEXPECT(settings.compiled_rules[1].patterns[3].root == identity(".clice"));
-    ZEXPECT(settings.compiled_rules[2].patterns.empty());
-    ZEXPECT(settings.compiled_rules[2].compile_commands[0].str() == at(".clice/build"));
-    ZEXPECT(settings.compiled_rules[2].compile_commands[1].str() ==
+    ZEXPECT(settings.compiled_rules[3].patterns.empty());
+    ZEXPECT(settings.compiled_rules[3].compile_commands[0].str() == at(".clice/build"));
+    ZEXPECT(settings.compiled_rules[3].compile_commands[1].str() ==
             at("elsewhere/compile_commands.json"));
 
     auto tags = settings.configurations();
-    ZASSERT(tags.size() == 1u);
+    ZASSERT(tags.size() == 2u);
     ZEXPECT(tags[0] == "debug");
+    ZEXPECT(tags[1] == "release");
 
     /// A relative pattern sees only files under its anchor; a bare `*`
     /// names the anchor's direct children.
-    ZEXPECT(settings.matching_rules(identity(".clice/src/a.cpp"), "debug").size() == 2u);
-    ZEXPECT(settings.matching_rules(identity(".clice/src/a.cpp"), "release").size() == 1u);
-    ZEXPECT(settings.matching_rules(identity("src/a.cpp"), "debug").size() == 1u);
-    ZEXPECT(settings.matching_rules(identity(".clice/a.cpp"), "debug").size() == 2u);
+    CanonicalPath project_root(Spelling::absolute(root));
+    Rules debug(settings, project_root, "debug");
+    Rules release(settings, project_root, "release");
+    ZEXPECT(debug.matching(identity(".clice/src/a.cpp")).size() == 2u);
+    ZEXPECT(release.matching(identity(".clice/src/a.cpp")).size() == 1u);
+    ZEXPECT(debug.matching(identity("src/a.cpp")).size() == 1u);
+    ZEXPECT(debug.matching(identity(".clice/a.cpp")).size() == 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
-    auto hxx = settings.matching_rules(identity("other/tree/x.hxx"), "debug");
+    auto hxx = debug.matching(identity("other/tree/x.hxx"));
     ZASSERT(hxx.size() == 2u);
     ZEXPECT(hxx[0]->append.size() == 2u);
-    ZEXPECT(settings.matching_rules(identity("gen/x.cpp"), "debug").size() == 2u);
-    ZEXPECT(settings.matching_rules(identity("shared/x.cpp"), "debug").size() == 2u);
-    ZEXPECT(settings.matching_rules(identity("shared/deep/x.cpp"), "debug").size() == 1u);
+    ZEXPECT(debug.matching(identity("gen/x.cpp")).size() == 2u);
+    ZEXPECT(debug.matching(identity("shared/x.cpp")).size() == 2u);
+    ZEXPECT(debug.matching(identity("shared/deep/x.cpp")).size() == 1u);
 }
 
 ZEST_CASE(InitOptionsAnchorAtWorkspace) {
@@ -972,8 +976,8 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     CommandTable commands;
     CompilationDatabase cdb{files, commands};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
-    Build build{settings, project_root, cdb, files};
-    auto edits = rules.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
+    Rules rules(settings, project_root, "");
+    auto edits = rules.edits({CanonicalPath(Spelling::absolute("/src/a.cpp"))});
     ZASSERT(edits.edits.size() == 2u);
     ZEXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
     ZEXPECT(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())) ==

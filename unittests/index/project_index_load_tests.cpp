@@ -562,7 +562,8 @@ ZEST_CASE(CommandRecordedAcrossSave) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    ZASSERT(f.project.load_saved(/*reconcile=*/false).decoded);
+    index::IndexReport report;
+    ZASSERT(f.project.load_saved(/*reconcile=*/false, report));
     auto id = f.project.file_table.intern(Spelling::absolute(src));
     ZEXPECT(f.project.index.indexed_command(id) == 42u);
     ZEXPECT(f.project.index.manifest(id)->command == 42u);
