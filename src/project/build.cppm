@@ -26,9 +26,11 @@ struct Candidate {
     Fid from;
 
     /// This command of `owner` as `owner` lends it to another file, `as`
-    /// Host or Borrowed: from `owner`, or from the file it is from in turn.
+    /// Host or Borrowed. A header compiles as its host does, so it is from
+    /// the host; a borrowed command stays the first lender's.
     Candidate lent(Fid owner, CommandSource as) const {
-        return {.base = base, .source = as, .from = from.valid() ? from : owner};
+        bool host = as == CommandSource::Host || !from.valid();
+        return {.base = base, .source = as, .from = host ? owner : from};
     }
 
     friend bool operator==(const Candidate&, const Candidate&) = default;
@@ -247,8 +249,9 @@ private:
     llvm::SmallVector<const CompiledRule*> matching(CanonicalRef path) const;
 
     /// The files whose rules edit `candidate` for `file`: the one it is
-    /// from, then `file`.
-    llvm::SmallVector<CanonicalRef, 2> rule_paths(Fid file, const Candidate& candidate) const;
+    /// from — after the unit that one borrows from, for a provisional
+    /// member hosting a header — then `file`.
+    llvm::SmallVector<CanonicalRef, 3> rule_paths(Fid file, const Candidate& candidate) const;
 
     /// The edits of `matched` rules, in declaration order.
     Edits edits_of(llvm::ArrayRef<const CompiledRule*> matched) const;

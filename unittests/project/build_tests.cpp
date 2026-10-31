@@ -844,6 +844,42 @@ ZEST_CASE(BorrowMergesRules) {
     ZEXPECT(at("LENDER") < at("BOTH"));
 };
 
+ZEST_CASE(MemberHostKeepsItsRules) {
+    /// A header compiling in a provisional member's context compiles as the
+    /// member does: under the rules of the unit it borrows from and its own,
+    /// and the header's.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("new/b.cpp", "");
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    settings.rules.push_back(Rule{.patterns = {"new/*.cpp"}, .append = {"-DHOST"}});
+    settings.rules.push_back(Rule{.patterns = {"**/*.h"}, .append = {"-DHEADER"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
+
+    FileTable files;
+    CommandTable commands;
+    CompilationDatabase cdb{files, commands};
+    Build build{settings, project_root, cdb, files};
+    build.reset_active("");
+    auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
+    auto lender = *cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
+    auto member = files.intern(Spelling::absolute(tmp.path("new/b.cpp")));
+    ZASSERT(build.record(member));
+    build.set_command(
+        member,
+        Candidate{.base = lender.command, .source = CommandSource::Borrowed, .from = lender.file});
+
+    auto header = files.intern(Spelling::absolute(tmp.path("new/h.h")));
+    auto ref =
+        build.apply_rules(header, build.commands(member).front().lent(member, CommandSource::Host));
+    auto argv = commands.render_full(ref.command);
+    ZEXPECT(has_arg(argv, "LENDER"));
+    ZEXPECT(has_arg(argv, "HOST"));
+    ZEXPECT(has_arg(argv, "HEADER"));
+};
+
 ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
     /// The precompiled header a borrowed command reads builds under the
     /// rules that edited the command: the lender's as well as the

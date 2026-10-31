@@ -23,7 +23,7 @@ Master Process (MasterServer)
 ├── Event loop (kotatsu)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
-├── Compile scheduling (task graph: PCH, PCM, AST and unit-run nodes)
+├── Compile scheduling (task graph: PCH, PCM, AST and unit nodes)
 ├── Background indexing (project index + feeder)
 │
 ├── Stateful Worker Processes × N

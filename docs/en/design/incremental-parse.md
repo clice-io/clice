@@ -144,7 +144,7 @@ PCH builds are executed by stateless worker processes (see [multi-process archit
 
 ### Concurrent Build Serialization
 
-Multiple feature requests may simultaneously trigger a PCH build for the same content. PCH builds run as nodes in the compile task graph, keyed by the PCH's content key: the first request to acquire the node spawns its build round, and later requests join the same node and wait for the round's outcome instead of starting their own. This ensures a given PCH is built only once at a time, and files sharing a preamble share the build.
+Multiple feature requests may simultaneously trigger a PCH build for the same content. PCH builds run as nodes in the compile task graph, keyed by the PCH's content key: the first request to acquire the node starts its build, carrying what the build needs, and later requests join the same node and wait for that build's result instead of starting their own. This ensures a given PCH is built only once at a time, and files sharing a preamble share the build.
 
 ### Dependency Snapshot Timing Guarantee
 

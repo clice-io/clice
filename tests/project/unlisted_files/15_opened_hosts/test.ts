@@ -10,3 +10,14 @@ test("opened source hosts its header", async (t) => {
     expect(await s.errors("lib/frag.h")).toEqual([]);
     await t.show("header", s.compileCommand("lib/frag.h"));
 });
+
+// The member keeps its index across a restart, under the same command.
+test("opened source stays a member", async (t) => {
+    const s = await t.start();
+    await s.diagnostics("lib/main.cpp");
+    s.close("lib/main.cpp");
+    await s.indexed();
+    await s.restart();
+    await s.indexed();
+    await t.show("after a restart", s.workspaceSymbols("Ctx"));
+});

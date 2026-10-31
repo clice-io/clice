@@ -255,9 +255,13 @@ CommandID Build::builtin(CanonicalRef path) {
     return *intern(Spelling(path.parent()), arguments);
 }
 
-llvm::SmallVector<CanonicalRef, 2> Build::rule_paths(Fid file, const Candidate& candidate) const {
-    llvm::SmallVector<CanonicalRef, 2> paths;
+llvm::SmallVector<CanonicalRef, 3> Build::rule_paths(Fid file, const Candidate& candidate) const {
+    llvm::SmallVector<CanonicalRef, 3> paths;
     if(candidate.from.valid()) {
+        if(auto it = provisional.find(candidate.from);
+           it != provisional.end() && it->second.from.valid()) {
+            paths.push_back(files.resolve(it->second.from));
+        }
         paths.push_back(files.resolve(candidate.from));
     }
     paths.push_back(files.resolve(file));
@@ -276,7 +280,7 @@ CommandRef Build::apply_rules(Fid file,
     // crosses between C++ and its modules.
     bool foreign = candidate.from.valid() &&
                    (candidate.source == CommandSource::Host || is_header_path(paths.back()));
-    auto language_path = foreign ? paths.front() : paths.back();
+    auto language_path = foreign ? files.resolve(candidate.from) : paths.back();
     return {file, applied, command_table.input_kind(applied, language_path), candidate.source};
 }
 

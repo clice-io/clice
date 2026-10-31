@@ -12,3 +12,8 @@ errors = [
 ["opened source hosts its header".header.compile_command]
 source = "host"
 from = "lib/main.cpp"
+
+["opened source stays a member"."after a restart"]
+workspace_symbols = [
+    { name = "Ctx", kind = "Struct", at = "lib/main.cpp │ struct ⟦Ctx⟧ {};" },
+]
