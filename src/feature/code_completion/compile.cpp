@@ -942,9 +942,6 @@ public:
     /// Where the name its parse reads at the point starts.
     std::uint32_t target = 0;
 
-    /// Whether the reply came from it: its declarations document the items.
-    bool answered = false;
-
 private:
     CompilationInput input;
     std::uint32_t point;
@@ -996,10 +993,10 @@ public:
             bool& member_access,
             bool& brought_in) :
         clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
-        focus(unit.focus_file()), offset(offset), encoding(encoding), output(output),
-        documented(documented), options(options), argument_style(options.arguments), client(client),
-        names(names), names_pending(from_index), later(later), includes_pending(includes_pending),
-        member_access(member_access), brought_in(brought_in),
+        focus(unit.focus_file()), text(focus.content()), offset(offset), encoding(encoding),
+        output(output), documented(documented), options(options), argument_style(options.arguments),
+        client(client), names(names), names_pending(from_index), later(later),
+        includes_pending(includes_pending), member_access(member_access), brought_in(brought_in),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
@@ -1137,7 +1134,7 @@ public:
         // A call after the point names the template it calls; one nothing
         // calls yet goes without the compile.
         if(auto* name = templated->getIdentifier();
-           !later || (!loop && name && !focus.content().substr(offset).contains(name->getName()))) {
+           !later || (!loop && name && !text.substr(offset).contains(name->getName()))) {
             return false;
         }
         llvm::StringSet<> names;
@@ -1238,6 +1235,7 @@ public:
                        includes,
                        member_access,
                        brought_in);
+        nested.text = text;
         auto& completion = other.CodeCompletion();
         auto* consumer = completion.CodeCompleter;
         completion.CodeCompleter = &nested;
@@ -1275,7 +1273,6 @@ public:
             }
         }
         completion.CodeCompleter = consumer;
-        later->answered = answered;
         return answered;
     }
 
@@ -1416,7 +1413,7 @@ public:
         }
 
         auto& source_manager = sema.getSourceManager();
-        auto content = focus.content();
+        auto content = text;
         auto prefix = Prefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
@@ -2404,6 +2401,9 @@ public:
 private:
     CompilationUnit& unit;
     FocusFile focus;
+    /// The text completed in: the focus file's, but in a nested run in the
+    /// later compile, whose own reads a name at the point.
+    llvm::StringRef text;
     std::uint32_t offset;
     PositionEncoding encoding;
     std::vector<protocol::CompletionItem>& output;
@@ -2481,8 +2481,12 @@ auto code_complete(CompilationParams params,
         if(!decl) {
             continue;
         }
-        auto doc =
-            feature::documentation(later.answered ? *later.unit() : *unit, decl, documentation);
+        // A reply of the later compile is of its declarations.
+        auto* owner = later.unit();
+        if(!owner || &owner->context() != &decl->getASTContext()) {
+            owner = unit.get();
+        }
+        auto doc = feature::documentation(*owner, decl, documentation);
         if(doc.empty()) {
             continue;
         }

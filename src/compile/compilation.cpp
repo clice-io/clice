@@ -478,7 +478,7 @@ public:
 
 private:
     /// Whether the body of `decl` the parse stands before holds the point
-    /// or names one of instantiating_names, read raw from its `{` to the
+    /// or names one of instantiating_names (names), read raw from its `{` to the
     /// matching `}`. One starting otherwise, at a constructor's
     /// initializers, a `try` or a specifier after the declarator, is kept.
     bool may_instantiate(const clang::Decl* decl, std::uint32_t point) {
@@ -509,12 +509,30 @@ private:
                 depth += 1;
             } else if(token.is(clang::tok::r_brace)) {
                 depth -= 1;
-            } else if(token.is(clang::tok::raw_identifier) &&
-                      instantiating_names.contains(token.getRawIdentifier())) {
+            } else if(token.is(clang::tok::raw_identifier) && names(token.getRawIdentifier())) {
                 return true;
             }
         }
         return begin <= point && point <= sources.getFileOffset(token.getLocation());
+    }
+
+    /// Whether `word` is one of instantiating_names, or a macro whose
+    /// expansion spells one, through the macros it expands in turn.
+    bool names(llvm::StringRef word, std::uint32_t depth = 0) {
+        if(instantiating_names.contains(word)) {
+            return true;
+        }
+        auto& pp = unit.instance->getPreprocessor();
+        auto* identifier = pp.getIdentifierInfo(word);
+        const auto* macro =
+            identifier->hasMacroDefinition() ? pp.getMacroInfo(identifier) : nullptr;
+        if(!macro || depth == 8) {
+            return false;
+        }
+        return ranges::any_of(macro->tokens(), [&](const clang::Token& token) {
+            auto* spelled = token.getIdentifierInfo();
+            return spelled && spelled != identifier && names(spelled->getName(), depth + 1);
+        });
     }
 
     CompilationUnit& unit;
