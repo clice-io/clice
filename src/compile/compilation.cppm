@@ -228,8 +228,8 @@ struct CompilationParams {
 
     /// A compile looking only for how the focus file's templates are
     /// instantiated: it skips the focus file's function bodies as well, but
-    /// the one holding `point` and those naming one of `names` or a
-    /// template a body kept is part of.
+    /// those of templates, the one holding `point`, and those naming one of
+    /// `names` or a template whose body does.
     struct Instantiating {
         std::uint32_t point = 0;
         llvm::StringSet<> names;

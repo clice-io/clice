@@ -401,12 +401,15 @@ public:
         auto file = unit.produced_at(decl->getLocation()).file;
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
-            if(!may_instantiate(instantiating->point)) {
-                return true;
+            bool may = may_instantiate(decl, instantiating->point);
+            // A template's body is parsed, as its use may need it; one that
+            // names one of the names makes a body naming this template one
+            // that may instantiate them too.
+            auto* function = decl->getAsFunction();
+            if(!function || !function->isTemplated()) {
+                return !may;
             }
-            // A body that names one of a template it is part of may
-            // instantiate the template, and through it what this one names.
-            if(auto* function = decl->getAsFunction(); function && function->isTemplated()) {
+            if(may) {
                 if(auto* name = function->getIdentifier()) {
                     instantiating_names.insert(name->getName());
                 }
@@ -421,12 +424,6 @@ public:
             return false;
         }
         return unit.in_preamble(file) && !likely_forwarding(decl);
-    }
-
-    /// Sees each token the preprocessor hands the parser, under
-    /// CompilationParams::instantiating.
-    void watch(const clang::Token& token) {
-        last = token;
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
@@ -480,16 +477,22 @@ public:
     }
 
 private:
-    /// Whether the body the parse stands before holds the point or names
-    /// one of instantiating_names, read raw from its `{` to the matching `}`. One
-    /// starting otherwise, at a constructor's initializers, a `try` or a
-    /// `{` a macro writes, is kept.
-    bool may_instantiate(std::uint32_t point) {
+    /// Whether the body of `decl` the parse stands before holds the point
+    /// or names one of instantiating_names, read raw from its `{` to the
+    /// matching `}`. One starting otherwise, at a constructor's
+    /// initializers, a `try` or a specifier after the declarator, is kept.
+    bool may_instantiate(const clang::Decl* decl, std::uint32_t point) {
         auto& sources = unit.context().getSourceManager();
-        if(!last.is(clang::tok::l_brace) || !last.getLocation().isFileID()) {
+        auto* function = decl->getAsFunction();
+        if(!function) {
             return true;
         }
-        auto [file, begin] = sources.getDecomposedLoc(last.getLocation());
+        auto declarator = sources.getExpansionRange(function->getEndLoc()).getEnd();
+        auto brace = clang::Lexer::findNextToken(declarator, sources, unit.lang_options());
+        if(!brace || !brace->is(clang::tok::l_brace)) {
+            return true;
+        }
+        auto [file, begin] = sources.getDecomposedLoc(brace->getLocation());
         if(file != unit.focus_file().file()) {
             return true;
         }
@@ -517,10 +520,9 @@ private:
     CompilationUnit& unit;
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
     llvm::DenseSet<const clang::Decl*> instantiations;
-    clang::Token last;
 
-    /// CompilationParams::Instantiating::names, and the templates a body
-    /// kept for naming one is part of.
+    /// CompilationParams::Instantiating::names, and the templates whose
+    /// bodies name one.
     llvm::StringSet<> instantiating_names;
 };
 
@@ -534,12 +536,7 @@ public:
         auto consumer = WrapperFrontendAction::CreateASTConsumer(instance, file);
         if(!consumer)
             return nullptr;
-        auto parse = std::make_unique<ParseConsumer>(std::move(consumer), unit);
-        if(unit.params.instantiating) {
-            instance.getPreprocessor().setTokenWatcher(
-                [parse = parse.get()](const clang::Token& token) { parse->watch(token); });
-        }
-        return parse;
+        return std::make_unique<ParseConsumer>(std::move(consumer), unit);
     }
 
     /// Make this public.
