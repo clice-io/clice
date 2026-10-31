@@ -265,7 +265,22 @@ Completables completables(const IndexQuery& index,
                           const CompletionScope& scope,
                           Fid file,
                           std::uint32_t limit) {
-    SymbolQuery scoped{.absolute = scope.absolute, .pattern = prefix.str()};
+    // Of the kinds a namespace's names have: a class's members, which a
+    // scope's subtree holds more of, would crowd them out of the ranking.
+    std::vector<SymbolKind> kinds = {
+        SymbolKind::Macro,
+        SymbolKind::Namespace,
+        SymbolKind::Class,
+        SymbolKind::Struct,
+        SymbolKind::Union,
+        SymbolKind::Enum,
+        SymbolKind::Type,
+        SymbolKind::EnumMember,
+        SymbolKind::Function,
+        SymbolKind::Variable,
+        SymbolKind::Concept,
+    };
+    SymbolQuery scoped{.absolute = scope.absolute, .pattern = prefix.str(), .kinds = kinds};
     for(auto& name: scope.qualifier) {
         scoped.scope.push_back({.name = name});
     }
@@ -292,9 +307,8 @@ Completables completables(const IndexQuery& index,
     /// Adds the best of the names `query` finds that `wanted` keeps, up to
     /// the limit.
     auto gather = [&](const SymbolQuery& query, auto wanted, bool& exhausted) {
-        // Members outnumber the names of namespaces, and a qualifier's
-        // scopes hold more below them: the ranking is fetched wider than
-        // the names wanted.
+        // A qualifier's scopes hold more below them: the ranking is
+        // fetched wider than the names wanted.
         auto project_query = query;
         project_query.external_only = true;
         auto ranked = ranked_search(index, project_query, limit * 8);
@@ -366,7 +380,9 @@ Completables completables(const IndexQuery& index,
     // A namespace's using-declarations and using-directives bring in the
     // names of others, which the index does not tell: the compile looks
     // these up in it as well.
-    gather(SymbolQuery{.pattern = prefix.str()}, any, result.others_exhausted);
+    gather(SymbolQuery{.pattern = prefix.str(), .kinds = std::move(kinds)},
+           any,
+           result.others_exhausted);
     return result;
 }
 

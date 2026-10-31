@@ -1141,15 +1141,6 @@ public:
         if(auto* name = templated->getIdentifier()) {
             names.insert(name->getName());
         }
-        // A generic lambda is called through the variable it initializes.
-        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
-           method && method->getParent()->isLambda()) {
-            if(auto* variable = llvm::dyn_cast_or_null<clang::NamedDecl>(
-                   method->getParent()->getLambdaContextDecl());
-               variable && variable->getIdentifier()) {
-                names.insert(variable->getName());
-            }
-        }
         auto* whole = later->unit(std::move(names));
         if(!whole) {
             return false;
