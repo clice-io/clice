@@ -7,41 +7,6 @@ import :support.logging;
 
 namespace clice {
 
-MasterServer::SecondName* LSPClient::second_name(llvm::StringRef spelling) {
-    auto path_id =
-        spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
-    return path_id ? server.find_second_name(*path_id, spelling) : nullptr;
-}
-
-LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
-    auto path = uri_to_path(uri);
-    if(!path) {
-        // Not a file: no document of ours.
-        return ResolvedDoc{.project = server.projects.front()};
-    }
-    auto path_id = server.files.intern(*path);
-    auto project = server.owner_of(path_id).shared_from_this();
-    auto session = server.find_session(path_id);
-    auto version = session ? std::optional(session->version) : std::nullopt;
-    // A document under a second name has a buffer of its own: it is the
-    // file — its session, its index — only while both hold the same text.
-    if(auto* second = server.find_second_name(path_id, *path)) {
-        if(session && second->buffer.text() != session->text()) {
-            return ResolvedDoc{.path = std::move(*path).str(), .project = std::move(project)};
-        }
-        version = second->buffer.version;
-    }
-    auto ticket = Ticket::take(session);
-    return ResolvedDoc{
-        .path = std::move(*path).str(),
-        .path_id = path_id,
-        .session = std::move(session),
-        .project = std::move(project),
-        .version = version,
-        .ticket = std::move(ticket),
-    };
-}
-
 void LSPClient::register_document_sync() {
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         auto& srv = this->server;

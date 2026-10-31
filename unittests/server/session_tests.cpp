@@ -234,25 +234,25 @@ ZEST_CASE(NoopEditUnchanged) {
 
 ZEST_CASE(CrashStopsItsKind) {
     auto t0 = Clock::now();
-    ZEXPECT(!doc.stops(RequestKind::Compile, t0));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t0));
 
     doc.crashed(RequestKind::Compile, "d1", "killed by signal 11", t0);
-    ZEXPECT(doc.stops(RequestKind::Compile, t0));
-    ZEXPECT(doc.find(RequestKind::Compile) != nullptr);
-    ZEXPECT(!doc.stops(RequestKind::Hover, t0));
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t0));
+    ZEXPECT(doc.crash_record(RequestKind::Compile) != nullptr);
+    ZEXPECT(!doc.crash_stops(RequestKind::Hover, t0));
     Session other(Fid{2}, "int a;\n", 1);
-    ZEXPECT(!other.stops(RequestKind::Compile, t0));
+    ZEXPECT(!other.crash_stops(RequestKind::Compile, t0));
 
     // A document that sits still is never retried.
-    ZEXPECT(doc.stops(RequestKind::Compile, t0 + seconds(3600)));
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t0 + seconds(3600)));
 }
 
 ZEST_CASE(ChangeRetriesAfterSpacing) {
     auto t0 = Clock::now();
     doc.crashed(RequestKind::Compile, "d1", "cause", t0);
     doc.changed(t0 + seconds(1));
-    ZEXPECT(doc.stops(RequestKind::Compile, t0 + seconds(1)));
-    ZEXPECT(!doc.stops(RequestKind::Compile, t0 + Session::policy.spacing));
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t0 + seconds(1)));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t0 + Session::policy.spacing));
 }
 
 ZEST_CASE(CrashesLeaveSaveOnly) {
@@ -262,17 +262,17 @@ ZEST_CASE(CrashesLeaveSaveOnly) {
         doc.changed(t);
         t += seconds(10);
     }
-    ZEXPECT(doc.stops(RequestKind::Compile, t));
-    ZASSERT(doc.notes().size() == 1u);
-    ZEXPECT(doc.notes()[0].save_only);
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t));
+    ZASSERT(doc.crash_notes().size() == 1u);
+    ZEXPECT(doc.crash_notes()[0].save_only);
 
     doc.saved();
-    ZEXPECT(!doc.stops(RequestKind::Compile, t));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t));
 
     // The save starts a fresh run: one crash later, a change retries again.
     doc.crashed(RequestKind::Compile, "after-save", "cause", t);
     doc.changed(t);
-    ZEXPECT(!doc.stops(RequestKind::Compile, t + seconds(10)));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t + seconds(10)));
 }
 
 ZEST_CASE(FreshSuccessClears) {
@@ -283,19 +283,19 @@ ZEST_CASE(FreshSuccessClears) {
     auto taken = doc.generation;
     doc.generation += 1;
     ZEXPECT(!doc.succeeded(RequestKind::Hover, taken));
-    ZEXPECT(doc.find(RequestKind::Hover) != nullptr);
+    ZEXPECT(doc.crash_record(RequestKind::Hover) != nullptr);
 
     ZEXPECT(doc.succeeded(RequestKind::Hover, doc.generation));
-    ZEXPECT(doc.find(RequestKind::Hover) == nullptr);
-    ZEXPECT(!doc.stops(RequestKind::Hover, t0));
+    ZEXPECT(doc.crash_record(RequestKind::Hover) == nullptr);
+    ZEXPECT(!doc.crash_stops(RequestKind::Hover, t0));
 }
 
 ZEST_CASE(DeathCountsOnce) {
     auto t0 = Clock::now();
     doc.crashed(RequestKind::Hover, "d1", "cause", t0);
     doc.crashed(RequestKind::Hover, "d1", "cause", t0);
-    ZASSERT(doc.notes().size() == 1u);
-    ZEXPECT(doc.notes()[0].count == 1u);
+    ZASSERT(doc.crash_notes().size() == 1u);
+    ZEXPECT(doc.crash_notes()[0].count == 1u);
 }
 
 ZEST_CASE(AttemptHoldsRetry) {
@@ -304,16 +304,16 @@ ZEST_CASE(AttemptHoldsRetry) {
     doc.saved();
     {
         Session::Attempt attempt(doc, RequestKind::Compile);
-        ZEXPECT(doc.stops(RequestKind::Compile, t0));
+        ZEXPECT(doc.crash_stops(RequestKind::Compile, t0));
     }
     // Ended without a crash: the retry comes back.
-    ZEXPECT(!doc.stops(RequestKind::Compile, t0));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t0));
 
     {
         Session::Attempt attempt(doc, RequestKind::Compile);
         doc.crashed(RequestKind::Compile, "d2", "cause", t0);
     }
-    ZEXPECT(doc.stops(RequestKind::Compile, t0 + seconds(10)));
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t0 + seconds(10)));
 }
 
 ZEST_CASE(SaveThenCrashStops) {
@@ -327,7 +327,7 @@ ZEST_CASE(SaveThenCrashStops) {
         doc.saved();
         doc.crashed(RequestKind::Compile, "d2", "cause", t0 + seconds(1));
     }
-    ZEXPECT(doc.stops(RequestKind::Compile, t0 + seconds(10)));
+    ZEXPECT(doc.crash_stops(RequestKind::Compile, t0 + seconds(10)));
 }
 
 ZEST_CASE(SiblingCrashMeanwhile) {
@@ -349,19 +349,19 @@ ZEST_CASE(ChangeDuringFlightStands) {
         doc.changed(t0);
         doc.crashed(RequestKind::Compile, "d1", "cause", t0 + seconds(20));
     }
-    ZEXPECT(!doc.stops(RequestKind::Compile, t0 + seconds(30)));
+    ZEXPECT(!doc.crash_stops(RequestKind::Compile, t0 + seconds(30)));
 }
 
 ZEST_CASE(EditingCrashStaysSilent) {
     auto t0 = Clock::now();
     doc.changed(t0);
     ZEXPECT(!doc.crashed(RequestKind::Compile, "d1", "cause", t0 + seconds(1)));
-    ZEXPECT(doc.notes().empty());
+    ZEXPECT(doc.crash_notes().empty());
 
     // A repeat shows.
     doc.changed(t0 + seconds(2));
     ZEXPECT(doc.crashed(RequestKind::Compile, "d2", "cause", t0 + seconds(5)));
-    ZEXPECT(doc.notes().size() == 1u);
+    ZEXPECT(doc.crash_notes().size() == 1u);
 }
 
 ZEST_CASE(SavedCrashShows) {
@@ -379,7 +379,7 @@ ZEST_CASE(ColdCrashShows) {
                 "d1",
                 "killed by signal 6 (SIGABRT)",
                 t0 + Session::policy.editing_window);
-    auto notes = doc.notes();
+    auto notes = doc.crash_notes();
     ZASSERT(notes.size() == 1u);
     ZEXPECT(notes[0].kind == RequestKind::Hover);
     ZEXPECT(notes[0].cause == "killed by signal 6 (SIGABRT)");
@@ -390,7 +390,7 @@ ZEST_CASE(ColdCrashShows) {
 
 /// The open documents of a server whose projects have not started: a
 /// didOpen before initialize waits in the table with no owner.
-ZEST_SUITE(OpenDocuments) {
+ZEST_SUITE(DocumentTable) {
 
 kota::event_loop loop;
 MasterServer server{loop, ""};
@@ -433,18 +433,18 @@ ZEST_CASE(ReopenStartsClean) {
     auto first = server.find_session(path_id);
     ZASSERT(first != nullptr);
     first->crashed(RequestKind::Compile, "d1", "cause", t0);
-    ZEXPECT(first->stops(RequestKind::Compile, t0));
+    ZEXPECT(first->crash_stops(RequestKind::Compile, t0));
 
     server.close_document(path_id, spelled.str());
     open();
     auto reopened = server.find_session(path_id);
     ZASSERT(reopened != nullptr);
-    ZEXPECT(reopened->find(RequestKind::Compile) == nullptr);
-    ZEXPECT(!reopened->stops(RequestKind::Compile, t0));
-    ZEXPECT(reopened->notes().empty());
+    ZEXPECT(reopened->crash_record(RequestKind::Compile) == nullptr);
+    ZEXPECT(!reopened->crash_stops(RequestKind::Compile, t0));
+    ZEXPECT(reopened->crash_notes().empty());
 }
 
-};  // ZEST_SUITE(OpenDocuments)
+};  // ZEST_SUITE(DocumentTable)
 
 }  // namespace
 

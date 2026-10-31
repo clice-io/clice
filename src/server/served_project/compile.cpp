@@ -230,12 +230,6 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
     return plan;
 }
 
-kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
-    auto outcome = co_await run(ctx, path_id);
-    enter_phase(path_id, CompilePhase::Idle);
-    co_return outcome;
-}
-
 void ServedProject::record_crash(const std::shared_ptr<Session>& session,
                                  feature::RequestKind kind,
                                  llvm::StringRef death,
@@ -250,7 +244,7 @@ void ServedProject::record_crash(const std::shared_ptr<Session>& session,
         return;
     }
     bool shown = session->crashed(kind, death, std::move(cause), Session::Clock::now());
-    auto* record = session->find(kind);
+    auto* record = session->crash_record(kind);
     LOG_WARN("{} crashed a worker: {}",
              project.file_table.resolve(path_id),
              feature::crash_note({.kind = kind,
@@ -281,6 +275,15 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
                                     bool tidy,
                                     const std::optional<std::string>& consumed,
                                     const ipc::Error& error) {
+    // Under another project the document compiles with another command,
+    // which this crash says nothing about (record_crash logs it).
+    if(!owns(*session)) {
+        record_crash(session,
+                     feature::RequestKind::Compile,
+                     worker::death_of(error),
+                     error.message);
+        return false;
+    }
     auto path_id = session->path_id;
     auto file = project.file_table.resolve(path_id);
     auto& suspects = session->suspects;
@@ -323,8 +326,8 @@ void ServedProject::republish(const std::shared_ptr<Session>& session) {
 
 bool ServedProject::compile_stopped(const Session& session) const {
     auto now = Session::Clock::now();
-    return session.stops(feature::RequestKind::Compile, now) ||
-           session.stops(feature::RequestKind::PCH, now);
+    return session.crash_stops(feature::RequestKind::Compile, now) ||
+           session.crash_stops(feature::RequestKind::PCH, now);
 }
 
 void ServedProject::retry_after_save(Session& session) {
@@ -333,7 +336,7 @@ void ServedProject::retry_after_save(Session& session) {
     // An AST compiled while a clang-tidy crash stopped the pass stays
     // current until the next edit: the save that retries the pass
     // recompiles.
-    if(session.find(feature::RequestKind::Tidy)) {
+    if(session.crash_record(feature::RequestKind::Tidy)) {
         invalidate(path_id);
     }
     // Typing never re-runs the self-containment trial, yet an edit can
@@ -359,7 +362,7 @@ void ServedProject::retry_after_save(Session& session) {
     // build's inputs miss a lookup in a directory that did not exist yet,
     // so a save retries its failed preamble too. Either refusal leaves the
     // compile standing, so only a fresh round asks for the artifact again.
-    bool retry = session.find(feature::RequestKind::PCM) != nullptr;
+    bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
@@ -398,7 +401,8 @@ void ServedProject::retry_after_save(Session& session) {
 }
 
 std::vector<feature::FileDiagnostic>
-    ServedProject::shown_skipped(const Session& session, const CompileOutput& output) const {
+    ServedProject::shown_skipped_diagnostics(const Session& session,
+                                             const CompileOutput& output) const {
     auto it = skipped.find(session.path_id);
     if(it == skipped.end() || it->second.text_hash != session.hash ||
        output.diagnostics.source != CommandSource::CDBExact || active_choice(session.path_id)) {
@@ -407,8 +411,8 @@ std::vector<feature::FileDiagnostic>
     return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
 }
 
-bool ServedProject::lacks_skipped(Fid path_id) const {
-    auto* document = find(path_id);
+bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
+    auto* document = find_document(path_id);
     if(!document || document->serving != ServingMode::Escalated ||
        project.build.entries(path_id).empty()) {
         return false;
@@ -417,12 +421,12 @@ bool ServedProject::lacks_skipped(Fid path_id) const {
     return it == skipped.end() || it->second.text_hash != document->session->hash;
 }
 
-void ServedProject::report_skipped(Fid path_id,
-                                   std::uint64_t text_hash,
-                                   std::vector<feature::FileDiagnostic> diagnostics) {
+void ServedProject::report_skipped_diagnostics(Fid path_id,
+                                               std::uint64_t text_hash,
+                                               std::vector<feature::FileDiagnostic> diagnostics) {
     skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
     // A compile owed shows them as it commits (run).
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     if(!document || !document->current) {
         return;
     }
@@ -431,7 +435,7 @@ void ServedProject::report_skipped(Fid path_id,
     if(!compiled) {
         return;
     }
-    auto shown = shown_skipped(session, *compiled->output);
+    auto shown = shown_skipped_diagnostics(session, *compiled->output);
     if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
         return;
     }
@@ -443,7 +447,7 @@ void ServedProject::report_skipped(Fid path_id,
 
 void ServedProject::each_input(Fid path_id,
                                llvm::function_ref<void(const DepsSnapshot&)> visit) const {
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     if(!document) {
         return;
     }
@@ -466,17 +470,8 @@ void ServedProject::each_input(Fid path_id,
     }
 }
 
-bool ServedProject::is_stale(const Session& session) {
-    // No early return: the changes one check finds cascade together.
-    bool stale = false;
-    each_input(session.path_id, [&](const DepsSnapshot& deps) {
-        stale = deps_changed(project.file_table, deps) || stale;
-    });
-    return stale;
-}
-
 void ServedProject::mark_not_current(Fid path_id) {
-    if(auto* document = find(path_id)) {
+    if(auto* document = find_document(path_id)) {
         document->current = false;
         document->epoch += 1;
     }
@@ -511,7 +506,7 @@ void ServedProject::choice_changed(Session& session) {
     // identity.
     session.generation += 1;
     session.changed(Session::Clock::now());
-    auto& document = *find(path_id);
+    auto& document = *find_document(path_id);
     if(document.latest) {
         // The TU index describes the buffer under the old identity, though
         // it compiled the same bytes.
@@ -536,7 +531,7 @@ void ServedProject::inputs_changed(Session& session) {
 }
 
 void ServedProject::escalate(Fid path_id) {
-    auto& document = *find(path_id);
+    auto& document = *find_document(path_id);
     if(document.serving != ServingMode::IndexOnly ||
        project.settings.project.readonly == ReadonlyMode::On) {
         return;
@@ -595,7 +590,12 @@ kota::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session
     // graph cascade without touching the compile table, and a PCH
     // rebuilt before the next request would read fresh again here.
     if(current(path_id) && !sched.graph.is_dirty(node(path_id))) {
-        if(!is_stale(*session)) {
+        // No early return: the changes one check finds cascade together.
+        bool stale = false;
+        each_input(path_id, [&](const DepsSnapshot& deps) {
+            stale = deps_changed(project.file_table, deps) || stale;
+        });
+        if(!stale) {
             co_return true;
         }
         // A dependency changed on disk behind this document's back — the
@@ -605,6 +605,11 @@ kota::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session
         // both synchronously: applied on a later turn, the cascade would
         // void the round about to compile the new content.
         server.apply_disk_changes();
+        // The changes can take the document to another project: a context
+        // choice whose host stopped including it.
+        if(!owns(*session)) {
+            co_return false;
+        }
         inputs_changed(*session);
     }
 
@@ -678,7 +683,7 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
     // FIXME: an edit within the spacing of the module's crash is spent here:
     // the round runs without the module and finishes current, so the module waits
     // for the next edit or save, not for the spacing to pass.
-    bool retry = session->find(kind) && !session->stops(kind, Session::Clock::now());
+    bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
     Session::Attempt attempt(*session, kind);
     bool crashed = false;
 
@@ -697,7 +702,7 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
                 if(!retry) {
                     // Booked once: a round on unchanged inputs is no new
                     // crash.
-                    if(!session->find(kind)) {
+                    if(!session->crash_record(kind)) {
                         record_crash(session, kind, crash->death, crash->cause);
                     }
                     crashed = true;
@@ -731,11 +736,11 @@ kota::task<std::optional<PCMBuilder::ModuleDeps>>
     co_return deps;
 }
 
-kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
+kota::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
     // Only a join for a document of this project spawns a round, and the
     // round gets here before its first suspension: nothing can have closed
     // or moved it.
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     assert(document && "AST round for a document not this project's");
     auto session = document->session;
 
@@ -762,7 +767,7 @@ kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
     // and stops the others until its outcome (Session invariant 2).
     using enum feature::RequestKind;
     Session::Attempt compile_attempt(*session, Compile);
-    bool pch_retry = session->find(PCH) != nullptr;
+    bool pch_retry = session->crash_record(PCH) != nullptr;
     Session::Attempt pch_attempt(*session, PCH);
 
     // clang-tidy runs where `clice lint` checks, unless its configuration
@@ -778,7 +783,7 @@ kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
-           !session->find(Compile) && !session->stops(Tidy, Session::Clock::now())) {
+           !session->crash_record(Compile) && !session->crash_stops(Tidy, Session::Clock::now())) {
             tidy_attempt.emplace(*session, Tidy);
         }
     }
@@ -840,7 +845,7 @@ kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
-        // Build or reuse the PCH through its family — the depend records
+        // Build or reuse the PCH through its builder — the depend records
         // the Ast→Pch edge, so a staleness discovery on the shared pair
         // cascades here. Under readonly = "on" the build compiles without
         // a preamble instead — completion and signature help pay full
@@ -1241,11 +1246,11 @@ kota::task<RoundOutcome> ServedProject::run(RoundContext& ctx, Fid path_id) {
                               .query_failure = resolution.query_failure,
                               },
         };
-        next->output->diagnostics.skipped = shown_skipped(*session, *next->output);
+        next->output->diagnostics.skipped = shown_skipped_diagnostics(*session, *next->output);
 
         // The fresh ticket above holds the document here: a move bumps the
         // generation, and nothing suspends since.
-        auto& entry = *find(path_id);
+        auto& entry = *find_document(path_id);
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it. A
         // crash stays, for the next consumer to book without a build.
@@ -1302,12 +1307,12 @@ kota::task<std::optional<std::string>>
     auto& session = ticket.session;
     auto path_id = session->path_id;
     auto adoptable = [&] {
-        auto* document = find(path_id);
+        auto* document = find_document(path_id);
         return ticket.fresh() && document && document->epoch == epoch;
     };
 
     // The precompiled header the build declares for the command, as a
-    // compile round takes it (see run()).
+    // compile round takes it (see run_round()).
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
@@ -1342,7 +1347,7 @@ kota::task<std::optional<std::string>>
     auto kind = feature::RequestKind::PCH;
     if(auto* crash = sched.pch.crashed(pch_key)) {
         // Booked once: a request on unchanged inputs is no new crash.
-        if(!session->find(kind)) {
+        if(!session->crash_record(kind)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
@@ -1379,7 +1384,7 @@ kota::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
                                                          StatelessInputs& inputs) {
     auto* synthesized = resolution.synthesized.get();
     auto path_id = ticket.session->path_id;
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     auto epoch = document ? document->epoch : 0;
 
     // The scan runs under the request's command with the text the dispatch
@@ -1429,7 +1434,7 @@ void ServedProject::push_output(const Session& session, bool compiled) {
 }
 
 std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const {
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     return document ? document->latest : nullptr;
 }
 
@@ -1440,12 +1445,12 @@ std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int
 }
 
 bool ServedProject::current(Fid path_id) const {
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     return document && document->current;
 }
 
 bool ServedProject::index_current(Fid path_id) const {
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     return document && document->current && document->latest && document->latest->index &&
            document->latest->index->loaded();
 }
@@ -1453,7 +1458,7 @@ bool ServedProject::index_current(Fid path_id) const {
 void ServedProject::set_pch_keys(Fid path_id,
                                  std::optional<std::string> pch_key,
                                  std::optional<std::string> base_pch_key) {
-    auto& document = *find(path_id);
+    auto& document = *find_document(path_id);
     auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
     next.pch_key = std::move(pch_key);
     next.pch_failed = false;
@@ -1462,7 +1467,7 @@ void ServedProject::set_pch_keys(Fid path_id,
 }
 
 void ServedProject::set_output(Fid path_id, CompileOutput output) {
-    auto& document = *find(path_id);
+    auto& document = *find_document(path_id);
     auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
     next.output = std::move(output);
     document.latest = std::make_shared<const DocumentCompile>(std::move(next));
@@ -1471,7 +1476,7 @@ void ServedProject::set_output(Fid path_id, CompileOutput output) {
 std::vector<feature::FileDiagnostic>
     ServedProject::shown_diagnostics(const Session& session, const CompileOutput& output) const {
     auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.settings.diagnostics);
-    for(auto& note: session.notes()) {
+    for(auto& note: session.crash_notes()) {
         diagnostics.push_back(feature::crash_note(note));
     }
     return diagnostics;

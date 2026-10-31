@@ -21,7 +21,7 @@ ZEST_SUITE(Contexts) {
 
 TempDir tmp;
 ServedProjectFixture fx{tmp.root};
-ServedProject& served = fx.project();
+ServedProject& served = *fx.served;
 Project& project = served.project;
 CommandResolver& commands = served.commands;
 MasterServer& server = fx.server;
@@ -116,7 +116,7 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     ZASSERT(!fx.entry(file).guessed);
 }
 
-ZEST_CASE(PinSteersEditorOnly) {
+ZEST_CASE(ChoiceSteersEditorOnly) {
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
@@ -129,20 +129,20 @@ ZEST_CASE(PinSteersEditorOnly) {
     auto file = fx.intern(path);
     auto candidates = project.cdb.candidate_entries(path);
     ZASSERT(candidates.size() == 2u);
-    // Pin the non-default candidate (candidate order is content-decided,
+    // Choose the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](CommandID command) -> llvm::StringRef {
         auto argv = print_argv(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
-    auto pinned = candidates.back().command;
-    choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(pinned)});
+    auto chosen = candidates.back().command;
+    choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
 
-    // An editor resolution honors the pinned CDB entry...
+    // An editor resolution honors the chosen CDB entry...
     std::string directory;
     std::vector<std::string> arguments;
     served.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(pinned)));
+    ZASSERT(ranges::contains(arguments, define_of(chosen)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
@@ -150,7 +150,7 @@ ZEST_CASE(PinSteersEditorOnly) {
     ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
 }
 
-ZEST_CASE(PinBaseSurvivesRules) {
+ZEST_CASE(ChoiceBaseSurvivesRules) {
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
@@ -167,19 +167,19 @@ ZEST_CASE(PinBaseSurvivesRules) {
         auto argv = print_argv(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
-    auto pinned = candidates.back().command;
+    auto chosen = candidates.back().command;
 
-    // A pin whose applied hash went stale (a rule edit since it was saved)
+    // A choice whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
     choose(file,
            ContextChoice{Fid{},
                          std::nullopt,
                          "0123456789abcdef",
-                         project.commands.command_hash_hex(pinned)});
+                         project.commands.command_hash_hex(chosen)});
     std::string directory;
     std::vector<std::string> arguments;
     served.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(pinned)));
+    ZASSERT(ranges::contains(arguments, define_of(chosen)));
 
     // ...while the same stale hash without a base falls back to the default.
     choose(file, ContextChoice{Fid{}, std::nullopt, "0123456789abcdef", ""});
@@ -203,7 +203,7 @@ ZEST_CASE(ValidChoiceStaysActive) {
     project.dep_graph.build_reverse_map();
     choose(header, ContextChoice{host, std::nullopt, ""});
 
-    ZASSERT(holds(project, header, server.choice(header)->choice));
+    ZASSERT(choice_holds(project, header, server.choice(header)->choice));
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
 }
@@ -230,7 +230,7 @@ ZEST_CASE(GoneOccurrenceGoesInactive) {
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
     take_tree(project, tree_request(project, host, project.build.commands(host).front()));
-    ZASSERT(!holds(project, header, server.choice(header)->choice));
+    ZASSERT(!choice_holds(project, header, server.choice(header)->choice));
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);
 }
@@ -249,12 +249,12 @@ ZEST_CASE(StaleChoiceGoesInactive) {
     auto header = fx.intern(tmp.path("h.h"));
     auto main = fx.intern(tmp.path("main.cpp"));
 
-    // A host pin whose CDB entry disappeared while the server was down.
+    // A host choice whose CDB entry disappeared while the server was down.
     choose(header, ContextChoice{host, std::nullopt, ""});
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);
 
-    // A command pin whose hash matches no current CDB entry.
+    // A command choice whose hash matches no current CDB entry.
     choose(main, ContextChoice{Fid{}, std::nullopt, "deadbeef"});
     ZASSERT(server.recheck_choice(main));
     ZASSERT(!server.choice(main)->active);

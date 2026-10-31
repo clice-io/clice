@@ -39,6 +39,38 @@ test("a pull follows the document", async (t) => {
     );
 });
 
+// The folder removed and added again in the same read: the project taking
+// the root over starts once the removed one is gone, which the pull, routed
+// to the removed one, must not keep alive.
+test("a pull follows into the project taking the root over", async (t) => {
+    const s = await t.start({ folders: ["outer/inner", "outer"] });
+    expect(await s.errors("outer/inner/main.cpp")).toEqual([]);
+    const folder = { uri: s.uri("outer"), name: "outer" };
+    const replies = await s.client.sendTogether([
+        {
+            jsonrpc: "2.0",
+            id: "pull",
+            method: proto.DocumentDiagnosticRequest.method,
+            params: { textDocument: { uri: s.uri("outer/inner/main.cpp") } },
+        },
+        {
+            jsonrpc: "2.0",
+            method: proto.DidChangeWorkspaceFoldersNotification.method,
+            params: { event: { added: [], removed: [folder] } },
+        },
+        {
+            jsonrpc: "2.0",
+            method: proto.DidChangeWorkspaceFoldersNotification.method,
+            params: { event: { added: [folder], removed: [] } },
+        },
+    ]);
+    const report = replies.get("pull")?.result as proto.FullDocumentDiagnosticReport;
+    await t.show(
+        "pulled",
+        report.items.map(({ message }) => (typeof message === "string" ? message : message.value)),
+    );
+});
+
 // Completion takes its ticket as its work starts, by then in a project the
 // request was not routed to: it answers ContentModified.
 test("a completion is outdated", async (t) => {

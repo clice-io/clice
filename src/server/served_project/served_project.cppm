@@ -175,7 +175,7 @@ enum class Route : std::uint8_t {
     Outdated,
     /// Serve from the index source the freshness contract admits.
     Index,
-    /// Ask the worker holding the AST (ServedProject::ask_worker, which
+    /// Ask the worker holding the AST (ServedProject::ast_request, which
     /// compiles as needed).
     Ast,
     /// No source can serve and none is being invested in (IndexOnly with
@@ -201,7 +201,7 @@ struct RouteOptions {
 
 /// What a gate decided instead of the feature's own answer: null (no
 /// source can answer — a failed compile) or ContentModified.
-struct Stop {
+struct GateStop {
     std::optional<ipc::Error> error;
 };
 
@@ -222,7 +222,8 @@ Value empty_value() {
 /// stack over the process's worker pool, the open documents the master
 /// routed to it, and everything the project derives for them. Its work is
 /// split in files: lifetime and adoption (served_project.cpp), compiling the
-/// open documents (compile.cpp), handling changes of its inputs
+/// open documents (compile.cpp), what answers a request on them now and
+/// asking the workers (answer.cpp), handling changes of its inputs
 /// (changes.cpp), the open documents' commands (command.cpp) and the index's
 /// live sources over them (live_sources.cpp). Shared: a request in flight
 /// keeps a removed project alive until it completes.
@@ -275,12 +276,11 @@ public:
     void release(Fid path_id);
 
     /// The document open here, or null when it is not this project's.
-    ServedDocument* find(Fid path_id);
-    const ServedDocument* find(Fid path_id) const;
+    ServedDocument* find_document(Fid path_id);
+    const ServedDocument* find_document(Fid path_id) const;
 
-    /// Whether `session` is a document of this project: what the project
-    /// writes about a document — its output, a crash, a refresh — lands
-    /// only while it is.
+    /// Whether `session` is a document of this project: the project writes
+    /// about a document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
     /// After the editor saved a file routed here: record a source of the
@@ -289,13 +289,6 @@ public:
     void record_saved(Fid path_id);
 
     // compile.cpp
-
-    /// Set while compiles may run and requests resolve commands. A project
-    /// made while its root's previous one still shuts down
-    /// (MasterServer::serve_folders) holds documents before it loads, which
-    /// would compile under no build at all; stop_compiles() lets them go
-    /// too.
-    kota::event loaded{true};
 
     /// Compile an open document's AST if it is not current: join the
     /// document's round (spawning one if none is live) and retry through
@@ -439,7 +432,7 @@ public:
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
     /// (TURunFamily::Plan::skipped_diagnostics).
-    bool lacks_skipped(Fid path_id) const;
+    bool lacks_skipped_diagnostics(Fid path_id) const;
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves finish in TaskGraph::shutdown — the
@@ -500,10 +493,6 @@ public:
     /// asked for (MasterServer::ask_restart).
     std::size_t reload_databases(bool force);
 
-    /// After a tick looked at the flags: reload_databases, unless the
-    /// project's polling is off.
-    void tick_databases();
-
     /// A file created under a default-command rule joins the build, as a
     /// database reload adds a command: whether one did. One deleted leaves
     /// through disk_changed, like any file. The walk runs off the event
@@ -546,12 +535,12 @@ public:
     bool knows(Fid path_id);
 
     /// The files every open document's compile depends on (closure).
-    void open_closures(llvm::SmallVectorImpl<Fid>& files) const;
+    void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
 
     /// Whether an open document's own compile serves the file's index
     /// (IndexPump::compiled_by_session): an escalated document's does,
     /// unless it skips the bodies of the headers — then only a background
-    /// run shows what the skipped bodies hold (report_skipped).
+    /// run shows what the skipped bodies hold (report_skipped_diagnostics).
     bool compiled_by_session(Fid path_id) const;
 
     /// The project's context choices hold again or no longer do after the
@@ -594,13 +583,13 @@ public:
     /// exactly when the routing decided the AST is the serving source
     /// (freshness clause 1 needs the finished file index), and lets
     /// index-served documents resolve through clauses 1/4 without forcing
-    /// the build. A Stop means answer with it instead: the compile failed,
-    /// or the request was superseded.
-    kota::task<std::optional<Stop>> navigation_gate(const Ticket& ticket);
+    /// the build. A GateStop means answer with it instead: the compile
+    /// failed, or the request was superseded.
+    kota::task<std::optional<GateStop>> navigation_gate(const Ticket& ticket);
 
-    /// Await the document's compile; a Stop when it failed or the request
-    /// was superseded.
-    kota::task<std::optional<Stop>> await_compile(const Ticket& ticket);
+    /// Await the document's compile; a GateStop when it failed or the
+    /// request was superseded.
+    kota::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
 
     /// The symbol under a position of the file's serving source, if any.
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
@@ -650,11 +639,11 @@ public:
     /// serves every waiter, not this request.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-        ask_worker(const Ticket& ticket,
-                   feature::RequestKind kind,
-                   llvm::StringRef label,
-                   Params params,
-                   kota::cancellation_token token);
+        ast_request(const Ticket& ticket,
+                    feature::RequestKind kind,
+                    llvm::StringRef label,
+                    Params params,
+                    kota::cancellation_token token);
 
     /// The interactive stateless builds (completion, signature help): the
     /// buffer and its compile inputs go to a stateless worker, which
@@ -663,12 +652,12 @@ public:
     /// request filled in.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-        interactive(const Ticket& ticket,
-                    feature::RequestKind kind,
-                    llvm::StringRef label,
-                    std::uint32_t offset,
-                    Params params,
-                    kota::cancellation_token token);
+        stateless_request(const Ticket& ticket,
+                          feature::RequestKind kind,
+                          llvm::StringRef label,
+                          std::uint32_t offset,
+                          Params params,
+                          kota::cancellation_token token);
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
     kota::task<std::optional<worker::FormatResult>, ipc::Error>
@@ -710,6 +699,13 @@ public:
     /// the very bytes it indexed.
     const index::Shard* matching_shard(const Session& session) const;
 
+    /// Set while compiles may run and requests resolve commands. A project
+    /// made while its root's previous one still shuts down
+    /// (MasterServer::serve_folders) holds documents before it loads, which
+    /// would compile under no build at all; stop_compiles() lets them go
+    /// too.
+    kota::event loaded{true};
+
     MasterServer& server;
 
     Project project;
@@ -743,16 +739,6 @@ private:
     /// decision — builds are pull-driven.
     void decide_serving(ServedDocument& document);
 
-    /// An index attempt finished with no retry pending; a document waiting
-    /// on the index with nothing servable will never be served by it —
-    /// escalate instead of letting it answer empty forever.
-    void index_attempt_finished(Fid path_id);
-
-    /// A background merge replaced the shards of these files: an
-    /// index-served document whose client holds answers from them is asked
-    /// to pull them again.
-    void index_changed(llvm::ArrayRef<Fid> path_ids);
-
     /// When this project holds its cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
     /// listen on a loopback port and record it next to the lock (see
@@ -770,7 +756,7 @@ private:
 
     /// Drop pch_cache metadata for blobs the store's LRU evicted from
     /// disk (see checkpoint_task).
-    void drain_store_evictions();
+    void forget_evicted_pchs();
 
     /// The default-sources loop, poll_sources on the workspace poll's pace.
     /// Spawned by start() unless polling is off.
@@ -782,10 +768,7 @@ private:
     /// self-containment trial and its stopped request kinds start over.
     void inputs_changed(Session& session);
 
-    /// One compile round; see run's comments for its obligations.
-    kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
-
-    /// run, and the Idle phase once it ends.
+    /// One compile round; see run_round's comments for its obligations.
     kota::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
 
     /// The module-dependency phase of a round: resolve imports from the
@@ -805,9 +788,6 @@ private:
                        llvm::StringRef directory,
                        const std::vector<std::string>& arguments,
                        llvm::StringRef text);
-
-    /// Non-const: the check observes the disk through the file table.
-    bool is_stale(const Session& session);
 
     /// Whose fault a worker death under the document's compile is, tried
     /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
@@ -892,10 +872,11 @@ private:
     /// text hashing to `text_hash`: what the editor's compile, which skips
     /// the function bodies of the headers the file includes at its top, can
     /// get wrong (feature::skipped_diagnostics). They show on the document
-    /// while it holds that text, open now or later (shown_skipped).
-    void report_skipped(Fid path_id,
-                        std::uint64_t text_hash,
-                        std::vector<feature::FileDiagnostic> diagnostics);
+    /// while it holds that text, open now or later
+    /// (shown_skipped_diagnostics).
+    void report_skipped_diagnostics(Fid path_id,
+                                    std::uint64_t text_hash,
+                                    std::vector<feature::FileDiagnostic> diagnostics);
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -903,8 +884,8 @@ private:
     /// Nothing when the run read other text, when the compile had no
     /// database entry of the file's, which the run compiles with, or when
     /// the user chose the file's context, which the run does not compile in.
-    std::vector<feature::FileDiagnostic> shown_skipped(const Session& session,
-                                                       const CompileOutput& output) const;
+    std::vector<feature::FileDiagnostic>
+        shown_skipped_diagnostics(const Session& session, const CompileOutput& output) const;
 
     // answer.cpp
 
@@ -915,35 +896,35 @@ private:
     /// once more. `unanswered` reports a query never sent: its kind stopped
     /// by a crash, or a recompile that produced no AST.
     template <typename Params>
-    RequestResult<Params> ask(const Ticket& ticket,
-                              feature::RequestKind kind,
-                              const Params& params,
-                              kota::cancellation_token token,
-                              bool& unanswered);
+    RequestResult<Params> send_ast(const Ticket& ticket,
+                                   feature::RequestKind kind,
+                                   const Params& params,
+                                   kota::cancellation_token token,
+                                   bool& unanswered);
 
     /// Send a stateless request of `kind` carrying the document's content,
     /// which `attempt` holds from its first admission on: admitted again
     /// once it has its slot and before every resend. `refused` reports one
     /// never sent. `parses`: see admits.
     template <typename Params>
-    RequestResult<Params> send(const Ticket& ticket,
-                               feature::RequestKind kind,
-                               const Params& params,
-                               const Session::Attempt& attempt,
-                               bool parses,
-                               kota::cancellation_token token,
-                               bool& refused);
+    RequestResult<Params> send_stateless(const Ticket& ticket,
+                                         feature::RequestKind kind,
+                                         const Params& params,
+                                         const Session::Attempt& attempt,
+                                         bool parses,
+                                         kota::cancellation_token token,
+                                         bool& refused);
 
     // command.cpp
 
     /// Take the tree `request` names, or wait for the run taking it. False
     /// when the run took none: the pool stopped, the run was cancelled, or
     /// the worker failed for a cause not the unit's.
-    kota::task<bool> take_tree(TreeRequest request);
+    kota::task<bool> take_include_tree(TreeRequest request);
 
     /// The run taking the tree, which belongs to no asker: one cancelled
     /// leaves it to the others waiting on `done`, set when it ends.
-    kota::task<> tree_run(TreeRequest request, std::shared_ptr<kota::event> done);
+    kota::task<> run_include_tree(TreeRequest request, std::shared_ptr<kota::event> done);
 
     // changes.cpp
 
@@ -1091,7 +1072,8 @@ private:
     /// and stop_compiles() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
 
-    /// A background run's diagnostics of a file (see report_skipped).
+    /// A background run's diagnostics of a file (see
+    /// report_skipped_diagnostics).
     struct SkippedDiagnostics {
         std::uint64_t text_hash = 0;
 
@@ -1111,7 +1093,7 @@ private:
     /// project, nor before it starts.
     bool watching = false;
 
-    llvm::SmallVector<WatchedDatabase> watched;
+    llvm::SmallVector<WatchedDatabase> watched_databases;
 
     /// The root directory, whose stamp moves when an entry appears or goes.
     std::shared_ptr<const vfs::Flag> root_flag;
@@ -1183,11 +1165,11 @@ Outcome ServedProject::finish(const Ticket& ticket,
 }
 
 template <typename Params>
-RequestResult<Params> ServedProject::ask(const Ticket& ticket,
-                                         feature::RequestKind kind,
-                                         const Params& params,
-                                         kota::cancellation_token token,
-                                         bool& unanswered) {
+RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
+                                              feature::RequestKind kind,
+                                              const Params& params,
+                                              kota::cancellation_token token,
+                                              bool& unanswered) {
     auto& session = *ticket.session;
     auto unsent = [&] {
         unanswered = true;
@@ -1238,11 +1220,11 @@ RequestResult<Params> ServedProject::ask(const Ticket& ticket,
 
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    ServedProject::ask_worker(const Ticket& ticket,
-                              feature::RequestKind kind,
-                              llvm::StringRef label,
-                              Params params,
-                              kota::cancellation_token token) {
+    ServedProject::ast_request(const Ticket& ticket,
+                               feature::RequestKind kind,
+                               llvm::StringRef label,
+                               Params params,
+                               kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     params.path = std::string(project.file_table.resolve(session.path_id));
@@ -1264,7 +1246,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     auto wait_ms = timer.ms_f();
 
     bool unanswered = false;
-    auto result = co_await ask(ticket, kind, params, token, unanswered);
+    auto result = co_await send_ast(ticket, kind, params, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
             co_await kota::fail(content_modified());
@@ -1284,13 +1266,13 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
 }
 
 template <typename Params>
-RequestResult<Params> ServedProject::send(const Ticket& ticket,
-                                          feature::RequestKind kind,
-                                          const Params& params,
-                                          const Session::Attempt& attempt,
-                                          bool parses,
-                                          kota::cancellation_token token,
-                                          bool& refused) {
+RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
+                                                    feature::RequestKind kind,
+                                                    const Params& params,
+                                                    const Session::Attempt& attempt,
+                                                    bool parses,
+                                                    kota::cancellation_token token,
+                                                    bool& refused) {
     auto& session = *ticket.session;
     auto admitted = [&] {
         refused = !admits(session, kind, &attempt, parses);
@@ -1311,12 +1293,12 @@ RequestResult<Params> ServedProject::send(const Ticket& ticket,
 
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    ServedProject::interactive(const Ticket& ticket,
-                               feature::RequestKind kind,
-                               llvm::StringRef label,
-                               std::uint32_t offset,
-                               Params params,
-                               kota::cancellation_token token) {
+    ServedProject::stateless_request(const Ticket& ticket,
+                                     feature::RequestKind kind,
+                                     llvm::StringRef label,
+                                     std::uint32_t offset,
+                                     Params params,
+                                     kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -1375,7 +1357,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // this one while it was prepared or waited for a worker, stops the
     // content: it is not dispatched again.
     bool refused = false;
-    auto result = co_await send(ticket, kind, params, attempt, true, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, attempt, true, token, refused);
     if(refused) {
         LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
         if(!ticket.fresh() && !snapshot()) {

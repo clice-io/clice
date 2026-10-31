@@ -79,7 +79,7 @@ std::shared_ptr<index::TUIndex> overlay_of(const ServedProject& served,
 }  // namespace
 
 bool ServedProject::is_open(Fid file) const {
-    return find(file) != nullptr;
+    return find_document(file) != nullptr;
 }
 
 const index::Shard* ServedProject::matching_shard(const Session& session) const {
@@ -88,7 +88,7 @@ const index::Shard* ServedProject::matching_shard(const Session& session) const 
 }
 
 std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
-    auto* document = find(file);
+    auto* document = find_document(file);
     if(!document) {
         return std::nullopt;
     }
@@ -178,7 +178,7 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
 }
 
 std::shared_ptr<index::TUIndex> ServedProject::preamble_index(Fid file) const {
-    auto* document = find(file);
+    auto* document = find_document(file);
     if(!document) {
         return nullptr;
     }

@@ -95,14 +95,14 @@ public:
     void saved();
 
     /// Whether `kind` crashed and may not retry now.
-    bool stops(feature::RequestKind kind, Clock::time_point now) const;
+    bool crash_stops(feature::RequestKind kind, Clock::time_point now) const;
 
     /// The record of `kind`, stopping it or not; null for none.
-    const FailureRecord* find(feature::RequestKind kind) const;
+    const FailureRecord* crash_record(feature::RequestKind kind) const;
 
     /// The records the document's diagnostics show, in the order the kinds
     /// first crashed.
-    llvm::SmallVector<feature::CrashNote> notes() const;
+    llvm::SmallVector<feature::CrashNote> crash_notes() const;
 
     /// A dispatch of a kind, held across its flight. One that holds the
     /// retry a change or a save allowed stops the kind's other dispatches

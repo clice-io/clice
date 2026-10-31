@@ -1,0 +1,11 @@
+["textDocument/inlayHint".reply]
+code = -32801
+message = "Document changed while the request was in flight"
+
+["textDocument/codeAction".reply]
+code = -32801
+message = "Document changed while the request was in flight"
+
+["textDocument/signatureHelp".reply]
+code = -32801
+message = "Document changed while the request was in flight"

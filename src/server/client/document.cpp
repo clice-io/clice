@@ -18,11 +18,39 @@ import :worker.protocol;
 
 namespace clice {
 
-kota::task<codec::RawValue, ipc::Error> stop_reply(Stop stop) {
-    if(stop.error) {
-        co_await kota::fail(std::move(*stop.error));
+MasterServer::SecondName* LSPClient::second_name(llvm::StringRef spelling) {
+    auto path_id =
+        spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
+    return path_id ? server.find_second_name(*path_id, spelling) : nullptr;
+}
+
+LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
+    auto path = uri_to_path(uri);
+    if(!path) {
+        // Not a file: no document of ours.
+        return ResolvedDoc{.project = server.projects.front()};
     }
-    co_return codec::RawValue{"null"};
+    auto path_id = server.files.intern(*path);
+    auto project = server.owner_of(path_id).shared_from_this();
+    auto session = server.find_session(path_id);
+    auto version = session ? std::optional(session->version) : std::nullopt;
+    // A document under a second name has a buffer of its own: it is the
+    // file — its session, its index — only while both hold the same text.
+    if(auto* second = server.find_second_name(path_id, *path)) {
+        if(session && second->buffer.text() != session->text()) {
+            return ResolvedDoc{.path = std::move(*path).str(), .project = std::move(project)};
+        }
+        version = second->buffer.version;
+    }
+    auto ticket = Ticket::take(session);
+    return ResolvedDoc{
+        .path = std::move(*path).str(),
+        .path_id = path_id,
+        .session = std::move(session),
+        .project = std::move(project),
+        .version = version,
+        .ticket = std::move(ticket),
+    };
 }
 
 /// The card the index gives for the symbol at a position of the document's
@@ -67,13 +95,13 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
         }
         case Route::Ast: {
             tokens = co_await served
-                         ->ask_worker(ticket,
-                                      feature::RequestKind::SemanticTokens,
-                                      "SemanticTokens",
-                                      worker::SemanticTokensParams{
-                                          .settings = served->project.settings,
-                                      },
-                                      std::move(token))
+                         ->ast_request(ticket,
+                                       feature::RequestKind::SemanticTokens,
+                                       "SemanticTokens",
+                                       worker::SemanticTokensParams{
+                                           .settings = served->project.settings,
+                                       },
+                                       std::move(token))
                          .or_fail();
             break;
         }
@@ -112,7 +140,7 @@ void LSPClient::register_document_requests() {
     // computed from the index answer while it is not, and a document the
     // policy keeps un-compiled answers with its pinned degraded surface
     // (empty inlay hints). Each forwards the request's cancellation token
-    // to the worker sends (ServedProject::ask_worker).
+    // to the worker sends (ServedProject::ast_request).
     on_document<protocol::HoverParams>([this](RequestContext& ctx,
                                               const auto& params,
                                               ResolvedDoc document) -> RawResult {
@@ -197,14 +225,14 @@ void LSPClient::register_document_requests() {
 
         auto info =
             co_await project
-                .ask_worker(ticket,
-                            feature::RequestKind::Hover,
-                            "Hover",
-                            worker::HoverParams{
-                                .offset = session->positions().offset_clamped(position, encoding),
-                                .settings = project.project.settings,
-                            },
-                            ctx.cancellation)
+                .ast_request(ticket,
+                             feature::RequestKind::Hover,
+                             "Hover",
+                             worker::HoverParams{
+                                 .offset = session->positions().offset_clamped(position, encoding),
+                                 .settings = project.project.settings,
+                             },
+                             ctx.cancellation)
                 .or_fail();
         if(info) {
             co_return card(*info);
@@ -245,41 +273,44 @@ void LSPClient::register_document_requests() {
             return send_tokens(std::move(document), ctx.cancellation, {.window = params.range});
         });
 
-    on_document<protocol::InlayHintParams>([this](RequestContext& ctx,
-                                                  const auto& params,
-                                                  ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
-        auto encoding = server.position_encoding;
-        // Inlay hints are Sema products the index cannot compute; a document
-        // the policy keeps un-compiled answers honestly empty. The compile
-        // that follows an escalation pushes an inlayHint refresh, so clients
-        // re-pull once real hints exist.
-        if(served->serving_of(*session) == ServingMode::IndexOnly) {
-            index_served.insert(path_id);
-            co_return codec::RawValue{"[]"};
-        }
-        // Clamped against the buffer the ticket was taken on: a buffer that
-        // moves before the reply arrives turns the reply into ContentModified.
-        auto hints =
-            co_await served
-                ->ask_worker(ticket,
-                             feature::RequestKind::InlayHint,
-                             "InlayHint",
-                             worker::InlayHintParams{
-                                 .range = session->positions().offset_range(params.range, encoding),
-                                 .settings = served->project.settings,
-                             },
-                             ctx.cancellation)
-                .or_fail();
-        if(!label_parts) {
-            co_return to_raw(feature::to_protocol(hints, session->positions(), encoding));
-        }
-        co_return to_raw(feature::to_protocol(hints,
-                                              session->positions(),
-                                              encoding,
-                                              served->peer_queries(),
-                                              path_id));
-    });
+    on_document<protocol::InlayHintParams>(
+        [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
+            auto& [path, path_id, session, served, version, ticket] = document;
+            auto encoding = server.position_encoding;
+            if(!ticket.fresh()) {
+                co_await kota::fail(content_modified());
+            }
+            // Inlay hints are Sema products the index cannot compute; a document
+            // the policy keeps un-compiled answers honestly empty. The compile
+            // that follows an escalation pushes an inlayHint refresh, so clients
+            // re-pull once real hints exist.
+            if(served->serving_of(*session) == ServingMode::IndexOnly) {
+                index_served.insert(path_id);
+                co_return codec::RawValue{"[]"};
+            }
+            // Clamped against the buffer the ticket was taken on: a buffer that
+            // moves before the reply arrives turns the reply into ContentModified.
+            auto hints =
+                co_await served
+                    ->ast_request(
+                        ticket,
+                        feature::RequestKind::InlayHint,
+                        "InlayHint",
+                        worker::InlayHintParams{
+                            .range = session->positions().offset_range(params.range, encoding),
+                            .settings = served->project.settings,
+                        },
+                        ctx.cancellation)
+                    .or_fail();
+            if(!label_parts) {
+                co_return to_raw(feature::to_protocol(hints, session->positions(), encoding));
+            }
+            co_return to_raw(feature::to_protocol(hints,
+                                                  session->positions(),
+                                                  encoding,
+                                                  served->peer_queries(),
+                                                  path_id));
+        });
 
     on_document<protocol::FoldingRangeParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
@@ -312,11 +343,11 @@ void LSPClient::register_document_requests() {
                 case Route::Ast: break;
             }
             auto folds = co_await served
-                             ->ask_worker(ticket,
-                                          feature::RequestKind::FoldingRange,
-                                          "FoldingRange",
-                                          worker::FoldingRangeParams{},
-                                          ctx.cancellation)
+                             ->ast_request(ticket,
+                                           feature::RequestKind::FoldingRange,
+                                           "FoldingRange",
+                                           worker::FoldingRangeParams{},
+                                           ctx.cancellation)
                              .or_fail();
             if(!folds) {
                 co_return codec::RawValue{"null"};
@@ -363,11 +394,11 @@ void LSPClient::register_document_requests() {
             case Route::Ast: break;
         }
         auto chains = co_await served
-                          ->ask_worker(ticket,
-                                       feature::RequestKind::SelectionRange,
-                                       "SelectionRange",
-                                       worker::SelectionRangeParams{.offsets = offsets},
-                                       ctx.cancellation)
+                          ->ast_request(ticket,
+                                        feature::RequestKind::SelectionRange,
+                                        "SelectionRange",
+                                        worker::SelectionRangeParams{.offsets = offsets},
+                                        ctx.cancellation)
                           .or_fail();
         if(chains.empty()) {
             co_return lexical();
@@ -410,13 +441,13 @@ void LSPClient::register_document_requests() {
             case Route::Ast: break;
         }
         auto symbols = co_await served
-                           ->ask_worker(ticket,
-                                        feature::RequestKind::DocumentSymbol,
-                                        "DocumentSymbol",
-                                        worker::DocumentSymbolParams{
-                                            .settings = served->project.settings,
-                                        },
-                                        ctx.cancellation)
+                           ->ast_request(ticket,
+                                         feature::RequestKind::DocumentSymbol,
+                                         "DocumentSymbol",
+                                         worker::DocumentSymbolParams{
+                                             .settings = served->project.settings,
+                                         },
+                                         ctx.cancellation)
                            .or_fail();
         if(!symbols) {
             co_return codec::RawValue{"null"};
@@ -463,6 +494,11 @@ void LSPClient::register_document_requests() {
     on_document<protocol::DocumentDiagnosticParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& [path, path_id, session, served, version, ticket] = document;
+            // The pull follows the document, not the project it was routed
+            // to: held, a removed folder's project would keep the project
+            // taking its root over from starting, and the pull would wait
+            // for that one's compile.
+            served.reset();
             std::vector<feature::FileDiagnostic> items;
             while(session && !session->closed) {
                 auto* open = server.find_document(path_id);

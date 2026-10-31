@@ -20,7 +20,10 @@ kota::task<> MasterServer::poll_task() {
                 probe.happened(LoopEvent::DiskChange);
             }
             for(auto& project: projects) {
-                project->tick_databases();
+                if(project->project.settings.tracker.workspace_poll_seconds.value > 0 &&
+                   project->reload_databases(false) > 0) {
+                    probe.happened(LoopEvent::DatabaseChange);
+                }
             }
         }
         look_at_settings();

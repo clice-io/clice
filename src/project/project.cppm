@@ -314,7 +314,7 @@ struct Project {
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the invalidator's job (PCMBuilder::invalidate).
+    /// the served project's change handling (PCMBuilder::invalidate).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a

@@ -41,7 +41,7 @@ void register_pch_store(ServedProjectFixture& fixture, TempDir& tmp) {
     ZASSERT(store);
     store->register_namespace(
         {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
-    fixture.project().project.store.emplace(std::move(*store));
+    fixture.served->project.store.emplace(std::move(*store));
 }
 
 /// Close the document as didClose does: it leaves the master's table, its
@@ -51,7 +51,7 @@ void close_document(ServedProjectFixture& fixture, Fid path_id) {
     fixture.server.documents.erase(path_id);
     session->generation += 1;
     session->closed = true;
-    fixture.project().release(path_id);
+    fixture.served->release(path_id);
 }
 
 /// The hover at `position` of the ticket's buffer, asked of the worker
@@ -62,7 +62,7 @@ kota::task<std::optional<feature::HoverInfo>, ipc::Error>
               protocol::Position position,
               kota::cancellation_token token = {}) {
     auto encoding = served.server.position_encoding;
-    co_return co_await served.ask_worker(
+    co_return co_await served.ast_request(
         ticket,
         feature::RequestKind::Hover,
         "Hover",
@@ -79,7 +79,7 @@ kota::task<worker::CompletionResult, ipc::Error> ask_completion(ServedProject& s
                                                                 const Ticket& ticket,
                                                                 protocol::Position position) {
     auto encoding = served.server.position_encoding;
-    co_return co_await served.interactive(
+    co_return co_await served.stateless_request(
         ticket,
         feature::RequestKind::Completion,
         "Completion",
@@ -92,7 +92,7 @@ ZEST_SUITE(CompileGuards) {
 
 ZEST_CASE(EditedTouchesEntry) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
     auto& entry = fixture.entry(pid);
@@ -107,7 +107,7 @@ ZEST_CASE(EditedTouchesEntry) {
 
 ZEST_CASE(InvalidateKeepsResult) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
     fixture.set_pch_keys(pid, "key", std::nullopt);
@@ -125,7 +125,7 @@ ZEST_CASE(InvalidateKeepsResult) {
 
 ZEST_CASE(ReleaseErasesEntry) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
     fixture.set_pch_keys(pid, "key", std::nullopt);
@@ -140,7 +140,7 @@ ZEST_CASE(ClosedSessionSkipsCompile) {
     // A caller still holding a closed session asks for its AST: the join
     // ends at once instead of driving rounds that find no session.
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
     close_document(fixture, session->path_id);
 
@@ -160,7 +160,7 @@ ZEST_CASE(ClosedSessionSkipsCompile) {
 
 ZEST_CASE(ChoiceChangedResets) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/h.h", "int x;\n");
     auto pid = session->path_id;
     auto& entry = fixture.entry(pid);
@@ -187,12 +187,12 @@ ZEST_CASE(ChoiceChangedResets) {
     ZASSERT(after->output);
 }
 
-ZEST_CASE(CrashAfterMoveLeavesNoRecord) {
+ZEST_CASE(CrashAfterMoveIgnored) {
     // A request of the project the document left crashes after the move: the
-    // crash was under that project's command, and nothing of it lands on the
-    // document — no record, no note over what it shows.
+    // crash was under that project's command, and the document keeps no
+    // trace of it — no record, no note over what it shows.
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto other = std::make_shared<ServedProject>(fixture.server,
                                                  CanonicalPath(Spelling::absolute("/other")));
     fixture.server.projects.push_back(other);
@@ -205,17 +205,23 @@ ZEST_CASE(CrashAfterMoveLeavesNoRecord) {
                         feature::RequestKind::Completion,
                         "d1",
                         "killed by signal 11 (SIGSEGV)");
-    ZEXPECT(session->find(feature::RequestKind::Completion) == nullptr);
-    ZEXPECT(session->notes().empty());
+    ZEXPECT(session->crash_record(feature::RequestKind::Completion) == nullptr);
+    ZEXPECT(session->crash_notes().empty());
     ZEXPECT(other->latest(session->path_id) == nullptr);
+
+    // Nor does a compile's crash make its clang-tidy pass a suspect: the
+    // other project's compiles keep running it.
+    ZEXPECT(!fixture.attribute_crash(session, true, ipc::Error{"killed by signal 11 (SIGSEGV)"}));
+    ZEXPECT(!session->suspects.tidy);
+    ZEXPECT(session->crash_record(feature::RequestKind::Compile) == nullptr);
 }
 
 ZEST_CASE(CrashPublishesNote) {
-    // A recorded compile crash publishes its note at once — the bar that
-    // follows publishes nothing more — and takes the old diagnostics down:
+    // A recorded compile crash publishes its note at once — the progress
+    // end that follows publishes nothing more — and takes the old diagnostics down:
     // no AST stands behind them anymore.
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
     fixture.set_output(session->path_id,
                        CompileOutput{
@@ -233,7 +239,7 @@ ZEST_CASE(CrashPublishesNote) {
     ZASSERT((compiled && compiled->output.has_value()));
     ZEXPECT(compiled->output->diagnostics.own.empty());
 
-    auto notes = session->notes();
+    auto notes = session->crash_notes();
     ZASSERT(notes.size() == 1u);
     auto message = feature::crash_note(notes[0]).message;
     ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
@@ -263,7 +269,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     auto src = tmp.path("slow.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     std::string text;
     text.reserve(1 << 22);
     for(int i = 0; i < 200'000; i += 1) {
@@ -329,7 +335,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     auto src = tmp.path("edited_only.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "int v0;\n");
 
     bool waiter_done = false;
@@ -393,7 +399,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     auto src = tmp.path("edited.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "int v0;\n");
 
     bool first_done = false;
@@ -456,7 +462,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     auto src = tmp.path("main.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -515,7 +521,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     auto src = tmp.path("main.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -572,7 +578,7 @@ ZEST_CASE(ImportScanPerUnit) {
     tmp.touch("plain.cpp", "int plain() { return 0; }\n");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -649,7 +655,7 @@ ZEST_CASE(BufferImportRecorded) {
     auto src = tmp.path("main.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "import m;\nint main() { return 0; }\n");
 
     bool done = false;
@@ -691,7 +697,7 @@ ZEST_CASE(IncludeImportRecorded) {
     auto src = tmp.path("main.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -738,7 +744,7 @@ ZEST_CASE(HostImportRecorded) {
     tmp.touch("main.cpp", "import m;\n#include \"part.inc\"\nint main() { return 0; }\n");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -787,7 +793,7 @@ ZEST_CASE(SuffixImportRecorded) {
               "extern \"C++\" {\n#include \"part.inc\"\nimport m;\n}\nint main() { return 0; }\n");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -835,7 +841,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     auto src = tmp.path("main.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto& project = served.project;
     write_cdb(tmp,
               project.cdb,
@@ -884,7 +890,7 @@ ZEST_CASE(CrashedCompileStopsBuilds) {
     // too — completion parses what the compile crashed on — and they answer
     // empty: the crash note says why, an error would only be a popup.
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
     session->crashed(feature::RequestKind::Compile, "d1", "cause", Session::Clock::now());
 
@@ -904,7 +910,7 @@ ZEST_CASE(CrashedCompileStopsBuilds) {
 
 ZEST_CASE(CrashedFormatStopsFormat) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
     session->crashed(feature::RequestKind::Format, "d1", "cause", Session::Clock::now());
 
@@ -923,7 +929,7 @@ ZEST_CASE(CrashedFormatStopsFormat) {
 
 ZEST_CASE(EpochGuardsPCHWrite) {
     ServedProjectFixture fixture;
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;");
     auto pid = session->path_id;
     // No preamble directives: a current request would take the pch_key
@@ -965,7 +971,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "#pragma clang __debug crash\n");
 
@@ -987,7 +993,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
                                                  arguments);
         ZEXPECT(!built);
         ZEXPECT(served.compile_stopped(*session));
-        auto notes = session->notes();
+        auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::PCH);
         ZEXPECT(notes[0].count == 1u);
@@ -1014,7 +1020,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "#pragma clang __debug crash\nint value;\n");
 
@@ -1031,7 +1037,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
             co_await ask_completion(served, Ticket::take(session), {.line = 1, .character = 0});
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
-        auto notes = session->notes();
+        auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].count == 1u);
 
@@ -1058,7 +1064,7 @@ ZEST_CASE(QueuedRequestStops) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
 
@@ -1084,7 +1090,7 @@ ZEST_CASE(QueuedRequestStops) {
         };
         co_await kota::when_all(complete(), complete());
         ZEXPECT(deaths == 1);
-        auto notes = session->notes();
+        auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
         ZEXPECT(notes[0].count == 1u);
@@ -1112,7 +1118,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     auto src = tmp.path("shared.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "int v0;\n");
 
     bool cancelled_returned = false;
@@ -1180,7 +1186,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     auto src = tmp.path("stale.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "int v0;\n");
 
     bool stale = false;
@@ -1199,13 +1205,13 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         auto ticket = Ticket::take(session);
         kota::task_group<> group;
         auto tokens = [&]() -> kota::task<> {
-            auto result = co_await served.ask_worker(ticket,
-                                                     feature::RequestKind::SemanticTokens,
-                                                     "SemanticTokens",
-                                                     worker::SemanticTokensParams{
-                                                         .settings = served.project.settings,
-                                                     },
-                                                     {});
+            auto result = co_await served.ast_request(ticket,
+                                                      feature::RequestKind::SemanticTokens,
+                                                      "SemanticTokens",
+                                                      worker::SemanticTokensParams{
+                                                          .settings = served.project.settings,
+                                                      },
+                                                      {});
             stale = !result.has_value() && result.error().code == content_modified().code;
         };
         group.spawn(tokens());
@@ -1240,7 +1246,7 @@ ZEST_CASE(HarmlessKindKeepsStop) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto session = fixture.open(src, "int x;\n");
     auto tokens = feature::RequestKind::SemanticTokens;
     session->crashed(tokens, "w-1", "cause", Session::Clock::now());
@@ -1255,7 +1261,7 @@ ZEST_CASE(HarmlessKindKeepsStop) {
 
         auto result = co_await ask_hover(served, Ticket::take(session), protocol::Position{0, 4});
         ZEXPECT(result);
-        ZEXPECT(session->stops(tokens, Session::Clock::now()));
+        ZEXPECT(session->crash_stops(tokens, Session::Clock::now()));
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -1313,7 +1319,7 @@ ZEST_CASE(PoisonPreambleShared) {
                                       arguments);
         };
         auto crashed = [&](const std::shared_ptr<Session>& session) {
-            return session->find(feature::RequestKind::PCH) != nullptr;
+            return session->crash_record(feature::RequestKind::PCH) != nullptr;
         };
         ZASSERT(!co_await build(first));
         ZASSERT(crashed(first));
@@ -1348,12 +1354,12 @@ ZEST_CASE(EpochGuardsPCHClear) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
     // One prior crash on the PCH record.
     auto crashed = [&] {
-        return session->find(feature::RequestKind::PCH) != nullptr;
+        return session->crash_record(feature::RequestKind::PCH) != nullptr;
     };
     session->crashed(feature::RequestKind::PCH, "w-1", "cause", Session::Clock::now());
 
@@ -1424,7 +1430,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     auto src = tmp.path("a.cpp");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "#include \"dep.h\"\nint x;\n");
 
@@ -1495,7 +1501,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     tmp.touch("b.cpp", "");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
 
@@ -1532,7 +1538,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
     tmp.touch("a.cpp", "");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto path = std::string(served.project.file_table.resolve(a->path_id));
     auto evict = [&] {
@@ -1577,7 +1583,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     tmp.touch("a.cpp", "");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto hover = feature::RequestKind::Hover;
     a->crashed(hover, "d1", "cause", Session::Clock::now());
@@ -1595,7 +1601,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         auto result = co_await ask_hover(served, Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().has_value());
-        ZEXPECT(!a->find(hover));
+        ZEXPECT(!a->crash_record(hover));
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -1615,7 +1621,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
     tmp.touch("a.cpp", "");
 
     ServedProjectFixture fixture(tmp.root);
-    auto& served = fixture.project();
+    auto& served = *fixture.served;
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto path_id = a->path_id;
 

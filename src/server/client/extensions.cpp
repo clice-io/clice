@@ -1,6 +1,5 @@
 module clice;
 
-import :feature.code_actions;
 import :feature.counterparts;
 import :feature.protocol;
 import :feature.query;
@@ -14,73 +13,6 @@ import :support.logging;
 
 namespace clice {
 
-/// A source action running `command` with `params`, the parameters of the
-/// request it stands for.
-template <typename Params>
-static protocol::CodeAction source_action(std::string title,
-                                          std::string_view kind,
-                                          std::string_view command,
-                                          const Params& params) {
-    auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
-    assert(argument && "the parameters of a request encode");
-    return {
-        .title = title,
-        .kind = protocol::CodeActionKind(kind),
-        .command = protocol::Command{.title = std::move(title),
-                                     .command = std::string(command),
-                                     .arguments = std::vector{std::move(*argument)}},
-    };
-}
-
-std::vector<protocol::CodeAction> context_actions(llvm::StringRef uri,
-                                                  const ext::CurrentContextResult& current,
-                                                  const ext::QueryContextResult& listing) {
-    std::vector<protocol::CodeAction> actions;
-    if(listing.total <= 1 && current.automatic) {
-        return actions;
-    }
-    for(auto& item: listing.contexts) {
-        if(current.context && item.uri == current.context->uri &&
-           item.occurrence == current.context->occurrence &&
-           item.command_hash == current.context->command_hash) {
-            continue;
-        }
-        auto title = item.uri == uri ? std::format("Compile with the command {}", item.label)
-                                     : std::format("Compile as included by {}", item.label);
-        actions.push_back(source_action(std::move(title),
-                                        context_action_kind,
-                                        switch_context_command,
-                                        ext::SwitchContextParams{.uri = uri.str(),
-                                                                 .context_uri = item.uri,
-                                                                 .occurrence = item.occurrence,
-                                                                 .command_hash = item.command_hash,
-                                                                 .epoch = listing.epoch}));
-    }
-    if(!current.automatic) {
-        actions.push_back(source_action("Compile in the context clice picks",
-                                        context_action_kind,
-                                        reset_context_command,
-                                        ext::ResetContextParams{.uri = uri.str()}));
-    }
-    return actions;
-}
-
-std::vector<protocol::CodeAction> configuration_actions(llvm::StringRef uri,
-                                                        const ext::ListConfigurationsResult& list) {
-    std::vector<protocol::CodeAction> actions;
-    auto next = list.selected.empty() ? list.active : list.selected;
-    for(auto& name: list.configurations) {
-        if(name != next) {
-            actions.push_back(
-                source_action(std::format("Use build configuration {} from the next start", name),
-                              configuration_action_kind,
-                              switch_configuration_command,
-                              ext::SwitchConfigurationParams{.name = name, .uri = uri.str()}));
-        }
-    }
-    return actions;
-}
-
 ext::ListConfigurationsResult list_configurations(const Project& project) {
     ext::ListConfigurationsResult result;
     for(auto tag: project.settings.configurations()) {
@@ -92,9 +24,11 @@ ext::ListConfigurationsResult list_configurations(const Project& project) {
     return result;
 }
 
-ext::SwitchConfigurationResult select_configuration(const Project& project,
-                                                    llvm::StringRef name,
-                                                    llvm::StringRef pinned) {
+/// Select the build configuration `name` for the project's next start;
+/// refused while the command line's --configuration (`pinned`) decides it.
+static ext::SwitchConfigurationResult select_configuration(const Project& project,
+                                                           llvm::StringRef name,
+                                                           llvm::StringRef pinned) {
     auto refuse = [&](std::string reason) {
         LOG_WARN("Cannot select configuration {}: {}", name, reason);
         return ext::SwitchConfigurationResult{.reason = std::move(reason)};
@@ -134,7 +68,7 @@ ext::SwitchContextResult LSPClient::reset_context(const ext::ResetContextParams&
     return server.reset_context(server.files.intern(*path));
 }
 
-std::shared_ptr<ServedProject> LSPClient::configured(const std::optional<std::string>& uri) {
+std::shared_ptr<ServedProject> LSPClient::project_for(const std::optional<std::string>& uri) {
     if(uri) {
         return resolve_uri(*uri).project;
     }
@@ -146,7 +80,7 @@ std::shared_ptr<ServedProject> LSPClient::configured(const std::optional<std::st
 
 ext::SwitchConfigurationResult
     LSPClient::switch_configuration(const ext::SwitchConfigurationParams& params) {
-    auto project = configured(params.uri);
+    auto project = project_for(params.uri);
     auto result =
         select_configuration(project->project, params.name, server.requested_configuration);
     if(!result.success) {
@@ -268,7 +202,7 @@ void LSPClient::register_extensions() {
     on_request<ext::ListConfigurationsParams>(
         "clice/listConfigurations",
         [this](RequestContext& ctx, const ext::ListConfigurationsParams& params) -> RawResult {
-            co_return to_raw(list_configurations(configured(params.uri)->project));
+            co_return to_raw(list_configurations(project_for(params.uri)->project));
         });
 
     on_request<ext::SwitchConfigurationParams>(

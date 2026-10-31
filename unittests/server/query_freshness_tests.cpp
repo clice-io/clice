@@ -19,8 +19,8 @@ namespace {
 ZEST_SUITE(QueryFreshness, Tester) {
 
 ServedProjectFixture fx;
-Project& project = fx.project().project;
-IndexPump& indexer = fx.project().sched.pump;
+Project& project = fx.served->project;
+IndexPump& indexer = fx.served->sched.pump;
 index::IndexQuery& index_query = project.index_query;
 index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
 

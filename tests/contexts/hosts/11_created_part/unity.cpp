@@ -1,5 +1,3 @@
 #include "part.cpp"
 
-int main() {
-    return part();
-}
+int main() { return part(); }

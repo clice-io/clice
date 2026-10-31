@@ -90,7 +90,7 @@ kota::task<index::IndexReport> save_project(Project& project,
     // The command snapshot commits in the same transaction as the index
     // state it describes. A save that commits nothing skips it (unless the
     // snapshot itself is owed a rewrite): a pure CDB change
-    // dirties no blob on its own — the invalidator's drops do — so the
+    // dirties no blob on its own — the index drops it causes do — so the
     // next dirtying save carries the fresh snapshot. The debt input is the
     // pump's snapshot at call time plus the owner debt the compaction
     // discovered; anything showing up past this point is too late for

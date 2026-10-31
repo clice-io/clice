@@ -198,7 +198,7 @@ void MasterServer::route_pool_callbacks() {
         // or it would have kept it — so the eviction changes nothing. One
         // that crossed the compile's reply over IPC leaves the master
         // trusting a document the worker no longer holds: the next query
-        // hears document_unloaded and compiles it again (see ask_worker).
+        // hears document_unloaded and compiles it again (see ast_request).
         auto* document = find_document(*id);
         auto* project = document ? document->owner : nullptr;
         if(project && project->compiling(*id)) {
@@ -234,32 +234,30 @@ feature::SemanticTokensOptions MasterServer::startup_token_options() const {
         .settings.semantic_tokens;
 }
 
-kota::task<> MasterServer::drain() {
-    if(!drain_started) {
-        drain_started = true;
-        draining.spawn(drain_task());
+kota::task<> MasterServer::stop() {
+    if(!stop_started) {
+        stop_started = true;
+        stop_run.spawn([](MasterServer& server) -> kota::task<> {
+            // A client that went away skipped the shutdown request; no
+            // project may start from here on (a project stop finishing below
+            // would serve the folders again, see make_project).
+            server.lifecycle = ServerLifecycle::ShuttingDown;
+            co_await server.pool.stop();
+            server.polling.cancel();
+            co_await server.polling.join();
+            co_await server.bg_tasks.join();
+            for(auto& project: server.projects) {
+                co_await project->shutdown();
+            }
+            server.stopped.set();
+        }(*this));
     }
-    co_await drained.wait();
+    co_await stopped.wait();
 }
 
-kota::task<> MasterServer::drain_task() {
-    // A client that went away skipped the shutdown request; no project may
-    // start from here on (a retirement finishing below would serve the
-    // folders again, see make_project).
-    lifecycle = ServerLifecycle::ShuttingDown;
-    co_await pool.stop();
-    polling.cancel();
-    co_await polling.join();
-    co_await bg_tasks.join();
-    for(auto& project: projects) {
-        co_await project->shutdown();
-    }
-    drained.set();
-}
-
-kota::task<> MasterServer::shutdown_and_cleanup() {
-    co_await drain();
-    co_await draining.join();
+kota::task<> MasterServer::close() {
+    co_await stop();
+    co_await stop_run.join();
     client_watch.cancel();
     co_await client_watch.join();
     for(auto& project: projects) {

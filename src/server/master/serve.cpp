@@ -13,8 +13,8 @@ namespace clice {
 
 /// Runs `serving` until the shutdown token fires or it ends on its own. A
 /// cancelled request still waits for its worker's answer, so the server
-/// drains — its pool stops first, killing a worker that would never answer
-/// — before `serving` is joined.
+/// stops — its pool first, killing a worker that would never answer —
+/// before `serving` is joined.
 static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
     auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
         co_await kota::with_token(std::move(serving), server.shutdown_token());
@@ -23,7 +23,7 @@ static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serv
     kota::task_group<> group;
     group.spawn(watch(server, std::move(serving)));
     co_await server.shutdown_token().wait().catch_cancel();
-    co_await server.drain();
+    co_await server.stop();
     co_await group.join();
 }
 
@@ -42,7 +42,7 @@ static kota::task<> serve(MasterServer& server, kota::task<> serving) {
     signals.spawn(watch_termination(SIGHUP, terminating, terminate));
 #endif
     co_await serve_until_shutdown(server, std::move(serving));
-    co_await server.shutdown_and_cleanup();
+    co_await server.close();
     signals.cancel();
     co_await signals.join();
 }
@@ -111,24 +111,27 @@ kota::task<> accept_peers(kota::tcp::acceptor acceptor,
         connections.erase(pos);
     };
     auto& loop = kota::event_loop::current();
-    kota::task_group<> group;
     Connections connections;
-    while(true) {
-        auto connection = co_await acceptor.accept();
-        if(!connection.has_value()) {
-            break;
+    // The loop is a child of the group: a cancel reaches it through the
+    // group, which waits for every connection's run to end before the peers
+    // go.
+    co_await kota::with_task_group([&](kota::task_group<>& group) -> kota::task<> {
+        while(true) {
+            auto connection = co_await acceptor.accept();
+            if(!connection.has_value()) {
+                break;
+            }
+            LOG_INFO("{} connected", what);
+            auto transport = std::make_unique<ipc::StreamTransport>(std::move(*connection));
+            auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
+            auto* raw = peer.get();
+            auto served = accepted(*raw);
+            auto pos = connections.emplace(
+                connections.end(),
+                Connection{.peer = std::move(peer), .served = std::move(served)});
+            group.spawn(run(raw, what, connections, pos));
         }
-        LOG_INFO("{} connected", what);
-        auto transport = std::make_unique<ipc::StreamTransport>(std::move(*connection));
-        auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
-        auto* raw = peer.get();
-        auto served = accepted(*raw);
-        auto pos =
-            connections.emplace(connections.end(),
-                                Connection{.peer = std::move(peer), .served = std::move(served)});
-        group.spawn(run(raw, what, connections, pos));
-    }
-    co_await group.join();
+    });
 }
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {

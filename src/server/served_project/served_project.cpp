@@ -27,9 +27,13 @@ namespace clice {
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root)),
     sched(server.loop, project, commands, server.pool) {
-    sched.graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
-        return run_round(ctx, Fid{static_cast<std::uint32_t>(id.key)});
-    });
+    sched.graph.register_family(Family::AST,
+                                [this](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+                                    auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
+                                    auto outcome = co_await run_round(ctx, path_id);
+                                    enter_phase(path_id, CompilePhase::Idle);
+                                    co_return outcome;
+                                });
     project.index_query.attach(*this);
     // The loaded-state budget follows the open-document count, which the
     // PCH builder cannot see.
@@ -52,16 +56,33 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     sched.pump.on_skipped_diagnostics = [this](Fid path_id,
                                                std::uint64_t text_hash,
                                                std::vector<feature::FileDiagnostic> diagnostics) {
-        report_skipped(path_id, text_hash, std::move(diagnostics));
+        report_skipped_diagnostics(path_id, text_hash, std::move(diagnostics));
     };
     sched.pump.lacks_skipped_diagnostics = [this](Fid path_id) {
-        return lacks_skipped(path_id);
+        return lacks_skipped_diagnostics(path_id);
     };
     sched.pump.on_attempt_finished = [this](Fid path_id) {
-        index_attempt_finished(path_id);
+        // The boost in decide_serving promised the index would serve the cold
+        // document; an attempt that finishes without a servable shard ends that
+        // promise — escalate like the disabled-indexing branch, or the document
+        // answers empty until its first edit.
+        auto* document = find_document(path_id);
+        if(document && document->serving == ServingMode::IndexOnly &&
+           !matching_shard(*document->session)) {
+            escalate(path_id);
+        }
     };
-    index_changed_conn = sched.pump.on_index_changed.connect(
-        [this](llvm::ArrayRef<Fid> path_ids) { index_changed(path_ids); });
+    index_changed_conn = sched.pump.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
+        // Documents without a current file index serve these very shards
+        // (freshness clause 4); the client asks again for what it pulled from
+        // them.
+        auto* client = this->server.client;
+        if(client && ranges::any_of(path_ids, [&](Fid id) {
+               return find_document(id) && !index_current(id) && client->index_served.contains(id);
+           })) {
+            client->refresh();
+        }
+    });
 }
 
 ServedProject::~ServedProject() = default;
@@ -208,18 +229,18 @@ kota::task<> ServedProject::shutdown() {
     co_await sched.shutdown();
 }
 
-ServedDocument* ServedProject::find(Fid path_id) {
+ServedDocument* ServedProject::find_document(Fid path_id) {
     auto it = documents.find(path_id);
     return it != documents.end() ? &it->second : nullptr;
 }
 
-const ServedDocument* ServedProject::find(Fid path_id) const {
+const ServedDocument* ServedProject::find_document(Fid path_id) const {
     auto it = documents.find(path_id);
     return it != documents.end() ? &it->second : nullptr;
 }
 
 bool ServedProject::owns(const Session& session) const {
-    auto* document = find(session.path_id);
+    auto* document = find_document(session.path_id);
     return document && document->session.get() == &session;
 }
 
@@ -255,13 +276,13 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
 void ServedProject::decide_serving(ServedDocument& document) {
     // An escalated document needs no decision: builds stay pull-driven. When
     // they skip the bodies of the headers, the file's background run shows
-    // what those hold (report_skipped), and goes first when none
+    // what those hold (report_skipped_diagnostics), and goes first when none
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     if(document.serving == ServingMode::Escalated) {
         if(project.settings.project.skip_header_bodies &&
-           project.settings.project.enable_indexing.value && lacks_skipped(path_id) &&
+           project.settings.project.enable_indexing.value && lacks_skipped_diagnostics(path_id) &&
            !sched.pump.in_flight(path_id) && !sched.pump.failed().contains(path_id)) {
             sched.pump.boost(path_id);
         }
@@ -318,7 +339,7 @@ void ServedProject::record_saved(Fid path_id) {
         return;
     }
     // The open files the save made stale show what their background run
-    // finds as soon as it can (report_skipped).
+    // finds as soon as it can (report_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
         for(auto& [open, document]: documents) {
             if(sched.pump.pending_reason(open) && !sched.pump.in_flight(open)) {
@@ -339,30 +360,6 @@ void ServedProject::record_saved(Fid path_id) {
     LOG_INFO("Recorded {} as a provisional member", path);
     build_changed({});
     schedule_metadata_flush();
-}
-
-void ServedProject::index_attempt_finished(Fid path_id) {
-    // The boost in decide_serving promised the index would serve the cold
-    // document; an attempt that finishes without a servable shard ends that
-    // promise — escalate like the disabled-indexing branch, or the document
-    // answers empty until its first edit.
-    auto* document = find(path_id);
-    if(document && document->serving == ServingMode::IndexOnly &&
-       !matching_shard(*document->session)) {
-        escalate(path_id);
-    }
-}
-
-void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
-    // Documents without a current file index serve these very shards
-    // (freshness clause 4); the client asks again for what it pulled from
-    // them.
-    auto* client = server.client;
-    if(client && ranges::any_of(path_ids, [&](Fid id) {
-           return find(id) && !index_current(id) && client->index_served.contains(id);
-       })) {
-        client->refresh();
-    }
 }
 
 void ServedProject::schedule_metadata_flush() {
@@ -398,11 +395,11 @@ kota::task<> ServedProject::checkpoint_task() {
         if(project.index.last_save_shards() > 0) {
             server.probe.happened(LoopEvent::Checkpoint);
         }
-        drain_store_evictions();
+        forget_evicted_pchs();
     }
 }
 
-void ServedProject::drain_store_evictions() {
+void ServedProject::forget_evicted_pchs() {
     // The store's LRU evicted these blobs from disk (inside commit, maybe
     // on a worker thread); drop the derived pch_cache metadata here on the
     // event loop, or the content-keyed map grows for the server's

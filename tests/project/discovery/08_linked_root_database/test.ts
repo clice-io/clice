@@ -28,7 +28,7 @@ test(
         t.disk.symlink("compile_commands.json", "build/compile_commands.json");
         const s = await t.start();
         await t.show("before", s.errors("main.cpp"));
-        // The tracker meets both spellings of the one database.
+        // The database watch meets both spellings of the one database.
         expect(await s.poll("cdb", { force: false })).toBe(0);
         // The link goes; the build writes its database again.
         t.disk.rm("compile_commands.json");

@@ -11,7 +11,6 @@ import :support.logging;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
-import :worker.probe;
 
 namespace clice {
 
@@ -56,13 +55,13 @@ void push_moved(llvm::ArrayRef<Fid> files,
 }  // namespace
 
 bool ServedProject::compiled_by_session(Fid path_id) const {
-    auto* document = find(path_id);
+    auto* document = find_document(path_id);
     return !project.settings.project.skip_header_bodies && document &&
            document->serving == ServingMode::Escalated;
 }
 
 void ServedProject::mark_stale(Fid path_id, bool& refresh) {
-    if(auto* document = find(path_id)) {
+    if(auto* document = find_document(path_id)) {
         inputs_changed(*document->session);
         refresh = refresh || document->serving == ServingMode::Escalated;
     }
@@ -149,7 +148,7 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
         if(id.family == Family::TURun) {
             reindex(path_id, true);
         } else if(id.family == Family::AST) {
-            if(find(path_id)) {
+            if(find_document(path_id)) {
                 mark_stale(path_id, refresh);
                 if(!compiled_by_session(path_id)) {
                     reindex(path_id, true);
@@ -394,7 +393,7 @@ void ServedProject::recheck_choices() {
         rerouted = true;
         // Whether the choice holds is part of what the document compiles
         // under.
-        if(auto* document = find(file)) {
+        if(auto* document = find_document(file)) {
             choice_changed(*document->session);
         }
     }
@@ -409,7 +408,7 @@ void ServedProject::asts_lost(llvm::ArrayRef<Fid> lost) {
     // which puts the AST back on a worker — invalidating it would only make
     // it finish stale and compile twice.
     for(auto path_id: lost) {
-        if(find(path_id) && !compiling(path_id)) {
+        if(find_document(path_id) && !compiling(path_id)) {
             invalidate(path_id);
         }
     }
@@ -419,11 +418,11 @@ bool ServedProject::knows(Fid path_id) {
     if(broken()) {
         return false;
     }
-    return find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
+    return find_document(path_id) != nullptr || !project.build.commands(path_id).empty() ||
            project.dep_graph.knows(path_id) || !readers(path_id).empty();
 }
 
-void ServedProject::open_closures(llvm::SmallVectorImpl<Fid>& files) const {
+void ServedProject::append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const {
     for(auto& [path_id, document]: documents) {
         each_input(path_id, [&](const DepsSnapshot& deps) {
             for(auto& dep: deps) {
@@ -456,7 +455,7 @@ std::size_t ServedProject::reload_databases(bool force) {
         discover_databases();
     }
     CDBDiff delta;
-    for(auto& database: watched) {
+    for(auto& database: watched_databases) {
         tick_database(database, force, delta);
     }
     if(delta.empty()) {
@@ -464,12 +463,6 @@ std::size_t ServedProject::reload_databases(bool force) {
     }
     build_changed(std::move(delta));
     return 1;
-}
-
-void ServedProject::tick_databases() {
-    if(project.settings.tracker.workspace_poll_seconds.value > 0 && reload_databases(false) > 0) {
-        server.probe.happened(LoopEvent::DatabaseChange);
-    }
 }
 
 kota::task<bool> ServedProject::poll_sources() {
@@ -546,7 +539,7 @@ void ServedProject::watch_inputs(WatchedDatabase& database) {
 }
 
 void ServedProject::watch_database(SourceID id) {
-    auto& database = watched.emplace_back(WatchedDatabase{
+    auto& database = watched_databases.emplace_back(WatchedDatabase{
         .id = id,
         .applied = loaded_hashes(id),
         .inputs = {project.file_table.disk.watch(project.cdb.source_path(id).str())},
@@ -710,7 +703,7 @@ void ServedProject::discover_databases() {
         // against the never-loaded source and goes through the normal
         // debounce-and-reload path.
         auto id = project.cdb.add_source(place);
-        if(ranges::none_of(watched,
+        if(ranges::none_of(watched_databases,
                            [&](const WatchedDatabase& database) { return database.id == id; })) {
             LOG_INFO("Found compilation database: {}", place);
             watch_database(id);

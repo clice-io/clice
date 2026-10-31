@@ -56,7 +56,7 @@ ZEST_CASE(SymlinkedSourceSpelling) {
 
 ZEST_CASE(ResponseFilesRecorded) {
     /// A load records the response files its commands name among its
-    /// inputs, the ones it could not read included, so the tracker can
+    /// inputs, the ones it could not read included, so the server can
     /// watch them all.
     TempDir tmp;
     tmp.touch("flags.rsp", "-DFROM_RSP=1\n");

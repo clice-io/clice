@@ -34,10 +34,6 @@ struct ServedProjectFixture {
         served->project.request_flush = nullptr;
     }
 
-    ServedProject& project() {
-        return *served;
-    }
-
     Fid intern(llvm::StringRef path) {
         return server.files.intern(Spelling::absolute(path));
     }
@@ -53,7 +49,7 @@ struct ServedProjectFixture {
 
     /// The project's entry of an open document.
     ServedDocument& entry(Fid path_id) {
-        auto* document = served->find(path_id);
+        auto* document = served->find_document(path_id);
         assert(document && "the document is open");
         return *document;
     }
@@ -68,6 +64,10 @@ struct ServedProjectFixture {
 
     void set_output(Fid path_id, CompileOutput output) {
         served->set_output(path_id, std::move(output));
+    }
+
+    bool attribute_crash(const std::shared_ptr<Session>& session, bool tidy, ipc::Error error) {
+        return served->attribute_crash(session, tidy, std::nullopt, error);
     }
 
     /// The project's PCH adoption step (ServedProject::ensure_pch) under the
@@ -99,10 +99,6 @@ struct ServedProjectFixture {
         served->build_changed(std::move(delta));
     }
 
-    void recheck_choices() {
-        served->recheck_choices();
-    }
-
     /// Watch the project's databases and its git checkout as start() does,
     /// from the loads the test made itself.
     void watch_databases() {
@@ -121,14 +117,11 @@ struct ServedProjectFixture {
             served->discover_databases();
         }
         CDBDiff delta;
-        for(auto& database: served->watched) {
+        for(auto& database: served->watched_databases) {
             served->tick_database(database, force, delta);
         }
         return delta;
     }
-
-    // Accessors of the live sources' tests (query_overlay_tests.cpp,
-    // query_freshness_tests.cpp).
 };
 
 }  // namespace clice::testing

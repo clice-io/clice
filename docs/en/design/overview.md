@@ -106,7 +106,7 @@ A project is what one set of compilation databases and one cache directory descr
 - `CommandSnapshot`: The commands the index was built with, as the index database records them; loading diffs them against the build to drop the index of files whose command changed while no server ran
 - Saving and loading: one transaction writes the index's changes with what the database carries beside it — the command snapshot, the PCH and PCM records, the editor's context choices — and the load reads them back
 - `Memo`: Results remembered by request with the trace of the files each read, checked on lookup; it holds the failures of the artifacts: a PCH or module build that failed or crashed a worker, standing until the files it is known to have read change, and a PCH its readers keep failing to read, left out for a while
-- Contexts: the contexts a file can compile in — its own commands and the hosts lending theirs — and the format the user's choices are saved in, which the server and `clice inspect` read alike
+- Contexts: the contexts a file can compile in — its own commands and the hosts lending theirs — whether a user's choice still holds, and the format the choices are saved in
 - Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
 ### `src/sched/` — Compile Scheduling Core
@@ -127,7 +127,7 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 ### `src/server/` — Server Runtime
 
-The language server's core runtime, assembling all the layers above into a running service: one class per boundary of the design, each in a directory of its own, the work of each split in files.
+The language server's core runtime, assembling all the layers above into a running service: one class per boundary of the design, each larger one in a directory of its own with its work split in files.
 
 - `MasterServer` (`master/`): The process. Owns the file table, the worker pool and the projects served, and holds the editor's state, one per process: the open documents — each with the project it belongs to, and the documents open under a second name of its file — and the user's context choices. It routes each open file to the project that compiles it, and moves a document to another project by changing its owner; the lifecycle, the polling and shutdown are its
 - `Session`: One open document — its text, version and generation — and what crashed on it: a kind of work that crashed a worker on the document pauses until the document changes (spaced and bounded) or is saved. The records live as long as the document is open

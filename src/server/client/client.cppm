@@ -24,17 +24,16 @@ struct DocumentRequestOptions {
 };
 
 /// The connection to the editor: the protocol's conversions, what the client
-/// declared it takes, and what it holds of the server's answers. Every
-/// message goes to the MasterServer; the server calls back to push and
-/// refresh. Its work is split in files: the handshake (handshake.cpp), the
-/// document notifications (sync.cpp), the language requests (requests.cpp),
-/// clice's own requests (extensions.cpp), pushing diagnostics and asking for
-/// refreshes (push.cpp), progress (progress.cpp) and the test hooks
-/// (test_hooks.cpp). The language requests are answered here too, each in
-/// one handler: the document's requests (document.cpp), navigation
-/// (navigation.cpp) and editing (editing.cpp); what answers them now and
-/// asking the workers is the served project's (ServedProject::pick_route,
-/// ServedProject::ask_worker).
+/// declared it takes, and what it holds of the server's answers. The
+/// document notifications go to the MasterServer, and the server calls back
+/// to push and refresh; each language request is answered in its handler,
+/// asking the project serving the document what answers it now and asking
+/// the workers (ServedProject::pick_route, ServedProject::ast_request). Its
+/// work is split in files: the handshake (handshake.cpp), the document
+/// notifications (sync.cpp), the document's requests (document.cpp),
+/// navigation (navigation.cpp), editing (editing.cpp), clice's own requests
+/// (extensions.cpp), pushing diagnostics and asking for refreshes
+/// (push.cpp), progress (progress.cpp) and the test hooks (test_hooks.cpp).
 class LSPClient {
 public:
     /// Registers every handler on `peer` and connects to `server`, which
@@ -111,8 +110,80 @@ public:
     llvm::DenseSet<Fid> index_served;
 
 private:
+    /// The last full or delta result sent for each open document, which
+    /// the next delta request names.
+    struct SentTokens {
+        std::string result_id;
+        std::vector<std::uint32_t> data;
+    };
+
+    /// The last diagnostics report pulled per path, and the buffer version
+    /// it was answered at. While the buffer stays at that version nothing
+    /// makes the client pull again: an output changing the report has
+    /// push_output ask it to. Comparing the reports, not only the version,
+    /// keeps a compile failing the same way on every attempt from
+    /// refreshing forever.
+    struct Pulled {
+        int version;
+        /// xxh3 of the report.
+        std::uint64_t report;
+    };
+
+    /// Progress-token lifecycle, split into orthogonal facts so the
+    /// asynchronous create() handshake can reconcile against rounds that
+    /// begin or end while it is in flight. At most one create() is ever
+    /// outstanding, and the reporter is never replaced while a handshake
+    /// coroutine is awaiting on it.
+    ///
+    /// Held behind a shared_ptr because the handshake runs as a detached
+    /// task on the event loop: the task captures this state (never the
+    /// LSPClient), so a connection torn down mid-handshake cannot leave the
+    /// task dereferencing a destroyed client — it observes `abandoned` and
+    /// stops.
+    struct IndexProgressState {
+        /// A create() handshake is awaiting the client's acknowledgement.
+        bool create_inflight = false;
+
+        /// begin() has been announced on the token; reports may flow.
+        bool token_active = false;
+
+        /// An indexing round is running (Begin seen, End not yet).
+        bool round_active = false;
+
+        /// The owning LSPClient was destroyed; the handshake must not
+        /// announce the token or touch the peer.
+        bool abandoned = false;
+
+        /// Total file count captured when the round began, for the begin
+        /// message.
+        std::uint32_t total = 0;
+
+        /// The active work-done progress token, held across
+        /// begin/report/end.
+        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
+    };
+
+    /// The progress of one document's compile. It is announced only once the
+    /// compile has run a while, so the quick compile after every edit shows
+    /// none, and a compile starting while the announcement is pending joins
+    /// it. Shared with the task announcing it, which reads `abandoned` before
+    /// touching the client after each of its waits.
+    struct CompileProgress {
+        /// What the compile waits on; Idle once it ended.
+        CompilePhase phase = CompilePhase::Idle;
+
+        /// The owning LSPClient was destroyed.
+        bool abandoned = false;
+
+        /// Set once announced: reports and the end go through it.
+        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
+    };
+
     using RawResult = kota::task<codec::RawValue, ipc::Error>;
     using RequestContext = ipc::JSONPeer::RequestContext;
+
+    // handshake.cpp
+    void register_lifecycle();
 
     /// The error a request gets while the server's lifecycle refuses it:
     /// ServerNotInitialized before the handshake completed, InvalidRequest
@@ -126,6 +197,12 @@ private:
     void on_request(Handler handler);
     template <typename Params, typename Handler>
     void on_request(std::string_view method, Handler handler);
+
+    // sync.cpp
+    void register_document_sync();
+
+    // document.cpp
+    void register_document_requests();
 
     /// Shared front half of every document-addressed handler: URI → path →
     /// interned path_id → open session (null when the document is not open)
@@ -155,15 +232,6 @@ private:
     /// request unless it needs the document open and it is not.
     template <typename Params, typename Answer>
     void on_document(Answer answer, DocumentRequestOptions options = {});
-
-    // handshake.cpp
-    void register_lifecycle();
-
-    // sync.cpp
-    void register_document_sync();
-
-    // document.cpp
-    void register_document_requests();
 
     /// What a semantic tokens request asks for: the whole document, the
     /// edits from the result the client holds, or the tokens in a range.
@@ -196,9 +264,14 @@ private:
     /// The project serving the named document; without one the first
     /// project over a folder, the first one being rootless in a server
     /// without folders.
-    std::shared_ptr<ServedProject> configured(const std::optional<std::string>& uri);
+    std::shared_ptr<ServedProject> project_for(const std::optional<std::string>& uri);
 
     RawResult execute_command(protocol::ExecuteCommandParams params);
+
+    // progress.cpp
+
+    /// Wait out the delay, then announce `state`'s compile unless it ended.
+    kota::task<> announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id);
 
     // test_hooks.cpp
     void register_test_hooks();
@@ -251,13 +324,6 @@ private:
     /// The legend of the semantic tokens, fixed when the client initializes.
     feature::SemanticTokenLegend token_legend;
 
-    /// The last full or delta result sent for each open document, which
-    /// the next delta request names.
-    struct SentTokens {
-        std::string result_id;
-        std::vector<std::uint32_t> data;
-    };
-
     llvm::DenseMap<Fid, SentTokens> sent_tokens;
     std::uint64_t next_result_id = 0;
 
@@ -307,18 +373,6 @@ private:
     /// any didChange to make it re-pull — the push path sends refreshes.
     llvm::DenseMap<Fid, int> output_versions;
 
-    /// The last diagnostics report pulled per path, and the buffer version
-    /// it was answered at. While the buffer stays at that version nothing
-    /// makes the client pull again: an output changing the report has
-    /// push_output ask it to. Comparing the reports, not only the version,
-    /// keeps a compile failing the same way on every attempt from
-    /// refreshing forever.
-    struct Pulled {
-        int version;
-        /// xxh3 of the report.
-        std::uint64_t report;
-    };
-
     llvm::DenseMap<Fid, Pulled> pulled;
 
     /// The configuration files publish_settings_diagnostics published last.
@@ -335,63 +389,10 @@ private:
     /// The guidance shown to the user, each text once.
     llvm::StringSet<> shown_guidance;
 
-    /// Progress-token lifecycle, split into orthogonal facts so the
-    /// asynchronous create() handshake can reconcile against rounds that
-    /// begin or end while it is in flight. At most one create() is ever
-    /// outstanding, and the reporter is never replaced while a handshake
-    /// coroutine is awaiting on it.
-    ///
-    /// Held behind a shared_ptr because the handshake runs as a detached
-    /// task on the event loop: the task captures this state (never the
-    /// LSPClient), so a connection torn down mid-handshake cannot leave the
-    /// task dereferencing a destroyed client — it observes `abandoned` and
-    /// stops.
-    struct IndexProgressState {
-        /// A create() handshake is awaiting the client's acknowledgement.
-        bool create_inflight = false;
-
-        /// begin() has been announced on the token; reports may flow.
-        bool token_active = false;
-
-        /// An indexing round is running (Begin seen, End not yet).
-        bool round_active = false;
-
-        /// The owning LSPClient was destroyed; the handshake must not
-        /// announce the token or touch the peer.
-        bool abandoned = false;
-
-        /// Total file count captured when the round began, for the begin
-        /// message.
-        std::uint32_t total = 0;
-
-        /// The active work-done progress token, held across
-        /// begin/report/end.
-        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
-    };
-
     std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();
-
-    /// The progress of one document's compile. It is announced only once the
-    /// compile has run a while, so the quick compile after every edit shows
-    /// none, and a compile starting while the announcement is pending joins
-    /// it. Shared with the task announcing it, which reads `abandoned` before
-    /// touching the client after each of its waits.
-    struct CompileProgress {
-        /// What the compile waits on; Idle once it ended.
-        CompilePhase phase = CompilePhase::Idle;
-
-        /// The owning LSPClient was destroyed.
-        bool abandoned = false;
-
-        /// Set once announced: reports and the end go through it.
-        std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
-    };
 
     /// The documents whose compile runs or whose announcement is pending.
     llvm::DenseMap<Fid, std::shared_ptr<CompileProgress>> compile_progress;
-
-    /// Wait out the delay, then announce `state`'s compile unless it ended.
-    kota::task<> announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id);
 };
 
 /// The commands of the source actions switching what a document compiles
@@ -407,52 +408,15 @@ constexpr inline std::string_view switch_configuration_command = "clice.lsp.swit
 constexpr inline std::string_view context_action_kind = "source.clice.context";
 constexpr inline std::string_view configuration_action_kind = "source.clice.configuration";
 
-/// Source actions switching the context the document at `uri` compiles
-/// under, for an editor whose only UI for it is its code action menu (Zed,
-/// Helix): every other context of the listing's first page, and the
-/// automatic one while the user's choice (`current`) is in force; none
-/// when the listing offers no choice.
-std::vector<protocol::CodeAction> context_actions(llvm::StringRef uri,
-                                                  const ext::CurrentContextResult& current,
-                                                  const ext::QueryContextResult& listing);
-
-/// Source actions choosing every other build configuration for the next
-/// start.
-std::vector<protocol::CodeAction> configuration_actions(llvm::StringRef uri,
-                                                        const ext::ListConfigurationsResult& list);
-
 /// The build configurations a project's settings declare, the one active
 /// and the one selected for the next start (clice/listConfigurations).
 ext::ListConfigurationsResult list_configurations(const Project& project);
 
-/// Select the build configuration `name` for the project's next start;
-/// refused while the command line's --configuration (`pinned`) decides it.
-ext::SwitchConfigurationResult select_configuration(const Project& project,
-                                                    llvm::StringRef name,
-                                                    llvm::StringRef pinned);
-
 /// The file a `file:` URI names; nullopt for any other URI.
 std::optional<Spelling> uri_to_path(llvm::StringRef uri);
 
-/// Send the client a request without awaiting the reply. Peer
-/// lifetime discipline as in the progress handshake: the peer outlives the
-/// client, and teardown fails pending requests before run() returns. A
-/// captureless coroutine lambda invoked immediately: parameters are copied
-/// into the frame, captures would dangle.
-template <typename Params>
-void fire_request(kota::event_loop& loop, ipc::JSONPeer& peer, Params params) {
-    loop.schedule([](ipc::JSONPeer* peer, Params request) -> kota::task<> {
-        // Hang detection: nothing waits on the answer; the bound only frees
-        // the request of a client that never answers.
-        co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
-    }(&peer, std::move(params)));
-}
-
 /// The answer to a diagnostics pull.
 codec::RawValue full_report(std::vector<protocol::Diagnostic> items);
-
-/// Pushes `params`; a push that cannot be encoded is logged, not lost unseen.
-void publish(ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params);
 
 template <typename Params, typename Handler>
 void LSPClient::on_request(Handler handler) {
@@ -516,10 +480,10 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
 }
 
 /// What `navigate`'s answer gives: the reply, or the error to answer with.
-using Reply = std::expected<codec::RawValue, ipc::Error>;
+using NavigationReply = std::expected<codec::RawValue, ipc::Error>;
 
-/// Answer with what a gate decided instead (Stop).
-kota::task<codec::RawValue, ipc::Error> stop_reply(Stop stop);
+/// Answer with what a gate decided instead (GateStop).
+kota::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop);
 
 /// A navigation request's answer from the symbol at its position,
 /// `answer`'s, once the compile gate passed (ServedProject::navigation_gate);

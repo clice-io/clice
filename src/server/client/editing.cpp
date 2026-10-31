@@ -9,6 +9,7 @@ import :feature.signature_help;
 import :project.build;
 import :project.queries;
 import :server.client;
+import :server.extension;
 import :server.master;
 import :server.served_project;
 import :support.json;
@@ -49,13 +50,78 @@ static void unversion(protocol::WorkspaceEdit& edit) {
     edit.document_changes.reset();
 }
 
-/// The project's query reading every open document as the project serving
-/// it does: another project's open file answers from its buffer's index,
-/// not from the disk shard this project holds of it.
-static index::IndexQuery open_documents_query(ServedProject& project) {
-    auto query = project.project.index_query;
-    query.attach(project.server);
-    return query;
+/// A source action running `command` with `params`, the parameters of the
+/// request it stands for.
+template <typename Params>
+static protocol::CodeAction source_action(std::string title,
+                                          std::string_view kind,
+                                          std::string_view command,
+                                          const Params& params) {
+    auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
+    assert(argument && "the parameters of a request encode");
+    return {
+        .title = title,
+        .kind = protocol::CodeActionKind(kind),
+        .command = protocol::Command{.title = std::move(title),
+                                     .command = std::string(command),
+                                     .arguments = std::vector{std::move(*argument)}},
+    };
+}
+
+/// Source actions switching the context the document at `uri` compiles
+/// under, for an editor whose only UI for it is its code action menu (Zed,
+/// Helix): every other context of the listing's first page, and the
+/// automatic one while the user's choice (`current`) is in force; none
+/// when the listing offers no choice.
+static std::vector<protocol::CodeAction> context_actions(llvm::StringRef uri,
+                                                         const ext::CurrentContextResult& current,
+                                                         const ext::QueryContextResult& listing) {
+    std::vector<protocol::CodeAction> actions;
+    if(listing.total <= 1 && current.automatic) {
+        return actions;
+    }
+    for(auto& item: listing.contexts) {
+        if(current.context && item.uri == current.context->uri &&
+           item.occurrence == current.context->occurrence &&
+           item.command_hash == current.context->command_hash) {
+            continue;
+        }
+        auto title = item.uri == uri ? std::format("Compile with the command {}", item.label)
+                                     : std::format("Compile as included by {}", item.label);
+        actions.push_back(source_action(std::move(title),
+                                        context_action_kind,
+                                        switch_context_command,
+                                        ext::SwitchContextParams{.uri = uri.str(),
+                                                                 .context_uri = item.uri,
+                                                                 .occurrence = item.occurrence,
+                                                                 .command_hash = item.command_hash,
+                                                                 .epoch = listing.epoch}));
+    }
+    if(!current.automatic) {
+        actions.push_back(source_action("Compile in the context clice picks",
+                                        context_action_kind,
+                                        reset_context_command,
+                                        ext::ResetContextParams{.uri = uri.str()}));
+    }
+    return actions;
+}
+
+/// Source actions choosing every other build configuration for the next
+/// start.
+static std::vector<protocol::CodeAction>
+    configuration_actions(llvm::StringRef uri, const ext::ListConfigurationsResult& list) {
+    std::vector<protocol::CodeAction> actions;
+    auto next = list.selected.empty() ? list.active : list.selected;
+    for(auto& name: list.configurations) {
+        if(name != next) {
+            actions.push_back(
+                source_action(std::format("Use build configuration {} from the next start", name),
+                              configuration_action_kind,
+                              switch_configuration_command,
+                              ext::SwitchConfigurationParams{.name = name, .uri = uri.str()}));
+        }
+    }
+    return actions;
 }
 
 void LSPClient::register_editing() {
@@ -64,98 +130,98 @@ void LSPClient::register_editing() {
     // ordinary code completion. Pauses background indexing for the
     // request's span. Space-triggered requests are only answered for import
     // contexts.
-    on_document<protocol::CompletionParams>(
-        [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, dispatched] = document;
-            auto& project = *served;
-            // The task starts once the messages read with the request are
-            // dispatched: a $/cancelRequest among them (rapid-fire completions
-            // cancel and re-issue as the user types) keeps it from starting, and
-            // an edit arrives before the offset and completion context are
-            // computed, so the synchronous include scan below never serves
-            // candidates or ranges for a buffer that no longer exists. Unlike the
-            // whole-document features, such an edit is served, not refused: the
-            // ticket is taken here, and the client filters candidates against
-            // whatever it typed meanwhile.
-            //
-            // Those messages may also have closed the document, replaced it with
-            // a reopen, or moved it to another project: the request belongs to
-            // the buffer this project served.
-            if(!project.owns(*session)) {
-                co_await kota::fail(content_modified());
-            }
-            auto ticket = Ticket::take(session);
-            // Asking for code completion is edit intent: the document is
-            // compiled from now on (a no-op when it already is or under
-            // readonly = "on").
-            project.escalate(path_id);
-            auto pause = project.sched.pump.scoped_pause();
+    on_document<protocol::CompletionParams>([this](RequestContext& ctx,
+                                                   const auto& params,
+                                                   ResolvedDoc document) -> RawResult {
+        auto& [path, path_id, session, served, version, dispatched] = document;
+        auto& project = *served;
+        // The task starts once the messages read with the request are
+        // dispatched: a $/cancelRequest among them (rapid-fire completions
+        // cancel and re-issue as the user types) keeps it from starting, and
+        // an edit arrives before the offset and completion context are
+        // computed, so the synchronous include scan below never serves
+        // candidates or ranges for a buffer that no longer exists. Unlike the
+        // whole-document features, such an edit is served, not refused: the
+        // ticket is taken here, and the client filters candidates against
+        // whatever it typed meanwhile.
+        //
+        // Those messages may also have closed the document, replaced it with
+        // a reopen, or moved it to another project: the request belongs to
+        // the buffer this project served.
+        if(!project.owns(*session)) {
+            co_await kota::fail(content_modified());
+        }
+        auto ticket = Ticket::take(session);
+        // Asking for code completion is edit intent: the document is
+        // compiled from now on (a no-op when it already is or under
+        // readonly = "on").
+        project.escalate(path_id);
+        auto pause = project.sched.pump.scoped_pause();
 
-            llvm::StringRef trigger;
-            if(params.context && params.context->trigger_character) {
-                trigger = *params.context->trigger_character;
-            }
-            auto& settings = project.project.settings;
-            auto& query = project.project.index_query;
-            auto& files = project.project.file_table;
-            auto encoding = server.position_encoding;
-            auto resolved = std::string(files.resolve(path_id));
-            auto positions = session->positions();
-            vfs::Scope scope(files.dirs);
-            auto start = feature::start_completion({
-                .file = path_id,
-                .path = resolved,
-                .text = session->text(),
-                .positions = positions,
-                .position = params.position,
-                .encoding = encoding,
-                .trigger_character = trigger,
-                .dialect = project.dialect(path_id),
-                .options = settings.code_completion,
-                .client = completion_client,
-                .query = query,
-                .graph = project.project.dep_graph,
-                .files = files,
-                .search = [&] { return project.search_of(path_id); },
-                .scope = scope,
-            });
-            if(std::holds_alternative<feature::NoCompletion>(start)) {
-                co_return codec::RawValue{"[]"};
-            }
-            if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
-                co_return to_raw(*list);
-            }
-            auto& compile = std::get<feature::CompileCompletion>(start);
-            auto result = co_await project
-                              .interactive(ticket,
-                                           feature::RequestKind::Completion,
-                                           "Completion",
-                                           positions.offset_clamped(params.position, encoding),
-                                           worker::CompletionParams{
-                                               .client = completion_client,
-                                               .encoding = encoding,
-                                               .candidates = compile.candidates,
-                                               .more_candidates = compile.more_candidates,
-                                           },
-                                           ctx.cancellation)
-                              .or_fail();
-            if(!result.include) {
-                co_return std::move(result.list);
-            }
-
-            protocol::CompletionList list;
-            [[maybe_unused]] auto decoded =
-                json::from_string<ipc::lsp_config>(result.list.data, list);
-            assert(decoded && "the worker encodes the list");
-            co_return to_raw(feature::finish_completion(std::move(list),
-                                                        *result.include,
-                                                        compile.candidates,
-                                                        query,
-                                                        path_id,
-                                                        project.search_of(path_id),
-                                                        scope,
-                                                        settings.code_completion.limit));
+        llvm::StringRef trigger;
+        if(params.context && params.context->trigger_character) {
+            trigger = *params.context->trigger_character;
+        }
+        auto& settings = project.project.settings;
+        auto& query = project.project.index_query;
+        auto& files = project.project.file_table;
+        auto encoding = server.position_encoding;
+        auto resolved = std::string(files.resolve(path_id));
+        auto positions = session->positions();
+        vfs::Scope scope(files.dirs);
+        auto start = feature::start_completion({
+            .file = path_id,
+            .path = resolved,
+            .text = session->text(),
+            .positions = positions,
+            .position = params.position,
+            .encoding = encoding,
+            .trigger_character = trigger,
+            .dialect = project.dialect(path_id),
+            .options = settings.code_completion,
+            .client = completion_client,
+            .query = query,
+            .graph = project.project.dep_graph,
+            .files = files,
+            .search = [&] { return project.search_of(path_id); },
+            .scope = scope,
         });
+        if(std::holds_alternative<feature::NoCompletion>(start)) {
+            co_return codec::RawValue{"[]"};
+        }
+        if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
+            co_return to_raw(*list);
+        }
+        auto& compile = std::get<feature::CompileCompletion>(start);
+        auto result = co_await project
+                          .stateless_request(ticket,
+                                             feature::RequestKind::Completion,
+                                             "Completion",
+                                             positions.offset_clamped(params.position, encoding),
+                                             worker::CompletionParams{
+                                                 .client = completion_client,
+                                                 .encoding = encoding,
+                                                 .candidates = compile.candidates,
+                                                 .more_candidates = compile.more_candidates,
+                                             },
+                                             ctx.cancellation)
+                          .or_fail();
+        if(!result.include) {
+            co_return std::move(result.list);
+        }
+
+        protocol::CompletionList list;
+        [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
+        assert(decoded && "the worker encodes the list");
+        co_return to_raw(feature::finish_completion(std::move(list),
+                                                    *result.include,
+                                                    compile.candidates,
+                                                    query,
+                                                    path_id,
+                                                    project.search_of(path_id),
+                                                    scope,
+                                                    settings.code_completion.limit));
+    });
 
     // Signature help, asked of a stateless worker. Pauses background
     // indexing for the request's span.
@@ -163,6 +229,9 @@ void LSPClient::register_editing() {
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto& project = *served;
+            if(!ticket.fresh()) {
+                co_await kota::fail(content_modified());
+            }
             if(auto offset = session->positions().offset(params.position, server.position_encoding);
                offset &&
                !feature::can_hold_call(session->text(), *offset, project.dialect(path_id))) {
@@ -180,7 +249,7 @@ void LSPClient::register_editing() {
                     selected = shown.signatures[active].label;
                 }
             }
-            co_return co_await project.interactive(
+            co_return co_await project.stateless_request(
                 ticket,
                 feature::RequestKind::SignatureHelp,
                 "SignatureHelp",
@@ -238,6 +307,9 @@ void LSPClient::register_editing() {
         bool offer_switches =
             params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
 
+        if(!ticket.fresh()) {
+            co_await kota::fail(content_modified());
+        }
         // Code actions are AST products the index cannot compute; a document
         // the policy keeps un-compiled answers honestly empty rather than
         // forcing the compile the policy declined.
@@ -249,7 +321,7 @@ void LSPClient::register_editing() {
             // ContentModified.
             auto actions =
                 co_await project
-                    .ask_worker(
+                    .ast_request(
                         ticket,
                         feature::RequestKind::CodeAction,
                         "CodeAction",
@@ -268,7 +340,8 @@ void LSPClient::register_editing() {
                 host_session || !host.valid() ? host_path : files.spelling(host).str();
             std::optional<SourceText> host_disk;
             std::optional<SearchConfig> search;
-            auto query = open_documents_query(project);
+            OpenDocuments open_documents(project);
+            auto query = open_documents.query();
             vfs::Scope scope(files.dirs);
             auto resolved = feature::resolve_actions(
                 std::move(actions),
@@ -315,7 +388,7 @@ void LSPClient::register_editing() {
         // Listed after the compile the actions waited for: a header's first
         // one decides whether it is self-contained, which changes its listing
         // and outdates the epoch before.
-        if(!offer_switches || !project.find(path_id)) {
+        if(!offer_switches || !project.find_document(path_id)) {
             co_return to_raw(result);
         }
         auto uri = feature::to_uri(files.display(path_id));
@@ -346,7 +419,7 @@ void LSPClient::register_editing() {
                 document.path_id,
                 params.position,
                 "null",
-                [&](const index::IndexQuery::Cursor& cursor) -> Reply {
+                [&](const index::IndexQuery::Cursor& cursor) -> NavigationReply {
                     auto renamed = feature::rename_at(project.project.index_query, cursor);
                     if(!renamed) {
                         return std::unexpected(request_failed(std::move(renamed.error())));
@@ -379,7 +452,8 @@ void LSPClient::register_editing() {
                     co_return co_await stop_reply(std::move(*stop));
                 }
             }
-            auto query = open_documents_query(*served);
+            OpenDocuments open_documents(*served);
+            auto query = open_documents.query();
             auto cursor = served->cursor_at(path_id, position);
             if(!cursor) {
                 co_return codec::RawValue{"null"};

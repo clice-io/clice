@@ -1,0 +1,13 @@
+[test.renamed.rename.edits]
+"lib/lib.cpp" = '''
+ #include "lib.h"
+
+-int compute(int x) {
++int evaluate(int x) {
+     return x * 2;
+ }
+'''
+"lib/lib.h" = '''
+-int compute(int x);
++int evaluate(int x);
+'''

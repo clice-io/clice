@@ -76,11 +76,7 @@ struct NotifyMessage {
 /// (projects.cpp), the documents (documents.cpp), the context choices
 /// (contexts.cpp), polling (polling.cpp), test hooks (test_hooks.cpp) and
 /// the transports (serve.cpp).
-///
-/// It is also every open document's live index source, each through its
-/// owner: what a request reads of another project's open document (rename,
-/// code actions) it reads as that project serves it.
-class MasterServer final : public index::LiveSources {
+class MasterServer {
 public:
     MasterServer(kota::event_loop& loop, std::string requested_configuration);
     ~MasterServer();
@@ -98,15 +94,15 @@ public:
     /// the first project's settings (load_settings).
     feature::SemanticTokensOptions startup_token_options() const;
 
-    /// Bring every project to rest with its index committed while the
-    /// transport still answers: the pool stops first, which breaks every
-    /// wait on a worker (a hung one's included), then the background work
-    /// joins and each project quiesces and saves. Runs once; a later caller
-    /// waits for the first.
-    kota::task<> drain();
+    /// Stop all work, every project's index saved, while the transport
+    /// still answers: the pool stops first, which breaks every wait on a
+    /// worker (a hung one's included), then the background work joins and
+    /// each project shuts down and saves. Runs once; a later caller waits
+    /// for the first.
+    kota::task<> stop();
 
-    /// After the serving phase: drain, then close the projects.
-    kota::task<> shutdown_and_cleanup();
+    /// After the serving phase: stop, then close the projects.
+    kota::task<> close();
 
     /// Shut down once the client process `pid` is gone: LSP asks a server
     /// to exit with the process that started it, which may die without
@@ -170,10 +166,6 @@ public:
 
     /// The index queries of the projects but `project`: its peers.
     llvm::SmallVector<const index::IndexQuery*> peer_queries(const ServedProject& project) const;
-
-    /// The index query of the project an open document belongs to; null for
-    /// a file not open.
-    const index::IndexQuery* owner_query(Fid path_id) const;
 
     // documents.cpp
 
@@ -243,25 +235,13 @@ public:
     /// compile depends on, installed headers included, are looked at too.
     void save_document(Fid path_id);
 
-    bool is_open(Fid file) const override;
-    std::optional<index::IndexSource> buffer_index(Fid file) const override;
-    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_session_index(
-        llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    void
-        for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-    void for_each_pch_index(Fid file,
-                            llvm::function_ref<void(const index::TUIndex&)> visit) const override;
-
     // contexts.cpp
 
     /// The user's context choice for a file: the project it belongs to,
     /// which persists it and checks it against its build, and whether it
-    /// holds there now (holds). One that stops holding waits, inactive, and
-    /// applies again once it holds; only an active one routes the file and
-    /// resolves its command.
+    /// holds there now (choice_holds). One that stops holding waits,
+    /// inactive, and applies again once it holds; only an active one routes
+    /// the file and resolves its command.
     struct ChoiceEntry {
         ContextChoice choice;
 
@@ -339,7 +319,7 @@ public:
 
     /// The master's ticks look at the files (vfs::DiskState::tick), each
     /// followed by the projects' look at their databases
-    /// (ServedProject::tick_databases): set once a project polls the disk.
+    /// (ServedProject::reload_databases): set once a project polls the disk.
     bool polling_files = false;
 
     /// The workers every project compiles and indexes on.
@@ -420,8 +400,6 @@ private:
     /// the editor's output panel.
     void log_settings(const ServedProject& project) const;
 
-    kota::task<> drain_task();
-
     // projects.cpp
 
     /// A project over `root`.
@@ -465,10 +443,10 @@ private:
     /// whose build lists it (its own entry or a rule's default command),
     /// else one whose include graph reaches it — the deepest whose root
     /// holds it, else any — to borrow a host there; null when none can.
-    ServedProject* compiler(Fid path_id);
+    ServedProject* compiling_project(Fid path_id);
 
-    /// The project a file belongs to: its compiler, else the deepest root
-    /// holding it, else the first project.
+    /// The project a file belongs to: its compiling_project, else the
+    /// deepest root holding it, else the first project.
     ServedProject& route(Fid path_id);
 
     /// Move the document to `to`: its generation moves on, so what a
@@ -520,35 +498,35 @@ private:
     /// The last progress of each project taking part in the current
     /// index_progress round, and the counts of the rounds that ended within
     /// it and were followed by another (or whose project was removed).
-    llvm::DenseMap<ServedProject*, IndexPump::Progress> round;
-    IndexPump::Progress finished;
+    llvm::DenseMap<ServedProject*, IndexPump::Progress> index_round;
+    IndexPump::Progress ended_rounds;
 
     /// Cancellation scope of the serving phase. run_serve_mode serves until
     /// it fires; schedule_shutdown() cancels the source, unwinding the
-    /// transport tasks so the root task proceeds to shutdown_and_cleanup().
+    /// transport tasks so the root task proceeds to close().
     kota::cancellation_source shutdown_source;
 
     /// Shutdowns of removed projects and deferred applications of the file
-    /// table's changes; joined in shutdown_and_cleanup().
+    /// table's changes; joined in close().
     kota::task_group<> bg_tasks;
 
     /// The background looks at files and databases, and the ends of the
-    /// file table's turns, until the drain cancels them.
+    /// file table's turns, until stop() cancels them.
     kota::task_group<> polling;
 
-    /// The watch on the client process, which outlives the drain: a client
+    /// The watch on the client process, which outlives stop(): a client
     /// may die between the shutdown reply and its exit.
     kota::task_group<> client_watch;
 
-    /// The drain runs here, not in whoever asked first: the shutdown
-    /// request that starts it is cancelled by the exit that follows.
-    kota::task_group<> draining;
-    bool drain_started = false;
-    kota::event drained{false};
+    /// stop() runs here, not in whoever asked first: the shutdown request
+    /// that starts it is cancelled by the exit that follows.
+    kota::task_group<> stop_run;
+    bool stop_started = false;
+    kota::event stopped{false};
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
-    std::vector<std::weak_ptr<ServedProject>> stopping;
+    std::vector<std::weak_ptr<ServedProject>> removed_projects;
 
     /// The configuration files of a folder served.
     struct SettingsWatch {
@@ -563,7 +541,45 @@ private:
 
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).
-    std::vector<ServedProject*> waiting;
+    std::vector<ServedProject*> waiting_projects;
+};
+
+/// The open documents a project's rename or code action reads (documents.cpp),
+/// each as the project serving it does: the project's own and those of the
+/// projects nested in its root, which are its files too. Another project's
+/// are not the project's to edit: the query reads them as closed files, from
+/// the shards it holds, and that project keeps its uses.
+class OpenDocuments final : public index::LiveSources {
+public:
+    explicit OpenDocuments(const ServedProject& reader) : reader(reader) {}
+
+    /// The reader's index query, reading the open documents through this.
+    index::IndexQuery query() const;
+
+    bool is_open(Fid file) const override;
+    std::optional<index::IndexSource> buffer_index(Fid file) const override;
+    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
+    void for_each_session_index(
+        llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
+    void
+        for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
+    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
+    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
+    void for_each_pch_index(Fid file,
+                            llvm::function_ref<void(const index::TUIndex&)> visit) const override;
+
+private:
+    /// The project serving the open `file`, when the reader reads it.
+    const ServedProject* owner(Fid file) const;
+
+    bool reads(const ServedProject& project) const;
+
+    /// Visit the live sources of every project the reader reads, `each`
+    /// handing one project's to `visit`, until a visit stops.
+    template <typename Visit, typename Each>
+    void each_project(Visit visit, Each each) const;
+
+    const ServedProject& reader;
 };
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);

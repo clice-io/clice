@@ -373,8 +373,8 @@ ZEST_CASE(CrashMarksLostDirty) {
     // A crash loses build products, not compile inputs: what crashed on
     // them gets no retry.
     auto later = now + std::chrono::minutes(1);
-    ZASSERT(first->stops(feature::RequestKind::Compile, later));
-    ZASSERT(second->stops(feature::RequestKind::Compile, later));
+    ZASSERT(first->crash_stops(feature::RequestKind::Compile, later));
+    ZASSERT(second->crash_stops(feature::RequestKind::Compile, later));
 }
 
 ZEST_CASE(EvictionMarksLost) {
@@ -386,7 +386,7 @@ ZEST_CASE(EvictionMarksLost) {
 
     // Same loss as a crash, scoped to one document.
     ZASSERT(invalidated(session->path_id));
-    ZASSERT(session->stops(feature::RequestKind::Compile, now + std::chrono::minutes(1)));
+    ZASSERT(session->crash_stops(feature::RequestKind::Compile, now + std::chrono::minutes(1)));
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {
@@ -823,7 +823,7 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
     };
     auto generation = session->generation;
 
-    fixture.recheck_choices();
+    fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);
     ZASSERT(choice != nullptr);
     ZASSERT(choice->active);
@@ -854,7 +854,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
     take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
     fixture.entry(header).current = true;
-    fixture.recheck_choices();
+    fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);
     ZASSERT(choice != nullptr);
     ZASSERT(!choice->active);
@@ -865,7 +865,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
 ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
     TempDir tmp;
     // The host still compiles and includes the header, but only once — the
-    // pinned occurrence #1 no longer exists.
+    // chosen occurrence #1 no longer exists.
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
     write_cdb(tmp,
@@ -885,7 +885,7 @@ ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
     };
     take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
-    fixture.recheck_choices();
+    fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);
     ZASSERT(choice != nullptr);
     ZASSERT(!choice->active);

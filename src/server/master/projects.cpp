@@ -37,7 +37,7 @@ static void add_progress(IndexPump::Progress& into, const IndexPump::Progress& p
     into.dispatched += progress.dispatched;
 }
 
-ServedProject* MasterServer::compiler(Fid path_id) {
+ServedProject* MasterServer::compiling_project(Fid path_id) {
     // An outer project listing them would serve them silently under its own
     // settings.
     auto path = files.resolve(path_id);
@@ -72,7 +72,7 @@ ServedProject* MasterServer::compiler(Fid path_id) {
 
 ServedProject& MasterServer::route(Fid path_id) {
     assert(!projects.empty() && "routing before the projects start");
-    if(auto* compiling = compiler(path_id)) {
+    if(auto* compiling = compiling_project(path_id)) {
         return *compiling;
     }
     auto* holding =
@@ -114,12 +114,6 @@ llvm::SmallVector<const index::IndexQuery*>
     return peers;
 }
 
-const index::IndexQuery* MasterServer::owner_query(Fid path_id) const {
-    auto it = documents.find(path_id);
-    return it != documents.end() && it->second.owner ? &it->second.owner->project.index_query
-                                                     : nullptr;
-}
-
 std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor) const {
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ServedProject& project) {
@@ -132,7 +126,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     for(auto& project: projects) {
         take(*project);
     }
-    for(auto& weak: stopping) {
+    for(auto& weak: removed_projects) {
         if(auto project = weak.lock(); project && project->project.root != successor) {
             take(*project);
         }
@@ -177,7 +171,7 @@ void MasterServer::replace_shown(Document& document) {
     }
     // A compile finishing on unchanged text has the client re-pull what it
     // holds.
-    if(owner.find(session->path_id)->serving == ServingMode::Escalated) {
+    if(owner.find_document(session->path_id)->serving == ServingMode::Escalated) {
         owner.request_compile(session);
     } else if(client) {
         client->refresh();
@@ -277,7 +271,7 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
 }
 
 void MasterServer::serve_folders() {
-    std::erase_if(stopping, [](auto& weak) { return weak.expired(); });
+    std::erase_if(removed_projects, [](auto& weak) { return weak.expired(); });
     watch_settings();
     std::vector<std::shared_ptr<ServedProject>> serving;
     llvm::SmallVector<ServedProject*> made;
@@ -293,7 +287,7 @@ void MasterServer::serve_folders() {
         // Nothing compiles or indexes under no build until it starts.
         serving.back()->loaded.reset();
         serving.back()->sched.pump.pause_indexing();
-        waiting.push_back(serving.back().get());
+        waiting_projects.push_back(serving.back().get());
         made.push_back(serving.back().get());
     }
 
@@ -305,8 +299,8 @@ void MasterServer::serve_folders() {
     }
     projects = std::move(serving);
     for(auto& project: leaving) {
-        std::erase(waiting, project.get());
-        stopping.push_back(project);
+        std::erase(waiting_projects, project.get());
+        removed_projects.push_back(project);
     }
     // Configured at once, so the documents it holds while it waits are
     // served under its own options; the cache directory its root's
@@ -318,8 +312,8 @@ void MasterServer::serve_folders() {
     // A removed project holds its cache directory until it is gone: one
     // taking its root over waits for that, holding the root's documents.
     llvm::SmallVector<ServedProject*> starting;
-    std::erase_if(waiting, [&](ServedProject* project) {
-        bool held = ranges::any_of(stopping, [&](auto& weak) {
+    std::erase_if(waiting_projects, [&](ServedProject* project) {
+        bool held = ranges::any_of(removed_projects, [&](auto& weak) {
             auto previous = weak.lock();
             return previous && previous->project.root == project->project.root;
         });
@@ -351,9 +345,9 @@ void MasterServer::serve_folders() {
     reroute();
     for(auto& project: leaving) {
         LOG_INFO("No longer serving project {}", project->project.root);
-        if(auto it = round.find(project.get()); it != round.end()) {
-            add_progress(finished, it->second);
-            round.erase(it);
+        if(auto it = index_round.find(project.get()); it != index_round.end()) {
+            add_progress(ended_rounds, it->second);
+            index_round.erase(it);
             fold_index_progress();
         }
         bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> kota::task<> {
@@ -373,15 +367,15 @@ void MasterServer::index_progress_changed(ServedProject& changed) {
         return;
     }
     auto& now = changed.sched.pump.progress();
-    auto it = round.find(&changed);
-    if(it == round.end()) {
+    auto it = index_round.find(&changed);
+    if(it == index_round.end()) {
         if(now.stage == Stage::End) {
             return;
         }
-        it = round.try_emplace(&changed).first;
+        it = index_round.try_emplace(&changed).first;
     } else if(it->second.stage == Stage::End && now.stage != Stage::End) {
         // Another round of a project whose last one ended within this one.
-        add_progress(finished, it->second);
+        add_progress(ended_rounds, it->second);
     }
     it->second = now;
     fold_index_progress();
@@ -389,9 +383,10 @@ void MasterServer::index_progress_changed(ServedProject& changed) {
 
 void MasterServer::fold_index_progress() {
     using Stage = IndexPump::Progress::Stage;
-    IndexPump::Progress all = finished;
+    IndexPump::Progress all = ended_rounds;
     bool active = false;
-    for(auto& one: views::transform(round, [](auto& entry) -> auto& { return entry.second; })) {
+    for(auto& one:
+        views::transform(index_round, [](auto& entry) -> auto& { return entry.second; })) {
         active = active || one.stage != Stage::End;
         add_progress(all, one);
     }
@@ -399,8 +394,8 @@ void MasterServer::fold_index_progress() {
         all.stage = index_progress.stage == Stage::End ? Stage::Begin : Stage::Report;
     } else {
         all.stage = Stage::End;
-        round.clear();
-        finished = {};
+        index_round.clear();
+        ended_rounds = {};
     }
     index_progress = all;
     if(client) {

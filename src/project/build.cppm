@@ -188,8 +188,8 @@ public:
     /// Enumerate the sources the default-command rules cover again, from a
     /// walk of source_walk() (see walk_sources), and report the ones that
     /// appeared since the last enumeration — a file created after startup
-    /// joins the build; a deleted one just leaves the members. The file
-    /// tracker calls it every workspace poll.
+    /// joins the build; a deleted one just leaves the members. The server
+    /// calls it every workspace poll (ServedProject::poll_sources).
     llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
 
     /// The scan units of `members`: every command of every member, so a

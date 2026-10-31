@@ -98,7 +98,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
     params.hidden = resolved.hidden;
     // The editor shows them for a file of its own database entry only
-    // (ServedProject::shown_skipped).
+    // (ServedProject::shown_skipped_diagnostics).
     params.skipped_diagnostics =
         plan.skipped_diagnostics && resolved.source == CommandSource::CDBExact;
 

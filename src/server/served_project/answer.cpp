@@ -15,7 +15,7 @@ ipc::Error content_modified() {
 }
 
 ServingMode ServedProject::serving_of(const Session& session) const {
-    auto* document = find(session.path_id);
+    auto* document = find_document(session.path_id);
     assert(document && document->session.get() == &session &&
            "a fresh ticket's document belongs to the project it was taken in");
     return document->serving;
@@ -80,9 +80,9 @@ kota::task<Route> ServedProject::pick_route(const Ticket& ticket,
     }
 }
 
-kota::task<std::optional<Stop>> ServedProject::navigation_gate(const Ticket& ticket) {
+kota::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket& ticket) {
     switch(co_await pick_route(ticket, {})) {
-        case Route::Outdated: co_return Stop{content_modified()};
+        case Route::Outdated: co_return GateStop{content_modified()};
         // The index sources resolve the cursor under clauses 1/4 — or
         // reject it, which the query layer answers as empty. Either way
         // no compile is owed.
@@ -96,15 +96,15 @@ kota::task<std::optional<Stop>> ServedProject::navigation_gate(const Ticket& tic
     co_return co_await await_compile(ticket);
 }
 
-kota::task<std::optional<Stop>> ServedProject::await_compile(const Ticket& ticket) {
+kota::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
     // A failed compile yields null rather than a lookup against a buffer
     // with no finished index; a superseded one tells the client to re-pull.
     bool compiled = co_await ensure_compiled(ticket.session);
     if(!ticket.fresh()) {
-        co_return Stop{content_modified()};
+        co_return GateStop{content_modified()};
     }
     if(!compiled) {
-        co_return Stop{};
+        co_return GateStop{};
     }
     co_return std::nullopt;
 }
@@ -123,7 +123,10 @@ index::PeerQueries ServedProject::peer_queries() {
     return {
         .own = project.index_query,
         .peers = [this] { return server.peer_queries(*this); },
-        .open_in = [this](Fid file) { return server.owner_query(file); },
+        .open_in = [this](Fid file) -> const index::IndexQuery* {
+            auto* document = server.find_document(file);
+            return document && document->owner ? &document->owner->project.index_query : nullptr;
+        },
     };
 }
 
@@ -147,11 +150,11 @@ std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& se
 
 kota::task<std::vector<index::DocumentLink>, ipc::Error>
     ServedProject::directive_links(const Ticket& ticket, kota::cancellation_token token) {
-    auto result = co_await ask_worker(ticket,
-                                      feature::RequestKind::DocumentLink,
-                                      "DocumentLink",
-                                      worker::DocumentLinkParams{},
-                                      std::move(token))
+    auto result = co_await ast_request(ticket,
+                                       feature::RequestKind::DocumentLink,
+                                       "DocumentLink",
+                                       worker::DocumentLinkParams{},
+                                       std::move(token))
                       .or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
     // covers the rest of the file — merge the preamble's links in front.
@@ -165,7 +168,7 @@ bool ServedProject::admits(const Session& session,
                            const Session::Attempt* attempt,
                            bool parses) const {
     auto now = Session::Clock::now();
-    if(attempt ? attempt->crashed_meanwhile() : session.stops(kind, now)) {
+    if(attempt ? attempt->crashed_meanwhile() : session.crash_stops(kind, now)) {
         return false;
     }
     return !parses || !compile_stopped(session);
@@ -195,7 +198,7 @@ kota::task<std::optional<worker::FormatResult>, ipc::Error>
 
     ScopedTimer timer;
     bool refused = false;
-    auto result = co_await send(ticket, kind, params, attempt, false, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, attempt, false, token, refused);
     if(refused) {
         LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
         if(!ticket.fresh()) {

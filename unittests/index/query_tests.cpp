@@ -92,7 +92,7 @@ ZEST_CASE(ShardServesOpenSession) {
     // compile it: freshness clause 4 serves it from its shard.
     auto session =
         fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
-    ZASSERT(!fx.project().index_current(session->path_id));
+    ZASSERT(!fx.served->index_current(session->path_id));
 
     auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);

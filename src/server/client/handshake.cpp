@@ -398,7 +398,7 @@ void LSPClient::register_lifecycle() {
             // Clients kill a server soon after `exit`, Zed at once: the
             // index is committed before the reply that lets them send it.
             return [](MasterServer& server) -> RequestResult<protocol::ShutdownParams> {
-                co_await server.drain();
+                co_await server.stop();
                 co_return nullptr;
             }(this->server);
         });

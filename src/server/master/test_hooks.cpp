@@ -24,13 +24,13 @@ static auto awaited_requests(const ipc::JSONPeer& editor) {
 kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
     auto quiet = [&] {
         apply_disk_changes();
-        return awaited_requests(editor).empty() && waiting.empty() &&
+        return awaited_requests(editor).empty() && waiting_projects.empty() &&
                ranges::none_of(projects,
                                [](auto& project) {
                                    return !project->sched.graph.compiling().empty() ||
                                           indexing(*project);
                                }) &&
-               ranges::all_of(stopping, [](auto& weak) { return weak.expired(); });
+               ranges::all_of(removed_projects, [](auto& weak) { return weak.expired(); });
     };
     while(true) {
         if(quiet()) {
@@ -53,12 +53,12 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
             [&](const auto& id) { return std::format("request {} {}", request.method, id); },
             request.id));
     }
-    for(auto& weak: stopping) {
+    for(auto& weak: removed_projects) {
         if(auto project = weak.lock()) {
             lines.push_back(std::format("removed project {} shutting down", project->project.root));
         }
     }
-    for(auto* project: waiting) {
+    for(auto* project: waiting_projects) {
         lines.push_back(
             std::format("project {} waiting for its previous one to go", project->project.root));
     }

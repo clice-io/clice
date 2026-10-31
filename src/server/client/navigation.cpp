@@ -14,11 +14,11 @@ namespace clice {
 
 using Cursor = index::IndexQuery::Cursor;
 
-/// Error response when a call/type hierarchy item cannot be resolved back to
-/// an indexed symbol.
-static ipc::Error item_not_resolved(llvm::StringRef kind) {
-    return ipc::Error{protocol::ErrorCode::InvalidParams,
-                      std::format("Failed to resolve {} item", kind)};
+kota::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop) {
+    if(stop.error) {
+        co_await kota::fail(std::move(*stop.error));
+    }
+    co_return codec::RawValue{"null"};
 }
 
 /// The indexed symbol a hierarchy item names, or the error saying it names
@@ -31,7 +31,8 @@ static std::expected<index::SymbolHash, ipc::Error>
                                        project.cursor_at(path_id, item.selection_range.start),
                                        item.data);
     if(!symbol) {
-        return std::unexpected(item_not_resolved(kind));
+        return std::unexpected(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                          std::format("Failed to resolve {} item", kind)});
     }
     return *symbol;
 }
@@ -158,7 +159,7 @@ void LSPClient::register_navigation() {
                 document.path_id,
                 params.position,
                 "[]",
-                [&](const Cursor& cursor) -> Reply {
+                [&](const Cursor& cursor) -> NavigationReply {
                     auto limit = project.project.settings.references.limit.value;
                     return to_raw(feature::to_locations(
                         feature::references(project.peer_queries(),
@@ -179,7 +180,7 @@ void LSPClient::register_navigation() {
                 document.path_id,
                 params.position,
                 "[]",
-                [&](const Cursor& cursor) -> Reply {
+                [&](const Cursor& cursor) -> NavigationReply {
                     return to_raw(feature::to_protocol(
                         feature::document_highlights(project.project.index_query, cursor),
                         server.position_encoding));
@@ -196,7 +197,7 @@ void LSPClient::register_navigation() {
                 document.path_id,
                 params.position,
                 "[]",
-                [&](const Cursor& cursor) -> Reply {
+                [&](const Cursor& cursor) -> NavigationReply {
                     return to_raw(
                         feature::to_locations(feature::declaration(project.peer_queries(), cursor),
                                               server.position_encoding));
@@ -213,7 +214,7 @@ void LSPClient::register_navigation() {
                 document.path_id,
                 params.position,
                 "[]",
-                [&](const Cursor& cursor) -> Reply {
+                [&](const Cursor& cursor) -> NavigationReply {
                     return to_raw(feature::to_locations(
                         feature::type_definition(project.peer_queries(), cursor),
                         server.position_encoding));
@@ -230,7 +231,7 @@ void LSPClient::register_navigation() {
                 document.path_id,
                 params.position,
                 "[]",
-                [&](const Cursor& cursor) -> Reply {
+                [&](const Cursor& cursor) -> NavigationReply {
                     return to_raw(feature::to_locations(
                         feature::implementation(project.peer_queries(), cursor),
                         server.position_encoding));
@@ -246,7 +247,7 @@ void LSPClient::register_navigation() {
                                         document.path_id,
                                         params.position,
                                         "null",
-                                        [&](const Cursor& cursor) -> Reply {
+                                        [&](const Cursor& cursor) -> NavigationReply {
                                             auto items = feature::call_hierarchy_items(
                                                 project.peer_queries(),
                                                 cursor,
@@ -295,7 +296,7 @@ void LSPClient::register_navigation() {
                                         document.path_id,
                                         params.position,
                                         "null",
-                                        [&](const Cursor& cursor) -> Reply {
+                                        [&](const Cursor& cursor) -> NavigationReply {
                                             auto items = feature::type_hierarchy_items(
                                                 project.peer_queries(),
                                                 cursor,

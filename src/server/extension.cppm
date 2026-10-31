@@ -95,10 +95,10 @@ struct SwitchContextParams {
     std::string uri;
     std::string context_uri;
 
-    /// Include occurrence to pin (header contexts, 0-based).
+    /// Include occurrence to choose (header contexts, 0-based).
     std::optional<std::uint32_t> occurrence;
 
-    /// Command hash of the entry to pin (source files with multiple
+    /// Command hash of the entry to choose (source files with multiple
     /// compile commands).
     std::optional<std::string> command_hash;
 
@@ -178,11 +178,11 @@ struct CounterpartsResult {
 };
 
 /// clice/internal/poll — TEST-ONLY, not a stable API. Runs a look at the
-/// configuration files, then one file-tracker tick (stat → diff → events →
-/// dispatch → effects) and
-/// responds only once the effects are applied, so integration tests can
-/// disable the polling loops and get "change disk → poll → assert"
-/// determinism with zero sleeps. Absent from capabilities and user docs.
+/// configuration files, then one look at the disk (the databases, or the
+/// files and the default-command sources) and responds only once the
+/// changes are applied, so integration tests can disable the polling loops
+/// and get "change disk → poll → assert" determinism with zero sleeps.
+/// Absent from capabilities and user docs.
 struct PollParams {
     /// Which loop to tick: "cdb" or "workspace".
     std::string loop;
@@ -195,7 +195,8 @@ struct PollParams {
 };
 
 struct PollResult {
-    /// Number of file events the tick produced and dispatched.
+    /// How many changes the look applied: changed files, database reloads
+    /// that changed a build, projects whose default sources changed.
     std::uint32_t events = 0;
 };
 
@@ -241,7 +242,7 @@ struct StatsResult {
     std::uint32_t pch_loaded_states = 0;
     std::uint64_t pch_state_bytes = 0;
 
-    /// Buffer text the PCH family keeps for builds that may still run:
+    /// Buffer text the PCH builder keeps for builds that may still run:
     /// zero once every build finished and nobody waits on one.
     std::uint64_t pch_stashed_bytes = 0;
 

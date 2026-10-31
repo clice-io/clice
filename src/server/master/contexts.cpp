@@ -46,7 +46,7 @@ void MasterServer::load_choices(ServedProject& project) {
             entry = {};
             save_choices(*other);
         }
-        bool active = holds(project.project, file, saved);
+        bool active = choice_holds(project.project, file, saved);
         entry = {.choice = std::move(saved), .project = &project, .active = active};
     }
     if(dropped) {
@@ -60,7 +60,7 @@ bool MasterServer::recheck_choice(Fid path_id) {
         return false;
     }
     auto& entry = it->second;
-    bool active = holds(entry.project->project, path_id, entry.choice);
+    bool active = choice_holds(entry.project->project, path_id, entry.choice);
     if(active == entry.active) {
         return false;
     }
@@ -122,8 +122,10 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
             continue;
         }
         for(auto& item: list_contexts(project->project, path_id)) {
-            if(ranges::none_of(items,
-                               [&](const ListedContext& known) { return known.same(item); })) {
+            if(ranges::none_of(items, [&](const ListedContext& known) {
+                   return known.file == item.file && known.occurrence == item.occurrence &&
+                          known.command_hash == item.command_hash;
+               })) {
                 items.push_back(std::move(item));
             }
         }
@@ -256,7 +258,7 @@ kota::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id)
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
-    if(auto item = clice::current_context(project, path_id, active, resolution)) {
+    if(auto item = current_context_item(project, path_id, active, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
     if(auto* entry = choice(path_id); entry && !entry->active) {

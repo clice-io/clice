@@ -73,7 +73,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     }
 
     discover_around(path_id);
-    auto* compiling = compiler(path_id);
+    auto* compiling = compiling_project(path_id);
     if(lifecycle == ServerLifecycle::Ready && inserted && (!compiling || compiling->broken())) {
         // The project root nearest the file serves it: one no folder
         // holds, or one nested deeper than the folders holding it (a
@@ -207,7 +207,7 @@ void MasterServer::save_document(Fid path_id) {
     }
     llvm::SmallVector<Fid> closures{path_id};
     for(auto& project: projects) {
-        project->open_closures(closures);
+        project->append_open_inputs(closures);
     }
     files.disk.look(closures);
     apply_disk_changes();
@@ -216,27 +216,33 @@ void MasterServer::save_document(Fid path_id) {
     owner_of(path_id).record_saved(path_id);
 }
 
-bool MasterServer::is_open(Fid file) const {
-    auto it = documents.find(file);
-    return it != documents.end() && it->second.owner;
+index::IndexQuery OpenDocuments::query() const {
+    auto query = reader.project.index_query;
+    query.attach(*this);
+    return query;
 }
 
-std::optional<index::IndexSource> MasterServer::buffer_index(Fid file) const {
+bool OpenDocuments::reads(const ServedProject& project) const {
+    return &project == &reader || (!reader.project.root.empty() && !project.project.root.empty() &&
+                                   path::is_within(project.project.root, reader.project.root));
+}
+
+const ServedProject* OpenDocuments::owner(Fid file) const {
+    auto& documents = reader.server.documents;
     auto it = documents.find(file);
-    if(it == documents.end() || !it->second.owner) {
-        return std::nullopt;
+    if(it == documents.end() || !it->second.owner || !reads(*it->second.owner)) {
+        return nullptr;
     }
-    return it->second.owner->buffer_index(file);
+    return it->second.owner;
 }
 
-/// Visit every project's live sources in turn, `each` handing one project's
-/// to `visit`, until a visit stops.
 template <typename Visit, typename Each>
-static void each_project(llvm::ArrayRef<std::shared_ptr<ServedProject>> projects,
-                         Visit visit,
-                         Each each) {
+void OpenDocuments::each_project(Visit visit, Each each) const {
     bool stopped = false;
-    for(auto& project: projects) {
+    for(auto& project: reader.server.projects) {
+        if(!reads(*project)) {
+            continue;
+        }
         each(*project, [&](const auto& source) {
             stopped = !visit(source);
             return !stopped;
@@ -247,46 +253,50 @@ static void each_project(llvm::ArrayRef<std::shared_ptr<ServedProject>> projects
     }
 }
 
-void MasterServer::for_each_session(
-    llvm::function_ref<bool(const index::IndexSource&)> visit) const {
-    each_project(projects, visit, [](const ServedProject& project, auto visit) {
-        project.for_each_session(visit);
-    });
+bool OpenDocuments::is_open(Fid file) const {
+    return owner(file) != nullptr;
 }
 
-void MasterServer::for_each_session_index(
+std::optional<index::IndexSource> OpenDocuments::buffer_index(Fid file) const {
+    auto* project = owner(file);
+    return project ? project->buffer_index(file) : std::nullopt;
+}
+
+void OpenDocuments::for_each_session(
+    llvm::function_ref<bool(const index::IndexSource&)> visit) const {
+    each_project(visit,
+                 [](const ServedProject& project, auto visit) { project.for_each_session(visit); });
+}
+
+void OpenDocuments::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
-    each_project(projects, visit, [](const ServedProject& project, auto visit) {
+    each_project(visit, [](const ServedProject& project, auto visit) {
         project.for_each_session_index(visit);
     });
 }
 
-void MasterServer::for_each_preamble(
+void OpenDocuments::for_each_preamble(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
-    each_project(projects, visit, [](const ServedProject& project, auto visit) {
+    each_project(visit, [](const ServedProject& project, auto visit) {
         project.for_each_preamble(visit);
     });
 }
 
-void MasterServer::for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
-    each_project(projects, visit, [](const ServedProject& project, auto visit) {
-        project.for_each_overlay(visit);
-    });
+void OpenDocuments::for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
+    each_project(visit,
+                 [](const ServedProject& project, auto visit) { project.for_each_overlay(visit); });
 }
 
-std::shared_ptr<index::TUIndex> MasterServer::preamble_index(Fid file) const {
-    auto it = documents.find(file);
-    if(it == documents.end() || !it->second.owner) {
-        return nullptr;
-    }
-    return it->second.owner->preamble_index(file);
+std::shared_ptr<index::TUIndex> OpenDocuments::preamble_index(Fid file) const {
+    auto* project = owner(file);
+    return project ? project->preamble_index(file) : nullptr;
 }
 
-void MasterServer::for_each_pch_index(Fid file,
+void
+    OpenDocuments::for_each_pch_index(Fid file,
                                       llvm::function_ref<void(const index::TUIndex&)> visit) const {
-    auto it = documents.find(file);
-    if(it != documents.end() && it->second.owner) {
-        it->second.owner->for_each_pch_index(file, visit);
+    if(auto* project = owner(file)) {
+        project->for_each_pch_index(file, visit);
     }
 }
 

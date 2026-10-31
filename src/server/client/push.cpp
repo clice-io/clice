@@ -38,7 +38,23 @@ void LSPClient::forward_notify_messages() {
     notify_cursor = server.notify_seq;
 }
 
-void publish(ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params) {
+/// Send the client a request without awaiting the reply. Peer
+/// lifetime discipline as in the progress handshake: the peer outlives the
+/// client, and teardown fails pending requests before run() returns. A
+/// captureless coroutine lambda invoked immediately: parameters are copied
+/// into the frame, captures would dangle.
+template <typename Params>
+static void fire_request(kota::event_loop& loop, ipc::JSONPeer& peer, Params params) {
+    loop.schedule([](ipc::JSONPeer* peer, Params request) -> kota::task<> {
+        // Hang detection: nothing waits on the answer; the bound only frees
+        // the request of a client that never answers.
+        co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
+    }(&peer, std::move(params)));
+}
+
+/// Pushes `params`; a push that cannot be encoded is logged, not lost unseen.
+static void publish_diagnostics(ipc::JSONPeer& peer,
+                                const protocol::PublishDiagnosticsParams& params) {
     if(auto sent = peer.send_notification(params); !sent) {
         LOG_WARN("Cannot publish the diagnostics of {}: {}", params.uri, sent.error().message);
     }
@@ -149,7 +165,7 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
         // included.
         return;
     }
-    publish(peer, params);
+    publish_diagnostics(peer, params);
 }
 
 void LSPClient::retract_second_name(llvm::StringRef spelling) {
@@ -171,10 +187,10 @@ void LSPClient::retract(Fid path_id) {
     // publishDiagnostics may not flow yet. A pulling client drops what it
     // pulled of a document it closed.
     if(client_ready && !pull_diagnostics) {
-        publish(peer,
-                protocol::PublishDiagnosticsParams{
-                    .uri = feature::to_uri(server.files.display(path_id)),
-                });
+        publish_diagnostics(peer,
+                            protocol::PublishDiagnosticsParams{
+                                .uri = feature::to_uri(server.files.display(path_id)),
+                            });
     }
 }
 
@@ -236,7 +252,7 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         params.diagnostics = to_client(project.shown_diagnostics(session, output),
                                        server.files.display(session.path_id),
                                        output.text->positions());
-        publish(peer, params);
+        publish_diagnostics(peer, params);
         if(auto* document = server.find_document(session.path_id)) {
             publish_second_names(*document);
         }
@@ -335,7 +351,7 @@ void LSPClient::publish_settings_diagnostics() {
         if(!diagnostics.empty()) {
             params.diagnostics = to_client(diagnostics, file, text_of(file).positions());
         }
-        publish(peer, params);
+        publish_diagnostics(peer, params);
     }
 }
 

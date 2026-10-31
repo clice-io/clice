@@ -19,7 +19,7 @@ namespace clice::testing {
 
 struct IndexQueryTester : Tester {
     ServedProjectFixture fx;
-    Project& project = fx.project().project;
+    Project& project = fx.served->project;
     index::IndexQuery& query = project.index_query;
 
     Fid focus_id;

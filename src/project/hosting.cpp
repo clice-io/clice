@@ -413,7 +413,7 @@ std::optional<bool> self_contained(Project& project, const TrialKey& key, bool o
         return std::nullopt;
     }
     // A result the other side does not take is kept for it. The editor's
-    // resolutions look at the disk through what the tracker saw last, as
+    // resolutions look at the disk through what the file table saw last, as
     // they read the buffer, not the file.
     if(open) {
         auto seen = files.disk.seen_hash(key.first);

@@ -27,12 +27,6 @@ struct ListedContext {
     /// The command's hash when the item stands for one of several: one of
     /// the commands the host lends, or an own entry.
     std::optional<std::string> command_hash;
-
-    /// Whether two items stand for the same context.
-    bool same(const ListedContext& other) const {
-        return file == other.file && occurrence == other.occurrence &&
-               command_hash == other.command_hash;
-    }
 };
 
 /// The contexts a file can compile in, in this project: its hosts, ranked,
@@ -45,10 +39,10 @@ std::vector<ListedContext> list_contexts(Project& project, Fid file);
 /// user's active context choice, else what `resolution` picked — the file's
 /// own entry, else the host it borrows a command from. None when the file
 /// compiles under a rule's default command or a lender's.
-std::optional<ListedContext> current_context(Project& project,
-                                             Fid file,
-                                             const ContextChoice* choice,
-                                             const Resolution& resolution);
+std::optional<ListedContext> current_context_item(Project& project,
+                                                  Fid file,
+                                                  const ContextChoice* choice,
+                                                  const Resolution& resolution);
 
 /// The context choice of the item `listed` names (switchContext's
 /// parameters): a host at an occurrence, under one of its commands when it
@@ -63,7 +57,7 @@ ContextChoice choice_of(Project& project,
 /// still compiles and enters the file, at its occurrence when it names one,
 /// and its command still exists — an own entry's, or the host's it names.
 /// A host whose include tree no run took yet holds.
-bool holds(Project& project, Fid file, const ContextChoice& choice);
+bool choice_holds(Project& project, Fid file, const ContextChoice& choice);
 
 /// The choices encoded as the project's database carries them, files named
 /// portably.

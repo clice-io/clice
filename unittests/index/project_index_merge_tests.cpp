@@ -741,7 +741,7 @@ ZEST_CASE(StaleProducerNotOffered) {
     ZEXPECT(f.known_instantiations(id("box.h")).empty());
 
     // An edit of what the instantiation read puts its producer behind the
-    // disk, as the change event reaching the invalidator marks it.
+    // disk, as the change reaching the served project marks it.
     tmp.touch("a.h", R"(#pragma once
 struct A { void print(); void print(int); };
 )");

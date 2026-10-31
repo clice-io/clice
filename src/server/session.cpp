@@ -99,17 +99,17 @@ void Session::saved() {
     }
 }
 
-bool Session::stops(feature::RequestKind kind, Clock::time_point now) const {
-    auto* record = find(kind);
+bool Session::crash_stops(feature::RequestKind kind, Clock::time_point now) const {
+    auto* record = crash_record(kind);
     return record && record->stops(policy, now);
 }
 
-const FailureRecord* Session::find(feature::RequestKind kind) const {
+const FailureRecord* Session::crash_record(feature::RequestKind kind) const {
     auto it = records.find(kind);
     return it != records.end() ? &it->second.failure : nullptr;
 }
 
-llvm::SmallVector<feature::CrashNote> Session::notes() const {
+llvm::SmallVector<feature::CrashNote> Session::crash_notes() const {
     llvm::SmallVector<feature::CrashNote> notes;
     for(auto& [kind, record]: records) {
         if(record.failure.shown) {

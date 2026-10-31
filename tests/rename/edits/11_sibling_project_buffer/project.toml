@@ -1,0 +1,8 @@
+# Two folders, each a project of its own; the application uses the library.
+[units]
+"lib/lib.cpp" = []
+"app/main.cpp" = []
+
+[databases]
+lib = ["lib/lib.cpp"]
+app = ["app/main.cpp"]

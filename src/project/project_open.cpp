@@ -56,7 +56,7 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
 }
 
 /// Register and load the build's sources: the databases the rules declare
-/// (existing or not; the tracker watches for them), else the ones
+/// (existing or not; the server watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
 /// meet later — the persisted index's (see CommandSnapshot::remembered),
 /// those above the file a run is about (see compile_commands_above).
@@ -68,7 +68,7 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     if(!project.build.declares_sources()) {
         paths = discover_compile_commands(root);
         // Registered whether still there or not, like a declared one: the
-        // tracker watches for its return, and the index it built keeps
+        // server watches for its return, and the index it built keeps
         // serving meanwhile. Sorted like Build::source_order ranks them, so
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.

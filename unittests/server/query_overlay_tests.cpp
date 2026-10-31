@@ -25,7 +25,7 @@ namespace {
 ZEST_SUITE(QueryOverlay, Tester) {
 
 ServedProjectFixture fx;
-Project& project = fx.project().project;
+Project& project = fx.served->project;
 index::IndexQuery& index_query = project.index_query;
 index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
 

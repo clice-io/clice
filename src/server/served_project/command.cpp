@@ -24,7 +24,7 @@ Resolution ServedProject::resolve_command(Fid path_id,
                                      .choice = candidate ? candidate : active_choice(path_id),
                                      .open = true,
                                  });
-    if(auto* document = find(path_id); document && !candidate) {
+    if(auto* document = find_document(path_id); document && !candidate) {
         document->guessed = resolution.source == CommandSource::Inferred ||
                             resolution.source == CommandSource::Fallback;
     }
@@ -40,7 +40,7 @@ kota::task<Resolution> ServedProject::document_command(Fid path_id,
     llvm::SmallVector<UnitCommand, 2> taken;
     while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
         taken.push_back(resolution.missing_tree->key);
-        if(!co_await take_tree(*resolution.missing_tree) || (current && !current())) {
+        if(!co_await take_include_tree(*resolution.missing_tree) || (current && !current())) {
             break;
         }
         resolution = resolve_command(path_id, directory, arguments, candidate);
@@ -48,7 +48,7 @@ kota::task<Resolution> ServedProject::document_command(Fid path_id,
     co_return resolution;
 }
 
-kota::task<bool> ServedProject::take_tree(TreeRequest request) {
+kota::task<bool> ServedProject::take_include_tree(TreeRequest request) {
     auto key = request.key;
     std::shared_ptr<kota::event> done;
     if(auto it = tree_runs.find(key); it != tree_runs.end()) {
@@ -56,7 +56,7 @@ kota::task<bool> ServedProject::take_tree(TreeRequest request) {
     } else {
         done = std::make_shared<kota::event>(false);
         tree_runs.try_emplace(key, done);
-        if(!tree_tasks.spawn(tree_run(std::move(request), done))) {
+        if(!tree_tasks.spawn(run_include_tree(std::move(request), done))) {
             tree_runs.erase(key);
             co_return false;
         }
@@ -65,7 +65,8 @@ kota::task<bool> ServedProject::take_tree(TreeRequest request) {
     co_return project.hosting.trees.find(key) != nullptr;
 }
 
-kota::task<> ServedProject::tree_run(TreeRequest request, std::shared_ptr<kota::event> done) {
+kota::task<> ServedProject::run_include_tree(TreeRequest request,
+                                             std::shared_ptr<kota::event> done) {
     auto finish = llvm::make_scope_exit([&] {
         tree_runs.erase(request.key);
         done->set();

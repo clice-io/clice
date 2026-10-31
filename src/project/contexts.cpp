@@ -222,10 +222,10 @@ std::vector<ListedContext> list_contexts(Project& project, Fid file) {
     return items;
 }
 
-std::optional<ListedContext> current_context(Project& project,
-                                             Fid file,
-                                             const ContextChoice* choice,
-                                             const Resolution& resolution) {
+std::optional<ListedContext> current_context_item(Project& project,
+                                                  Fid file,
+                                                  const ContextChoice* choice,
+                                                  const Resolution& resolution) {
     auto path = project.file_table.resolve(file);
     auto lent = [&](Fid host,
                     llvm::StringRef hash,
@@ -320,21 +320,20 @@ ContextChoice choice_of(Project& project,
     return choice;
 }
 
-bool holds(Project& project, Fid file, const ContextChoice& choice) {
+bool choice_holds(Project& project, Fid file, const ContextChoice& choice) {
     auto path = project.file_table.resolve(file);
     if(choice.host_path_id.valid()) {
         auto host = choice.host_path_id;
         if(project.build.commands(host).empty()) {
             return false;
         }
-        // The include graph tells at once that the host stopped including
-        // the file, the include tree how often its compile enters it: the
-        // tree is taken only when a compile needs it.
-        if(!project.dep_graph.include_closure(host).contains(file)) {
-            return false;
-        }
+        // The host's current include tree tells how often its compile
+        // enters the file; it is taken only when a compile needs it. Without
+        // one, the include graph tells whether the host still includes the
+        // file — all but a macro include, which only a tree sees.
         auto occurrences = count_occurrences(project, host, file);
-        if(occurrences == 0) {
+        if(occurrences == 0 ||
+           (!occurrences && !project.dep_graph.include_closure(host).contains(file))) {
             return false;
         }
         // A chosen occurrence can vanish while other inclusions of the

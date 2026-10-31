@@ -30,7 +30,8 @@ struct CommandRequest {
 
     /// Take the include trees the host search misses with preprocess runs
     /// in this process (take_tree): the command line's way, which runs no
-    /// workers; the server takes them through its pool (ServedProject::take_tree).
+    /// workers; the server takes them through its pool
+    /// (ServedProject::take_include_tree).
     bool preprocess = false;
 };
 

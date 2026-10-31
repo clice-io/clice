@@ -987,8 +987,8 @@ export class Serve extends Client {
         return this.ask("stats", (client) => client.stats());
     }
 
-    /// Look at the disk once (clice/internal/poll); returns the file events
-    /// the look produced. A database look reloads at once unless `force` is
+    /// Look at the disk once (clice/internal/poll); returns how many changes
+    /// the look applied. A database look reloads at once unless `force` is
     /// false, which keeps the background loop's stamp check and debounce.
     poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<number> {
         return this.ask(
