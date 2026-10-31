@@ -617,3 +617,22 @@ items = [
     { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
+
+["a namespace bringing in names"."brings in".completion]
+items = [
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "run()", kind = "Function", detail = "int", insert = "run()" },
+]
+incomplete = true
+
+["a namespace bringing in names"."brings in none".completion]
+items = [
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "detail", kind = "Module", insert = "detail" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]

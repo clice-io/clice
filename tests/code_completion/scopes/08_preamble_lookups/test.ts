@@ -36,3 +36,16 @@ test("an include added before the compile", async (t) => {
     });
     await park.release();
 });
+
+// A namespace's using-declaration may bring in any name: past the names the
+// index offers, its list is incomplete, unlike one bringing in none.
+test("a namespace bringing in names", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await s.diagnostics("main.cpp");
+    await t.show("brings in", s.completion(t.at("main.cpp", "return app::|helper")), {
+        parts: ["insert"],
+    });
+    await t.show("brings in none", s.completion(t.at("main.cpp", "return lib::|helper")), {
+        parts: ["insert"],
+    });
+});

@@ -1178,18 +1178,16 @@ clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::Completi
 /// (CompileCompletion::from_index): the declarations unqualified lookup
 /// finds, or those of the namespace a qualifier names. A namespace the
 /// index searched under another name, through an alias, is read whole.
-/// Whether the qualifier's namespace brings in names of others, through a
-/// using-directive or a using-declaration.
-bool load_names(clang::Sema& sema,
-                const index::CompletionScope& scope,
-                llvm::ArrayRef<ScopeCandidate> candidates) {
+/// The namespace a qualifier names, null without one.
+clang::DeclContext* load_names(clang::Sema& sema,
+                               const index::CompletionScope& scope,
+                               llvm::ArrayRef<ScopeCandidate> candidates) {
     auto& ast = sema.getASTContext();
     clang::DeclContext* space = nullptr;
-    bool brought = false;
     if(scope.qualified()) {
         space = qualified_namespace(sema, scope);
         if(!space) {
-            return false;
+            return nullptr;
         }
         llvm::SmallVector<llvm::StringRef, 4> names;
         for(auto* context = space; !context->isTranslationUnit(); context = context->getParent()) {
@@ -1206,24 +1204,8 @@ bool load_names(clang::Sema& sema,
                           {},
                           [](const std::string& name) { return llvm::StringRef(name); })) {
             space->lookups();
-            return false;
         }
-        // A name of an inline or an anonymous namespace inside is the
-        // namespace's own, as the index takes it.
-        brought = llvm::any_of(space->using_directives(), [](clang::UsingDirectiveDecl* directive) {
-            return !directive->getNominatedNamespace()->isAnonymousNamespace();
-        });
     }
-    auto own = [&](const clang::DeclContext* context) {
-        for(context = context->getRedeclContext(); !context->Equals(space);
-            context = context->getParent()) {
-            auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(context);
-            if(!inner || (!inner->isInline() && !inner->isAnonymousNamespace())) {
-                return false;
-            }
-        }
-        return true;
-    };
     for(const auto& candidate: candidates) {
         // Its identifier comes with the macro the PCH defines by its name.
         clang::LookupResult found(sema,
@@ -1233,14 +1215,66 @@ bool load_names(clang::Sema& sema,
         found.suppressDiagnostics();
         if(space) {
             sema.LookupQualifiedName(found, space);
-            brought |= llvm::any_of(found, [&](const clang::NamedDecl* decl) {
-                return llvm::isa<clang::UsingShadowDecl>(decl) || !own(decl->getDeclContext());
-            });
         } else if(!candidate.macro) {
             sema.LookupName(found, sema.getCurScope());
         }
     }
-    return brought;
+    return space;
+}
+
+/// Whether qualified lookup in `space` finds names the index files under
+/// other scopes: those a using-declaration or using-directive brings in,
+/// and those of C linkage, in it or in an inline or anonymous namespace
+/// inside. Read from the kinds of its declarations, which loads no others.
+bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {
+    using Kind = clang::Decl::Kind;
+    auto wanted = [](Kind kind) {
+        return kind == Kind::Using || kind == Kind::UsingEnum || kind == Kind::UsingPack ||
+               kind == Kind::UsingDirective || kind == Kind::Namespace || kind == Kind::LinkageSpec;
+    };
+    auto* source = ast.getExternalSource();
+    llvm::SmallVector<const clang::DeclContext*, 8> pending;
+    auto enter = [&](const clang::DeclContext* context) {
+        if(auto* named = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
+            for(auto* each: named->redecls()) {
+                pending.push_back(each);
+            }
+        } else {
+            pending.push_back(context);
+        }
+    };
+    enter(space);
+    while(!pending.empty()) {
+        const auto* context = pending.pop_back_val();
+        llvm::SmallVector<clang::Decl*, 16> decls;
+        for(auto* decl: context->noload_decls()) {
+            if(wanted(decl->getKind())) {
+                decls.push_back(decl);
+            }
+        }
+        if(source && context->hasExternalLexicalStorage()) {
+            source->FindExternalLexicalDecls(context, wanted, decls);
+        }
+        for(auto* decl: decls) {
+            if(auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+                if(inner->isInline() || inner->isAnonymousNamespace()) {
+                    enter(inner);
+                }
+            } else if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
+                if(!directive->getNominatedNamespace()->isAnonymousNamespace()) {
+                    return true;
+                }
+            } else if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(decl)) {
+                if(linkage->getLanguage() != clang::LinkageSpecLanguageIDs::CXX) {
+                    return true;
+                }
+                pending.push_back(linkage);
+            } else {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /// The function template `context` is in, through the lambdas and local
@@ -1300,7 +1334,9 @@ public:
         // parse tries skipping the body holding the point.
         if(names_pending) {
             names_pending = false;
-            brought_in = load_names(unit.sema(), names.scope, names.candidates);
+            auto& sema = unit.sema();
+            auto* space = load_names(sema, names.scope, names.candidates);
+            brought_in = space && names.more_elsewhere && brings_in(sema.getASTContext(), space);
         }
         return info.getAllocator();
     }
