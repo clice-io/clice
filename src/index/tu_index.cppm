@@ -142,6 +142,16 @@ public:
     /// function's locals, a template's parameters).
     std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
+    /// The sections that may hold entries of `hash`, ascending: its
+    /// reference files' for a symbol of the table, else the section
+    /// declaring the file-local symbol.
+    llvm::SmallVector<std::uint32_t, 4> sections_naming(SymbolHash hash) const;
+
+    /// The instantiation sections that may name `hash`, ascending: its
+    /// instantiation files' for an external symbol of the table, its
+    /// reference files' for another, else the file-local symbol's own.
+    llvm::SmallVector<std::uint32_t, 4> instantiation_sections_naming(SymbolHash hash) const;
+
     /// The symbols below external scope more than one of the TU's files
     /// names (Symbol::reference_files), sorted by symbol. Nullopt when a
     /// symbol's reference files are not all among the `held` path ids.
@@ -180,6 +190,14 @@ private:
     /// none (no entries means no contribution). Sections ascend by path id.
     std::optional<std::uint32_t> section_of(std::uint32_t path_id) const;
 
+    /// The path id of the section whose own symbols hold `hash`, for a
+    /// symbol the table leaves out.
+    std::optional<std::uint32_t> local_path(SymbolHash hash) const;
+
+    /// The paths `hash`'s entries may lie in, `instantiated` for its
+    /// instantiation sections.
+    llvm::SmallVector<std::uint32_t, 4> paths_naming(SymbolHash hash, bool instantiated) const;
+
 private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors
     /// read the blob in place from them.
@@ -192,6 +210,11 @@ private:
     mutable std::vector<Shard> shards;
 
     mutable std::vector<InstantiationShard> instantiation_shards;
+
+    /// The sections' own symbols with their section's path id, ascending
+    /// by hash, the first section first; built on the first lookup past
+    /// the table.
+    mutable std::optional<std::vector<std::pair<SymbolHash, std::uint32_t>>> local_paths;
 
     mutable std::optional<SearchIndex> name_index;
 };

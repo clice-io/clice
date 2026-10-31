@@ -337,12 +337,68 @@ std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
     if(auto entry = sorted_find(root.symbol_hashes, hash)) {
         return symbol_at(root, *entry);
     }
-    for(std::uint32_t section = 0; section < section_count(); section += 1) {
-        if(auto identity = section_shard(section).find_symbol(hash)) {
-            return identity;
-        }
+    if(auto path_id = local_path(hash)) {
+        return shard_of(*path_id).find_symbol(hash);
     }
     return std::nullopt;
+}
+
+std::optional<std::uint32_t> TUIndex::local_path(SymbolHash hash) const {
+    if(!local_paths) {
+        auto& built = local_paths.emplace();
+        for(std::uint32_t section = 0; section < section_count(); section += 1) {
+            auto path_id = section_path(section);
+            section_shard(section).for_each_local_symbol([&](SymbolHash local, const SymbolView&) {
+                built.emplace_back(local, path_id);
+                return true;
+            });
+        }
+        ranges::stable_sort(built, {}, [](const auto& entry) { return entry.first; });
+    }
+    auto it = ranges::lower_bound(*local_paths, hash, {}, [](const auto& entry) {
+        return entry.first;
+    });
+    if(it == local_paths->end() || it->first != hash) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+llvm::SmallVector<std::uint32_t, 4> TUIndex::paths_naming(SymbolHash hash, bool instantiated) const {
+    if(!loaded()) {
+        return {};
+    }
+    auto& root = view_of(data);
+    if(auto entry = sorted_find(root.symbol_hashes, hash)) {
+        auto paths = instantiated && SymbolScope(root.symbol_scopes[*entry]) == SymbolScope::External
+                         ? slice(root.symbol_instantiations, root.symbol_instantiation_ends, *entry)
+                         : slice(root.symbol_references, root.symbol_reference_ends, *entry);
+        return {paths.begin(), paths.end()};
+    }
+    if(auto path_id = local_path(hash)) {
+        return {*path_id};
+    }
+    return {};
+}
+
+llvm::SmallVector<std::uint32_t, 4> TUIndex::sections_naming(SymbolHash hash) const {
+    llvm::SmallVector<std::uint32_t, 4> sections;
+    for(auto path_id: paths_naming(hash, false)) {
+        if(auto section = section_of(path_id)) {
+            sections.push_back(*section);
+        }
+    }
+    return sections;
+}
+
+llvm::SmallVector<std::uint32_t, 4> TUIndex::instantiation_sections_naming(SymbolHash hash) const {
+    llvm::SmallVector<std::uint32_t, 4> sections;
+    for(auto path_id: paths_naming(hash, true)) {
+        if(auto section = instantiation_section_of(path_id)) {
+            sections.push_back(*section);
+        }
+    }
+    return sections;
 }
 
 std::optional<std::vector<TUSharedLocal>>

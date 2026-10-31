@@ -407,6 +407,11 @@ export class Perf {
                     const item = items?.[0];
                     return item === undefined ? [] : client.callHierarchyIncoming(item);
                 };
+                requests["call_hierarchy_outgoing"] = async () => {
+                    const items = await client.prepareCallHierarchy(uri, line, character);
+                    const item = items?.[0];
+                    return item === undefined ? [] : client.callHierarchyOutgoing(item);
+                };
             }
             const query = opened.query;
             if (query !== undefined) {
