@@ -1208,8 +1208,22 @@ bool load_names(clang::Sema& sema,
             space->lookups();
             return false;
         }
-        brought = !space->using_directives().empty();
+        // A name of an inline or an anonymous namespace inside is the
+        // namespace's own, as the index takes it.
+        brought = llvm::any_of(space->using_directives(), [](clang::UsingDirectiveDecl* directive) {
+            return !directive->getNominatedNamespace()->isAnonymousNamespace();
+        });
     }
+    auto own = [&](const clang::DeclContext* context) {
+        for(context = context->getRedeclContext(); !context->Equals(space);
+            context = context->getParent()) {
+            auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(context);
+            if(!inner || (!inner->isInline() && !inner->isAnonymousNamespace())) {
+                return false;
+            }
+        }
+        return true;
+    };
     for(const auto& candidate: candidates) {
         // Its identifier comes with the macro the PCH defines by its name.
         clang::LookupResult found(sema,
@@ -1220,9 +1234,7 @@ bool load_names(clang::Sema& sema,
         if(space) {
             sema.LookupQualifiedName(found, space);
             brought |= llvm::any_of(found, [&](const clang::NamedDecl* decl) {
-                return llvm::isa<clang::UsingShadowDecl>(decl) ||
-                       !space->InEnclosingNamespaceSetOf(
-                           decl->getDeclContext()->getRedeclContext());
+                return llvm::isa<clang::UsingShadowDecl>(decl) || !own(decl->getDeclContext());
             });
         } else if(!candidate.macro) {
             sema.LookupName(found, sema.getCurScope());
