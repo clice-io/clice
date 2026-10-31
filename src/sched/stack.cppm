@@ -33,7 +33,7 @@ struct SchedulingStack {
     IndexPump pump;
 
     /// How often a long-lived owner calls checkpoint().
-    static std::chrono::milliseconds checkpoint_interval();
+    static chrono::milliseconds checkpoint_interval();
 
     /// Persist the index and the cache store's manifest as they stand, a
     /// round running or not: a cold round covers the whole project, and

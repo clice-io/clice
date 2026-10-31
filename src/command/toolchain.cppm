@@ -49,7 +49,7 @@ public:
     /// for the rest of the session.
     Toolchain(CommandTable& commands,
               FileTable& files,
-              std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
+              chrono::steady_clock::duration failed_retry = chrono::seconds(30));
     ~Toolchain();
 
     /// A command resolved for one input language.
@@ -117,7 +117,7 @@ public:
         return query_key(id, input).key;
     }
 
-    void set_failed_retry(std::chrono::steady_clock::duration retry) {
+    void set_failed_retry(chrono::steady_clock::duration retry) {
         query_policy.cooldown = retry;
     }
 

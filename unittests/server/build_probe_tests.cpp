@@ -7,7 +7,7 @@ import :worker.probe;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(BuildProbe, kotatsu::zest::LoopFixture) {
+ZEST_SUITE(BuildProbe, zest::LoopFixture) {
 
 BuildProbe probe;
 

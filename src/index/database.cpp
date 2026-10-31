@@ -913,7 +913,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             reopens += 1;
             // No event: the closing process is done with the lock file
             // unannounced; each reopen gives it a little longer.
-            std::this_thread::sleep_for(std::chrono::milliseconds(10 * reopens));
+            this_thread::sleep_for(chrono::milliseconds(10 * reopens));
             continue;
         }
         if(rc != 0) {

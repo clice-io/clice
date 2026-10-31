@@ -139,7 +139,7 @@ public:
     /// bounded burn, never a permanent decision, like slot revival.
     constexpr static FailurePolicy consume_policy{
         .limit = 2,
-        .cooldown = std::chrono::minutes(5),
+        .cooldown = chrono::minutes(5),
     };
 
     /// A parse reading the pair died or found it unreadable: retract it AND

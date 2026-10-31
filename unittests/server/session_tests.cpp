@@ -13,7 +13,7 @@ namespace {
 
 using Clock = Session::Clock;
 using feature::RequestKind;
-using std::chrono::seconds;
+using chrono::seconds;
 
 protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line,
                                                         std::uint32_t start_char,

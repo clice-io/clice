@@ -59,7 +59,7 @@ void LSPClient::report_index_progress() {
                 // that never responds; a short one drops the progress of a
                 // round whose client is merely busy.
                 auto create_result =
-                    co_await state->reporter->create({.timeout = std::chrono::minutes(1)});
+                    co_await state->reporter->create({.timeout = chrono::minutes(1)});
                 state->create_inflight = false;
                 // The whole connection may have been torn down while the
                 // handshake was in flight; drop the token without announcing it.
@@ -146,7 +146,7 @@ void LSPClient::report_compile_phase(Fid path_id, CompilePhase phase) {
 async::task<> LSPClient::announce_compile(std::shared_ptr<CompileProgress> state, Fid path_id) {
     // Time is the feature: the compile after an edit mostly finishes
     // sooner, and a progress shown for each would blink in the editor.
-    co_await async::sleep(std::chrono::milliseconds(500));
+    co_await async::sleep(chrono::milliseconds(500));
     if(state->abandoned) {
         co_return;
     }
@@ -160,7 +160,7 @@ async::task<> LSPClient::announce_compile(std::shared_ptr<CompileProgress> state
         protocol::ProgressToken(std::format("clice/compile/{}", feature::to_uri(shown))));
     // Hang detection: the bound ends the handshake of a client that never
     // answers, as the index progress's does.
-    auto created = co_await reporter.create({.timeout = std::chrono::minutes(1)});
+    auto created = co_await reporter.create({.timeout = chrono::minutes(1)});
     if(state->abandoned) {
         co_return;
     }

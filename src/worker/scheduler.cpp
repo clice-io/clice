@@ -164,7 +164,7 @@ void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
         }
         auto& request = requests.at(*slot.request);
         if(request.sampled && now > *request.sampled) {
-            auto seconds = std::chrono::duration<double>(now - *request.sampled).count();
+            auto seconds = chrono::duration<double>(now - *request.sampled).count();
             request.growth =
                 std::max(0.0, (double(worker.memory) - double(request.memory)) / seconds);
         }
@@ -191,8 +191,8 @@ std::size_t WorkerScheduler::background_limit(SchedulerTime now) const {
     return user_active(now) ? 1 : options.background_jobs;
 }
 
-std::chrono::milliseconds WorkerScheduler::sample_interval() const {
-    return busy() ? std::chrono::seconds(1) : std::chrono::seconds(3);
+chrono::milliseconds WorkerScheduler::sample_interval() const {
+    return busy() ? chrono::seconds(1) : chrono::seconds(3);
 }
 
 std::size_t WorkerScheduler::running_on(std::size_t slot, bool stateful) const {
@@ -287,7 +287,7 @@ std::uint64_t WorkerScheduler::growth_due() const {
 }
 
 std::uint64_t WorkerScheduler::growth_soon() const {
-    auto horizon = std::chrono::duration<double>(memory_horizon).count();
+    auto horizon = chrono::duration<double>(memory_horizon).count();
     std::uint64_t soon = 0;
     for(auto& [_, slot]: slots) {
         if(!slot.request) {

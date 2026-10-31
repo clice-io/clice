@@ -75,7 +75,7 @@ void report_progress(Stack& stack, const BatchOptions& options) {
 /// A paced report on top of the round boundaries: one unit can take
 /// longer than the pace, and a run must not fall silent while it runs.
 async::task<> progress_ticker(Stack& stack, const BatchOptions& options) {
-    constexpr auto pace = std::chrono::seconds(10);
+    constexpr auto pace = chrono::seconds(10);
     while(true) {
         // Time is the feature: the report's pace.
         co_await async::sleep(pace);

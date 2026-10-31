@@ -71,7 +71,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
-        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(!symbols.value().has_value());
 

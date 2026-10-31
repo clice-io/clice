@@ -642,7 +642,7 @@ ZEST_CASE(CDBForgedStampSeen) {
     ZASSERT(tick(fixture).empty());
 
     // Time is the feature: past the coarse clock inode times are taken from.
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    this_thread::sleep_for(chrono::milliseconds(50));
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
@@ -816,11 +816,11 @@ ZEST_CASE(CheckoutMakesWorkspaceDue) {
     fixture.watch_databases();
 
     tmp.touch("header.h", R"(int x = 2222;)");
-    files.disk.tick(std::chrono::hours(1));
+    files.disk.tick(chrono::hours(1));
     ZASSERT(files.disk.take_changes().empty());
 
     tmp.touch(".git/index", "v2");
-    files.disk.tick(std::chrono::hours(1));
+    files.disk.tick(chrono::hours(1));
     ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
 }
 
@@ -844,7 +844,7 @@ ZEST_CASE(LinkedWorktreeWatched) {
 
     tmp.touch("wt/header.h", R"(int x = 2222;)");
     tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");
-    files.disk.tick(std::chrono::hours(1));
+    files.disk.tick(chrono::hours(1));
     ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
 }
 

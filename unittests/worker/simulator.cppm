@@ -144,7 +144,7 @@ inline std::uint64_t reserve(const SimMachine& machine) {
 /// process takes 0.3 s to start and 0.2 s to die, a cancelled compile stops
 /// within 0.2 s.
 inline SimResult simulate(const SimSpec& spec) {
-    using namespace std::chrono;
+    using namespace chrono;
     constexpr double dt = 0.05;
     constexpr double start_delay = 0.3;
     constexpr double exit_delay = 0.2;

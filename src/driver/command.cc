@@ -18,7 +18,7 @@ namespace clice::driver {
 namespace {
 
 struct FileOptions {
-    kotatsu::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
     FileTarget target;
 
     DecoFlag(names = {"--json"},
@@ -31,7 +31,7 @@ struct FileOptions {
 };
 
 struct ConvertOptions {
-    kotatsu::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<DATABASE>",
               help = "The compile_commands.json to convert, relative to the current directory",

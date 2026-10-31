@@ -21,12 +21,12 @@ SchedulingStack::SchedulingStack(async::event_loop& loop,
     };
 }
 
-std::chrono::milliseconds SchedulingStack::checkpoint_interval() {
+chrono::milliseconds SchedulingStack::checkpoint_interval() {
     // Lets integration tests kill a server between checkpoints.
     if(auto ms = env_integer("CLICE_TEST_CHECKPOINT_MS")) {
-        return std::chrono::milliseconds(*ms);
+        return chrono::milliseconds(*ms);
     }
-    return std::chrono::minutes(5);
+    return chrono::minutes(5);
 }
 
 async::task<> SchedulingStack::checkpoint() {

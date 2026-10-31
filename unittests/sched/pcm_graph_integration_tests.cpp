@@ -186,7 +186,7 @@ struct ModuleTestEnv {
     }
 };
 
-ZEST_SUITE(PCMGraphIntegration, kotatsu::zest::LoopFixture) {
+ZEST_SUITE(PCMGraphIntegration, zest::LoopFixture) {
 
 ModuleTestEnv env;
 std::optional<GraphShim> cg;
@@ -212,7 +212,7 @@ template <typename F>
 void execute(F&& fn) {
     // Hang detection: the modules compile for real, slowly on a loaded
     // machine.
-    watchdog = std::chrono::seconds(45);
+    watchdog = chrono::seconds(45);
     auto wrapper = [&]() -> async::task<> {
         co_await fn();
         co_await cg->shutdown();

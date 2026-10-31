@@ -508,7 +508,7 @@ auto CompilationUnit::instantiations() -> llvm::ArrayRef<const clang::Decl*> {
     return collected_instantiations;
 }
 
-std::chrono::milliseconds CompilationUnit::build_at() {
+chrono::milliseconds CompilationUnit::build_at() {
     return build_time;
 }
 

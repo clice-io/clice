@@ -559,9 +559,9 @@ void keep_mapped(llvm::StringRef path) {
 }
 
 bool stable_mtime(std::int64_t mtime_ns) {
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::system_clock::now().time_since_epoch())
-                      .count();
+    auto now_ms =
+        chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch())
+            .count();
     return mtime_ns <= stat_baseline_before_ns(now_ms);
 }
 

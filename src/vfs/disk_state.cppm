@@ -52,7 +52,7 @@ struct Flag {
 /// at yet, like the window between a check and the compile after it.
 class DiskState {
 public:
-    using Clock = std::chrono::steady_clock;
+    using Clock = chrono::steady_clock;
 
     /// Who changes a file, which decides how a check answers for it.
     enum class Kind : std::uint8_t {
@@ -68,9 +68,9 @@ public:
     /// How often the files of a root are looked at.
     struct Policy {
         Kind kind = Kind::Workspace;
-        Clock::duration min = std::chrono::seconds(1);
+        Clock::duration min = chrono::seconds(1);
         /// Zero: never looked at in the background.
-        Clock::duration max = std::chrono::seconds(30);
+        Clock::duration max = chrono::seconds(30);
     };
 
     const static Policy workspace_policy;
@@ -340,8 +340,8 @@ const inline DiskState::Policy DiskState::workspace_policy{};
 
 const inline DiskState::Policy DiskState::package_policy{
     .kind = Kind::Package,
-    .min = std::chrono::seconds(30),
-    .max = std::chrono::minutes(10),
+    .min = chrono::seconds(30),
+    .max = chrono::minutes(10),
 };
 
 }  // namespace clice::vfs

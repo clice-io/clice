@@ -141,9 +141,9 @@ struct WorkerPoolFixture {
         workers[idx].crash_streak = streak;
     }
 
-    void set_uptime(std::size_t idx, bool stateful, std::chrono::milliseconds uptime) {
+    void set_uptime(std::size_t idx, bool stateful, chrono::milliseconds uptime) {
         auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].spawn_time = std::chrono::steady_clock::now() - uptime;
+        workers[idx].spawn_time = chrono::steady_clock::now() - uptime;
     }
 
     std::size_t pick_least_loaded() {
@@ -189,7 +189,7 @@ struct WorkerPoolFixture {
         return pool.slot(idx, stateful).death;
     }
 
-    void set_deadlines(std::chrono::milliseconds build, std::chrono::milliseconds query) {
+    void set_deadlines(chrono::milliseconds build, chrono::milliseconds query) {
         pool.options.build_deadline = build;
         pool.options.query_deadline = query;
     }
@@ -236,7 +236,7 @@ struct WorkerPoolFixture {
         return delivery;
     }
 
-    void set_revive_after(std::chrono::milliseconds cooldown) {
+    void set_revive_after(chrono::milliseconds cooldown) {
         pool.options.revive_after = cooldown;
     }
 
@@ -261,7 +261,7 @@ struct WorkerPoolFixture {
         pool.tick_oom_scores(memory_limit);
     }
 
-    std::chrono::milliseconds backoff_delay(unsigned streak) {
+    chrono::milliseconds backoff_delay(unsigned streak) {
         return pool.backoff_delay(streak);
     }
 
@@ -449,7 +449,7 @@ struct WorkerPoolFixture {
                 sample_pool();
                 peak = std::max(peak, memory(0, false));
                 // No event: a worker's memory grows unannounced.
-                co_await async::sleep(std::chrono::milliseconds(50), loop);
+                co_await async::sleep(chrono::milliseconds(50), loop);
             }
         };
         co_await async::when_all(sender(), sampler());
@@ -742,9 +742,9 @@ ZEST_CASE(KillCreditsHealthyRun) {
     auto request = f.submit(worker::Priority::Low);
     auto young = f.submit(worker::Priority::Low);
     f.set_crash_streak(0, false, 2);
-    f.set_uptime(0, false, std::chrono::milliseconds(60'000));
+    f.set_uptime(0, false, chrono::milliseconds(60'000));
     f.set_crash_streak(1, false, 2);
-    f.set_uptime(1, false, std::chrono::milliseconds(0));
+    f.set_uptime(1, false, chrono::milliseconds(0));
 
     f.kill(0, false, scheduler::KillReason::Memory, {request->id});
     f.kill(1, false, scheduler::KillReason::CancelGrace, {young->id});
@@ -774,7 +774,7 @@ ZEST_CASE(GraceKillIsLost) {
 
 ZEST_CASE(DeadlineKillNames) {
     WorkerPoolFixture f;
-    f.set_deadlines(std::chrono::seconds(10), std::chrono::seconds(1));
+    f.set_deadlines(chrono::seconds(10), chrono::seconds(1));
     f.add_stateful();
     auto query = f.stateful_request(0);
     auto hover = f.inflight(query, "clice/worker/hover /b.cpp", false);
@@ -1007,7 +1007,7 @@ ZEST_CASE(HealthyUptimeResetsStreak) {
     f.set_crash_streak(0, false, 3);
     // Ran healthily past the reset threshold: this crash starts a new streak
     // instead of exhausting the budget.
-    f.set_uptime(0, false, std::chrono::milliseconds(60'000));
+    f.set_uptime(0, false, chrono::milliseconds(60'000));
 
     auto should_restart = f.simulate_crash(0, false);
 
@@ -1242,7 +1242,7 @@ ZEST_CASE(DeliverWaitsForCapacity) {
 
 ZEST_CASE(BackoffDelaySchedule) {
     WorkerPoolFixture f;
-    using ms = std::chrono::milliseconds;
+    using ms = chrono::milliseconds;
     // First crash respawns immediately; later ones back off exponentially,
     // capped so a long streak cannot produce absurd delays.
     ZEXPECT(f.backoff_delay(0) == ms(0));
@@ -1564,7 +1564,7 @@ ZEST_CASE(DeadSlotRevives) {
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        f.set_revive_after(std::chrono::milliseconds(300));
+        f.set_revive_after(chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
         // The very first crash exceeds the zero budget: the slot dies...
@@ -1593,7 +1593,7 @@ ZEST_CASE(RevivalGivesNothingBack) {
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        f.set_revive_after(std::chrono::milliseconds(300));
+        f.set_revive_after(chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
@@ -1727,7 +1727,7 @@ ZEST_CASE(RevivesSlotsGate) {
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         ZEXPECT(f.pool.revives_slots());
-        f.set_revive_after(std::chrono::milliseconds(0));
+        f.set_revive_after(chrono::milliseconds(0));
         ZEXPECT(!f.pool.revives_slots());
         co_await f.stop();
         done = true;
@@ -1744,7 +1744,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         // Cooldown far in the future: only scale-up can bring the slot back.
-        f.set_revive_after(std::chrono::minutes(10));
+        f.set_revive_after(chrono::minutes(10));
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker(tmp.path("slow.cpp"));

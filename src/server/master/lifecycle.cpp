@@ -33,7 +33,7 @@ MasterServer::MasterServer(async::event_loop& loop, std::string requested_config
     // finish; applied later, they would mark that compile's AST stale.
     files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> async::task<> {
-            co_await async::sleep(std::chrono::milliseconds(0));
+            co_await async::sleep(chrono::milliseconds(0));
             server.apply_disk_changes();
         }(*this));
     };
@@ -124,7 +124,7 @@ void MasterServer::initialize() {
     // deadline, and drive eviction through a real server.
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
-            std::chrono::milliseconds(*ms);
+            chrono::milliseconds(*ms);
     }
     pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
@@ -270,7 +270,7 @@ void MasterServer::watch_client(std::uint32_t pid) {
     client_watch.spawn([](MasterServer& server, std::uint32_t pid) -> async::task<> {
         while(sys::process_alive(static_cast<int>(pid))) {
             // No event: the editor is no child of the server's to wait for.
-            co_await async::sleep(std::chrono::seconds(2), server.loop);
+            co_await async::sleep(chrono::seconds(2), server.loop);
         }
         LOG_INFO("Client process {} exited; shutting down", pid);
         server.schedule_shutdown();

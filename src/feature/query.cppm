@@ -111,8 +111,7 @@ struct DefinitionResult {
 /// "instantiation" or "expansion" for what only a template instantiation or
 /// a macro expansion resolves, which the written code leaves open; absent
 /// for the written code.
-using Via = kotatsu::meta::annotation<std::string,
-                                      kotatsu::meta::behavior::skip_if<kotatsu::meta::pred::empty>>;
+using Via = meta::annotation<std::string, meta::behavior::skip_if<meta::pred::empty>>;
 
 struct ReferenceEntry {
     std::string file;

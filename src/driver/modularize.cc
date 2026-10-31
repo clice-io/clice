@@ -33,7 +33,7 @@ struct OutputOptions {
 };
 
 struct Options {
-    kotatsu::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoKV(help =
                "JSON file assigning modules by globs, first match wins; a module is wrapped, "
@@ -61,7 +61,7 @@ struct Options {
 };
 
 struct MergeOptions {
-    kotatsu::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<FILE>",
               help =

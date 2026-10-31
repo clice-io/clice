@@ -67,8 +67,8 @@ bool has_live_instance(llvm::StringRef base) {
 }
 
 std::int64_t now_ms() {
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    auto now = chrono::system_clock::now().time_since_epoch();
+    return chrono::duration_cast<chrono::milliseconds>(now).count();
 }
 
 }  // namespace

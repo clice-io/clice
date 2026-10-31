@@ -195,7 +195,7 @@ void ServedProject::start() {
     if(project.root.empty()) {
         return;
     }
-    auto poll_seconds = std::chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+    auto poll_seconds = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
@@ -377,12 +377,12 @@ async::task<> ServedProject::metadata_flush_task() {
     // a save that could not clear the flags (serialization or write
     // failure) retries on the next spawn with this backoff.
     // Time is the feature: the debounce.
-    co_await async::sleep(std::chrono::milliseconds(50));
+    co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
     if(project.artifacts_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
-        co_await async::sleep(std::chrono::seconds(5));
+        co_await async::sleep(chrono::seconds(5));
         schedule_metadata_flush();
     }
 }
@@ -446,7 +446,7 @@ void ServedProject::start_control_listener() {
 }
 
 async::task<> ServedProject::sources_poll_task() {
-    auto interval = std::chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+    auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
     while(true) {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);

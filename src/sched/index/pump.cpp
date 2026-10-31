@@ -207,7 +207,7 @@ void IndexPump::schedule(bool immediate) {
         // it to fire now — dropped, a boosted reader would wait out the
         // full idle window an earlier ordinary schedule started (s#9).
         if(immediate && index_idle_timer) {
-            index_idle_timer->start(std::chrono::milliseconds(0));
+            index_idle_timer->start(chrono::milliseconds(0));
         }
         return;
     }
@@ -222,7 +222,7 @@ void IndexPump::schedule(bool immediate) {
     // a crashed file's retry must not owe an extra idle window on top of
     // the round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
+        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
         test_jitter());
 
     if(!bg_tasks.spawn(run_background_indexing())) {

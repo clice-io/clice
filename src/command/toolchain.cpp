@@ -240,7 +240,7 @@ std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& c
 
 Toolchain::Toolchain(CommandTable& commands,
                      FileTable& files,
-                     std::chrono::steady_clock::duration failed_retry) :
+                     chrono::steady_clock::duration failed_retry) :
     commands(commands), files(files), query_policy{.cooldown = failed_retry} {}
 
 Toolchain::~Toolchain() = default;

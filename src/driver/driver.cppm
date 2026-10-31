@@ -48,7 +48,7 @@ struct CommandEntry {
 };
 
 inline auto& command_entries() {
-    static std::array<CommandEntry, kotatsu::meta::reflection<Command>::member_count> entries;
+    static std::array<CommandEntry, meta::reflection<Command>::member_count> entries;
     return entries;
 }
 
@@ -72,9 +72,9 @@ int run_worker(std::span<std::string> args);
 
 /// Add every subcommand to `root`, in the order of Command. One whose file
 /// did not register it stops the program.
-inline void add_commands(kotatsu::deco::cli::SubCommander& root) {
-    for(auto command: kotatsu::meta::reflection<Command>::member_values) {
-        auto name = kotatsu::meta::enum_name(command);
+inline void add_commands(deco::cli::SubCommander& root) {
+    for(auto command: meta::reflection<Command>::member_values) {
+        auto name = meta::enum_name(command);
         auto& entry = command_entries()[std::to_underlying(command)];
         if(!entry.build) {
             logging::critical("The {} subcommand is not registered", name);
@@ -323,7 +323,7 @@ inline int usage_error(Errors errors, std::string message) {
     } else {
         driver::println(stderr, "{}", message);
     }
-    return kotatsu::deco::cli::parse_error_exit_code;
+    return deco::cli::parse_error_exit_code;
 }
 
 /// A subcommand, or one operation of it, over the options `Options`, whose
@@ -331,7 +331,7 @@ inline int usage_error(Errors errors, std::string message) {
 /// `logger` and returns what `run` does with the options.
 template <typename Options, typename Run>
 CommandHandler operation(std::string_view usage, std::string_view logger, Errors errors, Run run) {
-    auto command = kotatsu::deco::cli::command<Options>(usage);
+    auto command = deco::cli::command<Options>(usage);
     command.match_all([logger, run = std::move(run)](Options opts) mutable {
         opts.log.apply();
         logging::stderr_logger(logger, logging::options);
@@ -346,10 +346,10 @@ CommandHandler operation(std::string_view usage, std::string_view logger, Errors
 /// The error handler of a commander of subcommands: named without one, it
 /// prints its usage and succeeds, as --help does; an unknown subcommand is
 /// a usage error.
-inline auto subcommand_error_handler(kotatsu::deco::cli::SubCommander& commander,
+inline auto subcommand_error_handler(deco::cli::SubCommander& commander,
                                      Errors errors = Errors::Text) {
-    return [&commander, errors](const kotatsu::deco::cli::SubCommandError& err) {
-        if(err.type == kotatsu::deco::cli::SubCommandError::Type::MissingSubCommand) {
+    return [&commander, errors](const deco::cli::SubCommandError& err) {
+        if(err.type == deco::cli::SubCommandError::Type::MissingSubCommand) {
             print_usage(commander);
             return 0;
         }
@@ -360,12 +360,12 @@ inline auto subcommand_error_handler(kotatsu::deco::cli::SubCommander& commander
 /// Run a commander of subcommands on `args`. The commander takes whatever
 /// leads them for a subcommand's name; an option other than --help leading
 /// them is reported as the unknown option it is.
-inline int run_subcommands(kotatsu::deco::cli::SubCommander& commander,
+inline int run_subcommands(deco::cli::SubCommander& commander,
                            std::span<std::string> args,
                            Errors errors = Errors::Text) {
-    namespace text = kotatsu::deco::cli::text;
+    namespace text = deco::cli::text;
     if(!args.empty() && args.front().starts_with("-") &&
-       !ranges::contains(kotatsu::deco::decl::help_names, args.front())) {
+       !ranges::contains(deco::decl::help_names, args.front())) {
         return usage_error(
             errors,
             text::render_diagnostic(
@@ -393,7 +393,7 @@ inline CommandHandler with_operations(std::string_view overview,
                                       Errors errors,
                                       std::optional<CommandHandler> main = std::nullopt,
                                       bool main_targets = false) {
-    auto commander = std::make_shared<kotatsu::deco::cli::SubCommander>("", main ? "" : overview);
+    auto commander = std::make_shared<deco::cli::SubCommander>("", main ? "" : overview);
     std::vector<std::string> names;
     for(auto& operation: operations) {
         names.emplace_back(operation.name);
@@ -416,7 +416,7 @@ inline CommandHandler with_operations(std::string_view overview,
         auto code = main(args);
         // Arguments that do not parse fail before --help is seen.
         if(code == 0 && ranges::any_of(args, [](std::string_view arg) {
-               return ranges::contains(kotatsu::deco::decl::help_names, arg);
+               return ranges::contains(deco::decl::help_names, arg);
            })) {
             driver::println();
             print_usage(*commander);

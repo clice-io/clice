@@ -1,7 +1,7 @@
 /// What every unit of clice reads: the standard library, the C library's
 /// names past it and the third-party module, imported for clice's own units
-/// alone, then the short names clice gives the namespaces it uses
-/// everywhere. Their macros come with support/macros.h.
+/// alone, then the short names clice gives the namespaces it writes. Their
+/// macros come with support/macros.h.
 export module clice:support.prelude;
 
 import std.compat;
@@ -12,6 +12,8 @@ namespace clice {
 
 namespace ranges = std::ranges;
 namespace views = std::views;
+namespace chrono = std::chrono;
+namespace this_thread = std::this_thread;
 
 namespace ipc = kotatsu::ipc;
 namespace lsp = kotatsu::ipc::lsp;
@@ -24,5 +26,9 @@ namespace fs = kotatsu::fs;
 namespace sys = kotatsu::sys;
 
 namespace async = kotatsu::async;
+
+namespace deco = kotatsu::deco;
+namespace meta = kotatsu::meta;
+namespace zest = kotatsu::zest;
 
 }  // namespace clice

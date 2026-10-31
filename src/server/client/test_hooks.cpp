@@ -80,14 +80,14 @@ void LSPClient::register_test_hooks() {
             }
             // The deadline counts from the request; a poll runs to its end,
             // one cut short would leave the databases out of step.
-            auto deadline = std::chrono::steady_clock::now() +
-                            std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
+            auto deadline = chrono::steady_clock::now() +
+                            chrono::milliseconds(params.deadline_ms.value_or(240'000));
             if(params.poll.value_or(false)) {
                 co_await poll_projects(srv, {.loop = "workspace"});
             }
-            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::max(deadline - std::chrono::steady_clock::now(),
-                         std::chrono::steady_clock::duration::zero()));
+            auto left = chrono::duration_cast<chrono::milliseconds>(
+                std::max(deadline - chrono::steady_clock::now(),
+                         chrono::steady_clock::duration::zero()));
             // Hang detection: past the deadline, the answer names what
             // still runs.
             co_await async::when_any(srv.wait_idle(this->peer), async::sleep(left, srv.loop));

@@ -48,7 +48,7 @@ static void fire_request(async::event_loop& loop, ipc::JSONPeer& peer, Params pa
     loop.schedule([](ipc::JSONPeer* peer, Params request) -> async::task<> {
         // Hang detection: nothing waits on the answer; the bound only frees
         // the request of a client that never answers.
-        co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
+        co_await peer->send_request(request, {.timeout = chrono::milliseconds(3000)});
     }(&peer, std::move(params)));
 }
 

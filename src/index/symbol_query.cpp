@@ -134,7 +134,7 @@ std::optional<SymbolQuery::Position> parse_position(llvm::StringRef term) {
 
 /// The symbol kind a `kind:` term names, case-insensitively.
 std::optional<SymbolKind> parse_kind(llvm::StringRef name) {
-    constexpr auto names = kotatsu::meta::reflection<SymbolKind::Kind>::member_names;
+    constexpr auto names = meta::reflection<SymbolKind::Kind>::member_names;
     for(std::size_t i = 0; i < names.size(); i += 1) {
         if(name.equals_insensitive(llvm::StringRef(names[i].data(), names[i].size()))) {
             return SymbolKind(static_cast<SymbolKind::Kind>(i));

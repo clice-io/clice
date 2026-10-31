@@ -9,7 +9,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kotatsu::deco::decl::HelpOption help;
+    deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<PATH>",
               help =

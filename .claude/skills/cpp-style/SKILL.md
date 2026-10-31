@@ -54,13 +54,13 @@ defending against ghosts.
   `import :<partition>;` per partition it names. The partition
   `:support.prelude` imports `std.compat`, the C library's names past it
   (`libc`) and the third-party module (`modules/`), and gives the namespaces
-  clice uses everywhere their short names in `clice` — `ranges`, `views`,
-  `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`, `async`. The primary
-  interface (`src/module.cppm`) re-exports it, which brings it to every
-  implementation unit; every partition imports it. Code inside `clice`
-  writes those names (`ranges::sort`, `protocol::Range`, `async::task`), never
-  `std::ranges::` or `kotatsu::ipc::protocol::`, and no file declares them
-  again.
+  clice writes their short names in `clice` — `ranges`, `views`, `chrono`,
+  `this_thread`, `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`,
+  `async`, `deco`, `meta`, `zest`. The primary interface (`src/module.cppm`)
+  re-exports it, which brings it to every implementation unit; every
+  partition imports it. Code inside `clice` writes those names
+  (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
+  or `kotatsu::ipc::protocol::`, and no file declares them again.
 - No module carries a macro: every compilation force-includes
   `support/macros.h`, the libraries' (`modules/macros.h`) and clice's own
   (`*.macros.h`). A unit opens a global module fragment (`module;`) only

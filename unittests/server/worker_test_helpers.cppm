@@ -57,7 +57,7 @@ inline async::task<> parked(BuildProbe& probe, std::uint64_t id) {
 }
 
 /// Helper: spawn a worker process and return a BincodePeer connected to it.
-struct WorkerHandle : kotatsu::zest::LoopFixture {
+struct WorkerHandle : zest::LoopFixture {
     async::process proc{};
     std::unique_ptr<ipc::StreamTransport> transport;
     std::unique_ptr<ipc::BincodePeer> peer;
@@ -74,7 +74,7 @@ struct WorkerHandle : kotatsu::zest::LoopFixture {
     WorkerHandle() {
         // Hang detection: outlasts the 30s bound the cancellation tests put
         // on a request.
-        watchdog = std::chrono::seconds(45);
+        watchdog = chrono::seconds(45);
     }
 
     bool spawn(bool stateful = false, std::size_t max_documents = 0) {

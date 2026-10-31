@@ -14,7 +14,7 @@ namespace {
 /// exactly once, whatever happens to the joiners or to the owner's own
 /// frame, and the key is refused until a consumer retries it. Real workers,
 /// poisoned via the crash pragma.
-ZEST_SUITE(PCHBuilderAcquisition, kotatsu::zest::LoopFixture) {
+ZEST_SUITE(PCHBuilderAcquisition, zest::LoopFixture) {
 
 TempDir tmp;
 std::string src;
@@ -26,7 +26,7 @@ PCHBuilder pch{graph, project, pool};
 
 PCHBuilderAcquisitionTEST() {
     // Hang detection: real workers build here, slowly on a loaded machine.
-    watchdog = std::chrono::seconds(45);
+    watchdog = chrono::seconds(45);
     tmp.touch("a.cpp", "");
     src = tmp.path("a.cpp");
 

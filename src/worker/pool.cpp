@@ -221,7 +221,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
         .stderr_tail = std::move(spawned->stderr_tail),
         .name = name,
         .state = SlotState::Alive,
-        .spawn_time = std::chrono::steady_clock::now(),
+        .spawn_time = chrono::steady_clock::now(),
     });
 
     if(stateful)
@@ -248,7 +248,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.preempted = false;
     w.memory = 0;
     w.swapped = 0;
-    w.spawn_time = std::chrono::steady_clock::now();
+    w.spawn_time = chrono::steady_clock::now();
     w.death = std::make_shared<WorkerDeath>();
     // generation was bumped at death; crash_streak carries across restarts
     // until a healthy uptime resets it.
@@ -360,7 +360,7 @@ async::task<> WorkerPool::stop() {
 
 async::task<> WorkerPool::kill_stragglers() {
     // Time is the feature: the grace a worker gets after SIGTERM.
-    co_await async::sleep(std::chrono::milliseconds(5000), loop);
+    co_await async::sleep(chrono::milliseconds(5000), loop);
     LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
     for(auto& w: stateless_workers)
         if(w.state == SlotState::Alive)
@@ -521,7 +521,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         LOG_INFO("Worker {} killed on purpose, respawning", workers[index].name);
         workers[index].state = SlotState::Respawning;
         mark_done.death->done.set();
-        worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
+        worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
         co_return;
     }
 
@@ -535,7 +535,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         };
         // Hang detection: a short bound runs out on a stalled master (a
         // loaded machine), and the crash then blames no request.
-        co_await async::with_timeout(drained(std::move(tail)), std::chrono::minutes(1), loop);
+        co_await async::with_timeout(drained(std::move(tail)), chrono::minutes(1), loop);
         if(stop_scope.cancelled())
             co_return;
     }
@@ -553,8 +553,8 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 }
 
 void WorkerPool::reset_streak_if_healthy(WorkerProcess& w) {
-    auto now = std::chrono::steady_clock::now();
-    if(w.spawn_time != std::chrono::steady_clock::time_point{} &&
+    auto now = chrono::steady_clock::now();
+    if(w.spawn_time != chrono::steady_clock::time_point{} &&
        now - w.spawn_time >= options.healthy_uptime) {
         w.fresh_budget();
     }
@@ -745,16 +745,16 @@ async::task<bool> WorkerPool::await_capacity(bool stateful) {
     co_return false;
 }
 
-std::chrono::milliseconds WorkerPool::backoff_delay(unsigned crash_streak) const {
+chrono::milliseconds WorkerPool::backoff_delay(unsigned crash_streak) const {
     if(crash_streak <= 1)
-        return std::chrono::milliseconds(0);
+        return chrono::milliseconds(0);
     auto shift = std::min(crash_streak - 2, 4u);
     return options.respawn_backoff * (1u << shift);
 }
 
 async::task<> WorkerPool::respawn_after(std::size_t index,
                                         bool stateful,
-                                        std::chrono::milliseconds delay) {
+                                        chrono::milliseconds delay) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
     while(true) {
         if(delay.count() > 0) {
@@ -817,7 +817,7 @@ async::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     LOG_INFO("Worker {} reviving after cooldown", w.name);
     w.fresh_budget();
     w.state = SlotState::Respawning;
-    worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
+    worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
 }
 
 std::uint64_t WorkerPool::PendingStateless::finish() {
@@ -912,14 +912,13 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
         w.death->ignored_cancel = true;
         w.death->cause = std::format(
             "killed after ignoring a cancel for {} seconds",
-            std::chrono::duration_cast<std::chrono::seconds>(WorkerScheduler::cancel_grace)
-                .count());
+            chrono::duration_cast<chrono::seconds>(WorkerScheduler::cancel_grace).count());
     } else {
         // Timed only once their sends started.
         auto* request = flights.at(kill.requests.front());
         auto limit = request->build ? options.build_deadline : options.query_deadline;
         auto seconds = [](auto duration) {
-            return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+            return chrono::duration_cast<chrono::seconds>(duration).count();
         };
         if(kill.stateful) {
             w.death->cause =
@@ -989,8 +988,8 @@ void WorkerPool::sample() {
             w.swapped = read->swapped;
             usage.push_back(*read);
             if(!stateful) {
-                auto cpu = std::chrono::duration_cast<std::chrono::milliseconds>(read->user_time +
-                                                                                 read->system_time);
+                auto cpu = chrono::duration_cast<chrono::milliseconds>(read->user_time +
+                                                                       read->system_time);
                 sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = cpu});
             }
         }

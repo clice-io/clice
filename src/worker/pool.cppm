@@ -126,17 +126,17 @@ struct WorkerPoolOptions {
     /// Base delay for exponential respawn backoff. The first crash of a
     /// streak respawns immediately; each further one doubles the delay,
     /// capped at 16x the base.
-    std::chrono::milliseconds respawn_backoff{500};
+    chrono::milliseconds respawn_backoff{500};
 
     /// Uptime after which a worker is considered healthy and its crash
     /// streak resets.
-    std::chrono::milliseconds healthy_uptime{30'000};
+    chrono::milliseconds healthy_uptime{30'000};
 
     /// Cooldown before a slot that gave up is revived with a fresh crash
     /// budget. The pool must never stay at zero workers forever: the
     /// documents' failure records stop the poison, and this bounds how long
     /// a fully burnt pool stays dark. 0 disables revival.
-    std::chrono::milliseconds revive_after{30'000};
+    chrono::milliseconds revive_after{30'000};
 
     /// A request running past its deadline is taken for a hung worker: the
     /// worker is killed and every request of it past its deadline blamed,
@@ -144,13 +144,13 @@ struct WorkerPoolOptions {
     /// worker::is_build); a query never should. A stateless request is
     /// timed by its worker's CPU time, a stateful one by the time since its
     /// document's earlier requests ended (see SchedulerOptions).
-    std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+    chrono::milliseconds build_deadline{chrono::minutes(10)};
 
-    std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
+    chrono::milliseconds query_deadline{chrono::minutes(2)};
 
     /// A stateless request is also taken for hung once its worker's CPU
     /// time stands still this long.
-    std::chrono::milliseconds stall_deadline{std::chrono::minutes(5)};
+    chrono::milliseconds stall_deadline{chrono::minutes(5)};
 
     /// Documents a stateful worker holds before evicting; unset leaves the
     /// worker's default.
@@ -294,7 +294,7 @@ public:
     /// Background requests allowed at once now; the index feeders size
     /// their in-flight windows from it.
     std::size_t background_limit() const {
-        return scheduler.background_limit(std::chrono::steady_clock::now());
+        return scheduler.background_limit(chrono::steady_clock::now());
     }
 
     /// Foreground evidence from outside the pool: didOpen/didChange/didSave
@@ -401,7 +401,7 @@ private:
         /// would fail instead of moving on — and reported with the crash.
         std::vector<std::uint32_t> lost_documents;
 
-        std::chrono::steady_clock::time_point spawn_time{};
+        chrono::steady_clock::time_point spawn_time{};
 
         /// The process's own memory as last sampled.
         std::uint64_t memory = 0;
@@ -489,7 +489,7 @@ private:
                                   codec::dyn::Value identity);
 
     static SchedulerTime now() {
-        return std::chrono::steady_clock::now();
+        return chrono::steady_clock::now();
     }
 
     /// Carry out the scheduler's actions, those they lead to included.
@@ -544,11 +544,11 @@ private:
 
     /// Respawn a slot after `delay`, retrying with growing backoff if the
     /// spawn itself fails; gives the slot up once the streak is exhausted.
-    async::task<> respawn_after(std::size_t index, bool stateful, std::chrono::milliseconds delay);
+    async::task<> respawn_after(std::size_t index, bool stateful, chrono::milliseconds delay);
 
     /// Backoff before the respawn for the given crash streak: immediate for
     /// the first crash, exponential from the second on.
-    std::chrono::milliseconds backoff_delay(unsigned crash_streak) const;
+    chrono::milliseconds backoff_delay(unsigned crash_streak) const;
 
     /// A worker that ran healthily for a while starts a fresh streak: the
     /// budget bounds crash loops, not lifetime bad luck. Called on crash

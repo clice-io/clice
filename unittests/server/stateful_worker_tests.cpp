@@ -98,7 +98,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here,
         // attributably, rather than the whole run at its timeout.
-        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        retry_opts.timeout = chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(cp, retry_opts);
         ZASSERT(retry);
         ZEXPECT(retry.value().version == 2);
@@ -148,7 +148,7 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
             // the watchdog.
             auto result = co_await w.peer->send_request(
                 cp,
-                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+                {.token = source.token(), .timeout = chrono::seconds(30)});
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
@@ -204,7 +204,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
             // the watchdog.
             auto result = co_await w.peer->send_request(
                 cp,
-                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+                {.token = source.token(), .timeout = chrono::seconds(30)});
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
@@ -223,7 +223,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
-        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(!symbols.value().has_value());
 
@@ -275,7 +275,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
 
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here.
-        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        retry_opts.timeout = chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(qp, retry_opts);
         ZASSERT(retry);
 

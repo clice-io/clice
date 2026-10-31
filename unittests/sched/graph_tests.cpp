@@ -29,7 +29,7 @@ struct Probe {
     bool done = false;
 };
 
-ZEST_SUITE(TaskGraph, kotatsu::zest::LoopFixture) {
+ZEST_SUITE(TaskGraph, zest::LoopFixture) {
 
 std::vector<NodeId> ran;
 TaskGraph graph;

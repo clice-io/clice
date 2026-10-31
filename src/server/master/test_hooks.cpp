@@ -42,7 +42,7 @@ async::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
             }
         }
         // No event: none of them announces its end.
-        co_await async::sleep(std::chrono::milliseconds(1), loop);
+        co_await async::sleep(chrono::milliseconds(1), loop);
     }
 }
 

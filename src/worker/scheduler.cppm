@@ -16,7 +16,7 @@ namespace clice {
 /// The scheduler's clock. Its owner passes the time with every event and
 /// the scheduler never reads a clock itself, so a test drives it in
 /// virtual time.
-using SchedulerTime = std::chrono::steady_clock::time_point;
+using SchedulerTime = chrono::steady_clock::time_point;
 
 /// A request, numbered by the pool.
 using RequestId = std::uint64_t;
@@ -46,13 +46,13 @@ struct SchedulerOptions {
     /// A stateless request is taken for hung past this much of its
     /// worker's CPU time, a stateful one past this much time since its
     /// document's earlier requests ended.
-    std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+    chrono::milliseconds build_deadline{chrono::minutes(10)};
 
-    std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
+    chrono::milliseconds query_deadline{chrono::minutes(2)};
 
     /// A stateless request is also taken for hung when its worker's CPU
     /// time stands still this long.
-    std::chrono::milliseconds stall_deadline{std::chrono::minutes(5)};
+    chrono::milliseconds stall_deadline{chrono::minutes(5)};
 };
 
 /// One look at memory and at the workers, taken by the pool.
@@ -84,7 +84,7 @@ struct SchedulerSample {
         std::uint64_t memory = 0;
 
         /// The process's CPU time so far.
-        std::chrono::milliseconds cpu{0};
+        chrono::milliseconds cpu{0};
     };
 
     /// The stateless workers in service.
@@ -233,7 +233,7 @@ public:
     /// How soon the pool should take the next sample: every second while
     /// stateless work runs or waits, as a worker grows by up to a few
     /// hundred megabytes a second.
-    std::chrono::milliseconds sample_interval() const;
+    chrono::milliseconds sample_interval() const;
 
     /// Requests running on the slot, for the pool's death accounting.
     std::size_t running_on(std::size_t slot, bool stateful) const;
@@ -270,35 +270,35 @@ public:
     /// while a foreground request is in flight, for at most
     /// foreground_request_hold of its age: one older is either stuck or
     /// long, and must not pin the background to one forever.
-    constexpr static std::chrono::seconds foreground_hold{10};
+    constexpr static chrono::seconds foreground_hold{10};
 
-    constexpr static std::chrono::seconds foreground_request_hold{60};
+    constexpr static chrono::seconds foreground_request_hold{60};
 
     /// A cooperatively cancelled request still running after this is
     /// stuck inside one declaration: its process is killed.
-    constexpr static std::chrono::seconds cancel_grace{10};
+    constexpr static chrono::seconds cancel_grace{10};
 
     /// No stateless request for this long retires one idle process, down
     /// to min_workers.
-    constexpr static std::chrono::seconds idle_retire{30};
+    constexpr static chrono::seconds idle_retire{30};
 
     /// A foreground request waiting this long with no idle worker grows the
     /// pool; a shorter wait is the cooperative cancel freeing a worker.
-    constexpr static std::chrono::seconds starved_spawn{2};
+    constexpr static chrono::seconds starved_spawn{2};
 
     /// The head of the background queue memory holds back lets later
     /// requests that fit run beside the ones running for this long; then
     /// the queue drains for it. With no background request running it
     /// starts at once: it runs alone, and a kill then shows it does not fit
     /// this machine.
-    constexpr static std::chrono::seconds long_wait{30};
+    constexpr static chrono::seconds long_wait{30};
 
     /// How far behind the head a request that fits is looked for.
     constexpr static std::size_t backfill_depth = 16;
 
     /// While background work waits for memory, the figures that hold it
     /// back are logged at most this often.
-    constexpr static std::chrono::seconds memory_log_interval{30};
+    constexpr static chrono::seconds memory_log_interval{30};
 
     /// The only request running is killed only once the headroom falls, or
     /// is about to fall, below this share of the reserve.
@@ -308,7 +308,7 @@ public:
     /// requests grow: until the next sample and a killed process is gone.
     /// Four workers grow by up to half a gigabyte a second together, more
     /// than the reserve between two samples.
-    constexpr static std::chrono::seconds memory_horizon{2};
+    constexpr static chrono::seconds memory_horizon{2};
 
 private:
     struct Request {
@@ -343,9 +343,9 @@ private:
 
         /// Its worker's CPU time when it started, and the last time that
         /// CPU time moved.
-        std::optional<std::chrono::milliseconds> start_cpu;
+        std::optional<chrono::milliseconds> start_cpu;
 
-        std::chrono::milliseconds last_cpu{0};
+        chrono::milliseconds last_cpu{0};
 
         SchedulerTime cpu_moved;
 
@@ -380,7 +380,7 @@ private:
         /// Last sampled.
         std::uint64_t memory = 0;
 
-        std::chrono::milliseconds cpu{0};
+        chrono::milliseconds cpu{0};
     };
 
     bool user_active(SchedulerTime now) const;
