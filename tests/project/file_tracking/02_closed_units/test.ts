@@ -19,9 +19,27 @@ test("cdb flag change reindexes closed", async (t) => {
     await s.indexed();
     await t.show("before", s.workspaceSymbols("feature_"));
     // Only lib.cpp's flags change, not its bytes: the database's change
-    // alone must queue it again.
+    // alone must queue it again, and its index built under the old flags
+    // answers until the reindex merges.
+    const reindex = await s.park("index", "lib.cpp", { at: "reply" });
     t.disk.database({ "main.cpp": ["-DFEATURE"], "lib.cpp": ["-DFEATURE"] });
     expect(await s.poll("cdb")).toBe(1);
+    await reindex.reached();
+    await t.show("during", s.workspaceSymbols("feature_"));
+    await reindex.release();
     await s.indexed();
     await t.show("after", s.workspaceSymbols("feature_"));
+});
+
+// The flags change while no server runs: the next one's load owes lib.cpp
+// a reindex, and its index built under the old flags answers meanwhile —
+// here, with indexing off, for good.
+test("cdb flag change while down keeps the index", async (t) => {
+    const s = await t.start();
+    await s.indexed();
+    await s.stop();
+    t.disk.database({ "main.cpp": ["-DFEATURE"], "lib.cpp": ["-DFEATURE"] });
+    const down = await t.start({ config: { project: { enable_indexing: false } } });
+    await down.sync();
+    await t.show("after restart", down.workspaceSymbols("feature_"));
 });

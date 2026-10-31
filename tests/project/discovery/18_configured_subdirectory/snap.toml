@@ -1,0 +1,22 @@
+["clice index leaves sub out"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["clice format leaves sub alone"."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+["sub becomes a project".asked]
+value = "${WS}/sub/clice.toml changed"
+
+["sub stops being a project".asked]
+value = "The configuration file of ${WS}/sub was deleted"
+
+["a directory without a database becomes a project".asked]
+value = "${WS}/other/clice.toml changed"
+
+["a project appears above a provisional member".asked]
+value = "${WS}/scratch/pkg/clice.toml changed"

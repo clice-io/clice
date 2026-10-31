@@ -65,6 +65,8 @@ class TestRun implements TestContext {
     private readonly serves: Serve[] = [];
     /// The crashes the test's commands provoke on purpose.
     private readonly commandFaults: Faults[] = [];
+    /// The kills the test's commands were told to cause so far.
+    private kills = 0;
 
     constructor(c: Case, options: TestOptions) {
         this.case = c;
@@ -112,21 +114,40 @@ class TestRun implements TestContext {
     ): Promise<CommandRun> {
         this.prepare();
         const args = typeof command === "string" ? splitCommand(command) : command;
-        const crash = options.crash;
+        const { crash, kill } = options;
         if (crash !== undefined) {
             this.commandFaults.push({ crash });
         }
+        const killFile = path.join(".clice", `kill-request-cli-${String((this.kills += 1))}`);
+        if (kill !== undefined) {
+            this.workspace.write(
+                killFile,
+                `${kill.request} ${this.workspace.displayPath(kill.file)}`,
+            );
+        }
         const env =
-            crash === undefined
+            crash === undefined && kill === undefined
                 ? options.env
                 : {
                       ...options.env,
                       CLICE_ANOMALY_NO_TRAP: "1",
-                      CLICE_TEST_CRASH_REQUEST: `${crash.request} ${this.workspace.displayPath(crash.file)}`,
+                      ...(crash === undefined
+                          ? {}
+                          : {
+                                CLICE_TEST_CRASH_REQUEST: `${crash.request} ${this.workspace.displayPath(crash.file)}`,
+                            }),
+                      ...(kill === undefined
+                          ? {}
+                          : { CLICE_TEST_KILL_REQUEST: this.workspace.path(killFile) }),
                   };
         const run = await this.steps.run(`clice ${args.join(" ")}`, () =>
             runCommand(this.root, args, { ...options, ...(env === undefined ? {} : { env }) }),
         );
+        if (kill !== undefined) {
+            this.commandFaults.push({
+                kill: { ...kill, taken: this.workspace.exists(`${killFile}.taken`) },
+            });
+        }
         this.output.transcript(run.label, run.transcript);
         return run;
     }

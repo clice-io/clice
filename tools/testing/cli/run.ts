@@ -271,6 +271,11 @@ export interface CommandOptions {
     /// (CLICE_TEST_CRASH_REQUEST), as a server's `crash` does; the test's
     /// gate then expects that crash in the command's log. Set by `t.cli`.
     crash?: { request: string; file: string };
+    /// The worker running the first such request of the file dies as a kill
+    /// from outside ends it, naming no request (CLICE_TEST_KILL_REQUEST), as
+    /// a server's `kill` does; the test's gate then expects the death. Set
+    /// by `t.cli`.
+    kill?: { request: string; file: string };
     /// Where stdout goes instead of a pipe read to its end: a pipe whose
     /// reader leaves after the first chunk; a FIFO whose reader left before
     /// the run (POSIX); a nonblocking FIFO nobody reads (Linux); a
