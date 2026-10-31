@@ -797,6 +797,8 @@ struct Describer {
             part.kind = TypePart::Kind::Function;
             part.variadic = function->isVariadic();
             part.nothrow = function->isNothrow();
+            part.method_qualifiers = function->getMethodQuals().getCVRQualifiers();
+            part.ref_qualifier = function->getRefQualifier();
             part.parts = function->getNumParams() + 1;
             return type(function->getReturnType()) &&
                    ranges::all_of(function->getParamTypes(),
@@ -824,17 +826,17 @@ struct Describer {
             part.kind = TypePart::Kind::Specialization;
             auto arguments = specialization->getTemplateArgs().asArray();
             part.parts = arguments.size();
-            return scopes(specialization->getSpecializedTemplate(), *index) &&
+            return declarations(specialization->getSpecializedTemplate(), *index) &&
                    ranges::all_of(arguments, [&](const auto& each) { return argument(each); });
         }
         if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(from)) {
             if(const auto* pattern = record->getDescribedClassTemplate()) {
                 part.kind = TypePart::Kind::Pattern;
-                return scopes(pattern, *index);
+                return declarations(pattern, *index);
             }
         }
         part.kind = TypePart::Kind::Tag;
-        return scopes(from, *index);
+        return declarations(from, *index);
     }
 
     bool argument(const clang::TemplateArgument& from) {
@@ -856,7 +858,7 @@ struct Describer {
                 auto* named = from.getAsTemplate().getAsTemplateDecl();
                 auto index = out.size();
                 out.push_back({.kind = TypePart::Kind::Template});
-                return named && scopes(named, index);
+                return named && declarations(named, index);
             }
             case clang::TemplateArgument::Pack: {
                 out.push_back({.kind = TypePart::Kind::Pack,
@@ -868,10 +870,9 @@ struct Describer {
         }
     }
 
-    /// The declarations `from` is named through, from the translation
-    /// unit's down.
-    bool scopes(const clang::NamedDecl* from, std::size_t index) {
-        llvm::SmallVector<TypePart::Scope, 4> chain;
+    /// The declarations `from` is found through, down to itself.
+    bool declarations(const clang::NamedDecl* from, std::size_t index) {
+        llvm::SmallVector<TypePart::Declaration, 4> chain;
         const clang::Decl* decl = from;
         while(!llvm::isa<clang::TranslationUnitDecl>(decl)) {
             // A scope the name lookup passes through (an unscoped
@@ -895,7 +896,7 @@ struct Describer {
             decl = llvm::cast<clang::Decl>(parent);
         }
         ranges::reverse(chain);
-        out[index].scopes.assign(chain.begin(), chain.end());
+        out[index].declarations.assign(chain.begin(), chain.end());
         return true;
     }
 
@@ -903,7 +904,8 @@ struct Describer {
 };
 
 /// Types spelled by names (TypePart) rebuilt in this compile: each class
-/// found again by its scopes' names, each specialization formed again.
+/// found again by the names it is found through, each specialization formed
+/// again.
 /// Null where a part names nothing found here — a declaration after the
 /// completion point.
 struct Rebuilder {
@@ -915,9 +917,7 @@ struct Rebuilder {
     }
 
     clang::QualType type() {
-        if(done()) {
-            return {};
-        }
+        assert(!done());
         const auto& part = parts[next];
         next += 1;
         clang::QualType result;
@@ -959,6 +959,8 @@ struct Rebuilder {
                 if(!returned.isNull() && ranges::none_of(parameters, &clang::QualType::isNull)) {
                     clang::FunctionProtoType::ExtProtoInfo info;
                     info.Variadic = part.variadic;
+                    info.TypeQuals = clang::Qualifiers::fromCVRMask(part.method_qualifiers);
+                    info.RefQualifier = static_cast<clang::RefQualifierKind>(part.ref_qualifier);
                     if(part.nothrow) {
                         info.ExceptionSpec.Type = clang::EST_BasicNoexcept;
                     }
@@ -974,7 +976,7 @@ struct Rebuilder {
                 result = rebuilt ? ast.getCanonicalTagType(rebuilt) : clang::QualType();
                 break;
             }
-            default: return {};
+            default: std::unreachable();
         }
         return result.isNull()
                    ? result
@@ -985,9 +987,7 @@ struct Rebuilder {
     /// formed of when it is concrete, the pattern of a class template for
     /// a dependent one.
     clang::TagDecl* tag() {
-        if(done()) {
-            return nullptr;
-        }
+        assert(!done());
         const auto& part = parts[next];
         next += 1;
         switch(part.kind) {
@@ -1027,20 +1027,18 @@ struct Rebuilder {
                                                      /*ForNestedNameSpecifier=*/false);
                 return type.isNull() ? nullptr : type->getAsTagDecl();
             }
-            default: return nullptr;
+            default: std::unreachable();
         }
     }
 
     std::optional<clang::TemplateArgument> argument() {
-        if(done()) {
-            return std::nullopt;
-        }
+        assert(!done());
         const auto& part = parts[next];
         switch(part.kind) {
             case TypePart::Kind::Integral: {
                 next += 1;
                 auto rebuilt = type();
-                if(rebuilt.isNull() || !rebuilt->isIntegralOrEnumerationType()) {
+                if(rebuilt.isNull()) {
                     return std::nullopt;
                 }
                 bool is_unsigned = rebuilt->isUnsignedIntegerOrEnumerationType();
@@ -1095,13 +1093,15 @@ struct Rebuilder {
         }
     }
 
-    /// The declaration here a part's scopes name, by their names and kinds.
+    /// The declaration here a part names, by the names and kinds of those
+    /// it is found through.
     clang::NamedDecl* find(const TypePart& part) {
         clang::DeclContext* scope = ast.getTranslationUnitDecl();
         clang::NamedDecl* found = nullptr;
-        for(const auto& each: part.scopes) {
-            if(!scope) {
-                return nullptr;
+        for(const auto& each: part.declarations) {
+            // All but the named one itself are namespaces and classes.
+            if(found) {
+                scope = llvm::cast<clang::DeclContext>(found);
             }
             found = nullptr;
             if(each.name.empty()) {
@@ -1121,7 +1121,6 @@ struct Rebuilder {
             if(!found) {
                 return nullptr;
             }
-            scope = llvm::dyn_cast<clang::DeclContext>(found);
         }
         return found;
     }
@@ -1208,7 +1207,7 @@ void load_names(clang::Sema& sema,
         }
     }
     for(const auto& candidate: candidates) {
-        // Its identifier comes with the macro a header defines by its name.
+        // Its identifier comes with the macro the PCH defines by its name.
         clang::LookupResult found(sema,
                                   &ast.Idents.get(candidate.name),
                                   {},
@@ -1252,25 +1251,34 @@ public:
         return sema;
     }
 
-    Builder(FocusFile focus,
+    Builder(CompilationUnit& unit,
             std::uint32_t offset,
             PositionEncoding encoding,
             std::vector<protocol::CompletionItem>& output,
             std::vector<const clang::NamedDecl*>& documented,
             const CodeCompletionOptions& options,
             const CompletionClient& client,
-            llvm::ArrayRef<ScopeCandidate> candidates,
+            const CompileCompletion& names,
             bool from_index,
             const InstantiatedTemplates& instantiated,
-            bool& includes_pending) :
-        clang::CodeCompleteConsumer(sema_options(options, from_index)), focus(focus),
-        offset(offset), encoding(encoding), output(output), documented(documented),
-        options(options), argument_style(options.arguments), client(client),
-        scope_candidates(candidates), instantiated(instantiated),
-        includes_pending(includes_pending),
+            bool& includes_pending,
+            bool& member_access) :
+        clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
+        focus(unit.focus_file()), offset(offset), encoding(encoding), output(output),
+        documented(documented), options(options), argument_style(options.arguments), client(client),
+        names(names), names_pending(from_index), instantiated(instantiated),
+        includes_pending(includes_pending), member_access(member_access),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
+        // Sema asks first thing in a completion, in the scope of the point.
+        // The lexer reaches the point a token sooner: before the scope a `{`
+        // opens or a declaration a `;` ends takes effect, and while the
+        // parse tries skipping the body holding the point.
+        if(names_pending) {
+            names_pending = false;
+            load_names(unit.sema(), names.scope, names.candidates);
+        }
         return info.getAllocator();
     }
 
@@ -1544,6 +1552,9 @@ public:
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
         } else {
+            member_access =
+                context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
+                context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
             display_options.specialization = nullptr;
             if(complete_resolved(sema, context)) {
                 return;
@@ -2345,7 +2356,7 @@ public:
                 return llvm::SmallVector<clang::NamedDecl*, 2>(found.begin(), found.end());
             };
             auto& language = sema.getLangOpts();
-            for(const auto& candidate: scope_candidates) {
+            for(const auto& candidate: names.candidates) {
                 // C names no namespace, an enumerator without its
                 // enumeration, and a struct, union or enumeration only after
                 // its keyword; a file compiled without named modules imports
@@ -2541,6 +2552,7 @@ public:
     }
 
 private:
+    CompilationUnit& unit;
     FocusFile focus;
     std::uint32_t offset;
     PositionEncoding encoding;
@@ -2553,10 +2565,15 @@ private:
     const CodeCompletionOptions& options;
     CompletionArguments argument_style;
     const CompletionClient& client;
-    llvm::ArrayRef<ScopeCandidate> scope_candidates;
+    const CompileCompletion& names;
+    /// Whether the candidates' names are still to load (load_names).
+    bool names_pending;
     const InstantiatedTemplates& instantiated;
     /// Set once an item needs the header of its symbol included (Completion).
     bool& includes_pending;
+    /// Whether Sema completes a member after `.` or `->`, where the
+    /// candidates play no part.
+    bool& member_access;
     clang::CodeCompletionTUInfo info;
     bool resolving = false;
     bool resolved_candidates = false;
@@ -2582,26 +2599,24 @@ auto code_complete(CompilationParams params,
     std::vector<protocol::CompletionItem> items;
     std::vector<const clang::NamedDecl*> documented;
     bool includes = false;
+    bool member_access = false;
     // The index holds no module's names a module file brings in.
-    bool from_index = names.from_index && params.input.pcms.empty();
+    bool from_index = names.from_index && params.input.pcms.empty() &&
+                      (!names.preamble || *names.preamble == params.input.pch.second);
     params.completion.consumer = [&](CompilationUnit& unit) {
-        return std::make_unique<Builder>(unit.focus_file(),
+        return std::make_unique<Builder>(unit,
                                          offset,
                                          encoding,
                                          items,
                                          documented,
                                          options,
                                          client,
-                                         names.candidates,
+                                         names,
                                          from_index,
                                          instantiated,
-                                         includes);
+                                         includes,
+                                         member_access);
     };
-    if(from_index) {
-        params.completion.reached = [&](clang::Sema& sema) {
-            load_names(sema, names.scope, names.candidates);
-        };
-    }
     auto unit = compile(std::move(params));
 
     assert(ranges::size(items) == ranges::size(documented));
@@ -2623,6 +2638,8 @@ auto code_complete(CompilationParams params,
 
     Completion completion{
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
+    completion.list.is_incomplete =
+        completion.list.is_incomplete || (names.more_candidates && !member_access);
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
@@ -2670,6 +2687,7 @@ auto instantiated_templates(CompilationUnit& unit) -> InstantiatedTemplates {
     };
     types::TemplateResolver resolver(unit.context());
     for(const auto& entry: unit.get<Semantics>().node_entries()) {
+        // The preprocessor segment follows the AST segment.
         if(!entry.node.is_ast()) {
             break;
         }

@@ -523,7 +523,6 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                                              params.names,
                                              params.instantiated);
     LOG_DEBUG("Completion done: {} items, {}ms", completion.list.items.size(), timer.ms());
-    completion.list.is_incomplete = completion.list.is_incomplete || params.names.more_candidates;
 
     return {.list = to_raw(completion.list), .include = completion.include};
 }

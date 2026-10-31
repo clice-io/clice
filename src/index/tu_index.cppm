@@ -164,6 +164,10 @@ public:
     /// an ordinary TU index.
     bool matches_preamble(llvm::StringRef text) const;
 
+    /// How many bytes of the file the preamble this TU index was built
+    /// from spans; zero for an ordinary TU index.
+    std::uint32_t preamble_size() const;
+
     /// Document links of the preamble region, materialized from the
     /// TU index; empty for an ordinary one.
     std::vector<DocumentLink> links() const;

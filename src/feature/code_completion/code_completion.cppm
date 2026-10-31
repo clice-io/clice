@@ -163,9 +163,15 @@ struct CompileCompletion {
 
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares: the compile reads no others of them (clang's
-    /// LoadExternal off), none after `.` or `->`. Not where the index names
-    /// nothing, as in a directive.
+    /// LoadExternal off), none after `.`. Not where the index names
+    /// nothing, as in a directive, nor where no index of the document's PCH
+    /// is at hand: the compile reads them all then.
     bool from_index = false;
+
+    /// How much of the buffer the PCH whose index named the candidates
+    /// stands for: a compile behind another PCH, as after an include added
+    /// since, reads all of its names. None after `.`.
+    std::optional<std::uint32_t> preamble;
 
     /// Where the name being typed is looked up, with from_index.
     index::CompletionScope scope;
@@ -185,24 +191,24 @@ struct TypePart {
         Array,
         /// The return type, then the parameters.
         Function,
-        /// A class or an enumeration, by `scopes`.
+        /// A class or an enumeration, by `declarations`.
         Tag,
-        /// The class of the class template `scopes` names.
+        /// The class of the class template `declarations` names.
         Pattern,
-        /// A specialization of the class template `scopes` names, its
+        /// A specialization of the class template `declarations` names, its
         /// arguments after it.
         Specialization,
         /// A template argument: the integer `value` of the type after it.
         Integral,
-        /// A template argument: the template `scopes` names.
+        /// A template argument: the template `declarations` names.
         Template,
         /// A template argument: a pack of the arguments after it.
         Pack,
     };
 
-    /// A declaration on the way to a named one: its name, empty for an
+    /// One declaration a name is found through: its name, empty for an
     /// anonymous namespace, and its clang::Decl::Kind.
-    struct Scope {
+    struct Declaration {
         std::string name;
         std::uint32_t kind = 0;
     };
@@ -217,12 +223,16 @@ struct TypePart {
     /// How many parts it is made of, those right after it.
     std::uint32_t parts = 0;
 
-    /// A function type's.
+    /// A function type's, the qualifiers and the ref-qualifier
+    /// (clang::RefQualifierKind) of a member function's among them.
     bool variadic = false;
     bool nothrow = false;
+    std::uint8_t method_qualifiers = 0;
+    std::uint8_t ref_qualifier = 0;
 
-    /// The declarations from the translation unit's down to the one named.
-    std::vector<Scope> scopes;
+    /// The declarations from one in the translation unit down to the named
+    /// one itself.
+    std::vector<Declaration> declarations;
 };
 
 /// What the focus file's whole compile tells completion, whose own parse
@@ -265,13 +275,15 @@ struct TypedName {
     llvm::StringRef prefix;
     index::CompletionScope scope;
 
-    /// After `.` or `->`: a member, which Sema reads from its class whole.
+    /// After `.`: a member, which Sema reads from its class whole. Not after
+    /// `->`, which a trailing return type follows too.
     bool member = false;
 };
 
 /// None in a number, and after a qualifier spelled other than by names
 /// (`T<int>::`, `decltype(x)::`).
-auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<TypedName>;
+auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
+    -> std::optional<TypedName>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.

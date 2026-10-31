@@ -9,6 +9,7 @@ import :feature.protocol;
 import :index.query;
 import :index.search;
 import :index.symbol;
+import :index.tu_index;
 import :semantic.symbol;
 import :semantic.token_class;
 import :support.fuzzy_matcher;
@@ -26,25 +27,22 @@ namespace clice::feature {
 // What the server completes without a compile, and how it finishes the
 // list a compile returns.
 
-auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<TypedName> {
+auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
+    -> std::optional<TypedName> {
     auto prefix = Prefix::from(text, offset);
     if(!prefix.spelling.empty() && clang::isDigit(prefix.spelling.front())) {
         return std::nullopt;
     }
     TypedName typed{.prefix = prefix.spelling};
     auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(before.ends_with(".") || before.ends_with("->")) {
+    if(before.ends_with(".")) {
         typed.member = true;
         return typed;
     }
     while(before.consume_back("::")) {
         before = before.rtrim();
-        auto start = before.size();
-        while(start > 0 && is_identifier_char(before[start - 1])) {
-            start -= 1;
-        }
-        auto name = before.substr(start);
-        if(name.empty()) {
+        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
+        if(name.empty() || keyword_kind(name, keywords(dialect)) != clang::tok::identifier) {
             if(before.ends_with(">") || before.ends_with(")")) {
                 return std::nullopt;
             }
@@ -58,7 +56,7 @@ auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<Typ
         before = before.drop_back(name.size()).rtrim();
     }
     // A member named through its class (`x.Base::`).
-    typed.member = before.ends_with(".") || before.ends_with("->");
+    typed.member = before.ends_with(".");
     return typed;
 }
 
@@ -484,7 +482,7 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     }
 
     CompileCompletion compile;
-    if(auto typed = offset ? typed_name(text, *offset) : std::nullopt;
+    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
        typed && completing.directive.empty()) {
         if(!typed->member) {
             compile.more_candidates = !scope_candidates(inputs.query,
@@ -493,7 +491,12 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
                                                         inputs.file,
                                                         compile.candidates);
         }
-        compile.from_index = true;
+        if(typed->member) {
+            compile.from_index = true;
+        } else if(auto pch = inputs.query.preamble_index(inputs.file)) {
+            compile.from_index = true;
+            compile.preamble = pch->preamble_size();
+        }
         compile.scope = std::move(typed->scope);
     }
     return compile;

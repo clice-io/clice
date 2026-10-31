@@ -49,8 +49,10 @@ struct CompletionScope {
 /// `scope` — names of namespaces and unscoped enumerators
 /// (SymbolFlags::Completable) — best first, at most `limit`: the
 /// project's and the open buffers' linked across files, and every one of
-/// `file`'s preamble. An empty prefix takes the names used most. Whether
-/// the limit cut them short.
+/// `file`'s preamble. An empty prefix takes the names used most. After a
+/// qualifier, its scopes' own names come first, then those of any other
+/// scope, which a using-declaration or using-directive there may bring
+/// in. Whether the limit cut them short.
 struct Completables {
     std::vector<Completable> names;
     bool exhausted = true;

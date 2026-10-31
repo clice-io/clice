@@ -436,6 +436,10 @@ bool TUIndex::matches_preamble(llvm::StringRef text) const {
     return text.size() >= size && llvm::xxh3_64bits(text.take_front(size)) == root.preamble_hash;
 }
 
+std::uint32_t TUIndex::preamble_size() const {
+    return loaded() ? view_of(data).preamble_size : 0;
+}
+
 std::vector<DocumentLink> TUIndex::links() const {
     if(!loaded()) {
         return {};
