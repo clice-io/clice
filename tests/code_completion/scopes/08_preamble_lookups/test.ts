@@ -58,6 +58,7 @@ test("a header edited before the compile", async (t) => {
     const park = await s.park("compile", "main.cpp", { at: "worker" });
     s.open("lib.h");
     s.edit("lib.h", { after: "int helper_value(int x);\n", insert: "int helper_added();\n" });
+    s.save("lib.h");
     await t.show("names", s.completion(t.at("main.cpp", "return lib::helper|")), {
         parts: ["insert"],
     });

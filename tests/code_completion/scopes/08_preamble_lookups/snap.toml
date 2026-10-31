@@ -636,3 +636,14 @@ items = [
     { label = "detail", kind = "Module", insert = "detail" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
+
+["a header edited before the compile".names.completion]
+items = [
+    { label = "helper_added()", kind = "Function", detail = "int", insert = "helper_added()" },
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
