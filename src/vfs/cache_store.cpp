@@ -33,7 +33,7 @@ struct ManifestData {
 /// On a rename collision, check whether the existing destination blob is
 /// byte-identical to the one we tried to publish.  This path is rare even
 /// on Windows: fs::rename already replaces a destination another process
-/// holds open with delete sharing (every file kota or LLVM opens), so a
+/// holds open with delete sharing (every file kotatsu or LLVM opens), so a
 /// collision means a non-cooperating process (AV scanner, indexing
 /// service) holds the blob.  The extra reads stay off hot paths.
 bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {

@@ -18,7 +18,7 @@ namespace clice::driver {
 namespace {
 
 struct FileOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     FileTarget target;
 
     DecoFlag(names = {"--json"},
@@ -31,7 +31,7 @@ struct FileOptions {
 };
 
 struct ConvertOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<DATABASE>",
               help = "The compile_commands.json to convert, relative to the current directory",
@@ -292,8 +292,8 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
     auto family = ranges::contains(command, "--driver-mode=cl") ? CompilerFamily::ClangCL
                                                                 : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
-    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
-                                              .visibility = family_visibility(family)};
+    auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true,
+                                                 .visibility = family_visibility(family)};
     auto anchor = directory;
     std::string language;
     llvm::SmallVector<std::string> inputs;

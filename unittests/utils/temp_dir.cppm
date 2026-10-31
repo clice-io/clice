@@ -30,7 +30,7 @@ struct TempDir {
     /// path-keyed index lookup in tests miss.
     std::string root{directory.path()};
 
-    kota::zest::FatalHook cleanup{[this] { directory.remove(); }};
+    kotatsu::zest::FatalHook cleanup{[this] { directory.remove(); }};
 
     /// Build an absolute path under this temporary root.
     std::string path(llvm::StringRef relative) const {

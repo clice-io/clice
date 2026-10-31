@@ -20,14 +20,14 @@ struct Options {
 };
 
 struct FileQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     FileTarget target;
     Options query;
     LogLevelOption log;
 };
 
 struct FileDepsQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     FileTarget target;
 
     DecoKV(help = "includes, includers or both (default)", required = false)
@@ -41,7 +41,7 @@ struct FileDepsQuestion {
 };
 
 struct ProjectFilesQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoKV(help = "all (default), source, header or module", required = false)
     <std::string> filter;
@@ -51,7 +51,7 @@ struct ProjectFilesQuestion {
 };
 
 struct SearchQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<LOCATOR>",
               help = "The symbols to list, as a locator (default: every symbol)",
@@ -66,14 +66,14 @@ struct SearchQuestion {
 };
 
 struct SymbolQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     SymbolTarget target;
     Options query;
     LogLevelOption log;
 };
 
 struct ReferencesQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     SymbolTarget target;
 
     DecoFlag(names = {"--include-declaration"},
@@ -86,7 +86,7 @@ struct ReferencesQuestion {
 };
 
 struct CallGraphQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     SymbolTarget target;
 
     DecoKV(help = "callers, callees or both (default)", required = false)
@@ -97,7 +97,7 @@ struct CallGraphQuestion {
 };
 
 struct TypeHierarchyQuestion {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     SymbolTarget target;
 
     DecoKV(help = "supertypes, subtypes or both (default)", required = false)

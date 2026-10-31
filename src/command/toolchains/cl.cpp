@@ -46,10 +46,10 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
     return mode;
 }
 
-kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                   CompilerFamily family,
-                                                   llvm::StringRef input,
-                                                   std::string cwd) {
+async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
+                                                    CompilerFamily family,
+                                                    llvm::StringRef input,
+                                                    std::string cwd) {
     if(auto error = fs::write_file(input, cl_query_source)) {
         co_return std::unexpected(
             std::format("Failed to write {}: {}", input.str(), error.message()));

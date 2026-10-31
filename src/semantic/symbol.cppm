@@ -169,7 +169,7 @@ constexpr bool operator==(RelationKind lhs, RelationKind rhs) {
 /// SymbolKind hides its enum behind constructors, which keeps it out of
 /// reflection; it serializes as that enum.
 template <>
-struct kota::meta::repr<clice::SymbolKind> {
+struct kotatsu::meta::repr<clice::SymbolKind> {
     using type = clice::SymbolKind::Kind;
 
     static type to(clice::SymbolKind kind) {

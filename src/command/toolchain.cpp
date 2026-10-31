@@ -350,8 +350,8 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
-    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
-    std::vector<kota::option::ParsedArg> kept;
+    auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CC1Option};
+    std::vector<kotatsu::option::ParsedArg> kept;
     llvm::StringRef triple;
     llvm::StringRef job_resource_dir;
     for(auto& parsed: option::table().parse(tokens, parse_options)) {
@@ -574,7 +574,7 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
                      input.value);
         }
 
-        auto [ended] = kota::run(query_one(admission.spec));
+        auto [ended] = async::run(query_one(admission.spec));
         auto& result = *ended;
         commit_query(admission.key, id, result);
         if(!result) {
@@ -647,25 +647,25 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
 
     // The query is moved into the coroutine frame as a parameter, so the
     // argument references stay valid for the coroutine's whole lifetime.
-    auto make_task = [](Pending p, kota::semaphore& drivers) -> kota::task<QueryOutcome> {
+    auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryOutcome> {
         auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
         co_return QueryOutcome{std::move(p.key), p.command, std::move(result)};
     };
 
-    auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
+    auto query_all = [&]() -> async::task<kotatsu::small_vector<QueryOutcome>> {
         // A database whose commands key thousands of queries would otherwise
         // run thousands of drivers at once.
-        kota::semaphore drivers(sys::parallelism());
-        std::vector<kota::task<QueryOutcome>> tasks;
+        async::semaphore drivers(sys::parallelism());
+        std::vector<async::task<QueryOutcome>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
             tasks.push_back(make_task(std::move(p), drivers));
         }
 
-        co_return co_await kota::when_all(std::move(tasks));
+        co_return co_await async::when_all(std::move(tasks));
     };
-    auto [outcomes] = kota::run(query_all());
+    auto [outcomes] = async::run(query_all());
 
     std::size_t succeeded = 0;
     for(auto& o: *outcomes) {

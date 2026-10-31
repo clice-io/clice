@@ -21,14 +21,14 @@ namespace clice::testing {
 struct WorkerPoolFixture {
     using SlotState = WorkerPool::SlotState;
 
-    kota::event_loop loop;
+    async::event_loop loop;
     BuildProbe probe;
     WorkerPool pool;
 
     std::vector<WorkerCrashInfo> crash_reports;
 
     /// Set whenever a stateless slot (re)enters service.
-    kota::event serving{false};
+    async::event serving{false};
     Signal<>::Connection serving_connection;
 
     WorkerPoolFixture() : pool(loop) {
@@ -218,7 +218,7 @@ struct WorkerPoolFixture {
     /// the errors run out.
     Delivery deliver_failing(std::vector<protocol::Error> errors) {
         Delivery delivery;
-        run([&]() -> kota::task<> {
+        run([&]() -> async::task<> {
             auto result = co_await deliver(
                 pool,
                 true,
@@ -226,7 +226,7 @@ struct WorkerPoolFixture {
                     auto attempt = static_cast<std::size_t>(delivery.sends);
                     delivery.sends += 1;
                     if(attempt < errors.size()) {
-                        co_return kota::outcome_error(errors[attempt]);
+                        co_return kotatsu::outcome_error(errors[attempt]);
                     }
                     co_return std::nullopt;
                 },
@@ -285,7 +285,7 @@ struct WorkerPoolFixture {
         return pool.options.min_stateless;
     }
 
-    kota::task<> stop() {
+    async::task<> stop() {
         return pool.stop();
     }
 
@@ -318,10 +318,10 @@ struct WorkerPoolFixture {
     /// Kill stateless worker 0 while it runs a request on `file`: a death
     /// that spends the slot's budget on every platform, Windows included,
     /// which can send a worker no signal of its own failures.
-    kota::task<> kill_running_worker(const std::string& file) {
+    async::task<> kill_running_worker(const std::string& file) {
         auto params = index_params(file);
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             [[maybe_unused]] auto result =
                 co_await pool.send_stateless(params, worker::Priority::High);
         };
@@ -372,7 +372,7 @@ struct WorkerPoolFixture {
 
     /// Returns once stateless slot `idx` serves: spawned, respawned, revived
     /// or refilled.
-    kota::task<> serves(std::size_t idx) {
+    async::task<> serves(std::size_t idx) {
         while(!worker_alive(idx)) {
             serving.reset();
             co_await serving.wait();
@@ -381,7 +381,7 @@ struct WorkerPoolFixture {
 
     /// Returns once the pool has handled the exit of the process now in
     /// stateless slot `idx`.
-    kota::task<> exited(std::size_t idx) {
+    async::task<> exited(std::size_t idx) {
         auto death = pool.stateless_workers[idx].death;
         co_await death->done.wait();
     }
@@ -436,23 +436,23 @@ struct WorkerPoolFixture {
 
     /// Index `file` on stateless worker 0, sampling it all along. Returns
     /// the most sampled.
-    kota::task<std::uint64_t> index_sampled(const std::string& file) {
+    async::task<std::uint64_t> index_sampled(const std::string& file) {
         std::uint64_t peak = 0;
         bool answered = false;
-        auto sender = [&]() -> kota::task<> {
+        auto sender = [&]() -> async::task<> {
             auto result = co_await pool.send_stateless(index_params(file), worker::Priority::High);
             ZEXPECT(result);
             answered = true;
         };
-        auto sampler = [&]() -> kota::task<> {
+        auto sampler = [&]() -> async::task<> {
             while(!answered) {
                 sample_pool();
                 peak = std::max(peak, memory(0, false));
                 // No event: a worker's memory grows unannounced.
-                co_await kota::sleep(std::chrono::milliseconds(50), loop);
+                co_await async::sleep(std::chrono::milliseconds(50), loop);
             }
         };
-        co_await kota::when_all(sender(), sampler());
+        co_await async::when_all(sender(), sampler());
         co_return peak;
     }
 };
@@ -1341,7 +1341,7 @@ ZEST_CASE(DeadPoolReturnsError) {
     ZEXPECT(f.capacity() == 0u);
 
     std::optional<protocol::integer> code;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params("/a.cpp"),
                                                      worker::Priority::High);
         ZASSERT(!result.has_value());
@@ -1390,7 +1390,7 @@ ZEST_CASE(StatefulDyingUnavailable) {
     f.mark_dead(0, true);
 
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         auto result = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
         ZASSERT(!result.has_value());
         ZEXPECT(result.error().code == worker::dispatch_errc::worker_unavailable);
@@ -1421,7 +1421,7 @@ ZEST_SUITE(WorkerPoolIntegration) {
 ZEST_CASE(StartAndStop) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 1));
         co_await f.stop();
         done = true;
@@ -1435,7 +1435,7 @@ ZEST_CASE(StopReapsWorkers) {
     // that let go of the exit observers would return with them running.
     WorkerPoolFixture f;
     std::vector<int> errors;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         std::vector<int> pids = {f.worker_pid(0), f.worker_pid(1)};
         co_await f.stop();
@@ -1454,7 +1454,7 @@ ZEST_CASE(StoppedPoolBlamesNothing) {
     WorkerPoolFixture f;
     int blames = 0;
     std::optional<protocol::integer> code;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(0, 2));
         co_await f.stop();
         auto result = co_await deliver(
@@ -1476,7 +1476,7 @@ ZEST_CASE(StatelessRequest) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
@@ -1501,27 +1501,27 @@ ZEST_CASE(AdvisoryCancelCooperates) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
 
         auto params = WorkerPoolFixture::index_params(first_src);
 
-        kota::cancellation_source advisory;
+        async::cancellation_source advisory;
         bool cancelled = false;
         auto gate = f.gate(params);
-        auto sender = [&]() -> kota::task<> {
+        auto sender = [&]() -> async::task<> {
             auto result =
                 co_await f.pool.send_stateless(params, worker::Priority::High, advisory.token());
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         // The build is under way in the worker when the token fires.
-        auto driver = [&]() -> kota::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await parked(f.probe, gate);
             advisory.cancel();
             f.probe.release(gate);
         };
-        co_await kota::when_all(sender(), driver());
+        co_await async::when_all(sender(), driver());
         ZEXPECT(cancelled);
 
         // The worker replied and survived: the same slot serves the next
@@ -1539,7 +1539,7 @@ ZEST_CASE(AdvisoryCancelCooperates) {
 ZEST_CASE(CrashAndRestart) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         auto pid = f.worker_pid(0);
@@ -1562,7 +1562,7 @@ ZEST_CASE(DeadSlotRevives) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         f.set_revive_after(std::chrono::milliseconds(300));
         f.set_max_crash_streak(0);
@@ -1591,7 +1591,7 @@ ZEST_CASE(RevivalGivesNothingBack) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         f.set_revive_after(std::chrono::milliseconds(300));
         f.set_max_crash_streak(0);
@@ -1614,7 +1614,7 @@ ZEST_CASE(RevivalGivesNothingBack) {
 ZEST_CASE(FloorAboveStartupKept) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         // A floor configured above the startup count survives start():
         // scale-up may grow past it later, and idle scale-down must hold
         // the configured warm set instead of shrinking back to startup.
@@ -1637,7 +1637,7 @@ ZEST_CASE(IdleKeepsSessionScore) {
     };
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         // An idle worker ranks like the master for the OOM killer, never
         // ahead of everything else on the machine (#773).
@@ -1666,7 +1666,7 @@ ZEST_CASE(BusyRanksAboveMaster) {
         return score(std::to_string(f.worker_pid(idx)));
     };
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         auto own = score("self");
         ZASSERT(own != -2000);
@@ -1700,7 +1700,7 @@ ZEST_CASE(BusyRanksAboveMaster) {
 ZEST_CASE(RetiringHoldsScaleUp) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         f.set_max_stateless(2);
         f.set_retiring(0);
@@ -1724,7 +1724,7 @@ ZEST_CASE(RevivesSlotsGate) {
     ZEXPECT(!f.pool.revives_slots());
 
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         ZEXPECT(f.pool.revives_slots());
         f.set_revive_after(std::chrono::milliseconds(0));
@@ -1741,7 +1741,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         // Cooldown far in the future: only scale-up can bring the slot back.
         f.set_revive_after(std::chrono::minutes(10));
@@ -1766,7 +1766,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
 ZEST_CASE(ScaleUpReusesRetired) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         f.retire(1);
         co_await f.exited(1);
@@ -1787,7 +1787,7 @@ ZEST_CASE(ScaleUpReusesRetired) {
 ZEST_CASE(CrashNotification) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         f.kill_worker(0);
@@ -1813,7 +1813,7 @@ ZEST_CASE(CrashDuringRequest) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         // Kill both workers, then send without yielding: the dispatch goes
@@ -1841,12 +1841,12 @@ ZEST_CASE(MemoryKillReportsMemory) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         std::optional<ipc::Error> error;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
                                                          worker::Priority::High);
             if(!result.has_value())
@@ -1882,13 +1882,13 @@ ZEST_CASE(MemoryKillBeatsCancel) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
-        kota::cancellation_source source;
+        async::cancellation_source source;
         protocol::integer code = 0;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
                                                          worker::Priority::High,
                                                          source.token());
@@ -1917,12 +1917,12 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
 
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
 
         protocol::integer code = 0;
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
                                                          worker::Priority::High);
             if(!result.has_value())
@@ -1957,13 +1957,13 @@ ZEST_CASE(LinkEndMarksDead) {
     // worker cannot exit at all.
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         auto gen = f.generation(0);
         f.kill_worker(0, SIGSTOP);
         f.close_link(0);
         while(f.generation(0) == gen) {
-            co_await kota::yield();
+            co_await async::yield();
         }
         co_await f.serves(0);
         co_await f.stop();
@@ -1980,11 +1980,11 @@ ZEST_CASE(MemoryKillReachesSender) {
     WorkerPoolFixture f;
     std::optional<ipc::Error> error;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         auto params = WorkerPoolFixture::index_params(tmp.path("slow.cpp"));
-        kota::task_group<> group;
-        auto sender = [&]() -> kota::task<> {
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
             auto result = co_await f.pool.send_stateless(params, worker::Priority::High);
             if(!result.has_value()) {
                 error = result.error();
@@ -2010,7 +2010,7 @@ ZEST_CASE(MemoryKillReachesSender) {
 ZEST_CASE(SampleReadsWorkers) {
     WorkerPoolFixture f;
     bool done = false;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 1));
         f.sample_pool();
         ZEXPECT(f.memory(0, false) > 0u);
@@ -2032,7 +2032,7 @@ ZEST_CASE(IdleWorkerGivesBack) {
     std::uint64_t before = 0;
     std::uint64_t peak = 0;
     [[maybe_unused]] std::uint64_t after = 0;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         f.sample_pool();
         before = f.memory(0, false);
@@ -2058,7 +2058,7 @@ ZEST_CASE(ReusedMemoryStillCounted) {
     WorkerPoolFixture f;
     std::uint64_t before = 0;
     std::uint64_t second = 0;
-    f.run([&]() -> kota::task<> {
+    f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         f.sample_pool();
         before = f.memory(0, false);

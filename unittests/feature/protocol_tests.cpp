@@ -28,7 +28,7 @@ ZEST_CASE(WindowsBackslashPath) {
 #endif
 
 ZEST_CASE(PlusStaysLiteral) {
-    // kota keeps '+' unencoded; clients percent-encode it. canonicalUri on
+    // kotatsu keeps '+' unencoded; clients percent-encode it. canonicalUri on
     // the harness side reconciles — but the encoded form itself is pinned
     // here so an encoding-table change cannot slip by silently.
     ZASSERT(feature::to_uri("/home/user/a+b.h") == "file:///home/user/a+b.h");

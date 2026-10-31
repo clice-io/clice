@@ -133,7 +133,7 @@ ZEST_CASE(AttemptWaitPerSeq) {
     auto launch = f.seq(id);
 
     bool first_woke = false;
-    auto first_body = [&]() -> kota::task<> {
+    auto first_body = [&]() -> async::task<> {
         co_await f.pump.await_attempt(id);
         first_woke = true;
     };
@@ -146,7 +146,7 @@ ZEST_CASE(AttemptWaitPerSeq) {
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     bool second_woke = false;
-    auto second_body = [&]() -> kota::task<> {
+    auto second_body = [&]() -> async::task<> {
         co_await f.pump.await_attempt(id);
         second_woke = true;
     };
@@ -252,8 +252,8 @@ ZEST_CASE(PauseResumesRound) {
         }
     });
 
-    auto resume_body = [&]() -> kota::task<> {
-        co_await kota::yield();
+    auto resume_body = [&]() -> async::task<> {
+        co_await async::yield();
         f.pump.resume_indexing();
     };
     auto round = f.round_task();

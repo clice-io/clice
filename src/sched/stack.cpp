@@ -6,7 +6,7 @@ import :support.environment;
 
 namespace clice {
 
-SchedulingStack::SchedulingStack(kota::event_loop& loop,
+SchedulingStack::SchedulingStack(async::event_loop& loop,
                                  Project& project,
                                  CommandResolver& commands,
                                  WorkerPool& pool) :
@@ -29,9 +29,9 @@ std::chrono::milliseconds SchedulingStack::checkpoint_interval() {
     return std::chrono::minutes(5);
 }
 
-kota::task<> SchedulingStack::checkpoint() {
+async::task<> SchedulingStack::checkpoint() {
     if(project.store) {
-        co_await kota::queue([this] { project.store->checkpoint(); });
+        co_await async::queue([this] { project.store->checkpoint(); });
     }
     // A full search build or a fold here could still be running on the
     // thread pool when a shutdown cancels the checkpoint, holding up the
@@ -42,7 +42,7 @@ kota::task<> SchedulingStack::checkpoint() {
     pump.schedule();
 }
 
-kota::task<> SchedulingStack::shutdown() {
+async::task<> SchedulingStack::shutdown() {
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
     // index dominates a cold round's save: the index commits with no more

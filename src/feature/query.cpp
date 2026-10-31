@@ -23,7 +23,7 @@ namespace clice::feature::query {
 namespace {
 
 std::string kind_name(SymbolKind kind) {
-    return std::string(kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Unknown"));
+    return std::string(kotatsu::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Unknown"));
 }
 
 /// The 1-based lines a site spans, as the answers spell positions.

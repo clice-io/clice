@@ -23,7 +23,7 @@ struct TaskGraph::RootGuard {
     }
 };
 
-kota::task<DependResult> RoundContext::depend(NodeId dep) {
+async::task<DependResult> RoundContext::depend(NodeId dep) {
     return graph.depend_from(self, tok, dep);
 }
 
@@ -75,11 +75,11 @@ void TaskGraph::release(NodeId id) {
     }
 }
 
-kota::task<> TaskGraph::zero_interest_check(NodeId id) {
+async::task<> TaskGraph::zero_interest_check(NodeId id) {
     // Resumes on the next event-loop iteration, strictly after every
     // deferred resume of the current one — i.e. after the release/
     // re-acquire cascade that scheduled this check has fully finished.
-    co_await kota::yield();
+    co_await async::yield();
 
     auto& node = nodes.find(id)->second;
     node.zero_check_pending = false;
@@ -93,7 +93,7 @@ kota::task<> TaskGraph::zero_interest_check(NodeId id) {
 
 void TaskGraph::cancel_round(Node& node) {
     node.source->cancel();
-    node.source = std::make_unique<kota::cancellation_source>();
+    node.source = std::make_unique<async::cancellation_source>();
 }
 
 void TaskGraph::mark_foreground(NodeId id) {
@@ -147,9 +147,9 @@ bool TaskGraph::spawn_round(NodeId id) {
     return true;
 }
 
-kota::task<> TaskGraph::round_task(NodeId id,
-                                   std::shared_ptr<Round> round,
-                                   kota::cancellation_token token) {
+async::task<> TaskGraph::round_task(NodeId id,
+                                    std::shared_ptr<Round> round,
+                                    async::cancellation_token token) {
     RoundContext ctx(*this, id, std::move(token));
     auto reported = co_await families.find(std::to_underlying(id.family))->second(ctx, id);
     finish_round(id, *round, reported);
@@ -245,9 +245,9 @@ void TaskGraph::reference_from(NodeId self, NodeId dep) {
     record_candidate(self, dep);
 }
 
-kota::task<DependResult> TaskGraph::depend_from(NodeId self,
-                                                kota::cancellation_token token,
-                                                NodeId dep) {
+async::task<DependResult> TaskGraph::depend_from(NodeId self,
+                                                 async::cancellation_token token,
+                                                 NodeId dep) {
     // A node can never wait on itself.
     if(dep == self) {
         co_return DependResult::Failed;
@@ -261,14 +261,14 @@ kota::task<DependResult> TaskGraph::depend_from(NodeId self,
     // Race the dependency wait against this round's own advisory token: a
     // voided round must stop blocking on slow dependencies and wind down,
     // or it would delay the fresh round behind it.
-    auto result = co_await kota::with_token(join_node(dep, self), token);
+    auto result = co_await async::with_token(join_node(dep, self), token);
     if(result.is_cancelled()) {
         co_return DependResult::Cancelled;
     }
     co_return *result ? DependResult::Ready : DependResult::Failed;
 }
 
-kota::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
+async::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
     while(true) {
         auto& node = nodes.find(id)->second;
         if(!node.dirty) {
@@ -302,7 +302,7 @@ kota::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
     }
 }
 
-kota::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
+async::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
     // Root reference, dropped when the requester exits or its frame is
     // cancelled.
     RootGuard scope(*this, id);
@@ -411,7 +411,7 @@ bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
     return false;
 }
 
-kota::task<> TaskGraph::shutdown() {
+async::task<> TaskGraph::shutdown() {
     // Structured shutdown: refuse new rounds, fire every advisory token,
     // then wait for the round frames to unwind — each closure still
     // reports a real outcome on the way out.

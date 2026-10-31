@@ -63,7 +63,7 @@ public:
     /// A worker ran a build of `kind` for `file` and its reply arrived:
     /// counts the build, then parks the reply while a hold takes it. A
     /// hold takes one reply, the first to arrive after it was placed.
-    kota::task<> returned(BuildKind kind, llvm::StringRef file);
+    async::task<> returned(BuildKind kind, llvm::StringRef file);
 
     /// Hold the next reply of `kind` for `file`, whenever it comes; returns
     /// the hold's id.
@@ -119,7 +119,7 @@ public:
         bool parked = false;
 
         /// Set by the release; the parked reply waits on it.
-        std::shared_ptr<kota::event> released = std::make_shared<kota::event>();
+        std::shared_ptr<async::event> released = std::make_shared<async::event>();
     };
 
     struct Gate {

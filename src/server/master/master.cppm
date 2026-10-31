@@ -78,7 +78,7 @@ struct NotifyMessage {
 /// the transports (serve.cpp).
 class MasterServer {
 public:
-    MasterServer(kota::event_loop& loop, std::string requested_configuration);
+    MasterServer(async::event_loop& loop, std::string requested_configuration);
     ~MasterServer();
 
     // lifecycle.cpp
@@ -99,10 +99,10 @@ public:
     /// worker (a hung one's included), then the background work joins and
     /// each project shuts down and saves. Runs once; a later caller waits
     /// for the first.
-    kota::task<> stop();
+    async::task<> stop();
 
     /// After the serving phase: stop, then close the projects.
-    kota::task<> close();
+    async::task<> close();
 
     /// Shut down once the client process `pid` is gone: LSP asks a server
     /// to exit with the process that started it, which may die without
@@ -121,7 +121,7 @@ public:
     /// pool's probe is attached then.
     bool test_hooks() const;
 
-    kota::cancellation_token shutdown_token() const {
+    async::cancellation_token shutdown_token() const {
         return shutdown_source.token();
     }
 
@@ -273,13 +273,13 @@ public:
     /// project offering it — the file's own first — moving the open
     /// document there. Answers at once: the project's next save persists
     /// the choice.
-    kota::task<ext::SwitchContextResult> switch_context(Fid path_id,
-                                                        Fid context_path_id,
-                                                        ext::SwitchContextParams params);
+    async::task<ext::SwitchContextResult> switch_context(Fid path_id,
+                                                         Fid context_path_id,
+                                                         ext::SwitchContextParams params);
 
     /// clice/currentContext: the listing's item for the context the open
     /// document compiles in, whether the user chose it, and its command.
-    kota::task<ext::CurrentContextResult> current_context(Fid path_id);
+    async::task<ext::CurrentContextResult> current_context(Fid path_id);
 
     /// clice/resetContext: drop the file's choice and serve it under the
     /// automatic context — moving it back to the project it routes to when
@@ -297,19 +297,19 @@ public:
     /// Test hook (clice/internal/sync): wait until nothing is in flight.
     /// One look, taken in one turn after the disk changes the file table
     /// saw are applied, at read-only views: `editor` has no request
-    /// unanswered but syncs (kota lists a request from its dispatch on), no
+    /// unanswered but syncs (kotatsu lists a request from its dispatch on), no
     /// task-graph round is live, the index pump is idle, and no removed
     /// folder's project is still shutting down (its end may start the
     /// folder again). Work starts inside one of these or from a new
     /// message, so the look is exact — with periodic ticks off, as tests
     /// run: workspace polling and checkpoints start work on their own. The
     /// metadata save that follows a build is not waited for.
-    kota::task<> wait_idle(const ipc::JSONPeer& editor);
+    async::task<> wait_idle(const ipc::JSONPeer& editor);
 
     /// What wait_idle() still waits for, one line each; empty once idle.
     std::vector<std::string> pending_work(const ipc::JSONPeer& editor);
 
-    kota::event_loop& loop;
+    async::event_loop& loop;
 
     /// The process's fid space, shared by every project.
     FileTable files;
@@ -486,7 +486,7 @@ private:
 
     // polling.cpp
 
-    kota::task<> poll_task();
+    async::task<> poll_task();
 
 private:
     std::uint64_t context_generation = 0;
@@ -504,25 +504,25 @@ private:
     /// Cancellation scope of the serving phase. run_serve_mode serves until
     /// it fires; schedule_shutdown() cancels the source, unwinding the
     /// transport tasks so the root task proceeds to close().
-    kota::cancellation_source shutdown_source;
+    async::cancellation_source shutdown_source;
 
     /// Shutdowns of removed projects and deferred applications of the file
     /// table's changes; joined in close().
-    kota::task_group<> bg_tasks;
+    async::task_group<> bg_tasks;
 
     /// The background looks at files and databases, and the ends of the
     /// file table's turns, until stop() cancels them.
-    kota::task_group<> polling;
+    async::task_group<> polling;
 
     /// The watch on the client process, which outlives stop(): a client
     /// may die between the shutdown reply and its exit.
-    kota::task_group<> client_watch;
+    async::task_group<> client_watch;
 
     /// stop() runs here, not in whoever asked first: the shutdown request
     /// that starts it is cancelled by the exit that follows.
-    kota::task_group<> stop_run;
+    async::task_group<> stop_run;
     bool stop_started = false;
-    kota::event stopped{false};
+    async::event stopped{false};
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
@@ -588,8 +588,8 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);
 /// a JSON peer: `accepted` registers its handlers and returns what serves it
 /// (none for nothing), kept beside the peer and destroyed first when the
 /// connection ends. `what` names the clients in the log.
-kota::task<> accept_peers(kota::tcp::acceptor acceptor,
-                          llvm::StringRef what,
-                          llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted);
+async::task<> accept_peers(async::tcp::acceptor acceptor,
+                           llvm::StringRef what,
+                           llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted);
 
 }  // namespace clice

@@ -79,7 +79,7 @@ public:
     /// acquire is the dispatch owner: its inputs feed the build. One
     /// acquire observes exactly one attempt; retry policy stays with the
     /// caller.
-    kota::task<Outcome> acquire(Request request);
+    async::task<Outcome> acquire(Request request);
 
     /// The request for clice's own build of the precompiled header the
     /// command of `unit` writes (Build::pch_unit): the unit's whole file,
@@ -198,11 +198,11 @@ private:
 
     /// One PCH round: run one attempt and retire the stash once a current
     /// round commits a result.
-    kota::task<RoundOutcome> run(RoundContext& ctx, std::uint64_t key_id);
+    async::task<RoundOutcome> run(RoundContext& ctx, std::uint64_t key_id);
 
     /// One attempt: revalidate the registered pair, or dispatch a build
     /// with the dispatch owner's inputs and commit the pair.
-    kota::task<RoundOutcome> attempt(RoundContext& ctx, std::uint64_t key_id);
+    async::task<RoundOutcome> attempt(RoundContext& ctx, std::uint64_t key_id);
 
     std::uint64_t intern(llvm::StringRef pch_key);
 

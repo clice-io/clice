@@ -41,8 +41,8 @@ std::optional<std::pair<llvm::StringRef, llvm::StringRef>> gcc_job_line(llvm::St
 /// Windows paths clang opens. Such a driver names its job's program
 /// POSIX-style too: a native clang's job for a Linux target names
 /// `/usr/include`, which is clang's to resolve, not a runtime's.
-kota::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCCStyleOutput output,
-                                                                             std::string driver) {
+async::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCCStyleOutput output,
+                                                                              std::string driver) {
     auto program = output.clang_job.empty() ? output.gcc_job : output.clang_job.front();
     if(!fs::cygwin::is_posix_path(program)) {
         co_return output;
@@ -301,7 +301,7 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
     return output;
 }
 
-kota::task<std::expected<GCCStyleOutput, std::string>>
+async::task<std::expected<GCCStyleOutput, std::string>>
     run_gcc_style(llvm::ArrayRef<std::string> args, std::size_t driver_tokens, std::string cwd) {
     std::vector<std::string> argv(args.begin(), args.begin() + driver_tokens);
     argv.insert(argv.end(), {"-E", "-dM", "-v"});
@@ -356,7 +356,7 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                            "-resource-dir",
                                            resource_dir().str()};
     auto parse_options =
-        kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+        kotatsu::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     llvm::Triple target(output.target);
     auto gcc_options = flags_for_clang(output.gcc_options, CompilerFamily::GCC);
     for(auto& parsed: option::table().parse(gcc_options, parse_options)) {
@@ -385,9 +385,9 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
     return job;
 }
 
-kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
-                                                          std::size_t driver_tokens,
-                                                          std::string cwd) {
+async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
+                                                           std::size_t driver_tokens,
+                                                           std::string cwd) {
     // A universal build (`-arch arm64 -arch x86_64`) compiles once for each
     // architecture, and a driver preprocesses for one only: clice reads the
     // code for the first.

@@ -162,13 +162,13 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 
     std::vector<std::string> parse_args(tokens.begin(), tokens.end());
     auto parse_options =
-        kota::option::ParseOptions{.dash_dash_parsing = true,
-                                   .visibility = family_visibility(command.family)};
+        kotatsu::option::ParseOptions{.dash_dash_parsing = true,
+                                      .visibility = family_visibility(command.family)};
 
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    std::vector<std::expected<kota::option::ParsedArg, kota::option::ParseError>> staged;
+    std::vector<std::expected<kotatsu::option::ParsedArg, kotatsu::option::ParseError>> staged;
     for(auto& parsed: option::table().parse(parse_args, parse_options)) {
         staged.push_back(parsed);
     }

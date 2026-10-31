@@ -62,7 +62,7 @@ WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
 ZEST_SUITE(ProjectIndexSave) {
 
 IndexerFixture fx;
-kota::event_loop& loop = fx.loop;
+async::event_loop& loop = fx.loop;
 Project& project = fx.project;
 IndexPump& pump = fx.pump;
 
@@ -70,7 +70,7 @@ bool merge(llvm::StringRef data) {
     return fx.merge(data);
 }
 
-kota::task<> async_save() {
+async::task<> async_save() {
     return fx.async_save();
 }
 
@@ -103,7 +103,7 @@ ZEST_CASE(SaveCommitsDirtyShard) {
 
     // Named body: a temporary lambda's captures die with the statement
     // while the coroutine frame still references them.
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await async_save();
     };
     auto task = save_body();
@@ -162,7 +162,7 @@ ZEST_CASE(SaveMigratesShardViews) {
     auto variants_before = before->variants();
     const char* bytes_before = before->bytes().data();
 
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await async_save();
     };
     auto task = save_body();
@@ -244,11 +244,11 @@ ZEST_CASE(MidSaveMergeKept) {
     // The merge task runs when save() suspends at its write await: it
     // merges after the dirty snapshot was taken and cleared, exactly the
     // window re-dirtying exists for.
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await async_save();
     };
     std::size_t mid_save_pending = 0;
-    auto merge_body = [&]() -> kota::task<> {
+    auto merge_body = [&]() -> async::task<> {
         mid_save_pending = project.index.pending_shard_writes();
         merge(fresh.data);
         co_return;
@@ -271,7 +271,7 @@ ZEST_CASE(MidSaveMergeKept) {
     ZASSERT(project.index.pending_shard_writes() == 1u);
     ZASSERT(it->content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 
-    auto again_body = [&]() -> kota::task<> {
+    auto again_body = [&]() -> async::task<> {
         co_await async_save();
     };
     auto task = again_body();
@@ -313,9 +313,9 @@ ZEST_CASE(RetiredDuringMigration) {
     plant("/proj/next.cpp");
 
     auto save_task = fx.async_save();
-    auto retire_body = [&]() -> kota::task<> {
+    auto retire_body = [&]() -> async::task<> {
         while(project.index.pending_shard_writes() != 0) {
-            co_await kota::yield(loop);
+            co_await async::yield(loop);
         }
         IndexInternals::retire_shard(project.index, last);
     };
@@ -356,11 +356,11 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     // The probe runs while the save awaits the search build on the thread
     // pool: what was merged since the last build is in neither index yet,
     // so it must still be pending, where a search scans it.
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await fx.async_save(index::SearchRebuild::Idle);
     };
     bool findable = true;
-    auto probe_body = [&]() -> kota::task<> {
+    auto probe_body = [&]() -> async::task<> {
         for(auto hash: merged) {
             findable &= indexed(hash) || project.index.search_pending().contains(hash);
         }
@@ -421,10 +421,10 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     // The definition moves to c.cpp while the build reads the table from
     // before: the built entry describes the old file, so the symbol stays
     // pending, where a search reads the table.
-    auto save_body = [&]() -> kota::task<> {
+    auto save_body = [&]() -> async::task<> {
         co_await fx.async_save(index::SearchRebuild::Idle);
     };
-    auto merge_body = [&]() -> kota::task<> {
+    auto merge_body = [&]() -> async::task<> {
         merge(moved.data);
         co_return;
     };
@@ -692,7 +692,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(2));
 
     auto save = [&] {
-        auto body = [&]() -> kota::task<> {
+        auto body = [&]() -> async::task<> {
             co_await async_save();
         };
         auto task = body();
@@ -762,7 +762,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     // but pb's pinned hash keeps the live set nonempty. The save must
     // retire the shard rather than compact to an empty variant set.
     fx.drop_index(project.file_table.intern(Spelling::absolute(a2.tu_path)));
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         co_await async_save();
     };
     auto task = body();
@@ -810,7 +810,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     ZASSERT(project.index.pending_shard_writes() == 1u);
 
     auto save = [&] {
-        auto body = [&]() -> kota::task<> {
+        auto body = [&]() -> async::task<> {
             co_await async_save();
         };
         auto task = body();
@@ -1007,7 +1007,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 1; }\n");
 
-    kota::event_loop loop;
+    async::event_loop loop;
     FileTable files;
     Project project{files};
     WorkerPool pool{loop};

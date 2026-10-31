@@ -30,7 +30,7 @@ struct QuerySpec {
 
 /// The job the driver runs for the query's command, over an empty file of
 /// the query's language.
-kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec);
+async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec);
 
 /// A command as clang's own driver reads it in place of a compiler clice
 /// does not run.

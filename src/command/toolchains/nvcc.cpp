@@ -802,10 +802,10 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
     return info;
 }
 
-kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
-                                                     llvm::StringRef input,
-                                                     llvm::StringRef kind,
-                                                     std::string cwd) {
+async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                      llvm::StringRef input,
+                                                      llvm::StringRef kind,
+                                                      std::string cwd) {
     /// nvcc only offloads CUDA-language inputs; a host-language entry
     /// (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles in a single
     /// host step. The dryrun query follows the effective language so it

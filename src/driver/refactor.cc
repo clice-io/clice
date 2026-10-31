@@ -14,7 +14,7 @@ namespace clice::driver {
 namespace {
 
 struct RenameOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<LOCATOR> <NEW-NAME>",
               help =

@@ -44,7 +44,7 @@ struct WorkerCrashInfo {
 /// done — the exit observed, the stderr drained — and only then learns whether
 /// its own request is the one that killed the worker.
 struct WorkerDeath {
-    kota::event done;
+    async::event done;
 
     /// The crash tags (worker::crash_tag) of the request the worker named in
     /// its last words, or of the ones that outlived the pool's deadline;
@@ -96,7 +96,7 @@ struct StderrTail {
 
     /// The pipe reached EOF. The exit is observed independently of the
     /// pipe, so the crash report waits for this before reading the lines.
-    kota::event drained;
+    async::event drained;
 
     void add(std::string line) {
         if(lines.size() == capacity) {
@@ -212,13 +212,13 @@ struct StatelessReport {
 ///     preemption, requeue freely.
 class WorkerPool {
 public:
-    WorkerPool(kota::event_loop& loop) : loop(loop), scheduler(SchedulerOptions{}) {}
+    WorkerPool(async::event_loop& loop) : loop(loop), scheduler(SchedulerOptions{}) {}
 
     /// Spawn all worker processes. Returns false on failure.
     bool start(const WorkerPoolOptions& opts);
 
     /// Gracefully stop all workers.
-    kota::task<> stop();
+    async::task<> stop();
 
     /// Whether a stateful request is dispatched and unanswered.
     bool stateful_busy() const {
@@ -246,7 +246,7 @@ public:
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         kota::cancellation_token cancel = {},
+                                         async::cancellation_token cancel = {},
                                          RequestCost cost = {},
                                          StatelessReport* report = nullptr,
                                          llvm::function_ref<bool()> admitted = {});
@@ -272,7 +272,7 @@ public:
     /// FIXME: takes no cancellation: a request its client cancels while every
     /// worker of the kind is down still waits here until one returns, up to
     /// revive_after.
-    kota::task<bool> await_capacity(bool stateful);
+    async::task<bool> await_capacity(bool stateful);
 
     /// True when a Dead slot is not final: the running pool revives dead
     /// slots after a cooldown, so "no capacity" is a window, not a decision.
@@ -352,7 +352,7 @@ private:
             counted_deaths.clear();
         }
 
-        kota::process proc;
+        async::process proc;
 
         /// Shared with every coroutine that awaits on it (request senders,
         /// the IO pump), so a slot can drop its reference the moment the
@@ -418,12 +418,12 @@ private:
         RequestId id;
 
         /// Fired by the scheduler's Cancel: cancels the request over IPC.
-        kota::cancellation_source preempt;
+        async::cancellation_source preempt;
 
         /// Signalled by the scheduler's Dispatch, or to observe that the
         /// request can never run (pool stopped, all slots given up, its
         /// sender cancelled it while it waited).
-        kota::event ready{};
+        async::event ready{};
 
         /// The slot and its generation the Dispatch named.
         std::optional<std::size_t> slot;
@@ -544,7 +544,7 @@ private:
 
     /// Respawn a slot after `delay`, retrying with growing backoff if the
     /// spawn itself fails; gives the slot up once the streak is exhausted.
-    kota::task<> respawn_after(std::size_t index, bool stateful, std::chrono::milliseconds delay);
+    async::task<> respawn_after(std::size_t index, bool stateful, std::chrono::milliseconds delay);
 
     /// Backoff before the respawn for the given crash streak: immediate for
     /// the first crash, exponential from the second on.
@@ -560,7 +560,7 @@ private:
     void give_up_slot(std::size_t index, bool stateful);
 
     /// The pool's pace: samples memory and the workers for the scheduler.
-    kota::task<> monitor_loop();
+    async::task<> monitor_loop();
 
     /// Take a sample and hand it to the scheduler.
     void sample();
@@ -587,10 +587,10 @@ private:
 
     /// SIGKILL any worker still alive after the SIGTERM grace period, so a
     /// wedged worker can't block stop()'s join forever.
-    kota::task<> kill_stragglers();
+    async::task<> kill_stragglers();
 
     struct SpawnedProcess {
-        kota::process proc;
+        async::process proc;
         std::shared_ptr<ipc::BincodePeer> peer;
         std::shared_ptr<StderrTail> stderr_tail;
     };
@@ -604,10 +604,10 @@ private:
     /// The IO pump, owning a peer reference so the peer outlives its own
     /// run() no matter when the slot drops its copy. The incarnation dies
     /// when its link ends.
-    kota::task<> run_peer(std::shared_ptr<ipc::BincodePeer> peer,
-                          std::size_t index,
-                          bool stateful,
-                          unsigned generation);
+    async::task<> run_peer(std::shared_ptr<ipc::BincodePeer> peer,
+                           std::size_t index,
+                           bool stateful,
+                           unsigned generation);
 
     /// Append a new slot (initial start and scale-up).
     bool spawn_worker(bool stateful);
@@ -620,7 +620,7 @@ private:
 
     /// After `revive_after`, grant a given-up slot a fresh crash budget
     /// and respawn it: the pool never stays at zero workers forever.
-    kota::task<> revive_slot(std::size_t index, bool stateful);
+    async::task<> revive_slot(std::size_t index, bool stateful);
 
     void install_evict_handler(WorkerProcess& worker, std::size_t index);
 
@@ -628,7 +628,7 @@ private:
     /// the probe.
     void install_gate_handler(WorkerProcess& worker);
 
-    kota::task<> monitor_worker(std::size_t index, bool stateful);
+    async::task<> monitor_worker(std::size_t index, bool stateful);
 
     /// The sends without the probe, which parks a reply only once its
     /// dispatch released the slot. `sent` tells whether the request reached
@@ -642,7 +642,7 @@ private:
     template <typename Params>
     RequestResult<Params> dispatch_stateless(const Params& params,
                                              worker::Priority priority,
-                                             kota::cancellation_token cancel,
+                                             async::cancellation_token cancel,
                                              RequestCost cost,
                                              StatelessReport* report,
                                              llvm::function_ref<bool()> admitted,
@@ -656,7 +656,7 @@ private:
     /// touches.
     constexpr static std::uint64_t swap_threshold = 64ull << 20;
 
-    kota::event_loop& loop;
+    async::event_loop& loop;
 
     llvm::SmallVector<WorkerProcess> stateless_workers;
 
@@ -679,7 +679,7 @@ private:
 
     /// Set whenever a slot (re)enters service, and at stop; await_capacity
     /// waits on it.
-    kota::event capacity_returned;
+    async::event capacity_returned;
 
     // Stateful routing: each open document (path_id) is pinned to one worker.
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
@@ -690,14 +690,14 @@ private:
     /// at their poll points, and lets monitor_worker() attribute the
     /// SIGTERM-induced exits that follow to intentional shutdown (no anomaly,
     /// no respawn).
-    kota::cancellation_source stop_scope;
+    async::cancellation_source stop_scope;
 
     /// All long-lived pool coroutines: monitor_worker() exit observers, the
     /// peer IO pumps and stderr drains, respawn tasks, and the monitor loop.
     /// Never cancelled as a group — stop() joins it, so shutdown waits until
     /// every worker process actually exited and its final output (crash
     /// stacktraces, sanitizer reports) was drained to EOF.
-    kota::task_group<> worker_tasks;
+    async::task_group<> worker_tasks;
 
     WorkerPoolOptions options;
 
@@ -759,7 +759,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 kota::cancellation_token cancel,
+                                                 async::cancellation_token cancel,
                                                  RequestCost cost,
                                                  StatelessReport* report,
                                                  llvm::function_ref<bool()> admitted) {
@@ -796,7 +796,7 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     if(idx == SIZE_MAX) {
         scheduler.user_activity(now());
         execute();
-        co_await kota::fail(
+        co_await async::fail(
             ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});
     }
 
@@ -839,13 +839,13 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
     co_await death->done.wait();
-    co_await kota::fail(death_error(*death, inflight.tag, worker::death_identity(idx, gen, true)));
+    co_await async::fail(death_error(*death, inflight.tag, worker::death_identity(idx, gen, true)));
 }
 
 template <typename Params>
 RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
                                                      worker::Priority priority,
-                                                     kota::cancellation_token cancel,
+                                                     async::cancellation_token cancel,
                                                      RequestCost cost,
                                                      StatelessReport* report,
                                                      llvm::function_ref<bool()> admitted,
@@ -854,7 +854,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     using worker::dispatch_errc::worker_unavailable;
     while(true) {
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
-            co_await kota::fail(
+            co_await async::fail(
                 cancel.cancelled()
                     ? ipc::Error{cancelled, "Request cancelled by its round"}
                     : ipc::Error{worker_unavailable, "No stateless workers available"});
@@ -890,10 +890,10 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // Asked to stop before it reached the worker: giving the slot back
         // costs nothing.
         if(request.preempt.cancelled()) {
-            co_await kota::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
         if(admitted && !admitted()) {
-            co_await kota::fail(ipc::Error{cancelled, "Request stopped by a crash"});
+            co_await async::fail(ipc::Error{cancelled, "Request stopped by a crash"});
         }
 
         auto peer = stateless_workers[idx].peer;
@@ -926,7 +926,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // its death record is not done yet, so it is requeued unblamed and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
-            co_await kota::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.
@@ -939,7 +939,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         }
 
         co_await death->done.wait();
-        co_await kota::fail(
+        co_await async::fail(
             death_error(*death, inflight.tag, worker::death_identity(idx, gen, false)));
     }
 }

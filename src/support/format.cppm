@@ -35,13 +35,13 @@ struct std::formatter<std::error_code> : std::formatter<std::string_view> {
     }
 };
 
-template <kota::meta::enum_type E>
+template <kotatsu::meta::enum_type E>
 struct std::formatter<E> : std::formatter<std::string> {
     using Base = std::formatter<std::string>;
 
     template <typename FormatContext>
     auto format(const E& value, FormatContext& ctx) const {
-        auto name = kota::meta::enum_name(value);
+        auto name = kotatsu::meta::enum_name(value);
         if(name.empty()) {
             using U = std::underlying_type_t<E>;
             return Base::format(std::format("{}", static_cast<U>(value)), ctx);

@@ -41,11 +41,11 @@ std::expected<IndexResult, std::string> request_index(const index::ServerEndpoin
 /// Serve a project's control channel: accept connections on `acceptor`
 /// for as long as the task runs, each answering the control requests
 /// against the project.
-kota::task<> serve(ServedProject& project, kota::tcp::acceptor acceptor);
+async::task<> serve(ServedProject& project, async::tcp::acceptor acceptor);
 
 }  // namespace clice::control
 
-namespace kota::ipc::protocol {
+namespace kotatsu::ipc::protocol {
 
 template <>
 struct RequestTraits<clice::control::IndexParams> {
@@ -53,4 +53,4 @@ struct RequestTraits<clice::control::IndexParams> {
     constexpr inline static std::string_view method = "clice/index";
 };
 
-}  // namespace kota::ipc::protocol
+}  // namespace kotatsu::ipc::protocol

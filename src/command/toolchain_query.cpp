@@ -70,9 +70,9 @@ struct UnknownNames {
 
 UnknownNames unknown_names(const Job& job) {
     std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
-    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
+    auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CC1Option};
     UnknownNames result;
-    std::vector<kota::option::ParsedArg> given;
+    std::vector<kotatsu::option::ParsedArg> given;
     for(auto& parsed: option::table().parse(cc1, parse_options)) {
         if(!parsed) {
             continue;
@@ -95,7 +95,7 @@ UnknownNames unknown_names(const Job& job) {
 /// Whether a driver option names one of `unknown`: the CPU of -mcpu,
 /// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
 /// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
-bool names_unknown(const kota::option::ParsedArg& arg,
+bool names_unknown(const kotatsu::option::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
     unsigned given = 0;
     switch(arg.id) {
@@ -115,7 +115,7 @@ bool names_unknown(const kota::option::ParsedArg& arg,
 
 }  // namespace
 
-kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
+async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     auto driver = find_driver(spec.argv[0], spec.cwd);
     if(!driver && spec.query_toolchain) {
         co_return std::unexpected(std::move(driver.error()));
@@ -165,7 +165,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
     if(family == CompilerFamily::Zig) {
         args.erase(args.begin() + 1);
     }
-    auto parse_options = kota::option::ParseOptions{.visibility = family_visibility(family)};
+    auto parse_options = kotatsu::option::ParseOptions{.visibility = family_visibility(family)};
     std::string named;
     std::vector<std::string> flags(args.begin() + 1, args.end());
     for(auto& parsed: option::table().parse(flags, parse_options)) {

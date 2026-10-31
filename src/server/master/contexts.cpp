@@ -140,9 +140,10 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
     return result;
 }
 
-kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
-                                                                  Fid context_path_id,
-                                                                  ext::SwitchContextParams params) {
+async::task<ext::SwitchContextResult>
+    MasterServer::switch_context(Fid path_id,
+                                 Fid context_path_id,
+                                 ext::SwitchContextParams params) {
     ext::SwitchContextResult result;
     // A choice made against an outdated listing may reference contexts
     // that no longer exist — make the client re-query.
@@ -154,7 +155,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // The project offering the chosen item: the file's own first, then the
     // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
-    auto offers = [&](ServedProject& project) -> kota::task<bool> {
+    auto offers = [&](ServedProject& project) -> async::task<bool> {
         // The listing counts the places the host's compile enters the file
         // by its include tree.
         ContextChoice wanted{.host_path_id = context_path_id};
@@ -227,7 +228,7 @@ static std::string_view source_name(CommandSource source) {
     std::unreachable();
 }
 
-kota::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id) {
+async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id) {
     ext::CurrentContextResult result;
     auto* document = find_document(path_id);
     if(!document || !document->owner) {

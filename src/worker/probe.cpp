@@ -28,7 +28,7 @@ std::optional<LoopEvent> parse_loop_event(llvm::StringRef name) {
     return parse_name<LoopEvent>(loop_event_names, name);
 }
 
-kota::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
+async::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
     builds[file][std::to_underlying(kind)] += 1;
     auto it = ranges::find_if(placed, [&](const Hold& hold) {
         return !hold.parked && hold.kind == kind && hold.file == file;

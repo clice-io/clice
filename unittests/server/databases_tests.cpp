@@ -47,7 +47,7 @@ struct WorkspaceTick {
 WorkspaceTick workspace_tick(Fixture& fixture) {
     auto& disk = fixture.server.files.disk;
     disk.look_all();
-    auto [joined] = kota::run(fixture.served->poll_sources());
+    auto [joined] = async::run(fixture.served->poll_sources());
     return {.joined = *joined, .changes = disk.take_changes()};
 }
 

@@ -13,14 +13,16 @@ namespace clice {
 namespace ranges = std::ranges;
 namespace views = std::views;
 
-namespace ipc = kota::ipc;
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
+namespace ipc = kotatsu::ipc;
+namespace lsp = kotatsu::ipc::lsp;
+namespace protocol = kotatsu::ipc::protocol;
 
-namespace codec = kota::codec;
-namespace json = kota::codec::json;
+namespace codec = kotatsu::codec;
+namespace json = kotatsu::codec::json;
 
-namespace fs = kota::fs;
-namespace sys = kota::sys;
+namespace fs = kotatsu::fs;
+namespace sys = kotatsu::sys;
+
+namespace async = kotatsu::async;
 
 }  // namespace clice

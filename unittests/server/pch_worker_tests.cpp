@@ -38,7 +38,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     std::string pch_path;
     bool phase1_done = false;
 
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCHParams params;
         params.file = main_path;
         params.directory = dir;
@@ -87,7 +87,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     auto bound = preamble_bound(main_text);
 
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
@@ -132,7 +132,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
     WorkerHandle sl;
     ZASSERT(sl.spawn());
     std::string pch_path;
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCHParams params;
         params.file = main_path;
         params.directory = dir;
@@ -155,7 +155,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
     WorkerHandle sf;
     ZASSERT(sf.spawn(true));
     bool done = false;
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
@@ -192,7 +192,7 @@ ZEST_CASE(BlobWriteFailure) {
     ZASSERT(sl.spawn());
 
     bool done = false;
-    sl.run([&]() -> kota::task<> {
+    sl.run([&]() -> async::task<> {
         worker::BuildPCHParams params;
         params.file = main_path;
         params.directory = dir;
@@ -240,7 +240,7 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> kota::task<> {
+    sf.run([&]() -> async::task<> {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;

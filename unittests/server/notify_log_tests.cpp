@@ -11,7 +11,7 @@ namespace {
 ZEST_SUITE(NotifyLog) {
 
 ZEST_CASE(BoundedRetention) {
-    kota::event_loop loop;
+    async::event_loop loop;
     MasterServer server(loop, "");
 
     // Keep the guidance gate open but silence the console sink: the test

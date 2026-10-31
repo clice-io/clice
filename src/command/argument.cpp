@@ -7,7 +7,7 @@ namespace clice {
 
 namespace option {
 
-namespace eo = kota::option;
+namespace eo = kotatsu::option;
 
 namespace detail {
 
@@ -318,7 +318,8 @@ bool is_xclang_option(unsigned id) {
 /// and -MMD take the file they write as their argument, which the table
 /// reads as an input.
 static bool dependency_options(llvm::ArrayRef<const char*> args) {
-    auto options = kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    auto options =
+        kotatsu::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     bool file_next = false;
     for(auto& parsed: option::table().parse(args, options)) {
         if(!parsed) {
@@ -421,7 +422,7 @@ bool is_diagnostics_option(unsigned id) {
     return false;
 }
 
-std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
+std::uint16_t written_alias(const kotatsu::option::ParsedArg& parsed) {
     auto& options = option::table().option_infos;
     auto written = [&](std::uint32_t id) {
         auto& option = options[id - 1];
@@ -456,7 +457,7 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
         }
         return;
     }
-    kota::option::ParsedArg parsed;
+    kotatsu::option::ParsedArg parsed;
     parsed.id = arg.opt_id;
     for(const char* value: arg.values) {
         parsed.add_value(value);
@@ -471,31 +472,31 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
     auto alias = option::table().option(arg.alias);
     std::string name(alias->prefixed_name());
     // A flag alias implies its values (`-flto` is -flto=full).
-    if(alias->kind() == kota::option::Kind::Flag) {
+    if(alias->kind() == kotatsu::option::Kind::Flag) {
         cb(name);
         return;
     }
     switch(alias->render_style()) {
-        case kota::option::RenderStyle::Joined:
+        case kotatsu::option::RenderStyle::Joined:
             cb(name + arg.values[0]);
             for(const char* value: arg.values.drop_front()) {
                 cb(value);
             }
             return;
-        case kota::option::RenderStyle::Separate:
+        case kotatsu::option::RenderStyle::Separate:
             cb(name);
             for(const char* value: arg.values) {
                 cb(value);
             }
             return;
-        case kota::option::RenderStyle::CommaJoined:
+        case kotatsu::option::RenderStyle::CommaJoined:
             for(auto [i, value]: views::enumerate(arg.values)) {
                 name += i == 0 ? "" : ",";
                 name += value;
             }
             cb(name);
             return;
-        case kota::option::RenderStyle::Values: std::unreachable();
+        case kotatsu::option::RenderStyle::Values: std::unreachable();
     }
 }
 
@@ -519,7 +520,7 @@ void render_driver_arg(const Arg& arg,
     }
 
     auto reads_back = [&](std::vector<std::string>& fragments) {
-        auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
+        auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CLOption};
         std::size_t count = 0;
         bool same = true;
         for(auto& parsed: option::table().parse(fragments, parse_options)) {
@@ -551,7 +552,7 @@ void render_driver_arg(const Arg& arg,
             continue;
         }
         std::vector<std::string> spelled{std::string(option.prefixed_name)};
-        if(option.kind != kota::option::Kind::Flag) {
+        if(option.kind != kotatsu::option::Kind::Flag) {
             if(arg.values.size() != 1) {
                 continue;
             }
@@ -585,8 +586,8 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
 
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
     auto options =
-        kota::option::ParseOptions{.dash_dash_parsing = true,
-                                   .visibility = family_visibility(driver_family(args[0]))};
+        kotatsu::option::ParseOptions{.dash_dash_parsing = true,
+                                      .visibility = family_visibility(driver_family(args[0]))};
     for(auto& result: option::table().parse(parse_args, options)) {
         /// Unparseable and unknown arguments are kept verbatim: dropping an
         /// option we don't understand could merge keys that must differ.

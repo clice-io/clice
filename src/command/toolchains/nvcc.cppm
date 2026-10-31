@@ -145,10 +145,10 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
 /// derive on its own. The host compiler is then asked as a GCC-style
 /// driver is, in the input's language and with the command's sysroot, and
 /// clang's own driver builds the job, in CUDA mode for a CUDA input.
-kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
-                                                     llvm::StringRef input,
-                                                     llvm::StringRef kind,
-                                                     std::string cwd);
+async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                      llvm::StringRef input,
+                                                      llvm::StringRef kind,
+                                                      std::string cwd);
 
 /// A rule's flags for an NVCC command, in the same nvcc spellings as the
 /// command they edit, rewritten like the command itself: the options files

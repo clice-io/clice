@@ -42,13 +42,13 @@ CommandID
     Normalizer normalizer{.commands = commands, .files = files};
 
     auto remove_parse_options =
-        kota::option::ParseOptions{.visibility = family_visibility(base.family)};
+        kotatsu::option::ParseOptions{.visibility = family_visibility(base.family)};
 
     /// One remove pattern: the option it names, and whether a `*` joined
     /// to the option's name takes every option spelled with that prefix
     /// (`-W*` takes -Wall and -Wextra, options of their own).
     struct RemovePattern {
-        kota::option::ParsedArg option;
+        kotatsu::option::ParsedArg option;
         bool prefix = false;
     };
 
@@ -61,7 +61,7 @@ CommandID
             is_nvcc ? translate_nvcc_removes(normalizer, base.driver, flags, anchor)
                     : std::vector<std::string>(flags.begin(), flags.end()));
         std::vector<RemovePattern> removes;
-        auto add = [&](const kota::option::ParsedArg& parsed, llvm::StringRef written) {
+        auto add = [&](const kotatsu::option::ParsedArg& parsed, llvm::StringRef written) {
             auto& remove = removes.emplace_back(RemovePattern{
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,

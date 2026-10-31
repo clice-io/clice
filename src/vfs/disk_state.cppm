@@ -161,7 +161,7 @@ public:
 
     /// End every turn right before `loop` next waits for IO, until the
     /// task is cancelled: the event loop's owner runs it.
-    kota::task<> end_turns(kota::event_loop& loop);
+    async::task<> end_turns(async::event_loop& loop);
 
     /// Whether the disk still holds the bytes hashing to `hash`. Hash 0 is
     /// the consumed-hash sentinel for "the worker had no bytes to hash":

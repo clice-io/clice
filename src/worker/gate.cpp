@@ -14,7 +14,7 @@ struct Gate {
     bool released = false;
     /// Reports the park from the parked thread to the loop; destroyed with
     /// the gate's release, since it keeps the loop alive.
-    kota::relay relay;
+    async::relay relay;
 };
 
 /// The gates the master placed. The mutex also orders a relay's send
@@ -38,7 +38,7 @@ void erase_gate(std::vector<Gate>::iterator it) {
 
 }  // namespace
 
-void install_test_gates(ipc::BincodePeer& peer, kota::event_loop& loop) {
+void install_test_gates(ipc::BincodePeer& peer, async::event_loop& loop) {
     gates.peer = &peer;
     peer.on_notification([&loop](const worker::GateParams& params) {
         std::lock_guard lock(gates.mutex);

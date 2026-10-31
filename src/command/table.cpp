@@ -80,7 +80,7 @@ const Command& CommandTable::get(CommandID id) const {
 }
 
 LocalArg CommandTable::local_arg(
-    const std::expected<kota::option::ParsedArg, kota::option::ParseError>& parsed,
+    const std::expected<kotatsu::option::ParsedArg, kotatsu::option::ParseError>& parsed,
     llvm::ArrayRef<std::string> tokens) {
     if(!parsed || parsed->id == option::OPT_UNKNOWN || parsed->id == option::OPT_INPUT) {
         auto index = parsed ? parsed->index : parsed.error().index;

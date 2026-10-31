@@ -10,7 +10,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--json"},
              help =

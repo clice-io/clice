@@ -19,7 +19,7 @@ namespace clice::testing {
 /// tests set up or check goes through the accessors below, ServedProject's
 /// only friend.
 struct ServedProjectFixture {
-    kota::event_loop loop;
+    async::event_loop loop;
     MasterServer server{loop, ""};
     std::shared_ptr<ServedProject> served;
 
@@ -73,11 +73,11 @@ struct ServedProjectFixture {
     /// The project's PCH adoption step (ServedProject::ensure_pch) under the
     /// builtin command: whether a request on the session's buffer, taken at
     /// `generation` and the document's `epoch`, compiles against a PCH.
-    kota::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
-                                std::uint64_t generation,
-                                std::uint64_t epoch,
-                                const std::string& directory,
-                                const std::vector<std::string>& arguments) {
+    async::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
+                                 std::uint64_t generation,
+                                 std::uint64_t epoch,
+                                 const std::string& directory,
+                                 const std::vector<std::string>& arguments) {
         auto& project = served->project;
         Resolution resolution{
             .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},

@@ -46,7 +46,7 @@ ZEST_CASE(AliasAndDashDash) {
     ZASSERT(parse_first({"--std=c++20"}) == OPT_std_EQ);
 
     std::vector<std::string> args = {"-I", "/usr/include", "--", "main.cpp"};
-    auto options = kota::option::ParseOptions{.dash_dash_parsing = true};
+    auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true};
     unsigned count = 0;
     for(auto& result: option::table().parse(args, options)) {
         if(result.has_value()) {
@@ -72,7 +72,7 @@ ZEST_CASE(CLVisibility) {
     auto gcc_vis = family_visibility(CompilerFamily::Clang);
 
     auto parse_with_vis = [](std::vector<std::string> args, unsigned vis) -> unsigned {
-        auto options = kota::option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
+        auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
         for(auto& result: option::table().parse(args, options)) {
             if(result.has_value()) {
                 return result->id;
@@ -179,7 +179,7 @@ ZEST_CASE(EveryAliasRendersBack) {
     /// Every alias a GCC-style command can write renders back to itself:
     /// read again, the same option through the same alias, the same values.
     auto visibility = family_visibility(CompilerFamily::GCC);
-    auto parse_options = kota::option::ParseOptions{.visibility = visibility};
+    auto parse_options = kotatsu::option::ParseOptions{.visibility = visibility};
     llvm::BumpPtrAllocator allocator;
     llvm::StringSaver strings(allocator);
     std::size_t checked = 0;
@@ -190,11 +190,11 @@ ZEST_CASE(EveryAliasRendersBack) {
         std::string name(option.prefixed_name);
         std::vector<std::string> written;
         switch(option.kind) {
-            case kota::option::Kind::Flag: written = {name}; break;
-            case kota::option::Kind::Joined: written = {name + "1"}; break;
-            case kota::option::Kind::CommaJoined: written = {name + "a,b"}; break;
-            case kota::option::Kind::Separate:
-            case kota::option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
+            case kotatsu::option::Kind::Flag: written = {name}; break;
+            case kotatsu::option::Kind::Joined: written = {name + "1"}; break;
+            case kotatsu::option::Kind::CommaJoined: written = {name + "a,b"}; break;
+            case kotatsu::option::Kind::Separate:
+            case kotatsu::option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
             default: continue;
         }
         auto read = [&](std::vector<std::string>& args) -> std::optional<Arg> {

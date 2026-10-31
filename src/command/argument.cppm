@@ -39,7 +39,7 @@ enum DriverClass : unsigned {
     DXCOption = 1u << 6,
 };
 
-const kota::option::OptTable& table();
+const kotatsu::option::OptTable& table();
 
 }  // namespace option
 
@@ -191,7 +191,7 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 
 /// The alias of `parsed`'s option that the command wrote, 0 when it wrote
 /// the option's own name: the parse resolves an alias to its option.
-std::uint16_t written_alias(const kota::option::ParsedArg& parsed);
+std::uint16_t written_alias(const kotatsu::option::ParsedArg& parsed);
 
 /// Whether the command's own driver gets `arg` through the alias the
 /// command wrote: a GCC-style driver, which may know that name alone, when

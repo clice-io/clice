@@ -1345,9 +1345,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
 
 std::expected<LoadedFacts, LoadError> load_facts(Project& project,
                                                  llvm::ArrayRef<std::string> scope) {
-    std::vector<kota::GlobPattern> globs;
+    std::vector<kotatsu::GlobPattern> globs;
     for(auto& pattern: scope) {
-        auto glob = kota::GlobPattern::create(pattern);
+        auto glob = kotatsu::GlobPattern::create(pattern);
         if(!glob) {
             return std::unexpected(LoadError{
                 .message =
@@ -1542,10 +1542,10 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         return it->second;
     };
 
-    std::vector<std::pair<llvm::StringRef, kota::GlobPattern>> globs;
+    std::vector<std::pair<llvm::StringRef, kotatsu::GlobPattern>> globs;
     for(auto& module: spec.modules) {
         for(auto& pattern: module.files) {
-            auto glob = kota::GlobPattern::create(pattern);
+            auto glob = kotatsu::GlobPattern::create(pattern);
             if(!glob) {
                 return std::unexpected(
                     std::format("invalid glob '{}': {}", pattern, glob.error().message));

@@ -114,7 +114,7 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
     // (`-Xpreprocessor -Werror`) they stay that option's.
     std::vector<std::string> result;
     std::size_t next = 0;
-    auto parse_options = kota::option::ParseOptions{.visibility = family_visibility(family)};
+    auto parse_options = kotatsu::option::ParseOptions{.visibility = family_visibility(family)};
     for(auto& parsed: option::table().parse(flags, parse_options)) {
         if(!parsed) {
             continue;

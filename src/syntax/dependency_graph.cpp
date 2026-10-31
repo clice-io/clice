@@ -701,7 +701,7 @@ struct FullScan {
 
         /// `files[i]`'s scan; a read's is there once `reads` has joined.
         std::vector<std::optional<ScannedText>> scans;
-        kota::task_group<> reads;
+        async::task_group<> reads;
     };
 
     FullScan(CompilationDatabase& cdb,
@@ -727,10 +727,10 @@ struct FullScan {
         wave.reads.spawn(read_into(wave.scans, wave.scans.size() - 1, files.resolve(fid).data()));
     }
 
-    static kota::task<> read_into(std::vector<std::optional<ScannedText>>& scans,
-                                  std::size_t index,
-                                  const char* path) {
-        auto scanned = co_await kota::queue([path] { return read_and_scan(path); });
+    static async::task<> read_into(std::vector<std::optional<ScannedText>>& scans,
+                                   std::size_t index,
+                                   const char* path) {
+        auto scanned = co_await async::queue([path] { return read_and_scan(path); });
         scans[index] = std::move(scanned);
     }
 
@@ -761,7 +761,7 @@ struct FullScan {
     /// files start from on the thread pool, into the scanner's listings —
     /// a listing the cache can still confirm skips the readdir; its one
     /// validation stat happens lazily at first use. Returns how many.
-    std::size_t list_directories(kota::task_group<>& listings) {
+    std::size_t list_directories(async::task_group<>& listings) {
         llvm::StringSet<> unique_dirs;
         ScopedTimer lookup;
         for(auto& group: graph.groups()) {
@@ -785,12 +785,12 @@ struct FullScan {
         return listed;
     }
 
-    static kota::task<> list_into(vfs::Scope& scope, std::string dir) {
-        auto listing = co_await kota::queue([&dir] { return vfs::list(dir); });
+    static async::task<> list_into(vfs::Scope& scope, std::string dir) {
+        auto listing = co_await async::queue([&dir] { return vfs::list(dir); });
         scope.adopt(dir, std::move(listing));
     }
 
-    kota::task<> run(llvm::ArrayRef<CommandRef> units) {
+    async::task<> run(llvm::ArrayRef<CommandRef> units) {
         ScopedTimer timer;
 
         // One scan group per unique (command identity, input language) —
@@ -832,7 +832,7 @@ struct FullScan {
         }
         report.source_files = wave->files.size();
 
-        kota::task_group<> listings;
+        async::task_group<> listings;
         auto listed = list_directories(listings);
         co_await listings.join();
         LOG_INFO("Pre-populated dir cache: {} directories", listed);
@@ -905,7 +905,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
     }
 
     FullScan scan(cdb, toolchain, graph, report);
-    kota::run(scan.run(units));
+    async::run(scan.run(units));
     return report;
 }
 

@@ -10,7 +10,7 @@ namespace clice {
 /// thread that runs it, until the master releases the gate. The worker is
 /// then busy with the request as with real work, so a cancel, an edit or a
 /// death arrives while the work is under way.
-void install_test_gates(ipc::BincodePeer& peer, kota::event_loop& loop);
+void install_test_gates(ipc::BincodePeer& peer, async::event_loop& loop);
 
 /// Park the calling thread while a gate stands for `tag` (see CrashScope).
 void park_at_test_gate(llvm::StringRef tag);

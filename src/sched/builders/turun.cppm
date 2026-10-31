@@ -139,7 +139,7 @@ public:
     /// request's existence means work is owed, and a clean node left by an
     /// earlier success would otherwise satisfy the join without running
     /// anything.
-    kota::task<Outcome> run(Fid path_id, Plan plan, Guards guards = {});
+    async::task<Outcome> run(Fid path_id, Plan plan, Guards guards = {});
 
 private:
     struct Inputs {
@@ -148,7 +148,7 @@ private:
         Guards guards;
     };
 
-    kota::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
+    async::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
         return {Family::TURun, path_id.raw};

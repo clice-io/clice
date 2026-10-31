@@ -657,7 +657,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     ZASSERT(f.merge(indexed.data));
 
     index::IndexReport report;
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         report = co_await save_project(f.project, f.loop, f.pump.save_debt());
     };
     auto task = body();

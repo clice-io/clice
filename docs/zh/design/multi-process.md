@@ -20,7 +20,7 @@ clice 通过多进程架构解决上述问题：每个编译任务都在独立�
 
 ```text
 Master Process (MasterServer)
-├── Event loop (kota)
+├── Event loop (kotatsu)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
 ├── Compile scheduling (task graph: PCH and PCM builders, AST and TU-run families)

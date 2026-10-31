@@ -204,7 +204,7 @@ void ProjectIndex::drop_search_runs(std::uint32_t runs) {
     header_changed = true;
 }
 
-kota::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
+async::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     if(!search_update_due(rebuild)) {
         co_return;
     }
@@ -264,7 +264,7 @@ kota::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     auto finished = llvm::make_scope_exit([&] { changed_during_search_build.reset(); });
 
     std::vector<std::vector<std::byte>> segments;
-    co_await kota::queue([&] { segments = build_search_segments(snapshot); });
+    co_await async::queue([&] { segments = build_search_segments(snapshot); });
     std::vector<std::unique_ptr<llvm::MemoryBuffer>> buffers;
     for(auto& segment: segments) {
         buffers.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(segment)));
@@ -569,9 +569,9 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     writing_shards = 0;
 }
 
-kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
-                                             kota::event_loop& loop,
-                                             IndexReport& report) {
+async::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
+                                              async::event_loop& loop,
+                                              IndexReport& report) {
     // The records are read from the database the batch went to: the one
     // replacing a discarded database is bound at its first save.
     this->db = &db;
@@ -619,9 +619,9 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     co_return co_await rebind_views(db, loop, grew);
 }
 
-kota::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
-                                            kota::event_loop& loop,
-                                            bool at_once) {
+async::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
+                                             async::event_loop& loop,
+                                             bool at_once) {
     // The resident shards borrow the previous snapshot, or own the bytes
     // the batch just wrote: both move onto the new snapshot, whose bytes are
     // identical — the writer lock keeps every key the batch left alone
@@ -630,7 +630,7 @@ kota::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
     // with identical meaning.
     constexpr std::uint32_t rebind_batch = 512;
     auto rebind =
-        [&](auto& held, const llvm::DenseSet<Fid>& changed, BlobKind kind) -> kota::task<> {
+        [&](auto& held, const llvm::DenseSet<Fid>& changed, BlobKind kind) -> async::task<> {
         llvm::SmallVector<Fid> resident;
         for(auto& [file, value]: held) {
             if(value.loaded() && !changed.contains(file)) {
@@ -639,7 +639,7 @@ kota::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
         }
         for(std::uint32_t i = 0; i < resident.size() && !db.corrupted(); i += 1) {
             if(!at_once && i != 0 && i % rebind_batch == 0) {
-                co_await kota::yield(loop);
+                co_await async::yield(loop);
             }
             // A merge between the batches may have replaced or retired it.
             auto it = held.find(resident[i]);

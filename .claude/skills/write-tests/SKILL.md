@@ -138,7 +138,7 @@ and pin each difference that matters in a case.
 - A failed `ZASSERT` ends the test's worker process at once, without
   unwinding: it works the same in a coroutine, a helper or another thread,
   but the suite's destructor does not run — cleanup that must happen then
-  goes in a `kota::zest::FatalHook`. Under `--no-isolation` it ends the
+  goes in a `kotatsu::zest::FatalHook`. Under `--no-isolation` it ends the
   whole run.
 - Filter with `--test-filter=<name>`; a bare positional name exits 1
   silently.

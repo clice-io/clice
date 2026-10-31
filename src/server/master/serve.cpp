@@ -15,12 +15,12 @@ namespace clice {
 /// cancelled request still waits for its worker's answer, so the server
 /// stops — its pool first, killing a worker that would never answer —
 /// before `serving` is joined.
-static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
-    auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
-        co_await kota::with_token(std::move(serving), server.shutdown_token());
+static async::task<> serve_until_shutdown(MasterServer& server, async::task<> serving) {
+    auto watch = [](MasterServer& server, async::task<> serving) -> async::task<> {
+        co_await async::with_token(std::move(serving), server.shutdown_token());
         server.schedule_shutdown();
     };
-    kota::task_group<> group;
+    async::task_group<> group;
     group.spawn(watch(server, std::move(serving)));
     co_await server.shutdown_token().wait().catch_cancel();
     co_await server.stop();
@@ -29,13 +29,13 @@ static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serv
 
 /// Serves until the client, the transport or a signal ends it, then shuts
 /// the server down. A termination signal takes the path of an LSP exit.
-static kota::task<> serve(MasterServer& server, kota::task<> serving) {
+static async::task<> serve(MasterServer& server, async::task<> serving) {
     bool terminating = false;
     auto terminate = [&server] {
         LOG_INFO("Termination signal received; shutting down");
         server.schedule_shutdown();
     };
-    kota::task_group<> signals;
+    async::task_group<> signals;
     signals.spawn(watch_termination(SIGTERM, terminating, terminate));
     signals.spawn(watch_termination(SIGINT, terminating, terminate));
 #ifndef _WIN32
@@ -55,26 +55,26 @@ public:
     InputEndWatch(std::unique_ptr<ipc::Transport> inner, std::function<void()> on_end) :
         inner(std::move(inner)), on_end(std::move(on_end)) {}
 
-    kota::task<std::string, ipc::ReadError> read_message() override {
+    async::task<std::string, ipc::ReadError> read_message() override {
         auto message = co_await inner->read_message();
         if(message.has_error()) {
             if(message.error().kind != ipc::ReadError::Kind::Oversized) {
                 on_end();
             }
-            co_await kota::fail(std::move(message).error());
+            co_await async::fail(std::move(message).error());
         }
         co_return std::move(*message);
     }
 
-    kota::task<void, ipc::Error> write_message(std::string_view payload) override {
+    async::task<void, ipc::Error> write_message(std::string_view payload) override {
         co_await inner->write_message(payload).or_fail();
     }
 
-    kota::task<void, ipc::Error> write_messages(std::span<const std::string> payloads) override {
+    async::task<void, ipc::Error> write_messages(std::span<const std::string> payloads) override {
         co_await inner->write_messages(payloads).or_fail();
     }
 
-    kota::task<void, ipc::Error> close_output() override {
+    async::task<void, ipc::Error> close_output() override {
         co_await inner->close_output().or_fail();
     }
 
@@ -91,9 +91,9 @@ private:
     std::function<void()> on_end;
 };
 
-kota::task<> accept_peers(kota::tcp::acceptor acceptor,
-                          llvm::StringRef what,
-                          llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted) {
+async::task<> accept_peers(async::tcp::acceptor acceptor,
+                           llvm::StringRef what,
+                           llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted) {
     struct Connection {
         std::unique_ptr<ipc::JSONPeer> peer;
 
@@ -105,17 +105,17 @@ kota::task<> accept_peers(kota::tcp::acceptor acceptor,
     auto run = [](ipc::JSONPeer* peer,
                   llvm::StringRef what,
                   Connections& connections,
-                  Connections::iterator pos) -> kota::task<> {
+                  Connections::iterator pos) -> async::task<> {
         co_await peer->run();
         LOG_INFO("{} disconnected", what);
         connections.erase(pos);
     };
-    auto& loop = kota::event_loop::current();
+    auto& loop = async::event_loop::current();
     Connections connections;
     // The loop is a child of the group: a cancel reaches it through the
     // group, which waits for every connection's run to end before the peers
     // go.
-    co_await kota::with_task_group([&](kota::task_group<>& group) -> kota::task<> {
+    co_await async::with_task_group([&](async::task_group<>& group) -> async::task<> {
         while(true) {
             auto connection = co_await acceptor.accept();
             if(!connection.has_value()) {
@@ -156,7 +156,7 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
         return 1;
     }
 
-    kota::event_loop loop;
+    async::event_loop loop;
     MasterServer server(loop, configuration.str());
 
     if(mode == ServerMode::Pipe) {
@@ -180,7 +180,7 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(
-            [](MasterServer& server, ipc::JSONPeer& peer, std::string root) -> kota::task<> {
+            [](MasterServer& server, ipc::JSONPeer& peer, std::string root) -> async::task<> {
                 // Pre-initialize for standalone (no-editor) use; LSP initialize
                 // will be rejected. Runs inside the loop — before the peer
                 // reads its first message — because initialize() spawns
@@ -197,14 +197,14 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
 
     // Socket mode: the first connection gets the client, later ones only a
     // peer, and the server takes none after it goes.
-    auto acceptor = kota::tcp::listen(host, port, {}, loop);
+    auto acceptor = async::tcp::listen(host, port, {}, loop);
     if(!acceptor) {
         LOG_ERROR("failed to listen on {}:{}", host, port);
         return 1;
     }
     LOG_INFO("Listening on {}:{} ...", host, port);
     loop.schedule(
-        [](MasterServer& server, kota::tcp::acceptor acceptor, std::string root) -> kota::task<> {
+        [](MasterServer& server, async::tcp::acceptor acceptor, std::string root) -> async::task<> {
             // See the pipe-mode comment: pre-initialization must run
             // inside the loop.
             if(!root.empty()) {

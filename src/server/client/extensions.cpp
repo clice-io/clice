@@ -48,7 +48,7 @@ static ext::SwitchConfigurationResult select_configuration(const Project& projec
     return {.success = true};
 }
 
-kota::task<ext::SwitchContextResult>
+async::task<ext::SwitchContextResult>
     LSPClient::switch_context(const ext::SwitchContextParams& params) {
     auto path = uri_to_path(params.uri);
     auto context_path = uri_to_path(params.context_uri);
@@ -127,13 +127,13 @@ LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams p
         if(params.command == switch_context_command) {
             auto argument = argument_of<ext::SwitchContextParams>(params);
             if(!argument) {
-                co_await kota::fail(std::move(argument.error()));
+                co_await async::fail(std::move(argument.error()));
             }
             result = co_await switch_context(*argument);
         } else {
             auto argument = argument_of<ext::ResetContextParams>(params);
             if(!argument) {
-                co_await kota::fail(std::move(argument.error()));
+                co_await async::fail(std::move(argument.error()));
             }
             result = reset_context(*argument);
         }
@@ -148,7 +148,7 @@ LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams p
     if(params.command == switch_configuration_command) {
         auto argument = argument_of<ext::SwitchConfigurationParams>(params);
         if(!argument) {
-            co_await kota::fail(std::move(argument.error()));
+            co_await async::fail(std::move(argument.error()));
         }
         auto result = switch_configuration(*argument);
         if(!result.success) {
@@ -157,8 +157,8 @@ LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams p
         }
         co_return to_raw(result);
     }
-    co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
-                                   std::format("no command {}", params.command)});
+    co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                    std::format("no command {}", params.command)});
 }
 
 void LSPClient::register_extensions() {

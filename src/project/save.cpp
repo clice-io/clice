@@ -50,10 +50,10 @@ bool has_unsaved_state(const Project& project) {
     return project.index.has_unsaved_state() || project.command_snapshot.owes_save(project);
 }
 
-kota::task<index::IndexReport> save_project(Project& project,
-                                            kota::event_loop& loop,
-                                            llvm::SmallVector<Fid> debt,
-                                            index::SearchRebuild search) {
+async::task<index::IndexReport> save_project(Project& project,
+                                             async::event_loop& loop,
+                                             llvm::SmallVector<Fid> debt,
+                                             index::SearchRebuild search) {
     index::IndexReport report;
     // A read-only session (batch lint, stats) keeps its metadata in memory
     // and exits with it — it must never write into a database a concurrent
@@ -132,7 +132,7 @@ kota::task<index::IndexReport> save_project(Project& project,
 
     bool committed = false;
     // Cancellation while the write is still queued dequeues it (see
-    // kota::queue): the batch dies with this frame, so what it carried must
+    // async::queue): the batch dies with this frame, so what it carried must
     // be changed again or the final shutdown save sees nothing to commit and
     // reports saved progress that is absent after restart.
     auto restore = [&] {
@@ -144,7 +144,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         choices.dirty = choices.dirty || carries_choices;
     };
     auto cancelled = llvm::make_scope_exit(restore);
-    co_await kota::queue([&] { committed = db.write(blobs, batch.removals); });
+    co_await async::queue([&] { committed = db.write(blobs, batch.removals); });
     cancelled.release();
 
     if(!committed) {
@@ -180,7 +180,7 @@ bool shrink_due(const index::PageUsage& usage) {
     return free >= worth && free * 4 >= usage.pages * usage.page_size;
 }
 
-kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loop& loop) {
+async::task<index::IndexReport> shrink_database(Project& project, async::event_loop& loop) {
     index::IndexReport report;
     if(!project.database || project.database->read_only()) {
         co_return report;
@@ -201,7 +201,7 @@ kota::task<index::IndexReport> shrink_database(Project& project, kota::event_loo
     ScopedTimer timer;
     using Database = index::BlobDatabase;
     auto copy = Database::Copy::Failed;
-    co_await kota::queue([&] { copy = db.write_compact_copy(); });
+    co_await async::queue([&] { copy = db.write_compact_copy(); });
     switch(copy) {
         case Database::Copy::Written: break;
         case Database::Copy::Busy: co_return report;

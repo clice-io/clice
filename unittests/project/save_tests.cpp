@@ -228,7 +228,7 @@ struct ShrinkProject {
 
     index::IndexReport shrink() {
         index::IndexReport report;
-        auto run = [&]() -> kota::task<> {
+        auto run = [&]() -> async::task<> {
             report = co_await shrink_database(f.project, f.loop);
         };
         auto task = run();
@@ -340,7 +340,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     ShrinkProject p;
     auto& space = p.spy();
     ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
-    auto shrink = [&]() -> kota::task<> {
+    auto shrink = [&]() -> async::task<> {
         co_await shrink_database(p.f.project, p.f.loop);
     };
     auto shrink_task = shrink();

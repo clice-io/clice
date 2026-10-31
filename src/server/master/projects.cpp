@@ -94,7 +94,7 @@ std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
     auto released = [this](ServedProject* project) {
         delete project;
         if(lifecycle == ServerLifecycle::Ready) {
-            bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
+            bg_tasks.spawn([](MasterServer& server) -> async::task<> {
                 server.serve_folders();
                 co_return;
             }(*this));
@@ -350,7 +350,7 @@ void MasterServer::serve_folders() {
             index_round.erase(it);
             fold_index_progress();
         }
-        bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> kota::task<> {
+        bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
             co_await project->shutdown();
             project->sched.close();
         }(std::move(project)));

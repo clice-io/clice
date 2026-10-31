@@ -24,12 +24,12 @@ using Adjacency = llvm::DenseMap<NodeId, llvm::SmallVector<NodeId>>;
 /// A cancellable request join and its observed terminal state.
 /// outcome stays empty while running and after requester cancellation.
 struct Probe {
-    kota::cancellation_source source;
+    async::cancellation_source source;
     std::optional<JoinOutcome> outcome;
     bool done = false;
 };
 
-ZEST_SUITE(TaskGraph, kota::zest::LoopFixture) {
+ZEST_SUITE(TaskGraph, kotatsu::zest::LoopFixture) {
 
 std::vector<NodeId> ran;
 TaskGraph graph;
@@ -37,7 +37,7 @@ TaskGraph graph;
 /// Runner that resolves dependencies from a shared adjacency, then
 /// records the run and succeeds.
 TaskGraph::RoundRunner instant(const Adjacency& adj) {
-    return [this, &adj](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+    return [this, &adj](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 switch(co_await ctx.depend(dep)) {
@@ -58,8 +58,8 @@ TaskGraph::RoundRunner instant(const Adjacency& adj) {
 /// token — the run-to-reply discipline every real family follows.
 struct ManualFamily {
     struct Gate {
-        kota::event started;
-        kota::event proceed;
+        async::event started;
+        async::event proceed;
         RoundOutcome result = RoundOutcome::Success;
         int calls = 0;
         std::vector<bool> classes;
@@ -86,7 +86,7 @@ struct ManualFamily {
     }
 
     TaskGraph::RoundRunner runner() {
-        return [this](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+        return [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
             if(auto it = adj.find(id); it != adj.end()) {
                 for(auto dep: it->second) {
                     switch(co_await ctx.depend(dep)) {
@@ -107,10 +107,10 @@ struct ManualFamily {
                 co_return g.result;
             }
 
-            auto proceed = [&]() -> kota::task<> {
+            auto proceed = [&]() -> async::task<> {
                 co_await g.proceed.wait();
             };
-            auto waited = co_await kota::with_token(proceed(), ctx.token());
+            auto waited = co_await async::with_token(proceed(), ctx.token());
             if(waited.is_cancelled()) {
                 co_return RoundOutcome::Stale;
             }
@@ -125,7 +125,7 @@ struct ManualFamily {
 /// fired).
 template <typename F>
 void execute(F&& fn) {
-    auto wrapper = [&]() -> kota::task<> {
+    auto wrapper = [&]() -> async::task<> {
         co_await fn();
         co_await graph.shutdown();
         ZEXPECT(graph.idle());
@@ -133,9 +133,9 @@ void execute(F&& fn) {
     run(wrapper());
 }
 
-kota::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
+async::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
     auto result =
-        co_await kota::with_token(graph.request(id, std::move(options)), probe.source.token());
+        co_await async::with_token(graph.request(id, std::move(options)), probe.source.token());
     probe.done = true;
     if(result.has_value()) {
         probe.outcome = *result;
@@ -151,7 +151,7 @@ ZEST_CASE(request_no_deps) {
     Adjacency adj;
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(ran.size() == 1u);
@@ -167,7 +167,7 @@ ZEST_CASE(request_dep_chain) {
     adj[a(2)] = {a(3)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(ran.size() == 3u);
@@ -187,7 +187,7 @@ ZEST_CASE(diamond_dedup) {
     adj[a(3)] = {a(4)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(ranges::count(ran, a(4)) == 1);
@@ -200,7 +200,7 @@ ZEST_CASE(second_request_skips) {
     Adjacency adj;
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await graph.request(a(1));
         ZEXPECT(ran.size() == 1u);
         co_await graph.request(a(1));
@@ -213,14 +213,14 @@ ZEST_CASE(reference_survives_commit) {
     // must survive the successful commit (candidates replace the durable
     // set) so a later update on the referenced node re-dirties this one.
     NodeId sentinel{FamB, (1ull << 63) | 42};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> kota::task<RoundOutcome> {
+    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
         ctx.reference(sentinel);
         ran.push_back(a(1));
         co_return RoundOutcome::Success;
     });
 
     Probe probe;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await run_request(a(1), probe);
         ZASSERT(probe.outcome == JoinOutcome::Success);
 
@@ -239,7 +239,7 @@ ZEST_CASE(artifact_dirty_no_cascade) {
     graph.register_family(FamA, instant(adj));
 
     Probe warm, hit, rebuild;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await run_request(a(1), warm);
         ZASSERT(ran.size() == std::size_t(2));
 
@@ -268,15 +268,15 @@ ZEST_CASE(artifact_dirty_inflight_commits) {
     graph.register_family(FamA, mf.runner());
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             graph.mark_dirty(a(1));
             mf.open({a(1)});
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
         ZEXPECT(mf.gate(a(1)).calls == 1);
@@ -291,15 +291,15 @@ ZEST_CASE(concurrent_requests_share) {
     graph.register_family(FamA, mf.runner());
 
     Probe p1, p2;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             ZEXPECT(graph.refcount(a(1)) == 2u);
             mf.open({a(1)});
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), p1), run_request(a(1), p2), driver());
+        co_await async::when_all(run_request(a(1), p1), run_request(a(1), p2), driver());
 
         ZEXPECT(p1.outcome == JoinOutcome::Success);
         ZEXPECT(p2.outcome == JoinOutcome::Success);
@@ -315,7 +315,7 @@ ZEST_CASE(cross_family_edge) {
     graph.register_family(FamA, instant(adj));
     graph.register_family(FamB, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(ran.size() == 2u);
@@ -347,8 +347,8 @@ ZEST_CASE(edge_live_before_commit) {
     mf.open({a(1)});
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(b(5)).started.wait();
             mf.gate(b(5)).started.reset();
 
@@ -361,7 +361,7 @@ ZEST_CASE(edge_live_before_commit) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
         ZEXPECT(!graph.is_dirty(a(1)));
@@ -377,7 +377,7 @@ ZEST_CASE(success_replaces_edges) {
     graph.register_family(FamA, instant(adj));
     graph.register_family(FamB, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await graph.request(a(1));
         ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
@@ -402,7 +402,7 @@ ZEST_CASE(voided_candidates_discarded) {
     mf.open({a(1), b(2), b(3)});
 
     Probe probe;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await graph.request(a(1));
         ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
@@ -415,7 +415,7 @@ ZEST_CASE(voided_candidates_discarded) {
         mf.gate(a(1)).started.reset();
         graph.update(a(1));
 
-        auto driver = [&]() -> kota::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
 
             // The candidate edge is already cascade-visible, and the
@@ -425,7 +425,8 @@ ZEST_CASE(voided_candidates_discarded) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}), driver());
+        co_await async::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}),
+                                 driver());
 
         // The void discarded the candidates: the durable set still points
         // at b(2), and only it cascades.
@@ -447,7 +448,7 @@ ZEST_CASE(declare_no_round) {
     // declare() commits durable edges without rounds or interest: the
     // nodes exist, the cascade reaches the declared consumer, and nothing
     // ever compiles.
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         graph.declare(a(2), {a(1)});
         ZEXPECT(graph.has_node(a(1)));
         ZEXPECT(graph.has_node(a(2)));
@@ -467,7 +468,7 @@ ZEST_CASE(declare_replaces) {
     // successful round's promotion. An empty replacement clears the edges
     // but keeps the node: a consumer whose last import was removed stops
     // cascading yet stays tracked.
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         graph.declare(a(3), {a(1)});
         graph.declare(a(3), {a(2)});
         ZEXPECT(!ranges::contains(graph.update(a(1)), a(3)));
@@ -487,7 +488,7 @@ ZEST_CASE(round_replaces_declared) {
     adj[a(2)] = {a(3)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         graph.declare(a(2), {a(1)});
         auto outcome = co_await graph.request(a(2));
         ZEXPECT(outcome == JoinOutcome::Success);
@@ -508,7 +509,7 @@ ZEST_CASE(failed_keeps_declared) {
     mf.gate(a(2)).result = RoundOutcome::Failed;
     mf.open({a(2), a(3)});
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         graph.declare(a(2), {a(1)});
         auto outcome = co_await graph.request(a(2));
         ZEXPECT(outcome == JoinOutcome::Failed);
@@ -530,15 +531,15 @@ ZEST_CASE(commit_overwrites_declare) {
     mf.open({a(3)});
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(2)).started.wait();
             graph.declare(a(2), {a(1)});
             mf.open({a(2)});
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(2), probe), driver());
+        co_await async::when_all(run_request(a(2), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
         ZEXPECT(!ranges::contains(graph.update(a(1)), a(2)));
@@ -562,8 +563,8 @@ ZEST_CASE(stale_success_discarded) {
     graph.register_family(FamA, mf.runner());
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             mf.gate(a(1)).started.reset();
 
@@ -578,7 +579,7 @@ ZEST_CASE(stale_success_discarded) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
         ZEXPECT(mf.gate(a(1)).calls == 2);
@@ -595,8 +596,8 @@ ZEST_CASE(stale_failure_retries) {
     graph.register_family(FamA, mf.runner());
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             mf.gate(a(1)).started.reset();
 
@@ -608,7 +609,7 @@ ZEST_CASE(stale_failure_retries) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
 
         // The stale Failed never reached the waiter.
         ZEXPECT(probe.outcome == JoinOutcome::Success);
@@ -622,7 +623,7 @@ ZEST_CASE(salvage_before_stale) {
     // the report — the side effect stands, and the join retries.
     int calls = 0;
     int salvaged = 0;
-    graph.register_family(FamA, [&](RoundContext&, NodeId) -> kota::task<RoundOutcome> {
+    graph.register_family(FamA, [&](RoundContext&, NodeId) -> async::task<RoundOutcome> {
         calls += 1;
         if(calls == 1) {
             salvaged += 1;
@@ -631,7 +632,7 @@ ZEST_CASE(salvage_before_stale) {
         co_return RoundOutcome::Success;
     });
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(calls == 2);
@@ -650,14 +651,15 @@ ZEST_CASE(one_attempt_stale) {
     graph.register_family(FamA, mf.runner());
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             graph.update(a(1));
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}), driver());
+        co_await async::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}),
+                                 driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Stale);
         ZEXPECT(mf.gate(a(1)).calls == 1);
@@ -670,7 +672,7 @@ ZEST_CASE(one_attempt_clean) {
     Adjacency adj;
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await graph.request(a(1));
         ZEXPECT(ran.size() == 1u);
 
@@ -688,16 +690,16 @@ ZEST_CASE(abandoned_validity) {
 
     bool valid = true;
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             valid = false;
             graph.update(a(1));
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe, {.validity = [&] { return valid; }}),
-                                driver());
+        co_await async::when_all(run_request(a(1), probe, {.validity = [&] { return valid; }}),
+                                 driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Abandoned);
         ZEXPECT(mf.gate(a(1)).calls == 1);
@@ -718,7 +720,7 @@ ZEST_CASE(failed_propagates) {
     graph.register_family(FamB, mf.runner());
     mf.open({a(1), b(2)});
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Failed);
         ZEXPECT(mf.gate(b(2)).calls == 1);
@@ -738,7 +740,7 @@ ZEST_CASE(failure_not_sticky) {
     graph.register_family(FamB, mf.runner());
     mf.open({a(1), b(2)});
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto first = co_await graph.request(a(1));
         ZEXPECT(first == JoinOutcome::Failed);
 
@@ -762,8 +764,8 @@ ZEST_CASE(requester_cancel_releases) {
     graph.register_family(FamA, mf.runner());
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(a(1)).started.wait();
             probe.source.cancel();
             co_await wait_until([&] { return !graph.is_compiling(a(1)); });
@@ -776,7 +778,7 @@ ZEST_CASE(requester_cancel_releases) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
     });
 }
 
@@ -792,8 +794,8 @@ ZEST_CASE(shared_dep_survives_cancel) {
     mf.open({a(1), a(3)});
 
     Probe p1, p3;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(b(5)).started.wait();
             ZEXPECT(graph.refcount(b(5)) == 2u);
 
@@ -808,7 +810,7 @@ ZEST_CASE(shared_dep_survives_cancel) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), p1), run_request(a(3), p3), driver());
+        co_await async::when_all(run_request(a(1), p1), run_request(a(3), p3), driver());
 
         ZEXPECT(p1.outcome == std::nullopt);
         ZEXPECT(p3.outcome == JoinOutcome::Success);
@@ -828,13 +830,13 @@ ZEST_CASE(transient_drop_handover) {
     mf.open({a(1)});
 
     Probe probe;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await mf.gate(b(2)).started.wait();
             ZEXPECT(graph.is_compiling(a(1)));
 
             graph.update(a(1));
-            co_await kota::yield();
+            co_await async::yield();
 
             // The depender's round was respawned; the dependency kept
             // compiling throughout.
@@ -846,7 +848,7 @@ ZEST_CASE(transient_drop_handover) {
             co_return;
         };
 
-        co_await kota::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
         ZEXPECT(mf.gate(b(2)).calls == 1);
@@ -863,11 +865,11 @@ ZEST_CASE(foreground_late_join) {
     // A foreground requester joins a Low round that then reports Stale:
     // the respawn re-reads the interest class, so the retry dispatches
     // foreground instead of staying cancellable Low.
-    kota::event started;
-    kota::event proceed;
+    async::event started;
+    async::event proceed;
     int calls = 0;
     std::vector<bool> classes;
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> kota::task<RoundOutcome> {
+    graph.register_family(FamA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
         calls += 1;
         classes.push_back(ctx.foreground());
         if(calls == 1) {
@@ -879,8 +881,8 @@ ZEST_CASE(foreground_late_join) {
     });
 
     Probe background, foreground;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await started.wait();
             proceed.set();
             co_return;
@@ -888,9 +890,9 @@ ZEST_CASE(foreground_late_join) {
 
         // The foreground request joins while the first round is parked
         // inside its dispatch.
-        co_await kota::when_all(run_request(a(1), background),
-                                run_request(a(1), foreground, {.foreground = true}),
-                                driver());
+        co_await async::when_all(run_request(a(1), background),
+                                 run_request(a(1), foreground, {.foreground = true}),
+                                 driver());
 
         ZEXPECT(background.outcome == JoinOutcome::Success);
         ZEXPECT(foreground.outcome == JoinOutcome::Success);
@@ -904,14 +906,14 @@ ZEST_CASE(foreground_spreads_edges) {
     // Foreground must travel the live candidate edges: a foreground join
     // at the root upgrades a deep dependency already parked in a Low
     // round, so its preempted retry dispatches foreground.
-    kota::event started;
-    kota::event proceed;
+    async::event started;
+    async::event proceed;
     int deep_calls = 0;
     std::vector<bool> deep_classes;
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(3)};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 switch(co_await ctx.depend(dep)) {
@@ -934,8 +936,8 @@ ZEST_CASE(foreground_spreads_edges) {
     });
 
     Probe background, foreground;
-    execute([&]() -> kota::task<> {
-        auto driver = [&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
             co_await started.wait();
             proceed.set();
             co_return;
@@ -943,9 +945,9 @@ ZEST_CASE(foreground_spreads_edges) {
 
         // The background request parks a(3); the foreground request then
         // joins at the root and must upgrade through two candidate edges.
-        co_await kota::when_all(run_request(a(2), background),
-                                run_request(a(1), foreground, {.foreground = true}),
-                                driver());
+        co_await async::when_all(run_request(a(2), background),
+                                 run_request(a(1), foreground, {.foreground = true}),
+                                 driver());
 
         ZEXPECT(background.outcome == JoinOutcome::Success);
         ZEXPECT(foreground.outcome == JoinOutcome::Success);
@@ -963,7 +965,7 @@ ZEST_CASE(foreground_skips_clean_deps) {
     std::vector<bool> dep_classes;
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+    graph.register_family(FamA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 if(co_await ctx.depend(dep) != DependResult::Ready) {
@@ -978,7 +980,7 @@ ZEST_CASE(foreground_skips_clean_deps) {
     });
 
     Probe warm, hit, rebuild;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         // Build the chain clean at Low, then answer a foreground request
         // from the clean root outright.
         co_await run_request(a(1), warm);
@@ -1001,7 +1003,7 @@ ZEST_CASE(foreground_resets_zero) {
     graph.register_family(FamA, mf.runner());
     mf.open({a(1)});
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await graph.request(a(1), {.foreground = true});
         ZEXPECT(mf.gate(a(1)).classes[0]);
 
@@ -1022,7 +1024,7 @@ ZEST_CASE(self_depend_fails) {
     adj[a(1)] = {a(1)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Failed);
     });
@@ -1036,7 +1038,7 @@ ZEST_CASE(depend_cycle_fails) {
     adj[a(2)] = {a(1)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Failed);
     });
@@ -1049,7 +1051,7 @@ ZEST_CASE(update_introduces_cycle) {
     adj[a(1)] = {a(2)};
     graph.register_family(FamA, instant(adj));
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto first = co_await graph.request(a(1));
         ZEXPECT(first == JoinOutcome::Success);
 
@@ -1075,7 +1077,7 @@ ZEST_CASE(shutdown_with_inflight) {
     graph.register_family(FamB, mf.runner());
 
     Probe probe;
-    auto driver = [&]() -> kota::task<> {
+    auto driver = [&]() -> async::task<> {
         co_await mf.gate(b(4)).started.wait();
         co_await graph.shutdown();
         co_return;
@@ -1097,7 +1099,7 @@ ZEST_CASE(randomized_stress) {
     // cancellations, updates and dispatch completions. Every dispatch
     // races a semaphore against its advisory token — the run-to-reply
     // discipline — and the structural invariants hold at every step.
-    kota::semaphore permits{0};
+    async::semaphore permits{0};
     Adjacency adj;
     adj[a(1)] = {a(2), a(3)};
     adj[a(2)] = {b(4)};
@@ -1107,7 +1109,7 @@ ZEST_CASE(randomized_stress) {
     adj[a(7)] = {b(5)};
     adj[a(8)] = {a(6)};
 
-    auto runner = [&](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+    auto runner = [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
         if(auto it = adj.find(id); it != adj.end()) {
             for(auto dep: it->second) {
                 switch(co_await ctx.depend(dep)) {
@@ -1117,10 +1119,10 @@ ZEST_CASE(randomized_stress) {
                 }
             }
         }
-        auto acquire = [&]() -> kota::task<> {
+        auto acquire = [&]() -> async::task<> {
             co_await permits.acquire();
         };
-        auto waited = co_await kota::with_token(acquire(), ctx.token());
+        auto waited = co_await async::with_token(acquire(), ctx.token());
         if(waited.is_cancelled()) {
             co_return RoundOutcome::Stale;
         }
@@ -1129,10 +1131,10 @@ ZEST_CASE(randomized_stress) {
     graph.register_family(FamA, runner);
     graph.register_family(FamB, runner);
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         std::mt19937 rng(20260826u);
         std::vector<std::unique_ptr<Probe>> probes;
-        kota::task_group<> inflight;
+        async::task_group<> inflight;
 
         const NodeId roots[] = {a(1), a(6), a(8)};
         const NodeId all[] = {a(1), a(2), a(3), b(4), b(5), a(6), a(7), a(8)};
@@ -1162,7 +1164,7 @@ ZEST_CASE(randomized_stress) {
             }
 
             // Let deferred unwinds finish, then check structural sanity.
-            co_await kota::yield();
+            co_await async::yield();
             ZEXPECT(graph.consistent());
         }
 

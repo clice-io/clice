@@ -19,7 +19,7 @@ namespace clice {
 /// indexing kicks. The server layers its serving side — the AST
 /// family, the pump's escalation hook — on top.
 struct SchedulingStack {
-    SchedulingStack(kota::event_loop& loop,
+    SchedulingStack(async::event_loop& loop,
                     Project& project,
                     CommandResolver& commands,
                     WorkerPool& pool);
@@ -39,12 +39,12 @@ struct SchedulingStack {
     /// round running or not: a cold round covers the whole project, and
     /// a process killed mid-round loses only what merged since the last
     /// checkpoint.
-    kota::task<> checkpoint();
+    async::task<> checkpoint();
 
     /// The shutdown tail once compile and index work is quiesced
     /// (contract 11): wind down the graph's rounds, then the final save.
     /// The owner closes the cache store next (see close).
-    kota::task<> shutdown();
+    async::task<> shutdown();
 
     /// Close the cache store once no build of this stack is awaited: after
     /// the pool stopped, or right after shutdown() while the pool serves

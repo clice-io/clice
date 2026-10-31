@@ -20,7 +20,7 @@ clice solves the above problems through a multi-process architecture: each compi
 
 ```text
 Master Process (MasterServer)
-├── Event loop (kota)
+├── Event loop (kotatsu)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
 ├── Compile scheduling (task graph: PCH and PCM builders, AST and TU-run families)

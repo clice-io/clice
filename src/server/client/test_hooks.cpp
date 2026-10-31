@@ -18,7 +18,7 @@ static ipc::Error hooks_off() {
 /// Look at the disk and the databases of every project, as
 /// clice/internal/poll asks, after a look at the configuration files.
 /// Returns the changes found.
-static kota::task<std::uint32_t> poll_projects(MasterServer& srv, const ext::PollParams& params) {
+static async::task<std::uint32_t> poll_projects(MasterServer& srv, const ext::PollParams& params) {
     srv.look_at_settings();
     bool cdb = params.loop == "cdb";
     std::uint32_t count = 0;
@@ -65,8 +65,8 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
             auto& srv = this->server;
             if(params.loop != "cdb" && params.loop != "workspace") {
-                co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
-                                               R"(loop must be "cdb" or "workspace")"});
+                co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                R"(loop must be "cdb" or "workspace")"});
             }
             co_return to_raw(ext::PollResult{co_await poll_projects(srv, params)});
         });
@@ -76,7 +76,7 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::SyncParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             // The deadline counts from the request; a poll runs to its end,
             // one cut short would leave the databases out of step.
@@ -90,7 +90,7 @@ void LSPClient::register_test_hooks() {
                          std::chrono::steady_clock::duration::zero()));
             // Hang detection: past the deadline, the answer names what
             // still runs.
-            co_await kota::when_any(srv.wait_idle(this->peer), kota::sleep(left, srv.loop));
+            co_await async::when_any(srv.wait_idle(this->peer), async::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
                 for(auto id: project->sched.pump.failed()) {
@@ -108,18 +108,18 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::HoldParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             auto kind = parse_build_kind(params.kind);
             auto path = uri_to_path(params.uri);
             if(!kind || !path) {
-                co_await kota::fail(ipc::Error{
+                co_await async::fail(ipc::Error{
                     protocol::ErrorCode::InvalidParams,
                     R"(a hold names a kind of "compile", "pch", "pcm" or "index", and a file URI)"});
             }
             auto file = park_target(srv, *path);
             if(!file) {
-                co_await kota::fail(std::move(file.error()));
+                co_await async::fail(std::move(file.error()));
             }
             co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::move(*file))});
         });
@@ -129,16 +129,16 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             auto path = uri_to_path(params.uri);
             if(params.request.empty() || !path) {
-                co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
-                                               "a gate names a worker request and a file URI"});
+                co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                "a gate names a worker request and a file URI"});
             }
             auto file = park_target(srv, *path);
             if(!file) {
-                co_await kota::fail(std::move(file.error()));
+                co_await async::fail(std::move(file.error()));
             }
             co_return to_raw(ext::HoldResult{
                 srv.probe.gate(std::format("clice/worker/{} {}", params.request, *file))});
@@ -149,11 +149,11 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             if(!srv.probe.release(params.id)) {
-                co_await kota::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
-                                               std::format("no hold {}", params.id)});
+                co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                std::format("no hold {}", params.id)});
             }
             co_return to_raw(ext::ReleaseResult{});
         });
@@ -163,11 +163,11 @@ void LSPClient::register_test_hooks() {
         [this](RequestContext& ctx, const ext::WatchParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             auto event = parse_loop_event(params.event);
             if(!event) {
-                co_await kota::fail(
+                co_await async::fail(
                     ipc::Error{protocol::ErrorCode::InvalidParams,
                                R"(a watch names "databaseChange", "diskChange" or "checkpoint")"});
             }
@@ -180,7 +180,7 @@ void LSPClient::register_test_hooks() {
             // Load-generating hook: a stray client must not be able to
             // bloat the file log.
             if(!this->server.test_hooks()) {
-                co_await kota::fail(hooks_off());
+                co_await async::fail(hooks_off());
             }
             auto count = std::min<std::uint32_t>(params.count, 100'000);
             auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);

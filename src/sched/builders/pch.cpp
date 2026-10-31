@@ -76,7 +76,7 @@ NodeId PCHBuilder::prepare(Request request) {
     return id;
 }
 
-kota::task<PCHBuilder::Outcome> PCHBuilder::acquire(Request request) {
+async::task<PCHBuilder::Outcome> PCHBuilder::acquire(Request request) {
     auto id = prepare(std::move(request));
 
     switch(co_await graph.request(id, {.kind = JoinKind::OneAttempt, .foreground = true})) {
@@ -89,7 +89,7 @@ kota::task<PCHBuilder::Outcome> PCHBuilder::acquire(Request request) {
     std::unreachable();
 }
 
-kota::task<RoundOutcome> PCHBuilder::run(RoundContext& ctx, std::uint64_t key_id) {
+async::task<RoundOutcome> PCHBuilder::run(RoundContext& ctx, std::uint64_t key_id) {
     auto outcome = co_await attempt(ctx, key_id);
     // A stale round's replacement respawns through join_node without
     // passing prepare(), so attempt() copies the stash instead of
@@ -103,7 +103,7 @@ kota::task<RoundOutcome> PCHBuilder::run(RoundContext& ctx, std::uint64_t key_id
     co_return outcome;
 }
 
-kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t key_id) {
+async::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t key_id) {
     // Copy the dispatch owner's stash: a stale round's retry re-reads it,
     // and the interned-key vector may grow while this frame is suspended,
     // so never hold references into it.
@@ -284,7 +284,7 @@ kota::task<RoundOutcome> PCHBuilder::attempt(RoundContext& ctx, std::uint64_t ke
         std::shared_ptr<index::TUIndex> state;
     };
 
-    auto committed = co_await kota::queue([&]() -> PairCommit {
+    auto committed = co_await async::queue([&]() -> PairCommit {
         PairCommit outcome;
         auto pch_path = project.store->commit(std::move(pending));
         if(!pch_path) {

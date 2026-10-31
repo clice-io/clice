@@ -14,7 +14,7 @@ namespace {
 /// exactly once, whatever happens to the joiners or to the owner's own
 /// frame, and the key is refused until a consumer retries it. Real workers,
 /// poisoned via the crash pragma.
-ZEST_SUITE(PCHBuilderAcquisition, kota::zest::LoopFixture) {
+ZEST_SUITE(PCHBuilderAcquisition, kotatsu::zest::LoopFixture) {
 
 TempDir tmp;
 std::string src;
@@ -52,7 +52,7 @@ PCHBuilder::Request request(llvm::StringRef text) {
 /// Run the body between pool start and graph/pool teardown.
 template <typename F>
 void execute(F&& fn) {
-    auto body = [&]() -> kota::task<> {
+    auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
         opts.program = clice_binary();
         opts.stateless_count = 1;
@@ -80,15 +80,15 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     };
     std::optional<PCHBuilder::Outcome> a, b;
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
-        auto acquire_a = [&]() -> kota::task<> {
+        auto acquire_a = [&]() -> async::task<> {
             a = co_await pch.acquire(request(poison));
         };
-        auto acquire_b = [&]() -> kota::task<> {
+        auto acquire_b = [&]() -> async::task<> {
             b = co_await pch.acquire(request(poison));
         };
-        co_await kota::when_all(acquire_a(), acquire_b());
+        co_await async::when_all(acquire_a(), acquire_b());
     });
 
     ZEXPECT(a == PCHBuilder::Outcome::Failed);
@@ -109,23 +109,23 @@ ZEST_CASE(OwnerGoneStillRecords) {
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     std::optional<PCHBuilder::Outcome> joined;
-    kota::cancellation_source owner_scope;
+    async::cancellation_source owner_scope;
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
-        auto acquire_owner = [&]() -> kota::task<> {
+        auto acquire_owner = [&]() -> async::task<> {
             auto result =
-                co_await kota::with_token(pch.acquire(request(poison)), owner_scope.token());
+                co_await async::with_token(pch.acquire(request(poison)), owner_scope.token());
             ZEXPECT(result.is_cancelled());
         };
-        auto acquire_joiner = [&]() -> kota::task<> {
+        auto acquire_joiner = [&]() -> async::task<> {
             joined = co_await pch.acquire(request(poison));
         };
-        auto cancel_owner = [&]() -> kota::task<> {
+        auto cancel_owner = [&]() -> async::task<> {
             owner_scope.cancel();
             co_return;
         };
-        co_await kota::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
+        co_await async::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
     });
 
     ZEXPECT(joined == PCHBuilder::Outcome::Failed);
@@ -143,7 +143,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
     };
     std::optional<PCHBuilder::Outcome> refused, retried;
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
         co_await pch.acquire(request(poison));
         // Refused before any dispatch: no second death.
@@ -184,7 +184,7 @@ ZEST_CASE(DeclaredCrashLifts) {
     };
     std::optional<PCHBuilder::Outcome> refused, fixed;
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         co_await pch.acquire(whole());
         refused = co_await pch.acquire(whole());
         ZASSERT(deaths == 1);
@@ -205,15 +205,15 @@ ZEST_CASE(SharedBuildBothReady) {
     // crash is recorded, and the pair ends up registered under the key.
     std::optional<PCHBuilder::Outcome> a, b;
 
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto text = "#define X 1\n";
-        auto acquire_a = [&]() -> kota::task<> {
+        auto acquire_a = [&]() -> async::task<> {
             a = co_await pch.acquire(request(text));
         };
-        auto acquire_b = [&]() -> kota::task<> {
+        auto acquire_b = [&]() -> async::task<> {
             b = co_await pch.acquire(request(text));
         };
-        co_await kota::when_all(acquire_a(), acquire_b());
+        co_await async::when_all(acquire_a(), acquire_b());
     });
 
     ZEXPECT(a == PCHBuilder::Outcome::Ready);
@@ -232,7 +232,7 @@ ZEST_CASE(ConsumeFailuresStopKey) {
     // the record; failures in a row stop the key and acquisition fails
     // fast, before any dispatch.
     std::optional<PCHBuilder::Outcome> cleared, stopped;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         pch.consume_failed("shared-key");
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
@@ -251,7 +251,7 @@ ZEST_CASE(SharedPairFailsOnce) {
     // Two parses read the same pair and both fail to: the second finds it
     // retracted already, and the key keeps building.
     std::optional<PCHBuilder::Outcome> rebuilt;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
         pch.consume_failed("shared-key");
         pch.consume_failed("shared-key");
@@ -265,7 +265,7 @@ ZEST_CASE(EvictedPairNotCounted) {
     // bytes: its consumers' failures count nothing, and the key keeps
     // building however often that happens.
     std::optional<PCHBuilder::Outcome> first, second;
-    execute([&]() -> kota::task<> {
+    execute([&]() -> async::task<> {
         auto evict = [&] {
             project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
         };

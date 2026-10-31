@@ -22,7 +22,7 @@ std::string join(llvm::StringRef base, const Parts&... parts) {
 /// spelling, so every path clice keeps or emits is spelled that way. On
 /// POSIX a path is its raw bytes — '\' and "C:" are ordinary filename
 /// characters — and canonicalization must not touch it.
-inline void canonicalize(kota::buffer_ref p) {
+inline void canonicalize(kotatsu::buffer_ref p) {
     path::to_slash(p);
     path::lowercase_drive(p);
 }

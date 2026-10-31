@@ -24,7 +24,7 @@ namespace clice::driver {
 namespace {
 
 struct Options {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
@@ -32,7 +32,7 @@ struct Options {
 };
 
 struct StatsOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
 
     DecoKV(help = "How many of the largest file shards to list (default 20)", required = false)
     <std::uint32_t> limit;
@@ -47,14 +47,14 @@ struct StatsOptions {
 };
 
 struct SymbolOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     SymbolTarget target;
     ProjectOptions where;
     LogLevelOption log;
 };
 
 struct FileOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     FileTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -621,7 +621,7 @@ std::string flag_names(index::SymbolFlags flags) {
 }
 
 llvm::StringRef kind_name(SymbolKind kind) {
-    return kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
+    return kotatsu::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
 }
 
 /// What the index records about every symbol `text`, a locator, names:
@@ -678,7 +678,7 @@ int run_show_symbol(Project& project, llvm::StringRef text) {
                         info->args,
                         query.qualified_name(hash, anchor),
                         flag_names(info->flags),
-                        kota::meta::enum_name(index::name_form(info->flags), "Other"));
+                        kotatsu::meta::enum_name(index::name_form(info->flags), "Other"));
         // Persisted parents can form a cycle: the records only reject
         // reserved values.
         llvm::DenseSet<index::SymbolHash> visited{hash};
@@ -696,7 +696,7 @@ int run_show_symbol(Project& project, llvm::StringRef text) {
         }
         if(auto symbol = project.index.find_symbol(hash)) {
             driver::println("  scope={}  file={}  reference files={}",
-                            kota::meta::enum_name(symbol->scope, "External"),
+                            kotatsu::meta::enum_name(symbol->scope, "External"),
                             symbol->file == index::no_file
                                 ? "-"
                                 : project.file_table.display(Fid{symbol->file}),
@@ -791,7 +791,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
         if(relation.target != 0 && !RelationKind(relation.kind).carries_extent()) {
             symbols.insert(relation.target);
         }
-        by_kind[kota::meta::enum_name(relation.kind, "Invalid")] += 1;
+        by_kind[kotatsu::meta::enum_name(relation.kind, "Invalid")] += 1;
         relations += 1;
         return true;
     });

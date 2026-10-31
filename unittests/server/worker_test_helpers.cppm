@@ -42,8 +42,8 @@ inline std::vector<std::string> make_args(const std::string& file_path,
 }
 
 /// Returns once a worker parked the work behind `probe`'s gate `id`.
-inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
-    kota::event held;
+inline async::task<> parked(BuildProbe& probe, std::uint64_t id) {
+    async::event held;
     auto connection = probe.on_held.connect([&](std::uint64_t each) {
         if(each == id) {
             held.set();
@@ -57,19 +57,19 @@ inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
 }
 
 /// Helper: spawn a worker process and return a BincodePeer connected to it.
-struct WorkerHandle : kota::zest::LoopFixture {
-    kota::process proc{};
+struct WorkerHandle : kotatsu::zest::LoopFixture {
+    async::process proc{};
     std::unique_ptr<ipc::StreamTransport> transport;
     std::unique_ptr<ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
     /// Changes to the environment the worker inherits.
-    std::vector<kota::process::env_change> env;
+    std::vector<async::process::env_change> env;
 
     /// The gates placed, and of them the ones the worker parked at.
     std::uint64_t gates = 0;
     llvm::DenseSet<std::uint64_t> parked_gates;
-    kota::event gate_parked{false};
+    async::event gate_parked{false};
 
     WorkerHandle() {
         // Hang detection: outlasts the 30s bound the cancellation tests put
@@ -86,7 +86,7 @@ struct WorkerHandle : kota::zest::LoopFixture {
         stderr_fd = ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
 
-        kota::process::options opts;
+        async::process::options opts;
         opts.program = binary;
         opts.args = {"worker"};
         if(stateful) {
@@ -100,13 +100,13 @@ struct WorkerHandle : kota::zest::LoopFixture {
         opts.creation.process_group = true;
         opts.creation.exit_with_parent = can_exit_with_parent;
         opts.streams = {
-            kota::process::stdio::pipe(),
-            kota::process::stdio::pipe(),
-            stderr_fd >= 0 ? kota::process::stdio::from_fd(stderr_fd)
-                           : kota::process::stdio::ignore(),
+            async::process::stdio::pipe(),
+            async::process::stdio::pipe(),
+            stderr_fd >= 0 ? async::process::stdio::from_fd(stderr_fd)
+                           : async::process::stdio::ignore(),
         };
 
-        auto result = kota::process::spawn(opts, loop);
+        auto result = async::process::spawn(opts, loop);
         if(!result) {
 #ifndef _WIN32
             if(stderr_fd >= 0)
@@ -141,7 +141,7 @@ struct WorkerHandle : kota::zest::LoopFixture {
     }
 
     /// Returns once the worker parked the work behind gate `id`.
-    kota::task<> parked(std::uint64_t id) {
+    async::task<> parked(std::uint64_t id) {
         while(!parked_gates.contains(id)) {
             gate_parked.reset();
             co_await gate_parked.wait();
@@ -159,7 +159,7 @@ struct WorkerHandle : kota::zest::LoopFixture {
     /// drains and a failing test reports instead of hanging the suite.
     template <typename F>
     void run(F&& coro_factory) {
-        auto body = [](WorkerHandle& self, F factory) -> kota::task<> {
+        auto body = [](WorkerHandle& self, F factory) -> async::task<> {
             co_await factory();
             self.peer->close_output();
         };

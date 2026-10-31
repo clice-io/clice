@@ -70,14 +70,14 @@ struct Options {
 };
 
 struct FeatureOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     Options inspect;
     LogLevelOption log;
 };
 
 /// The options of a feature that checks its own results.
 struct CheckedFeatureOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     Options inspect;
 
     DecoFlag(names = {"--check"},
@@ -91,7 +91,7 @@ struct CheckedFeatureOptions {
 };
 
 struct SchemaOptions {
-    kota::deco::decl::HelpOption help;
+    kotatsu::deco::decl::HelpOption help;
     LogLevelOption log;
 };
 
