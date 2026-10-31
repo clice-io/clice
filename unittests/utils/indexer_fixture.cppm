@@ -43,7 +43,7 @@ struct IndexerFixture {
     bool merge(llvm::StringRef data) {
         std::uint64_t command = 0;
         if(auto view = index::TUIndex::from_bytes(data); view.loaded()) {
-            auto unit = files.intern(Spelling::absolute(view.path(view.path_count() - 1)));
+            auto unit = files.intern(Spelling::absolute(view.path(view.focus_file())));
             command = command_identity(project, unit);
         }
         auto report = project.index.merge(data, {}, command);
@@ -221,7 +221,7 @@ inline IndexedTU index_file(TempDir& tmp,
     if(!view.loaded()) {
         return {};
     }
-    result.tu_path = std::string(view.path(view.path_count() - 1));
+    result.tu_path = std::string(view.path(view.focus_file()));
     return result;
 }
 

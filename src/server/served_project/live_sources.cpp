@@ -36,7 +36,7 @@ index::IndexSource buffer_source(const ServedProject& served,
     // text they read.
     if(kind == index::IndexSource::Kind::SessionShard) {
         auto& state = *document.latest->index;
-        if(auto section = state.instantiation_section_of(state.path_count() - 1)) {
+        if(auto section = state.instantiation_section_of(state.focus_file())) {
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
     }
@@ -58,7 +58,7 @@ const index::Shard* buffer_shard(const ServedDocument& document) {
     // A shard compiled from exactly the buffer's bytes describes it however
     // its dependencies moved since (the shard's DepsOnly contract).
     auto& state = *compiled->index;
-    auto& shard = state.shard_of(state.path_count() - 1);
+    auto& shard = state.shard_of(state.focus_file());
     auto& session = *document.session;
     if(document.current || shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
@@ -136,7 +136,7 @@ void ServedProject::for_each_preamble(
         // built from. The prefix comparison validates the described region
         // directly — body edits never move preamble entries — so no dirty-flag
         // gating is needed on top.
-        auto last = state->path_count() - 1;
+        auto last = state->focus_file();
         if(project.file_table.find(Spelling::absolute(state->path(last))) != file ||
            !state->matches_preamble(document.session->text())) {
             continue;

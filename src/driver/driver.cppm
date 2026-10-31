@@ -8,6 +8,7 @@ import :feature.query;
 import :index.query;
 import :index.writer_lock;
 import :project.background_index;
+import :project.discovery;
 import :project.project;
 import :server.control;
 import :settings.settings;

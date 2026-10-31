@@ -19,7 +19,7 @@ enum class NodeKind : std::uint8_t {
 
 /// Identity of a task-graph node. Each kind interns its own keys —
 /// monotonically, never recycling: the graph may retain an id in edges or
-/// rounds long after its builder dropped what the node built.
+/// rounds long after its runner dropped what the node built.
 struct NodeId {
     NodeKind kind = NodeKind{0};
     std::uint64_t key = 0;
@@ -232,7 +232,7 @@ public:
     bool is_compiling(NodeId id) const;
 
     /// Current in-flight interest count: whether anyone still waits on the
-    /// node (a builder dropping a round's inputs; testing).
+    /// node (a runner dropping a round's inputs; testing).
     std::uint32_t refcount(NodeId id) const;
 
     /// Durable edge set: the candidates of the last current successful

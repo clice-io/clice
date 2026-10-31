@@ -63,8 +63,8 @@ async::task<> run_index_task(Project& project,
     auto& queue = background.queue;
     auto path_id = taken.id;
     auto file_path = std::string(project.file_table.resolve(path_id));
-    // The engine's own observation is authoritative for content
-    // changes: it saw the event. The dep-hash check cannot be trusted
+    // A booked content change is authoritative: whoever booked it saw
+    // the edit. The dep-hash check cannot be trusted
     // to see a file's own edit (it validates the recorded
     // dependencies), so only deps-only slots — where it exists to
     // deduplicate cascade storms — may take the shortcut.

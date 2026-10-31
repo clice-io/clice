@@ -12,39 +12,37 @@ import :worker.protocol;
 
 namespace clice {
 
+/// The precompiled records as the index database carries them (blob kind
+/// PrecompiledRecords): the PCH and PCM validity metadata and the
+/// self-containment trials, serialized from live state; empty on
+/// serialization failure.
+std::string serialize_precompiled_records(Project& project);
+
+/// Restore the precompiled records a database held: the PCH and PCM entries
+/// whose blobs the cache store still has, and the trials.
+void load_precompiled_records(Project& project, llvm::StringRef bytes);
+
 /// Length-prefix each part (so embedded NULs cannot create colliding
 /// splits) and return the 32-hex xxh3_128bits cache key.
-inline std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
-    std::string input;
-    for(auto part: parts) {
-        input += std::format("{}:", part.size());
-        input += part;
-    }
-    auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
-    return std::format("{:016x}{:016x}", hash.high64, hash.low64);
-}
+std::string cache_key(std::initializer_list<llvm::StringRef> parts);
+
+/// The name in the store of a new build under `key`: the key and a nonce,
+/// so a rebuild publishes beside the product it replaces, never over it.
+std::string new_blob(llvm::StringRef key);
 
 /// The record of a build that failed with `cause`: `death` is the identity
 /// of the worker death it crashed, empty for errors in the user's code.
-inline FailureRecord failed_build(llvm::StringRef death, std::string cause) {
-    FailureRecord record;
-    record.fail({}, death, std::move(cause), FailureRecord::Clock::now());
-    return record;
-}
+FailureRecord failed_build(llvm::StringRef death, std::string cause);
 
 /// What a PCH or PCM build read: what the worker reports, and `before`,
 /// what the modules it imports and the PCH it is built over were built from
 /// as it started — one rebuilt meanwhile stales it.
-inline DepsSnapshot read_inputs(Project& project,
-                                const worker::PrecompiledBuildResult& built,
-                                const DepsSnapshot& before) {
-    auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
-    merge_deps(deps, {&before});
-    return deps;
-}
+DepsSnapshot read_inputs(Project& project,
+                         const worker::PrecompiledBuildResult& built,
+                         const DepsSnapshot& before);
 
-/// Send a PCH or PCM build, `what` naming it in the log ("PCH" for `whom`,
-/// a file; "PCM" for a module), and keep what did not build: a build that
+/// Send a PCH or PCM build, `whom` naming what it builds in the log (a
+/// file, a module), and keep what did not build: a build that
 /// crashed its worker is recorded through `fail` on what it was known to
 /// read (`known`), and one that failed on the user's code on what it read
 /// (read_inputs over `before`); any other failure is clice's own breakage,
@@ -59,11 +57,12 @@ async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
     send_precompiled(Project& project,
                      RoundContext& ctx,
                      const Params& params,
-                     llvm::StringRef what,
                      llvm::StringRef whom,
                      DepsSnapshot known,
                      const DepsSnapshot& before,
                      llvm::function_ref<void(FailureRecord, DepsSnapshot)> fail) {
+    constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
+    constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
     auto result = co_await deliver(
         *project.pool,
@@ -90,7 +89,7 @@ async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
             fail(failed_build({}, result.value().first_error),
                  read_inputs(project, result.value(), before));
         }
-    } else if constexpr(std::same_as<Params, worker::BuildPCHParams>) {
+    } else if constexpr(pch) {
         LOG_ANOMALY(PCHBuildFail, "PCH build failed for {}: {}", whom, message);
     } else {
         LOG_ANOMALY(PCMBuildFail, "PCM build failed for {}: {}", whom, message);

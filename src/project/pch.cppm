@@ -7,11 +7,60 @@ import :support.failure_record;
 import :support.prelude;
 import :syntax.header_context;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
 
 struct Project;
+
+/// Open a PCH's `.pch.idx` index (memory-mapped). Returns nullptr when
+/// the file is unreadable, structurally invalid, of a different format
+/// version, or any embedded shard blob fails verification — callers treat
+/// all of these as a PCH cache miss.
+std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
+
+/// A PCH the cache holds, in Project::pch_cache under its key (hex of
+/// xxh3_128bits over preamble text + directories + canonical flags), so
+/// files with identical preambles share one PCH.
+///
+/// Everything derived from the PCH build beyond validity metadata — the
+/// preamble's symbol index, document links, inactive regions, the open
+/// conditional stack — lives in the paired pch.idx index (the store's
+/// `.pch.idx` aux file), committed and evicted together with the PCH.
+struct PCHState {
+    /// The pair's name in the store: the key and a nonce of the build that
+    /// produced it. A rebuild publishes under a new name, never over the
+    /// old pair, which workers may still have mapped — Windows refuses to
+    /// replace a mapped file.
+    std::string blob;
+
+    /// The pair the latest build replaced, kept for one more build: a
+    /// consumer that took its path just before the replacement may not
+    /// have opened it yet.
+    std::string previous;
+
+    std::string path;
+    std::uint32_t bound = 0;
+    DepsSnapshot deps;
+
+    /// The key of the precompiled header the build declares that this
+    /// preamble's PCH is built over and chains onto; empty for none.
+    std::string base;
+
+    /// Path of the paired pch.idx index.
+    std::string index_path;
+
+    /// Lazily opened blob; shared so a consumer holding it across an await
+    /// survives concurrent entry replacement or eviction.
+    std::shared_ptr<index::TUIndex> state;
+
+    /// Open the blob on first use (memory-mapped, no deserialization).
+    /// Returns nullptr when the blob is missing or unreadable — consumers
+    /// degrade (no overlay, no preamble links) and the next PCH round
+    /// treats the incomplete pair as a cache miss.
+    const std::shared_ptr<index::TUIndex>& load_state();
+};
 
 /// One acquisition of a preamble's PCH (a PCH and its pch.idx index,
 /// committed as one pair) or of a precompiled header the build declares

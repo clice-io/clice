@@ -242,7 +242,7 @@ struct StatsResult {
     std::uint32_t pch_loaded_states = 0;
     std::uint64_t pch_state_bytes = 0;
 
-    /// Buffer text the PCH builder keeps for builds that may still run:
+    /// Buffer text the project keeps for PCH builds that may still run:
     /// zero once every build finished and nobody waits on one.
     std::uint64_t pch_stashed_bytes = 0;
 

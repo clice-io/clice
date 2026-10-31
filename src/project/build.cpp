@@ -4,7 +4,7 @@ import :command.edit;
 import :command.file_kind;
 import :command.normalize;
 import :project.build;
-import :settings.settings;
+import :project.discovery;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -538,7 +538,7 @@ Build::SourceWalk Build::source_walk() const {
                           })
             .begin(),
         walk.roots.end());
-    walk.cache_dir = settings.project.cache_identity();
+    walk.cache_dir = settings.project.cache_identity;
     return walk;
 }
 
@@ -619,7 +619,7 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
 }
 
 EditableFiles::EditableFiles(CanonicalRef root, const Settings& settings) :
-    root(root), cache_dir(settings.project.cache_identity()) {}
+    root(root), cache_dir(settings.project.cache_identity) {}
 
 std::vector<std::string> EditableFiles::sources() const {
     CanonicalRef project_root = root;

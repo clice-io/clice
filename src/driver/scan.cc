@@ -1,6 +1,7 @@
 module clice;
 
 import :driver.driver;
+import :project.discovery;
 import :project.project;
 import :support.logging;
 import :syntax.dependency_graph;

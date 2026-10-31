@@ -801,7 +801,7 @@ private:
                          const std::optional<std::string>& consumed,
                          const ipc::Error& error);
 
-    /// What a buffer state owes the PCH builder: nothing (an empty preamble
+    /// What a buffer state owes the PCH build: nothing (an empty preamble
     /// with no injected prefix, or a module unit's global module fragment
     /// that imports — a previously adopted key must be cleared, unless the
     /// plan is partial), or the acquisition of `request`.
@@ -838,7 +838,7 @@ private:
                      const ModuleDeps& imports,
                      llvm::StringRef base);
 
-    /// Revalidate or build the preamble PCH of `text` through the builder,
+    /// Revalidate or build the preamble PCH of `text` through the project,
     /// over the precompiled header the build declares for the command, and
     /// adopt the key of what the request loads while the ticket and the
     /// document's `epoch` hold (see prepare_stateless_inputs), but for a

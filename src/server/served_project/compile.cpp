@@ -226,8 +226,7 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
         .partial = partial,
     };
     if(imported) {
-        project.fill_pcm_deps(plan.request.pcms,
-                              module_closure(project, imports.resolved()).getArrayRef());
+        plan.request.pcms = imported_pcms(project, imports.resolved());
         plan.request.modules = std::move(modules);
     }
     return plan;
@@ -382,7 +381,7 @@ void ServedProject::retry_after_save(Session& session) {
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
         retry |= forget_build_failure(project, modules[i]);
-        add_imports({NodeKind::PCM, modules[i].raw});
+        add_imports(module_node(modules[i]));
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
@@ -467,7 +466,7 @@ void ServedProject::each_input(Fid path_id,
         if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
             continue;
         }
-        if(auto* inputs = project.build_inputs(dep.file())) {
+        if(auto* inputs = build_inputs(project, dep.file())) {
             visit(*inputs);
         }
     }
@@ -655,15 +654,10 @@ async::task<std::optional<ModuleDeps>>
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
     // too: a durable import edge earned earlier must stop cascading here.
-    llvm::SmallVector<const char*, 32> argv;
-    argv.reserve(arguments.size());
-    for(auto& arg: arguments) {
-        argv.push_back(arg.c_str());
-    }
     auto deps = co_await direct_deps(project,
                                      path_id,
                                      resolution,
-                                     argv,
+                                     arguments,
                                      directory,
                                      std::optional<llvm::StringRef>(text));
     declare_imports(project, ctx, node(path_id), deps);
@@ -684,16 +678,7 @@ async::task<std::optional<ModuleDeps>>
     Session::Attempt attempt(*session, kind);
     bool crashed = false;
 
-    // Building a dependency can itself evict another clean module's PCM
-    // under budget pressure, reopening the window the previous pass's
-    // revalidation closed — hence the bounded retry until the set is
-    // stable. Past the bound the parse fails visibly on the missing file.
-    for(int pass = 0; pass < 3; pass += 1) {
-        bool any_evicted = revalidate_pcms(project);
-        if(pass > 0 && !any_evicted) {
-            break;
-        }
-
+    auto wait = [&]() -> async::task<bool> {
         for(auto dep: modules) {
             if(auto* crash = build_crash(project, dep)) {
                 if(!retry) {
@@ -706,12 +691,12 @@ async::task<std::optional<ModuleDeps>>
                     // Still an input: a later build of it, by an importer
                     // whose record lets it retry, must re-dirty this
                     // document.
-                    ctx.reference({NodeKind::PCM, dep.raw});
+                    ctx.reference(module_node(dep));
                     continue;
                 }
                 forget_build_failure(project, dep);
             }
-            switch(co_await ctx.depend({NodeKind::PCM, dep.raw})) {
+            switch(co_await ctx.depend(module_node(dep))) {
                 case DependResult::Ready: break;
                 case DependResult::Failed:
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
@@ -723,9 +708,13 @@ async::task<std::optional<ModuleDeps>>
                         retry = false;
                     }
                     break;
-                case DependResult::Cancelled: co_return std::nullopt;
+                case DependResult::Cancelled: co_return false;
             }
         }
+        co_return true;
+    };
+    if(!co_await wait_imports(project, modules, wait)) {
+        co_return std::nullopt;
     }
     if(!crashed) {
         ticket.session->succeeded(kind, ticket.generation);
@@ -842,7 +831,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             co_return RoundOutcome::Stale;
         }
 
-        // Build or reuse the PCH through its builder — the depend records
+        // Build or reuse the PCH through prepare_pch — the depend records
         // the Ast→Pch edge, so a staleness discovery on the shared pair
         // cascades here. Under readonly = "on" the build compiles without
         // a preamble instead — completion and signature help pay full
@@ -953,8 +942,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // the pair's fault: the preamble's PCH, else the build's.
         auto consumed_pch = adopted_pch ? adopted_pch : base_pch;
 
-        project.fill_pcm_deps(params.pcms,
-                              module_closure(project, imports->resolved()).getArrayRef());
+        params.pcms = imported_pcms(project, imports->resolved());
 
         if(!ticket.fresh()) {
             LOG_INFO("compile round: outdated before send for {}", file_path);
@@ -1056,7 +1044,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
 
         // The PCH quality gate: a failed parse whose diagnostics name
         // the consumed PCH (worker-side pch_suspect — setup failure and
-        // fatal error alike). The builder validated the pair fresh via its
+        // fatal error alike). The PCH round validated the pair fresh via its
         // deps, yet the frontend could not read it — the bytes on disk
         // are the suspect. Retract the pair (store + cache) and rerun the
         // round once; the next attempt misses and rebuilds both halves.
@@ -1386,12 +1374,7 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse
     // needs it.
-    llvm::SmallVector<const char*, 32> argv;
-    argv.reserve(arguments.size());
-    for(auto& arg: arguments) {
-        argv.push_back(arg.c_str());
-    }
-    auto imports = co_await build_imports(project, path_id, resolution, argv, directory, text);
+    auto imports = co_await build_imports(project, path_id, resolution, arguments, directory, text);
     if(!imports) {
         co_return false;
     }
@@ -1412,7 +1395,7 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
         }
     }
 
-    project.fill_pcm_deps(inputs.pcms, module_closure(project, imports->resolved()).getArrayRef());
+    inputs.pcms = imported_pcms(project, imports->resolved());
 
     co_return true;
 }

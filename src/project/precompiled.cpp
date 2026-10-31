@@ -2,12 +2,14 @@ module clice;
 
 import :index.format;
 import :project.hosting;
-import :project.precompiled_records;
+import :project.precompiled;
 import :project.project;
+import :support.failure_record;
 import :support.json;
 import :support.logging;
 import :vfs.cache_store;
 import :vfs.file_table;
+import :worker.protocol;
 
 namespace clice {
 
@@ -15,9 +17,8 @@ namespace {
 
 /// The precompiled records: a JSON document in the index database, the
 /// persisted form of PCH/PCM validity metadata and self-containment
-/// trials (the cache.json successor). Paths are
-/// persisted as spellings and re-interned at load — runtime fids are not
-/// stable across sessions; deps persist as (spelling, content hash), so
+/// trials. Paths are persisted as spellings and re-interned at load —
+/// runtime fids are not stable across sessions; deps persist as (spelling, content hash), so
 /// the records reference no version ids and self-heal against any index
 /// state.
 struct CacheDepEntry {
@@ -95,6 +96,35 @@ struct Records {
 };
 
 }  // namespace
+
+std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
+    std::string input;
+    for(auto part: parts) {
+        input += std::format("{}:", part.size());
+        input += part;
+    }
+    auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
+    return std::format("{:016x}{:016x}", hash.high64, hash.low64);
+}
+
+std::string new_blob(llvm::StringRef key) {
+    std::random_device random;
+    return std::format("{}-{:08x}{:08x}", key, random(), random());
+}
+
+FailureRecord failed_build(llvm::StringRef death, std::string cause) {
+    FailureRecord record;
+    record.fail({}, death, std::move(cause), FailureRecord::Clock::now());
+    return record;
+}
+
+DepsSnapshot read_inputs(Project& project,
+                         const worker::PrecompiledBuildResult& built,
+                         const DepsSnapshot& before) {
+    auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
+    merge_deps(deps, {&before});
+    return deps;
+}
 
 std::string serialize_precompiled_records(Project& project) {
     Records data;

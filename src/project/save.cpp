@@ -4,7 +4,7 @@ import :index.database;
 import :index.project_index;
 import :project.build;
 import :project.build_snapshot;
-import :project.precompiled_records;
+import :project.precompiled;
 import :project.project;
 import :project.save;
 import :support.bytes;

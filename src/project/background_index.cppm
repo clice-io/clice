@@ -85,9 +85,9 @@ struct BackgroundIndex {
     /// 1. The freshness check inside the index task is the ONLY place
     ///    that decides to skip work. Duplicating it at the feeder
     ///    reintroduces reason-blind skips.
-    /// 2. needs_reindex() may shortcut deps-only slots ONLY: the engine
-    ///    observed content changes itself, and the dep-hash check cannot
-    ///    see a file's own edit.
+    /// 2. needs_reindex() may shortcut deps-only slots ONLY: whoever booked
+    ///    a content change saw the edit itself, and the dep-hash check
+    ///    cannot see a file's own edit.
     ReindexQueue queue{max_requeue_attempts};
 
     /// What a file's latest attempt left, kept by record_* in

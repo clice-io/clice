@@ -12,6 +12,7 @@ import :index.writer_lock;
 import :project.background_index;
 import :project.build;
 import :project.contexts;
+import :project.discovery;
 import :project.graph;
 import :project.pch;
 import :project.pcm;
@@ -39,7 +40,7 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
                              });
     project.index_query.attach(*this);
     // The loaded-state budget follows the open-document count, which the
-    // PCH builder cannot see.
+    // project cannot see.
     project.open_documents = [this] {
         return documents.size();
     };
@@ -363,7 +364,7 @@ void ServedProject::record_saved(Fid path_id) {
     if(project.root.empty() || !is_source_path(path) || project.build.declared(path_id)) {
         return;
     }
-    if(!project_file(project.root, project.settings.project.cache_identity(), path) ||
+    if(!project_file(project.root, project.settings.project.cache_identity, path) ||
        !project.build.record(path_id)) {
         return;
     }

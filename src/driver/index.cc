@@ -3,6 +3,7 @@ module clice;
 import :driver.driver;
 import :index.project_index;
 import :project.background_index;
+import :project.discovery;
 import :project.project;
 import :project.save;
 import :server.control;

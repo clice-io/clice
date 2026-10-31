@@ -4,6 +4,7 @@ import :index.project_index;
 import :project.background_index;
 import :project.build_snapshot;
 import :project.contexts;
+import :project.discovery;
 import :project.graph;
 import :project.pcm;
 import :server.client;

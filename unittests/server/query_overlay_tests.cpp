@@ -57,7 +57,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     st.index_path = blob_path;
     st.state = nullptr;
 
-    focus_path = std::string(full_index.path(full_index.path_count() - 1));
+    focus_path = std::string(full_index.path(full_index.focus_file()));
     auto it = sources.all_files.find(path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
     session = fx.open(focus_path, it->second.content);

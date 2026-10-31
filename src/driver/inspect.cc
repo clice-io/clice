@@ -258,7 +258,7 @@ std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
             bytes = index::build_tu_index(unit, {.all_files = true});
             tu = index::TUIndex::from_bytes(as_chars(bytes));
         }
-        auto focus = tu.path_count() - 1;
+        auto focus = tu.focus_file();
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
             for(std::uint32_t i = 0; i < tu.path_count(); i += 1) {
                 auto path_id = i == 0 ? focus : i - 1;
@@ -398,13 +398,13 @@ std::optional<codec::RawValue> run_document_highlight(const FeatureParams& param
     auto offset = params.range.begin;
     auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
+    const index::Shard& shard = tu.shard_of(tu.focus_file());
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
         auto symbol = tu.find_symbol(hash);
         return symbol && symbol->kind == SymbolKind::Macro;
     });
     llvm::SmallVector<const index::InstantiationShard*, 1> instantiations;
-    if(auto section = tu.instantiation_section_of(tu.path_count() - 1)) {
+    if(auto section = tu.instantiation_section_of(tu.focus_file())) {
         instantiations.push_back(&tu.instantiation_shard(*section));
         index::add_resolved(*instantiations.front(), offset, named);
     }

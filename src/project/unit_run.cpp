@@ -103,47 +103,41 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
     params.skipped_diagnostics =
         plan.skipped_diagnostics && resolved.ref.source == CommandSource::CDBExact;
 
-    // A unit waits on the PCMs of its imports: the fill_pcm_deps snapshot
+    // A unit waits on the PCMs of its imports: the PCMs handed to the worker
     // below would otherwise race a cold build and parse without the module
     // files. The scan runs under the command resolved above, extra args
     // included — a borrowed header host's flags select the same imports the
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    std::vector<const char*> argv;
-    argv.reserve(params.arguments.size());
-    for(auto& arg: params.arguments) {
-        argv.push_back(arg.c_str());
-    }
-    auto deps =
-        co_await direct_deps(project, path_id, resolved, argv, params.directory, std::nullopt);
+    auto deps = co_await direct_deps(project,
+                                     path_id,
+                                     resolved,
+                                     params.arguments,
+                                     params.directory,
+                                     std::nullopt);
     declare_imports(project, ctx, id, deps);
-
-    // On-disk PCM blobs can be LRU-evicted while their nodes stay clean;
-    // re-dirty evicted ones so depend() rebuilds instead of handing the
-    // worker a dead path. Bounded: a rebuild can itself evict under budget
-    // pressure, and past the bound the parse fails visibly on the missing
-    // file.
     auto modules = deps.resolved();
-    for(int attempt = 0; !modules.empty() && attempt < 3; attempt += 1) {
-        bool any_evicted = revalidate_pcms(project);
-        if(attempt > 0 && !any_evicted) {
-            break;
-        }
+    auto wait = [&]() -> async::task<bool> {
         for(auto dep: modules) {
-            if(co_await ctx.depend({NodeKind::PCM, dep.raw}) == DependResult::Cancelled) {
-                finished[path_id] = {.result = Result::Preempted};
-                co_return RoundOutcome::Stale;
+            if(co_await ctx.depend(module_node(dep)) == DependResult::Cancelled) {
+                co_return false;
             }
         }
+        co_return true;
+    };
+    if(!modules.empty() && !co_await wait_imports(project, modules, wait)) {
+        finished[path_id] = {.result = Result::Preempted};
+        co_return RoundOutcome::Stale;
     }
 
     // A unit of a target with precompiled headers parses over clice's own
     // build of them: the header its command forces in then reads nothing
     // again, and their declarations are indexed once, with the unit
     // building them. One that did not build leaves that header to every
-    // unit's own parse, as the command alone does; a builder left out of
-    // the index does too, but for a modular unit (ModuleDeps::modular).
+    // unit's own parse, as the command alone does; so does one whose writing
+    // unit a rule keeps out of the index, but for a modular unit
+    // (ModuleDeps::modular).
     DepsSnapshot precompiled;
     std::string consumed_pch;
     std::string left_out_pch;
@@ -173,10 +167,10 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
         }
     }
 
-    project.fill_pcm_deps(params.pcms, module_closure(project, modules).getArrayRef());
+    params.pcms = imported_pcms(project, modules);
     // The modules and the precompiled header the parse reads, taken with
     // their paths: one rebuilt while the parse runs is no input of it.
-    auto imports = project.module_inputs(modules);
+    auto imports = module_inputs(project, modules);
     merge_deps(imports, {&precompiled});
     if(plan.index && !project.send_in_full.erase(path_id)) {
         auto include_closure = project.dep_graph.include_closure(path_id);

@@ -357,7 +357,7 @@ ZEST_CASE(RejectsCorruptSection) {
     std::string corrupt = indexed.data;
     auto tampered = index::TUIndex::from_bytes(corrupt);
     ZASSERT(tampered.loaded());
-    auto blob = tampered.shard_of(tampered.path_count() - 1).bytes();
+    auto blob = tampered.shard_of(tampered.focus_file()).bytes();
     ZASSERT(!blob.empty());
     auto pos = llvm::StringRef(corrupt).find(blob);
     ZASSERT(pos != llvm::StringRef::npos);

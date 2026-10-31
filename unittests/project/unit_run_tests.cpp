@@ -206,6 +206,71 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     ZEXPECT(!build->second.path.empty());
 }
 
+ZEST_CASE(EvictedModuleBelowRebuilds) {
+    // A module two imports down lost its PCM while every node stayed clean:
+    // the unit's wait finds it gone below the module it imports, and both
+    // rebuild before the parse reads them.
+    TempDir tmp;
+    tmp.touch("low.cppm", "export module low;\nexport int lv() { return 1; }\n");
+    tmp.touch("mid.cppm", "export module mid;\nimport low;\nexport int mv() { return lv(); }\n");
+    tmp.touch("use.cpp", "import mid;\nint u() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("low.cppm"), {}},
+                  {tmp.root, tmp.path("mid.cppm"), {}},
+                  {tmp.root, tmp.path("use.cpp"),  {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::vector<UnitRunOutcome::Result> results;
+    std::string evicted;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        UnitRunPlan first;
+        first.index = true;
+        results.push_back((co_await run_unit(f.project, id("use.cpp"), std::move(first))).result);
+        evicted = f.project.pcm_builds.find(id("low.cppm"))->second.path;
+        ZASSERT(!evicted.empty());
+        ZASSERT(fs::remove(evicted).has_value());
+        UnitRunPlan second;
+        second.index = true;
+        results.push_back((co_await run_unit(f.project, id("use.cpp"), std::move(second))).result);
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum UnitRunOutcome::Result;
+    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Completed, Completed}));
+    auto low = f.project.pcm_builds.find(id("low.cppm"));
+    ZASSERT(low != f.project.pcm_builds.end());
+    ZEXPECT(!low->second.path.empty());
+    ZEXPECT(fs::exists(low->second.path));
+}
+
 ZEST_CASE(CrashedModuleStaysRefused) {
     // A module whose build crashed a worker stays refused while what that
     // build read holds, whatever its key: a rebuild of the PCH it reads

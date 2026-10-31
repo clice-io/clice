@@ -69,6 +69,36 @@ llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
     return {};
 }
 
+/// Whether a failure stands against building the key again. A build that
+/// failed stands while its inputs do: one that crashed a worker is refused
+/// before the dispatch, since the PCH is shared and every document with
+/// this preamble would burn a worker of its own, and one that failed on the
+/// user's code would fail the same way, every compile of every consumer
+/// paying for it first. A preamble's key is content-derived: editing the
+/// poison starts a fresh key. A precompiled header the build declares is
+/// keyed by its command alone: its crash stands until its own file changes,
+/// its consumers parsing the header it holds meanwhile. A key whose pairs
+/// its consumers keep failing to read stops the same way: rebuilding one
+/// would fare no better (see pch_consume_failed).
+bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
+    if(auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key)) {
+        if(failed->result.crashed()) {
+            LOG_WARN("PCH build for {} refused: key {} crashed a worker", file, pch_key);
+        } else {
+            LOG_DEBUG("PCH build for {} skipped: key {} failed on these inputs", file, pch_key);
+        }
+        return true;
+    }
+    if(auto* consumes = project.failures.pch_consumes.find(pch_key);
+       consumes && consumes->result.stops(pch_consume_policy, FailureRecord::Clock::now())) {
+        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
+                 file,
+                 pch_key);
+        return true;
+    }
+    return false;
+}
+
 /// Move a pch key to the front of the loaded-state LRU. Called whenever an
 /// entry's pch.idx index is opened or replaced.
 void touch_loaded_state(Project& project, llvm::StringRef pch_key) {
@@ -103,41 +133,14 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
         LOG_WARN("PCH build skipped: cache store is unavailable");
         co_return RoundOutcome::Failed;
     }
-
-    // A build that failed stands while its inputs do: one that crashed a
-    // worker is refused before the dispatch, since the PCH is shared and
-    // every document with this preamble would burn a worker of its own, and
-    // one that failed on the user's code would fail the same way, every
-    // compile of every consumer paying for it first. A preamble's key is
-    // content-derived: editing the poison starts a fresh key. A
-    // precompiled header the build declares is keyed by its command alone:
-    // its crash stands until its own file changes, its consumers parsing
-    // the header it holds meanwhile. A key whose pairs its consumers keep
-    // failing to read stops the same way: rebuilding one would fare no
-    // better (see pch_consume_failed).
-    if(auto* failed = project.failures.pch_builds.lookup(project.file_table, pch_key)) {
-        if(failed->result.crashed()) {
-            LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
-        } else {
-            LOG_DEBUG("PCH build for {} skipped: key {} failed on these inputs",
-                      request.file,
-                      pch_key);
-        }
-        co_return RoundOutcome::Failed;
-    }
-    if(auto* consumes = project.failures.pch_consumes.find(pch_key);
-       consumes && consumes->result.stops(pch_consume_policy, FailureRecord::Clock::now())) {
-        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
-                 request.file,
-                 pch_key);
+    if(refused(project, pch_key, request.file)) {
         co_return RoundOutcome::Failed;
     }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
     // pch.idx index to the tmp paths allocated here; the store commits
     // (fsync + rename) both on success, primary first.
-    std::random_device random;
-    auto blob = std::format("{}-{:08x}{:08x}", pch_key, random(), random());
+    auto blob = new_blob(pch_key);
     auto pending = project.store->begin_store("pch", blob);
     auto pending_idx = project.store->begin_store_aux("pch", blob);
 
@@ -158,7 +161,7 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
 
     // What the imported modules' PCMs and the PCH built over were built
     // from as the build starts.
-    auto before = project.module_inputs(request.modules);
+    auto before = module_inputs(project, request.modules);
     if(!request.base.empty()) {
         auto it = project.pch_cache.find(request.base);
         if(it == project.pch_cache.end() || it->second.path.empty()) {
@@ -189,7 +192,6 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
         project,
         ctx,
         bp,
-        "PCH",
         bp.file,
         std::move(known),
         before,
@@ -281,6 +283,44 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
 }
 
 }  // namespace
+
+std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
+    auto file = fs::File::open(path);
+    if(!file) {
+        return nullptr;
+    }
+    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                  path,
+                                                  /*FileSize=*/-1,
+                                                  /*RequiresNullTerminator=*/false,
+                                                  /*IsVolatile=*/false);
+    if(!buffer) {
+        return nullptr;
+    }
+    // A stale or truncated pair must never crash the server: the TU index
+    // is deep-verified, and every embedded shard blob once — queries then
+    // run unchecked. Anything failing reads as "pair missing" and the PCH
+    // is rebuilt.
+    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
+    if(!tu_index.loaded() || !tu_index.verify_shards()) {
+        return nullptr;
+    }
+    return std::make_shared<index::TUIndex>(std::move(tu_index));
+}
+
+const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
+    if(!state && !index_path.empty()) {
+        state = load_pch_index(index_path);
+        if(!state) {
+            // Unreadable blob: clear the path so queries don't retry the
+            // mmap + verification on every call. The pair now looks
+            // incomplete and ensure_pch rebuilds it on the next compile.
+            LOG_WARN("Failed to open pch.idx envelope {}", index_path);
+            index_path.clear();
+        }
+    }
+    return state;
+}
 
 PCHRequest declared_pch_request(Project& project, const CommandRef& unit, bool skip_bodies) {
     // The key names the build but the file's content, which the build's

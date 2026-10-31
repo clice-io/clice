@@ -5,8 +5,8 @@ import :command.file_kind;
 import :driver.driver;
 import :feature.formatting;
 import :project.build;
+import :project.discovery;
 import :project.project;
-import :settings.settings;
 import :support.timer;
 import :vfs.path;
 
@@ -106,7 +106,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
     auto& files = project.file_table;
 
     CanonicalRef root = project.root;
-    auto cache_dir = project.settings.project.cache_identity();
+    auto cache_dir = project.settings.project.cache_identity;
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
         if(!ranges::contains(skipped_dirs, dir)) {

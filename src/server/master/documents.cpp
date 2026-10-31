@@ -1,5 +1,6 @@
 module clice;
 
+import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;

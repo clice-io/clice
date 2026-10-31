@@ -144,8 +144,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     ZASSERT(defined);
     ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
     ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
-    auto definition =
-        pool.find(Spelling::absolute(definer_view.path(definer_view.path_count() - 1)));
+    auto definition = pool.find(Spelling::absolute(definer_view.path(definer_view.focus_file())));
     ZASSERT(definition);
     ZASSERT(defined->file == definition->raw);
     ZASSERT(project.reference_count(hash) == 3u);
@@ -166,7 +165,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     auto mover_view = index::TUIndex::from_bytes(as_chars(mover_bytes));
     ZASSERT(mover_view.loaded());
     project.merge_symbols(mover_view, intern_paths(mover_view, pool));
-    auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
+    auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.focus_file())));
     ZASSERT(moved);
     ZASSERT(project.find_symbol(hash)->file == moved->raw);
 }
@@ -426,10 +425,10 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
     project.merge_symbols(view, file_ids_map);
-    auto focus = file_ids_map[view.path_count() - 1];
+    auto focus = file_ids_map[view.focus_file()];
     index::TUManifest manifest;
     manifest.built_at = 1;
-    manifest.tu_version = pool.intern_version(focus, view.content_hash(view.path_count() - 1));
+    manifest.tu_version = pool.intern_version(focus, view.content_hash(view.focus_file()));
     project.apply_manifest(focus, std::move(manifest));
     commit(project, *db);
 

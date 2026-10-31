@@ -67,7 +67,7 @@ void decode_index(std::span<const std::byte> bytes) {
     auto& view = tu_index.view;
     ZASSERT(view.loaded());
 
-    auto focus_path = view.path_count() - 1;
+    auto focus_path = view.focus_file();
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto decoded = decode_shard(view.shard_of(view.section_path(i)));
         if(view.section_path(i) == focus_path) {
@@ -1342,7 +1342,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     auto full = index::build_tu_index(*unit);
     auto full_view = index::TUIndex::from_bytes(as_chars(full));
     ZASSERT(full_view.loaded());
-    auto focus_id = full_view.path_count() - 1;
+    auto focus_id = full_view.focus_file();
     std::uint32_t header = full_view.section_count();
     for(std::uint32_t i = 0; i < full_view.section_count(); i += 1) {
         if(full_view.section_path(i) != focus_id) {
@@ -1408,7 +1408,7 @@ ZEST_CASE(OccurrencesAt) {
 
     auto& fi = tu_index.focus_file_index;
     ZASSERT(!fi.occurrences.empty());
-    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.focus_file());
     ZASSERT(shard.loaded());
 
     auto x_range = range("x");
@@ -1443,7 +1443,7 @@ ZEST_CASE(RelationsOf) {
         void §(def)⟦fo§(def)o⟧() {}
     )");
 
-    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.focus_file());
     ZASSERT(shard.loaded());
 
     std::optional<index::Occurrence> occurrence;
@@ -1794,7 +1794,7 @@ ZEST_CASE(CanonicalFile) {
     ZASSERT(compile());
     decode_index(index::build_tu_index(*unit, {.all_files = true}));
 
-    auto focus_path = tu_index.view.path_count() - 1;
+    auto focus_path = tu_index.view.focus_file();
     auto header_path = [&] {
         for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
             if(tu_index.view.path(id).ends_with("header.h")) {
@@ -1823,7 +1823,7 @@ ZEST_CASE(CanonicalFile) {
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
     ZASSERT(used.file == index::no_file);
-    ZASSERT(symbol_named("main_only").second.file == tu_index.view.path_count() - 1);
+    ZASSERT(symbol_named("main_only").second.file == tu_index.view.focus_file());
 }
 
 ZEST_CASE(PreambleDefaultArgument) {
@@ -2605,7 +2605,7 @@ void lookup_headers(index::SymbolHash hash,
                     llvm::function_ref<bool(llvm::StringRef, const index::Relation&)> callback) {
     for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
         auto path_id = state->section_path(i);
-        if(path_id == state->path_count() - 1) {
+        if(path_id == state->focus_file()) {
             continue;
         }
         bool keep = true;
@@ -2706,7 +2706,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     build_state();
 
     auto foo = hash_of("foo");
-    const index::Shard& preamble = state->shard_of(state->path_count() - 1);
+    const index::Shard& preamble = state->shard_of(state->focus_file());
     ZASSERT(preamble.loaded());
 
     // Occurrence lookup by offset in the preamble entry.
@@ -2857,7 +2857,7 @@ int other = 1;
 )");
     build_state();
 
-    ZEXPECT(state->path(state->path_count() - 1).ends_with("main.cpp"));
+    ZEXPECT(state->path(state->focus_file()).ends_with("main.cpp"));
 
     // The preamble text itself is not stored; the TU index keeps only the
     // identity of the exact prefix it was built from.
@@ -2907,7 +2907,7 @@ void build(llvm::StringRef code,
 }
 
 std::optional<std::uint32_t> focus_section() {
-    return view.instantiation_section_of(view.path_count() - 1);
+    return view.instantiation_section_of(view.focus_file());
 }
 
 /// The instantiation section of the file whose path ends with `name`.
@@ -3336,7 +3336,7 @@ ZEST_CASE(SymbolsNameTheirFiles) {
         void run(T t) { t.go(); }
         void use() { run(A{}); }
     )");
-    auto focus_path = view.path_count() - 1;
+    auto focus_path = view.focus_file();
     bool named = false;
     view.for_each_instantiation_file(
         [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {

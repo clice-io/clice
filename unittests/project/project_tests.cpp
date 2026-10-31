@@ -1,5 +1,6 @@
 module clice;
 
+import :project.discovery;
 import :project.project;
 import :settings.settings;
 import :unittests.utils.cdb_helper;

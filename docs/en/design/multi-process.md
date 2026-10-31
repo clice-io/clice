@@ -23,8 +23,8 @@ Master Process (MasterServer)
 ├── Event loop (kotatsu)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
-├── Compile scheduling (task graph: PCH and PCM builders, AST and TU-run families)
-├── Background indexing (project index + pump)
+├── Compile scheduling (task graph: PCH, PCM, AST and unit-run nodes)
+├── Background indexing (project index + feeder)
 │
 ├── Stateful Worker Processes × N
 │   ├── SF-0: holds AST, serves queries

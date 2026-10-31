@@ -4,11 +4,61 @@ import :project.command;
 import :project.graph;
 import :support.failure_record;
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
 
 struct Project;
+
+/// The last build of a C++20 module unit that built: what it read and the
+/// PCM it wrote. Shared across all files that import the module; a build
+/// that failed is a failure record (PrecompiledFailures::pcm_builds).
+struct PCMBuild {
+    /// The build's identity: "{module}-{hash}" over the unit's path and
+    /// canonical flags, the build configuration, and the key of every module
+    /// it imports (an unresolved import by its name) — so a command change
+    /// anywhere below the module changes its key too.
+    std::string key;
+
+    /// The PCM's name in the store: the key and a nonce of the build that
+    /// produced it. A rebuild publishes under a new name, never over the
+    /// old PCM, which a running compile may still read — and the record
+    /// names the very bytes it describes, whatever a crash before the
+    /// metadata flush or another writer of the store left behind.
+    std::string blob;
+
+    /// The PCM the latest build replaced, kept for one more build.
+    std::string previous;
+
+    /// The built PCM; empty while a rebuild runs, after a failure, and once
+    /// it or the PCH it was built over left the store.
+    std::string path;
+
+    /// The PCH the PCM was built over, which its importers read with it;
+    /// empty for none.
+    std::string pch;
+
+    /// What the build read and looked for, the inputs of the modules it
+    /// imports included; none while a rebuild runs.
+    DepsSnapshot deps;
+};
+
+/// A module unit's build that failed: on the user's code, on an import that
+/// failed in turn, or by crashing a worker.
+struct ModuleFailure {
+    /// The key of the build that failed (PCMBuild::key); empty when an
+    /// import failed it and it never ran.
+    std::string key;
+
+    /// The build's first error, or how the worker it crashed died; empty
+    /// when an import failed it.
+    FailureRecord record;
+
+    /// The import whose build failed, or that closed a cycle back to the
+    /// unit; invalid when the unit's own build failed.
+    Fid import;
+};
 
 /// A scan's module dependencies: the full durable edge set of a unit, a
 /// node per module unit it imports and one unresolved import per name no
@@ -87,33 +137,38 @@ inline bool is_unresolved_import(NodeId id) {
     return id.kind == NodeKind::PCM && (id.key >> 63) != 0;
 }
 
-/// Re-validate on-disk PCM blobs and build the modules a request imports
-/// that compiles under `arguments` with `content` as the focus file and the
-/// resolution's synthesized context served from memory (the stateless
-/// requests' builds — the scan must see the buffer's imports under the
-/// request's command). Building a dependency can itself evict another clean
-/// module's PCM under budget pressure, which reopens the window the
-/// revalidation just closed — hence the bounded retry until the set is
-/// stable. A module that did not build is the compile's to report, as the
-/// stateful compile does; none only when the graph shut down.
+/// The graph node of a module unit's PCM.
+inline NodeId module_node(Fid module) {
+    return {NodeKind::PCM, module.raw};
+}
+
+/// Wait for the modules a compile imports, through `wait`, which waits for
+/// each once and says whether to go on (false when the round waiting was
+/// cancelled). A clean module promises its PCM and every PCM below it, but
+/// the store's LRU can evict one, or the PCH one was built over, while its
+/// node stays clean: after each wait the modules and every module below
+/// them are checked, and one whose product is gone is marked dirty with the
+/// modules between it and `modules`, and they are waited for again. A
+/// rebuild can itself evict another module under budget pressure, so the
+/// wait runs at most three times; past that the parse fails visibly on the
+/// missing file. False when `wait` said so.
+async::task<bool> wait_imports(Project& project,
+                               llvm::ArrayRef<Fid> modules,
+                               llvm::function_ref<async::task<bool>()> wait);
+
+/// Scan the imports of a request that compiles under `arguments` with
+/// `content` as the focus file and the resolution's synthesized context
+/// served from memory (the stateless requests' builds — the scan must see
+/// the buffer's imports under the request's command), declare them as the
+/// file's edges and wait for their modules (wait_imports), foreground. A
+/// module that did not build is the compile's to report, as the stateful
+/// compile does; none only when the graph shut down.
 async::task<std::optional<ModuleDeps>> build_imports(Project& project,
                                                      Fid path_id,
                                                      const Resolution& resolution,
-                                                     llvm::ArrayRef<const char*> arguments,
+                                                     llvm::ArrayRef<std::string> arguments,
                                                      llvm::StringRef directory,
                                                      llvm::StringRef content);
-
-/// One pass of the on-disk revalidation: LRU eviction can remove a blob, or
-/// the PCH it was built over, while its node is still clean, so evicted
-/// units lose their path and are re-dirtied instead of handing clang a
-/// dangling path — and so are the units importing them, directly or not: a
-/// clean module promises every module below it built (see module_closure).
-/// Returns whether anything was evicted.
-///
-/// FIXME: this stats every built PCM (pcm_builds) on every compile that
-/// imports a module, even when nothing was evicted: slow for a large
-/// modular project whose cache sits on a network filesystem.
-bool revalidate_pcms(Project& project);
 
 /// Commit `deps`, a scan of the file of the round's node `self`, as the
 /// node's durable edges (TaskGraph::declare), and reference its unresolved
@@ -129,18 +184,12 @@ void declare_imports(Project& project, RoundContext& ctx, NodeId self, const Mod
 /// depended on before).
 bool pcm_tracked(const Project& project, Fid path_id);
 
-/// The modules a compile importing `modules` reads, once it waited on them:
-/// they and, below each that built, the modules it imports in turn — clang
-/// loads every module below an import, and a built module's imports are
-/// built too.
-llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules);
-
 /// Mark a module unit and its transitive importers dirty, voiding in-flight
 /// rounds: their next rounds check their builds again, and a build whose
 /// key and inputs still hold is kept — the single write point for PCM
 /// content invalidation. A product-only loss (cache eviction) goes through
-/// revalidate_pcms instead, which re-dirties without voiding in-flight
-/// rounds: what they read is unchanged. Returns the dirtied nodes' files,
+/// wait_imports instead, which re-dirties without voiding in-flight rounds:
+/// what they read is unchanged. Returns the dirtied nodes' files,
 /// of every kind.
 llvm::SmallVector<Fid> invalidate_module(Project& project, Fid path_id);
 
@@ -168,17 +217,10 @@ bool forget_build_failure(Project& project, Fid module);
 /// next rounds rebuild) and return them for serving-side treatment.
 llvm::SmallVector<NodeId> provider_appeared(Project& project, llvm::StringRef name);
 
-/// Scan a module unit's disk text for its direct module dependencies under
-/// the command its own build resolves (lazy, on every use — a re-resolve is
-/// inherent, so a CDB or import change is always seen by the next round).
-/// Consumers declare the full edge set and wait on the resolved subset.
-async::task<ModuleDeps> direct_deps(Project& project, Fid path_id);
-
-/// The already-resolved-command variant: scans under exactly the arguments
-/// the caller will compile with, rendered by `resolution`. The AST path
-/// uses it so a context choice or donated header host cannot diverge
-/// between the scan and the parse — the path_id variant re-picks a CDB
-/// entry, which is only right for whole-TU runs on real commands. The
+/// The direct module dependencies of the unit under exactly the arguments
+/// the caller compiles it with, rendered by `resolution`: a context choice
+/// or a donated header host cannot diverge between the scan and the parse.
+/// Consumers declare the full edge set and wait on the resolved subset. The
 /// header context the arguments name is served to the scan from memory. An
 /// engaged `content` scans it in place of the file's on-disk text — even
 /// when empty (an open buffer's imports count before they are saved, and
@@ -195,9 +237,26 @@ async::task<ModuleDeps> direct_deps(Project& project, Fid path_id);
 async::task<ModuleDeps> direct_deps(Project& project,
                                     Fid path_id,
                                     const Resolution& resolution,
-                                    llvm::ArrayRef<const char*> arguments,
+                                    llvm::ArrayRef<std::string> arguments,
                                     llvm::StringRef directory,
                                     std::optional<llvm::StringRef> content);
+
+/// The PCMs a compile importing `modules` reads, under their modules'
+/// names: theirs and, below each that built, those of the modules it
+/// imports in turn — clang loads every module below an import, and a built
+/// module's imports are built too.
+std::unordered_map<std::string, std::string> imported_pcms(const Project& project,
+                                                           llvm::ArrayRef<Fid> modules);
+
+/// What decides whether the module's last PCM build still holds: what it
+/// read, or — for a build an import failed — what the import's failure
+/// rests on, down to the module whose own build failed. Null for a module
+/// never built and for a cycle of imports failing each other.
+const DepsSnapshot* build_inputs(const Project& project, Fid module);
+
+/// The build_inputs of `modules`, each once: what their PCMs were built
+/// from, their imports' inputs included, or what keeps them failing.
+DepsSnapshot module_inputs(const Project& project, llvm::ArrayRef<Fid> modules);
 
 /// One round of a PCM node, the graph's runner for NodeKind::PCM: declare
 /// the dependency edges, wait on the imports, keep the last build while it

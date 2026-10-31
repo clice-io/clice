@@ -1,6 +1,5 @@
 module clice;
 
-import :project.background_index;
 import :project.command;
 import :project.pch;
 import :project.pcm;
@@ -23,10 +22,6 @@ namespace {
 /// BMI, or its key comes to name another build, so a blob or a record an
 /// older clice stored is not taken for the new one.
 constexpr llvm::StringRef pcm_version = "5";
-
-NodeId node(Fid path_id) {
-    return {NodeKind::PCM, path_id.raw};
-}
 
 /// The provider an import in `importer` resolves to among several of one
 /// name: the nearest — the fewest directories up from the importer to one
@@ -78,8 +73,119 @@ bool drop_evicted(Project& project, Fid module, PCMBuild& build) {
     // under a cache budget smaller than the working set, that voids and
     // respawns the waiter forever.
     build.path.clear();
-    project.graph.mark_dirty(node(module));
+    project.graph.mark_dirty(module_node(module));
     return true;
+}
+
+/// The modules a compile importing `modules` reads, once it waited on them:
+/// they and, below each that built, the modules it imports in turn — clang
+/// loads every module below an import, and a built module's imports are
+/// built too.
+llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules) {
+    llvm::SetVector<Fid> read(modules.begin(), modules.end());
+    for(std::size_t i = 0; i < read.size(); i += 1) {
+        auto it = project.pcm_builds.find(read[i]);
+        if(it == project.pcm_builds.end() || it->second.path.empty()) {
+            continue;
+        }
+        for(auto dep: project.graph.dependencies(module_node(read[i]))) {
+            if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
+                read.insert(dep.file());
+            }
+        }
+    }
+    return read;
+}
+
+/// Whether `modules` and every module below them still have their PCMs,
+/// none rebuilding — a waiter that found one gone started its rebuild:
+/// else the ones whose PCM is gone (drop_evicted) are dirty, and so are the
+/// ones between them and `modules`, through every level — their own PCMs
+/// still hold, their next rounds keep them, but a round is what rebuilds
+/// an import first.
+bool imports_present(Project& project, llvm::ArrayRef<Fid> modules) {
+    auto closure = module_closure(project, modules);
+    bool present = true;
+    for(auto module: closure) {
+        if(project.graph.is_compiling(module_node(module))) {
+            present = false;
+        } else if(auto it = project.pcm_builds.find(module);
+                  it != project.pcm_builds.end() && drop_evicted(project, module, it->second)) {
+            present = false;
+        }
+    }
+    if(present) {
+        return true;
+    }
+    auto& graph = project.graph;
+    for(bool marked = true; marked;) {
+        marked = false;
+        for(auto module: closure) {
+            auto id = module_node(module);
+            if(!graph.has_node(id) || graph.is_dirty(id)) {
+                continue;
+            }
+            if(ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
+                   return dep.kind == NodeKind::PCM && !is_unresolved_import(dep) &&
+                          graph.is_dirty(dep);
+               })) {
+                graph.mark_dirty(id);
+                marked = true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Why the module's last build cannot stand for `pcm_key`; empty when it
+/// can: built under the key, what it read unchanged, its PCM in the store.
+/// A build that cannot no longer describes the module: an importer
+/// compiling while the next one runs, or after it fails, must not read the
+/// previous interface from it. Its PCM stays in the store until the next
+/// one replaces it — a compile may still be reading it.
+llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key) {
+    auto it = project.pcm_builds.find(module);
+    if(it == project.pcm_builds.end()) {
+        return "no_entry";
+    }
+    auto& build = it->second;
+    llvm::StringRef miss;
+    if(build.key != pcm_key) {
+        miss = "key_changed";
+    } else if(deps_changed(project.file_table, build.deps)) {
+        miss = "deps_changed";
+    } else if(build.path.empty() || !project.store->lookup("pcm", build.blob)) {
+        miss = "evicted";
+    } else {
+        return {};
+    }
+    build = {.blob = std::move(build.blob), .previous = std::move(build.previous)};
+    return miss;
+}
+
+/// Whether the module's last build stands failed against building it again
+/// under `pcm_key`. A failed build rebuilt on unchanged inputs would make
+/// every compile and completion of every importer pay for it first, and one
+/// that crashed a worker would burn a worker of every importer. A crash's
+/// inputs hold the module's own text, which pcm_key leaves out: the refusal
+/// lifts the moment the poison is edited, and only then — a rebuild of the
+/// PCH renames the key on the same bytes. A failure under another key that
+/// crashed nothing no longer holds, and is forgotten.
+bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::StringRef name) {
+    auto* failed = project.failures.pcm_builds.lookup(project.file_table, module);
+    if(!failed) {
+        return false;
+    }
+    if(failed->result.record.crashed()) {
+        LOG_WARN("PCM build for module {} refused: it crashed a worker", name);
+        return true;
+    }
+    if(failed->result.key == pcm_key) {
+        LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs", name);
+        return true;
+    }
+    project.failures.pcm_builds.forget(module);
+    return false;
 }
 
 }  // namespace
@@ -99,26 +205,10 @@ bool ModuleDeps::modular() const {
            ranges::any_of(declared, [](NodeId dep) { return !is_unresolved_import(dep); });
 }
 
-async::task<ModuleDeps> direct_deps(Project& project, Fid path_id) {
-    // The same resolution the real build uses (pcm_round below): a module
-    // unit scanned with a different command than it compiles with would
-    // edge against a different dependency set.
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto resolution = resolve_command(project, path_id, directory, arguments);
-
-    std::vector<const char*> argv;
-    argv.reserve(arguments.size());
-    for(auto& arg: arguments) {
-        argv.push_back(arg.c_str());
-    }
-    co_return co_await direct_deps(project, path_id, resolution, argv, directory, std::nullopt);
-}
-
 async::task<ModuleDeps> direct_deps(Project& project,
                                     Fid path_id,
                                     const Resolution& resolution,
-                                    llvm::ArrayRef<const char*> arguments,
+                                    llvm::ArrayRef<std::string> arguments,
                                     llvm::StringRef directory,
                                     std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
@@ -141,7 +231,7 @@ async::task<ModuleDeps> direct_deps(Project& project,
     }
 
     llvm::SmallString<1024> joined(directory);
-    for(auto* arg: arguments) {
+    for(auto& arg: arguments) {
         joined.push_back('\0');
         joined.append(arg);
     }
@@ -180,8 +270,13 @@ async::task<ModuleDeps> direct_deps(Project& project,
             content = text;
         }
         project.import_scans += 1;
+        std::vector<const char*> argv;
+        argv.reserve(arguments.size());
+        for(auto& arg: arguments) {
+            argv.push_back(arg.c_str());
+        }
         auto scanned = co_await async::queue(
-            [&] { return scan_precise(arguments, directory, content, std::move(vfs)); });
+            [&] { return scan_precise(argv, directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,
@@ -208,8 +303,9 @@ async::task<ModuleDeps> direct_deps(Project& project,
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
         deps.declared.push_back(
-            providers.empty() ? unresolved_import(name)
-                              : node(nearest_provider(project.file_table, providers, path_id)));
+            providers.empty()
+                ? unresolved_import(name)
+                : module_node(nearest_provider(project.file_table, providers, path_id)));
     }
     co_return deps;
 }
@@ -231,22 +327,25 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
     auto path_id = id.file();
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
-    if(auto* inputs = project.build_inputs(path_id);
+    if(auto* inputs = build_inputs(project, path_id);
        inputs && deps_changed(project.file_table, *inputs)) {
         project.disk_scans.erase(path_id);
     }
 
     // The import list is scanner truth, not build output: commit it as
-    // durable edges before building. The lazy per-round resolve is what
-    // keeps the edges honest: a CDB or import change is always seen by the
-    // next round. Each depend() then records the candidate edge (interest-
-    // and foreground-visible immediately) and waits for the dependency.
-    auto deps = co_await direct_deps(project, path_id);
-    declare_imports(project, ctx, id, deps);
-
+    // durable edges before building. The scan runs under the command the
+    // build compiles with, resolved on every round: a CDB or import change
+    // is always seen by the next one.
     worker::BuildPCMParams bp;
     auto resolution = resolve_command(project, path_id, bp.directory, bp.arguments);
     bp.hidden = resolution.hidden;
+    auto deps = co_await direct_deps(project,
+                                     path_id,
+                                     resolution,
+                                     bp.arguments,
+                                     bp.directory,
+                                     std::nullopt);
+    declare_imports(project, ctx, id, deps);
 
     // A unit of a target with precompiled headers builds over clice's own
     // build of them, as its command builds over the target's: the header
@@ -276,45 +375,42 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
     }
 
     // The last round's failed import stands while this one waits: an
-    // importer explains its diagnostics from it meanwhile. An import ready
-    // early can have lost its PCM by the time the last one is, evicted or
-    // being rebuilt: the key and the build read what each import built.
+    // importer explains its diagnostics from it meanwhile.
     auto resolved = deps.resolved();
-    for(bool built = false; !built;) {
+    auto outcome = RoundOutcome::Stale;
+    auto wait = [&]() -> async::task<bool> {
         for(auto dep: resolved) {
-            switch(co_await ctx.depend(node(dep))) {
+            switch(co_await ctx.depend(module_node(dep))) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: {
                     auto& build = project.pcm_builds[path_id];
                     move_to_previous(project, build);
                     build = {.previous = std::move(build.previous)};
                     project.failures.pcm_builds.commit(path_id, {.import = dep}, {});
-                    co_return RoundOutcome::Failed;
+                    outcome = RoundOutcome::Failed;
+                    co_return false;
                 }
-                case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                case DependResult::Cancelled: co_return false;
             }
         }
-        built = true;
-        for(auto dep: resolved) {
-            auto& build = project.pcm_builds.find(dep)->second;
-            if(build.path.empty() || drop_evicted(project, dep, build)) {
-                built = false;
-            }
-        }
+        co_return true;
+    };
+    if(!co_await wait_imports(project, resolved, wait)) {
+        co_return outcome;
     }
 
     // Copied before any suspension below: while a PCM build is awaited, a
     // concurrent didSave can re-declare the file and drop the graph's
     // string.
     std::string module_name(project.dep_graph.module_of(path_id));
-    if(module_name.empty())
+    if(module_name.empty()) {
         co_return RoundOutcome::Failed;
-
+    }
     auto file_path = std::string(project.file_table.resolve(path_id));
     bp.file = file_path;
 
     if(!project.store) {
-        LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
+        LOG_WARN("PCM build skipped for module {}: cache store is unavailable", module_name);
         co_return RoundOutcome::Failed;
     }
 
@@ -358,44 +454,10 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
                                           imports,
                                           pch_blob}));
 
-    // The last build stands while its key and inputs do, failed or not: a
-    // failed build rebuilt on unchanged inputs would make every compile
-    // and completion of every importer pay for it first, and one that
-    // crashed a worker would burn a worker of every importer. A crash's
-    // inputs hold the module's own text, which pcm_key leaves out: the
-    // refusal lifts the moment the poison is edited, and only then — a
-    // rebuild of the PCH renames the key on the same bytes.
-    if(auto* failed = project.failures.pcm_builds.lookup(project.file_table, path_id)) {
-        if(failed->result.key == pcm_key || failed->result.record.crashed()) {
-            if(failed->result.record.crashed()) {
-                LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
-            } else {
-                LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs",
-                          module_name);
-            }
-            co_return RoundOutcome::Failed;
-        }
-        project.failures.pcm_builds.forget(path_id);
-    }
-    llvm::StringRef pcm_miss = "no_entry";
-    if(auto it = project.pcm_builds.find(path_id); it != project.pcm_builds.end()) {
-        auto& build = it->second;
-        if(build.key != pcm_key) {
-            pcm_miss = "key_changed";
-        } else if(deps_changed(project.file_table, build.deps)) {
-            pcm_miss = "deps_changed";
-        } else if(build.path.empty() || !project.store->lookup("pcm", build.blob)) {
-            pcm_miss = "evicted";
-        } else {
-            LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
-            build.pch = std::move(bp.pch);
-            co_return RoundOutcome::Success;
-        }
-        // The build no longer describes the module: an importer compiling
-        // while this build runs, or after it fails, must not read the
-        // previous interface from it. Its PCM stays in the store until the
-        // next one replaces it — a compile may still be reading it.
-        build = {.blob = std::move(build.blob), .previous = std::move(build.previous)};
+    auto pcm_miss = revalidate(project, path_id, pcm_key);
+    if(pcm_miss.empty()) {
+        LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
+        co_return RoundOutcome::Success;
     }
     LOG_PERF("cache",
              "ns=pcm event=miss reason={} key={} module={}",
@@ -403,18 +465,21 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
              pcm_key,
              module_name);
 
+    if(refused(project, path_id, pcm_key, module_name)) {
+        co_return RoundOutcome::Failed;
+    }
+
     bp.module_name = module_name;
-    std::random_device random;
-    auto blob = std::format("{}-{:08x}{:08x}", pcm_key, random(), random());
+    auto blob = new_blob(pcm_key);
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
-    project.fill_pcm_deps(bp.pcms, module_closure(project, resolved).getArrayRef());
+    bp.pcms = imported_pcms(project, resolved);
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own
     // imports', so the snapshot is transitive. Taken before the build, with
     // the PCH it reads: an eviction arriving during it must not drop them.
-    auto before = project.module_inputs(resolved);
+    auto before = module_inputs(project, resolved);
     merge_deps(before, {&precompiled});
     // What a build that crashes is known to read, sampled before it runs: a
     // save arriving mid-build is not what crashed.
@@ -425,7 +490,6 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
     auto built = co_await send_precompiled(project,
                                            ctx,
                                            bp,
-                                           "PCM",
                                            std::format("module {}", module_name),
                                            std::move(known),
                                            before,
@@ -459,12 +523,9 @@ async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId 
     build.path = std::move(committed.value());
     build.pch = std::move(bp.pch);
     build.deps = read_inputs(project, *built, before);
-    LOG_INFO("Built PCM for module {}: {}", module_name, build.path);
+    LOG_INFO("PCM built for module {}: {}", module_name, build.path);
 
     project.mark_precompiled_dirty();
-
-    // New index data is available for background merge.
-    schedule_index(project);
 
     co_return RoundOutcome::Success;
 }
@@ -493,22 +554,6 @@ bool forget_build_failure(Project& project, Fid module) {
     return project.failures.pcm_builds.forget(module);
 }
 
-llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules) {
-    llvm::SetVector<Fid> read(modules.begin(), modules.end());
-    for(std::size_t i = 0; i < read.size(); i += 1) {
-        auto it = project.pcm_builds.find(read[i]);
-        if(it == project.pcm_builds.end() || it->second.path.empty()) {
-            continue;
-        }
-        for(auto dep: project.graph.dependencies(node(read[i]))) {
-            if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
-                read.insert(dep.file());
-            }
-        }
-    }
-    return read;
-}
-
 const FailureRecord* build_crash(Project& project, Fid module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
@@ -517,43 +562,24 @@ const FailureRecord* build_crash(Project& project, Fid module) {
     return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
 }
 
-bool revalidate_pcms(Project& project) {
-    bool evicted = false;
-    for(auto& [pid, build]: project.pcm_builds) {
-        if(drop_evicted(project, pid, build)) {
-            evicted = true;
+async::task<bool> wait_imports(Project& project,
+                               llvm::ArrayRef<Fid> modules,
+                               llvm::function_ref<async::task<bool>()> wait) {
+    for(int pass = 0; pass < 3; pass += 1) {
+        if(!co_await wait()) {
+            co_return false;
+        }
+        if(imports_present(project, modules)) {
+            break;
         }
     }
-    if(!evicted) {
-        return false;
-    }
-    // The units importing an evicted one look again too, through every
-    // level: their own PCMs still hold — their next rounds keep them — but
-    // a round is what rebuilds an import first.
-    auto& graph = project.graph;
-    for(bool marked = true; marked;) {
-        marked = false;
-        for(auto& [pid, build]: project.pcm_builds) {
-            auto id = node(pid);
-            if(!graph.has_node(id) || graph.is_dirty(id)) {
-                continue;
-            }
-            if(ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
-                   return dep.kind == NodeKind::PCM && !is_unresolved_import(dep) &&
-                          graph.is_dirty(dep);
-               })) {
-                graph.mark_dirty(id);
-                marked = true;
-            }
-        }
-    }
-    return true;
+    co_return true;
 }
 
 async::task<std::optional<ModuleDeps>> build_imports(Project& project,
                                                      Fid path_id,
                                                      const Resolution& resolution,
-                                                     llvm::ArrayRef<const char*> arguments,
+                                                     llvm::ArrayRef<std::string> arguments,
                                                      llvm::StringRef directory,
                                                      llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
@@ -574,42 +600,76 @@ async::task<std::optional<ModuleDeps>> build_imports(Project& project,
     // dependency whose save should invalidate it). Plain TUs' consumer
     // nodes never run rounds; the declaration is theirs alone.
     if(project.dep_graph.module_of(path_id).empty()) {
-        project.graph.declare(node(path_id), deps.declared);
+        project.graph.declare(module_node(path_id), deps.declared);
     }
     auto resolved = deps.resolved();
-    if(resolved.empty()) {
-        co_return deps;
-    }
-
-    for(int attempt = 0; attempt < 3; attempt += 1) {
-        bool any_evicted = revalidate_pcms(project);
-        if(attempt > 0 && !any_evicted) {
-            break;
-        }
-
-        // A user request waits on these builds: foreground, so the
-        // background budget cannot throttle them. A module that did not
-        // build is the compile's to report.
+    // A user request waits on these builds: foreground, so the background
+    // budget cannot throttle them. A module that did not build is the
+    // compile's to report.
+    auto wait = [&]() -> async::task<bool> {
         std::vector<async::task<JoinOutcome>> waits;
         waits.reserve(resolved.size());
         for(auto dep: resolved) {
-            waits.push_back(project.graph.request(node(dep), {.foreground = true}));
+            waits.push_back(project.graph.request(module_node(dep), {.foreground = true}));
         }
         auto results = co_await async::when_all(std::move(waits));
-        if(ranges::contains(results, JoinOutcome::Shutdown)) {
-            co_return std::nullopt;
-        }
+        co_return !ranges::contains(results, JoinOutcome::Shutdown);
+    };
+    if(!resolved.empty() && !co_await wait_imports(project, resolved, wait)) {
+        co_return std::nullopt;
     }
     co_return deps;
 }
 
+const DepsSnapshot* build_inputs(const Project& project, Fid module) {
+    llvm::SmallVector<Fid, 4> chain;
+    for(auto current = module; !ranges::contains(chain, current);) {
+        auto* failed = project.failures.pcm_builds.find(current);
+        if(!failed) {
+            auto it = project.pcm_builds.find(current);
+            return it != project.pcm_builds.end() ? &it->second.deps : nullptr;
+        }
+        if(!failed->result.import.valid()) {
+            return &failed->trace;
+        }
+        chain.push_back(current);
+        current = failed->result.import;
+    }
+    return nullptr;
+}
+
+DepsSnapshot module_inputs(const Project& project, llvm::ArrayRef<Fid> modules) {
+    llvm::SmallVector<const DepsSnapshot*> parts;
+    for(auto module: modules) {
+        if(auto* inputs = build_inputs(project, module)) {
+            parts.push_back(inputs);
+        }
+    }
+    DepsSnapshot inputs;
+    merge_deps(inputs, parts);
+    return inputs;
+}
+
+std::unordered_map<std::string, std::string> imported_pcms(const Project& project,
+                                                           llvm::ArrayRef<Fid> modules) {
+    std::unordered_map<std::string, std::string> pcms;
+    for(auto module: module_closure(project, modules)) {
+        auto it = project.pcm_builds.find(module);
+        auto name = project.dep_graph.module_of(module);
+        if(it != project.pcm_builds.end() && !it->second.path.empty() && !name.empty()) {
+            pcms[name.str()] = it->second.path;
+        }
+    }
+    return pcms;
+}
+
 bool pcm_tracked(const Project& project, Fid path_id) {
-    return project.graph.has_node(node(path_id));
+    return project.graph.has_node(module_node(path_id));
 }
 
 llvm::SmallVector<Fid> invalidate_module(Project& project, Fid path_id) {
     llvm::SmallVector<Fid> dirtied;
-    for(auto id: project.graph.update(node(path_id))) {
+    for(auto id: project.graph.update(module_node(path_id))) {
         dirtied.push_back(id.file());
     }
     return dirtied;

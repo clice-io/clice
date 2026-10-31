@@ -141,6 +141,8 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         }
         *dir = CanonicalPath(*spelled).str();
     }
+    p.cache_identity =
+        p.cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(p.cache_dir));
 
     compiled_rules.clear();
     auto compile = [&](const Rule& rule) -> std::optional<CompiledRule> {
@@ -511,8 +513,9 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     loaded.settings = layered;
     auto problems = loaded.settings.finalize(root);
     auto& cache_dir = loaded.settings.project.cache_dir;
+    const CanonicalPath& identity = loaded.settings.project.cache_identity;
     auto taken_here = [&] {
-        return ranges::contains(options.taken_cache_dirs, loaded.settings.project.cache_identity());
+        return ranges::contains(options.taken_cache_dirs, identity);
     };
     auto taken = [&] {
         return !cache_dir.empty() && (taken_here() || owned_elsewhere(cache_dir, root));
@@ -533,6 +536,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         if(taken()) {
             cache_dir.clear();
             loaded.settings.project.cache_dir_defaulted = false;
+            loaded.settings.project.cache_identity = {};
         }
         LOG_GUIDANCE("Cache directory {} {}; {} {}",
                      requested,
@@ -572,28 +576,6 @@ std::string cache_dir_owner(llvm::StringRef cache_dir) {
 /// owns nothing.
 static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
     return !owner.empty() && owner != root && fs::is_directory(owner);
-}
-
-bool configured(const Spelling& dir) {
-    return ranges::any_of(settings_file_names,
-                          [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
-}
-
-CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path) {
-    CanonicalPath found;
-    if(project_root.empty() || !path::is_within(path, project_root)) {
-        return found;
-    }
-    path::walk_ancestors(path, [&](CanonicalRef dir) {
-        if(dir == project_root) {
-            return false;
-        }
-        if(configured(Spelling(dir))) {
-            found = dir;
-        }
-        return true;
-    });
-    return found;
 }
 
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root) {

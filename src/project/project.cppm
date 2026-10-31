@@ -52,103 +52,6 @@ struct ContextChoice {
     std::string base_hash;
 };
 
-/// Cached PCH state.  Stored in Project.pch_cache keyed by the content
-/// key (hex of xxh3_128bits over preamble text + directories + canonical
-/// flags), so files with identical preambles share one PCH.
-///
-/// Everything derived from the PCH build beyond validity metadata — the
-/// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the paired pch.idx index (the store's
-/// `.pch.idx` aux file), committed and evicted together with the PCH.
-/// Open a PCH's `.pch.idx` index (memory-mapped). Returns nullptr when
-/// the file is unreadable, structurally invalid, of a different format
-/// version, or any embedded shard blob fails verification — callers treat
-/// all of these as a PCH cache miss.
-std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
-
-struct PCHState {
-    /// The pair's name in the store: the key and a nonce of the build that
-    /// produced it. A rebuild publishes under a new name, never over the
-    /// old pair, which workers may still have mapped — Windows refuses to
-    /// replace a mapped file.
-    std::string blob;
-
-    /// The pair the latest build replaced, kept for one more build: a
-    /// consumer that took its path just before the replacement may not
-    /// have opened it yet.
-    std::string previous;
-
-    std::string path;
-    std::uint32_t bound = 0;
-    DepsSnapshot deps;
-
-    /// The key of the precompiled header the build declares that this
-    /// preamble's PCH is built over and chains onto; empty for none.
-    std::string base;
-
-    /// Path of the paired pch.idx index.
-    std::string index_path;
-
-    /// Lazily opened blob; shared so a consumer holding it across an await
-    /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::TUIndex> state;
-
-    /// Open the blob on first use (memory-mapped, no deserialization).
-    /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next PCH round
-    /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::TUIndex>& load_state();
-};
-
-/// The last build of a C++20 module unit that built: what it read and the
-/// PCM it wrote. Shared across all files that import the module; a build
-/// that failed is a failure record (PrecompiledFailures::pcm_builds).
-struct PCMBuild {
-    /// The build's identity: "{module}-{hash}" over the unit's path and
-    /// canonical flags, the build configuration, and the key of every module
-    /// it imports (an unresolved import by its name) — so a command change
-    /// anywhere below the module changes its key too.
-    std::string key;
-
-    /// The PCM's name in the store: the key and a nonce of the build that
-    /// produced it. A rebuild publishes under a new name, never over the
-    /// old PCM, which a running compile may still read — and the record
-    /// names the very bytes it describes, whatever a crash before the
-    /// metadata flush or another writer of the store left behind.
-    std::string blob;
-
-    /// The PCM the latest build replaced, kept for one more build.
-    std::string previous;
-
-    /// The built PCM; empty while a rebuild runs, after a failure, and once
-    /// it or the PCH it was built over left the store.
-    std::string path;
-
-    /// The PCH the PCM was built over, which its importers read with it;
-    /// empty for none.
-    std::string pch;
-
-    /// What the build read and looked for, the inputs of the modules it
-    /// imports included; none while a rebuild runs.
-    DepsSnapshot deps;
-};
-
-/// A module unit's build that failed: on the user's code, on an import that
-/// failed in turn, or by crashing a worker.
-struct ModuleFailure {
-    /// The key of the build that failed (PCMBuild::key); empty when an
-    /// import failed it and it never ran.
-    std::string key;
-
-    /// The build's first error, or how the worker it crashed died; empty
-    /// when an import failed it.
-    FailureRecord record;
-
-    /// The import whose build failed, or that closed a cycle back to the
-    /// unit; invalid when the unit's own build failed.
-    Fid import;
-};
-
 /// What failed of the PCH and PCM builds, each failure with the inputs it stands on
 /// (see Memo): those of a failed build are what it read, those of a crash
 /// what was known before it ran. Only a success of the same operation, a
@@ -278,16 +181,6 @@ struct Project {
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
 
-    /// PCH cache, keyed by content key (preamble text + canonical flags),
-    /// so files with identical preambles share one PCH.  Hot-path mirror
-    /// of CacheStore state; blob paths come from the store.
-    llvm::StringMap<PCHState> pch_cache;
-
-    /// The last PCM build of each module unit that built.
-    llvm::DenseMap<Fid, PCMBuild> pcm_builds;
-
-    PrecompiledFailures failures;
-
     /// The persisted index, read as it is used: the symbol and file
     /// records, the per-TU manifests, the per-file shard blobs and the name
     /// search index.
@@ -395,6 +288,13 @@ struct Project {
         }
     }
 
+    PrecompiledFailures failures;
+
+    /// The PCHs the cache holds, keyed by content key (preamble text +
+    /// canonical flags), so files with identical preambles share one PCH:
+    /// a mirror of the cache store's state, which names their paths.
+    llvm::StringMap<PCHState> pch_cache;
+
     /// The PCH nodes' ids, interned by key monotonically, never recycled:
     /// the graph may retain an id in edges or rounds long after the key's
     /// entry went.
@@ -414,6 +314,9 @@ struct Project {
     /// loaded-state budget; unset (tests, tools) falls back to a small
     /// editor-like working set.
     std::function<std::size_t()> open_documents;
+
+    /// The last PCM build of each module unit that built.
+    llvm::DenseMap<Fid, PCMBuild> pcm_builds;
 
     /// The import scans of open buffers, and of units' disk text: kept while
     /// the arguments and the project's disk state (context_epoch) stay the
@@ -469,22 +372,6 @@ struct Project {
     /// serves other projects — a worker still finishing a cancelled build
     /// then only fails its write.
     void close();
-
-    /// The PCM of each built module of `modules`, under its name: what a
-    /// compile importing them hands clang.
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       llvm::ArrayRef<Fid> modules) const;
-
-    /// What decides whether the module's last PCM build still holds: what
-    /// it read, or — for a build an import failed — what the import's
-    /// failure rests on, down to the module whose own build failed. Null
-    /// for a module never built and for a cycle of imports failing each
-    /// other.
-    const DepsSnapshot* build_inputs(Fid module) const;
-
-    /// The build_inputs of `modules`, each once: what their PCMs were built
-    /// from, their imports' inputs included, or what keeps them failing.
-    DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
 
     /// How much of the project a run opens (open()).
     struct OpenOptions {
@@ -569,38 +456,6 @@ struct Project {
 /// to delete.
 std::string damaged_index_error(const Project& project);
 
-/// Where a `compile_commands.json` is looked for when no rule declares
-/// one: the project root, then its direct subdirectories in name order,
-/// but for those with a configuration file of their own (nested_project).
-llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
-
-/// The `compile_commands.json` files to load when no rule declares one:
-/// those of database_places that exist. Empty when none exists yet — the
-/// server keeps watching the places (ServedProject::discover_databases).
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root);
-
-/// The `compile_commands.json` files discovery passes over, deeper than
-/// the root's direct subdirectories down to three directories below it
-/// (hidden directories, `node_modules`, the cache directory and the
-/// directories with a configuration file of their own skipped), by path:
-/// what the guidance of a project without a database names.
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
-                                                    CanonicalRef cache_dir);
-
-/// Whether `dir` is a project of its own: it holds a configuration file,
-/// or a compile_commands.json where startup discovery looks
-/// (discover_compile_commands).
-bool defines_project(CanonicalRef dir);
-
-/// The nearest directory at or above `start` holding a configuration file
-/// or a compile_commands.json, directly or in its build/ directory — its
-/// parent instead when it holds a database alone and the parent is such a
-/// directory — spelled as `start` is when `start` lies under it as spelled:
-/// the root of the project a directory belongs to, as the server finds it
-/// for a file outside every served folder and the command line from the
-/// current directory. Empty when no ancestor has either.
-Spelling find_project_root(const Spelling& start);
-
 /// The real paths that the databases of the rules active under
 /// `configuration` and resolving symlinks (Rule::resolve_symlinks)
 /// resolve to now, one per line; empty when no active rule resolves them.
@@ -614,34 +469,6 @@ std::string resolved_databases(const Settings& settings, llvm::StringRef configu
 index::DatabaseKey database_key(const Settings& settings,
                                 llvm::StringRef configuration,
                                 llvm::StringRef resolved);
-
-/// The sentence the guidance of a project without a database ends with:
-/// the rule that loads the compile_commands.json files discovery passes
-/// over (deeper_compile_commands). Empty when there is none, or the rules
-/// declare the build's sources.
-std::string deeper_databases_hint(const Project& project);
-
-/// Whether a database the load found on disk could not be read, which its
-/// load logged the reason for.
-bool found_unreadable_database(const Project& project);
-
-/// Why the build has no member, completing a batch command's "Nothing to
-/// <verb>: ": a database it found that cannot be read, does not exist yet
-/// or lists no file; the rules' default commands claiming no file; else
-/// that no database was found in `root` or its direct subdirectories, the
-/// subdirectories left out as projects of their own, and the deeper ones
-/// there are.
-std::string why_no_members(const Project& project, llvm::StringRef root);
-
-/// Where a `compile_commands.json` is looked for in `start` and its
-/// ancestors up to `project_root`, nearest first: none in or below a
-/// directory with a configuration file of its own (nested_project).
-llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root);
-
-/// The `compile_commands.json` files of database_places_above that exist:
-/// the databases a file deeper in the tree than startup discovery looks
-/// may compile from.
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

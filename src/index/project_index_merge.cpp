@@ -26,7 +26,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         LOG_WARN("Ignoring TUIndex that failed verification");
         return std::unexpected(MergeError::Invalid);
     }
-    auto focus_local_id = view.path_count() - 1;
+    auto focus_local_id = view.focus_file();
     llvm::StringRef tu_path = view.path(focus_local_id);
 
     // Interning paths only names them — pool ids left behind by a rejected

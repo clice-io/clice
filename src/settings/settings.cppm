@@ -10,7 +10,6 @@ import :feature.semantic_tokens;
 import :feature.signature_help;
 import :support.json;
 import :support.prelude;
-import :vfs.path;
 
 namespace clice {
 
@@ -37,14 +36,6 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef project_root);
 /// The configuration files a project root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.toml",
                                                                        ".clice/config.toml"};
-
-/// Whether `dir` holds a configuration file.
-bool configured(const Spelling& dir);
-
-/// The outermost directory below `project_root` that holds `path`, or is
-/// `path`, and has a configuration file: what lies in it is that
-/// project's, not `project_root`'s. Empty when there is none.
-CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path);
 
 /// A compile command written by hand: one string tokenized like a shell
 /// command line, or an argv array.
@@ -227,7 +218,7 @@ enum class ReadonlyMode : std::uint8_t {
 /// finalize().
 struct ProjectSettings {
     /// finalize() leaves it the directory's identity, empty for none;
-    /// cache_identity() names the directory.
+    /// cache_identity names the directory.
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Directory for the unified on-disk cache (PCHs, PCMs and "
@@ -245,6 +236,11 @@ struct ProjectSettings {
     /// a configured directory may be shared with other content.
     KOTATSU_ANNOTATE(skip = true)
     <bool> cache_dir_defaulted = false;
+
+    /// The identity of cache_dir, empty for none: finalize() resolves it
+    /// with cache_dir.
+    KOTATSU_ANNOTATE(skip = true)
+    <CanonicalPath> cache_identity;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -353,11 +349,6 @@ struct ProjectSettings {
                          "reaches; `0` means the machine's physical cores, which "
                          "is also the default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
-
-    /// The identity of cache_dir, empty for none.
-    CanonicalPath cache_identity() const {
-        return cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir));
-    }
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: how often files

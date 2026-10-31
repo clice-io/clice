@@ -1,10 +1,11 @@
 module clice;
 
-import :settings.settings;
 import :index.peer_queries;
+import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
@@ -119,7 +120,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ServedProject& project) {
         // The rootless project opens no store.
-        auto cache_dir = project.project.settings.project.cache_identity();
+        auto cache_dir = project.project.settings.project.cache_identity;
         if(!project.project.root.empty() && !cache_dir.empty()) {
             dirs.push_back(std::move(cache_dir));
         }

@@ -32,14 +32,14 @@ The common root cause of these problems is the lack of a compilation scheduling 
 
 ## Design
 
-### One Graph, Several Node Families
+### One Graph, Several Node Kinds
 
-The task graph itself is deliberately thin: it knows about nodes, edges, interest, rounds, and invalidation — and nothing about what a node builds. What a node _means_ is defined by its **family**:
+The task graph itself is deliberately thin: it knows about nodes, edges, interest, rounds, and invalidation — and nothing about what a node builds. What a node _means_ is defined by its **kind**:
 
-- **PCM family**: one node per module, edges are `import` relationships. This is where all module-specific policy lives.
-- **PCH family**: one node per preamble content key — files whose preambles are identical share one node and one build.
-- **AST family**: one node per open document, producing the published feature results.
-- **TU-run family**: one-shot translation-unit runs shared by background indexing and batch lint.
+- **PCM nodes**: one per module, edges are `import` relationships. This is where all module-specific policy lives.
+- **PCH nodes**: one per preamble content key — files whose preambles are identical share one node and one build.
+- **AST nodes**: one per open document, producing the published feature results.
+- **Unit-run nodes**: one per translation unit compiled on a stateless worker for its index or its lint, shared by background indexing and batch lint.
 
 The rest of this section describes the graph's general contract; module-specific behavior is called out explicitly.
 

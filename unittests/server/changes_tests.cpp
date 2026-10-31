@@ -177,11 +177,8 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
     // The consumer edges declare_imports declares in production —
     // no rounds.
-    auto node = [](Fid pid) {
-        return NodeId{NodeKind::PCM, pid.raw};
-    };
-    served.project.graph.declare(node(open_user), {node(mod)});
-    served.project.graph.declare(node(closed_user), {node(mod)});
+    served.project.graph.declare(module_node(open_user), {module_node(mod)});
+    served.project.graph.declare(module_node(closed_user), {module_node(mod)});
 
     served.disk_changed({mod});
 
@@ -477,12 +474,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.project.graph.declare(
-        NodeId{
-            NodeKind::PCM,
-            user.raw
-    },
-        {NodeId{NodeKind::PCM, mod.raw}});
+    served.project.graph.declare(NodeId{NodeKind::PCM, user.raw}, {module_node(mod)});
     project.pcm_builds[mod].deps.push_back({.path_id = header});
 
     served.disk_changed({header});
@@ -496,12 +488,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.project.graph.declare(
-        NodeId{
-            NodeKind::PCM,
-            user.raw
-    },
-        {NodeId{NodeKind::PCM, mod.raw}});
+    served.project.graph.declare(NodeId{NodeKind::PCM, user.raw}, {module_node(mod)});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
     project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
@@ -687,11 +674,8 @@ ZEST_CASE(CDBChangedCascadesModule) {
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
     // The consumer edges declare_imports declares in production —
     // no rounds.
-    auto node = [](Fid pid) {
-        return NodeId{NodeKind::PCM, pid.raw};
-    };
-    served.project.graph.declare(node(open_user), {node(mod)});
-    served.project.graph.declare(node(closed_user), {node(mod)});
+    served.project.graph.declare(module_node(open_user), {module_node(mod)});
+    served.project.graph.declare(module_node(closed_user), {module_node(mod)});
     index_unit(mod);
 
     fixture.build_changed({.changed = {mod}});
