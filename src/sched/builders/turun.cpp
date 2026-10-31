@@ -98,7 +98,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
     params.hidden = resolved.hidden;
     // The editor shows them for a file of its own database entry only
-    // (ASTFamily::shown_skipped).
+    // (ServedProject::shown_skipped_diagnostics).
     params.skipped_diagnostics =
         plan.skipped_diagnostics && resolved.source == CommandSource::CDBExact;
 
@@ -196,7 +196,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.known_instantiations =
             project.index.known_instantiations(path_id, std::move(include_closure));
     }
-    params.standard_library_instantiations = project.settings.project.standard_library_instantiations;
+    params.standard_library_instantiations =
+        project.settings.project.standard_library_instantiations;
 
     std::optional<CacheStore::PendingEntry> transfer;
     if(plan.index && project.store) {
@@ -313,7 +314,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
         // The precompiled header it read may be what crashed it, as for a
-        // compile (ASTFamily::attribute_crash): the next run parses without
+        // compile (ServedProject::attribute_crash): the next run parses without
         // it, and only that run's success counts against it. Retracting
         // the pair at once would fail every unit of the target queued on
         // it, for each unit that crashes on its own code.

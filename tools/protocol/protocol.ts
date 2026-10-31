@@ -76,6 +76,12 @@ export interface CurrentContextResult {
     /// Whether no choice of the user's is in force.
     automatic: boolean;
 
+    /// The user's choice while it does not hold — its host left the build or
+    /// no longer includes the file, or its command is gone: it waits, and
+    /// applies again once it holds. Meanwhile the file compiles in the
+    /// automatic context.
+    inactiveChoice?: ContextItem | null;
+
     /// The command the document compiles with; null when it is not open.
     command: CompileCommand | null;
 
@@ -218,9 +224,9 @@ export const CounterpartsRequest = new RequestType<CounterpartsParams, Counterpa
     "clice/counterparts",
 );
 
-/// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
-/// one file-tracker tick (stat → diff → events → dispatch → effects) and
-/// responds only once the effects are applied, so tests can
+/// clice/internal/poll — TEST-ONLY, not a stable API. Runs one look at the
+/// disk (the databases, or the files and the default-command sources) and
+/// responds only once the changes are applied, so tests can
 /// disable the polling loops and get "change disk → poll → assert"
 /// determinism with zero sleeps. Absent from capabilities and user docs.
 export interface PollParams {
@@ -235,7 +241,8 @@ export interface PollParams {
 }
 
 export interface PollResult {
-    /// Number of file events the tick produced and dispatched.
+    /// How many changes the look applied: changed files, database reloads
+    /// that changed a build, projects whose default sources changed.
     events: number;
 }
 

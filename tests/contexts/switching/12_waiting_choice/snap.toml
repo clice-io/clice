@@ -1,0 +1,58 @@
+[test.chosen.context]
+automatic = false
+
+[test.chosen.context.context]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
+[test.chosen.hover]
+markdown = '''
+**function** `get_value`
+
+```cpp
+float get_value()
+```
+'''
+range = "VALUE_TYPE ⟦get_value⟧();"
+
+[test.waiting.context]
+automatic = true
+
+[test.waiting.context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"
+
+[test.waiting.context.inactive_choice]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
+[test.waiting.hover]
+markdown = '''
+**function** `get_value`
+
+```cpp
+int get_value()
+```
+'''
+range = "VALUE_TYPE ⟦get_value⟧();"
+
+[test."chosen again".context]
+automatic = false
+
+[test."chosen again".context.context]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
+[test."chosen again".hover]
+markdown = '''
+**function** `get_value`
+
+```cpp
+float get_value()
+```
+'''
+range = "VALUE_TYPE ⟦get_value⟧();"

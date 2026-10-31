@@ -26,7 +26,7 @@ struct IndexerFixture;
 /// produces (the TURun family) or where results live (the project's
 /// index).
 ///
-/// The pump is serving-neutral: it never sees a SessionStore. The serving
+/// The pump is serving-neutral: it never sees the open documents. The serving
 /// side injects its policy through `compiled_by_session` and
 /// `on_attempt_finished`; a batch driver installs neither.
 class IndexPump {

@@ -1,0 +1,7 @@
+[test."other host changed".current_context]
+automatic = false
+
+[test."other host changed".current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"

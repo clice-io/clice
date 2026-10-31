@@ -4,42 +4,25 @@ import :index.query;
 import :index.search;
 import :index.shard;
 import :index.tu_index;
-import :project.command_resolver;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.builders.turun;
-import :sched.graph;
+import :project.project;
 import :sched.index.pump;
-import :server.document_compile;
-import :server.live_sources;
-import :server.session_store;
+import :server.served_project;
+import :unittests.server.served_project_fixture;
 import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 namespace {
 
 ZEST_SUITE(QueryFreshness, Tester) {
 
-kota::event_loop loop;
-FileTable files;
-Project project{files};
-SessionStore store;
-WorkerPool pool{loop};
-CommandResolver resolver{project};
-TaskGraph graph;
-PCHBuilder pch{graph, project, pool};
-PCMBuilder pcm{graph, project, resolver, pch, pool};
-DocumentCompiles compiles;
-TURunFamily turun{graph, project, resolver, pcm, pch, pool};
-IndexPump indexer{loop, project, turun, pool};
-ServerLiveSources live{project, pch, store, compiles};
-index::FreshnessGate gate{project.file_table};
-index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
-index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
+ServedProjectFixture fx;
+Project& project = fx.served->project;
+IndexPump& indexer = fx.served->sched.pump;
+index::IndexQuery& index_query = project.index_query;
+index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
 
 Fid focus_id;
 Fid header_id;
@@ -137,7 +120,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // With background indexing disabled nothing would ever catch up:
     // the last-known index keeps serving instead of leaving a permanent hole.
-    gate.options.withhold = false;
+    project.freshness.options.withhold = false;
     ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 }
 

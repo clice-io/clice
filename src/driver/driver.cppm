@@ -6,15 +6,16 @@ module clice:driver.driver;
 
 import :settings.settings;
 import :feature.query;
+import :index.query;
 import :index.writer_lock;
 import :project.project;
-import :project.project_reader;
 import :sched.batch;
 import :server.control;
 import :support.json;
 import :support.logging;
 import :support.prelude;
 import :support.process;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice::driver {
@@ -475,9 +476,12 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     return std::pair{std::move(*root), std::move(loaded)};
 }
 
-/// A project opened for a subcommand reading it.
+/// A project opened for a subcommand reading it: the project over a file
+/// table of its own, which names files as the command line does.
 struct OpenedProject {
-    std::unique_ptr<ProjectReader> reader;
+    FileTable files;
+
+    Project project{files};
 
     /// What its opening found.
     Project::Opened opened;
@@ -488,43 +492,70 @@ struct OpenedProject {
 };
 
 /// The project at `root` under `loaded`, opened for a subcommand reading it
-/// as `options` say, `configuration` set from `loaded`; `check_disk` as for
-/// ProjectReader.
-inline OpenedProject open_reader(const Spelling& root,
-                                 LoadedSettings loaded,
-                                 Project::OpenOptions options,
-                                 bool check_disk = true) {
-    OpenedProject project{.reader = std::make_unique<ProjectReader>(check_disk)};
-    auto& reader = *project.reader;
-    reader.files.spell_root(root);
-    reader.project.root = CanonicalPath(root);
-    reader.project.settings = std::move(loaded.settings);
+/// as `options` say, `configuration` set from `loaded`. `check_disk`: the
+/// reads of its index withhold a file whose content moved on since it was
+/// indexed, each file checked on disk once; off, they serve every file as it
+/// was indexed.
+inline std::unique_ptr<OpenedProject> open_at(const Spelling& root,
+                                              LoadedSettings loaded,
+                                              Project::OpenOptions options,
+                                              bool check_disk = true) {
+    auto opened = std::make_unique<OpenedProject>();
+    auto& project = opened->project;
+    opened->files.spell_root(root);
+    project.root = CanonicalPath(root);
+    project.settings = std::move(loaded.settings);
+    project.freshness.options = check_disk ? index::FreshnessOptions{.check_disk = true}
+                                           : index::FreshnessOptions{.withhold = false};
     options.configuration = loaded.configuration;
-    project.opened = reader.project.open(options);
-    return project;
+    opened->opened = project.open(options);
+    return opened;
 }
 
 /// The project at `root` under `loaded` with its index, read-only, and
 /// `build` of its build; why the index cannot be read is logged, and
 /// `unusable` the error.
-inline std::expected<OpenedProject, ProjectError> open_index(const Spelling& root,
-                                                             LoadedSettings loaded,
-                                                             Project::OpenOptions::Build build,
-                                                             std::string_view unusable,
-                                                             bool check_disk = true) {
-    auto project = open_reader(root,
-                               std::move(loaded),
-                               {
-                                   .build = build,
-                                   .store = Project::OpenOptions::Store::ReadOnly,
-                                   .index = Project::OpenOptions::Index::Read,
-                               },
-                               check_disk);
-    if(!project.opened.unreadable.empty()) {
-        LOG_ERROR("{}", project.opened.unreadable);
+inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
+    open_index(const Spelling& root,
+               LoadedSettings loaded,
+               Project::OpenOptions::Build build,
+               std::string_view unusable,
+               bool check_disk = true) {
+    auto opened = open_at(root,
+                          std::move(loaded),
+                          {
+                              .build = build,
+                              .store = Project::OpenOptions::Store::ReadOnly,
+                              .index = Project::OpenOptions::Index::Read,
+                          },
+                          check_disk);
+    if(!opened->opened.unreadable.empty()) {
+        LOG_ERROR("{}", opened->opened.unreadable);
         return std::unexpected(ProjectError{.message = std::string(unusable)});
     }
-    return project;
+    return opened;
+}
+
+/// What the answers about symbols and files read of `project` (feature::query).
+inline feature::query::Context query_context(const Project& project) {
+    return {
+        .query = project.index_query,
+        .root = project.root,
+        .cwd = Spelling::cwd(),
+        .documentation = project.settings.documentation,
+    };
+}
+
+/// What an answer lists as stale: `listed` and the files `project` withheld, sorted, once each.
+inline std::vector<std::string> stale_files(const Project& project,
+                                            std::vector<std::string> listed) {
+    for(auto file: project.freshness.withheld()) {
+        listed.emplace_back(project.file_table.display(file));
+    }
+    ranges::sort(listed);
+    auto duplicates = ranges::unique(listed);
+    listed.erase(duplicates.begin(), duplicates.end());
+    return listed;
 }
 
 /// How a run's index came up to date through the running server: the
@@ -599,9 +630,10 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
 /// Open the project `where` names with its index, read-only, and `build`
 /// of its build, brought up to date with the disk first under --fresh
 /// (refresh). The error is the answer's.
-inline std::expected<OpenedProject, ProjectError> open_project(const ProjectOptions& where,
-                                                               const FreshOption& fresh,
-                                                               Project::OpenOptions::Build build) {
+inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
+    open_project(const ProjectOptions& where,
+                 const FreshOption& fresh,
+                 Project::OpenOptions::Build build) {
     auto read = read_project(where);
     if(!read) {
         return std::unexpected(std::move(read.error()));
@@ -615,34 +647,30 @@ inline std::expected<OpenedProject, ProjectError> open_project(const ProjectOpti
         }
         failed = std::move(*refreshed);
     }
-    auto project = open_index(root,
-                              std::move(loaded),
-                              build,
-                              "the index could not be opened (the log above says why); run "
-                              "`clice index` or pass --fresh");
-    if(project) {
-        project->failed = std::move(failed);
+    auto opened = open_index(root,
+                             std::move(loaded),
+                             build,
+                             "the index could not be opened (the log above says why); run "
+                             "`clice index` or pass --fresh");
+    if(opened) {
+        (*opened)->failed = std::move(failed);
     }
-    return project;
+    return opened;
 }
 
 /// The project `where` names with its index's tables bound, read-only, for
 /// an analysis of the index. The error is the answer's.
-inline std::expected<std::unique_ptr<ProjectReader>, ProjectError>
+inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     open_for_analysis(const ProjectOptions& where) {
     auto read = read_project(where);
     if(!read) {
         return std::unexpected(std::move(read.error()));
     }
     auto& [root, loaded] = *read;
-    auto project = open_index(root,
-                              std::move(loaded),
-                              Project::OpenOptions::Build::None,
-                              "no usable index; run `clice index` first");
-    if(!project) {
-        return std::unexpected(std::move(project.error()));
-    }
-    return std::move(project->reader);
+    return open_index(root,
+                      std::move(loaded),
+                      Project::OpenOptions::Build::None,
+                      "no usable index; run `clice index` first");
 }
 
 }  // namespace clice::driver

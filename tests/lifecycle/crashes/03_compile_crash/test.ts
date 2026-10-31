@@ -59,7 +59,8 @@ test("an open resent with other text retries", async (t) => {
     await t.show("crashes after the resent open", await s.crashes());
 });
 
-test("reopening keeps the bar", async (t) => {
+// A reopen is a new document: what crashed on the closed one runs again.
+test("a reopen retries", async (t) => {
     const s = await t.start({ config: QUIET, crash: CRASH });
     const add = t.marker("add");
     s.open("main.cpp");
@@ -67,8 +68,6 @@ test("reopening keeps the bar", async (t) => {
     await t.show("crashes", await s.crashes());
     s.close("main.cpp");
     s.open("main.cpp");
-    // The same bytes again are no change, however long the wait.
-    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     await t.show("hover after a reopen", s.hover(add));
     await t.show("pushes", s.pushes("main.cpp"));
     await t.show("crashes after a reopen", await s.crashes());

@@ -222,11 +222,12 @@ int run_modularize(const Options& opts) {
     if(!spec) {
         return fail(spec.error());
     }
-    auto reader = open_for_analysis(opts.where);
-    if(!reader) {
-        return fail(std::move(reader.error()));
+    auto opened = open_for_analysis(opts.where);
+    if(!opened) {
+        return fail(std::move(opened.error()));
     }
-    auto loaded = analysis::load_facts(**reader, opts.scope.value_or(std::vector<std::string>{}));
+    auto loaded =
+        analysis::load_facts((*opened)->project, opts.scope.value_or(std::vector<std::string>{}));
     if(!loaded) {
         print_json(Failure{.error = std::move(loaded.error().message),
                            .stale = std::move(loaded.error().dropped)});

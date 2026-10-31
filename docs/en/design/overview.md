@@ -84,6 +84,7 @@ Symbol indexing system with cross-translation-unit query support. Layered as:
 - `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files — in memory and on disk in one type: it merges translation units' indexes, judges their freshness, saves its changes to the index database and loads them back
 - `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded entries; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
 - `BlobDatabase`: Persistence backend — all index blobs live in a single LMDB database
+- `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
 
 See [Symbol Index](symbol-index.md).
 
@@ -93,19 +94,19 @@ Concrete implementations of LSP features. Each feature decides what the user see
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 
-> `feature/` decides each answer; the server's `Requests` routes each request to the source that can answer it now, gathers the feature's inputs, calls it and replies. Cross-file navigation features (go to definition, find references, etc.) answer from the index (`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+> `feature/` decides each answer; the server routes each request to the source that can answer it now, gathers the feature's inputs, calls it and replies. Cross-file navigation features (go to definition, find references, etc.) answer from the index (`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
 
 ### `src/project/` — Projects on Disk
 
 A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line runs one project. The server runs one per workspace folder, plus one for any file opened outside them whose directory or an ancestor holds a `clice.toml` or a `compile_commands.json`, and routes each file to the project that compiles it.
 
-- `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify what a `Project` says of the disk; the one thing it learns from a buffer, a header's self-containment trial, is recorded under that text's version, which a reader of the disk ignores until the disk holds it
+- `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index and the queries over it (`IndexQuery`, with its freshness gate). Core invariant: unsaved buffer contents of open files never modify what a `Project` says of the disk; the one thing it learns from a buffer, a header's self-containment trial, is recorded under that text's version, which a reader of the disk ignores until the disk holds it
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — with the includer context a header needs
 - `Hosting`: What clice knows of the headers that borrow a unit's command, which the editor and `clice inspect` read alike: the hosts' include trees, the self-containment trials (saved with the artifact records), the includer contexts synthesized, and what a file outside the build can borrow
 - `CommandSnapshot`: The commands the index was built with, as the index database records them; loading diffs them against the build to drop the index of files whose command changed while no server ran
 - Saving and loading: one transaction writes the index's changes with what the database carries beside it — the command snapshot, the PCH and PCM records, the editor's context choices — and the load reads them back
 - `Memo`: Results remembered by request with the trace of the files each read, checked on lookup; it holds the failures of the artifacts: a PCH or module build that failed or crashed a worker, standing until the files it is known to have read change, and a PCH its readers keep failing to read, left out for a while
-- `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
+- Contexts: the contexts a file can compile in — its own commands and the hosts lending theirs — whether a user's choice still holds, and the format the choices are saved in
 - Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
 ### `src/sched/` — Compile Scheduling Core
@@ -126,34 +127,13 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 ### `src/server/` — Server Runtime
 
-The language server's core runtime, responsible for assembling all the layers above into a runnable service. Its files share one directory and fall into four groups.
+The language server's core runtime, assembling all the layers above into a running service: one class per boundary of the design, each larger one in a directory of its own with its work split in files.
 
-**Protocols** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
-
-**Document state** — Document state and the invalidation machinery.
-
-- `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
-- `DocumentCompile` / `DocumentCompiles`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
-- `EditorContext`: The editor's side of command resolution — the user's context choices — layered over the project's `CommandResolver` for editor-facing compiles only
-- `IncludeTrees`: The include trees the editor's header resolution waits for, each taken once by a preprocess run on a worker
-- `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
-- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
-- `DocumentFailures`: What crashed on each document, kept for the whole process — a kind of work that crashed a worker on a document pauses for that document until it changes (spaced and bounded) or is saved, whichever project serves it
-
-**Services** — Read-side services consuming compilation and index results.
-
-- `Requests`: Routes each language request to the source that answers it now — the worker's AST, the PCH's cached preamble products, or the index — by readiness: an up-to-date AST answers when available, otherwise results computed from the index answer immediately. It gathers the inputs, calls the feature and replies; the feature decides what the user sees. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
-- `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
-- `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted by the document's failure records, admitted again where it reaches a worker, and answered through one exit that replies `ContentModified` for a buffer the client already edited away
-- `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
-- `ContextService`: The protocol adapter for compilation-context queries and switching, and the source actions that offer the switches
-
-**Endpoints** — Protocol endpoints driving the server.
-
-- `MasterServer`: The composition root. Owns the file table, the worker pool and the projects served, and routes each open file to the project that compiles it
-- `ProjectServer`: Everything served for one project — its scheduling stack, the open documents routed to it and the services above — executing the `Invalidator`'s effects through its single dispatch entry point
-- `LSPClient`: Request handlers for the LSP protocol
-- The control channel: a loopback listener the server opens while it holds the project's index writer lock, recorded next to the lock for the command-line tools to find
+- `MasterServer` (`master/`): The process. Owns the file table, the worker pool and the projects served, and holds the editor's state, one per process: the open documents — each with the project it belongs to, and the documents open under a second name of its file — and the user's context choices. It routes each open file to the project that compiles it, and moves a document to another project by changing its owner; the lifecycle, the polling and shutdown are its
+- `Session`: One open document — its text, version and generation — and what crashed on it: a kind of work that crashed a worker on the document pauses until the document changes (spaced and bounded) or is saved. The records live as long as the document is open
+- `LSPClient` (`client/`): The connection to the editor: the handshake and the client's capabilities, the document notifications handed to `MasterServer`, every language request — each written once, in its handler, behind one check of the server's lifecycle — clice's own requests, pushing diagnostics and the one refresh, progress, and the test hooks
+- `ServedProject` (`served_project/`): One served project: its scheduling stack, the open documents routed to it and what it derives for them — compiling them; what answers a request on them now (the worker's AST, the PCH's cached preamble products, or the index, by readiness: an up-to-date AST when there is one, otherwise results computed from the index at once) and asking the workers, each dispatch admitted by the document's crash records and answering `ContentModified` for a buffer the client already edited away; handling changes of its inputs (the compilation databases it watches, the disk, git checkouts); the open documents' commands under their context choices; and the index's live sources over them. Under `readonly = on/auto`, documents serve from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
+- Protocols: the LSP extension types, and the control channel through which `clice index` and `clice query --fresh` ask a running server to index — a loopback listener the server opens while it holds the project's index writer lock, recorded next to the lock for the command-line tools to find
 
 See [Multi-process Architecture](multi-process.md).
 

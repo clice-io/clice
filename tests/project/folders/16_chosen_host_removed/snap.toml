@@ -1,0 +1,23 @@
+[test."host removed"]
+errors = [
+    {
+        at = "#⟦error⟧ missing IN_APP",
+        severity = "error",
+        message = "missing IN_APP",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]
+
+[test."host removed".context]
+automatic = true
+
+[test."host removed".context.context]
+label = "lib.cpp"
+description = "${WS}/lib/src/lib.cpp"
+host = "lib/src/lib.cpp"
+
+[test."host removed".context.inactive_choice]
+label = "main.cpp"
+description = "${WS}/app/main.cpp"
+host = "app/main.cpp"

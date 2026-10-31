@@ -23,5 +23,7 @@ test("nested folder joins its project", async (t) => {
     await s.changeFolders({ added: ["outer"] });
     await s.sync();
     expect(await s.errors("outer/inner/main.cpp")).toEqual([]);
+    // A move keeps what the document shows until the project taking it over
+    // replaces it: no empty push in between.
     await t.show("pushes", s.pushes("outer/inner/main.cpp"));
 });

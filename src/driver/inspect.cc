@@ -28,7 +28,6 @@ import :index.tu_index;
 import :project.command_resolver;
 import :project.hosting;
 import :project.project;
-import :project.project_reader;
 import :semantic.symbol;
 import :support.bytes;
 import :syntax.token;
@@ -542,7 +541,7 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 /// what their trials found; the databases the settings name, else the
 /// ones discovered under its root and those between the root and the file;
 /// the dependency graph.
-std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const Options& opts,
+std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const Options& opts,
                                                                            const Spelling& path) {
     LoadSettingsOptions options{.overlay_name = "--config-overlay"};
     if(opts.config_overlay) {
@@ -559,17 +558,17 @@ std::expected<std::unique_ptr<ProjectReader>, ProjectError> load_inspected(const
         return std::unexpected(std::move(read.error()));
     }
     auto& [root, loaded] = *read;
-    auto project = open_reader(root,
-                               std::move(loaded),
-                               {
-                                   .store = Project::OpenOptions::Store::ReadOnly,
-                                   .index = Project::OpenOptions::Index::Read,
-                                   .file = CanonicalPath(path),
-                               });
-    if(!project.opened.unreadable.empty()) {
-        LOG_INFO("{}", project.opened.unreadable);
+    auto opened = open_at(root,
+                          std::move(loaded),
+                          {
+                              .store = Project::OpenOptions::Store::ReadOnly,
+                              .index = Project::OpenOptions::Index::Read,
+                              .file = CanonicalPath(path),
+                          });
+    if(!opened->opened.unreadable.empty()) {
+        LOG_INFO("{}", opened->opened.unreadable);
     }
-    return std::move(project.reader);
+    return opened;
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -615,17 +614,17 @@ std::string build_pch(Project& project,
 }
 
 /// What the file compiles with in its project: the resolution the server
-/// performs for a background compile, or for the editor under `pin` — the
+/// performs for a background compile, or for the editor under `choice` — the
 /// file's entry, a host's command for a header, a rule's default command,
 /// the builtin fallback — the include trees the host search needs taken
 /// first, and the self-containment trial run when none stands for the
 /// header, both as the server takes them; with the header context it
 /// synthesizes and the precompiled header the build declares, built
-/// (build_pch). An error when `pin` names a host whose compile does not
+/// (build_pch). An error when `choice` names a host whose compile does not
 /// enter the file where it says.
 std::expected<CompilationInput, std::string> project_input(const SourceFile& file,
                                                            Project& project,
-                                                           const Selection* pin) {
+                                                           const ContextChoice* choice) {
     CommandResolver commands(project);
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
@@ -633,7 +632,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         return commands.resolve_command(path_id,
                                         input.directory,
                                         input.arguments,
-                                        {.selection = pin, .preprocess = true});
+                                        {.choice = choice, .preprocess = true});
     };
     auto resolution = resolve();
     if(resolution.trial && !resolution.self_contained) {
@@ -655,10 +654,10 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             resolution = resolve();
         }
     }
-    if(pin && (resolution.host != pin->host_path_id ||
-               resolution.occurrence != pin->occurrence.value_or(0))) {
-        auto host = project.file_table.resolve(pin->host_path_id);
-        auto times = pin->occurrence.value_or(0) + 1;
+    if(choice && (resolution.host != choice->host_path_id ||
+                  resolution.occurrence != choice->occurrence.value_or(0))) {
+        auto host = project.file_table.resolve(choice->host_path_id);
+        auto times = choice->occurrence.value_or(0) + 1;
         return std::unexpected(
             times == 1 ? std::format("the compile of {} does not enter {}", host, file.path)
                        : std::format("the compile of {} enters {} fewer than {} times",
@@ -769,14 +768,14 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    auto reader = load_inspected(opts, path);
-    if(!reader) {
-        return print_error(reader.error());
+    auto opened = load_inspected(opts, path);
+    if(!opened) {
+        return print_error(opened.error());
     }
-    auto& project = (*reader)->project;
-    std::optional<Selection> pin;
+    auto& project = (*opened)->project;
+    std::optional<ContextChoice> choice;
     if(opts.host) {
-        pin = Selection{
+        choice = ContextChoice{
             .host_path_id = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
             .occurrence = opts.occurrence.as_optional(),
         };
@@ -784,7 +783,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
 
     Output output{.feature = spec.name.str()};
     auto& entry = output.files[std::string(path::filename(file->path))];
-    auto input = project_input(*file, project, pin ? &*pin : nullptr);
+    auto input = project_input(*file, project, choice ? &*choice : nullptr);
     if(!input) {
         LOG_ERROR("--host: {}", input.error());
         return 1;

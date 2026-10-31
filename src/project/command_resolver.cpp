@@ -59,7 +59,7 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
 }
 
 /// The language of the command a file compiles with — among a
-/// multi-configuration file's or host's entries the pinned one, else the
+/// multi-configuration file's or host's entries the chosen one, else the
 /// first, or the default command covering it — rules applied, like the
 /// resolve path's effective command: whether it compiles the file as C,
 /// whether an -x forces that (the driver override beats every suffix
@@ -74,19 +74,19 @@ struct Language {
 std::optional<Language> language_of(Project& project,
                                     Fid file,
                                     llvm::ArrayRef<CanonicalRef> paths,
-                                    const Selection* pin) {
+                                    const ContextChoice* choice) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto candidate = pick_pinned_command(project,
+    auto candidate = pick_chosen_command(project,
                                          file,
                                          commands,
                                          paths,
                                          path,
-                                         pin ? llvm::StringRef(pin->command_hash) : "",
-                                         pin ? llvm::StringRef(pin->base_hash) : "");
+                                         choice ? llvm::StringRef(choice->command_hash) : "",
+                                         choice ? llvm::StringRef(choice->base_hash) : "");
     auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
 
     llvm::StringRef language = ref.input.value;
@@ -105,28 +105,28 @@ std::optional<Language> language_of(Project& project,
 
 }  // namespace
 
-Candidate pick_pinned_command(Project& project,
+Candidate pick_chosen_command(Project& project,
                               Fid file,
                               llvm::ArrayRef<Candidate> candidates,
                               llvm::ArrayRef<CanonicalRef> paths,
                               llvm::StringRef language_path,
-                              llvm::StringRef pinned_hash,
-                              llvm::StringRef pinned_base) {
-    // The base identity resolved at pin time is exact; the applied hash
-    // remains as the fallback for pins saved before the base was recorded
+                              llvm::StringRef chosen_hash,
+                              llvm::StringRef chosen_base) {
+    // The base identity resolved when the user chose is exact; the applied hash
+    // remains as the fallback for choices saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
-    if(!pinned_base.empty()) {
+    if(!chosen_base.empty()) {
         for(auto& entry: candidates) {
-            if(project.commands.command_hash_hex(entry.command) == pinned_base) {
+            if(project.commands.command_hash_hex(entry.command) == chosen_base) {
                 return entry;
             }
         }
     }
-    if(!pinned_hash.empty()) {
+    if(!chosen_hash.empty()) {
         for(auto& entry: candidates) {
             auto ref =
                 project.build.resolve(file, entry.command, entry.source, paths, language_path);
-            if(project.commands.command_hash_hex(ref.command) == pinned_hash) {
+            if(project.commands.command_hash_hex(ref.command) == chosen_hash) {
                 return entry;
             }
         }
@@ -154,44 +154,45 @@ CommandRef lent_command(Project& project,
                                  extra_append);
 }
 
-std::optional<Candidate> pinned_host_command(Project& project,
+std::optional<Candidate> chosen_host_command(Project& project,
                                              Fid header,
                                              Fid host,
-                                             llvm::StringRef pinned_hash,
-                                             llvm::StringRef pinned_base) {
+                                             llvm::StringRef chosen_hash,
+                                             llvm::StringRef chosen_base) {
     auto commands = host_commands(project, header, host);
     if(commands.empty()) {
         return std::nullopt;
     }
     auto host_path = project.file_table.resolve(host);
     CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    return pick_pinned_command(project,
+    return pick_chosen_command(project,
                                header,
                                commands,
                                edit_paths,
                                host_path,
-                               pinned_hash,
-                               pinned_base);
+                               chosen_hash,
+                               chosen_base);
 }
 
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
-                                       llvm::StringRef pinned_hash,
-                                       llvm::StringRef pinned_base,
+                                       llvm::StringRef chosen_hash,
+                                       llvm::StringRef chosen_base,
                                        llvm::ArrayRef<std::string> extra_prepend,
                                        llvm::ArrayRef<std::string> extra_append) {
-    auto picked = pinned_host_command(project, header, host, pinned_hash, pinned_base);
+    auto picked = chosen_host_command(project, header, host, chosen_hash, chosen_base);
     if(!picked) {
         return std::nullopt;
     }
     return lent_command(project, header, host, picked->command, extra_prepend, extra_append);
 }
 
-const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host) {
+const clang::LangOptions&
+    dialect(Project& project, Fid file, const ContextChoice* choice, Fid host) {
     auto path = project.file_table.resolve(file);
-    bool host_pin = pin && pin->host_path_id.valid();
-    auto own = language_of(project, file, path, host_pin ? nullptr : pin);
+    bool host_choice = choice && choice->host_path_id.valid();
+    auto own = language_of(project, file, path, host_choice ? nullptr : choice);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->language_forced && own->source == CommandSource::CDBExact) {
@@ -203,7 +204,7 @@ const clang::LangOptions& dialect(Project& project, Fid file, const Selection* p
     // contributor union the way it does for the AST after an escalation.
     if(host.valid()) {
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang = language_of(project, host, edit_paths, host_pin ? pin : nullptr);
+        auto host_lang = language_of(project, host, edit_paths, host_choice ? choice : nullptr);
         if(host_lang) {
             return dialect_of("", host_lang->is_c, host_lang->standard);
         }
@@ -226,7 +227,7 @@ const clang::LangOptions& dialect(Project& project, Fid file, const Selection* p
 std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
                                                                 const CommandRequest& request,
                                                                 Resolution& resolution) {
-    auto search = find_host(project, path_id, request.selection);
+    auto search = find_host(project, path_id, request.choice);
     if(search.missing) {
         resolution.missing_tree = std::move(search.missing);
         return std::nullopt;
@@ -235,16 +236,16 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
         return std::nullopt;
     }
     auto& host = *search.host;
-    auto* pin = request.selection;
-    bool pinned = pin && pin->host_path_id == host.file;
-    llvm::StringRef pinned_hash = pinned ? llvm::StringRef(pin->command_hash) : "";
-    llvm::StringRef pinned_base = pinned ? llvm::StringRef(pin->base_hash) : "";
+    auto* choice = request.choice;
+    bool chosen = choice && choice->host_path_id == host.file;
+    llvm::StringRef chosen_hash = chosen ? llvm::StringRef(choice->command_hash) : "";
+    llvm::StringRef chosen_base = chosen ? llvm::StringRef(choice->base_hash) : "";
     // The host search ranks only hosts with a command fitting the header.
     auto ref = *host_command(project,
                              path_id,
                              host.file,
-                             pinned_hash,
-                             pinned_base,
+                             chosen_hash,
+                             chosen_base,
                              request.extra_prepend,
                              request.extra_append);
     auto path = project.file_table.resolve(path_id);
@@ -278,12 +279,12 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
     }
 
     // What the header borrows is the host's command whatever a run adds.
-    auto lent = *host_command(project, path_id, host.file, pinned_hash, pinned_base);
+    auto lent = *host_command(project, path_id, host.file, chosen_hash, chosen_base);
     // A host the user chose is chosen for its preprocessor state, so the
     // header always compiles in its context.
     std::optional<TrialKey> trial;
     std::optional<bool> alone = false;
-    if(!pinned) {
+    if(!chosen) {
         trial = TrialKey{path_id, project.commands.command_hash(lent.command)};
         alone = self_contained(project, *trial, request.open);
     }
@@ -367,7 +368,7 @@ Resolution CommandResolver::resolve(Fid path_id,
                                             request.extra_append));
     };
 
-    const Selection* choice = request.selection;
+    const ContextChoice* choice = request.choice;
     bool has_host_choice = choice && choice->host_path_id.valid();
 
     // 1. If the file has an active header context via switchContext, use the
@@ -388,13 +389,13 @@ Resolution CommandResolver::resolve(Fid path_id,
     tried.push_back("cdb");
     auto commands = project.build.commands(path_id);
     if(project.build.unit(path_id)) {
-        llvm::StringRef pinned_hash, pinned_base;
+        llvm::StringRef chosen_hash, chosen_base;
         if(choice && !has_host_choice) {
-            pinned_hash = choice->command_hash;
-            pinned_base = choice->base_hash;
+            chosen_hash = choice->command_hash;
+            chosen_base = choice->base_hash;
         }
         auto picked =
-            pick_pinned_command(project, path_id, commands, path, path, pinned_hash, pinned_base);
+            pick_chosen_command(project, path_id, commands, path, path, chosen_hash, chosen_base);
         return finish_own(picked.command, picked.source, path, path);
     }
 
@@ -411,12 +412,12 @@ Resolution CommandResolver::resolve(Fid path_id,
     // context: a compile takes the tree and resolves again.
     if(auto& missing = resolution.missing_tree) {
         auto host = missing->key.first;
-        bool pinned = has_host_choice && choice->host_path_id == host;
+        bool chosen = has_host_choice && choice->host_path_id == host;
         if(auto ref = host_command(project,
                                    path_id,
                                    host,
-                                   pinned ? llvm::StringRef(choice->command_hash) : "",
-                                   pinned ? llvm::StringRef(choice->base_hash) : "",
+                                   chosen ? llvm::StringRef(choice->command_hash) : "",
+                                   chosen ? llvm::StringRef(choice->base_hash) : "",
                                    request.extra_prepend,
                                    request.extra_append)) {
             return finish(*ref);

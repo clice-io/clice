@@ -5,8 +5,8 @@ import :index.shard;
 import :project.save;
 import :index.writer_lock;
 import :server.control;
-import :server.file_tracker;
-import :server.project_server;
+import :server.master;
+import :server.served_project;
 import :support.logging;
 
 namespace clice::control {
@@ -46,7 +46,7 @@ kota::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndpo
     co_return out;
 }
 
-void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
+void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
     peer.on_request(
         [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
             auto active = srv.project.build.active_configuration();
@@ -60,13 +60,13 @@ void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
                 co_await kota::fail(
                     ipc::Error{"the running clice server has background indexing disabled"});
             }
-            // Build changes arrive through the tracker's poll; a request right
+            // Build changes arrive through the databases' poll; a request right
             // after a compile_commands.json edit must see the new units.
             srv.project.file_table.disk.look_flags();
             srv.reload_databases(/*force=*/true);
             // Indexing would fill the old build's index while a --fresh answer
             // then opens the new one's.
-            if(srv.tracker && srv.tracker->moved()) {
+            if(srv.databases_moved()) {
                 co_await kota::fail(ipc::Error{
                     "the compilation databases of the running clice server now resolve to another "
                     "build, which it opens once it restarts"});
@@ -113,16 +113,6 @@ void register_requests(ProjectServer& srv, ipc::JSONPeer& peer) {
         });
 }
 
-using Connections = std::list<std::unique_ptr<ipc::JSONPeer>>;
-
-kota::task<> run_connection(ipc::JSONPeer* peer,
-                            Connections& connections,
-                            Connections::iterator pos) {
-    co_await peer->run();
-    LOG_DEBUG("Control client disconnected");
-    connections.erase(pos);
-}
-
 }  // namespace
 
 std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint,
@@ -131,29 +121,11 @@ std::expected<IndexResult, std::string> request_index(const index::ServerEndpoin
     return std::move(*ended);
 }
 
-kota::task<> serve(ProjectServer& server, kota::tcp::acceptor acceptor) {
-    kota::task_group<> group;
-    Connections connections;
-    group.spawn([](ProjectServer& server,
-                   kota::tcp::acceptor& acceptor,
-                   Connections& connections,
-                   kota::task_group<>& group) -> kota::task<> {
-        auto& loop = kota::event_loop::current();
-        while(true) {
-            auto conn = co_await acceptor.accept();
-            if(!conn.has_value()) {
-                break;
-            }
-            LOG_DEBUG("Control client connected");
-            auto transport = std::make_unique<ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
-            register_requests(server, *peer);
-            auto* peer_ptr = peer.get();
-            auto it = connections.emplace(connections.end(), std::move(peer));
-            group.spawn(run_connection(peer_ptr, connections, it));
-        }
-    }(server, acceptor, connections, group));
-    co_await group.join();
+kota::task<> serve(ServedProject& project, kota::tcp::acceptor acceptor) {
+    co_await accept_peers(std::move(acceptor), "Control client", [&project](ipc::JSONPeer& peer) {
+        register_requests(project, peer);
+        return std::shared_ptr<void>();
+    });
 }
 
 }  // namespace clice::control

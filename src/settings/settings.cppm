@@ -191,7 +191,7 @@ struct Rule {
 
 /// How open files are served (`readonly`). Routing is not governed by this:
 /// every request is answered by the best source available at that moment
-/// (see Requests); the mode only decides whether PCH/AST builds are a goal
+/// (see ServedProject::pick_route); the mode only decides whether PCH/AST builds are a goal
 /// at all. Builds are always pull-driven — no lifecycle event starts one,
 /// the first request that needs the AST does.
 enum class ReadonlyMode : std::uint8_t {

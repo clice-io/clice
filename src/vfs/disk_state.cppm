@@ -93,7 +93,7 @@ public:
     llvm::SmallVector<Fid> take_changes();
 
     /// Invoked when the change queue goes from empty to non-empty; the
-    /// owner schedules the drain. Unset (batch tools, tests) leaves the
+    /// owner schedules applying them. Unset (batch tools, tests) leaves the
     /// queue to whoever takes it.
     std::function<void()> on_change;
 

@@ -12,7 +12,6 @@ errors = [
 ["nested folder joins its project".pushes]
 pushes = [
     [],
-    [],
     [
         {
             at = "#⟦error⟧ missing IN_OUTER",
@@ -22,6 +21,5 @@ pushes = [
             code = "err_pp_hash_error",
         },
     ],
-    [],
     [],
 ]

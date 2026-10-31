@@ -478,6 +478,11 @@ public:
         return live;
     }
 
+    /// Read the open documents through `live` from now on.
+    void attach(const LiveSources& live) {
+        this->live = &live;
+    }
+
 private:
     /// first_site with the declaration's extent.
     std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;

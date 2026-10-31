@@ -1,0 +1,4 @@
+# main.cpp includes the header through a macro; alt.cpp names it plainly.
+[units]
+"main.cpp" = ["-Iinclude", "-DWIDGET_ID=7"]
+"alt.cpp" = ["-Iinclude", "-DWIDGET_ID=8"]

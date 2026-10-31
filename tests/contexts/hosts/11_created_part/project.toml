@@ -1,0 +1,4 @@
+# unity.cpp is the build's one unit; part.cpp, which it includes, is written
+# by the test.
+[units]
+"unity.cpp" = ["-DIN_UNITY"]

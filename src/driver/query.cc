@@ -4,8 +4,9 @@ import :driver.driver;
 import :feature.counterparts;
 import :feature.query;
 import :index.symbol_query;
+import :project.command_resolver;
+import :project.hosting;
 import :project.project;
-import :project.project_reader;
 import :project.queries;
 
 namespace clice::driver {
@@ -106,7 +107,7 @@ struct TypeHierarchyQuestion {
     LogLevelOption log;
 };
 
-/// Answer a question against the opened index: `ask` asks it of the reader
+/// Answer a question against the opened index: `ask` asks it of the project
 /// and the query context. The build questions (`with_build`) walk manifests
 /// and contexts, which only the writer's load restores; the index
 /// questions bind the tables in place and touch nothing else. The answer
@@ -122,16 +123,16 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     if(!opened) {
         return fail(std::move(opened.error()));
     }
-    auto& reader = *opened->reader;
-    auto ctx = reader.context();
-    auto outcome = ask(reader, ctx);
-    if(reader.project.index.damaged()) {
-        return fail(damaged_index_error(reader.project));
+    auto& project = (*opened)->project;
+    auto ctx = query_context(project);
+    auto outcome = ask(project, ctx);
+    if(project.index.damaged()) {
+        return fail(damaged_index_error(project));
     }
 
     auto listed = std::move(ctx.unindexed);
-    listed.append_range(opened->failed);
-    auto stale = reader.stale(std::move(listed));
+    listed.append_range((*opened)->failed);
+    auto stale = stale_files(project, std::move(listed));
     if(outcome) {
         print_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
         return 0;
@@ -144,7 +145,7 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     return 1;
 }
 
-/// A question about the file `ask` takes, after the reader and the query
+/// A question about the file `ask` takes, after the project and the query
 /// context.
 template <typename Question, typename Ask>
 CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
@@ -152,8 +153,8 @@ CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
         return run_query(
             opts.query,
             with_build,
-            [&](ProjectReader& reader, feature::query::Context& ctx) {
-                return ask(reader, ctx, Spelling(*opts.target.path, Spelling::cwd()), opts);
+            [&](Project& project, feature::query::Context& ctx) {
+                return ask(project, ctx, Spelling(*opts.target.path, Spelling::cwd()), opts);
             });
     });
 }
@@ -165,7 +166,7 @@ CommandHandler symbol_question(std::string_view usage, Ask ask) {
         return run_query(
             opts.query,
             /*with_build=*/false,
-            [&](ProjectReader&, feature::query::Context& ctx) {
+            [&](Project&, feature::query::Context& ctx) {
                 return index::SymbolQuery::parse(*opts.target.locator).and_then([&](auto locator) {
                     return ask(ctx, std::move(locator), opts);
                 });
@@ -185,9 +186,8 @@ CommandHandler build() {
             [](const ProjectFilesQuestion& opts) {
                 return run_query(opts.query,
                                  /*with_build=*/true,
-                                 [&](ProjectReader& reader, feature::query::Context&) {
-                                     return project_files(reader.project,
-                                                          opts.filter.value_or("all"));
+                                 [&](Project& project, feature::query::Context&) {
+                                     return project_files(project, opts.filter.value_or("all"));
                                  });
             }),
     });
@@ -196,11 +196,11 @@ CommandHandler build() {
         .description = "The files a file includes and the files including it",
         .run = file_question<FileDepsQuestion>("clice query file-deps <PATH> [OPTIONS]",
                                                /*with_build=*/true,
-                                               [](ProjectReader& reader,
+                                               [](Project& project,
                                                   feature::query::Context&,
                                                   const Spelling& path,
                                                   const FileDepsQuestion& opts) {
-                                                   return file_deps(reader.project,
+                                                   return file_deps(project,
                                                                     path,
                                                                     opts.direction.value_or("both"),
                                                                     opts.depth.value_or(1));
@@ -212,10 +212,10 @@ CommandHandler build() {
         .run = file_question<FileQuestion>(
             "clice query impact-analysis <PATH> [OPTIONS]",
             /*with_build=*/true,
-            [](ProjectReader& reader,
+            [](Project& project,
                feature::query::Context&,
                const Spelling& path,
-               const FileQuestion&) { return impact_analysis(reader.project, path); }),
+               const FileQuestion&) { return impact_analysis(project, path); }),
     });
     operations.push_back({
         .name = "counterparts",
@@ -223,11 +223,10 @@ CommandHandler build() {
         .run = file_question<FileQuestion>(
             "clice query counterparts <PATH> [OPTIONS]",
             /*with_build=*/true,
-            [](ProjectReader& reader,
+            [](Project& project,
                feature::query::Context& ctx,
                const Spelling& path,
                const FileQuestion&) {
-                auto& project = reader.project;
                 return feature::counterparts(ctx, project.dep_graph, project.build.members(), path);
             }),
     });
@@ -243,7 +242,7 @@ CommandHandler build() {
                 auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
                 return run_query(opts.query,
                                  /*with_build=*/false,
-                                 [&](ProjectReader&, feature::query::Context& ctx) {
+                                 [&](Project&, feature::query::Context& ctx) {
                                      return feature::query::symbol_search(ctx, text, limit);
                                  });
             }),
@@ -260,19 +259,20 @@ CommandHandler build() {
     operations.push_back({
         .name = "document-symbols",
         .description = "A file's outline",
-        .run = file_question<FileQuestion>("clice query document-symbols <PATH> [OPTIONS]",
-                                           /*with_build=*/false,
-                                           [](ProjectReader& reader,
-                                              feature::query::Context& ctx,
-                                              const Spelling& path,
-                                              const FileQuestion&) {
-                                               return feature::query::document_symbols(
-                                                   ctx,
-                                                   path,
-                                                   [&](Fid file) -> const clang::LangOptions& {
-                                                       return reader.dialect(file);
-                                                   });
-                                           }),
+        .run = file_question<FileQuestion>(
+            "clice query document-symbols <PATH> [OPTIONS]",
+            /*with_build=*/false,
+            [](Project& project,
+               feature::query::Context& ctx,
+               const Spelling& path,
+               const FileQuestion&) {
+                return feature::query::document_symbols(
+                    ctx,
+                    path,
+                    [&](Fid file) -> const clang::LangOptions& {
+                        return clice::dialect(project, file, nullptr, host_of(project, file));
+                    });
+            }),
     });
     operations.push_back({
         .name = "definition",

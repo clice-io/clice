@@ -512,7 +512,7 @@ ZEST_CASE(OtherFormatDiscardsAll) {
     IndexerFixture f;
     open_store(tmp, f.project);
     ZEXPECT(!f.load());
-    ZEXPECT(f.project.contexts.bytes.empty());
+    ZEXPECT(f.project.choices.bytes.empty());
     ZEXPECT(!f.project.database->contains(index::BlobKind::ContextChoices, "contexts"));
     ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
 }

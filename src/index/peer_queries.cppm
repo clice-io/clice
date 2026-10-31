@@ -17,11 +17,11 @@ namespace clice::index {
 struct PeerQueries {
     const IndexQuery& own;
 
-    llvm::function_ref<llvm::SmallVector<const IndexQuery*>()> peers;
+    std::function<llvm::SmallVector<const IndexQuery*>()> peers;
 
     /// The query of the project a file open in the editor is routed to;
     /// null for a closed file.
-    llvm::function_ref<const IndexQuery*(Fid)> open_in;
+    std::function<const IndexQuery*(Fid)> open_in;
 
     /// A project asked about a symbol, and the symbol as that project
     /// names it: an id hashing its file (a macro, a file-local name) takes

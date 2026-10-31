@@ -2,7 +2,6 @@ module clice;
 
 import :driver.driver;
 import :project.project;
-import :project.project_reader;
 import :support.logging;
 import :syntax.dependency_graph;
 
@@ -47,15 +46,9 @@ struct Output {
     std::vector<ScannedFile> files;
 };
 
-/// The project opened from scratch: the build's units and the scan from
-/// them.
-OpenedProject load(const Spelling& root, const LoadedSettings& loaded) {
-    return open_reader(root, loaded, {});
-}
-
 Output describe(const OpenedProject& loaded) {
-    auto& files = loaded.reader->files;
-    auto& graph = loaded.reader->project.dep_graph;
+    auto& files = loaded.project.file_table;
+    auto& graph = loaded.project.dep_graph;
 
     llvm::DenseMap<Fid, std::vector<std::string>> modules;
     for(auto& entry: graph.modules()) {
@@ -127,21 +120,21 @@ std::pair<std::int64_t, std::int64_t> spread(std::vector<std::int64_t>& times) {
 
 /// Scan `runs` times, each cold from a fresh load and warm over what it
 /// kept, and print the times.
-void time_scans(OpenedProject first,
+void time_scans(std::unique_ptr<OpenedProject> first,
                 std::uint32_t runs,
                 const Spelling& root,
                 const LoadedSettings& read) {
     std::vector<std::int64_t> cold;
     std::vector<std::int64_t> warm;
     for(std::uint32_t run = 0; run < runs; run += 1) {
-        auto loaded = run == 0 ? std::move(first) : load(root, read);
-        auto& project = loaded.reader->project;
+        auto loaded = run == 0 ? std::move(first) : open_at(root, read, {});
+        auto& project = loaded->project;
         project.dep_graph.reset();
         auto rescan = scan_dependency_graph(project.cdb,
                                             project.toolchain,
                                             project.dep_graph,
-                                            project.build.units(loaded.opened.members));
-        cold.push_back(loaded.opened.scan.elapsed_ms);
+                                            project.build.units(loaded->opened.members));
+        cold.push_back(loaded->opened.scan.elapsed_ms);
         warm.push_back(rescan.elapsed_ms);
         driver::println("Run {}: cold {}ms, warm {}ms", run + 1, cold.back(), warm.back());
     }
@@ -168,19 +161,19 @@ int run_scan(const Options& opts) {
         return print_error(read.error());
     }
     auto& [root, loaded] = *read;
-    auto first = load(root, loaded);
-    if(first.opened.members.empty()) {
+    auto first = open_at(root, loaded, {});
+    if(first->opened.members.empty()) {
         LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
                   root,
-                  deeper_databases_hint(first.reader->project));
+                  deeper_databases_hint(first->project));
         return 1;
     }
-    auto output = describe(first);
+    auto output = describe(*first);
     if(static_cast<bool>(opts.json)) {
         print_json(output);
         return 0;
     }
-    print_summary(output, first.opened.scan);
+    print_summary(output, first->opened.scan);
     if(opts.runs) {
         time_scans(std::move(first), *opts.runs, root, loaded);
     }

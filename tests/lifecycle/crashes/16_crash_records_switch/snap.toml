@@ -33,15 +33,6 @@ pushes = [
             source = "clice",
         },
     ],
-    [],
-    [
-        {
-            at = "⟦⟧#pragma once",
-            severity = "warning",
-            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
-            source = "clice",
-        },
-    ],
     [
         {
             at = "⟦⟧#pragma once",

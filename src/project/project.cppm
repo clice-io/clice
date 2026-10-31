@@ -7,6 +7,7 @@ import :compile.compilation;
 import :settings.settings;
 import :index.database;
 import :index.project_index;
+import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
@@ -30,16 +31,16 @@ constexpr inline std::uint32_t cache_format_version = 15;
 /// The user's choice for a file in the editor (clice/switchContext): the
 /// host to borrow a command from, or one of the file's own entries.
 /// Persisted in the context choices; validated on didOpen.
-struct Selection {
+struct ContextChoice {
     /// Header context host; invalid = none.
     Fid host_path_id;
 
-    /// Pinned include occurrence; no value = automatic.
+    /// Chosen include occurrence; no value = automatic.
     std::optional<std::uint32_t> occurrence;
 
-    std::string command_hash;  ///< Pinned CDB entry (rules applied); empty = none.
+    std::string command_hash;  ///< Chosen CDB entry (rules applied); empty = none.
 
-    /// Base command hash of the pinned entry, resolved at pin time. The
+    /// Base command hash of the chosen entry, resolved when chosen. The
     /// applied hash is the protocol identity; the base disambiguates
     /// candidates whose applied hashes collapse under the current rules.
     std::string base_hash;
@@ -159,30 +160,18 @@ struct ArtifactFailures {
     Memo<Fid, ModuleFailure> pcm_builds;
 };
 
-/// The editor's context choices as the index database carries them beside
-/// the index. A save moves bytes only: the editor state they encode
-/// serializes into them when it changes and parses them after a load (see
-/// EditorContext), so a process without that state writes back the bytes it
-/// loaded, and only into a database replacing a corrupt one. Only this blob has a durability waiter
-/// (switchContext), so only it numbers its changes: a change is durable once a
-/// save whose snapshot covers its number commits the blob — independent of the
-/// artifact records, whose failures retry through the dirty flag alone and
-/// must not hold a context ack hostage. `committed` pulses after every
-/// attempt, failed ones included, so waiters can give up on a disk that
-/// cannot take the write.
+/// The editor's context choices of the project, as its index database
+/// carries them beside the index. A save moves bytes only: the server
+/// serializes its choices into them whenever they change and parses them
+/// after a load (project/contexts), so a process without editor state writes
+/// back the bytes it loaded, and only into a database replacing a corrupt
+/// one.
 struct ContextChoices {
-    /// The serialized blob; empty when there is none, or when serializing
-    /// failed (it stays dirty then, and a save counts a failed attempt).
+    /// The serialized choices; empty when there are none, or when
+    /// serializing failed (the save then writes nothing).
     std::string bytes;
 
     bool dirty = false;
-
-    /// The number of the latest change, and of the latest one a save committed.
-    std::uint64_t save_seq = 0;
-
-    std::uint64_t committed_seq = 0;
-
-    kota::event committed;
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -281,12 +270,21 @@ struct Project {
     /// search index.
     index::ProjectIndex index{file_table};
 
+    /// What the reads of the index withhold: the files whose content moved
+    /// on since they were indexed. Whoever opens the project sets its
+    /// options.
+    index::FreshnessGate freshness{file_table};
+
+    /// The reads over the index, gated by `freshness`; a server attaches the
+    /// live sources of the documents it serves.
+    index::IndexQuery index_query{index, file_table, &freshness, nullptr};
+
     /// The commands the index was built with, as the index database
     /// records them.
     CommandSnapshot command_snapshot;
 
     /// The editor's context choices, as the index database carries them.
-    ContextChoices contexts;
+    ContextChoices choices;
 
     /// Serializes concurrent saves (save_project): the pump's round-end
     /// save, the master's metadata flush and the shutdown save may overlap
@@ -316,7 +314,7 @@ struct Project {
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the invalidator's job (PCMBuilder::invalidate).
+    /// the served project's change handling (PCMBuilder::invalidate).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
@@ -468,13 +466,19 @@ struct Project {
     Opened open(const OpenOptions& options);
 };
 
+/// What a reader says of an index database the index reports damaged: a
+/// writer discards one only when it meets the damage itself, which may sit
+/// in records no `clice index` run reads, so the reader names the directory
+/// to delete.
+std::string damaged_index_error(const Project& project);
+
 /// Where a `compile_commands.json` is looked for when no rule declares
 /// one: the project root, then its direct subdirectories in name order.
 llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
 
 /// The `compile_commands.json` files to load when no rule declares one:
 /// those of database_places that exist. Empty when none exists yet — the
-/// CDBWatcher keeps watching the places.
+/// server keeps watching the places (ServedProject::discover_databases).
 llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root);
 
 /// The `compile_commands.json` files discovery passes over, deeper than

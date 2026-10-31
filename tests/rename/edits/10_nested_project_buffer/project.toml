@@ -1,0 +1,9 @@
+# repo/sub is a project of its own, nested in the folder: its clice.toml and
+# its build.
+[units]
+"repo/main.cpp" = []
+"repo/sub/user.cpp" = []
+
+[databases]
+repo = ["repo/main.cpp"]
+"repo/sub/build" = ["repo/sub/user.cpp"]

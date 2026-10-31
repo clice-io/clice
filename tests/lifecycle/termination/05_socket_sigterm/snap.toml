@@ -1,0 +1,3 @@
+["SIGTERM with an editor connected".exit]
+code = 0
+signal = ""
