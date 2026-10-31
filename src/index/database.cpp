@@ -64,7 +64,7 @@ char kind_prefix(BlobKind kind) {
         case BlobKind::Internals: return 'T';
         case BlobKind::Symbol: return 'Y';
         case BlobKind::SharedLocal: return 'L';
-        case BlobKind::CommandSnapshot: return 'C';
+        case BlobKind::BuildSnapshot: return 'C';
         case BlobKind::PrecompiledRecords: return 'A';
         case BlobKind::ContextChoices: return 'X';
         case BlobKind::SearchSegment: return 'N';

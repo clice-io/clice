@@ -128,10 +128,10 @@ public:
                        llvm::ArrayRef<std::string> extra_prepend = {},
                        llvm::ArrayRef<std::string> extra_append = {});
 
-    /// Hash of the edits for `paths`, empty when none apply: the rules'
-    /// part of a file's persisted command identity, the project root
-    /// taken as `${workspace}`.
-    std::string edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
+    /// Hash of the edits for `paths`, 0 when none apply: the rules' part of
+    /// a unit's command identity (command_identity), the project root taken
+    /// as `${workspace}`.
+    std::uint64_t edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated

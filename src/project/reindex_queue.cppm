@@ -182,11 +182,6 @@ public:
         entries.erase(id);
     }
 
-    /// Every file with a pending reindex.
-    llvm::SmallVector<Fid> pending_files() const {
-        return llvm::to_vector(llvm::make_first_range(entries));
-    }
-
 private:
     friend struct testing::IndexerFixture;
 

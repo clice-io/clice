@@ -1,7 +1,7 @@
 module clice;
 
 import :index.project_index;
-import :project.command_snapshot;
+import :project.build_snapshot;
 import :project.contexts;
 import :project.pcm;
 import :server.client;
@@ -317,16 +317,16 @@ void ServedProject::build_changed(CDBDiff delta) {
         // A TU the build stopped compiling — its database still loads but no
         // longer lists it: its shard leaves the index and nothing is owed,
         // unlike a file that vanished from disk, whose shard stays behind
-        // (queries withhold it). A TU whose command changed: its index
-        // describes a compile that no longer exists, and content-based
-        // freshness cannot see that — a surviving manifest would judge the
-        // queued reindex fresh and keep the old-command index serving, in
-        // this session and after a restart. ContentChanged: a new command
-        // can rewrite the index (macros, includes) as thoroughly as an edit.
-        index::IndexReport report;
-        project.index.drop(path_id, report);
-        apply_report(project, report);
+        // (queries withhold it). A TU whose command changed keeps its index
+        // serving until the reindex merges; its manifest names the old
+        // command, so no freshness check skips the reindex, in this session
+        // or after a restart. ContentChanged: a new command can rewrite the
+        // index (macros, includes) as thoroughly as an edit, and an open
+        // document's compile does not stand in for it.
         if(removed_from_build) {
+            index::IndexReport report;
+            project.index.drop(path_id, report);
+            apply_report(project, report);
             clear_reindex(project, path_id);
         } else {
             reindex(path_id, true);

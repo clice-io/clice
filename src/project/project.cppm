@@ -13,7 +13,7 @@ import :index.tu_index;
 import :index.writer_lock;
 import :project.background_index;
 import :project.build;
-import :project.command_snapshot;
+import :project.build_snapshot;
 import :project.graph;
 import :project.hosting;
 import :project.memo;
@@ -302,14 +302,13 @@ struct Project {
     /// live sources of the documents it serves.
     index::IndexQuery index_query{index, file_table, &freshness, nullptr};
 
-    /// The commands the index was built with, as the index database
-    /// records them.
-    CommandSnapshot command_snapshot;
+    /// What the index database records of the build.
+    BuildSnapshot build_snapshot;
 
     /// The editor's context choices, as the index database carries them.
     ContextChoices choices;
 
-    /// Serializes concurrent saves (save_project): the pump's round-end
+    /// Serializes concurrent saves (save_project): the background index's round-end
     /// save, the master's metadata flush and the shutdown save may overlap
     /// on the event loop, and a save moves the dirty state into its batch
     /// assuming one save at a time.

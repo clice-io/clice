@@ -138,8 +138,8 @@ inline std::uint64_t reserve(const SimMachine& machine) {
 
 }  // namespace sim
 
-/// Run the units through a WorkerScheduler as the pool and the index pump
-/// would: the pump keeps twice the background limit in flight and requeues
+/// Run the units through a WorkerScheduler as the pool and the background
+/// index would: the background index keeps twice the background limit in flight and requeues
 /// a lost run into the next round; the pool carries out every action, a
 /// process takes 0.3 s to start and 0.2 s to die, a cancelled compile stops
 /// within 0.2 s.

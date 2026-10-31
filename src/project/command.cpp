@@ -468,6 +468,16 @@ Resolution resolve_command(Project& project,
     return resolution;
 }
 
+std::uint64_t command_identity(Project& project, Fid unit) {
+    auto commands = project.build.commands(unit);
+    if(commands.empty()) {
+        return 0;
+    }
+    std::uint64_t parts[] = {project.commands.command_hash(commands.front().command),
+                             project.build.edit_hash(project.file_table.resolve(unit))};
+    return llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(parts), sizeof(parts)));
+}
+
 std::optional<CommandRef> pch_unit(Project& project,
                                    Fid path_id,
                                    const Resolution& resolution,

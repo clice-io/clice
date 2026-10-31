@@ -3,10 +3,11 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :project.background_index;
-import :project.command_snapshot;
+import :project.build_snapshot;
 import :project.reindex_queue;
 import :project.save;
 import :settings.settings;
+import :support.bytes;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -17,7 +18,7 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(CommandSnapshot) {
+ZEST_SUITE(BuildSnapshot) {
 
 ZEST_CASE(OfflineCommandChangeReindexed) {
     TempDir tmp;
@@ -35,14 +36,15 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
     }
 
     // The command changed while no server ran: content freshness cannot
-    // see it, so the persisted CDB snapshot must catch it at load.
+    // see it, the identity its manifest records does. The index keeps
+    // serving until the reindex merges.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -71,25 +73,37 @@ ZEST_CASE(UnchangedCommandKept) {
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(RemovedEntryKeepsIndex) {
+ZEST_CASE(VanishedDatabaseKeepsIndex) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
+    tmp.touch("compile_commands.json",
+              std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                          R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                          json_escape(tmp.root)));
+
+    auto open = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
+        f.project.settings.finalize(f.project.root);
+    };
 
     {
         IndexerFixture f;
-        open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        open(f);
+        f.project.cdb.load(tmp.path("compile_commands.json"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
-    // The entry vanished from the CDB: the last-known index still serves
-    // navigation, same conservative semantics as the live reload path.
+    // Discovery no longer finds the database that listed the file, and
+    // nothing replaced it: it may come back, and the last-known index
+    // keeps serving, as for a database that failed to load.
+    fs::remove(tmp.path("compile_commands.json"));
     IndexerFixture f;
-    open_store(tmp, f.project);
+    open(f);
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -183,10 +197,10 @@ ZEST_CASE(SourceRelocationPersists) {
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
-    ZASSERT(f.project.command_snapshot.owes_save(f.project));
+    ZASSERT(f.project.build_snapshot.owes_save(f.project));
     f.save();
     ZASSERT(f.project.database->advance_read_snapshot());
-    auto remembered = CommandSnapshot::remembered(f.project);
+    auto remembered = BuildSnapshot::remembered(f.project);
     ZASSERT(remembered.sources.size() == 1);
     ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("b/compile_commands.json"));
 }
@@ -284,7 +298,7 @@ ZEST_CASE(UncoveredDefaultRetires) {
 
     // The rule whose default command covered the file is gone and nothing
     // else compiles it: the index leaves instead of being rebuilt under the
-    // builtin fallback, and no debt survives for a unit the build left.
+    // builtin fallback, and nothing is owed for a unit the build left.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
@@ -341,7 +355,7 @@ ZEST_CASE(RuleChangeReindexed) {
 
     // The CDB entry is unchanged, but a clice.toml rule now adjusts the
     // effective command — as invisible to content freshness as a command
-    // edit, so the snapshot must cover it too.
+    // edit, so the recorded identity covers it too.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
@@ -354,7 +368,7 @@ ZEST_CASE(RuleChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -407,7 +421,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
     }
 
     // A clice.toml rule matching the unit changed offline: the unit has no
-    // CDB entry, so only its own snapshot entry can see it.
+    // CDB entry, and the identity covers its rules all the same.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
@@ -420,7 +434,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -455,11 +469,11 @@ ZEST_CASE(CDBWriteFailureRetried) {
     // The snapshot rides the batch with the index state it describes: the
     // failed batch takes both, and both stay owed until a save commits them
     // (`clice index` fails on unsaved state after the final save).
-    ZASSERT(!storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
+    ZASSERT(!storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
     ZASSERT(has_unsaved_state(f.project));
     storage->fail = false;
     f.save();
-    ZASSERT(storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
+    ZASSERT(storage->real->contains(index::BlobKind::BuildSnapshot, "cdb"));
     ZASSERT(!has_unsaved_state(f.project));
 }
 
@@ -481,22 +495,69 @@ ZEST_CASE(MissingSnapshotRewritten) {
         f.project.database->write(
             {
         },
-            {{index::BlobKind::CommandSnapshot, "cdb"}});
+            {{index::BlobKind::BuildSnapshot, "cdb"}});
     }
 
-    // A rerun that dirties nothing must still recreate the baseline —
-    // without it, every later offline command edit would go undetected.
+    // A rerun that dirties nothing must still recreate the snapshot —
+    // without it, a later session could not tell a unit the build stopped
+    // compiling from one whose database failed to load.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
     ZASSERT(has_unsaved_state(f.project));
     f.save();
-    ZASSERT(f.project.database->contains(index::BlobKind::CommandSnapshot, "cdb"));
+    ZASSERT(f.project.database->contains(index::BlobKind::BuildSnapshot, "cdb"));
     ZASSERT(!has_unsaved_state(f.project));
 }
 
-ZEST_CASE(DroppedUnitDebtRetried) {
+ZEST_CASE(SnapshotHoldsSourcesOnly) {
+    // The snapshot records which databases listed each file and the
+    // provisional members, nothing of the commands; one an older clice
+    // wrote, with each file's command hashes, still reads.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    tmp.touch("new.cpp", "int fresh() { return 2; }\n");
+    tmp.touch("compile_commands.json",
+              std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                          R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                          json_escape(tmp.root)));
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    f.project.settings.finalize(f.project.root);
+    f.project.cdb.load(tmp.path("compile_commands.json"));
+    ZASSERT(f.project.build.record(
+        f.project.file_table.intern(Spelling::absolute(tmp.path("new.cpp")))));
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data));
+    f.save();
+
+    auto blob = f.project.database->read(index::BlobKind::BuildSnapshot, "cdb");
+    ZASSERT(bool(blob));
+    auto bytes = blob.buffer->getBuffer().str();
+    ZEXPECT(llvm::StringRef(bytes).contains("compile_commands.json"));
+    ZEXPECT(!llvm::StringRef(bytes).contains("hashes"));
+
+    auto file = std::string_view(R"({"file":)");
+    auto pos = bytes.find(file);
+    ZASSERT(pos != std::string::npos);
+    bytes.replace(
+        pos,
+        file.size(),
+        R"({"hashes":["0123456789abcdef"],"selected":"0123456789abcdef","rules":"","file":)");
+    index::BlobDatabase::Blob older{index::BlobKind::BuildSnapshot, "cdb", copy_bytes(bytes)};
+    ZASSERT(f.project.database->write(older, {}));
+    ZASSERT(f.project.database->advance_read_snapshot());
+    auto remembered = BuildSnapshot::remembered(f.project);
+    ZASSERT(remembered.sources.size() == 1u);
+    ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("compile_commands.json"));
+    ZASSERT(remembered.provisional.size() == 1u);
+    ZEXPECT(llvm::StringRef(remembered.provisional.front().str()).ends_with("new.cpp"));
+}
+
+ZEST_CASE(OwedReindexOutlivesSession) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -517,31 +578,30 @@ ZEST_CASE(DroppedUnitDebtRetried) {
     }
 
     {
-        // The default command changed offline: the unit's index is dropped
-        // and queued — but the rebuild never finishes this session. The
-        // saved snapshot must keep recording the unit, or nothing would
-        // ever retry it.
+        // The default command changed offline, and the reindex it owes
+        // never runs this session.
         IndexerFixture f;
         open_store(tmp, f.project);
         add_default_rule(f, "clang++ -DFOO=2 -c");
         f.load();
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        ZASSERT(!f.project.index.indexed(tu_id));
         ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
         f.save();
     }
 
+    // The manifest still names the old command: the next session owes the
+    // reindex again.
     IndexerFixture f;
     open_store(tmp, f.project);
     add_default_rule(f, "clang++ -DFOO=2 -c");
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(VanishedUnitDebtDies) {
+ZEST_CASE(DeletedUnitOwesNothing) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -561,17 +621,9 @@ ZEST_CASE(VanishedUnitDebtDies) {
         f.save();
     }
 
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        add_default_rule(f, "clang++ -DFOO=2 -c");
-        f.load();
-        f.save();
-    }
-
-    // The unit was deleted while its debt entry sat in the snapshot: a
-    // retry could never succeed, so the debt dies instead of keeping every
-    // later run partial forever.
+    // The unit was deleted and its command changed while no server ran: a
+    // reindex could never succeed, so none is owed, or every later run
+    // would stay partial.
     ZASSERT(fs::remove(src));
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -581,51 +633,10 @@ ZEST_CASE(VanishedUnitDebtDies) {
         !f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(src))).has_value());
 }
 
-ZEST_CASE(FailedUnitInSnapshot) {
-    // A unit without entries whose index attempt failed terminally is
-    // recorded nowhere but the pump's failed set; the save's debt snapshot
-    // must persist it, or the repair debt dies with the process and
-    // nothing ever retries the unit.
-    TempDir tmp;
-    tmp.touch("main.cpp", "int use() { return 0; }\n");
-    tmp.touch("other.cpp", "int other() { return 0; }\n");
-    auto src = tmp.path("main.cpp");
-    auto other = tmp.path("other.cpp");
-    auto add_default_rule = [&](IndexerFixture& f) {
-        f.project.settings.rules.push_back(
-            Rule{.patterns = {"**/other.cpp"}, .default_command = std::string("clang++ -c")});
-        f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-    };
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-        add_default_rule(f);
-        f.mark_failed(f.project.file_table.intern(Spelling::absolute(other)));
-        // Something dirty so the save writes at all; the snapshot rides
-        // the same batch.
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data));
-        f.save();
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    add_default_rule(f);
-    f.load();
-    ZASSERT(f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(other))) ==
-            ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(LateDebtShutdownRetry) {
-    // Debt showing up after the save serialized its snapshot (write-time
-    // corruption recovery) comes back with snapshot_stale set; the
-    // shutdown's one metadata retry must commit it to the fresh database,
-    // or a dropped unit's repair debt is lost for good.
+ZEST_CASE(CorruptWriteSavesSnapshot) {
+    // A save whose write finds the database corrupt reopens a fresh one and
+    // owes it a save; the retry commits the snapshot there too, or the
+    // next session could not tell a removed unit.
     struct CorruptOnWrite final : ForwardingDatabase {
         using ForwardingDatabase::ForwardingDatabase;
 
@@ -643,23 +654,24 @@ ZEST_CASE(LateDebtShutdownRetry) {
 
     IndexerFixture f;
     TempDir tmp;
-    tmp.touch("other.cpp", "int other() { return 0; }\n");
     tmp.touch("main.cpp", "int use() { return 0; }\n");
+    tmp.touch("compile_commands.json",
+              std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                          R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                          json_escape(tmp.root)));
     open_store(tmp, f.project);
-    f.project.settings.rules.push_back(
-        Rule{.patterns = {"**/other.cpp"}, .default_command = std::string("clang++ -c")});
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     f.project.settings.finalize(f.project.root);
+    f.project.cdb.load(tmp.path("compile_commands.json"));
     f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
 
-    f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("other.cpp"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
     index::IndexReport report;
     auto body = [&]() -> async::task<> {
-        report = co_await save_project(f.project, f.loop, save_debt(f.project));
+        report = co_await save_project(f.project, f.loop);
     };
     auto task = body();
     f.loop.schedule(task);
@@ -668,15 +680,13 @@ ZEST_CASE(LateDebtShutdownRetry) {
     ZASSERT(report.owes_retry);
     apply_report(f.project, report);
 
-    // The retry persists into the freshly reopened database, snapshot
-    // included.
     f.save();
-    auto blob = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
+    auto blob = f.project.database->read(index::BlobKind::BuildSnapshot, "cdb");
     ZASSERT(bool(blob));
-    ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("other.cpp"));
+    ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("compile_commands.json"));
 }
 
-};  // ZEST_SUITE(CommandSnapshot)
+};  // ZEST_SUITE(BuildSnapshot)
 
 }  // namespace
 }  // namespace clice::testing

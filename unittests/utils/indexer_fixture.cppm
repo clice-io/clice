@@ -7,6 +7,7 @@ import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
 import :project.background_index;
+import :project.command;
 import :project.project;
 import :project.reindex_queue;
 import :project.save;
@@ -37,19 +38,25 @@ struct IndexerFixture {
     BackgroundIndex& background = project.background_index;
     ReindexQueue& queue = project.background_index.queue;
 
-    /// Merge a worker result and take its report, as the unit run does.
+    /// Merge a worker result under the command the build gives its unit and
+    /// take its report, as the unit run does.
     bool merge(llvm::StringRef data) {
-        auto report = project.index.merge(data, {});
+        std::uint64_t command = 0;
+        if(auto view = index::TUIndex::from_bytes(data); view.loaded()) {
+            auto unit = files.intern(Spelling::absolute(view.path(view.path_count() - 1)));
+            command = command_identity(project, unit);
+        }
+        auto report = project.index.merge(data, {}, command);
         if(report) {
             apply_report(project, *report);
         }
         return report.has_value();
     }
 
-    /// One save with the background index's debt, its report taken back —
+    /// One save, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        apply_report(project, co_await save_project(project, loop, save_debt(project), search));
+        apply_report(project, co_await save_project(project, loop, search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
@@ -86,6 +93,13 @@ struct IndexerFixture {
     /// Fail a dispatch launched with an explicit (possibly stale) sequence number.
     Decision fail_at(Fid id, std::uint64_t seq, ReindexQueue::Failure failure) {
         return queue.on_dispatch_failure({id, seq}, failure);
+    }
+
+    /// Every file `queue` holds a pending reindex for, sorted.
+    static llvm::SmallVector<Fid> pending_files(const ReindexQueue& queue) {
+        auto files = llvm::to_vector(llvm::make_first_range(queue.entries));
+        ranges::sort(files);
+        return files;
     }
 
     std::uint64_t seq(Fid id) {

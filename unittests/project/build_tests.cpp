@@ -874,7 +874,7 @@ ZEST_CASE(RuleTurnsQueryOff) {
     ZEXPECT(build.edits(own_file).query_toolchain);
     ZEXPECT(!build.edits(vendor_file).query_toolchain);
     ZEXPECT(build.edit_hash(own_file) != build.edit_hash(vendor_file));
-    ZEXPECT(!build.edit_hash(third_party_file).empty());
+    ZEXPECT(build.edit_hash(third_party_file) != 0);
 
     // One command under the same appends: only the query tells them apart.
     auto command = std::format("clang++ {}", vendor.str());

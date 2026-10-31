@@ -1,4 +1,4 @@
-module clice:project.command_snapshot;
+module clice:project.build_snapshot;
 
 import :index.project_index;
 import :support.prelude;
@@ -9,15 +9,13 @@ namespace clice {
 
 struct Project;
 
-/// What the index database records of the commands the index was built
-/// with (blob kind CommandSnapshot): per source file, the sorted canonical
-/// command hashes of its entries and a hash of its matched rules when
-/// the index was last saved; per unit without entries, the command covering
-/// it and its matched rules. A load diffs it against the live build to drop
-/// the index of every TU whose command changed while no server ran —
-/// content-based freshness cannot see command changes — and the next save
-/// rewrites it when the live build serializes differently.
-class CommandSnapshot {
+/// What the index database records of the build (blob kind BuildSnapshot):
+/// per source file, the databases that listed it when the index was last
+/// saved, and the provisional members. Which command built a unit's index
+/// its manifest records (command_identity); the snapshot is what tells a
+/// unit the build stopped compiling from one whose database failed to
+/// load, and what a later session registers before anything is opened.
+class BuildSnapshot {
 public:
     /// What the persisted snapshot remembers of the build, as absolute
     /// paths.
@@ -34,9 +32,9 @@ public:
     /// The build the persisted snapshot of `project`'s database remembers.
     static Remembered remembered(const Project& project);
 
-    /// Diff the persisted snapshot against the live build and drop the
-    /// index of every TU whose compile command changed while no server was
-    /// running, with its reindex owed in `report`. A TU the build stopped
+    /// Bring the loaded index in line with the live build: every unit whose
+    /// command changed while no server ran is owed a reindex in `report`,
+    /// its index serving until the reindex merges. A unit the build stopped
     /// compiling — every database that listed it is healthy and lists it no
     /// more, or the default command that covered it is gone — leaves the
     /// index; one a database that failed to load listed keeps serving its
@@ -49,10 +47,9 @@ public:
     /// provisional member was recorded since it serialized.
     bool owes_save(const Project& project) const;
 
-    /// The snapshot of the live build for the next save, with the units
-    /// without entries among `debt` recorded as owed; nullopt when it
+    /// The snapshot of the live build for the next save; nullopt when it
     /// serializes as the persisted one does, or fails to serialize.
-    std::optional<std::string> serialize(Project& project, llvm::ArrayRef<Fid> debt);
+    std::optional<std::string> serialize(Project& project);
 
     /// The bytes serialize gave were persisted.
     void saved(std::string bytes) {

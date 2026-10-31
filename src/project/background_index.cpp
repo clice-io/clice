@@ -2,6 +2,7 @@ module clice;
 
 import :index.project_index;
 import :project.background_index;
+import :project.command;
 import :project.project;
 import :project.save;
 import :project.unit_run;
@@ -72,7 +73,8 @@ async::task<> run_index_task(Project& project,
                   background.compiled_by_session(path_id);
     bool skipped = background.on_skipped_diagnostics && project.settings.project.skip_header_bodies;
     if(!served && (content_changed || (skipped && background.lacks_skipped_diagnostics(path_id)) ||
-                   project.index.needs_reindex(path_id))) {
+                   project.index.needs_reindex(path_id) ||
+                   project.index.indexed_command(path_id) != command_identity(project, path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto outcome =
             co_await run_unit(project,
@@ -477,19 +479,11 @@ void apply_report(Project& project, const index::IndexReport& report) {
     }
 }
 
-llvm::SmallVector<Fid> save_debt(const Project& project) {
-    auto& background = project.background_index;
-    llvm::SmallVector<Fid> debt(background.failed.begin(), background.failed.end());
-    auto pending = background.queue.pending_files();
-    debt.append(pending.begin(), pending.end());
-    return debt;
-}
-
 async::task<> persist(Project& project, index::SearchRebuild search) {
     auto& queue = project.background_index.queue;
     bool retry = true;
     while(retry) {
-        auto report = co_await save_project(project, *project.loop, save_debt(project), search);
+        auto report = co_await save_project(project, *project.loop, search);
         retry = report.owes_retry;
         apply_report(project, report);
         // No more indexing is queued, so no save is due for a while: the

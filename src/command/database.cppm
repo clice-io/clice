@@ -176,8 +176,7 @@ public:
     /// Map each file's path_id to the command hashes of its entries in storage
     /// order (a file may own several entries with different flags; the
     /// first is its default selection) — the identity reload_and_diff()
-    /// diffs on and the indexer persists to catch command changes across
-    /// sessions.
+    /// diffs on.
     llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
 
     /// The path a command gives its input file as: a database's spelling

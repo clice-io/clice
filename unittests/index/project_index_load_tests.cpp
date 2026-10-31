@@ -7,6 +7,7 @@ import :index.project_records;
 import :index.symbol_query;
 import :project.project;
 import :project.reindex_queue;
+import :project.save;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -14,6 +15,7 @@ import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
 
@@ -287,7 +289,7 @@ ZEST_CASE(StaleUnitsFollowDisk) {
 
 ZEST_CASE(OwedUnitsPersist) {
     // A rebuild of a shared header discards another unit's variant; that
-    // unit reads fresh by content, so the debt survives a restart in the
+    // unit reads fresh by content, so its reindex survives a restart in the
     // header until the unit merges again.
     TempDir tmp;
     tmp.touch("gen.h",
@@ -499,22 +501,114 @@ ZEST_CASE(LoadDamageStartsOver) {
     ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
 }
 
-ZEST_CASE(OtherFormatDiscardsAll) {
-    // A database another format version wrote is discarded whole, the
-    // context choices and precompiled records with it.
+ZEST_CASE(CommandRecordedAcrossSave) {
+    // The identity of the command a unit was indexed under rides its
+    // manifest and its file record, across a save.
     TempDir tmp;
-    index::HeaderBlob header;
-    header.format_version = index::index_format_version + 1;
-    auto bytes = index::encode(header);
-    inject_blob(tmp, index::BlobKind::Header, "header", as_chars(bytes));
-    inject_blob(tmp, index::BlobKind::ContextChoices, "contexts", "choices");
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        ZASSERT(f.project.index.merge(index_file(tmp, src).data, {}, 42));
+        auto id = f.project.file_table.intern(Spelling::absolute(src));
+        ZEXPECT(f.project.index.indexed_command(id) == 42u);
+        ZEXPECT(f.project.index.manifest(id)->command == 42u);
+        f.save();
+    }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    ZEXPECT(!f.load());
-    ZEXPECT(f.project.choices.bytes.empty());
-    ZEXPECT(!f.project.database->contains(index::BlobKind::ContextChoices, "contexts"));
-    ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
+    ZASSERT(load_saved(f.project, /*reconcile=*/false).decoded);
+    auto id = f.project.file_table.intern(Spelling::absolute(src));
+    ZEXPECT(f.project.index.indexed_command(id) == 42u);
+    ZEXPECT(f.project.index.manifest(id)->command == 42u);
+}
+
+ZEST_CASE(OtherFormatKeepsMetadata) {
+    // A database another format version wrote loses its index, not its
+    // context choices and PCM records: the fresh database takes them at its
+    // first save. Its PCH records go, their pairs built under the other
+    // format.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    tmp.touch("mod.cppm", "export module m;\n");
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
+    };
+    auto stored = [](IndexerFixture& f, llvm::StringRef space, llvm::StringRef key) {
+        auto pending = f.project.store->begin_store(space, key);
+        ZASSERT(!fs::write_file(pending.tmp_path, "bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        stored(f, "pch", "k");
+        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
+        stored(f, "pcm", "m");
+        auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+        auto dep =
+            DepState{.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
+        auto& pch = f.project.pch_cache["k"];
+        pch.blob = "k";
+        pch.path = "k.pch";
+        pch.deps.push_back(dep);
+        auto& pcm =
+            f.project
+                .pcm_builds[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
+        pcm.path = "m.pcm";
+        pcm.key = "m";
+        pcm.blob = "m";
+        pcm.deps.push_back(dep);
+        f.project.mark_precompiled_dirty();
+        f.project.choices.bytes = "choices";
+        f.project.choices.dirty = true;
+        f.save();
+
+        // Put the header and the records back as the binary of the format
+        // before would have written them.
+        index::HeaderBlob header;
+        header.format_version = index::index_format_version - 1;
+        auto header_bytes = index::encode(header);
+        auto blob = f.project.database->read(index::BlobKind::PrecompiledRecords, "artifacts");
+        ZASSERT(bool(blob));
+        auto records = blob.buffer->getBuffer().str();
+        auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
+        auto pos = records.find(current);
+        ZASSERT(pos != std::string::npos);
+        records.replace(pos,
+                        current.size(),
+                        std::format("\"pch_index_format\":{}", index::index_format_version - 1));
+        ZASSERT(f.project.database->write(
+            {
+                {index::BlobKind::Header,             "header",    copy_bytes(as_chars(header_bytes))},
+                {index::BlobKind::PrecompiledRecords, "artifacts", copy_bytes(records)               },
+        },
+            {}));
+    }
+
+    {
+        IndexerFixture f;
+        setup(f);
+        ZEXPECT(!f.load());
+        ZEXPECT(f.project.pch_cache.empty());
+        ZEXPECT(f.project.pcm_builds.size() == 1u);
+        ZEXPECT(f.project.choices.bytes == "choices");
+        f.save();
+    }
+
+    IndexerFixture f;
+    setup(f);
+    ZEXPECT(f.load());
+    ZEXPECT(f.project.pcm_builds.size() == 1u);
+    ZEXPECT(f.project.choices.bytes == "choices");
 }
 
 ZEST_CASE(ReadOnlyLoadKeepsDisk) {

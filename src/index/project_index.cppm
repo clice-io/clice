@@ -25,7 +25,8 @@ class IndexReport {
 public:
     /// TUs owed a ContentChanged reindex: their index is missing,
     /// stale or discarded and no in-process event would rebuild it.
-    /// The pump takes these before the current attempt finishes.
+    /// The background index takes these before the current attempt
+    /// finishes.
     llvm::ArrayRef<Fid> reindex() const {
         return reindex_ids;
     }
@@ -183,6 +184,10 @@ public:
     /// Whether `tu` has a current manifest.
     bool indexed(Fid tu) const;
 
+    /// The command identity `tu`'s current manifest was indexed under; 0
+    /// when it has none.
+    std::uint64_t indexed_command(Fid tu) const;
+
     /// A TU's current manifest, in the file table's version ids.
     std::optional<TUManifest> manifest(Fid tu) const;
 
@@ -308,18 +313,18 @@ public:
     /// manifest, and write shard blobs only for variants no shard stores yet
     /// — a re-index whose entries are unchanged records its contributions and
     /// touches nothing else. `imports` is what the PCMs and the
-    /// precompiled header the parse read were built from; `peak` the memory
+    /// precompiled header the parse read were built from; `command` the
+    /// identity of the command it was indexed under and `peak` the memory
     /// its worker reached, which the manifest keeps.
     std::expected<IndexReport, MergeError> merge(llvm::StringRef tu_index,
                                                  llvm::ArrayRef<DepState> imports,
+                                                 std::uint64_t command = 0,
                                                  std::uint64_t peak = 0);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next
-    /// save. For invalidation content-based freshness cannot see — a
-    /// compile-command change — where a surviving manifest would keep
-    /// judging the old-command index fresh, in this session and after a
-    /// restart.
+    /// save. For a TU the build no longer compiles or a rule keeps out of
+    /// the index.
     void drop(Fid tu, IndexReport& report);
 
     /// The variant identities stored for the files `tu` is expected to

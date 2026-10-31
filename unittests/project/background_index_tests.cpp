@@ -2,6 +2,7 @@ module clice;
 
 import :index.project_index;
 import :project.background_index;
+import :project.command;
 import :project.reindex_queue;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -83,7 +84,7 @@ ZEST_CASE(StaleCrashKeepsBudget) {
     ZASSERT(f.queue.pending_reason(id));
 }
 
-ZEST_CASE(DepsDowngradeKeepsDebt) {
+ZEST_CASE(DepsDowngradeKeepsContent) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/c.cpp"));
     enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
@@ -92,7 +93,7 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     // The content pass is dispatched; a deps-only cascade arrives mid-flight
     // and downgrades the pending reason, betting on that pass to cover the
     // edit. The pass fails — the requeue must restore the ContentChanged
-    // debt or the stale shard stops being suppressed.
+    // reindex or the stale shard stops being suppressed.
     f.consume(id);
     enqueue_reindex(f.project, id, ReindexReason::DepsOnly);
     ZASSERT(int(*f.queue.pending_reason(id)) == int(ReindexReason::DepsOnly));
@@ -271,8 +272,8 @@ ZEST_CASE(PauseResumesRound) {
 };  // ZEST_SUITE(BackgroundIndexRequeue)
 
 /// The index's serving-neutral change reports and the background index
-/// taking them: every index-changing source reports debt and index changes,
-/// the save carries the background index's debt both ways.
+/// taking them: every index-changing source reports the reindexes it owes
+/// and the index changes.
 ZEST_SUITE(BackgroundIndexReports) {
 
 ZEST_CASE(MergeReportsIndexChanged) {
@@ -368,6 +369,37 @@ ZEST_CASE(IndexFirstRearmsIdleTimer) {
 
     ZASSERT(index_idle(f.project));
     ZASSERT(f.background.failed.size() == 1u);
+}
+
+ZEST_CASE(OtherCommandRunsCurrentIndex) {
+    // The skip check runs a unit whose index is current by content but was
+    // built under another command than the build gives it — as a run that
+    // started under the old command merges it.
+    TempDir tmp;
+    tmp.touch("same.cpp", "int same() { return 1; }\n");
+    tmp.touch("moved.cpp", "int moved() { return 2; }\n");
+    IndexerFixture f;
+    f.project.settings.project.enable_indexing.value = false;
+    f.project.cdb.add_command(tmp.root,
+                              tmp.path("same.cpp"),
+                              llvm::StringRef("clang++ -c same.cpp"));
+    f.project.cdb.add_command(tmp.root,
+                              tmp.path("moved.cpp"),
+                              llvm::StringRef("clang++ -c moved.cpp"));
+    auto same = f.project.file_table.intern(Spelling::absolute(tmp.path("same.cpp")));
+    auto moved = f.project.file_table.intern(Spelling::absolute(tmp.path("moved.cpp")));
+    ZASSERT(f.merge(index_file(tmp, tmp.path("same.cpp")).data));
+    ZASSERT(f.project.index.merge(index_file(tmp, tmp.path("moved.cpp")).data,
+                                  {},
+                                  command_identity(f.project, moved) + 1));
+
+    enqueue_reindex(f.project, same, ReindexReason::DepsOnly);
+    enqueue_reindex(f.project, moved, ReindexReason::DepsOnly);
+    f.run_round();
+
+    // No worker runs here: the run fails, the skip does not.
+    ZEXPECT(!f.background.failed.contains(same));
+    ZEXPECT(f.background.failed.contains(moved));
 }
 
 ZEST_CASE(SaveStartsOwedRound) {

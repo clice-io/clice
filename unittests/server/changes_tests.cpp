@@ -18,6 +18,7 @@ import :support.failure_record;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
+import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_table;
@@ -59,15 +60,12 @@ struct Harness {
     /// The files the background index owes a reindex for `reason`, sorted.
     llvm::SmallVector<Fid> queued(ReindexReason reason) {
         auto& queue = served.project.background_index.queue;
-        auto debt = save_debt(served.project);
-        auto files = ranges::to<llvm::SmallVector<Fid>>(
-            views::filter(debt, [&](Fid file) { return queue.pending_reason(file) == reason; }));
-        ranges::sort(files);
-        return files;
+        return ranges::to<llvm::SmallVector<Fid>>(
+            views::filter(IndexerFixture::pending_files(queue),
+                          [&](Fid file) { return queue.pending_reason(file) == reason; }));
     }
 
-    /// Give the unit an index of its own, which a change of its command
-    /// drops.
+    /// Give the unit an index of its own.
     void index_unit(Fid tu) {
         index::TUManifest manifest;
         manifest.built_at = 1;
@@ -81,7 +79,7 @@ ZEST_SUITE(Changes, Harness) {
 ZEST_CASE(EmptyBatchNoEffects) {
     served.disk_changed({});
 
-    ZASSERT(save_debt(served.project).empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue).empty());
 }
 
 ZEST_CASE(NewProviderDirtiesImporters) {
@@ -177,7 +175,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     auto mod = fixture.intern("/proj/m.cppm");
     auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges PCMBuilder::declare_deps declares in production —
+    // The consumer edges declare_imports declares in production —
     // no rounds.
     auto node = [](Fid pid) {
         return NodeId{NodeKind::PCM, pid.raw};
@@ -561,7 +559,7 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     ZASSERT(project.context_epoch == epoch + 1);
     // The removal clears any pending-reindex state recorded earlier: the
     // shard keeps serving and nothing is left to reindex.
-    ZASSERT(save_debt(served.project).empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue).empty());
 }
 
 ZEST_CASE(RemoveRecreateOrder) {
@@ -604,10 +602,11 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     fixture.build_changed({.added = {main_id}});
 
     // The rescan resolved the new entry's includes; the new file reindexes.
-    // A command change rewrites the index as thoroughly as an edit.
+    // A command change rewrites the index as thoroughly as an edit, and the
+    // old index serves until the reindex merges.
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{main_id});
-    ZASSERT(!project.index.indexed(main_id));
+    ZASSERT(project.index.indexed(main_id));
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 }
 
@@ -639,12 +638,11 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     ZASSERT(queued(ReindexReason::ContentChanged) == reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 
-    // Both indexes were built under the old command and look fresh to
-    // content-only validation: dropped so the queued reindexes are not
-    // filtered out, here or after a restart. The shards themselves stay
-    // with the indexer, which masks and retires them off the manifests.
-    ZASSERT(!project.index.indexed(open_id));
-    ZASSERT(!project.index.indexed(closed_id));
+    // Both indexes were built under the old command: they serve until the
+    // reindexes merge, which no freshness check filters out — their
+    // manifests name the old command.
+    ZASSERT(project.index.indexed(open_id));
+    ZASSERT(project.index.indexed(closed_id));
     ZASSERT(project.index.shard(closed_id) != nullptr);
     ZASSERT(project.index.shard(open_id) != nullptr);
 }
@@ -660,7 +658,7 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     // under the real command once open-file indexing is on.
     ZASSERT(invalidated(file));
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{file});
-    ZASSERT(!project.index.indexed(file));
+    ZASSERT(project.index.indexed(file));
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 }
 
@@ -676,19 +674,18 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     fixture.build_changed({.changed = {host}});
 
     // The open header borrowing the changed entry compiled under a command
-    // that no longer exists: it recompiles. Only the host's index is
-    // dropped — no header has one of its own. Unrelated headers are
-    // untouched.
+    // that no longer exists: it recompiles. Only the host reindexes — no
+    // header has an index of its own. Unrelated headers are untouched.
     ZASSERT(invalidated(open_header));
     ZASSERT(!invalidated(other_header));
-    ZASSERT(!project.index.indexed(host));
+    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{host});
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
     auto mod = fixture.intern("/proj/m.cppm");
     auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges PCMBuilder::declare_deps declares in production —
+    // The consumer edges declare_imports declares in production —
     // no rounds.
     auto node = [](Fid pid) {
         return NodeId{NodeKind::PCM, pid.raw};
@@ -702,11 +699,11 @@ ZEST_CASE(CDBChangedCascadesModule) {
     // A module unit's flag change cascades through the compile graph
     // exactly like a content change: importers' PCMs went stale. The
     // unit itself is reached twice (its own entry changed AND the cascade
-    // dirtied its PCM); the pump's absorbing upgrade leaves it
+    // dirtied its PCM); the queue's absorbing upgrade leaves it
     // ContentChanged.
     ZEXPECT(invalidated(open_user));
     ZEXPECT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
-    ZEXPECT(!project.index.indexed(mod));
+    ZEXPECT(project.index.indexed(mod));
     ZEXPECT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
 }
 
@@ -759,7 +756,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
 ZEST_CASE(CDBRemovedStillCovered) {
     /// The entry left the database but a rule's default command still
     /// covers the file: a command change, not a removal from the build — the index is
-    /// rebuilt under the default command instead of leaving.
+    /// rebuilt under the default command instead of leaving, and serves until then.
     TempDir tmp;
     tmp.touch("gone.cpp", R"(int x;)");
     tmp.touch("kept.cpp", R"(int y;)");
@@ -776,7 +773,7 @@ ZEST_CASE(CDBRemovedStillCovered) {
 
     fixture.build_changed({.removed = {gone_id}});
 
-    ZASSERT(!project.index.indexed(gone_id));
+    ZASSERT(project.index.indexed(gone_id));
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{gone_id});
 }
 
@@ -785,7 +782,7 @@ ZEST_CASE(CDBEmptyDeltaNoEffects) {
 
     fixture.build_changed({});
 
-    ZASSERT(save_debt(served.project).empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue).empty());
     ZASSERT(project.context_epoch == epoch);
 }
 

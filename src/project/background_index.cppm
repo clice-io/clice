@@ -215,10 +215,6 @@ void enqueue_outdated(Project& project, llvm::ArrayRef<Fid> members);
 /// serving-index changes through on_index_changed.
 void apply_report(Project& project, const index::IndexReport& report);
 
-/// The files a save records as owed an index: the failed ones and every
-/// pending reindex.
-llvm::SmallVector<Fid> save_debt(const Project& project);
-
 /// Save the index and take the report, again while a save owes a retry (a
 /// grown map can still be too small); an idle save then shrinks the
 /// database file when that is worth it (shrink_database). Reindexes the

@@ -7,10 +7,10 @@ module;
 module clice;
 
 import :command.database;
-import :project.background_index;
 import :settings.settings;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.disk_state;
@@ -416,7 +416,8 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.build.entries(main).empty());
-    ZEXPECT(save_debt(served.project) == llvm::SmallVector<Fid>{main});
+    ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue) ==
+            llvm::SmallVector<Fid>{main});
     ZEXPECT(project.cdb.loaded(id));
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
@@ -480,7 +481,8 @@ ZEST_CASE(CDBTickDiscoversAround) {
     served.discover_around(main_id);
     ZASSERT(project.commands_epoch == epoch + 1);
     ZASSERT(!project.build.entries(main_id).empty());
-    ZASSERT(save_debt(served.project) == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue) ==
+            llvm::SmallVector<Fid>{main_id});
     served.discover_around(main_id);
     ZEXPECT(project.commands_epoch == epoch + 1);
     served.discover_around(other_id);

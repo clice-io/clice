@@ -188,6 +188,7 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
     blob.generation = file.generation;
     blob.stored = file.stored;
     blob.run = file.run;
+    blob.command = file.command;
     return encode(blob);
 }
 
@@ -204,6 +205,7 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
         .generation = root->generation,
         .stored = {root->stored.begin(),   root->stored.end()  },
         .run = root->run,
+        .command = root->command,
     };
 }
 

@@ -14,37 +14,33 @@ struct SavedLoad {
     /// report an unusable cache instead of an empty index.
     bool decoded = true;
 
-    /// The units owed a reindex the load found: the ones a rule keeps out or
-    /// whose command changed while no server ran.
+    /// What the load changed: the units a rule keeps out or the build no
+    /// longer compiles left the index, and the units whose command changed
+    /// while no server ran are owed a reindex.
     index::IndexReport report;
 };
 
 /// Open what the project's database holds: the index (ProjectIndex::open),
 /// the precompiled records into the project, the context choices; then, with
 /// `reconcile` (the build is loaded), drop the index of the units a rule
-/// keeps out and of those whose command changed while no server ran
-/// (CommandSnapshot::reconcile) — in memory only on a read-only database.
+/// keeps out or the build no longer compiles and owe a reindex to those
+/// whose command changed while no server ran (BuildSnapshot::reconcile) —
+/// in memory only on a read-only database.
 /// The writer replaces a database of another format or found corrupt by a
 /// fresh one; one whose header cannot be read is detached, persistence off
 /// for the session.
 SavedLoad load_saved(Project& project, bool reconcile);
 
 /// Persist what the project's database carries: the index's dirty state
-/// (ProjectIndex::begin_save), then the command snapshot, the precompiled
+/// (ProjectIndex::begin_save), then the build snapshot, the precompiled
 /// records and the context choices, in one write offloaded to the kotatsu
 /// thread pool. What the write fails to commit stays dirty for the next
-/// save; a database the write finds corrupt is replaced by a fresh one.
-///
-/// `debt` is the pump's immutable debt snapshot at call time: the command
-/// snapshot persists the entries of units without database entries so a
-/// dropped one's repair debt survives a process exit. Owner debt the compaction discovers before
-/// serializing joins the same snapshot; debt that shows up after it
-/// (write-time corruption recovery) comes back in the report with
-/// owes_retry set.
+/// save; a database the write finds corrupt is replaced by a fresh one,
+/// and the reindexes that owes come back in the report with owes_retry
+/// set.
 async::task<index::IndexReport>
     save_project(Project& project,
                  async::event_loop& loop,
-                 llvm::SmallVector<Fid> debt,
                  index::SearchRebuild search = index::SearchRebuild::Behind);
 
 /// Whether state remains that no save committed. After a final save this

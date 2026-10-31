@@ -94,6 +94,10 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
     CommandRequest extra{.extra_prepend = extras.prepend, .extra_append = extras.append};
     auto resolved = resolve_command(project, path_id, params.directory, params.arguments, extra);
     params.hidden = resolved.hidden;
+    // Taken with the command, not at the merge: a command changing during
+    // the build leaves the unit's index recorded under the old one, and the
+    // unit owed.
+    auto command = command_identity(project, path_id);
     // The editor shows them for a file of its own database entry only
     // (ServedProject::shown_skipped_diagnostics).
     params.skipped_diagnostics =
@@ -263,7 +267,8 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
             ScopedTimer merge_timer;
             // A run shorter than a sample interval measured nothing: the
             // earlier peak stands.
-            auto report = project.index.merge(index_bytes, imports, peak != 0 ? peak : cost.peak);
+            auto report =
+                project.index.merge(index_bytes, imports, command, peak != 0 ? peak : cost.peak);
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
                     project.send_in_full.insert(path_id);

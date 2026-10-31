@@ -4,7 +4,7 @@ import :index.database;
 import :index.project_index;
 import :project.precompiled_records;
 import :project.build;
-import :project.command_snapshot;
+import :project.build_snapshot;
 import :project.project;
 import :project.save;
 import :support.bytes;
@@ -25,7 +25,7 @@ void recover_corrupt_database(Project& project, index::IndexReport& report) {
             report.add_reindex(unit);
         }
     });
-    // The fresh database records the command snapshot at the next save.
+    // The fresh database records the build snapshot at the next save.
     report.owes_retry = true;
     reopen_fresh_database(project);
 }
@@ -34,9 +34,9 @@ void reopen_fresh_database(Project& project) {
     project.database->condemn();
     project.database.reset();
     // The index reads its records in place: it starts over with the
-    // database, as does the snapshot of the commands that built it.
+    // database, as does the snapshot of the build it was saved with.
     project.index.clear();
-    project.command_snapshot.forget_persisted();
+    project.build_snapshot.forget_persisted();
     project.database = index::open_database(*project.store, project.database_key);
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
@@ -47,12 +47,11 @@ void reopen_fresh_database(Project& project) {
 }
 
 bool has_unsaved_state(const Project& project) {
-    return project.index.has_unsaved_state() || project.command_snapshot.owes_save(project);
+    return project.index.has_unsaved_state() || project.build_snapshot.owes_save(project);
 }
 
 async::task<index::IndexReport> save_project(Project& project,
                                              async::event_loop& loop,
-                                             llvm::SmallVector<Fid> debt,
                                              index::SearchRebuild search) {
     index::IndexReport report;
     // A read-only session (batch lint, stats) keeps its metadata in memory
@@ -70,7 +69,7 @@ async::task<index::IndexReport> save_project(Project& project,
     }
     auto& db = *project.database;
     auto& index = project.index;
-    auto& snapshot = project.command_snapshot;
+    auto& snapshot = project.build_snapshot;
     auto& choices = project.choices;
     ScopedTimer timer;
 
@@ -87,20 +86,15 @@ async::task<index::IndexReport> save_project(Project& project,
     index.begin_save(batch, report);
     auto& blobs = batch.blobs;
 
-    // The command snapshot commits in the same transaction as the index
+    // The build snapshot commits in the same transaction as the index
     // state it describes. A save that commits nothing skips it (unless the
-    // snapshot itself is owed a rewrite): a pure CDB change
-    // dirties no blob on its own — the index drops it causes do — so the
-    // next dirtying save carries the fresh snapshot. The debt input is the
-    // pump's snapshot at call time plus the owner debt the compaction
-    // discovered; anything showing up past this point is too late for
-    // these bytes and returns in the report.
+    // snapshot itself is owed a rewrite): a pure CDB change dirties no blob
+    // on its own, so the next dirtying save carries the fresh snapshot.
     std::optional<std::string> snapshot_bytes;
     if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(project)) {
-        debt.append(report.reindex().begin(), report.reindex().end());
-        snapshot_bytes = snapshot.serialize(project, debt);
+        snapshot_bytes = snapshot.serialize(project);
         if(snapshot_bytes) {
-            blobs.push_back({index::BlobKind::CommandSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
+            blobs.push_back({index::BlobKind::BuildSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
         }
     }
 
@@ -244,8 +238,8 @@ async::task<index::IndexReport> shrink_database(Project& project, async::event_l
 }
 
 /// Drop the index of every TU a rule's `index = false` keeps out: an index
-/// built before the rule would otherwise serve on, since the pump never
-/// rebuilds an excluded unit.
+/// built before the rule would otherwise serve on, since the background
+/// index never rebuilds an excluded unit.
 static void drop_excluded(Project& project, index::IndexReport& report) {
     llvm::SmallVector<Fid> excluded;
     project.index.for_each_unit([&](Fid tu) {
@@ -283,9 +277,8 @@ SavedLoad load_saved(Project& project, bool reconcile) {
     };
 
     switch(index.open(db)) {
-        // A database with no index yet may still hold the command snapshot,
-        // and with it the debt of the files a save owed an index: the
-        // snapshot of a session whose index was discarded.
+        // A database with no index yet may still hold the metadata and the
+        // build snapshot of a session whose index was discarded.
         case index::LoadOutcome::Empty: break;
         case index::LoadOutcome::Unreadable:
             // Run this session memory-only — saving a fresh lineage over
@@ -309,9 +302,11 @@ SavedLoad load_saved(Project& project, bool reconcile) {
             }
             return result;
         case index::LoadOutcome::Undecodable:
-            // Another format discards everything, the metadata with it.
+            // Another format discards the index; the metadata, read first,
+            // goes into the fresh database at its first save.
             result.decoded = false;
             if(!read_only) {
+                load_metadata();
                 reopen_fresh_database(project);
             }
             return result;
@@ -320,7 +315,7 @@ SavedLoad load_saved(Project& project, bool reconcile) {
     load_metadata();
     if(reconcile) {
         drop_excluded(project, report);
-        project.command_snapshot.reconcile(project, report);
+        project.build_snapshot.reconcile(project, report);
     }
 
     // The reads above may have met a damaged page or record: heal it like

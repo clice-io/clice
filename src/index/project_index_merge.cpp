@@ -16,6 +16,7 @@ namespace clice::index {
 
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
                                                            llvm::ArrayRef<DepState> imports,
+                                                           std::uint64_t command,
                                                            std::uint64_t peak) {
     // Zero-copy consumption: the result stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
@@ -42,6 +43,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     TUManifest manifest;
     manifest.built_at = static_cast<std::uint64_t>(view.built_at());
     manifest.peak = peak;
+    manifest.command = command;
 
     std::uint32_t hits = 0;
     std::uint32_t appended = 0;

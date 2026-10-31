@@ -266,10 +266,10 @@ CommandRef Build::resolve(Fid file,
     return {file, applied, command_table.input_kind(applied, language_path), source};
 }
 
-std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
+std::uint64_t Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     auto edit = edits(paths);
     if(edit.empty()) {
-        return {};
+        return 0;
     }
     std::string joined;
     for(auto& item: edit.edits) {
@@ -297,7 +297,7 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(!edit.query_toolchain) {
         joined += "unqueried";
     }
-    return std::format("{:016x}", llvm::xxh3_64bits(joined));
+    return llvm::xxh3_64bits(joined);
 }
 
 bool Build::indexed(CanonicalRef path) const {

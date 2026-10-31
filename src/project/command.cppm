@@ -167,6 +167,12 @@ Resolution resolve_command(Project& project,
                            std::vector<std::string>& arguments,
                            const CommandRequest& request = {});
 
+/// The identity of the command the build compiles `unit` under, as its
+/// index records it: the default selection (Build::commands' first) with
+/// the unit's rule edits; 0 when the build compiles it under none. A run's
+/// extras are not part of it.
+std::uint64_t command_identity(Project& project, Fid unit);
+
 /// Build::pch_unit for the command `resolution` and `request` gave
 /// `path_id`: edited by the rules of the files it was resolved for (a
 /// borrowing header's and its host's) and the request's extras.

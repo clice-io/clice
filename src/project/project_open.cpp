@@ -4,7 +4,7 @@ import :settings.settings;
 import :index.database;
 import :index.project_index;
 import :project.build;
-import :project.command_snapshot;
+import :project.build_snapshot;
 import :project.project;
 import :project.save;
 import :support.json;
@@ -58,7 +58,7 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
 /// Register and load the build's sources: the databases the rules declare
 /// (existing or not; the server watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
-/// meet later — the persisted index's (see CommandSnapshot::remembered),
+/// meet later — the persisted index's (see BuildSnapshot::remembered),
 /// those above the file a run is about (see compile_commands_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
@@ -350,7 +350,7 @@ Project::Opened Project::open(const OpenOptions& options) {
 
     opened.unreadable = open_store(*this, options);
 
-    auto remembered = CommandSnapshot::remembered(*this);
+    auto remembered = BuildSnapshot::remembered(*this);
     if(!options.file.empty()) {
         auto above = compile_commands_above(CanonicalRef(options.file).parent(), root);
         remembered.sources.append(above.begin(), above.end());
