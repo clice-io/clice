@@ -171,12 +171,93 @@ struct CompileCompletion {
     index::CompletionScope scope;
 };
 
+/// A type, or a template argument, of one compile spelled by the names
+/// that find it again in another compile of the same code: parts in
+/// pre-order, each followed by those it is made of.
+struct TypePart {
+    enum class Kind : std::uint8_t {
+        /// `value` is the clang::BuiltinType::Kind.
+        Builtin,
+        Pointer,
+        LValueReference,
+        RValueReference,
+        /// Of `value` elements.
+        Array,
+        /// The return type, then the parameters.
+        Function,
+        /// A class or an enumeration, by `scopes`.
+        Tag,
+        /// The class of the class template `scopes` names.
+        Pattern,
+        /// A specialization of the class template `scopes` names, its
+        /// arguments after it.
+        Specialization,
+        /// A template argument: the integer `value` of the type after it.
+        Integral,
+        /// A template argument: the template `scopes` names.
+        Template,
+        /// A template argument: a pack of the arguments after it.
+        Pack,
+    };
+
+    /// A declaration on the way to a named one: its name, empty for an
+    /// anonymous namespace, and its clang::Decl::Kind.
+    struct Scope {
+        std::string name;
+        std::uint32_t kind = 0;
+    };
+
+    Kind kind = Kind::Builtin;
+
+    /// A type's CVR qualifiers (clang::Qualifiers::getCVRQualifiers).
+    std::uint8_t qualifiers = 0;
+
+    std::int64_t value = 0;
+
+    /// How many parts it is made of, those right after it.
+    std::uint32_t parts = 0;
+
+    /// A function type's.
+    bool variadic = false;
+    bool nothrow = false;
+
+    /// The declarations from the translation unit's down to the one named.
+    std::vector<Scope> scopes;
+};
+
+/// What the focus file's whole compile tells completion, whose own parse
+/// stops at the point: the arguments of the only instantiation of each
+/// function template written there, generic lambdas among them, and the
+/// class each `auto` variable of a range-based `for` in a template holds.
+struct InstantiatedTemplates {
+    struct Entry {
+        /// Where the name of the template or the variable is in the focus
+        /// file, and the name.
+        std::uint32_t offset = 0;
+        std::string name;
+
+        /// The arguments, one after the other, or the class.
+        std::vector<TypePart> parts;
+    };
+
+    std::vector<Entry> functions;
+    std::vector<Entry> loops;
+};
+
+/// What `unit`, a compile of the whole focus file, instantiates the file's
+/// templates with (InstantiatedTemplates).
+auto instantiated_templates(CompilationUnit& unit) -> InstantiatedTemplates;
+
+/// A completion with `instantiated` from the latest compile of the whole
+/// file, which may predate its text: an entry serves the template or the
+/// variable of its name at its offset alone.
 auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16,
-                   const CompileCompletion& names = {}) -> Completion;
+                   const CompileCompletion& names = {},
+                   const InstantiatedTemplates& instantiated = {}) -> Completion;
 
 /// The identifier being typed at `offset` of `text`, from its start to
 /// `offset`, and the scope a qualifier before it names.

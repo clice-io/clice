@@ -9,6 +9,7 @@ import :index.search;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
+import :semantic.semantics;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
@@ -754,144 +755,332 @@ struct CollectedItem {
     const clang::NamedDecl* documented = nullptr;
 };
 
-/// A compile of the whole buffer a completion runs on, for what only the
-/// code after the completion point tells: what a template there is
-/// instantiated with. Run at most once, when asked.
-class WholeBuffer {
-public:
-    explicit WholeBuffer(const CompilationParams& completion) :
-        input(completion.input), skip_bodies(completion.skip_bodies), stop(completion.stop) {}
+/// Types of one compile spelled by names (TypePart), for another compile of
+/// the same code to find again; false where a part names what no name
+/// finds — a lambda, a local class.
+struct Describer {
+    explicit Describer(std::vector<TypePart>& out) : out(out) {}
 
-    CompilationUnit& unit() {
-        if(!compiled) {
-            compiled = compile({.kind = CompilationKind::Content,
-                                .input = input,
-                                .skip_bodies = skip_bodies,
-                                .stop = stop});
-        }
-        return *compiled;
-    }
-
-private:
-    CompilationInput input;
-
-    bool skip_bodies;
-
-    std::shared_ptr<std::atomic_bool> stop;
-
-    std::unique_ptr<CompilationUnit> compiled;
-};
-
-/// Types of another compile of the same code rebuilt in this one: each
-/// class found again by its qualified name, each specialization formed
-/// again. Null where a part names nothing found here — a lambda, a local
-/// class, a declaration after the completion point.
-struct Rebuilder {
-    Rebuilder(clang::Sema& sema, clang::SourceLocation loc) :
-        sema(sema), ast(sema.getASTContext()), loc(loc) {}
-
-    clang::QualType type(clang::QualType from) {
+    bool type(clang::QualType from) {
         auto canonical = from.getCanonicalType();
         const auto* bare = canonical.getTypePtr();
-        clang::QualType result;
+        auto index = out.size();
+        auto& part = out.emplace_back();
+        part.qualifiers = static_cast<std::uint8_t>(canonical.getLocalCVRQualifiers());
+        auto made_of = [&](auto... types) {
+            out[index].parts = sizeof...(types);
+            return (type(types) && ...);
+        };
         if(const auto* builtin = llvm::dyn_cast<clang::BuiltinType>(bare)) {
-            result = builtin_type(builtin->getKind());
-        } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(bare)) {
-            if(auto pointee = type(pointer->getPointeeType()); !pointee.isNull()) {
-                result = ast.getPointerType(pointee);
-            }
-        } else if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(bare)) {
-            if(auto pointee = type(reference->getPointeeType()); !pointee.isNull()) {
-                result = ast.getLValueReferenceType(pointee);
-            }
-        } else if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(bare)) {
-            if(auto pointee = type(reference->getPointeeType()); !pointee.isNull()) {
-                result = ast.getRValueReferenceType(pointee);
-            }
-        } else if(const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(bare)) {
-            if(auto element = type(array->getElementType()); !element.isNull()) {
-                result = ast.getConstantArrayType(element,
-                                                  array->getSize(),
-                                                  nullptr,
-                                                  clang::ArraySizeModifier::Normal,
-                                                  0);
-            }
-        } else if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(bare)) {
-            auto returned = type(function->getReturnType());
-            llvm::SmallVector<clang::QualType, 4> parameters;
-            for(auto parameter: function->getParamTypes()) {
-                parameters.push_back(type(parameter));
-            }
-            if(!returned.isNull() && ranges::none_of(parameters, &clang::QualType::isNull)) {
-                // The exception specification's expressions and types live in
-                // the other compile; of it, the type keeps whether it throws.
-                auto info = function->getExtProtoInfo();
-                info.ExceptionSpec = {};
-                if(function->isNothrow()) {
-                    info.ExceptionSpec.Type = clang::EST_BasicNoexcept;
-                }
-                result = ast.getFunctionType(returned, parameters, info);
-            }
-        } else if(auto* tag = bare->getAsTagDecl()) {
-            result = tag_type(tag);
+            part.kind = TypePart::Kind::Builtin;
+            part.value = builtin->getKind();
+            return true;
         }
-        return result.isNull() ? result
-                               : ast.getQualifiedType(result, canonical.getLocalQualifiers());
+        if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(bare)) {
+            part.kind = TypePart::Kind::Pointer;
+            return made_of(pointer->getPointeeType());
+        }
+        if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(bare)) {
+            part.kind = TypePart::Kind::LValueReference;
+            return made_of(reference->getPointeeType());
+        }
+        if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(bare)) {
+            part.kind = TypePart::Kind::RValueReference;
+            return made_of(reference->getPointeeType());
+        }
+        if(const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(bare)) {
+            part.kind = TypePart::Kind::Array;
+            part.value = static_cast<std::int64_t>(array->getSize().getZExtValue());
+            return made_of(array->getElementType());
+        }
+        if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(bare)) {
+            part.kind = TypePart::Kind::Function;
+            part.variadic = function->isVariadic();
+            part.nothrow = function->isNothrow();
+            part.parts = function->getNumParams() + 1;
+            return type(function->getReturnType()) &&
+                   ranges::all_of(function->getParamTypes(),
+                                  [&](clang::QualType parameter) { return type(parameter); });
+        }
+        if(const auto* tag = bare->getAsTagDecl()) {
+            return this->tag(tag, index);
+        }
+        return false;
     }
 
-    /// The class here a type of the other compile names: the class a
-    /// specialization of it is formed of when it is concrete, the pattern
-    /// of a class template for a dependent one.
-    clang::TagDecl* tag(const clang::TagDecl* from) {
-        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(from)) {
-            if(auto* pattern = record->getDescribedClassTemplate()) {
-                auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(find(pattern));
-                return primary ? primary->getTemplatedDecl() : nullptr;
+    /// A class or an enumeration, a specialization by its template and
+    /// arguments, a class template's own class by the template.
+    bool tag(const clang::TagDecl* from, std::optional<std::size_t> index = std::nullopt) {
+        if(!index) {
+            index = out.size();
+            out.emplace_back();
+        }
+        auto& part = out[*index];
+        if(const auto* specialization =
+               llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(from)) {
+            if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(specialization)) {
+                return false;
             }
-            if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-                return nullptr;
+            part.kind = TypePart::Kind::Specialization;
+            auto arguments = specialization->getTemplateArgs().asArray();
+            part.parts = arguments.size();
+            return scopes(specialization->getSpecializedTemplate(), *index) &&
+                   ranges::all_of(arguments, [&](const auto& each) { return argument(each); });
+        }
+        if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(from)) {
+            if(const auto* pattern = record->getDescribedClassTemplate()) {
+                part.kind = TypePart::Kind::Pattern;
+                return scopes(pattern, *index);
             }
         }
-        auto type = tag_type(from);
-        return type.isNull() ? nullptr : type->getAsTagDecl();
+        part.kind = TypePart::Kind::Tag;
+        return scopes(from, *index);
     }
 
-    std::optional<clang::TemplateArgument> argument(const clang::TemplateArgument& from) {
+    bool argument(const clang::TemplateArgument& from) {
         switch(from.getKind()) {
-            case clang::TemplateArgument::Type: {
-                auto rebuilt = type(from.getAsType());
-                if(rebuilt.isNull()) {
-                    return std::nullopt;
-                }
-                return clang::TemplateArgument(rebuilt);
-            }
+            case clang::TemplateArgument::Type: return type(from.getAsType());
             case clang::TemplateArgument::Integral: {
-                auto rebuilt = type(from.getIntegralType());
-                if(rebuilt.isNull()) {
-                    return std::nullopt;
+                const auto& value = from.getAsIntegral();
+                if(value.getSignificantBits() > 64) {
+                    return false;
                 }
-                return clang::TemplateArgument(ast, from.getAsIntegral(), rebuilt);
+                out.push_back({.kind = TypePart::Kind::Integral,
+                               .value = value.isSigned()
+                                            ? value.getSExtValue()
+                                            : static_cast<std::int64_t>(value.getZExtValue()),
+                               .parts = 1});
+                return type(from.getIntegralType());
             }
             case clang::TemplateArgument::Template: {
-                auto* rebuilt = llvm::dyn_cast_or_null<clang::TemplateDecl>(
-                    find(from.getAsTemplate().getAsTemplateDecl()));
+                auto* named = from.getAsTemplate().getAsTemplateDecl();
+                auto index = out.size();
+                out.push_back({.kind = TypePart::Kind::Template});
+                return named && scopes(named, index);
+            }
+            case clang::TemplateArgument::Pack: {
+                out.push_back({.kind = TypePart::Kind::Pack,
+                               .parts = static_cast<std::uint32_t>(from.pack_size())});
+                return ranges::all_of(from.pack_elements(),
+                                      [&](const auto& each) { return argument(each); });
+            }
+            default: return false;
+        }
+    }
+
+    /// The declarations `from` is named through, from the translation
+    /// unit's down.
+    bool scopes(const clang::NamedDecl* from, std::size_t index) {
+        llvm::SmallVector<TypePart::Scope, 4> chain;
+        const clang::Decl* decl = from;
+        while(!llvm::isa<clang::TranslationUnitDecl>(decl)) {
+            // A scope the name lookup passes through (an unscoped
+            // enumeration, `extern "C"`) is no step of the way.
+            const auto* context = llvm::dyn_cast<clang::DeclContext>(decl);
+            if(decl == from || !context->isTransparentContext()) {
+                const auto* space = llvm::dyn_cast<clang::NamespaceDecl>(decl);
+                const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+                if(space && space->isAnonymousNamespace()) {
+                    chain.push_back({.kind = decl->getKind()});
+                } else if(named && named->getIdentifier()) {
+                    chain.push_back({.name = named->getName().str(), .kind = decl->getKind()});
+                } else {
+                    return false;
+                }
+            }
+            const auto* parent = decl->getDeclContext();
+            if(!parent->isFileContext() && !parent->isRecord() && !parent->isTransparentContext()) {
+                return false;
+            }
+            decl = llvm::cast<clang::Decl>(parent);
+        }
+        ranges::reverse(chain);
+        out[index].scopes.assign(chain.begin(), chain.end());
+        return true;
+    }
+
+    std::vector<TypePart>& out;
+};
+
+/// Types spelled by names (TypePart) rebuilt in this compile: each class
+/// found again by its scopes' names, each specialization formed again.
+/// Null where a part names nothing found here — a declaration after the
+/// completion point.
+struct Rebuilder {
+    Rebuilder(clang::Sema& sema, clang::SourceLocation loc, llvm::ArrayRef<TypePart> parts) :
+        sema(sema), ast(sema.getASTContext()), loc(loc), parts(parts) {}
+
+    bool done() const {
+        return next == parts.size();
+    }
+
+    clang::QualType type() {
+        if(done()) {
+            return {};
+        }
+        const auto& part = parts[next];
+        next += 1;
+        clang::QualType result;
+        switch(part.kind) {
+            case TypePart::Kind::Builtin:
+                result = builtin_type(static_cast<clang::BuiltinType::Kind>(part.value));
+                break;
+            case TypePart::Kind::Pointer:
+                if(auto pointee = type(); !pointee.isNull()) {
+                    result = ast.getPointerType(pointee);
+                }
+                break;
+            case TypePart::Kind::LValueReference:
+                if(auto pointee = type(); !pointee.isNull()) {
+                    result = ast.getLValueReferenceType(pointee);
+                }
+                break;
+            case TypePart::Kind::RValueReference:
+                if(auto pointee = type(); !pointee.isNull()) {
+                    result = ast.getRValueReferenceType(pointee);
+                }
+                break;
+            case TypePart::Kind::Array:
+                if(auto element = type(); !element.isNull()) {
+                    result = ast.getConstantArrayType(
+                        element,
+                        llvm::APInt(64, static_cast<std::uint64_t>(part.value)),
+                        nullptr,
+                        clang::ArraySizeModifier::Normal,
+                        0);
+                }
+                break;
+            case TypePart::Kind::Function: {
+                auto returned = type();
+                llvm::SmallVector<clang::QualType, 4> parameters;
+                for(std::uint32_t i = 1; i < part.parts; i += 1) {
+                    parameters.push_back(type());
+                }
+                if(!returned.isNull() && ranges::none_of(parameters, &clang::QualType::isNull)) {
+                    clang::FunctionProtoType::ExtProtoInfo info;
+                    info.Variadic = part.variadic;
+                    if(part.nothrow) {
+                        info.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+                    }
+                    result = ast.getFunctionType(returned, parameters, info);
+                }
+                break;
+            }
+            case TypePart::Kind::Tag:
+            case TypePart::Kind::Pattern:
+            case TypePart::Kind::Specialization: {
+                next -= 1;
+                auto* rebuilt = tag();
+                result = rebuilt ? ast.getCanonicalTagType(rebuilt) : clang::QualType();
+                break;
+            }
+            default: return {};
+        }
+        return result.isNull()
+                   ? result
+                   : ast.getQualifiedType(result, clang::Qualifiers::fromCVRMask(part.qualifiers));
+    }
+
+    /// The class here a part names: the class a specialization of it is
+    /// formed of when it is concrete, the pattern of a class template for
+    /// a dependent one.
+    clang::TagDecl* tag() {
+        if(done()) {
+            return nullptr;
+        }
+        const auto& part = parts[next];
+        next += 1;
+        switch(part.kind) {
+            case TypePart::Kind::Tag: return llvm::dyn_cast_or_null<clang::TagDecl>(find(part));
+            case TypePart::Kind::Pattern: {
+                auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(find(part));
+                return primary ? primary->getTemplatedDecl() : nullptr;
+            }
+            case TypePart::Kind::Specialization: {
+                auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(find(part));
+                /// As written: a parameter pack's arguments one by one.
+                clang::TemplateArgumentListInfo written(loc, loc);
+                bool complete = true;
+                for(std::uint32_t i = 0; i < part.parts; i += 1) {
+                    auto rebuilt = argument();
+                    if(!rebuilt) {
+                        complete = false;
+                        continue;
+                    }
+                    auto add = [&](const clang::TemplateArgument& each) {
+                        written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
+                    };
+                    if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
+                        ranges::for_each(rebuilt->pack_elements(), add);
+                    } else {
+                        add(*rebuilt);
+                    }
+                }
+                if(!primary || !complete) {
+                    return nullptr;
+                }
+                auto type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
+                                                     clang::TemplateName(primary),
+                                                     loc,
+                                                     written,
+                                                     /*Scope=*/nullptr,
+                                                     /*ForNestedNameSpecifier=*/false);
+                return type.isNull() ? nullptr : type->getAsTagDecl();
+            }
+            default: return nullptr;
+        }
+    }
+
+    std::optional<clang::TemplateArgument> argument() {
+        if(done()) {
+            return std::nullopt;
+        }
+        const auto& part = parts[next];
+        switch(part.kind) {
+            case TypePart::Kind::Integral: {
+                next += 1;
+                auto rebuilt = type();
+                if(rebuilt.isNull() || !rebuilt->isIntegralOrEnumerationType()) {
+                    return std::nullopt;
+                }
+                bool is_unsigned = rebuilt->isUnsignedIntegerOrEnumerationType();
+                llvm::APSInt value(llvm::APInt(ast.getIntWidth(rebuilt),
+                                               static_cast<std::uint64_t>(part.value),
+                                               !is_unsigned),
+                                   is_unsigned);
+                return clang::TemplateArgument(ast, value, rebuilt);
+            }
+            case TypePart::Kind::Template: {
+                next += 1;
+                auto* rebuilt = llvm::dyn_cast_or_null<clang::TemplateDecl>(find(part));
                 if(!rebuilt) {
                     return std::nullopt;
                 }
                 return clang::TemplateArgument(clang::TemplateName(rebuilt));
             }
-            case clang::TemplateArgument::Pack: {
+            case TypePart::Kind::Pack: {
+                next += 1;
                 llvm::SmallVector<clang::TemplateArgument, 4> elements;
-                for(const auto& element: from.pack_elements()) {
-                    auto rebuilt = argument(element);
-                    if(!rebuilt) {
-                        return std::nullopt;
+                bool complete = true;
+                for(std::uint32_t i = 0; i < part.parts; i += 1) {
+                    if(auto rebuilt = argument()) {
+                        elements.push_back(*rebuilt);
+                    } else {
+                        complete = false;
                     }
-                    elements.push_back(*rebuilt);
+                }
+                if(!complete) {
+                    return std::nullopt;
                 }
                 return clang::TemplateArgument::CreatePackCopy(ast, elements);
             }
-            default: return std::nullopt;
+            default: {
+                auto rebuilt = type();
+                if(rebuilt.isNull()) {
+                    return std::nullopt;
+                }
+                return clang::TemplateArgument(rebuilt);
+            }
         }
     }
 
@@ -906,83 +1095,42 @@ struct Rebuilder {
         }
     }
 
-    clang::QualType tag_type(const clang::TagDecl* from) {
-        const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(from);
-        if(!specialization) {
-            auto* tag = llvm::dyn_cast_or_null<clang::TagDecl>(find(from));
-            return tag ? ast.getCanonicalTagType(tag) : clang::QualType();
-        }
-        auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
-            find(specialization->getSpecializedTemplate()));
-        if(!primary) {
-            return {};
-        }
-        /// As written: a parameter pack's arguments one by one.
-        clang::TemplateArgumentListInfo written(loc, loc);
-        for(const auto& from_argument: specialization->getTemplateArgs().asArray()) {
-            auto rebuilt = argument(from_argument);
-            if(!rebuilt) {
-                return {};
+    /// The declaration here a part's scopes name, by their names and kinds.
+    clang::NamedDecl* find(const TypePart& part) {
+        clang::DeclContext* scope = ast.getTranslationUnitDecl();
+        clang::NamedDecl* found = nullptr;
+        for(const auto& each: part.scopes) {
+            if(!scope) {
+                return nullptr;
             }
-            auto add = [&](const clang::TemplateArgument& each) {
-                written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
-            };
-            if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
-                ranges::for_each(rebuilt->pack_elements(), add);
+            found = nullptr;
+            if(each.name.empty()) {
+                if(auto* unit = llvm::dyn_cast<clang::TranslationUnitDecl>(scope)) {
+                    found = unit->getAnonymousNamespace();
+                } else if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+                    found = space->getAnonymousNamespace();
+                }
             } else {
-                add(*rebuilt);
+                for(auto* candidate: scope->lookup(&ast.Idents.get(each.name))) {
+                    if(candidate->getKind() == each.kind) {
+                        found = candidate;
+                        break;
+                    }
+                }
             }
-        }
-        auto type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
-                                             clang::TemplateName(primary),
-                                             loc,
-                                             written,
-                                             /*Scope=*/nullptr,
-                                             /*ForNestedNameSpecifier=*/false);
-        return type.isNull() ? type : type.getCanonicalType();
-    }
-
-    /// The declaration here of what `from` declares there, by its name and
-    /// the names of the scopes around it.
-    clang::NamedDecl* find(const clang::NamedDecl* from) {
-        auto* scope = context(from->getDeclContext());
-        const auto* identifier = from->getIdentifier();
-        if(!scope || !identifier) {
-            return nullptr;
-        }
-        for(auto* candidate: scope->lookup(&ast.Idents.get(identifier->getName()))) {
-            if(candidate->getKind() == from->getKind()) {
-                return candidate;
+            if(!found) {
+                return nullptr;
             }
+            scope = llvm::dyn_cast<clang::DeclContext>(found);
         }
-        return nullptr;
-    }
-
-    clang::DeclContext* context(const clang::DeclContext* from) {
-        if(from->isTranslationUnit()) {
-            return ast.getTranslationUnitDecl();
-        }
-        if(from->isTransparentContext()) {
-            return context(from->getParent());
-        }
-        if(const auto* space = llvm::dyn_cast<clang::NamespaceDecl>(from);
-           space && space->isAnonymousNamespace()) {
-            auto* parent = context(space->getParent());
-            if(auto* unit = llvm::dyn_cast_or_null<clang::TranslationUnitDecl>(parent)) {
-                return unit->getAnonymousNamespace();
-            }
-            auto* named = llvm::dyn_cast_or_null<clang::NamespaceDecl>(parent);
-            return named ? named->getAnonymousNamespace() : nullptr;
-        }
-        if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(from)) {
-            return llvm::dyn_cast_or_null<clang::DeclContext>(find(named));
-        }
-        return nullptr;
+        return found;
     }
 
     clang::Sema& sema;
     clang::ASTContext& ast;
     clang::SourceLocation loc;
+    llvm::ArrayRef<TypePart> parts;
+    std::size_t next = 0;
 };
 
 /// The namespace a qualifier names at the point, through aliases; null for
@@ -1113,13 +1261,13 @@ public:
             const CompletionClient& client,
             llvm::ArrayRef<ScopeCandidate> candidates,
             bool from_index,
-            bool& includes_pending,
-            WholeBuffer& whole) :
+            const InstantiatedTemplates& instantiated,
+            bool& includes_pending) :
         clang::CodeCompleteConsumer(sema_options(options, from_index)), focus(focus), offset(offset),
         encoding(encoding), output(output), documented(documented), options(options),
         argument_style(options.arguments), client(client), scope_candidates(candidates),
-        includes_pending(includes_pending),
-        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()), whole(whole) {}
+        instantiated(instantiated), includes_pending(includes_pending),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         return info.getAllocator();
@@ -1129,77 +1277,38 @@ public:
         return info;
     }
 
+    /// The entry `decl`, in the focus file, has among `entries`: at its
+    /// name's offset, under its name.
+    static const InstantiatedTemplates::Entry*
+        recorded(clang::Sema& sema,
+                 llvm::ArrayRef<InstantiatedTemplates::Entry> entries,
+                 const clang::NamedDecl* decl) {
+        auto& source_manager = sema.getSourceManager();
+        auto [file, offset] =
+            source_manager.getDecomposedLoc(source_manager.getFileLoc(decl->getLocation()));
+        if(file != source_manager.getMainFileID()) {
+            return nullptr;
+        }
+        auto name = decl->getNameAsString();
+        auto found = ranges::find_if(entries, [&](const InstantiatedTemplates::Entry& entry) {
+            return entry.offset == offset && entry.name == name;
+        });
+        return found == entries.end() ? nullptr : &*found;
+    }
+
     /// The arguments `function`'s template takes in its only instantiation
-    /// in the whole buffer, rebuilt here; none when it has no one
+    /// in the whole file, rebuilt here; none when it has no one
     /// instantiation there, or names what is not found here.
     llvm::SmallVector<clang::TemplateArgument, 4>
         instantiated_later(clang::Sema& sema, const clang::FunctionDecl* function) {
-        auto& source_manager = sema.getSourceManager();
-        auto [file, offset] =
-            source_manager.getDecomposedLoc(source_manager.getFileLoc(function->getLocation()));
-        if(file != source_manager.getMainFileID()) {
+        const auto* entry = recorded(sema, instantiated.functions, function);
+        if(!entry) {
             return {};
         }
-        /// A call after the completion point names the function it calls;
-        /// a template nothing calls yet goes without the second compile.
-        if(auto* name = function->getIdentifier();
-           name && !focus.content().substr(this->offset).contains(name->getName())) {
-            return {};
-        }
-        auto& unit = whole.unit();
-        if(!unit.completed()) {
-            return {};
-        }
-
-        /// The same template there: a lambda is found through its
-        /// expression, the declaration of its call operator being implicit.
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            Finder(const clang::SourceManager& source_manager, std::uint32_t offset) :
-                source_manager(source_manager), offset(offset) {}
-
-            bool matches(clang::FunctionDecl* function) {
-                auto [file, at] = source_manager.getDecomposedLoc(
-                    source_manager.getFileLoc(function->getLocation()));
-                return file == source_manager.getMainFileID() && at == offset &&
-                       function->getDescribedFunctionTemplate();
-            }
-
-            bool VisitLambdaExpr(clang::LambdaExpr* lambda) {
-                if(matches(lambda->getCallOperator())) {
-                    found = lambda->getCallOperator();
-                }
-                return !found;
-            }
-
-            bool VisitFunctionDecl(clang::FunctionDecl* function) {
-                if(matches(function)) {
-                    found = function;
-                }
-                return !found;
-            }
-
-            const clang::SourceManager& source_manager;
-            std::uint32_t offset;
-            clang::FunctionDecl* found = nullptr;
-        };
-
-        Finder finder(unit.context().getSourceManager(), offset);
-        for(auto* decl: unit.top_level_decls()) {
-            if(!finder.TraverseDecl(decl)) {
-                break;
-            }
-        }
-        auto* instantiation = finder.found ? llvm::dyn_cast_or_null<clang::FunctionDecl>(
-                                                 decls::only_instantiation(finder.found))
-                                           : nullptr;
-        if(!instantiation) {
-            return {};
-        }
-
-        Rebuilder rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc());
+        Rebuilder rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc(), entry->parts);
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        for(const auto& argument: instantiation->getTemplateSpecializationArgs()->asArray()) {
-            auto rebuilt = rebuilder.argument(argument);
+        while(!rebuilder.done()) {
+            auto rebuilt = rebuilder.argument();
             if(!rebuilt) {
                 return {};
             }
@@ -1209,50 +1318,15 @@ public:
     }
 
     /// The class `var`, the variable of a range-based `for`, holds, as the
-    /// whole buffer tells: in the completion's own parse the statement is
+    /// whole file tells: in the completion's own parse the statement is
     /// not finished, and its range is nowhere else. Null when the loop's
     /// element does not resolve there or names no class found here.
     clang::TagDecl* loop_class(clang::Sema& sema, const clang::VarDecl* var) {
-        auto& source_manager = sema.getSourceManager();
-        auto [file, offset] = source_manager.getDecomposedLoc(var->getLocation());
-        if(file != source_manager.getMainFileID()) {
+        const auto* entry = recorded(sema, instantiated.loops, var);
+        if(!entry) {
             return nullptr;
         }
-        auto& unit = whole.unit();
-        if(!unit.completed()) {
-            return nullptr;
-        }
-
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::SourceManager& source_manager;
-            std::uint32_t offset;
-            clang::VarDecl* found = nullptr;
-
-            bool VisitVarDecl(clang::VarDecl* var) {
-                auto [file, at] = source_manager.getDecomposedLoc(var->getLocation());
-                if(var->isCXXForRangeDecl() && file == source_manager.getMainFileID() &&
-                   at == offset) {
-                    found = var;
-                }
-                return !found;
-            }
-        } finder{.source_manager = unit.context().getSourceManager(), .offset = offset};
-
-        for(auto* decl: unit.top_level_decls()) {
-            if(!finder.TraverseDecl(decl)) {
-                break;
-            }
-        }
-        if(!finder.found || !finder.found->getType()->getContainedAutoType()) {
-            return nullptr;
-        }
-        types::TemplateResolver resolver(unit.context());
-        auto type = resolver.deduce(finder.found);
-        auto* tag = type.isNull() ? nullptr : resolver.resolve_tag(type.getNonReferenceType());
-        if(!tag) {
-            return nullptr;
-        }
-        return Rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc()).tag(tag);
+        return Rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc(), entry->parts).tag();
     }
 
     /// Sema resolves a dependent member base or scope with its own
@@ -2479,10 +2553,10 @@ private:
     CompletionArguments argument_style;
     const CompletionClient& client;
     llvm::ArrayRef<ScopeCandidate> scope_candidates;
+    const InstantiatedTemplates& instantiated;
     /// Set once an item needs the header of its symbol included (Completion).
     bool& includes_pending;
     clang::CodeCompletionTUInfo info;
-    WholeBuffer& whole;
     bool resolving = false;
     bool resolved_candidates = false;
 
@@ -2500,12 +2574,12 @@ auto code_complete(CompilationParams params,
                    const DocumentationOptions& documentation,
                    const CompletionClient& client,
                    PositionEncoding encoding,
-                   const CompileCompletion& names) -> Completion {
+                   const CompileCompletion& names,
+                   const InstantiatedTemplates& instantiated) -> Completion {
     auto offset = params.completion.offset;
 
     std::vector<protocol::CompletionItem> items;
     std::vector<const clang::NamedDecl*> documented;
-    WholeBuffer whole(params);
     bool includes = false;
     // The index holds no module's names a module file brings in.
     bool from_index = names.from_index && params.input.pcms.empty();
@@ -2519,8 +2593,8 @@ auto code_complete(CompilationParams params,
                                          client,
                                          names.candidates,
                                          from_index,
-                                         includes,
-                                         whole);
+                                         instantiated,
+                                         includes);
     };
     if(from_index) {
         params.completion.reached = [&](clang::Sema& sema) {
@@ -2559,6 +2633,71 @@ auto code_complete(CompilationParams params,
         }
     }
     return completion;
+}
+
+auto instantiated_templates(CompilationUnit& unit) -> InstantiatedTemplates {
+    InstantiatedTemplates result;
+    auto& source_manager = unit.context().getSourceManager();
+    auto record = [&](std::vector<InstantiatedTemplates::Entry>& into,
+                      const clang::NamedDecl* decl,
+                      auto describe) {
+        auto [file, offset] =
+            source_manager.getDecomposedLoc(source_manager.getFileLoc(decl->getLocation()));
+        if(file != source_manager.getMainFileID()) {
+            return;
+        }
+        InstantiatedTemplates::Entry entry{.offset = offset, .name = decl->getNameAsString()};
+        Describer describer(entry.parts);
+        if(describe(describer)) {
+            into.push_back(std::move(entry));
+        }
+    };
+    auto function = [&](const clang::FunctionDecl* pattern) {
+        if(!pattern->getDescribedFunctionTemplate()) {
+            return;
+        }
+        auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+            decls::only_instantiation(const_cast<clang::FunctionDecl*>(pattern)));
+        if(!instantiation) {
+            return;
+        }
+        record(result.functions, pattern, [&](Describer& describer) {
+            return ranges::all_of(
+                instantiation->getTemplateSpecializationArgs()->asArray(),
+                [&](const clang::TemplateArgument& each) { return describer.argument(each); });
+        });
+    };
+    types::TemplateResolver resolver(unit.context());
+    for(const auto& entry: unit.get<Semantics>().node_entries()) {
+        if(!entry.node.is_ast()) {
+            break;
+        }
+        if(entry.flags.in_instantiation) {
+            continue;
+        }
+        if(entry.node.kind() == SemanticNode::Kind::Stmt) {
+            if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(entry.node.get<clang::Stmt>())) {
+                function(lambda->getCallOperator());
+            }
+            continue;
+        }
+        if(entry.node.kind() != SemanticNode::Kind::Decl) {
+            continue;
+        }
+        const auto* decl = entry.node.get<clang::Decl>();
+        if(const auto* pattern = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            function(pattern);
+        } else if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+                  var && var->isCXXForRangeDecl() && var->getType()->isDependentType() &&
+                  var->getType()->getContainedAutoType()) {
+            auto type = resolver.deduce(var);
+            auto* tag = type.isNull() ? nullptr : resolver.resolve_tag(type.getNonReferenceType());
+            if(tag) {
+                record(result.loops, var, [&](Describer& describer) { return describer.tag(tag); });
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace clice::feature

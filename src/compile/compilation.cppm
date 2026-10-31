@@ -226,7 +226,8 @@ struct CompilationParams {
     /// preamble enters (CompilationUnit::in_preamble), but those of
     /// templates likely to forward their arguments: the editor's compiles.
     /// Nothing in a skipped body is reported or instantiated, and so
-    /// neither is a declaration being unused, which such a body may use.
+    /// neither is a declaration being unused, which such a body may use. A
+    /// completion skips every body but the one holding the point regardless.
     bool skip_bodies = false;
 
     /// Inactive regions of the consumed PCH's preamble share (flat

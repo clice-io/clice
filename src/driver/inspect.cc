@@ -370,7 +370,6 @@ CompilationParams completion_at(const FeatureParams& params) {
         .kind = CompilationKind::Completion,
         .input = params.input,
         .completion = {.offset = params.range.begin},
-        .skip_bodies = params.settings.project.skip_header_bodies,
     };
 }
 
@@ -381,7 +380,10 @@ std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) 
         feature::code_complete(completion_at(params),
                                settings.code_completion,
                                settings.documentation,
-                               {.snippets = true, .insert_replace = true, .markdown = true})
+                               {.snippets = true, .insert_replace = true, .markdown = true},
+                               PositionEncoding::UTF16,
+                               {},
+                               feature::instantiated_templates(params.unit))
             .list);
 }
 

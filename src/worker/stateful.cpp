@@ -353,6 +353,7 @@ RequestResult<worker::CompileParams>
                 if(index_error) {
                     diags.push_back(feature::index_unavailable(*index_error));
                 }
+                result.instantiated = feature::instantiated_templates(*unit);
                 LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                          params.path,
                          timer.ms(),

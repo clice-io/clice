@@ -2,6 +2,7 @@ module clice:server.served_project;
 
 import :command.database;
 import :command.search_config;
+import :feature.code_completion;
 import :feature.diagnostics;
 import :index.peer_queries;
 import :index.query;
@@ -124,6 +125,10 @@ struct DocumentCompile {
 
     /// Publishable products of the latest compilation (see CompileOutput).
     std::optional<CompileOutput> output;
+
+    /// What the latest compilation instantiates the file's templates with,
+    /// for the document's completions.
+    feature::InstantiatedTemplates instantiated;
 };
 
 /// An open document as the project serving it sees it: its latest compile

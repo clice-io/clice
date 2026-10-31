@@ -509,7 +509,6 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
-        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_artifacts(cp.input, params.pch, params.pcms);
@@ -521,7 +520,8 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                                              params.settings.documentation,
                                              params.client,
                                              params.encoding,
-                                             params.names);
+                                             params.names,
+                                             params.instantiated);
     LOG_DEBUG("Completion done: {} items, {}ms", completion.list.items.size(), timer.ms());
     completion.list.is_incomplete = completion.list.is_incomplete || params.names.more_candidates;
 
@@ -538,7 +538,6 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
-        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_artifacts(cp.input, params.pch, params.pcms);

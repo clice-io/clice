@@ -1200,6 +1200,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         next->pch_failed = failed_pch.has_value();
         next->base_pch_key = base_pch;
         next->host = resolution.host;
+        next->instantiated = std::move(result.value().instantiated);
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (no AST, or an index it could

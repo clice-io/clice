@@ -193,6 +193,7 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
+        auto latest = project.latest(path_id);
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -202,6 +203,9 @@ void LSPClient::register_editing() {
                                                  .client = completion_client,
                                                  .encoding = encoding,
                                                  .names = compile,
+                                                 .instantiated = latest
+                                                                     ? latest->instantiated
+                                                                     : feature::InstantiatedTemplates(),
                                              },
                                              ctx.cancellation)
                           .or_fail();
