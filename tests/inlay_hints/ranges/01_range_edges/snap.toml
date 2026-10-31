@@ -1,0 +1,26 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "};⟨// struct Settings⟩" },
+    { line = "auto doubled⟨: int⟩ = scale(⟨value:⟩base, ⟨factor:⟩2);" },
+    { line = "CHECK(scale(⟨value:⟩doubled," },
+    { line = "⟨factor:⟩3) > 0);" },
+    { line = "auto tripled⟨: int⟩ = scale(⟨value:⟩doubled, ⟨factor:⟩3);" },
+    { line = "}⟨// compute⟩" },
+    { line = "return scale(⟨value:⟩base, ⟨factor:⟩4);" },
+    { line = "}⟨// unrelated⟩" },
+]
+
+[answers.struct_end]
+inlay_hints = [
+    { line = "};⟨// struct Settings⟩" },
+]
+
+[answers.macro_tail]
+inlay_hints = [
+    { line = "⟨factor:⟩3) > 0);" },
+]
+
+[answers.function_tail]
+inlay_hints = [
+    { line = "}⟨// compute⟩" },
+]
