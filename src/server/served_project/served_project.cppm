@@ -90,7 +90,7 @@ struct CompileOutput {
 /// reader that copied the shared_ptr may keep using it across suspension
 /// points.
 struct DocumentCompile {
-    /// Content key into Project.pch_cache for the PCH the document's parse
+    /// Content key into Project::pchs for the PCH the document's parse
     /// loads, if any: its preamble's, else the precompiled header the build
     /// declares for its command — or the preamble's whose build failed
     /// (pch_failed). The PCH itself is owned by Project (shared,
@@ -103,7 +103,7 @@ struct DocumentCompile {
     /// alone, if any: what a save of the document retries.
     bool pch_failed = false;
 
-    /// Content key into Project.pch_cache for the precompiled header the
+    /// Content key into Project::pchs for the precompiled header the
     /// build declares for the document's command, when the parse loads it:
     /// under its preamble's PCH, or as pch_key itself.
     std::optional<std::string> base_pch_key;
@@ -755,10 +755,6 @@ private:
     /// The periodic Project::checkpoint().
     async::task<> checkpoint_task();
 
-    /// Drop pch_cache metadata for blobs the store's LRU evicted from
-    /// disk (see checkpoint_task).
-    void forget_evicted_pchs();
-
     /// The default-sources loop, poll_sources on the workspace poll's pace.
     /// Spawned by start() unless polling is off.
     async::task<> sources_poll_task();
@@ -807,18 +803,6 @@ private:
     /// with no injected prefix, or a module unit's global module fragment
     /// that imports — a previously adopted key must be cleared, unless the
     /// plan is partial), or the acquisition of `request`.
-    struct PCHPlan {
-        enum class Decision : std::uint8_t { None, Acquire };
-
-        Decision decision = Decision::None;
-
-        PCHRequest request;
-
-        /// The preamble ends before the text's own, at a completion's point:
-        /// what the request loads is its own, not the document's.
-        bool partial = false;
-    };
-
     /// The request for the precompiled header the build declares for the
     /// command `resolution` gave the document: the editor's build, skipping
     /// function bodies, but for a modular parse (Imports::modular), which
@@ -826,19 +810,6 @@ private:
     std::optional<PCHRequest> declared_pch(Fid path_id,
                                            const Resolution& resolution,
                                            const Imports& imports);
-
-    /// `base` is the key of the precompiled header the build declares for
-    /// the command, built already; empty for none. `point` is where a
-    /// completion's parse stops: the preamble ends before the line holding
-    /// it, so the lines typed there keep the PCH of the lines above them.
-    PCHPlan plan_pch(Fid path_id,
-                     llvm::StringRef text,
-                     std::optional<std::uint32_t> point,
-                     const std::string& directory,
-                     const std::vector<std::string>& arguments,
-                     const Resolution& resolution,
-                     const Imports& imports,
-                     llvm::StringRef base);
 
     /// Revalidate or build the preamble PCH of `text` through the project,
     /// over the precompiled header the build declares for the command, and

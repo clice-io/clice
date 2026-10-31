@@ -245,9 +245,8 @@ void LSPClient::register_document_requests() {
         // and the index would happily name it `auto:1`).
         if(auto compiled = project.current(path_id) ? project.latest(path_id) : nullptr;
            compiled && compiled->loaded_pch()) {
-            auto& pch_cache = project.project.pch_cache;
-            if(auto it = pch_cache.find(*compiled->loaded_pch());
-               it != pch_cache.end() && offset && *offset < it->second.bound) {
+            if(auto* pch = project.project.built_pch(*compiled->loaded_pch());
+               pch && offset && *offset < pch->bound) {
                 if(auto info = index_hover_card(project, *session, position)) {
                     co_return card(*info);
                 }

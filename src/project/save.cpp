@@ -20,6 +20,7 @@ async::task<> Project::checkpoint() {
     // and a pass with nothing queued builds what the search index is owed.
     co_await save(index::SearchRebuild::Never);
     schedule_index();
+    forget_evicted_pchs();
 }
 
 async::task<> Project::shutdown() {

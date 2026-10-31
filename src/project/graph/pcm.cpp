@@ -43,30 +43,50 @@ Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid 
     });
 }
 
-/// Move the build's PCM to `previous`, removing the one it replaced.
-void move_to_previous(Project& project, PCMBuild& build) {
-    if(build.blob.empty()) {
-        return;
+/// The entry's PCM, or the PCH it was built over, left the disk: forget it,
+/// so the module's next attempt builds again. Returns whether it had.
+bool drop_evicted(PCMEntry& entry) {
+    if(entry.path.empty()) {
+        return false;
     }
-    if(!build.previous.empty()) {
-        project.store->invalidate("pcm", build.previous);
+    if(!fs::exists(entry.path)) {
+        entry.blob.clear();
+    } else if(entry.pch.empty() || fs::exists(entry.pch)) {
+        return false;
     }
-    build.previous = std::exchange(build.blob, {});
+    entry.path.clear();
+    return true;
 }
 
-/// The build's PCM, or the PCH it was built over, left the disk: forget it,
-/// so the module's next attempt builds again. Returns whether it had.
-bool drop_evicted(PCMBuild& build) {
-    if(build.path.empty()) {
-        return false;
+/// The failed builds from a module through the imports that failed it in
+/// turn: to the module whose own build failed, or around a cycle of imports
+/// failing each other.
+struct FailedChain {
+    llvm::SmallVector<Fid, 4> modules;
+
+    /// The entry of the chain's last module: its own build's failure, or
+    /// none when it did not fail; null for a module never built.
+    const PCMEntry* last = nullptr;
+
+    /// Where the import closing a cycle points back into `modules`.
+    std::optional<std::size_t> cycle;
+};
+
+FailedChain failed_chain(const Project& project, Fid module) {
+    FailedChain chain;
+    for(auto current = module;;) {
+        if(auto seen = ranges::find(chain.modules, current); seen != chain.modules.end()) {
+            chain.cycle = seen - chain.modules.begin();
+            return chain;
+        }
+        chain.modules.push_back(current);
+        auto it = project.pcms.find(current);
+        chain.last = it != project.pcms.end() ? &it->second : nullptr;
+        if(!chain.last || !chain.last->failure || !chain.last->failure->result.import.valid()) {
+            return chain;
+        }
+        current = chain.last->failure->result.import;
     }
-    if(!fs::exists(build.path)) {
-        build.blob.clear();
-    } else if(build.pch.empty() || fs::exists(build.pch)) {
-        return false;
-    }
-    build.path.clear();
-    return true;
 }
 
 /// The modules a compile importing `modules` reads, once it waited on them:
@@ -76,8 +96,7 @@ bool drop_evicted(PCMBuild& build) {
 llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules) {
     llvm::SetVector<Fid> read(modules.begin(), modules.end());
     for(std::size_t i = 0; i < read.size(); i += 1) {
-        auto it = project.pcm_builds.find(read[i]);
-        if(it == project.pcm_builds.end() || it->second.path.empty()) {
+        if(!project.built_pcm(read[i])) {
             continue;
         }
         for(auto dep: project.graph.dependencies(module_node(read[i]))) {
@@ -97,23 +116,25 @@ llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> 
 /// previous interface from it. Its PCM stays in the store until the next
 /// one replaces it — a compile may still be reading it.
 llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key) {
-    auto it = project.pcm_builds.find(module);
-    if(it == project.pcm_builds.end()) {
+    auto it = project.pcms.find(module);
+    if(it == project.pcms.end()) {
         return "no_entry";
     }
-    auto& build = it->second;
+    auto& entry = it->second;
     llvm::StringRef miss;
-    if(build.key != pcm_key) {
+    if(entry.key != pcm_key) {
         miss = "key_changed";
-    } else if(!inputs_hold(project.file_table, build.inputs)) {
+    } else if(!inputs_hold(project.file_table, entry.inputs)) {
         miss = "inputs_changed";
-    } else if(build.path.empty() || !project.store->lookup("pcm", build.blob) ||
-              !fs::exists(build.path)) {
+    } else if(entry.path.empty() || !project.store->lookup("pcm", entry.blob) ||
+              !fs::exists(entry.path)) {
         miss = "evicted";
     } else {
         return {};
     }
-    build = {.blob = std::move(build.blob), .previous = std::move(build.previous)};
+    entry.retire(&*project.store, "pcm");
+    entry.key.clear();
+    entry.pch.clear();
     return miss;
 }
 
@@ -126,19 +147,20 @@ llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key
 /// PCH renames the key on the same bytes. A failure under another key that
 /// crashed nothing no longer holds, and is forgotten.
 bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::StringRef name) {
-    auto* failed = project.failures.pcm_builds.lookup(project.file_table, module);
+    auto& entry = project.pcms[module];
+    auto* failed = entry.standing_failure(project.file_table);
     if(!failed) {
         return false;
     }
-    if(failed->result.record.crashed()) {
+    if(failed->record.crashed()) {
         LOG_WARN("PCM build for module {} refused: it crashed a worker", name);
         return true;
     }
-    if(failed->result.key == pcm_key) {
+    if(failed->key == pcm_key) {
         LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs", name);
         return true;
     }
-    project.failures.pcm_builds.forget(module);
+    entry.failure.reset();
     return false;
 }
 
@@ -150,7 +172,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // answer for them, even while no event has reached the disk state yet.
     if(auto* inputs = project.module_inputs(path_id);
        inputs && !inputs_hold(project.file_table, *inputs)) {
-        project.disk_scans.erase(path_id);
+        project.import_scans.disk.erase(path_id);
     }
 
     // The import list is scanner truth, not build output: commit it as
@@ -161,12 +183,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     worker::BuildPCMParams bp;
     auto resolution = project.resolve_command(path_id, bp.directory, bp.arguments);
     bp.hidden = resolution.hidden;
-    auto deps = co_await project.scan_imports(path_id,
-                                              resolution,
-                                              bp.arguments,
-                                              bp.directory,
-                                              std::nullopt);
-    project.graph.set_edges(attempt.node(), deps.declared);
+    auto imports = co_await project.scan_imports(path_id,
+                                                 resolution,
+                                                 bp.arguments,
+                                                 bp.directory,
+                                                 std::nullopt);
+    project.graph.set_edges(attempt.node(), imports.declared);
 
     // A unit of a target with precompiled headers builds over clice's own
     // build of them, as its command builds over the target's: the header
@@ -189,30 +211,29 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
 
     // The last attempt's failed import stands while this one waits: an
     // importer explains its diagnostics from it meanwhile.
-    auto resolved = deps.resolved();
-    for(int pass = 0;; pass += 1) {
-        for(auto dep: resolved) {
-            switch(co_await attempt.depend(module_node(dep), project.module_work(dep))) {
-                case Result::Success: break;
-                case Result::Failed: {
-                    auto& build = project.pcm_builds[path_id];
-                    move_to_previous(project, build);
-                    build = {.previous = std::move(build.previous)};
-                    project.failures.pcm_builds.commit(path_id, {.import = dep}, {});
-                    co_return Result::Failed;
-                }
-                case Result::Stale: co_return Result::Stale;
+    auto resolved = imports.resolved();
+    Fid failed_import;
+    switch(co_await project.wait_modules(attempt, resolved, [&](Fid module) {
+        if(!failed_import.valid()) {
+            failed_import = module;
+        }
+    })) {
+        case Result::Success: break;
+        case Result::Stale: co_return Result::Stale;
+        case Result::Failed: {
+            if(!failed_import.valid()) {
+                // A build now would fail on the missing PCM and stand refused
+                // on inputs that never failed it; failing unrecorded, the next
+                // wait tries again.
+                LOG_WARN("PCM build for {} skipped: an import's PCM keeps leaving the cache",
+                         project.file_table.resolve(path_id));
+                co_return Result::Failed;
             }
-        }
-        if(project.imports_present(resolved)) {
-            break;
-        }
-        // A build now would fail on the missing PCM and stand refused on
-        // inputs that never failed it; failing unrecorded, the next wait
-        // tries again.
-        if(pass + 1 == import_passes) {
-            LOG_WARN("PCM build for {} skipped: an import's PCM keeps leaving the cache",
-                     project.file_table.resolve(path_id));
+            auto& entry = project.pcms[path_id];
+            entry.retire(project.store ? &*project.store : nullptr, "pcm");
+            entry.key.clear();
+            entry.pch.clear();
+            entry.failure = {{.import = failed_import}, {}};
             co_return Result::Failed;
         }
     }
@@ -235,13 +256,10 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // The PCH as the build starts, like the imports.
     std::string pch_blob;
     Inputs precompiled;
-    if(pch_key) {
-        if(auto it = project.pch_cache.find(*pch_key);
-           it != project.pch_cache.end() && !it->second.path.empty()) {
-            bp.pch = it->second.path;
-            pch_blob = it->second.blob;
-            precompiled = it->second.inputs;
-        }
+    if(auto* pch = pch_key ? project.built_pch(*pch_key) : nullptr) {
+        bp.pch = pch->path;
+        pch_blob = pch->blob;
+        precompiled = pch->inputs;
     }
 
     // The key names everything of the build but file content, which the
@@ -250,14 +268,14 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // dependency stamps, what each import resolved to — the keys of the
     // imported modules, which name theirs in turn — and the very build of
     // the PCH it reads: rebuilt, that one has another name.
-    std::string imports;
-    for(auto dep: deps.declared) {
+    std::string import_keys;
+    for(auto dep: imports.declared) {
         if(is_unresolved_import(dep)) {
-            imports += std::format("?{:x}", dep.key);
+            import_keys += std::format("?{:x}", dep.key);
         } else {
-            imports += project.pcm_builds.find(dep.file())->second.key;
+            import_keys += project.built_pcm(dep.file())->key;
         }
-        imports.push_back('\0');
+        import_keys.push_back('\0');
     }
     auto safe_module_name = module_name;
     ranges::replace(safe_module_name, ':', '-');
@@ -269,14 +287,14 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
                                           bp.directory,
                                           file_path,
                                           canonicalize(bp.arguments),
-                                          imports,
+                                          import_keys,
                                           pch_blob}));
 
     auto pcm_miss = revalidate(project, path_id, pcm_key);
     if(pcm_miss.empty()) {
         LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
         // A record read back from the database names no PCH.
-        project.pcm_builds.find(path_id)->second.pch = std::move(bp.pch);
+        project.pcms.find(path_id)->second.pch = std::move(bp.pch);
         co_return Result::Success;
     }
     LOG_PERF("cache",
@@ -307,23 +325,24 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     if(auto own = current_input(project.file_table, path_id)) {
         known.push_back(*own);
     }
-    auto built = co_await project.send_precompiled(
-        attempt,
-        bp,
-        std::format("module {}", module_name),
-        std::move(known),
-        before,
-        [&](FailureRecord record, Inputs inputs) {
-            // An attempt overtaken in flight records its inputs
-            // all the same: they no longer match, and its
-            // successor rebuilds.
-            project.failures.pcm_builds.commit(path_id,
-                                               {.key = pcm_key, .record = std::move(record)},
-                                               std::move(inputs));
-        });
+    auto built =
+        co_await project.send_precompiled(attempt,
+                                          bp,
+                                          std::format("module {}", module_name),
+                                          std::move(known),
+                                          before,
+                                          [&](FailureRecord record, Inputs inputs) {
+                                              // An attempt overtaken in flight records its inputs
+                                              // all the same: they no longer match, and its
+                                              // successor rebuilds.
+                                              project.pcms[path_id].failure = {
+                                                  {.key = pcm_key, .record = std::move(record)},
+                                                  std::move(inputs)
+                                              };
+                                          });
     if(!built) {
         if(built.error() == Result::Failed) {
-            move_to_previous(project, project.pcm_builds[path_id]);
+            project.pcms[path_id].retire(&*project.store, "pcm");
         }
         co_return built.error();
     }
@@ -331,18 +350,20 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
         co_await async::queue([&] { return project.store->commit(std::move(pending)); });
-    auto& build = project.pcm_builds[path_id];
-    move_to_previous(project, build);
+    auto& entry = project.pcms[path_id];
     if(!committed.has_value()) {
+        entry.retire(&*project.store, "pcm");
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return Result::Failed;
     }
-    build.key = std::move(pcm_key);
-    build.blob = std::move(blob);
-    build.path = std::move(committed.value());
-    build.pch = std::move(bp.pch);
-    build.inputs = project.read_inputs(*built, before);
-    LOG_INFO("PCM built for module {}: {}", module_name, build.path);
+    entry.publish(&*project.store,
+                  "pcm",
+                  std::move(blob),
+                  std::move(committed.value()),
+                  project.read_inputs(*built, before));
+    entry.key = std::move(pcm_key);
+    entry.pch = std::move(bp.pch);
+    LOG_INFO("PCM built for module {}: {}", module_name, entry.path);
 
     project.mark_precompiled_dirty();
 
@@ -351,11 +372,16 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
 
 }  // namespace
 
+const PCMEntry* Project::built_pcm(Fid module) const {
+    auto it = pcms.find(module);
+    return it != pcms.end() && !it->second.path.empty() ? &it->second : nullptr;
+}
+
 bool Project::imports_present(llvm::ArrayRef<Fid> modules) {
     bool present = true;
     for(auto module: module_closure(*this, modules)) {
-        auto it = pcm_builds.find(module);
-        if(it == pcm_builds.end() || drop_evicted(it->second) || it->second.path.empty()) {
+        auto it = pcms.find(module);
+        if(it == pcms.end() || drop_evicted(it->second) || it->second.path.empty()) {
             present = false;
         }
     }
@@ -408,7 +434,7 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     auto arguments_hash = llvm::xxh3_64bits(joined);
     auto epoch = context_epoch;
 
-    auto& scans = content ? buffer_scans : disk_scans;
+    auto& scans = content ? import_scans.buffers : import_scans.disk;
     ImportScan scan;
     if(auto memo = scans.find(path_id);
        memo != scans.end() && memo->second.directives == directives &&
@@ -439,7 +465,7 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             append_include(text, suffix);
             content = text;
         }
-        import_scans += 1;
+        import_scans.runs += 1;
         std::vector<const char*> argv;
         argv.reserve(arguments.size());
         for(auto& arg: arguments) {
@@ -466,17 +492,17 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     // unresolved name edges to its unresolved-import node, which is what
     // lets the name's first provider re-dirty this unit through the
     // ordinary cascade later — no side bookkeeping of who failed against it.
-    Imports deps{
+    Imports imports{
         .offsets = {scan.offsets.begin(), scan.offsets.end()},
         .module_unit = scan.module_unit
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
-        deps.declared.push_back(
+        imports.declared.push_back(
             providers.empty() ? unresolved_import(name)
                               : module_node(nearest_provider(file_table, providers, path_id)));
     }
-    co_return deps;
+    co_return imports;
 }
 
 llvm::SmallVector<NodeId> Project::provider_appeared(llvm::StringRef name) {
@@ -491,36 +517,34 @@ Work Project::module_work(Fid module) {
     };
 }
 
-std::optional<ModuleBuildFailure> Project::module_build_failure(Fid module) const {
-    ModuleBuildFailure failure;
-    for(auto current = module;;) {
-        if(auto seen = ranges::find(failure.chain, current); seen != failure.chain.end()) {
-            failure.cycle = seen - failure.chain.begin();
-            return failure;
-        }
-        failure.chain.push_back(current);
-        auto* failed = failures.pcm_builds.find(current);
-        if(!failed || failed->result.record.crashed()) {
+std::optional<feature::ModuleFailure> Project::module_failure(Fid module) const {
+    auto chain = failed_chain(*this, module);
+    feature::ModuleFailure failure{.cycle = chain.cycle};
+    if(!chain.cycle) {
+        auto* last = chain.last;
+        if(!last || !last->failure || last->failure->result.record.crashed()) {
             return std::nullopt;
         }
-        if(!failed->result.import.valid()) {
-            failure.error = failed->result.record.cause;
-            return failure;
-        }
-        current = failed->result.import;
+        failure.error = last->failure->result.record.cause;
     }
+    for(auto unit: chain.modules) {
+        failure.chain.push_back(dep_graph.module_of(unit).str());
+    }
+    return failure;
 }
 
 bool Project::forget_build_failure(Fid module) {
-    return failures.pcm_builds.forget(module);
+    auto it = pcms.find(module);
+    return it != pcms.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
 const FailureRecord* Project::build_crash(Fid module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
     // importers fail to index until then.
-    auto* failed = failures.pcm_builds.lookup(file_table, module);
-    return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
+    auto it = pcms.find(module);
+    auto* failed = it != pcms.end() ? it->second.standing_failure(file_table) : nullptr;
+    return failed && failed->record.crashed() ? &failed->record : nullptr;
 }
 
 async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
@@ -534,17 +558,17 @@ async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
     // module (or a provider appearing for an unresolved import) cascades to
     // the open TUs importing it through them. Declared even when empty, so
     // a removed import stops cascading.
-    auto deps = co_await scan_imports(path_id,
-                                      resolution,
-                                      arguments,
-                                      directory,
-                                      std::optional<llvm::StringRef>(content));
-    graph.set_edges(consumer, deps.declared);
+    auto imports = co_await scan_imports(path_id,
+                                         resolution,
+                                         arguments,
+                                         directory,
+                                         std::optional<llvm::StringRef>(content));
+    graph.set_edges(consumer, imports.declared);
     // A user request waits on these builds: foreground, so the background
     // budget cannot throttle them. A module that did not build is the
     // compile's to report; waiting through stale attempts, only a shutdown
-    // ends one Stale.
-    auto resolved = deps.resolved();
+    // ends one Stale. Waiting again only helps while every one built.
+    auto resolved = imports.resolved();
     for(int pass = 0; pass < import_passes; pass += 1) {
         std::vector<async::task<Result>> waits;
         for(auto dep: resolved) {
@@ -556,28 +580,46 @@ async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
         if(ranges::contains(results, Result::Stale)) {
             co_return std::nullopt;
         }
-        if(imports_present(resolved)) {
+        if(ranges::contains(results, Result::Failed) || imports_present(resolved)) {
             break;
         }
     }
-    co_return deps;
+    co_return imports;
+}
+
+async::task<Result> Project::wait_modules(Attempt& attempt,
+                                          llvm::ArrayRef<Fid> modules,
+                                          llvm::function_ref<void(Fid)> failed) {
+    for(int pass = 0; pass < import_passes; pass += 1) {
+        bool built = true;
+        for(auto module: modules) {
+            switch(co_await attempt.depend(module_node(module), module_work(module))) {
+                case Result::Success: break;
+                case Result::Stale: co_return Result::Stale;
+                case Result::Failed:
+                    built = false;
+                    if(failed) {
+                        failed(module);
+                    }
+                    break;
+            }
+        }
+        if(!built) {
+            co_return Result::Failed;
+        }
+        if(imports_present(modules)) {
+            co_return Result::Success;
+        }
+    }
+    co_return Result::Failed;
 }
 
 const Inputs* Project::module_inputs(Fid module) const {
-    llvm::SmallVector<Fid, 4> chain;
-    for(auto current = module; !ranges::contains(chain, current);) {
-        auto* failed = failures.pcm_builds.find(current);
-        if(!failed) {
-            auto it = pcm_builds.find(current);
-            return it != pcm_builds.end() ? &it->second.inputs : nullptr;
-        }
-        if(!failed->result.import.valid()) {
-            return &failed->inputs;
-        }
-        chain.push_back(current);
-        current = failed->result.import;
+    auto chain = failed_chain(*this, module);
+    if(chain.cycle || !chain.last) {
+        return nullptr;
     }
-    return nullptr;
+    return chain.last->failure ? &chain.last->failure->inputs : &chain.last->inputs;
 }
 
 Inputs Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
@@ -594,19 +636,15 @@ Inputs Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
 
 std::unordered_map<std::string, std::string>
     Project::imported_pcms(llvm::ArrayRef<Fid> modules) const {
-    std::unordered_map<std::string, std::string> pcms;
+    std::unordered_map<std::string, std::string> paths;
     for(auto module: module_closure(*this, modules)) {
-        auto it = pcm_builds.find(module);
+        auto* entry = built_pcm(module);
         auto name = dep_graph.module_of(module);
-        if(it != pcm_builds.end() && !it->second.path.empty() && !name.empty()) {
-            pcms[name.str()] = it->second.path;
+        if(entry && !name.empty()) {
+            paths[name.str()] = entry->path;
         }
     }
-    return pcms;
-}
-
-bool Project::pcm_tracked(Fid path_id) const {
-    return graph.has_node(module_node(path_id));
+    return paths;
 }
 
 llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
@@ -618,7 +656,7 @@ llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
 }
 
 void Project::forget_buffer_scan(Fid path_id) {
-    buffer_scans.erase(path_id);
+    import_scans.buffers.erase(path_id);
 }
 
 }  // namespace clice

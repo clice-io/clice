@@ -105,7 +105,7 @@ struct Records {
 
 }  // namespace
 
-std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
+std::string cache_key(llvm::ArrayRef<llvm::StringRef> parts) {
     std::string input;
     for(auto part: parts) {
         input += std::format("{}:", part.size());
@@ -222,7 +222,7 @@ std::string Project::serialize_precompiled_records() {
         }
     };
 
-    for(auto& e: pch_cache) {
+    for(auto& e: pchs) {
         auto& st = e.second;
         if(st.path.empty())
             continue;
@@ -238,7 +238,7 @@ std::string Project::serialize_precompiled_records() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: pcm_builds) {
+    for(auto& [path_id, st]: pcms) {
         if(st.path.empty())
             continue;
         SavedPCM entry;
@@ -323,7 +323,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
             continue;
         }
 
-        auto& st = pch_cache[entry.key];
+        auto& st = pchs[entry.key];
         st.blob = std::move(*entry.blob);
         st.path = *pch_path;
         st.bound = entry.bound;
@@ -347,7 +347,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto source = file_of(entry.source_file);
         if(!source)
             continue;
-        auto& st = pcm_builds[*source];
+        auto& st = pcms[*source];
         st.path = *pcm_path;
         st.key = entry.key;
         st.blob = std::move(*entry.blob);
@@ -367,8 +367,8 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
     }
 
     LOG_INFO("Loaded precompiled records: {} PCH entries, {} PCM entries",
-             pch_cache.size(),
-             pcm_builds.size());
+             pchs.size(),
+             pcms.size());
 }
 
 }  // namespace clice

@@ -40,19 +40,13 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
     return diagnostics;
 }
 
-/// Why each import that failed to build did not, named by module.
+/// Why each import that failed to build did not.
 static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
                                                            const Project& project) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
-        auto failure = project.module_build_failure(module);
-        if(!failure) {
-            continue;
-        }
-        auto& named = failures.emplace_back(
-            feature::ModuleFailure{.error = failure->error, .cycle = failure->cycle});
-        for(auto unit: failure->chain) {
-            named.chain.push_back(project.dep_graph.module_of(unit).str());
+        if(auto failure = project.module_failure(module)) {
+            failures.push_back(std::move(*failure));
         }
     }
     return failures;
@@ -99,135 +93,6 @@ std::optional<PCHRequest> ServedProject::declared_pch(Fid path_id,
     return project.declared_pch_request(*unit,
                                         project.settings.project.skip_header_bodies &&
                                             !imports.modular());
-}
-
-ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
-                                               llvm::StringRef text,
-                                               std::optional<std::uint32_t> point,
-                                               const std::string& directory,
-                                               const std::vector<std::string>& arguments,
-                                               const Resolution& resolution,
-                                               const Imports& imports,
-                                               llvm::StringRef base) {
-    auto path = project.file_table.resolve(path_id);
-    auto* synthesized = resolution.synthesized.get();
-    // The part of the prefix inside braces comes after the preamble, which
-    // the header's own directives would otherwise precede. A preamble still
-    // being typed ends before its unfinished directive: the finished part
-    // keeps its PCH — the key of the one before, when the directive goes at
-    // the end of the block — and the unfinished one parses with the body,
-    // which reports its own error.
-    auto bound = preamble_bound(text);
-    bool partial = false;
-    if(point) {
-        auto before = preamble_bound(text, logical_line_begin(text, *point));
-        partial = before < bound;
-        bound = before;
-    }
-    bound = synthesized && !synthesized->open.empty() ? 0 : finished_preamble_bound(text, bound);
-    if(bound == 0 && !synthesized) {
-        // No preamble directives and no injected -include — PCH would be
-        // empty. Self-contained header contexts end up here too: they borrow
-        // a command but inject nothing. A precompiled header the build
-        // declares is loaded by the parse itself.
-        return {.partial = partial};
-    }
-
-    // With a synthesized prefix, the PCH is worth building even at
-    // bound == 0: the -include'd prefix is processed via the predefines
-    // buffer and ends up in the PCH, so the (potentially huge) prefix is not
-    // re-parsed on every edit. The -include flag is part of the
-    // canonicalized arguments below, and the prefix's name hashes its
-    // content — through the fragments it includes, the whole chain's — so
-    // the key tracks prefix changes automatically.
-
-    // The modules imported by the preamble, or by a file the command line
-    // includes, are inputs of the PCH: it depends on what their PCMs were
-    // built from, and keys on which PCMs those are — a module that gains or
-    // loses its PCM, or whose provider or command changes, starts a new
-    // PCH. A PCH loses the imports of a module unit's global module
-    // fragment: the module declaration past it takes the fragment for
-    // absent and hides what the fragment made visible. Such a preamble
-    // goes without one.
-    std::string pcm_keys;
-    llvm::SmallVector<Fid> modules;
-    bool imported = false;
-    assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
-    for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
-        if(offset != 0 && offset >= bound) {
-            continue;
-        }
-        imported = true;
-        if(!is_unresolved_import(dep)) {
-            auto module = dep.file();
-            if(auto it = project.pcm_builds.find(module);
-               it != project.pcm_builds.end() && !it->second.path.empty()) {
-                pcm_keys += it->second.key;
-                modules.push_back(module);
-            }
-        }
-        pcm_keys.push_back('\0');
-    }
-    if(imported && imports.module_unit) {
-        LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
-        return {.partial = partial};
-    }
-
-    // Key the PCH by preamble text plus the frontend-relevant compile flags,
-    // so files with the same preamble text but different flags (-D, -I, -std)
-    // produce separate PCHs.  The source file path stays out of the key so
-    // files with identical preambles share one PCH — but its DIRECTORY (and
-    // the working directory) must stay in: quote includes and relative paths
-    // resolve against them, so equal preamble text in different directories
-    // can mean different content.  A preamble defining or testing a macro
-    // keeps the path in too: the PCH places the macro and its uses in the
-    // file that built it, where a file sharing it would find its own.  The
-    // clang version guards against reusing
-    // blobs a newer bundled clang would reject, and the database key keeps
-    // the blob with the index database that records its dependencies:
-    // shared across databases, one could rebuild it while another's
-    // records still confirmed the old content. A PCH built over the
-    // build's precompiled header names the very build it chains onto:
-    // rebuilt, that one has another name.
-    auto preamble_text = text.substr(0, bound);
-    llvm::StringRef base_blob;
-    if(auto it = project.pch_cache.find(base); it != project.pch_cache.end()) {
-        base_blob = it->second.blob;
-    }
-    auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
-    bool skip_bodies = project.settings.project.skip_header_bodies;
-    auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule(skip_bodies),
-                              project.database_key.str(),
-                              directory,
-                              path::parent(path),
-                              own_path,
-                              preamble_text,
-                              canonicalize(arguments),
-                              pcm_keys,
-                              base_blob});
-    PCHPlan plan{
-        .decision = PCHPlan::Decision::Acquire,
-        .request =
-            {
-                      .pch_key = std::move(pch_key),
-                      .file = std::string(path),
-                      .directory = directory,
-                      .arguments = arguments,
-                      .hidden = resolution.hidden,
-                      .content = std::string(text),
-                      .preamble_bound = bound,
-                      .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
-                      .base = base.str(),
-                      .skip_bodies = skip_bodies,
-                      },
-        .partial = partial,
-    };
-    if(imported) {
-        plan.request.pcms = project.imported_pcms(imports.resolved());
-        plan.request.modules = std::move(modules);
-    }
-    return plan;
 }
 
 void ServedProject::record_crash(const std::shared_ptr<Session>& session,
@@ -453,9 +318,8 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
         visit(*document->inputs);
     }
     if(auto& compiled = document->latest; compiled && compiled->loaded_pch()) {
-        if(auto it = project.pch_cache.find(*compiled->loaded_pch());
-           it != project.pch_cache.end()) {
-            visit(it->second.inputs);
+        if(auto* pch = project.built_pch(*compiled->loaded_pch())) {
+            visit(pch->inputs);
         }
     }
     for(auto dep: project.graph.dependencies(node(path_id))) {
@@ -677,42 +541,36 @@ async::task<std::optional<Imports>>
     bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
     Session::Dispatch pcm_dispatch(*session, kind);
     bool crashed = false;
-
-    for(int pass = 0; pass < import_passes; pass += 1) {
-        for(auto dep: modules) {
-            // Still an edge when skipped: the declaration above keeps it, so a
-            // later build of it, by an importer whose record lets it retry,
-            // re-dirties this document.
-            if(auto* crash = project.build_crash(dep)) {
-                if(!retry) {
-                    // Booked once: an attempt on unchanged inputs is no new
-                    // crash.
-                    if(!session->crash_record(kind)) {
-                        record_crash(session, kind, crash->death, crash->cause);
-                    }
-                    crashed = true;
-                    continue;
+    // Still an edge when skipped: the declaration above keeps it, so a later
+    // build of it, by an importer whose record lets it retry, re-dirties this
+    // document.
+    llvm::SmallVector<Fid> waited;
+    for(auto dep: modules) {
+        if(auto* crash = project.build_crash(dep)) {
+            if(!retry) {
+                // Booked once: an attempt on unchanged inputs is no new
+                // crash.
+                if(!session->crash_record(kind)) {
+                    record_crash(session, kind, crash->death, crash->cause);
                 }
-                project.forget_build_failure(dep);
+                crashed = true;
+                continue;
             }
-            switch(co_await attempt.depend(module_node(dep), project.module_work(dep))) {
-                case Result::Success: break;
-                case Result::Failed:
-                    LOG_INFO("Import {} of {} failed to build; the parse reports it",
-                             project.file_table.resolve(dep),
-                             project.file_table.resolve(path_id));
-                    if(auto* crash = project.build_crash(dep)) {
-                        record_crash(session, kind, crash->death, crash->cause);
-                        crashed = true;
-                        retry = false;
-                    }
-                    break;
-                case Result::Stale: co_return std::nullopt;
-            }
+            project.forget_build_failure(dep);
         }
-        if(project.imports_present(modules)) {
-            break;
+        waited.push_back(dep);
+    }
+    auto waits = co_await project.wait_modules(attempt, waited, [&](Fid dep) {
+        LOG_INFO("Import {} of {} failed to build; the parse reports it",
+                 project.file_table.resolve(dep),
+                 project.file_table.resolve(path_id));
+        if(auto* crash = project.build_crash(dep)) {
+            record_crash(session, kind, crash->death, crash->cause);
+            crashed = true;
         }
+    });
+    if(waits == Result::Stale) {
+        co_return std::nullopt;
     }
     if(!crashed) {
         ticket.session->succeeded(kind, ticket.generation);
@@ -859,82 +717,76 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                     case Result::Stale: co_return Result::Stale;
                 }
             }
-            auto plan = plan_pch(path_id,
-                                 params.text,
-                                 std::nullopt,
-                                 params.directory,
-                                 params.arguments,
-                                 resolution,
-                                 *imports,
-                                 base_pch.value_or(""));
-            switch(plan.decision) {
+            auto plan = project.preamble_pch(path_id,
+                                             params.text,
+                                             std::nullopt,
+                                             params.directory,
+                                             params.arguments,
+                                             resolution,
+                                             *imports,
+                                             base_pch.value_or(""));
+            if(!plan.request) {
                 // No PCH build left to crash on.
-                case PCHPlan::Decision::None:
-                    ticket.session->succeeded(PCH, ticket.generation);
-                    break;
-                case PCHPlan::Decision::Acquire: {
-                    auto pch_key = plan.request.pch_key;
-                    // A preamble whose build crashed a worker — for this
-                    // document or another sharing it — is refused until
-                    // this one's record lets it retry.
-                    if(auto* crash = project.build_crash(pch_key)) {
-                        if(!pch_retry) {
+                ticket.session->succeeded(PCH, ticket.generation);
+            } else {
+                auto pch_key = plan.request->pch_key;
+                // A preamble whose build crashed a worker — for this
+                // document or another sharing it — is refused until
+                // this one's record lets it retry.
+                if(auto* crash = project.build_crash(pch_key)) {
+                    if(!pch_retry) {
+                        record_crash(session, PCH, crash->death, crash->cause);
+                        co_return Result::Failed;
+                    }
+                    project.forget_build_failure(pch_key);
+                }
+                switch(co_await attempt.depend(pch_node(pch_key),
+                                               project.pch_work(std::move(*plan.request)))) {
+                    case Result::Success:
+                        // Adoption is gated on the attempt's result and
+                        // its own validity: a newer generation or a
+                        // Lost-type invalidation while we waited means
+                        // the resolved command may describe nothing —
+                        // neither the key nor the record it clears
+                        // belongs to this attempt anymore. Adopting a
+                        // proven-good PCH clears the document's
+                        // PCH record as surely as building one — but
+                        // only its own; every consumer clears for
+                        // itself.
+                        if(attempt.current() && ticket.fresh()) {
+                            adopted_pch = pch_key;
+                            ticket.session->succeeded(PCH, ticket.generation);
+                        }
+                        break;
+                    case Result::Failed:
+                        // The build itself crashed a worker: this attempt
+                        // stops before the parse, which would feed the
+                        // same preamble to one more worker.
+                        if(auto* crash = project.build_crash(pch_key)) {
                             record_crash(session, PCH, crash->death, crash->cause);
                             co_return Result::Failed;
                         }
-                        project.forget_build_failure(pch_key);
-                    }
-                    switch(co_await attempt.depend(pch_node(pch_key),
-                                                   project.pch_work(std::move(plan.request)))) {
-                        case Result::Success:
-                            // Adoption is gated on the attempt's result and
-                            // its own validity: a newer generation or a
-                            // Lost-type invalidation while we waited means
-                            // the resolved command may describe nothing —
-                            // neither the key nor the record it clears
-                            // belongs to this attempt anymore. Adopting a
-                            // proven-good PCH clears the document's
-                            // PCH record as surely as building one — but
-                            // only its own; every consumer clears for
-                            // itself.
-                            if(attempt.current() && ticket.fresh()) {
-                                adopted_pch = pch_key;
-                                ticket.session->succeeded(PCH, ticket.generation);
-                            }
-                            break;
-                        case Result::Failed:
-                            // The build itself crashed a worker: this attempt
-                            // stops before the parse, which would feed the
-                            // same preamble to one more worker.
-                            if(auto* crash = project.build_crash(pch_key)) {
-                                record_crash(session, PCH, crash->death, crash->cause);
-                                co_return Result::Failed;
-                            }
-                            // A build that failed without a crash answered:
-                            // the preamble no longer crashes.
-                            if(attempt.current()) {
-                                ticket.session->succeeded(PCH, ticket.generation);
-                            }
-                            failed_pch = pch_key;
-                            break;
-                        case Result::Stale: co_return Result::Stale;
-                    }
-                    break;
+                        // A build that failed without a crash answered:
+                        // the preamble no longer crashes.
+                        if(attempt.current()) {
+                            ticket.session->succeeded(PCH, ticket.generation);
+                        }
+                        failed_pch = pch_key;
+                        break;
+                    case Result::Stale: co_return Result::Stale;
                 }
             }
         }
         if(adopted_pch.has_value()) {
-            if(auto pch_it = project.pch_cache.find(*adopted_pch);
-               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
-                params.pch = {pch_it->second.path, pch_it->second.bound};
+            if(auto* pch = project.built_pch(*adopted_pch)) {
+                params.pch = {pch->path, pch->bound};
             } else {
                 adopted_pch.reset();
             }
         }
         if(!adopted_pch && base_pch) {
-            if(auto pch_it = project.pch_cache.find(*base_pch);
-               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
-                params.pch = {pch_it->second.path, 0};
+            if(auto* pch = project.built_pch(*base_pch)) {
+                params.pch = {pch->path, 0};
             } else {
                 base_pch.reset();
             }
@@ -953,7 +805,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         // Seed the worker's inactive-region state from the PCH's preamble:
         // the conditional stack it left open (a #if cut by the bound) and
         // the regions of the preamble share itself. Copy the state out:
-        // concurrent compiles can insert into pch_cache across the await
+        // concurrent compiles can insert into Project::pchs across the await
         // below and rehash the map from under a held pointer.
         std::shared_ptr<index::TUIndex> preamble_index;
         if(adopted_pch.has_value()) {
@@ -1144,8 +996,8 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                 intern_inputs(project.file_table, result.value().deps, result.value().started_at);
             // The compile reports nothing it read through the PCH.
             if(consumed_pch) {
-                if(auto it = project.pch_cache.find(*consumed_pch); it != project.pch_cache.end()) {
-                    inputs.append(it->second.inputs.begin(), it->second.inputs.end());
+                if(auto* pch = project.built_pch(*consumed_pch)) {
+                    inputs.append(pch->inputs.begin(), pch->inputs.end());
                 }
             }
             project.commit_self_containment(
@@ -1307,24 +1159,22 @@ async::task<std::optional<std::string>>
         }
     }
 
-    auto plan = plan_pch(path_id,
-                         text,
-                         point,
-                         directory,
-                         arguments,
-                         resolution,
-                         imports,
-                         base.value_or(""));
-    switch(plan.decision) {
-        case PCHPlan::Decision::None:
-            if(adoptable() && !plan.partial) {
-                set_pch_keys(path_id, base, base);
-                ticket.session->succeeded(feature::RequestKind::PCH, ticket.generation);
-            }
-            co_return base;
-        case PCHPlan::Decision::Acquire: break;
+    auto plan = project.preamble_pch(path_id,
+                                     text,
+                                     point,
+                                     directory,
+                                     arguments,
+                                     resolution,
+                                     imports,
+                                     base.value_or(""));
+    if(!plan.request) {
+        if(adoptable() && !plan.partial) {
+            set_pch_keys(path_id, base, base);
+            ticket.session->succeeded(feature::RequestKind::PCH, ticket.generation);
+        }
+        co_return base;
     }
-    auto pch_key = plan.request.pch_key;
+    auto pch_key = plan.request->pch_key;
 
     // A preamble that crashed a worker stops the document's content builds
     // (the caller checks); only a compile the document's record lets
@@ -1337,7 +1187,7 @@ async::task<std::optional<std::string>>
         }
         co_return base;
     }
-    if(co_await project.acquire_pch(std::move(plan.request)) != Result::Success) {
+    if(co_await project.acquire_pch(std::move(*plan.request)) != Result::Success) {
         if(auto* crash = project.build_crash(pch_key)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
@@ -1395,8 +1245,8 @@ async::task<bool> ServedProject::prepare_precompiled(const Ticket& ticket,
                                            resolution,
                                            *imports);
         if(pch_key) {
-            if(auto pch_it = project.pch_cache.find(*pch_key); pch_it != project.pch_cache.end()) {
-                inputs.pch = {pch_it->second.path, pch_it->second.bound};
+            if(auto* pch = project.built_pch(*pch_key)) {
+                inputs.pch = {pch->path, pch->bound};
             }
         }
     }

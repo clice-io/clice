@@ -163,9 +163,7 @@ int run_scan(const Options& opts) {
     auto& [root, loaded] = *read;
     auto first = open_at(root, loaded, {});
     if(first->opened.members.empty()) {
-        LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
-                  root,
-                  first->project.deeper_databases_hint());
+        LOG_ERROR("Nothing to scan: {}", first->project.why_no_members(root));
         return 1;
     }
     auto output = describe(*first);

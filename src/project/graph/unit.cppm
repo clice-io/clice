@@ -7,6 +7,7 @@ import :project.task_graph;
 import :support.prelude;
 import :vfs.ids;
 import :worker.protocol;
+import :worker.scheduler;
 
 namespace clice {
 
@@ -44,6 +45,26 @@ struct UnitRequest {
     /// merge is dropped then; the follow-up slot redoes it. Null when every
     /// result merges.
     std::function<bool()> outdated;
+};
+
+/// What a unit's compiles in this session showed, ahead of what its index
+/// records: what the next compile must send or leave out, and what they
+/// measured.
+struct UnitHistory {
+    /// The last result named a variant by hash that the project index did
+    /// not hold for its file: the next compile sends every section's bytes,
+    /// so the retry cannot fail the same way.
+    bool send_in_full = false;
+
+    /// The key of the target's precompiled header the last compile crashed
+    /// its worker over: the next compile leaves it out. Empty for none.
+    std::string crashed_over_pch;
+
+    /// The peak of the last finished compile, at least what a compile killed
+    /// for memory before it reached, and the memory one killed since
+    /// reached: ahead of the manifest's peak, which only an index that merged
+    /// records. None while nothing was measured.
+    std::optional<RequestCost> cost;
 };
 
 /// What one compile of a unit did.

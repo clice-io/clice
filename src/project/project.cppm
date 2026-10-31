@@ -41,23 +41,6 @@ namespace clice {
 /// Bump to discard the whole cache after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
 
-/// What failed of the PCH and PCM builds, each failure with the inputs it stands on
-/// (see Memo): those of a failed build are what it read, those of a crash
-/// what was known before it ran. Only a success of the same operation, a
-/// change of those inputs, or a consumer's save lets one run again — but for
-/// the consumption of a PCH, which only a consumer's success clears.
-struct PrecompiledFailures {
-    /// The PCH builds by key.
-    Memo<std::string, FailureRecord> pch_builds;
-
-    /// The PCH pairs by key that a parse died reading or found unreadable:
-    /// rebuilding a pair every consumer fails on would fare no better.
-    Memo<std::string, FailureRecord> pch_consumes;
-
-    /// The module builds by unit.
-    Memo<Fid, ModuleFailure> pcm_builds;
-};
-
 /// The editor's context choices of the project, as its index database
 /// carries them beside the index. A save moves bytes only: the server
 /// serializes its choices into them whenever they change and parses them
@@ -243,15 +226,14 @@ struct Project {
         }
     }
 
-    PrecompiledFailures failures;
-
     /// The PCHs the cache holds, keyed by content key (preamble text +
     /// canonical flags), so files with identical preambles share one PCH:
-    /// a mirror of the cache store's state, which names their paths.
-    llvm::StringMap<PCHBuild> pch_cache;
+    /// a mirror of the cache store's state, which names their paths, with
+    /// what failed of building and reading them.
+    llvm::StringMap<PCHEntry> pchs;
 
-    /// Keys of pch_cache entries whose pch.idx index is currently loaded,
-    /// most recently used first (see enforce_loaded_budget).
+    /// Keys of the entries whose pch.idx index is currently loaded, most
+    /// recently used first (see enforce_loaded_budget).
     llvm::SmallVector<std::string, 8> loaded_pch_indexes;
 
     /// Open-document count provider, connected by the server. Sizes the
@@ -259,34 +241,13 @@ struct Project {
     /// editor-like working set.
     std::function<std::size_t()> open_documents;
 
-    /// The last PCM build of each module unit that built.
-    llvm::DenseMap<Fid, PCMBuild> pcm_builds;
+    /// The PCMs of the module units, by unit.
+    llvm::DenseMap<Fid, PCMEntry> pcms;
 
-    /// The import scans of open buffers, and of units' disk text: kept while
-    /// the arguments and the project's disk state (context_epoch) stay the
-    /// same — and for a buffer, its directives. A failed module's every
-    /// importer waits on it again, and each wait would preprocess it again.
-    llvm::DenseMap<Fid, ImportScan> buffer_scans;
+    ImportScans import_scans;
 
-    llvm::DenseMap<Fid, ImportScan> disk_scans;
-
-    /// Preprocessor passes scan_imports() ran.
-    std::uint64_t import_scans = 0;
-
-    /// TUs whose last result named a variant by hash that the project index
-    /// did not hold for its file: the next compile sends every section's
-    /// bytes, so the retry cannot fail the same way.
-    llvm::DenseSet<Fid> send_in_full;
-
-    /// TUs whose last compile crashed its worker over their target's
-    /// precompiled header, with its key: the next compile leaves it out.
-    llvm::DenseMap<Fid, std::string> crashed_over_pch;
-
-    /// What each TU's compiles in this session measured: the peak of the
-    /// last finished one, at least what a compile killed for memory before
-    /// it reached, and the memory one killed since reached. Ahead of the
-    /// manifest's peak, which only an index that merged records.
-    llvm::DenseMap<Fid, RequestCost> unit_costs;
+    /// What each unit's compiles in this session showed.
+    llvm::DenseMap<Fid, UnitHistory> unit_history;
 
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
@@ -485,6 +446,13 @@ struct Project {
                                          CommandID command,
                                          llvm::ArrayRef<std::string> extra_prepend = {},
                                          llvm::ArrayRef<std::string> extra_append = {});
+
+    /// The files whose compiles read `file`: the units including it, also
+    /// through a file their commands force in, by the dependency graph; the
+    /// units whose indexed compiles read it, looked for it in vain, or
+    /// imported a module built from it, by the index; the modules whose PCM
+    /// was built from it, or whose build failed on it.
+    llvm::SmallVector<Fid> readers(Fid file) const;
 
     /// Whether some unit of the build the index is to hold has no record in
     /// it yet (see feature::RenameScope::units_pending).
@@ -782,6 +750,9 @@ struct Project {
 
     // graph/pch.cpp
 
+    /// The entry of `key` while its PCH is built; null else.
+    const PCHEntry* built_pch(llvm::StringRef key) const;
+
     /// How to build the PCH `request` names: an attempt revalidates the pair
     /// registered under its key or builds it with the request's inputs, and a
     /// clean node's pair is checked complete, in the store and read from
@@ -797,6 +768,23 @@ struct Project {
     /// command. The editor's build skips function bodies, the index's keeps
     /// them: they are two PCHs.
     PCHRequest declared_pch_request(const CommandRef& unit, bool skip_bodies);
+
+    /// The PCH of the preamble of `text`, the buffer of `file` compiled under
+    /// `arguments` from `directory` as `resolution` resolved them, with
+    /// `imports` its imports: keyed by the preamble text and the
+    /// frontend-relevant flags, so files with the same preamble share it.
+    /// `base` is the key of the precompiled header the build declares for
+    /// the command, built already; empty for none. `point` is where a
+    /// completion's parse stops: the preamble ends before the line holding
+    /// it, so the lines typed there keep the PCH of the lines above them.
+    PreamblePCH preamble_pch(Fid file,
+                             llvm::StringRef text,
+                             std::optional<std::uint32_t> point,
+                             llvm::StringRef directory,
+                             llvm::ArrayRef<std::string> arguments,
+                             const Resolution& resolution,
+                             const Imports& imports,
+                             llvm::StringRef base);
 
     /// Whether the PCH registered under `key` read `file`: a parse of that very
     /// file cannot load it — clang refuses a PCH whose input the parse serves
@@ -850,6 +838,11 @@ struct Project {
     /// enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
+    /// Forget the entries whose pairs the store's LRU evicted from disk (inside
+    /// a commit, maybe on a worker thread), or the content-keyed map grows
+    /// for the server's lifetime even for keys never requested again.
+    void forget_evicted_pchs();
+
     /// Unload pch.idx indexes beyond the budget (two per open document, plus
     /// 2), least recently used first. Without this every preamble key ever
     /// touched keeps its blob mapped for the server's lifetime — tens of MB per
@@ -859,6 +852,9 @@ struct Project {
     void enforce_loaded_budget();
 
     // graph/pcm.cpp
+
+    /// The entry of the module unit while its PCM is built; null else.
+    const PCMEntry* built_pcm(Fid module) const;
 
     /// How to build a module unit's PCM: an attempt declares the unit's
     /// imports as the node's edges, waits on them and on the precompiled header
@@ -885,16 +881,22 @@ struct Project {
     /// edges of `consumer`, the file's node, and wait for their modules,
     /// foreground. A module that did not build is the compile's to report, as
     /// the stateful compile does; none only when the graph shut down.
+    /// Wait in `attempt` on the PCMs of `modules`, each in turn, `failed`
+    /// told every one that failed to build; again while all built but one
+    /// left the cache by the time the last did — a rebuild can evict another
+    /// under the store's budget — import_passes times at most. Stale when
+    /// the attempt was overtaken; Success when every one built and they are
+    /// all on disk.
+    async::task<Result> wait_modules(Attempt& attempt,
+                                     llvm::ArrayRef<Fid> modules,
+                                     llvm::function_ref<void(Fid)> failed = {});
+
     async::task<std::optional<Imports>> build_imports(NodeId consumer,
                                                       Fid path_id,
                                                       const Resolution& resolution,
                                                       llvm::ArrayRef<std::string> arguments,
                                                       llvm::StringRef directory,
                                                       llvm::StringRef content);
-
-    /// Whether the graph has a node for this module unit (it was built or
-    /// depended on before).
-    bool pcm_tracked(Fid path_id) const;
 
     /// Mark a module unit and its transitive importers dirty, overtaking
     /// in-flight attempts: their next attempts check their builds again, and a
@@ -915,7 +917,7 @@ struct Project {
 
     /// Why the module's last build failed, when it failed on the user's code;
     /// nullopt for any other failure (a crash, an outage).
-    std::optional<ModuleBuildFailure> module_build_failure(Fid module) const;
+    std::optional<feature::ModuleFailure> module_failure(Fid module) const;
 
     /// Forget the module's failed build, a crash or errors in the user's code,
     /// so the next attempt builds it again: an importer whose own record lets it
@@ -1133,7 +1135,7 @@ struct Project {
     /// Persist the index and the cache store's manifest as they stand, a
     /// pass running or not: a cold pass covers the whole project, and a
     /// process killed mid-pass loses only what merged since the last
-    /// checkpoint.
+    /// checkpoint; then forget the PCHs the store evicted.
     async::task<> checkpoint();
 
     /// The shutdown tail once compile and index work is quiesced (contract

@@ -86,35 +86,16 @@ void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
 }
 
 llvm::SmallVector<Fid> ServedProject::readers(Fid path_id) const {
-    auto result = project.dep_graph.find_readers(path_id);
-    auto add = [&](Fid reader) {
-        if(reader != path_id && !ranges::contains(result, reader)) {
-            result.push_back(reader);
-        }
-    };
-    project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) { add(tu); });
-    project.index.for_each_absent_lookup(path_id, add);
-    project.index.for_each_importer(path_id, add);
-    auto names = [&](const Inputs& inputs) {
-        return ranges::any_of(inputs, [&](const Input& dep) { return dep.file == path_id; });
-    };
+    auto result = project.readers(path_id);
     for(auto& [document, served]: documents) {
         bool read = false;
-        each_input(document, [&](const Inputs& inputs) { read = read || names(inputs); });
-        if(read) {
-            add(document);
+        each_input(document, [&](const Inputs& inputs) {
+            read = read || ranges::contains(inputs, path_id, &Input::file);
+        });
+        if(read && document != path_id && !ranges::contains(result, document)) {
+            result.push_back(document);
         }
     }
-    for(auto& [unit, build]: project.pcm_builds) {
-        if(names(build.inputs)) {
-            add(unit);
-        }
-    }
-    project.failures.pcm_builds.for_each([&](Fid unit, const auto& failed) {
-        if(names(failed.inputs)) {
-            add(unit);
-        }
-    });
     return result;
 }
 
@@ -126,9 +107,6 @@ void ServedProject::mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh) {
 }
 
 void ServedProject::cascade_compile_graph(Fid path_id, bool& refresh) {
-    if(!project.pcm_tracked(path_id)) {
-        return;
-    }
     for(auto dirtied: project.invalidate_module(path_id)) {
         mark_dependent(dirtied, refresh);
     }

@@ -76,24 +76,21 @@ async::task<UnitResult>
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    auto deps = co_await project.scan_imports(path_id,
-                                              resolved,
-                                              params.arguments,
-                                              params.directory,
-                                              std::nullopt);
-    project.graph.set_edges(attempt.node(), deps.declared);
-    auto modules = deps.resolved();
-    for(int pass = 0; pass < import_passes; pass += 1) {
-        for(auto dep: modules) {
-            if(co_await attempt.depend(module_node(dep), project.module_work(dep)) ==
-               Result::Stale) {
-                co_return UnitResult{.status = Status::Preempted};
-            }
-        }
-        if(project.imports_present(modules)) {
-            break;
-        }
+    auto scanned = co_await project.scan_imports(path_id,
+                                                 resolved,
+                                                 params.arguments,
+                                                 params.directory,
+                                                 std::nullopt);
+    project.graph.set_edges(attempt.node(), scanned.declared);
+    auto modules = scanned.resolved();
+    if(co_await project.wait_modules(attempt, modules) == Result::Stale) {
+        co_return UnitResult{.status = Status::Preempted};
     }
+    // Looked up anew after every suspension: another unit's compile may
+    // have grown the table meanwhile.
+    auto history = [&]() -> UnitHistory& {
+        return project.unit_history[path_id];
+    };
 
     // A unit of a target with precompiled headers parses over clice's own
     // build of them: the header its command forces in then reads nothing
@@ -107,20 +104,18 @@ async::task<UnitResult>
     std::string left_out_pch;
     if(auto unit = project.pch_writer(path_id, resolved, extra);
        unit &&
-       (deps.modular() || project.rules.indexable(project.file_table.resolve(unit->file)))) {
+       (scanned.modular() || project.rules.indexable(project.file_table.resolve(unit->file)))) {
         auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
-        if(auto crashed = project.crashed_over_pch.find(path_id);
-           crashed != project.crashed_over_pch.end() && crashed->second == key) {
+        if(history().crashed_over_pch == key) {
             left_out_pch = key;
         } else {
             switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {
                 case Result::Success:
-                    if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
-                                                              !it->second.path.empty() &&
-                                                              !project.pch_reads(key, path_id)) {
-                        params.pch = it->second.path;
-                        precompiled = it->second.inputs;
+                    if(auto* pch = project.built_pch(key);
+                       pch && !project.pch_reads(key, path_id)) {
+                        params.pch = pch->path;
+                        precompiled = pch->inputs;
                         consumed_pch = key;
                     }
                     break;
@@ -135,7 +130,7 @@ async::task<UnitResult>
     // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(modules);
     merge_inputs(imports, {&precompiled});
-    if(request.index && !project.send_in_full.erase(path_id)) {
+    if(request.index && !std::exchange(history().send_in_full, false)) {
         auto include_closure = project.dep_graph.include_closure(path_id);
         params.known_variants = project.index.known_variants(path_id, include_closure);
         params.known_instantiations =
@@ -150,10 +145,9 @@ async::task<UnitResult>
         params.index_output_path = transfer->tmp_path;
     }
 
-    auto& costs = project.unit_costs;
     RequestCost cost;
-    if(auto it = costs.find(path_id); it != costs.end()) {
-        cost = it->second;
+    if(history().cost) {
+        cost = *history().cost;
     } else if(auto manifest = project.index.manifest(path_id)) {
         cost.peak = manifest->peak;
     }
@@ -167,7 +161,7 @@ async::task<UnitResult>
     // The samples may miss a peak a killed run already reached.
     auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
     if(peak != 0) {
-        costs[path_id] = {.peak = peak};
+        history().cost = RequestCost{.peak = peak};
     }
     if(reply.has_value() && reply.value().success) {
         // An overtaken attempt's success clears nothing: what overtook it
@@ -180,7 +174,7 @@ async::task<UnitResult>
         if(!left_out_pch.empty()) {
             project.pch_consume_failed(left_out_pch);
         }
-        project.crashed_over_pch.erase(path_id);
+        history().crashed_over_pch.clear();
         auto run_ms = timer.ms();
         auto& value = reply.value();
         llvm::StringRef index_bytes = as_chars(value.tu_index_data);
@@ -225,7 +219,7 @@ async::task<UnitResult>
                 project.index.merge(index_bytes, imports, command, peak != 0 ? peak : cost.peak);
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
-                    project.send_in_full.insert(path_id);
+                    history().send_in_full = true;
                     co_return UnitResult{.status = Status::Preempted,
                                          .error =
                                              "a variant the result named by hash is not stored"};
@@ -242,7 +236,7 @@ async::task<UnitResult>
     }
 
     if(reply.has_value()) {
-        project.crashed_over_pch.erase(path_id);
+        history().crashed_over_pch.clear();
         co_return UnitResult{
             .status = Status::Failed,
             .tidy_diagnostics = std::move(reply.value().tidy_diagnostics),
@@ -259,14 +253,14 @@ async::task<UnitResult>
         // the pair at once would fail every unit of the target queued on
         // it, for each unit that crashes on its own code.
         if(!consumed_pch.empty()) {
-            project.crashed_over_pch[path_id] = consumed_pch;
+            history().crashed_over_pch = consumed_pch;
             co_return UnitResult{.status = Status::Preempted,
                                  .error =
                                      "it crashed the worker over its target's precompiled "
                                      "header, which its next compile leaves out: " +
                                      reply.error().message};
         }
-        project.crashed_over_pch.erase(path_id);
+        history().crashed_over_pch.clear();
         co_return UnitResult{.status = Status::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
     }
@@ -274,7 +268,7 @@ async::task<UnitResult>
         auto& data = *reply.error().data;
         auto memory = data["memory"].get_uint().value_or(0);
         auto alone = data["alone"].get_bool().value_or(false);
-        costs[path_id] = {.peak = cost.peak, .floor = std::max(cost.floor, memory)};
+        history().cost = RequestCost{.peak = cost.peak, .floor = std::max(cost.floor, memory)};
         co_return UnitResult{.status = alone ? Status::TooBig : Status::OutOfMemory,
                              .error = reply.error().message,
                              .memory = memory};

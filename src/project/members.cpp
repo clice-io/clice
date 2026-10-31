@@ -427,6 +427,26 @@ CDBDiff Project::refresh_provisional() {
     return diff;
 }
 
+llvm::SmallVector<Fid> Project::readers(Fid file) const {
+    auto found = dep_graph.find_readers(file);
+    llvm::SmallVector<Fid> result(found.begin(), found.end());
+    auto add = [&](Fid reader) {
+        if(reader != file && !ranges::contains(result, reader)) {
+            result.push_back(reader);
+        }
+    };
+    index.for_each_contribution(file, [&](Fid unit, std::uint64_t) { add(unit); });
+    index.for_each_absent_lookup(file, add);
+    index.for_each_importer(file, add);
+    for(auto& [module, entry]: pcms) {
+        if(ranges::contains(entry.inputs, file, &Input::file) ||
+           (entry.failure && ranges::contains(entry.failure->inputs, file, &Input::file))) {
+            add(module);
+        }
+    }
+    return result;
+}
+
 bool Project::units_pending() {
     return ranges::any_of(members(), [&](Fid unit) {
         return rules.indexable(file_table.resolve(unit)) && !index.indexed(unit);

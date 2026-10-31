@@ -200,14 +200,13 @@ void LSPClient::register_test_hooks() {
             ext::StatsResult stats;
             for(auto& served: this->server.projects) {
                 auto& project = served->project;
-                for(auto& entry: project.pch_cache) {
-                    auto& st = entry.second;
-                    if(st.index) {
+                for(auto& [key, pch]: project.pchs) {
+                    if(pch.index) {
                         stats.pch_loaded_states += 1;
-                        stats.pch_state_bytes += st.index->bytes().size();
+                        stats.pch_state_bytes += pch.index->bytes().size();
                     }
+                    stats.pch_cache_entries += pch.path.empty() ? 0 : 1;
                 }
-                stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
 
                 stats.index_inmemory_shards += project.index.pending_shard_writes();
                 stats.index_shard_content_bytes += project.index.shard_bytes();
@@ -223,7 +222,7 @@ void LSPClient::register_test_hooks() {
                     stats.synthesized_contexts += entry.result.synthesized != nullptr ? 1 : 0;
                 });
 
-                stats.import_scans += served->project.import_scans;
+                stats.import_scans += served->project.import_scans.runs;
                 stats.index_idle = stats.index_idle && served->project.index_idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());

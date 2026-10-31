@@ -1,5 +1,6 @@
 module clice:project.pcm;
 
+import :project.precompiled;
 import :project.task_graph;
 import :support.failure_record;
 import :support.prelude;
@@ -8,43 +9,10 @@ import :vfs.ids;
 
 namespace clice {
 
-/// The last build of a C++20 module unit that built: what it read and the
-/// PCM it wrote. Shared across all files that import the module; a build
-/// that failed is a failure record (PrecompiledFailures::pcm_builds).
-struct PCMBuild {
-    /// The build's identity: "{module}-{hash}" over the unit's path and
-    /// canonical flags, the build configuration, and the key of every module
-    /// it imports (an unresolved import by its name) — so a command change
-    /// anywhere below the module changes its key too.
-    std::string key;
-
-    /// The PCM's name in the store: the key and a nonce of the build that
-    /// produced it. A rebuild publishes under a new name, never over the
-    /// old PCM, which a running compile may still read — and the record
-    /// names the very bytes it describes, whatever a crash before the
-    /// metadata flush or another writer of the store left behind.
-    std::string blob;
-
-    /// The PCM the latest build replaced, kept for one more build.
-    std::string previous;
-
-    /// The built PCM; empty while a rebuild runs, after a failure, and once
-    /// it or the PCH it was built over left the store.
-    std::string path;
-
-    /// The PCH the PCM was built over, which its importers read with it;
-    /// empty for none.
-    std::string pch;
-
-    /// What the build read and looked for, the inputs of the modules it
-    /// imports included; none while a rebuild runs.
-    Inputs inputs;
-};
-
 /// A module unit's build that failed: on the user's code, on an import that
 /// failed in turn, or by crashing a worker.
-struct ModuleFailure {
-    /// The key of the build that failed (PCMBuild::key); empty when an
+struct ModuleBuildFailed {
+    /// The key of the build that failed (PCMEntry::key); empty when an
     /// import failed it and it never ran.
     std::string key;
 
@@ -57,13 +25,27 @@ struct ModuleFailure {
     Fid import;
 };
 
+/// The PCM of a C++20 module unit, shared across all files that import the
+/// module: its last build, and the failure of the last one that failed.
+struct PCMEntry : Precompiled<ModuleBuildFailed> {
+    /// The build's identity: "{module}-{hash}" over the unit's path and
+    /// canonical flags, the build configuration, and the key of every module
+    /// it imports (an unresolved import by its name) — so a command change
+    /// anywhere below the module changes its key too.
+    std::string key;
+
+    /// The PCH the PCM was built over, which its importers read with it;
+    /// empty for none.
+    std::string pch;
+};
+
 /// A scan's module dependencies: the full durable edge set of a unit, a
 /// node per module unit it imports and one unresolved import per name no
 /// unit provides. A module unit's PCM is one node per unit in the task
 /// graph, edged to the modules it imports; one attempt is one PCM build (or
 /// the revalidation of the last one). The project owns the PCM policy:
 /// cache key computation and hit checks, store commits, the modules' build
-/// failures (Project::failures), and the cooperative response to advisory
+/// failures (PCMEntry::failure), and the cooperative response to advisory
 /// cancellation (an overtaken attempt tells its worker to stop and still
 /// reports the real result — contract 2). The graph owns identity, edges,
 /// attempts and interest.
@@ -108,16 +90,18 @@ struct ImportScan {
     bool module_unit = false;
 };
 
-/// Why a module did not build: `chain` runs from it through the imports
-/// that failed in turn to the module whose own build failed, on `error`,
-/// its first error — or, with `cycle`, to the import that closes a cycle
-/// back to chain[*cycle].
-struct ModuleBuildFailure {
-    llvm::SmallVector<Fid> chain;
+/// The import scans of open buffers, and of units' disk text (see
+/// Project::scan_imports): kept while the arguments and the project's disk
+/// state (context_epoch) stay the same — and for a buffer, its directives.
+/// A failed module's every importer waits on it again, and each wait would
+/// preprocess it again.
+struct ImportScans {
+    llvm::DenseMap<Fid, ImportScan> buffers;
 
-    std::string error;
+    llvm::DenseMap<Fid, ImportScan> disk;
 
-    std::optional<std::size_t> cycle;
+    /// The preprocessor runs the scans took.
+    std::uint64_t runs = 0;
 };
 
 /// The graph identity of an import that resolves to nothing: a node that

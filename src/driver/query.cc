@@ -169,19 +169,8 @@ std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& projec
             result.direct_dependents.push_back(project.file_table.display(dependent));
         }
     }
-    auto readers = project.dep_graph.find_readers(*file);
-    // An importer reads the files its modules were built from without
-    // including them.
-    llvm::SmallVector<Fid> importers;
-    project.index.for_each_importer(*file, [&](Fid importer) { importers.push_back(importer); });
-    ranges::sort(importers, [&](Fid lhs, Fid rhs) {
-        return project.file_table.resolve(lhs) < project.file_table.resolve(rhs);
-    });
-    for(auto importer: importers) {
-        if(!ranges::contains(readers, importer)) {
-            readers.push_back(importer);
-        }
-    }
+    auto readers = project.readers(*file);
+    ranges::sort(readers, {}, [&](Fid reader) { return project.file_table.resolve(reader); });
     for(auto reader: readers) {
         if(seen.insert(reader).second) {
             result.transitive_dependents.push_back(project.file_table.display(reader));

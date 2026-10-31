@@ -399,27 +399,6 @@ async::task<> ServedProject::checkpoint_task() {
         if(project.index.last_save_shards() > 0) {
             server.probe.happened(LoopEvent::Checkpoint);
         }
-        forget_evicted_pchs();
-    }
-}
-
-void ServedProject::forget_evicted_pchs() {
-    // The store's LRU evicted these blobs from disk (inside commit, maybe
-    // on a worker thread); drop the derived pch_cache metadata here on the
-    // event loop, or the content-keyed map grows for the server's
-    // lifetime even for keys never requested again. An entry mid-rebuild
-    // keeps its slot — its commit publishes a fresh pair. A key rebuilt
-    // after the eviction was recorded names another blob by now.
-    for(auto& evicted: project.store->take_evictions()) {
-        if(evicted.ns != "pch") {
-            continue;
-        }
-        auto it = ranges::find_if(project.pch_cache, [&](const auto& entry) {
-            return entry.second.blob == evicted.key;
-        });
-        if(it != project.pch_cache.end() && !project.pch_building(it->getKey())) {
-            project.pch_cache.erase(it);
-        }
     }
 }
 

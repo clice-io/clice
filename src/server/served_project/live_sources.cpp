@@ -170,8 +170,8 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
         if(!visit_key(key)) {
             return;
         }
-        auto it = project.pch_cache.find(key);
-        if(it != project.pch_cache.end() && !visit_key(std::string(it->second.base))) {
+        auto it = project.pchs.find(key);
+        if(it != project.pchs.end() && !visit_key(std::string(it->second.base))) {
             return;
         }
     }
