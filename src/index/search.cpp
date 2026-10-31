@@ -317,7 +317,8 @@ Completables completables(const IndexQuery& index,
                         return container ? std::optional(SymbolInfo::from(parent, *container))
                                          : std::nullopt;
                     });
-                ranked.hits.push_back({.rank = hit.rank, .symbol = std::move(symbol), .anchor = {}});
+                ranked.hits.push_back(
+                    {.rank = hit.rank, .symbol = std::move(symbol), .anchor = {}});
             }
         }
         ranked.exhausted = ranked.exhausted && found.exhausted;

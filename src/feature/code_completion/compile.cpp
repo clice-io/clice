@@ -1263,10 +1263,11 @@ public:
             bool from_index,
             const InstantiatedTemplates& instantiated,
             bool& includes_pending) :
-        clang::CodeCompleteConsumer(sema_options(options, from_index)), focus(focus), offset(offset),
-        encoding(encoding), output(output), documented(documented), options(options),
-        argument_style(options.arguments), client(client), scope_candidates(candidates),
-        instantiated(instantiated), includes_pending(includes_pending),
+        clang::CodeCompleteConsumer(sema_options(options, from_index)), focus(focus),
+        offset(offset), encoding(encoding), output(output), documented(documented),
+        options(options), argument_style(options.arguments), client(client),
+        scope_candidates(candidates), instantiated(instantiated),
+        includes_pending(includes_pending),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
@@ -1279,7 +1280,7 @@ public:
 
     /// The entry `decl`, in the focus file, has among `entries`: at its
     /// name's offset, under its name.
-    static const InstantiatedTemplates::Entry*
+    const static InstantiatedTemplates::Entry*
         recorded(clang::Sema& sema,
                  llvm::ArrayRef<InstantiatedTemplates::Entry> entries,
                  const clang::NamedDecl* decl) {
@@ -2676,7 +2677,8 @@ auto instantiated_templates(CompilationUnit& unit) -> InstantiatedTemplates {
             continue;
         }
         if(entry.node.kind() == SemanticNode::Kind::Stmt) {
-            if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(entry.node.get<clang::Stmt>())) {
+            if(const auto* lambda =
+                   llvm::dyn_cast<clang::LambdaExpr>(entry.node.get<clang::Stmt>())) {
                 function(lambda->getCallOperator());
             }
             continue;

@@ -194,21 +194,21 @@ void LSPClient::register_editing() {
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
         auto latest = project.latest(path_id);
-        auto result = co_await project
-                          .stateless_request(ticket,
-                                             feature::RequestKind::Completion,
-                                             "Completion",
-                                             positions.offset_clamped(params.position, encoding),
-                                             worker::CompletionParams{
-                                                 .client = completion_client,
-                                                 .encoding = encoding,
-                                                 .names = compile,
-                                                 .instantiated = latest
-                                                                     ? latest->instantiated
-                                                                     : feature::InstantiatedTemplates(),
-                                             },
-                                             ctx.cancellation)
-                          .or_fail();
+        auto result =
+            co_await project
+                .stateless_request(ticket,
+                                   feature::RequestKind::Completion,
+                                   "Completion",
+                                   positions.offset_clamped(params.position, encoding),
+                                   worker::CompletionParams{
+                                       .client = completion_client,
+                                       .encoding = encoding,
+                                       .names = compile,
+                                       .instantiated = latest ? latest->instantiated
+                                                              : feature::InstantiatedTemplates(),
+                                   },
+                                   ctx.cancellation)
+                .or_fail();
         if(!result.include) {
             co_return std::move(result.list);
         }

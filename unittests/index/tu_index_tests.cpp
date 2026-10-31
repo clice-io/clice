@@ -125,11 +125,11 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         view.instantiation_shard(section).for_each_record(
             [&](const index::InstantiationRecord& record) {
-                ZEXPECT(ranges::contains(view.instantiation_sections_naming(record.target),
-                                         section));
+                ZEXPECT(
+                    ranges::contains(view.instantiation_sections_naming(record.target), section));
                 if(index::has_from(record.kind)) {
-                    ZEXPECT(ranges::contains(view.instantiation_sections_naming(record.from),
-                                             section));
+                    ZEXPECT(
+                        ranges::contains(view.instantiation_sections_naming(record.from), section));
                 }
                 instantiated = true;
                 return true;

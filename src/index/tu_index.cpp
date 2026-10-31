@@ -355,24 +355,25 @@ std::optional<std::uint32_t> TUIndex::local_path(SymbolHash hash) const {
         }
         ranges::stable_sort(built, {}, [](const auto& entry) { return entry.first; });
     }
-    auto it = ranges::lower_bound(*local_paths, hash, {}, [](const auto& entry) {
-        return entry.first;
-    });
+    auto it =
+        ranges::lower_bound(*local_paths, hash, {}, [](const auto& entry) { return entry.first; });
     if(it == local_paths->end() || it->first != hash) {
         return std::nullopt;
     }
     return it->second;
 }
 
-llvm::SmallVector<std::uint32_t, 4> TUIndex::paths_naming(SymbolHash hash, bool instantiated) const {
+llvm::SmallVector<std::uint32_t, 4> TUIndex::paths_naming(SymbolHash hash,
+                                                          bool instantiated) const {
     if(!loaded()) {
         return {};
     }
     auto& root = view_of(data);
     if(auto entry = sorted_find(root.symbol_hashes, hash)) {
-        auto paths = instantiated && SymbolScope(root.symbol_scopes[*entry]) == SymbolScope::External
-                         ? slice(root.symbol_instantiations, root.symbol_instantiation_ends, *entry)
-                         : slice(root.symbol_references, root.symbol_reference_ends, *entry);
+        auto paths =
+            instantiated && SymbolScope(root.symbol_scopes[*entry]) == SymbolScope::External
+                ? slice(root.symbol_instantiations, root.symbol_instantiation_ends, *entry)
+                : slice(root.symbol_references, root.symbol_reference_ends, *entry);
         return {paths.begin(), paths.end()};
     }
     if(auto path_id = local_path(hash)) {

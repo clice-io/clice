@@ -584,7 +584,8 @@ private:
             return std::nullopt;
         }
         auto content = focus.content();
-        reach->end = static_cast<std::uint32_t>(std::min(content.find('\n', reach->end), content.size()));
+        reach->end =
+            static_cast<std::uint32_t>(std::min(content.find('\n', reach->end), content.size()));
         return reach;
     }
 
