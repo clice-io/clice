@@ -163,8 +163,8 @@ struct CompileCompletion {
 
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares: the compile reads no others of them (clang's
-    /// LoadExternal off). Not where the index names nothing, as in a
-    /// directive.
+    /// LoadExternal off), none after `.` or `->`. Not where the index names
+    /// nothing, as in a directive.
     bool from_index = false;
 
     /// Where the name being typed is looked up, with from_index.
@@ -264,10 +264,13 @@ auto code_complete(CompilationParams params,
 struct TypedName {
     llvm::StringRef prefix;
     index::CompletionScope scope;
+
+    /// After `.` or `->`: a member, which Sema reads from its class whole.
+    bool member = false;
 };
 
-/// None in a number, after `.` or `->`, and after a qualifier spelled other
-/// than by names (`T<int>::`, `decltype(x)::`).
+/// None in a number, and after a qualifier spelled other than by names
+/// (`T<int>::`, `decltype(x)::`).
 auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<TypedName>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked

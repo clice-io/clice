@@ -33,6 +33,10 @@ auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<Typ
     }
     TypedName typed{.prefix = prefix.spelling};
     auto before = text.take_front(prefix.typed.begin).rtrim();
+    if(before.ends_with(".") || before.ends_with("->")) {
+        typed.member = true;
+        return typed;
+    }
     while(before.consume_back("::")) {
         before = before.rtrim();
         auto start = before.size();
@@ -53,9 +57,8 @@ auto typed_name(llvm::StringRef text, std::uint32_t offset) -> std::optional<Typ
         typed.scope.qualifier.insert(typed.scope.qualifier.begin(), name.str());
         before = before.drop_back(name.size()).rtrim();
     }
-    if(before.ends_with(".") || before.ends_with("->")) {
-        return std::nullopt;
-    }
+    // A member named through its class (`x.Base::`).
+    typed.member = before.ends_with(".") || before.ends_with("->");
     return typed;
 }
 
@@ -483,8 +486,13 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     CompileCompletion compile;
     if(auto typed = offset ? typed_name(text, *offset) : std::nullopt;
        typed && completing.directive.empty()) {
-        compile.more_candidates =
-            !scope_candidates(inputs.query, inputs.graph, *typed, inputs.file, compile.candidates);
+        if(!typed->member) {
+            compile.more_candidates = !scope_candidates(inputs.query,
+                                                        inputs.graph,
+                                                        *typed,
+                                                        inputs.file,
+                                                        compile.candidates);
+        }
         compile.from_index = true;
         compile.scope = std::move(typed->scope);
     }
