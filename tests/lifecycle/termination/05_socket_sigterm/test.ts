@@ -35,7 +35,7 @@ test(
         });
         const exited = once(server, "exit");
         let log = "";
-        await new Promise<void>((resolve) => {
+        const listening = new Promise<void>((resolve) => {
             server.stderr.on("data", (chunk: Buffer) => {
                 log += chunk.toString();
                 if (log.includes("Listening on")) {
@@ -43,6 +43,10 @@ test(
                 }
             });
         });
+        const ready = await Promise.race([listening.then(() => true), exited.then(() => false)]);
+        if (!ready) {
+            throw new Error(`the server exited before it listened:\n${log}`);
+        }
         const editor = net.connect(port, "127.0.0.1");
         await once(editor, "connect");
         // Answered, the connection is accepted and its peer runs.
