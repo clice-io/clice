@@ -1036,6 +1036,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         next->pch_failed = failed_pch.has_value();
         next->base_pch_key = base_pch;
         next->host = resolution.host;
+        next->command = resolution.ref.command;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (no AST, or an index it could

@@ -310,7 +310,9 @@ Project::Opened Project::open(const OpenOptions& options) {
         if(reads && options.load != Load::Members) {
             opened.unreadable = unreadable_index(index.open(*database), cache_dir);
         } else {
-            bool decoded = load_saved(options.load == Load::Members, opened.report);
+            index::IndexReport report;
+            bool decoded = load_saved(options.load == Load::Members, report);
+            apply_report(report);
             // A reader takes no fresh database for one it cannot read.
             if(!decoded && database && database->read_only()) {
                 opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
@@ -329,6 +331,9 @@ Project::Opened Project::open(const OpenOptions& options) {
     if(!opened.unreadable.empty()) {
         index.clear();
         database.reset();
+    }
+    if(options.cache == Cache::Write) {
+        enqueue_outdated(opened.members);
     }
     return opened;
 }

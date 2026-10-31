@@ -119,8 +119,9 @@ struct Project {
 
     CompilationDatabase cdb{file_table, commands};
 
-    /// The rules of clice.toml under the configuration open() activated.
-    Rules rules;
+    /// The rules of clice.toml under the configuration open() activated;
+    /// those of the settings a Project is born with until then.
+    Rules rules{settings, root, {}};
 
     /// The commands the rules write by hand, and the builtin ones.
     WrittenCommands written_commands{commands, file_table};
@@ -317,10 +318,6 @@ struct Project {
         /// The dependency scan from them.
         ScanReport scan;
 
-        /// The units owed a reindex the load found: the ones a rule keeps
-        /// out or whose command changed while no server ran.
-        index::IndexReport report;
-
         /// Why the index could not be read, for a run reading it: it opens
         /// with none then. Empty when it was read.
         std::string unreadable;
@@ -331,9 +328,10 @@ struct Project {
     /// and the index database; what the index remembers (the databases of
     /// earlier sessions, the provisional members); the build; the saved
     /// state — the index, the precompiled records, the context choices —
-    /// reconciled with the build when that is loaded (reconcile_index). A
-    /// run reading the index without the build binds its tables alone,
-    /// fetched on first use.
+    /// reconciled with the build when that is loaded (reconcile_index), the
+    /// reindexes that owes queued; for the index's writer, every member it
+    /// holds nothing of too (enqueue_outdated). A run reading the index
+    /// without the build binds its tables alone, fetched on first use.
     Opened open(const OpenOptions& options);
 
     /// What a reader says of an index database the index reports damaged: a
@@ -499,6 +497,29 @@ struct Project {
     /// members then follow the rebuilt graph, which alone tells whether a
     /// unit includes one, and the graph takes them in.
     Rebuilt rebuild_dependency_graph();
+
+    /// What a change of the build's commands changed (update_members).
+    struct MembersChanged {
+        /// The files whose commands appeared, changed or left — the
+        /// provisional members' among them.
+        CDBDiff commands;
+
+        /// How the dependency graph followed.
+        Rebuilt graph;
+
+        bool empty() const {
+            return commands.empty();
+        }
+    };
+
+    /// Follow a change of the build's commands: `commands`, what a database
+    /// reload or a walk of the default sources changed; none when only the
+    /// provisional members may have (a file just recorded). The provisional
+    /// members follow, the dependency graph is rebuilt, and the index follows
+    /// each file whose command changed: a unit the build stopped compiling
+    /// leaves it, one whose command changed keeps serving until its reindex
+    /// merges. The only writer of commands_epoch.
+    MembersChanged update_members(CDBDiff commands);
 
     // discovery.cpp
 
@@ -1105,16 +1126,10 @@ struct Project {
     /// checkpoint; then forget the PCHs the store evicted.
     async::task<> checkpoint();
 
-    /// The shutdown tail once compile and index work is quiesced (contract
-    /// 11; stop_background_index() ran): wind down the graph's attempts, then
-    /// the final save. The owner closes the cache store next (see close).
+    /// The shutdown once its owner's compiles are quiesced (contract 11):
+    /// stop the background index, wind down the graph's attempts, save a last
+    /// time and close the cache store.
     async::task<> shutdown();
-
-    /// Close the cache store once no build of this project is awaited:
-    /// after the pool stopped, or right after shutdown() while the pool
-    /// serves other projects — a worker still finishing a cancelled build
-    /// then only fails its write.
-    void close();
 
     /// Open what the project's database holds: the index (ProjectIndex::open),
     /// the precompiled records into the project, the context choices; then, with

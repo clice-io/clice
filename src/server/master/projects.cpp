@@ -356,7 +356,6 @@ void MasterServer::serve_folders() {
         }
         bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
             co_await project->shutdown();
-            project->project.close();
         }(std::move(project)));
     }
     if(client) {

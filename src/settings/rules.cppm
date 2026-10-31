@@ -47,8 +47,6 @@ struct SourceWalk {
 /// made over, which outlive it unchanged.
 class Rules {
 public:
-    Rules() = default;
-
     /// The rules of `settings` under `configuration` — a declared tag, or
     /// empty when the rules declare none (see choose_configuration) — for
     /// the project at `root`.
@@ -131,7 +129,7 @@ private:
     /// matching active rule keeps `field` on: the lint and format sets.
     bool inside(CanonicalRef path, bool CompiledRule::* field) const;
 
-    const Settings* settings = nullptr;
+    const Settings* settings;
 
     CanonicalPath root;
 

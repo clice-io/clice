@@ -164,8 +164,6 @@ void ServedProject::start() {
             .cache = Project::OpenOptions::Cache::Write,
             .freshness = {.withhold = project.settings.project.enable_indexing.value},
         });
-        project.apply_report(opened.report);
-        project.enqueue_outdated(opened.members);
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
@@ -187,7 +185,7 @@ void ServedProject::start() {
         recorded = project.record_provisional(path_id) || recorded;
     }
     if(recorded) {
-        build_changed({});
+        commands_changed({});
         schedule_metadata_flush();
     }
     for(auto& [path_id, document]: documents) {
@@ -227,9 +225,10 @@ async::task<> ServedProject::shutdown() {
     tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await async::when_all(project.stop_background_index(), stop_compiles(), tree_tasks.join());
+    co_await async::when_all(stop_compiles(), tree_tasks.join());
     // Requests have unwound and released their interest; the shared tail
-    // winds down the graph's rounds before the persistence pass.
+    // stops the background index and winds down the graph's attempts before
+    // the persistence pass.
     co_await project.shutdown();
 }
 
@@ -274,7 +273,7 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
         return;
     }
     if(project.record_provisional(path_id)) {
-        build_changed({});
+        commands_changed({});
         schedule_metadata_flush();
     }
     server.recheck_choice(path_id);
@@ -361,7 +360,7 @@ void ServedProject::record_saved(Fid path_id) {
         }
     }
     if(project.record_provisional(path_id)) {
-        build_changed({});
+        commands_changed({});
         schedule_metadata_flush();
     }
 }

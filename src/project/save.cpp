@@ -24,15 +24,14 @@ async::task<> Project::checkpoint() {
 }
 
 async::task<> Project::shutdown() {
+    co_await stop_background_index();
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
     // index dominates a cold pass's save: the index commits with no more
     // than a run of the changes since the last save, and the next session's
     // first idle save builds the rest.
     co_await save(index::SearchRebuild::Never);
-}
-
-void Project::close() {
+    // A worker still finishing a cancelled build then only fails its write.
     if(store) {
         store->shutdown();
     }

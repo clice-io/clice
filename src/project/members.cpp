@@ -396,6 +396,46 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     return changes;
 }
 
+Project::MembersChanged Project::update_members(CDBDiff commands) {
+    MembersChanged changed;
+    if(commands.empty()) {
+        // With nothing reloaded the graph is the build's: only a file just
+        // recorded may join, against it.
+        commands = refresh_provisional();
+        if(commands.empty()) {
+            return changed;
+        }
+    }
+    // Every borrowed or synthesized command may resolve differently now —
+    // which no delta can tell.
+    commands_epoch += 1;
+    changed.graph = rebuild_dependency_graph();
+    commands.append(changed.graph.provisional);
+
+    // The compile command is an input that content-based staleness cannot
+    // see. A unit the build stopped compiling — its database still loads but
+    // no longer lists it, and no rule's default command covers it — leaves
+    // the index and nothing is owed, unlike a file that vanished from disk,
+    // whose shard stays behind (queries withhold it). A unit whose command
+    // changed keeps its index serving until the reindex merges; its manifest
+    // names the old command, so no freshness check skips the reindex, in
+    // this session or after a restart. ContentChanged: a new command can
+    // rewrite the index (macros, includes) as thoroughly as an edit.
+    for(auto file: llvm::concat<const Fid>(commands.added, commands.changed, commands.removed)) {
+        if(candidates(file).empty()) {
+            index::IndexReport report;
+            index.drop(file, report);
+            apply_report(report);
+            clear_reindex(file);
+        } else {
+            index.mark_outdated(file);
+            enqueue_reindex(file, ReindexReason::ContentChanged);
+        }
+    }
+    changed.commands = std::move(commands);
+    return changed;
+}
+
 CDBDiff Project::refresh_provisional() {
     CDBDiff diff;
     for(auto file: provisional_files(*this)) {

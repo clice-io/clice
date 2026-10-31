@@ -7,7 +7,7 @@ import :vfs.path;
 
 namespace clice {
 
-/// What the index database records of the build (blob kind BuildSnapshot):
+/// What the index database records of the build (blob kind Listings):
 /// per source file, the databases that listed it when the index was last
 /// saved, and the provisional members. Read once when the project opens: it
 /// registers the databases and the provisional members a session would

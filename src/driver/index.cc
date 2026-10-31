@@ -95,8 +95,6 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         .configuration = batch.loaded.configuration,
         .cache = Project::OpenOptions::Cache::Write,
     });
-    project.apply_report(opened.report);
-    project.enqueue_outdated(opened.members);
 
     // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,

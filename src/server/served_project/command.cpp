@@ -12,17 +12,11 @@ import :worker.scheduler;
 namespace clice {
 
 Resolution ServedProject::resolve_command(Fid path_id, const ContextChoice* candidate) {
-    auto resolution =
-        project.resolve_command(path_id,
-                                {
-                                    .choice = candidate ? candidate : active_choice(path_id),
-                                    .open = true,
-                                });
-    if(auto* document = find_document(path_id); document && !candidate) {
-        document->guessed = resolution.ref.source == CommandSource::Borrowed ||
-                            resolution.ref.source == CommandSource::Fallback;
-    }
-    return resolution;
+    return project.resolve_command(path_id,
+                                   {
+                                       .choice = candidate ? candidate : active_choice(path_id),
+                                       .open = true,
+                                   });
 }
 
 async::task<Resolution> ServedProject::document_command(Fid path_id,

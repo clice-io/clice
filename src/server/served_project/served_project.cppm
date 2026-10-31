@@ -111,6 +111,10 @@ struct DocumentCompile {
     /// The host whose command the compile borrowed; invalid for none.
     Fid host;
 
+    /// The command the compile ran under (Selection::ref): a change of the
+    /// members that moves the document's selection recompiles it.
+    CommandID command = invalid_command;
+
     /// The key of the PCH the parse loaded.
     const std::optional<std::string>& loaded_pch() const {
         return pch_failed ? base_pch_key : pch_key;
@@ -152,12 +156,6 @@ struct ServedDocument {
 
     /// See ServingMode for the write discipline.
     ServingMode serving = ServingMode::Escalated;
-
-    /// The last resolution of the document's command borrowed or
-    /// synthesized it (Borrowed, Fallback). A database change may give it a
-    /// real command or change its lender's, which the change's own delta
-    /// cannot tell: every change recompiles it.
-    bool guessed = false;
 };
 
 /// LSP's ContentModified: the request's answer would describe a buffer the
@@ -250,11 +248,8 @@ public:
     /// their serving decided now. A broken project starts nothing.
     void start();
 
-    /// Quiesce compile and index work and persist the final state; then
-    /// project.close() releases the store — once the pool stopped at exit, or
-    /// right away for a project removed while the pool serves others (a
-    /// worker still finishing a cancelled build of it only fails its
-    /// write).
+    /// Quiesce the compiles, then the project's own shutdown: the background
+    /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
     /// The settings have errors: the project starts nothing, and the
@@ -442,9 +437,8 @@ public:
     // command.cpp
 
     /// The open document's command under its active context choice, or
-    /// under `candidate` instead, recording whether the command was borrowed
-    /// or guessed (but for a candidate's). Takes no include tree: the host
-    /// search runs on the trees there are.
+    /// under `candidate` instead. Takes no include tree: the host search runs
+    /// on the trees there are.
     Resolution resolve_command(Fid path_id, const ContextChoice* candidate = nullptr);
 
     /// resolve_command again until the host search it runs misses no
@@ -897,10 +891,11 @@ private:
 
     // changes.cpp
 
-    /// The databases' reloads `delta` reports changed the build: the
-    /// dependency graph follows, every file whose command came, changed or
-    /// went recompiles and reindexes, and routing follows.
-    void build_changed(CDBDiff delta);
+    /// The build's commands changed (`delta`, what databases' reloads report,
+    /// or none for a member just recorded): the project follows
+    /// (Project::update_members), every open document whose command moved
+    /// recompiles, and routing follows.
+    void commands_changed(CDBDiff delta);
 
     /// The end of every batch of changes: the context choices are checked
     /// again, the background index runs what the batch queued, and a client

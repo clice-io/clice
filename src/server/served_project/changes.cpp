@@ -242,32 +242,14 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
     finish_changes(refresh);
 }
 
-void ServedProject::build_changed(CDBDiff delta) {
+void ServedProject::commands_changed(CDBDiff commands) {
     bool refresh = false;
-    // The lender set changed: every borrowed or synthesized command may
-    // resolve differently now — which no delta can tell, so all of them
-    // recompile.
-    project.commands_epoch += 1;
-    for(auto& [path_id, document]: documents) {
-        if(document.guessed) {
-            mark_stale(path_id, refresh);
-        }
+    auto changed = project.update_members(std::move(commands));
+    if(changed.empty()) {
+        finish_changes(refresh);
+        return;
     }
-    // With nothing reloaded the graph is the build's: only a file just
-    // recorded may join, against it.
-    if(delta.empty()) {
-        delta = project.refresh_provisional();
-        if(delta.empty()) {
-            finish_changes(refresh);
-            return;
-        }
-    }
-
-    // The database already reloaded; derived state must follow. The
-    // provisional members join, change command or leave the way an entry
-    // does.
-    auto providers = project.rebuild_dependency_graph();
-    delta.append(providers.provisional);
+    auto& providers = changed.graph;
 
     // A module name that just gained its first provider: its unresolved-import node's
     // dependents are the TUs that scanned it unresolved — the delta walk
@@ -283,62 +265,25 @@ void ServedProject::build_changed(CDBDiff delta) {
         cascade_compile_graph(replaced, refresh);
     }
 
-    // Every delta entry needs the same treatment — the compile command is
-    // an input that content-based staleness cannot see, whether it
-    // appeared, changed or vanished. PCH/PCM keys embed the canonical
-    // flags, so pull-side caches miss naturally.
-    auto invalidate_entry = [&](Fid path_id, bool removed_from_build) {
-        // The next compile re-resolves the command (added: first real entry
-        // replaces the guessed one; changed: new flags; removed: fall back).
-        mark_stale(path_id, refresh);
-        // A TU the build stopped compiling — its database still loads but no
-        // longer lists it: its shard leaves the index and nothing is owed,
-        // unlike a file that vanished from disk, whose shard stays behind
-        // (queries withhold it). A TU whose command changed keeps its index
-        // serving until the reindex merges; its manifest names the old
-        // command, so no freshness check skips the reindex, in this session
-        // or after a restart. ContentChanged: a new command can rewrite the
-        // index (macros, includes) as thoroughly as an edit, and an open
-        // document's compile does not stand in for it.
-        if(removed_from_build) {
-            index::IndexReport report;
-            project.index.drop(path_id, report);
-            project.apply_report(report);
-            project.clear_reindex(path_id);
-        } else {
-            project.index.mark_outdated(path_id);
-            reindex(path_id, true);
-        }
-
-        // A module unit's command change invalidates importers' PCMs
-        // (no-op for files the compile graph doesn't know).
+    // A module unit's command change invalidates importers' PCMs (no-op for
+    // files the compile graph doesn't know). PCH/PCM keys embed the
+    // canonical flags, so pull-side caches miss naturally.
+    auto& delta = changed.commands;
+    for(auto path_id: llvm::concat<const Fid>(delta.added, delta.changed, delta.removed)) {
+        skipped.erase(path_id);
         cascade_compile_graph(path_id, refresh);
+    }
 
-        // An open header borrowing the changed command compiled under one
-        // that no longer exists; one whose first compile is still in
-        // flight may be borrowing it.
-        for(auto& [header, document]: documents) {
-            if(document.latest ? document.latest->host == path_id : !project.is_unit(header)) {
-                mark_stale(header, refresh);
-            }
+    // An open document whose command moved recompiles: one whose entry
+    // appeared, changed or left, a header whose host's command did or that
+    // another host now ranks before it, a file borrowing a member's. One
+    // whose first compile is still in flight may have resolved before.
+    for(auto& [path_id, document]: documents) {
+        auto selected =
+            project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+        if(!document.latest || document.latest->command != selected.ref.command) {
+            mark_stale(path_id, refresh);
         }
-    };
-
-    for(auto path_id: delta.added) {
-        invalidate_entry(path_id, /*removed_from_build=*/false);
-    }
-    for(auto path_id: delta.changed) {
-        invalidate_entry(path_id, /*removed_from_build=*/false);
-    }
-    for(auto path_id: delta.removed) {
-        // The database that owned the entry reloaded fine and no longer
-        // lists the file: the build stopped compiling it — unless a rule's
-        // default command still covers it, which makes this a command
-        // change. (A database that vanishes keeps serving its entries — a
-        // missing file never reloads — so this is not a removal from
-        // disk.) The graph rebuild above already dropped the removed file's
-        // source role, and the choices' recheck sees it.
-        invalidate_entry(path_id, /*removed_from_build=*/project.candidates(path_id).empty());
     }
     finish_changes(refresh);
 
@@ -445,7 +390,7 @@ std::size_t ServedProject::reload_databases(bool force) {
     if(delta.empty()) {
         return 0;
     }
-    build_changed(std::move(delta));
+    commands_changed(std::move(delta));
     return 1;
 }
 
@@ -459,7 +404,7 @@ async::task<bool> ServedProject::poll_sources() {
     if(added.empty()) {
         co_return false;
     }
-    build_changed({.added = std::move(added)});
+    commands_changed({.added = std::move(added)});
     co_return true;
 }
 
@@ -491,7 +436,7 @@ void ServedProject::discover_around(Fid path_id) {
         }
     }
     if(!found.empty()) {
-        build_changed(std::move(found));
+        commands_changed(std::move(found));
     }
 }
 

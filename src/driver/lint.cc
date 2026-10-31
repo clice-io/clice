@@ -273,10 +273,6 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         .cache =
             with_index ? Project::OpenOptions::Cache::Write : Project::OpenOptions::Cache::Build,
     });
-    project.apply_report(opened.report);
-    if(with_index) {
-        project.enqueue_outdated(opened.members);
-    }
 
     auto& members = opened.members;
     if(members.empty()) {

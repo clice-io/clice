@@ -732,12 +732,10 @@ inline bool start_batch(BatchRun& run,
     return true;
 }
 
-/// Quiesce the background index, then the shared contract-11 tail.
+/// The shared contract-11 tail, then the pool.
 inline async::task<> shutdown(BatchRun& run) {
-    co_await run.project.stop_background_index();
     co_await run.project.shutdown();
     co_await run.pool.stop();
-    run.project.close();
 }
 
 inline async::task<> checkpoints(BatchRun& run) {
