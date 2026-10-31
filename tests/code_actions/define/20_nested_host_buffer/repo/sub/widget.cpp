@@ -1,5 +1,3 @@
 #include "../widget.h"
 
-int helper() {
-    return 0;
-}
+int helper() { return 0; }

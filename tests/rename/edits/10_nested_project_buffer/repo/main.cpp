@@ -1,9 +1,5 @@
 #include "api.h"
 
-int compute(int x) {
-    return x;
-}
+int compute(int x) { return x; }
 
-int main() {
-    return compute(1);
-}
+int main() { return compute(1); }
