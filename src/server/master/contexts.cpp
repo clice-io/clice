@@ -103,7 +103,7 @@ std::uint64_t MasterServer::context_epoch() {
     // while the projects stay the same.
     std::uint64_t sum = 0;
     for(auto& project: projects) {
-        sum += project->project.context_epoch;
+        sum += project->project.context_epoch();
     }
     if(std::pair(projects_generation, sum) != context_seen) {
         context_seen = {projects_generation, sum};

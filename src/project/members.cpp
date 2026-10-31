@@ -344,14 +344,14 @@ std::optional<CommandRef> Project::pch_writer(Fid file,
 
 void Project::rescan_disk_file(Fid path_id) {
     rescan_dependency_graph(cdb, toolchain, dep_graph, path_id);
-    context_epoch += 1;
+    disk_epoch += 1;
 }
 
 void Project::forget_file(Fid path_id) {
     dep_graph.update_module_decl(path_id, {});
     dep_graph.forget_scan(path_id);
     dep_graph.clear_includes(path_id);
-    context_epoch += 1;
+    disk_epoch += 1;
 }
 
 Project::Rebuilt Project::rebuild_dependency_graph() {
@@ -375,7 +375,7 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     if(!changes.provisional.empty()) {
         scan();
     }
-    context_epoch += 1;
+    disk_epoch += 1;
 
     for(auto& entry: dep_graph.modules()) {
         if(entry.getValue().empty()) {
@@ -423,6 +423,11 @@ CDBDiff Project::refresh_provisional() {
             continue;
         }
         (!before ? diff.added : !command ? diff.removed : diff.changed).push_back(file);
+    }
+    // What a file without a command borrows includes the provisional
+    // members' commands (borrowed_command): they changed.
+    if(!diff.empty()) {
+        hosting.borrowable = {};
     }
     return diff;
 }

@@ -92,7 +92,7 @@ struct ImportScan {
 
 /// The import scans of open buffers, and of units' disk text (see
 /// Project::scan_imports): kept while the arguments and the project's disk
-/// state (context_epoch) stay the same — and for a buffer, its directives.
+/// state (Project::disk_epoch) stay the same — and for a buffer, its directives.
 /// A failed module's every importer waits on it again, and each wait would
 /// preprocess it again.
 struct ImportScans {

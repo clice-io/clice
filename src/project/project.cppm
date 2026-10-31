@@ -194,16 +194,22 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
-    /// Monotonic generation of context-affecting project state: the include
-    /// graph, the include trees and self-containment results hosting
-    /// learns. clice/queryContext tags its results with it and
-    /// clice/switchContext rejects requests made against an older epoch,
-    /// so a client can never apply a context picked from a stale listing
-    /// without noticing.
-    std::uint64_t context_epoch = 1;
+    /// Moves whenever the disk state the dependency graph scans changes: a
+    /// file rescanned or gone, the graph rebuilt. A preprocessor run's
+    /// answer (an import scan) holds while it stays.
+    std::uint64_t disk_epoch = 1;
+
+    /// The generation of context-affecting project state: the disk state,
+    /// the include trees and the self-containment results. clice/queryContext
+    /// tags its results with it and clice/switchContext rejects requests
+    /// made against an older epoch, so a client can never apply a context
+    /// picked from a stale listing without noticing.
+    std::uint64_t context_epoch() const {
+        return disk_epoch + hosting.generation;
+    }
 
     /// Generation of the build's commands: bumped when a database reloads
-    /// or a member appears, not on saves like context_epoch.
+    /// or a member appears, not on saves like disk_epoch.
     std::uint64_t commands_epoch = 1;
 
     /// What the project knows of the headers borrowing a unit's command.
@@ -907,7 +913,7 @@ struct Project {
     /// neither it nor the host whose command it borrows reaches an import
     /// candidate, and a buffer's directives are the ones the dependency scan
     /// saw. A scan is reused while its arguments and the project's disk state
-    /// (context_epoch) stay the same, a buffer's while its directive stream
+    /// (disk_epoch) stay the same, a buffer's while its directive stream
     /// does too.
     async::task<Imports> scan_imports(Fid path_id,
                                       const Resolution& resolution,

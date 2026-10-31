@@ -192,6 +192,10 @@ struct Hosting {
 
     /// What a file without a command can borrow (see borrowed_command).
     BorrowableCommands borrowable;
+
+    /// Moves whenever an include tree or a self-containment result is
+    /// committed (Project::context_epoch).
+    std::uint64_t generation = 0;
 };
 
 /// The language a command compiles its unit as — a `-x` in the entry or a

@@ -434,7 +434,7 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         joined.append(arg);
     }
     auto arguments_hash = llvm::xxh3_64bits(joined);
-    auto epoch = context_epoch;
+    auto epoch = disk_epoch;
 
     auto& scans = content ? import_scans.buffers : import_scans.disk;
     ImportScan scan;

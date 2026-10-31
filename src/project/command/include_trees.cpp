@@ -192,7 +192,7 @@ void Project::commit_tree(const TreeRequest& request,
                          std::move(inputs));
     // The tree can move the host's contexts: the listings it changes are
     // stale.
-    context_epoch += 1;
+    hosting.generation += 1;
 }
 
 void Project::commit_failed_tree(const TreeRequest& request) {
@@ -201,7 +201,7 @@ void Project::commit_failed_tree(const TreeRequest& request) {
         inputs.push_back(*unit);
     }
     hosting.trees.commit(request.key, {}, std::move(inputs));
-    context_epoch += 1;
+    hosting.generation += 1;
 }
 
 void Project::take_tree(const TreeRequest& request) {
