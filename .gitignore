@@ -33,6 +33,7 @@
 
 # Build & Toolchain
 *build*/
+!/src/**/*build*/
 temp/
 .cache/
 
