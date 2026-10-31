@@ -25,7 +25,7 @@ struct EditorContext {
     /// User context choices (clice/switchContext), persisted in the
     /// context choices blob and validated against the CDB and include graph on
     /// didOpen. The single source of truth for a file's active context.
-    llvm::DenseMap<Fid, Selection> selections;
+    llvm::DenseMap<Fid, ContextChoice> selections;
 
     /// The files whose last resolution borrowed or synthesized a command
     /// (Inferred, Fallback). A database change may give one a real command
@@ -49,7 +49,7 @@ struct EditorContext {
     const clang::LangOptions& dialect(Fid path_id);
 
     /// The file's selection, or nullptr.
-    const Selection* selection(Fid path_id) const {
+    const ContextChoice* selection(Fid path_id) const {
         auto it = selections.find(path_id);
         return it != selections.end() ? &it->second : nullptr;
     }
@@ -80,7 +80,7 @@ struct EditorContext {
     /// test shared by didOpen validation and the server's orphan pass.
     bool pin_alive(Fid entry_file,
                    llvm::ArrayRef<CanonicalRef> paths,
-                   const Selection& saved) const;
+                   const ContextChoice& saved) const;
 
     /// Mark the choices changed: they reserialize into the blob, the next
     /// save persists them, and a wait on the `save_seq` read now resolves

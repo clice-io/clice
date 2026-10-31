@@ -583,7 +583,7 @@ kota::task<> ProjectServer::metadata_flush_task() {
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
-    if(project.artifacts_dirty || project.contexts.dirty) {
+    if(project.artifacts_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();

@@ -131,7 +131,7 @@ ZEST_CASE(PinSteersEditorOnly) {
     };
     auto pinned = candidates.back().command;
     resolver.selections[file] =
-        Selection{Fid{}, std::nullopt, project.commands.command_hash_hex(pinned)};
+        ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(pinned)};
 
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
@@ -172,17 +172,17 @@ ZEST_CASE(PinBaseSurvivesRules) {
 
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
-    resolver.selections[file] = Selection{Fid{},
-                                          std::nullopt,
-                                          "0123456789abcdef",
-                                          project.commands.command_hash_hex(pinned)};
+    resolver.selections[file] = ContextChoice{Fid{},
+                                              std::nullopt,
+                                              "0123456789abcdef",
+                                              project.commands.command_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
     ZASSERT(ranges::contains(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
-    resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
+    resolver.selections[file] = ContextChoice{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(file, directory, arguments);
     ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
@@ -207,7 +207,7 @@ ZEST_CASE(ValidateKeepsValidChoice) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    resolver.selections[header] = Selection{host, std::nullopt, ""};
+    resolver.selections[header] = ContextChoice{host, std::nullopt, ""};
 
     resolver.validate_saved_context(header);
     ZASSERT(resolver.selections.contains(header));
@@ -234,7 +234,7 @@ ZEST_CASE(ValidateDropsGoneOccurrence) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    resolver.selections[header] = Selection{host, 1, ""};
+    resolver.selections[header] = ContextChoice{host, 1, ""};
 
     // No tree tells how often the host's compile enters the header yet:
     // the choice stands until one does.
@@ -268,13 +268,13 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the context choices, or the stale choice
     // resurrects from disk at the next start.
-    resolver.selections[header] = Selection{host, std::nullopt, ""};
+    resolver.selections[header] = ContextChoice{host, std::nullopt, ""};
     resolver.validate_saved_context(header);
     ZASSERT(!resolver.selections.contains(header));
     ZASSERT(blob.dirty);
 
     // A command pin whose hash matches no current CDB entry.
-    resolver.selections[main] = Selection{Fid{}, std::nullopt, "deadbeef"};
+    resolver.selections[main] = ContextChoice{Fid{}, std::nullopt, "deadbeef"};
     resolver.validate_saved_context(main);
     ZASSERT(!resolver.selections.contains(main));
 }

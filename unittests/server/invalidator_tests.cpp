@@ -1172,7 +1172,7 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
     project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    resolver.selections[header] = Selection{host, std::nullopt, ""};
+    resolver.selections[header] = ContextChoice{host, std::nullopt, ""};
 
     Harness harness(project, resolver, store);
     ZASSERT(!ContextService{project, resolver, harness.ast, harness.trees}.drop_orphaned_choices(
@@ -1202,7 +1202,7 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
     project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    resolver.selections[header] = Selection{host, std::nullopt, ""};
+    resolver.selections[header] = ContextChoice{host, std::nullopt, ""};
     auto generation = session->generation;
     take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
@@ -1238,7 +1238,7 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
     project.dep_graph.build_reverse_map();
 
     store.open(header);
-    resolver.selections[header] = Selection{host, 1, ""};
+    resolver.selections[header] = ContextChoice{host, 1, ""};
     take_tree(project, tree_request(project, host, project.build.commands(host).front()));
 
     Harness harness(project, resolver, store);

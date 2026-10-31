@@ -53,12 +53,12 @@ void reopen_fresh_database(Project& project) {
     // skips them and a restart loses the user's context choices and every
     // rebuildable artifact record.
     project.mark_artifacts_dirty();
-    project.contexts.dirty = !project.contexts.bytes.empty();
+    project.choices.dirty = !project.choices.bytes.empty();
     // Durability waiters re-evaluate against the new database: a failed
     // reopen disables persistence for the session, and a parked
     // switchContext would otherwise sleep forever — no later save pulses,
     // they all early-return on the null database.
-    pulse(project.contexts);
+    pulse(project.choices);
 }
 
 bool has_unsaved_state(const Project& project) {
@@ -86,7 +86,7 @@ kota::task<index::IndexReport> save_project(Project& project,
     auto& db = *project.database;
     auto& index = project.index;
     auto& snapshot = project.command_snapshot;
-    auto& contexts = project.contexts;
+    auto& choices = project.choices;
     ScopedTimer timer;
 
     // A read since the last save met a damaged page or record: nothing more
@@ -125,7 +125,7 @@ kota::task<index::IndexReport> save_project(Project& project,
     // these bytes and wait for the next save. The context choices' fate
     // is tracked on its own: failing artifact records must not park a
     // switchContext ack whose choice is already durable.
-    auto flush_seq = contexts.save_seq;
+    auto flush_seq = choices.save_seq;
     bool carries_artifacts = false;
     bool carries_contexts = false;
     bool contexts_ok = true;
@@ -135,11 +135,11 @@ kota::task<index::IndexReport> save_project(Project& project,
             blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
         }
     }
-    if(contexts.dirty) {
-        if(!contexts.bytes.empty()) {
+    if(choices.dirty) {
+        if(!choices.bytes.empty()) {
             carries_contexts = true;
             blobs.push_back(
-                {index::BlobKind::ContextChoices, "contexts", copy_bytes(contexts.bytes)});
+                {index::BlobKind::ContextChoices, "contexts", copy_bytes(choices.bytes)});
         } else {
             contexts_ok = false;
         }
@@ -149,7 +149,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         project.artifacts_dirty = false;
     }
     if(carries_contexts) {
-        contexts.dirty = false;
+        choices.dirty = false;
     }
 
     if(blobs.empty() && batch.removals.empty()) {
@@ -157,7 +157,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         // the failed attempt (see the failure pulse below), or a request
         // bounded on failed saves never counts one.
         if(!contexts_ok) {
-            pulse(contexts);
+            pulse(choices);
         }
         co_return report;
     }
@@ -173,7 +173,7 @@ kota::task<index::IndexReport> save_project(Project& project,
             snapshot.unsaved();
         }
         project.artifacts_dirty = project.artifacts_dirty || carries_artifacts;
-        contexts.dirty = contexts.dirty || carries_contexts;
+        choices.dirty = choices.dirty || carries_contexts;
     };
     auto cancelled = llvm::make_scope_exit(restore);
     co_await kota::queue([&] { committed = db.write(blobs, batch.removals); });
@@ -203,9 +203,9 @@ kota::task<index::IndexReport> save_project(Project& project,
         // they give up after a few of these. A recovery pulses as it
         // reopens: what the condemned database took is not durable.
         if(contexts_ok) {
-            contexts.committed_seq = std::max(contexts.committed_seq, flush_seq);
+            choices.committed_seq = std::max(choices.committed_seq, flush_seq);
         }
-        pulse(contexts);
+        pulse(choices);
     } else {
         recover_corrupt_database(project, report);
     }
@@ -322,7 +322,7 @@ SavedLoad load_saved(Project& project, bool reconcile) {
             load_artifact_records(project, artifacts.buffer->getBuffer());
         }
         if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
-            project.contexts.bytes = choices.buffer->getBuffer().str();
+            project.choices.bytes = choices.buffer->getBuffer().str();
         }
     };
 

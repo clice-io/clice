@@ -51,7 +51,7 @@ Resolution EditorContext::resolve_command(Fid path_id,
                                                directory,
                                                arguments,
                                                {
-                                                   .selection = selection(path_id),
+                                                   .choice = selection(path_id),
                                                    .open = true,
                                                });
     if(resolution.source == CommandSource::Inferred ||
@@ -120,7 +120,7 @@ void EditorContext::load() {
         auto file = resolve(entry.file);
         if(file.empty())
             continue;
-        Selection saved;
+        ContextChoice saved;
         if(entry.host != ~0u) {
             auto host = resolve(entry.host);
             if(host.empty())
@@ -138,7 +138,7 @@ void EditorContext::load() {
 
 bool EditorContext::pin_alive(Fid entry_file,
                               llvm::ArrayRef<CanonicalRef> paths,
-                              const Selection& saved) const {
+                              const ContextChoice& saved) const {
     auto entry_path = project.file_table.resolve(entry_file);
     for(auto& entry: project.build.commands(entry_file)) {
         if(!saved.base_hash.empty() &&

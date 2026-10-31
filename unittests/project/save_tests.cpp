@@ -31,22 +31,22 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands, f.project.contexts};
+        EditorContext editor{f.project, f.commands, f.project.choices};
         f.load();
         editor.load();
         auto host = f.project.file_table.intern(Spelling::absolute(host_path));
         auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-        editor.selections[header] = Selection{host, 1, "applied", "base"};
+        editor.selections[header] = ContextChoice{host, 1, "applied", "base"};
         editor.mark_dirty();
-        auto seq = f.project.contexts.save_seq;
+        auto seq = f.project.choices.save_seq;
         f.save();
-        ZASSERT(!f.project.contexts.dirty);
-        ZASSERT(f.project.contexts.committed_seq == seq);
+        ZASSERT(!f.project.choices.dirty);
+        ZASSERT(f.project.choices.committed_seq == seq);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands, f.project.contexts};
+    EditorContext editor{f.project, f.commands, f.project.choices};
     f.load();
     editor.load();
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
@@ -57,7 +57,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     ZASSERT(saved->occurrence == std::optional<std::uint32_t>(1));
     ZASSERT(saved->command_hash == "applied");
     ZASSERT(saved->base_hash == "base");
-    ZASSERT(!f.project.contexts.dirty);
+    ZASSERT(!f.project.choices.dirty);
 }
 
 ZEST_CASE(CorruptSaveKeepsPending) {
@@ -84,17 +84,17 @@ ZEST_CASE(CorruptSaveKeepsPending) {
     open_store(tmp, f.project);
     f.load();
     f.project.database = std::make_unique<CorruptAfterWrite>(std::move(f.project.database));
-    f.project.contexts.bytes = "choices";
-    f.project.contexts.dirty = true;
-    f.project.contexts.save_seq += 1;
-    auto seq = f.project.contexts.save_seq;
+    f.project.choices.bytes = "choices";
+    f.project.choices.dirty = true;
+    f.project.choices.save_seq += 1;
+    auto seq = f.project.choices.save_seq;
 
     f.save();
-    ZASSERT(f.project.contexts.committed_seq < seq);
-    ZASSERT(f.project.contexts.dirty);
+    ZASSERT(f.project.choices.committed_seq < seq);
+    ZASSERT(f.project.choices.dirty);
 
     f.save();
-    ZASSERT(f.project.contexts.committed_seq == seq);
+    ZASSERT(f.project.choices.committed_seq == seq);
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZASSERT(kept.buffer->getBuffer() == "choices");
@@ -388,12 +388,12 @@ ZEST_CASE(LostShrinkSavesAgain) {
     ShrinkProject p;
     auto& space = p.spy();
     space.forced_swap = index::BlobDatabase::Swap::Lost;
-    p.f.project.contexts.bytes = "choices";
-    p.f.project.contexts.dirty = true;
+    p.f.project.choices.bytes = "choices";
+    p.f.project.choices.dirty = true;
     auto task = p.f.pump.persist(index::SearchRebuild::Idle);
     p.f.loop.schedule(task);
     p.f.loop.run();
-    ZEXPECT(!p.f.project.contexts.dirty);
+    ZEXPECT(!p.f.project.choices.dirty);
     auto kept = p.f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZEXPECT(kept.buffer->getBuffer() == "choices");

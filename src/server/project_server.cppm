@@ -128,7 +128,7 @@ public:
     /// and publishing.
     SchedulingStack sched;
     IncludeTrees trees;
-    EditorContext contexts{project, commands, project.contexts};
+    EditorContext contexts{project, commands, project.choices};
     ASTFamily ast;
 
     Dispatcher dispatcher;

@@ -21,8 +21,8 @@ struct CommandRequest {
     llvm::ArrayRef<std::string> extra_prepend;
     llvm::ArrayRef<std::string> extra_append;
 
-    /// The user's pin for the file (clice/switchContext).
-    const Selection* selection = nullptr;
+    /// The user's context choice for the file (clice/switchContext).
+    const ContextChoice* choice = nullptr;
 
     /// The file is open in the editor (see self_contained).
     bool open = false;
@@ -33,16 +33,16 @@ struct CommandRequest {
     bool preprocess = false;
 };
 
-/// Pick the candidate matching a pinned command (multi-configuration files
+/// Pick the candidate matching a chosen command (multi-configuration files
 /// and hosts), defaulting to the build's first command. `paths` are the
 /// files whose edits the published hash was computed with.
-Candidate pick_pinned_command(Project& project,
+Candidate pick_chosen_command(Project& project,
                               Fid file,
                               llvm::ArrayRef<Candidate> candidates,
                               llvm::ArrayRef<CanonicalRef> paths,
                               llvm::StringRef language_path,
-                              llvm::StringRef pinned_hash,
-                              llvm::StringRef pinned_base);
+                              llvm::StringRef chosen_hash,
+                              llvm::StringRef chosen_base);
 
 /// `command`, one of `host`'s, as `host` lends it to `header`: edited by
 /// the rules of both files and a run's extras, compiled as the host's
@@ -54,31 +54,32 @@ CommandRef lent_command(Project& project,
                         llvm::ArrayRef<std::string> extra_prepend = {},
                         llvm::ArrayRef<std::string> extra_append = {});
 
-/// Of `host`'s commands fit for `header`, the pinned one, else the first;
+/// Of `host`'s commands fit for `header`, the chosen one, else the first;
 /// nullopt when none fits.
-std::optional<Candidate> pinned_host_command(Project& project,
+std::optional<Candidate> chosen_host_command(Project& project,
                                              Fid header,
                                              Fid host,
-                                             llvm::StringRef pinned_hash,
-                                             llvm::StringRef pinned_base);
+                                             llvm::StringRef chosen_hash,
+                                             llvm::StringRef chosen_base);
 
-/// The command `host` lends `header`: pinned_host_command, as lent_command
+/// The command `host` lends `header`: chosen_host_command, as lent_command
 /// lends it.
 std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
-                                       llvm::StringRef pinned_hash,
-                                       llvm::StringRef pinned_base,
+                                       llvm::StringRef chosen_hash,
+                                       llvm::StringRef chosen_base,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
 
-/// The dialect a file's text is lexed in, `pin` the user's context choice
+/// The dialect a file's text is lexed in, `choice` the user's context choice
 /// for it and `host` the source whose context it is read in, either absent
 /// for none: an explicit -x in the file's own database entry decides
 /// outright; else the host's command; else C when the file is a C source
 /// or every TU contributing its indexed entries is one, C++ else (mixed
 /// inclusion favors the superset).
-const clang::LangOptions& dialect(Project& project, Fid file, const Selection* pin, Fid host);
+const clang::LangOptions&
+    dialect(Project& project, Fid file, const ContextChoice* choice, Fid host);
 
 /// How a file's command was resolved.
 struct Resolution {
@@ -128,7 +129,7 @@ struct Resolution {
     std::optional<TreeRequest> missing_tree;
 
     /// The self-containment trial deciding whether the header compiles in
-    /// its includer's context; none for a header pinned to a host, which
+    /// its includer's context; none for a header chosen to a host, which
     /// always does, or one its host's command forces in itself.
     std::optional<TrialKey> trial;
 
@@ -153,13 +154,13 @@ struct Resolution {
 /// includer's preprocessor state when it does not. `resolve_command`
 /// applies them in order — own entry, host, default command, lender,
 /// builtin — then the rule edits and a run's extras; an editor request
-/// layers the user's pin on top.
+/// layers the user's context choice on top.
 class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
 
     /// Fill compile arguments for a file and report where they came from.
-    /// Tries, in order: the pinned host, the file's own command, a header
+    /// Tries, in order: the chosen host, the file's own command, a header
     /// context through the include graph, a default command, a lender and
     /// finally the builtin command — so it always succeeds. Emits a
     /// per-file decision log (tiers tried, tier hit, command hash).

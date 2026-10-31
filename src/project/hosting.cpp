@@ -344,7 +344,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     return ranking.hosts;
 }
 
-HostSearch find_host(Project& project, Fid header, const Selection* pin) {
+HostSearch find_host(Project& project, Fid header, const ContextChoice* choice) {
     auto search = [&](Fid host,
                       const Candidate& candidate,
                       std::uint32_t occurrence) -> std::optional<HostSearch> {
@@ -359,13 +359,16 @@ HostSearch find_host(Project& project, Fid header, const Selection* pin) {
         return std::nullopt;
     };
 
-    // The pin holds while its host's compile enters the header where it
-    // says; otherwise the header compiles as if nothing were pinned.
-    if(pin && pin->host_path_id.valid()) {
-        auto host = pin->host_path_id;
-        if(auto picked =
-               pinned_host_command(project, header, host, pin->command_hash, pin->base_hash)) {
-            if(auto found = search(host, *picked, pin->occurrence.value_or(0))) {
+    // The choice holds while its host's compile enters the header where it
+    // says; otherwise the header compiles as if nothing were chosen.
+    if(choice && choice->host_path_id.valid()) {
+        auto host = choice->host_path_id;
+        if(auto picked = chosen_host_command(project,
+                                             header,
+                                             host,
+                                             choice->command_hash,
+                                             choice->base_hash)) {
+            if(auto found = search(host, *picked, choice->occurrence.value_or(0))) {
                 return std::move(*found);
             }
         }

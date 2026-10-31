@@ -30,16 +30,16 @@ constexpr inline std::uint32_t cache_format_version = 15;
 /// The user's choice for a file in the editor (clice/switchContext): the
 /// host to borrow a command from, or one of the file's own entries.
 /// Persisted in the context choices; validated on didOpen.
-struct Selection {
+struct ContextChoice {
     /// Header context host; invalid = none.
     Fid host_path_id;
 
-    /// Pinned include occurrence; no value = automatic.
+    /// Chosen include occurrence; no value = automatic.
     std::optional<std::uint32_t> occurrence;
 
-    std::string command_hash;  ///< Pinned CDB entry (rules applied); empty = none.
+    std::string command_hash;  ///< Chosen CDB entry (rules applied); empty = none.
 
-    /// Base command hash of the pinned entry, resolved at pin time. The
+    /// Base command hash of the chosen entry, resolved when chosen. The
     /// applied hash is the protocol identity; the base disambiguates
     /// candidates whose applied hashes collapse under the current rules.
     std::string base_hash;
@@ -286,7 +286,7 @@ struct Project {
     CommandSnapshot command_snapshot;
 
     /// The editor's context choices, as the index database carries them.
-    ContextChoices contexts;
+    ContextChoices choices;
 
     /// Serializes concurrent saves (save_project): the pump's round-end
     /// save, the master's metadata flush and the shutdown save may overlap

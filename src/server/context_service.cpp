@@ -257,14 +257,11 @@ static std::string_view source_name(CommandSource source) {
 }
 
 kota::task<> ContextService::take_tree(Fid header, Fid host) {
-    Selection wanted{.host_path_id = host};
+    ContextChoice wanted{.host_path_id = host};
     std::string directory;
     std::vector<std::string> arguments;
     co_await trees.resolve([&] {
-        return editor.commands.resolve_command(header,
-                                               directory,
-                                               arguments,
-                                               {.selection = &wanted});
+        return editor.commands.resolve_command(header, directory, arguments, {.choice = &wanted});
     });
 }
 
@@ -297,7 +294,7 @@ kota::task<ext::CurrentContextResult> ContextService::current_context(const Sess
         command.query_failure = std::move(resolution.query_failure);
     }
     auto path = ws.file_table.resolve(path_id);
-    const Selection* choice = editor.selection(path_id);
+    const ContextChoice* choice = editor.selection(path_id);
     result.automatic = choice == nullptr;
 
     auto lent =
@@ -319,7 +316,7 @@ kota::task<ext::CurrentContextResult> ContextService::current_context(const Sess
         if(commands.empty()) {
             return;
         }
-        auto entry = pick_pinned_command(ws, path_id, commands, path, path, hash, base);
+        auto entry = pick_chosen_command(ws, path_id, commands, path, path, hash, base);
         auto index = ranges::find_if(commands,
                                      [&](const Candidate& candidate) {
                                          return candidate.command == entry.command;
@@ -374,7 +371,7 @@ kota::task<ext::SwitchContextResult>
 
     // Of the listed items only the file's own entries name the file itself,
     // each with its command hash.
-    Selection saved;
+    ContextChoice saved;
     if(context_path_id == path_id) {
         saved.command_hash = *params.command_hash;
         saved.base_hash = base_of(ws.build.commands(path_id), [&](const Candidate& entry) {

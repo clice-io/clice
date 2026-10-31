@@ -13,7 +13,7 @@ import :vfs.file_table;
 namespace clice {
 
 struct Project;
-struct Selection;
+struct ContextChoice;
 
 /// A translation unit standing in for a header, with the include chain
 /// from it to the header.
@@ -185,12 +185,12 @@ struct HostSearch {
     std::optional<TreeRequest> missing;
 };
 
-/// The host a header compiles under: the pinned one while its compile
-/// enters the header at the pinned place, else the first ranked one whose
+/// The host a header compiles under: the chosen one while its compile
+/// enters the header at the chosen place, else the first ranked one whose
 /// compile enters it, where it first does.
-HostSearch find_host(Project& project, Fid header, const Selection* pin);
+HostSearch find_host(Project& project, Fid header, const ContextChoice* choice);
 
-/// The host `header` compiles under with nothing pinned, or waits for the
+/// The host `header` compiles under with nothing chosen, or waits for the
 /// include tree of; invalid for a file no unit includes. A header compiled
 /// under its own entry has one too: the source its definitions belong in.
 Fid host_of(Project& project, Fid header);
