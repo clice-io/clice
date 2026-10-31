@@ -6,7 +6,7 @@ import :vfs.path;
 
 namespace clice {
 
-using namespace option;
+using namespace clang_options;
 
 SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory) {
     // clang's layout (ParseHeaderSearchArgs, then InitHeaderSearch::Realize):

@@ -29,6 +29,7 @@ namespace async = kotatsu::async;
 
 namespace deco = kotatsu::deco;
 namespace meta = kotatsu::meta;
+namespace option = kotatsu::option;
 namespace zest = kotatsu::zest;
 
 }  // namespace clice

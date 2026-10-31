@@ -635,8 +635,8 @@ void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
         auto& arg = args[i];
         std::optional<ArchFlagKind> kind;
         switch(arg.opt_id) {
-            case option::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
-            case option::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
+            case clang_options::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
+            case clang_options::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
         }
         if(kind && arg.values.size() == 1) {
             sequence.push_back({*kind, arg.values[0]});

@@ -81,8 +81,9 @@ bool relative_suspect(llvm::StringRef value) {
 }
 
 bool names_search_dir(unsigned id) {
-    return id == option::OPT_I || id == option::OPT_isystem || id == option::OPT_idirafter ||
-           id == option::OPT_internal_isystem || id == option::OPT_internal_externc_isystem;
+    return id == clang_options::OPT_I || id == clang_options::OPT_isystem ||
+           id == clang_options::OPT_idirafter || id == clang_options::OPT_internal_isystem ||
+           id == clang_options::OPT_internal_externc_isystem;
 }
 
 /// clice's own counterpart of a path another clang's job or the command
@@ -206,8 +207,8 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
         case ArgClass::Semantic: {
             // The query picks its own action; the command's (-fsyntax-only)
             // would go unused, an error under -Werror.
-            auto opt = option::table().option(arg.opt_id);
-            return !opt || !opt->matches(option::OPT_Action_Group);
+            auto opt = clang_options::table().option(arg.opt_id);
+            return !opt || !opt->matches(clang_options::OPT_Action_Group);
         }
         case ArgClass::Diagnostics: return true;
         case ArgClass::Unknown:
@@ -266,7 +267,7 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
     /// relative path.
     bool values_clean = true;
     for(auto& arg: command.args) {
-        if(arg.opt_id != option::OPT_UNKNOWN || !in_query_view(arg, command.family)) {
+        if(arg.opt_id != clang_options::OPT_UNKNOWN || !in_query_view(arg, command.family)) {
             continue;
         }
         llvm::StringRef spelling(arg.spelling);
@@ -304,7 +305,7 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
         /// All unknown options share one id; their identity is the spelling
         /// (the NVCC translation carries `-ccbin=<path>` through here, and
         /// two commands differing only in host compiler must not collide).
-        if(arg.opt_id == option::OPT_UNKNOWN) {
+        if(arg.opt_id == clang_options::OPT_UNKNOWN) {
             append(arg.spelling);
         }
         for(const char* value: arg.values) {
@@ -335,7 +336,7 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
         if(!in_query_view(arg, command.family)) {
             continue;
         }
-        if(arg.opt_id == option::OPT_UNKNOWN) {
+        if(arg.opt_id == clang_options::OPT_UNKNOWN) {
             out.argv.push_back(arg.spelling);
             continue;
         }
@@ -350,12 +351,12 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
-    auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CC1Option};
-    std::vector<kotatsu::option::ParsedArg> kept;
+    auto parse_options = option::ParseOptions{.visibility = clang_options::CC1Option};
+    std::vector<option::ParsedArg> kept;
     llvm::StringRef triple;
     llvm::StringRef job_resource_dir;
-    for(auto& parsed: option::table().parse(tokens, parse_options)) {
-        if(!parsed || parsed->id == option::OPT_UNKNOWN) {
+    for(auto& parsed: clang_options::table().parse(tokens, parse_options)) {
+        if(!parsed || parsed->id == clang_options::OPT_UNKNOWN) {
             continue;
         }
         switch(parsed->id) {
@@ -363,20 +364,20 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             // the real file its -main-file-name, and clice manages module
             // outputs itself (the driver derives -fmodule-output=<query>.pcm
             // for a module unit).
-            case option::OPT_E:
-            case option::OPT_fsyntax_only:
-            case option::OPT_dM:
-            case option::OPT_v:
-            case option::OPT_o:
-            case option::OPT_INPUT:
-            case option::OPT_main_file_name:
-            case option::OPT_fmodule_output:
-            case option::OPT_fmodule_output_EQ: continue;
-            case option::OPT_triple: triple = parsed->values[0]; break;
+            case clang_options::OPT_E:
+            case clang_options::OPT_fsyntax_only:
+            case clang_options::OPT_dM:
+            case clang_options::OPT_v:
+            case clang_options::OPT_o:
+            case clang_options::OPT_INPUT:
+            case clang_options::OPT_main_file_name:
+            case clang_options::OPT_fmodule_output:
+            case clang_options::OPT_fmodule_output_EQ: continue;
+            case clang_options::OPT_triple: triple = parsed->values[0]; break;
             // A trailing separator on the command's -resource-dir reaches
             // cc1 verbatim while the derived paths append without doubling
             // it.
-            case option::OPT_resource_dir:
+            case clang_options::OPT_resource_dir:
                 job_resource_dir = llvm::StringRef(parsed->values[0]).rtrim("/\\");
                 break;
         }
@@ -408,7 +409,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             LOG_INFO("clang's target {} knows no CPU or ABI named {} ({}): its default stands in",
                      triple,
                      arg.values[0],
-                     option::table().option(arg.id)->prefixed_name());
+                     clang_options::table().option(arg.id)->prefixed_name());
             continue;
         }
         auto local = commands.local_arg(arg, tokens);
@@ -431,7 +432,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             staged.push_back(std::move(theirs));
         }
     }
-    staged.push_back({.opt_id = option::OPT_fsyntax_only, .cls = ArgClass::Semantic});
+    staged.push_back({.opt_id = clang_options::OPT_fsyntax_only, .cls = ArgClass::Semantic});
     result.forwarded = first_forwarded.value_or(staged.size());
     result.args = commands.persist(staged);
     if(!shadowed.empty()) {
@@ -457,8 +458,9 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     auto has = [&](unsigned id) {
         return ranges::any_of(command.args, [&](const Arg& arg) { return arg.opt_id == id; });
     };
-    bool full_bmi = has(option::OPT__precompile) && !has(option::OPT_fmodule_output) &&
-                    !has(option::OPT_fmodule_output_EQ);
+    bool full_bmi = has(clang_options::OPT__precompile) &&
+                    !has(clang_options::OPT_fmodule_output) &&
+                    !has(clang_options::OPT_fmodule_output_EQ);
 
     auto local = [](const Arg& arg) {
         return LocalArg{
@@ -472,7 +474,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     std::vector<LocalArg> staged;
     auto stage = [&](llvm::ArrayRef<Arg> args) {
         for(auto& arg: args) {
-            if(!(full_bmi && arg.opt_id == option::OPT_fmodules_reduced_bmi)) {
+            if(!(full_bmi && arg.opt_id == clang_options::OPT_fmodules_reduced_bmi)) {
                 staged.push_back(local(arg));
             }
         }
@@ -714,7 +716,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
            ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0]))) {
             continue;
         }
-        if(arg.opt_id == option::OPT_include) {
+        if(arg.opt_id == clang_options::OPT_include) {
             includes += 1;
             if(includes > opts.kept_includes) {
                 continue;

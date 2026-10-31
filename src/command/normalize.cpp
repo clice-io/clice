@@ -53,7 +53,7 @@ llvm::StringRef anchored(CommandTable& commands,
     // A forced include names a file too, which clang looks for rather than
     // anchors when relative.
     if(mounts && fs::cygwin::is_posix_path(value) &&
-       (id == option::OPT_include || id == option::OPT_imacros)) {
+       (id == clang_options::OPT_include || id == clang_options::OPT_imacros)) {
         std::string windows;
         mounts->to_windows(windows, value);
         return commands.intern(windows);
@@ -161,15 +161,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     }
 
     std::vector<std::string> parse_args(tokens.begin(), tokens.end());
-    auto parse_options =
-        kotatsu::option::ParseOptions{.dash_dash_parsing = true,
-                                      .visibility = family_visibility(command.family)};
+    auto parse_options = option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = family_visibility(command.family)};
 
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    std::vector<std::expected<kotatsu::option::ParsedArg, kotatsu::option::ParseError>> staged;
-    for(auto& parsed: option::table().parse(parse_args, parse_options)) {
+    std::vector<std::expected<option::ParsedArg, option::ParseError>> staged;
+    for(auto& parsed: clang_options::table().parse(parse_args, parse_options)) {
         staged.push_back(parsed);
     }
 
@@ -177,7 +176,8 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// entry directory, moved by `-working-directory`.
     auto anchor = directory;
     for(auto& parsed: staged) {
-        if(parsed && parsed->id == option::OPT_working_directory && parsed->values.size() == 1) {
+        if(parsed && parsed->id == clang_options::OPT_working_directory &&
+           parsed->values.size() == 1) {
             anchor = spelled(parsed->values[0], directory, mounts);
         }
     }
@@ -195,10 +195,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
         auto id = parsed->id;
-        if((id == option::OPT__SLASH_Tc || id == option::OPT__SLASH_Tp) &&
+        if((id == clang_options::OPT__SLASH_Tc || id == clang_options::OPT__SLASH_Tp) &&
            parsed->values.size() == 1 && matches_entry(parsed->values[0])) {
-            forced_selector =
-                id == option::OPT__SLASH_Tc ? option::OPT__SLASH_TC : option::OPT__SLASH_TP;
+            forced_selector = id == clang_options::OPT__SLASH_Tc ? clang_options::OPT__SLASH_TC
+                                                                 : clang_options::OPT__SLASH_TP;
         }
     }
 
@@ -208,12 +208,12 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     bool included_pch = false;
 
     auto place_slot = [&] {
-        args.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
+        args.push_back({.opt_id = clang_options::OPT_INPUT, .cls = ArgClass::Input});
         slot_placed = true;
     };
 
     for(auto& parsed: staged) {
-        auto id = parsed ? parsed->id : option::OPT_UNKNOWN;
+        auto id = parsed ? parsed->id : clang_options::OPT_UNKNOWN;
 
         /// The entry's own input token becomes the slot, preserving its
         /// position (language selectors before it govern it). Other inputs
@@ -225,7 +225,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// positional semantic (nvcc options are command-wide last-wins)
         /// and parks accumulated state after the original input's spot —
         /// the slot goes to the end so edits keep landing after it.
-        if(id == option::OPT_INPUT) {
+        if(id == clang_options::OPT_INPUT) {
             if(command.family == CompilerFamily::NVCC) {
                 continue;
             }
@@ -237,7 +237,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
 
-        if(id == option::OPT__SLASH_Tc || id == option::OPT__SLASH_Tp) {
+        if(id == clang_options::OPT__SLASH_Tc || id == clang_options::OPT__SLASH_Tp) {
             if(!slot_placed && parsed->values.size() == 1 && matches_entry(parsed->values[0])) {
                 /// Rewritten to the equivalent global selector: a slot
                 /// attribute keyed by the file would break the
@@ -249,7 +249,8 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
 
-        if((id == option::OPT__SLASH_TC || id == option::OPT__SLASH_TP) && forced_selector) {
+        if((id == clang_options::OPT__SLASH_TC || id == clang_options::OPT__SLASH_TP) &&
+           forced_selector) {
             continue;
         }
 
@@ -264,10 +265,11 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             if(included_pch) {
                 included_pch = false;
                 args.push_back({
-                    .opt_id = option::OPT_include_pch,
+                    .opt_id = clang_options::OPT_include_pch,
                     .cls = ArgClass::Discarded,
                     .values =
-                        {anchored(commands, option::OPT_include_pch, value, anchor, mounts).data()},
+                        {anchored(commands, clang_options::OPT_include_pch, value, anchor, mounts)
+                             .data()},
                 });
                 continue;
             }
@@ -276,15 +278,15 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 continue;
             }
             if(value == "-emit-pch") {
-                args.push_back({.opt_id = option::OPT_emit_pch, .cls = ArgClass::Discarded});
+                args.push_back({.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Discarded});
                 continue;
             }
             /// Bazel's module rules (xclang's) embed a module's sources in
             /// it: the flag goes as its driver spelling does
             /// (is_discarded_option).
             if(value == "-fmodules-embed-all-files") {
-                args.push_back(
-                    {.opt_id = option::OPT_fmodules_embed_all_files, .cls = ArgClass::Discarded});
+                args.push_back({.opt_id = clang_options::OPT_fmodules_embed_all_files,
+                                .cls = ArgClass::Discarded});
                 continue;
             }
         }
@@ -293,7 +295,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 
         /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
         /// each of which clang would report as unknown on every file.
-        if(command.family == CompilerFamily::GCC && id == option::OPT_W_Joined &&
+        if(command.family == CompilerFamily::GCC && id == clang_options::OPT_W_Joined &&
            !clang_warning(local.values[0])) {
             local.cls = ArgClass::Discarded;
         }
@@ -302,7 +304,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// keeps meaning when consumed away from it: the toolchain query
         /// runs elsewhere.
         // The working directory itself is relative to the entry's.
-        bool working = id == option::OPT_working_directory;
+        bool working = id == clang_options::OPT_working_directory;
         for(auto& value: local.values) {
             value = anchored(commands, id, value, working ? directory : anchor, mounts).data();
         }

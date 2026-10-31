@@ -136,9 +136,8 @@ public:
     /// cannot parse, does not know or reads as an input stays verbatim
     /// (OPT_UNKNOWN, ArgClass::Unknown), a known option keeps its id and
     /// its values, classified.
-    LocalArg local_arg(
-        const std::expected<kotatsu::option::ParsedArg, kotatsu::option::ParseError>& parsed,
-        llvm::ArrayRef<std::string> tokens);
+    LocalArg local_arg(const std::expected<option::ParsedArg, option::ParseError>& parsed,
+                       llvm::ArrayRef<std::string> tokens);
 
     /// Derive the language of `file` compiled under `id`: walk the
     /// language-selector state machine (-x applies to inputs after it,

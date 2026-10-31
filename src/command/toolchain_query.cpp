@@ -70,14 +70,14 @@ struct UnknownNames {
 
 UnknownNames unknown_names(const Job& job) {
     std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
-    auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CC1Option};
+    auto parse_options = option::ParseOptions{.visibility = clang_options::CC1Option};
     UnknownNames result;
-    std::vector<kotatsu::option::ParsedArg> given;
-    for(auto& parsed: option::table().parse(cc1, parse_options)) {
+    std::vector<option::ParsedArg> given;
+    for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
         if(!parsed) {
             continue;
         }
-        if(parsed->id == option::OPT_triple) {
+        if(parsed->id == clang_options::OPT_triple) {
             result.triple = parsed->values[0];
         } else if(!parsed->values.empty()) {
             given.push_back(std::move(*parsed));
@@ -95,15 +95,15 @@ UnknownNames unknown_names(const Job& job) {
 /// Whether a driver option names one of `unknown`: the CPU of -mcpu,
 /// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
 /// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
-bool names_unknown(const kotatsu::option::ParsedArg& arg,
+bool names_unknown(const option::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
     unsigned given = 0;
     switch(arg.id) {
-        case option::OPT_mcpu_EQ:
-        case option::OPT_march_EQ:
-        case option::OPT_mmcu_EQ: given = option::OPT_target_cpu; break;
-        case option::OPT_mtune_EQ: given = option::OPT_tune_cpu; break;
-        case option::OPT_mabi_EQ: given = option::OPT_target_abi; break;
+        case clang_options::OPT_mcpu_EQ:
+        case clang_options::OPT_march_EQ:
+        case clang_options::OPT_mmcu_EQ: given = clang_options::OPT_target_cpu; break;
+        case clang_options::OPT_mtune_EQ: given = clang_options::OPT_tune_cpu; break;
+        case clang_options::OPT_mabi_EQ: given = clang_options::OPT_target_abi; break;
         default: return false;
     }
     auto name = llvm::StringRef(arg.values[0]).split('+').first;
@@ -165,11 +165,11 @@ ClangReading read_as_clang(std::vector<std::string> args,
     if(family == CompilerFamily::Zig) {
         args.erase(args.begin() + 1);
     }
-    auto parse_options = kotatsu::option::ParseOptions{.visibility = family_visibility(family)};
+    auto parse_options = option::ParseOptions{.visibility = family_visibility(family)};
     std::string named;
     std::vector<std::string> flags(args.begin() + 1, args.end());
-    for(auto& parsed: option::table().parse(flags, parse_options)) {
-        if(parsed && parsed->id == option::OPT_target) {
+    for(auto& parsed: clang_options::table().parse(flags, parse_options)) {
+        if(parsed && parsed->id == clang_options::OPT_target) {
             named = parsed->values[0];
         }
     }
@@ -211,7 +211,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
         std::vector<std::string> argv = {reading.argv[0]};
         std::size_t next = 0;
         bool dropped = false;
-        for(auto& parsed: option::table().parse(flags, parse_options)) {
+        for(auto& parsed: clang_options::table().parse(flags, parse_options)) {
             if(parsed && names_unknown(*parsed, unknown.names)) {
                 if(!quiet) {
                     LOG_INFO(

@@ -5,9 +5,7 @@ import :vfs.path;
 
 namespace clice {
 
-namespace option {
-
-namespace eo = kotatsu::option;
+namespace clang_options {
 
 namespace detail {
 
@@ -28,12 +26,12 @@ static_assert(OptionPrefixesTable[12].value() == 2, "pfx_slash_dash: 2 prefixes"
 
 constexpr std::span<const std::string_view> prefixes(unsigned offset) {
     switch(offset) {
-        case 0: return eo::pfx_none;
-        case 1: return eo::pfx_dash;
-        case 3: return eo::pfx_dash_double;
-        case 6: return eo::pfx_double;
-        case 8: return eo::pfx_all;
-        case 12: return eo::pfx_slash_dash;
+        case 0: return option::pfx_none;
+        case 1: return option::pfx_dash;
+        case 3: return option::pfx_dash_double;
+        case 6: return option::pfx_double;
+        case 8: return option::pfx_all;
+        case 12: return option::pfx_slash_dash;
         default: std::unreachable();
     }
 }
@@ -46,9 +44,9 @@ constexpr std::string_view str_at(unsigned offset) {
 /// Plain enum: Options.inc combines these with bitwise-or, which needs the
 /// implicit conversion an enum class forbids.
 enum ClangDriverFlag : unsigned {
-    HelpHidden = eo::HelpHidden,
-    RenderAsInput = eo::RenderAsInput,
-    RenderJoined = eo::RenderJoined,
+    HelpHidden = option::HelpHidden,
+    RenderAsInput = option::RenderAsInput,
+    RenderJoined = option::RenderJoined,
     Ignored = 1u << 4,
     LinkOption = 1u << 5,
     LinkerInput = 1u << 6,
@@ -60,13 +58,13 @@ enum ClangDriverFlag : unsigned {
 
 }  // namespace detail
 
-const eo::OptTable& table() {
-    using enum eo::Kind;
+const option::OptTable& table() {
+    using enum option::Kind;
     using enum detail::ClangDriverFlag;
     using detail::prefixes;
     using detail::str_at;
 
-    constexpr static eo::Option option_infos[] = {
+    constexpr static option::Option option_infos[] = {
 #define OPTION(PREFIXES_OFFSET,                                                                    \
                NAME_OFFSET,                                                                        \
                ID,                                                                                 \
@@ -82,7 +80,7 @@ const eo::OptTable& table() {
                META_VAR,                                                                           \
                VALUES,                                                                             \
                SUBCOMMAND_IDS_OFFSET)                                                              \
-    eo::Option{                                                                                    \
+    option::Option{                                                                                \
         .prefixes = prefixes(PREFIXES_OFFSET),                                                     \
         .prefixed_name = str_at(NAME_OFFSET),                                                      \
         .id = OPT_##ID,                                                                            \
@@ -101,16 +99,16 @@ const eo::OptTable& table() {
     };
 
     const static auto opt_table = [] {
-        auto t = eo::OptTable(std::span(option_infos));
+        auto t = option::OptTable(std::span(option_infos));
         t.tablegen_mode = true;
         return t;
     }();
     return opt_table;
 }
 
-}  // namespace option
+}  // namespace clang_options
 
-using namespace option;
+using namespace clang_options;
 
 CompilerFamily driver_family(llvm::StringRef driver) {
     auto try_get = [](llvm::StringRef name) {
@@ -169,14 +167,14 @@ std::string name_target(llvm::StringRef driver) {
 unsigned family_visibility(CompilerFamily family) {
     /// Flang's own options shadow clang's: -Wextra and -Wconversion have
     /// flang-only spellings that flang ignores, matched before -W<warning>.
-    auto flang = static_cast<unsigned>(option::FlangOption | option::FC1Option);
+    auto flang = static_cast<unsigned>(clang_options::FlangOption | clang_options::FC1Option);
     /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
     /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
     /// paths like /Users/... .
     if(cl_mode(family)) {
         return ~flang;
     }
-    return ~(flang | option::CLOption | option::DXCOption);
+    return ~(flang | clang_options::CLOption | clang_options::DXCOption);
 }
 
 bool is_discarded_option(unsigned id) {
@@ -185,7 +183,8 @@ bool is_discarded_option(unsigned id) {
     /// per-file value here must not fracture query and identity keys.
     /// Deliberately also drops clang's -Wignored-optimization-argument
     /// compat warnings for them — under -Werror those abort the analysis.
-    if(auto opt = option::table().option(id); opt && opt->has_flag(option::detail::Ignored)) {
+    if(auto opt = clang_options::table().option(id);
+       opt && opt->has_flag(clang_options::detail::Ignored)) {
         return true;
     }
 
@@ -318,22 +317,21 @@ bool is_xclang_option(unsigned id) {
 /// and -MMD take the file they write as their argument, which the table
 /// reads as an input.
 static bool dependency_options(llvm::ArrayRef<const char*> args) {
-    auto options =
-        kotatsu::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    auto options = option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     bool file_next = false;
-    for(auto& parsed: option::table().parse(args, options)) {
+    for(auto& parsed: clang_options::table().parse(args, options)) {
         if(!parsed) {
             return false;
         }
-        if(file_next && parsed->id == option::OPT_INPUT) {
+        if(file_next && parsed->id == clang_options::OPT_INPUT) {
             file_next = false;
             continue;
         }
-        if(auto opt = option::table().option(parsed->id);
-           !opt || !opt->matches(option::OPT_M_Group)) {
+        if(auto opt = clang_options::table().option(parsed->id);
+           !opt || !opt->matches(clang_options::OPT_M_Group)) {
             return false;
         }
-        file_next = parsed->id == option::OPT_MD || parsed->id == option::OPT_MMD;
+        file_next = parsed->id == clang_options::OPT_MD || parsed->id == clang_options::OPT_MMD;
     }
     return true;
 }
@@ -342,18 +340,18 @@ ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
     /// unit that stays part of the frontend semantics.
-    if(id == option::OPT_fmodule_file) {
+    if(id == clang_options::OPT_fmodule_file) {
         bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
         return named ? ArgClass::Discarded : ArgClass::Semantic;
     }
     /// Kbuild hands the preprocessor `-Wp,-MMD,<depfile>` in every command:
     /// it goes as `-MMD -MF <depfile>` does, or each command would key a
     /// query of its own.
-    if(id == option::OPT_Wp_COMMA && dependency_options(values)) {
+    if(id == clang_options::OPT_Wp_COMMA && dependency_options(values)) {
         return ArgClass::Discarded;
     }
     /// g++ takes an LTO job count (-flto=8), which clang rejects.
-    if(id == option::OPT_flto_EQ && values.size() == 1 &&
+    if(id == clang_options::OPT_flto_EQ && values.size() == 1 &&
        !ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
         return ArgClass::Discarded;
     }
@@ -374,7 +372,7 @@ ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
 
 bool is_codegen_option(unsigned id) {
     /// Debug info options form a group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
-    if(auto opt = option::table().option(id); opt && opt->matches(OPT_DebugInfo_Group)) {
+    if(auto opt = clang_options::table().option(id); opt && opt->matches(OPT_DebugInfo_Group)) {
         return true;
     }
 
@@ -416,14 +414,14 @@ bool is_diagnostics_option(unsigned id) {
     if(id == OPT_w) {
         return true;
     }
-    if(auto opt = option::table().option(id)) {
+    if(auto opt = clang_options::table().option(id)) {
         return opt->matches(OPT_Diag_Group) || opt->matches(OPT_pedantic_Group);
     }
     return false;
 }
 
-std::uint16_t written_alias(const kotatsu::option::ParsedArg& parsed) {
-    auto& options = option::table().option_infos;
+std::uint16_t written_alias(const option::ParsedArg& parsed) {
+    auto& options = clang_options::table().option_infos;
     auto written = [&](std::uint32_t id) {
         auto& option = options[id - 1];
         return ranges::any_of(option.prefixes, [&](std::string_view prefix) {
@@ -450,14 +448,14 @@ std::uint16_t written_alias(const kotatsu::option::ParsedArg& parsed) {
 }
 
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
-    if(arg.opt_id == option::OPT_UNKNOWN) {
+    if(arg.opt_id == clang_options::OPT_UNKNOWN) {
         cb(arg.spelling);
         for(const char* value: arg.values) {
             cb(value);
         }
         return;
     }
-    kotatsu::option::ParsedArg parsed;
+    option::ParsedArg parsed;
     parsed.id = arg.opt_id;
     for(const char* value: arg.values) {
         parsed.add_value(value);
@@ -465,38 +463,38 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     auto forward = [&](std::string_view fragment) {
         cb(fragment);
     };
-    option::table().render(parsed, forward);
+    clang_options::table().render(parsed, forward);
 }
 
 static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
-    auto alias = option::table().option(arg.alias);
+    auto alias = clang_options::table().option(arg.alias);
     std::string name(alias->prefixed_name());
     // A flag alias implies its values (`-flto` is -flto=full).
-    if(alias->kind() == kotatsu::option::Kind::Flag) {
+    if(alias->kind() == option::Kind::Flag) {
         cb(name);
         return;
     }
     switch(alias->render_style()) {
-        case kotatsu::option::RenderStyle::Joined:
+        case option::RenderStyle::Joined:
             cb(name + arg.values[0]);
             for(const char* value: arg.values.drop_front()) {
                 cb(value);
             }
             return;
-        case kotatsu::option::RenderStyle::Separate:
+        case option::RenderStyle::Separate:
             cb(name);
             for(const char* value: arg.values) {
                 cb(value);
             }
             return;
-        case kotatsu::option::RenderStyle::CommaJoined:
+        case option::RenderStyle::CommaJoined:
             for(auto [i, value]: views::enumerate(arg.values)) {
                 name += i == 0 ? "" : ",";
                 name += value;
             }
             cb(name);
             return;
-        case kotatsu::option::RenderStyle::Values: std::unreachable();
+        case option::RenderStyle::Values: std::unreachable();
     }
 }
 
@@ -504,7 +502,7 @@ bool keeps_alias(const Arg& arg, CompilerFamily family) {
     // nvcc's arguments are clice's translation of its command, which its
     // query reads by clang's names.
     return arg.alias && !cl_mode(family) && family != CompilerFamily::NVCC &&
-           option::table().option(arg.alias)->has_visibility_flag(family_visibility(family));
+           clang_options::table().option(arg.alias)->has_visibility_flag(family_visibility(family));
 }
 
 void render_driver_arg(const Arg& arg,
@@ -520,10 +518,10 @@ void render_driver_arg(const Arg& arg,
     }
 
     auto reads_back = [&](std::vector<std::string>& fragments) {
-        auto parse_options = kotatsu::option::ParseOptions{.visibility = option::CLOption};
+        auto parse_options = option::ParseOptions{.visibility = clang_options::CLOption};
         std::size_t count = 0;
         bool same = true;
-        for(auto& parsed: option::table().parse(fragments, parse_options)) {
+        for(auto& parsed: clang_options::table().parse(fragments, parse_options)) {
             count += 1;
             same = same && parsed && parsed->id == arg.opt_id &&
                    ranges::equal(parsed->values,
@@ -547,12 +545,12 @@ void render_driver_arg(const Arg& arg,
 
     // A cl spelling of the option keeps its place among the arguments,
     // where order decides (`/W3 -Wno-unused-variable`).
-    for(auto& option: option::table().option_infos) {
-        if(option.alias_id != arg.opt_id || !(option.visibility & option::CLOption)) {
+    for(auto& option: clang_options::table().option_infos) {
+        if(option.alias_id != arg.opt_id || !(option.visibility & clang_options::CLOption)) {
             continue;
         }
         std::vector<std::string> spelled{std::string(option.prefixed_name)};
-        if(option.kind != kotatsu::option::Kind::Flag) {
+        if(option.kind != option::Kind::Flag) {
             if(arg.values.size() != 1) {
                 continue;
             }
@@ -585,10 +583,9 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
     append(args[0]);
 
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
-    auto options =
-        kotatsu::option::ParseOptions{.dash_dash_parsing = true,
-                                      .visibility = family_visibility(driver_family(args[0]))};
-    for(auto& result: option::table().parse(parse_args, options)) {
+    auto options = option::ParseOptions{.dash_dash_parsing = true,
+                                        .visibility = family_visibility(driver_family(args[0]))};
+    for(auto& result: clang_options::table().parse(parse_args, options)) {
         /// Unparseable and unknown arguments are kept verbatim: dropping an
         /// option we don't understand could merge keys that must differ.
         if(!result || result->id == OPT_UNKNOWN) {
@@ -596,7 +593,7 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
             continue;
         }
         if(!is_discarded_option(result->id) && !is_codegen_option(result->id)) {
-            option::table().render(*result, append);
+            clang_options::table().render(*result, append);
         }
     }
 

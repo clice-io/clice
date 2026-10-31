@@ -96,7 +96,7 @@ std::optional<Language> language_of(Project& project,
         .language_forced = !project.commands.forced_language(ref.command).empty(),
     };
     for(auto& arg: project.commands.get(ref.command).args) {
-        if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
+        if(arg.opt_id == clang_options::OPT_std_EQ && arg.values.size() == 1) {
             result.standard = arg.values[0];
         }
     }

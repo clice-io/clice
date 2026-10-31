@@ -355,12 +355,11 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                            "-nostdinc",
                                            "-resource-dir",
                                            resource_dir().str()};
-    auto parse_options =
-        kotatsu::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    auto parse_options = option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     llvm::Triple target(output.target);
     auto gcc_options = flags_for_clang(output.gcc_options, CompilerFamily::GCC);
-    for(auto& parsed: option::table().parse(gcc_options, parse_options)) {
-        if(parsed && parsed->id != option::OPT_UNKNOWN) {
+    for(auto& parsed: clang_options::table().parse(gcc_options, parse_options)) {
+        if(parsed && parsed->id != clang_options::OPT_UNKNOWN) {
             clang_args.push_back(for_clang(gcc_options[parsed->index], target));
         }
     }

@@ -56,9 +56,9 @@ defending against ghosts.
   (`libc`) and the third-party module (`modules/`), and gives the namespaces
   clice writes their short names in `clice` — `ranges`, `views`, `chrono`,
   `this_thread`, `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`,
-  `async`, `deco`, `meta`, `zest`. The primary interface (`src/module.cppm`)
-  re-exports it, which brings it to every implementation unit; every
-  partition imports it. Code inside `clice` writes those names
+  `async`, `deco`, `meta`, `option`, `zest`. The primary interface
+  (`src/module.cppm`) re-exports it, which brings it to every implementation
+  unit; every partition imports it. Code inside `clice` writes those names
   (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
   or `kotatsu::ipc::protocol::`, and no file declares them again.
 - No module carries a macro: every compilation force-includes

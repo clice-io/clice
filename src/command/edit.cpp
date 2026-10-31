@@ -41,14 +41,13 @@ CommandID
 
     Normalizer normalizer{.commands = commands, .files = files};
 
-    auto remove_parse_options =
-        kotatsu::option::ParseOptions{.visibility = family_visibility(base.family)};
+    auto remove_parse_options = option::ParseOptions{.visibility = family_visibility(base.family)};
 
     /// One remove pattern: the option it names, and whether a `*` joined
     /// to the option's name takes every option spelled with that prefix
     /// (`-W*` takes -Wall and -Wextra, options of their own).
     struct RemovePattern {
-        kotatsu::option::ParsedArg option;
+        option::ParsedArg option;
         bool prefix = false;
     };
 
@@ -61,7 +60,7 @@ CommandID
             is_nvcc ? translate_nvcc_removes(normalizer, base.driver, flags, anchor)
                     : std::vector<std::string>(flags.begin(), flags.end()));
         std::vector<RemovePattern> removes;
-        auto add = [&](const kotatsu::option::ParsedArg& parsed, llvm::StringRef written) {
+        auto add = [&](const option::ParsedArg& parsed, llvm::StringRef written) {
             auto& remove = removes.emplace_back(RemovePattern{
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,
@@ -75,20 +74,21 @@ CommandID
                 }
             }
         };
-        for(auto parsed: option::table().parse(remove_flags, remove_parse_options)) {
+        for(auto parsed: clang_options::table().parse(remove_flags, remove_parse_options)) {
             if(!parsed.has_value()) {
                 // An option written without its value, last in the list
                 // (`-include`), removes it with every value.
                 auto& wildcard = remove_storage.emplace_back(
                     std::vector<std::string>{remove_flags[parsed.error().index], "*"});
-                auto retried = *option::table().parse(wildcard, remove_parse_options).begin();
+                auto retried =
+                    *clang_options::table().parse(wildcard, remove_parse_options).begin();
                 if(!retried) {
                     LOG_WARN("A rule removes {}, which takes several values: write them",
                              wildcard[0]);
                     continue;
                 }
                 add(*retried, wildcard[0]);
-            } else if(parsed->id == option::OPT_INPUT) {
+            } else if(parsed->id == clang_options::OPT_INPUT) {
                 LOG_WARN("A rule removes {}, which names no option", remove_flags[parsed->index]);
             } else {
                 add(*parsed, remove_flags[parsed->index]);
@@ -129,7 +129,7 @@ CommandID
         /// spelling (NVCC query flags persist as unknown tokens). A
         /// trailing `=*` wildcards the value part, mirroring the
         /// known-option value wildcard below.
-        if(arg.opt_id == option::OPT_UNKNOWN) {
+        if(arg.opt_id == clang_options::OPT_UNKNOWN) {
             llvm::StringRef pattern = remove.spelling;
             bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
             return wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
@@ -153,9 +153,9 @@ CommandID
                           const Spelling& anchor,
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
-        for(auto& parsed: option::table().parse(flags, remove_parse_options)) {
+        for(auto& parsed: clang_options::table().parse(flags, remove_parse_options)) {
             auto& local = out.emplace_back(commands.local_arg(parsed, flags));
-            if(local.opt_id == option::OPT_UNKNOWN) {
+            if(local.opt_id == clang_options::OPT_UNKNOWN) {
                 local.cls = ArgClass::Semantic;
             }
             for(auto& value: local.values) {
@@ -219,7 +219,7 @@ CommandID
         if(matches_remove(arg)) {
             continue;
         }
-        auto& into = after_slot && arg.opt_id == option::OPT_x ? trailing_selectors : edited;
+        auto& into = after_slot && arg.opt_id == clang_options::OPT_x ? trailing_selectors : edited;
         into.push_back({
             .opt_id = arg.opt_id,
             .cls = arg.cls,
@@ -229,7 +229,7 @@ CommandID
         });
     }
     edited.append_range(append_args);
-    edited.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
+    edited.push_back({.opt_id = clang_options::OPT_INPUT, .cls = ArgClass::Input});
     edited.append_range(trailing_selectors);
 
     /// An appended -gencode adds its architecture next to the base's, the
@@ -245,7 +245,7 @@ CommandID
     // follows the loaded one's.
     command.family = driver_family(base.driver);
     for(auto& local: views::reverse(edited)) {
-        if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
+        if(local.opt_id == clang_options::OPT_driver_mode && local.values.size() == 1) {
             if(llvm::StringRef(local.values[0]) == "cl") {
                 command.family = CompilerFamily::ClangCL;
             }

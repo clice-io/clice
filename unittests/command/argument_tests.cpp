@@ -7,12 +7,12 @@ namespace clice::testing {
 
 namespace {
 
-using namespace option;
+using namespace clang_options;
 
 ZEST_SUITE(Argument) {
 
 unsigned parse_first(std::vector<std::string> args) {
-    for(auto& result: option::table().parse(args)) {
+    for(auto& result: clang_options::table().parse(args)) {
         if(result.has_value()) {
             return result->id;
         }
@@ -46,9 +46,9 @@ ZEST_CASE(AliasAndDashDash) {
     ZASSERT(parse_first({"--std=c++20"}) == OPT_std_EQ);
 
     std::vector<std::string> args = {"-I", "/usr/include", "--", "main.cpp"};
-    auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true};
+    auto options = option::ParseOptions{.dash_dash_parsing = true};
     unsigned count = 0;
-    for(auto& result: option::table().parse(args, options)) {
+    for(auto& result: clang_options::table().parse(args, options)) {
         if(result.has_value()) {
             ++count;
         }
@@ -59,7 +59,7 @@ ZEST_CASE(AliasAndDashDash) {
 ZEST_CASE(ParseError) {
     std::vector<std::string> args = {"-o"};
     bool got_error = false;
-    for(auto& result: option::table().parse(args)) {
+    for(auto& result: clang_options::table().parse(args)) {
         if(!result.has_value()) {
             got_error = true;
         }
@@ -72,8 +72,8 @@ ZEST_CASE(CLVisibility) {
     auto gcc_vis = family_visibility(CompilerFamily::Clang);
 
     auto parse_with_vis = [](std::vector<std::string> args, unsigned vis) -> unsigned {
-        auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
-        for(auto& result: option::table().parse(args, options)) {
+        auto options = option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
+        for(auto& result: clang_options::table().parse(args, options)) {
             if(result.has_value()) {
                 return result->id;
             }
@@ -92,13 +92,13 @@ ZEST_CASE(CLVisibility) {
 ZEST_CASE(RenderRoundTrip) {
     auto roundtrip = [](std::vector<std::string> input) -> std::vector<std::string> {
         std::vector<std::string> rendered;
-        for(auto& result: option::table().parse(input)) {
+        for(auto& result: clang_options::table().parse(input)) {
             if(!result.has_value())
                 continue;
             auto cb = [&](std::string_view s) {
                 rendered.emplace_back(s);
             };
-            option::table().render(*result, cb);
+            clang_options::table().render(*result, cb);
         }
         return rendered;
     };
@@ -179,27 +179,27 @@ ZEST_CASE(EveryAliasRendersBack) {
     /// Every alias a GCC-style command can write renders back to itself:
     /// read again, the same option through the same alias, the same values.
     auto visibility = family_visibility(CompilerFamily::GCC);
-    auto parse_options = kotatsu::option::ParseOptions{.visibility = visibility};
+    auto parse_options = option::ParseOptions{.visibility = visibility};
     llvm::BumpPtrAllocator allocator;
     llvm::StringSaver strings(allocator);
     std::size_t checked = 0;
-    for(auto& option: option::table().option_infos) {
+    for(auto& option: clang_options::table().option_infos) {
         if(!option.alias_id || !(option.visibility & visibility)) {
             continue;
         }
         std::string name(option.prefixed_name);
         std::vector<std::string> written;
         switch(option.kind) {
-            case kotatsu::option::Kind::Flag: written = {name}; break;
-            case kotatsu::option::Kind::Joined: written = {name + "1"}; break;
-            case kotatsu::option::Kind::CommaJoined: written = {name + "a,b"}; break;
-            case kotatsu::option::Kind::Separate:
-            case kotatsu::option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
+            case option::Kind::Flag: written = {name}; break;
+            case option::Kind::Joined: written = {name + "1"}; break;
+            case option::Kind::CommaJoined: written = {name + "a,b"}; break;
+            case option::Kind::Separate:
+            case option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
             default: continue;
         }
         auto read = [&](std::vector<std::string>& args) -> std::optional<Arg> {
             std::optional<Arg> arg;
-            for(auto& parsed: option::table().parse(args, parse_options)) {
+            for(auto& parsed: clang_options::table().parse(args, parse_options)) {
                 if(!parsed || arg) {
                     return std::nullopt;
                 }
@@ -241,7 +241,7 @@ ZEST_CASE(DriverKeepsAlias) {
     /// names reach a clang only.
     auto render = [](std::vector<std::string> args, CompilerFamily family) {
         std::vector<std::string> rendered;
-        for(auto& parsed: option::table().parse(args)) {
+        for(auto& parsed: clang_options::table().parse(args)) {
             ZASSERT(parsed.has_value());
             std::vector<std::string> values(parsed->values.begin(), parsed->values.end());
             std::vector<const char*> pointers;

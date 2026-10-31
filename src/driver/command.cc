@@ -292,24 +292,24 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
     auto family = ranges::contains(command, "--driver-mode=cl") ? CompilerFamily::ClangCL
                                                                 : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
-    auto options = kotatsu::option::ParseOptions{.dash_dash_parsing = true,
-                                                 .visibility = family_visibility(family)};
+    auto options =
+        option::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(family)};
     auto anchor = directory;
     std::string language;
     llvm::SmallVector<std::string> inputs;
-    for(auto& parsed: option::table().parse(args, options)) {
+    for(auto& parsed: clang_options::table().parse(args, options)) {
         if(!parsed) {
             continue;
         }
         auto id = parsed->id;
-        if(id == option::OPT_working_directory) {
+        if(id == clang_options::OPT_working_directory) {
             anchor = Spelling(llvm::StringRef(parsed->values[0]), directory);
-        } else if(id == option::OPT_x) {
+        } else if(id == clang_options::OPT_x) {
             llvm::StringRef selected(parsed->values[0]);
             language = selected == "none" ? "" : selected.str();
-        } else if(id == option::OPT__SLASH_Tc || id == option::OPT__SLASH_Tp) {
+        } else if(id == clang_options::OPT__SLASH_Tc || id == clang_options::OPT__SLASH_Tp) {
             inputs.push_back(llvm::StringRef(parsed->values[0]).str());
-        } else if(id == option::OPT_INPUT) {
+        } else if(id == clang_options::OPT_INPUT) {
             auto input = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
                                                 : llvm::StringRef(parsed->values[0]);
             if(language.empty() ? is_c_family_file(input)
