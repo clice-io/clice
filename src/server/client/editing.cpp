@@ -156,7 +156,7 @@ void LSPClient::register_editing() {
         // compiled from now on (a no-op when it already is or under
         // readonly = "on").
         project.escalate(path_id);
-        auto pause = project.sched.pump.scoped_pause();
+        auto pause = ScopedPause(project.project);
 
         llvm::StringRef trigger;
         if(params.context && params.context->trigger_character) {
@@ -238,7 +238,7 @@ void LSPClient::register_editing() {
                 co_return codec::RawValue{"null"};
             }
             project.escalate(path_id);
-            auto pause = project.sched.pump.scoped_pause();
+            auto pause = ScopedPause(project.project);
             // The popup the client shows: the user may have moved it to another
             // overload.
             std::string selected;
@@ -264,7 +264,7 @@ void LSPClient::register_editing() {
                          std::optional<protocol::Range> range,
                          async::cancellation_token token) -> RawResult {
         auto& project = *document.project;
-        auto pause = project.sched.pump.scoped_pause();
+        auto pause = ScopedPause(project.project);
         auto result = co_await project.format(document.ticket, range, token).or_fail();
         if(!result) {
             co_return codec::RawValue{"null"};

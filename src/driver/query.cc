@@ -4,7 +4,7 @@ import :driver.driver;
 import :feature.counterparts;
 import :feature.query;
 import :index.symbol_query;
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :project.queries;

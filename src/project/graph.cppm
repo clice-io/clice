@@ -1,6 +1,7 @@
-module clice:sched.graph;
+module clice:project.graph;
 
 import :support.prelude;
+import :vfs.ids;
 
 namespace clice {
 
@@ -22,6 +23,11 @@ enum class NodeKind : std::uint8_t {
 struct NodeId {
     NodeKind kind = NodeKind{0};
     std::uint64_t key = 0;
+
+    /// The file a PCM, AST or unit-run node is keyed by.
+    Fid file() const {
+        return Fid{static_cast<std::uint32_t>(key)};
+    }
 
     friend bool operator==(const NodeId&, const NodeId&) = default;
 };
@@ -267,8 +273,6 @@ private:
     };
 
     struct Node {
-        NodeId id;
-
         /// Durable edges, replaced only by a current successful round.
         llvm::SmallVector<NodeId> deps;
 
@@ -358,11 +362,15 @@ private:
     /// See RoundContext::reference().
     void reference_from(NodeId self, NodeId dep);
 
+    /// Wait for one round of a node, spawning it when none is live: its
+    /// outcome, Success at once for a clean node; Failed when waiting would
+    /// close a cycle back to `waiter`, the node doing the waiting (requests
+    /// pass none); none when the graph is shutting down.
+    async::task<std::optional<RoundOutcome>> await_round(NodeId id, std::optional<NodeId> waiter);
+
     /// Wait until a node reaches a terminal outcome, respawning its round
-    /// whenever a stale one invalidates the previous attempt. `waiter` is
-    /// the node doing the waiting (for deadlock detection); requests pass
-    /// none.
-    async::task<bool> join_node(NodeId id, std::optional<NodeId> waiter);
+    /// whenever a stale one invalidates the previous attempt.
+    async::task<bool> join_node(NodeId id, NodeId waiter);
 
     /// Whether waiting on `target` would deadlock: walks live rounds'
     /// candidate edges to see if the wait chain reaches back to `waiter`.

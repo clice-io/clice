@@ -403,9 +403,9 @@ static worker::IncludeTreeResult
     };
 }
 
-static worker::TURunResult handle_turun(const worker::TURunParams& params,
-                                        const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("TURun request: file={}", params.file);
+static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params,
+                                             const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("Unit run request: file={}", params.file);
     ScopedTimer timer;
 
     // One parse serves every product of the plan. The command-affecting
@@ -434,7 +434,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         }
         // A command clang rejects before parsing: lint reports why, as
         // clang-tidy does.
-        worker::TURunResult result{.success = false, .error = llvm::join(errors, "; ")};
+        worker::UnitRunResult result{.success = false, .error = llvm::join(errors, "; ")};
         if(params.tidy) {
             for(auto& error: errors) {
                 result.tidy_diagnostics.push_back({
@@ -454,7 +454,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     if(stop->load(std::memory_order_relaxed)) {
         return {false, "TU run cancelled"};
     }
-    worker::TURunResult result;
+    worker::UnitRunResult result;
     result.success = true;
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
@@ -490,7 +490,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
 
     LOG_PERF(
         "build",
-        "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
+        "kind=unit_run file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
         params.file,
         index_bytes,
         result.tidy_diagnostics.size(),
@@ -666,10 +666,11 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                                                          .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
     serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
-    serve<worker::TURunParams>(peer,
-                               worker::TURunResult{.success = false, .error = "Build cancelled"},
-                               &handle_turun,
-                               {.lowered = true});
+    serve<worker::UnitRunParams>(
+        peer,
+        worker::UnitRunResult{.success = false, .error = "Build cancelled"},
+        &handle_unit_run,
+        {.lowered = true});
     serve<worker::IncludeTreeParams>(
         peer,
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},

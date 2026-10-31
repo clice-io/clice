@@ -3,9 +3,11 @@ module clice;
 import :index.project_index;
 import :project.command_snapshot;
 import :project.contexts;
-import :sched.builders.pcm;
+import :project.pcm;
 import :server.client;
 import :server.master;
+import :project.background_index;
+import :project.graph;
 import :server.served_project;
 import :support.logging;
 import :vfs.file_system;
@@ -69,7 +71,9 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 
 void ServedProject::reindex(Fid path_id, bool content) {
     skipped.erase(path_id);
-    sched.pump.enqueue(path_id, content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
+    enqueue_reindex(project,
+                    path_id,
+                    content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
 }
 
 /// An invalidated dependent recompiles when it is open, and reindexes
@@ -123,10 +127,10 @@ void ServedProject::mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh) {
 }
 
 void ServedProject::cascade_compile_graph(Fid path_id, bool& refresh) {
-    if(!sched.pcm.tracks(path_id)) {
+    if(!pcm_tracked(project, path_id)) {
         return;
     }
-    for(auto dirtied: sched.pcm.invalidate(path_id)) {
+    for(auto dirtied: invalidate_module(project, path_id)) {
         mark_dependent(dirtied, refresh);
     }
 }
@@ -140,11 +144,11 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
     // reindex — ContentChanged bypasses it. Nothing is dropped: a
     // rebuild replaces the shards, and a unit that can no longer build keeps
     // its last-known one (queries withhold a deleted file's).
-    for(auto id: sched.pcm.provider_appeared(module_name)) {
-        if(PCMBuilder::is_unresolved(id)) {
+    for(auto id: clice::provider_appeared(project, module_name)) {
+        if(is_unresolved_import(id)) {
             continue;
         }
-        auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
+        auto path_id = id.file();
         if(id.kind == NodeKind::UnitRun) {
             reindex(path_id, true);
         } else if(id.kind == NodeKind::AST) {
@@ -254,7 +258,7 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
         // compile-graph cascade, which lists the removed module itself
         // among its dirtied units: the removal is the final word for the
         // file itself.
-        sched.pump.clear_pending(path_id);
+        clear_reindex(project, path_id);
         project.forget_file(path_id);
         // TODO: remove orphaned shards of files that stay deleted.
     }
@@ -321,9 +325,9 @@ void ServedProject::build_changed(CDBDiff delta) {
         // can rewrite the index (macros, includes) as thoroughly as an edit.
         index::IndexReport report;
         project.index.drop(path_id, report);
-        sched.pump.apply_report(report);
+        apply_report(project, report);
         if(removed_from_build) {
-            sched.pump.clear_pending(path_id);
+            clear_reindex(project, path_id);
         } else {
             reindex(path_id, true);
         }
@@ -376,7 +380,7 @@ void ServedProject::finish_changes(bool refresh) {
     // applied yet. The queue filled is kept — the project's start kicks the
     // scheduler.
     if(server.lifecycle == ServerLifecycle::Ready) {
-        sched.pump.schedule();
+        schedule_index(project);
     }
     if(refresh && server.client) {
         server.client->refresh_diagnostics();

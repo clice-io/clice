@@ -1,15 +1,63 @@
 module clice;
 
 import :command.database;
+import :project.background_index;
 import :project.build;
 import :project.hosting;
+import :project.pch;
+import :project.pcm;
 import :project.project;
+import :project.unit_run;
 import :support.logging;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
+
+Project::Project(FileTable& file_table,
+                 CanonicalPath root,
+                 async::event_loop* loop,
+                 WorkerPool* pool) :
+    loop(loop), pool(pool), root(std::move(root)), file_table(file_table) {
+    if(!pool) {
+        return;
+    }
+    graph.set_runner(NodeKind::PCH,
+                     [this](RoundContext& ctx, NodeId id) { return pch_round(*this, ctx, id); });
+    graph.set_runner(NodeKind::PCM,
+                     [this](RoundContext& ctx, NodeId id) { return pcm_round(*this, ctx, id); });
+    graph.set_runner(NodeKind::UnitRun, [this](RoundContext& ctx, NodeId id) {
+        return unit_run_round(*this, ctx, id);
+    });
+}
+
+async::task<> Project::checkpoint() {
+    if(store) {
+        co_await async::queue([this] { store->checkpoint(); });
+    }
+    // A full search build or a fold here could still be running on the
+    // thread pool when a shutdown cancels the checkpoint, holding up the
+    // final save behind seconds of derived work: the round end does them,
+    // and a round with nothing queued builds what the search index is owed.
+    co_await persist(*this, index::SearchRebuild::Never);
+    schedule_index(*this);
+}
+
+async::task<> Project::shutdown() {
+    co_await graph.shutdown();
+    // Editors kill a server that is slow to exit, and building the search
+    // index dominates a cold round's save: the index commits with no more
+    // than a run of the changes since the last save, and the next session's
+    // first idle save builds the rest.
+    co_await persist(*this, index::SearchRebuild::Never);
+}
+
+void Project::close() {
+    if(store) {
+        store->shutdown();
+    }
+}
 
 void Project::rescan_disk_file(Fid path_id) {
     rescan_dependency_graph(cdb, toolchain, dep_graph, path_id);

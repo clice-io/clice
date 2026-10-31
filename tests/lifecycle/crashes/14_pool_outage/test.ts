@@ -11,7 +11,7 @@ const UNITS = 8;
 /// Parks for every unit's next index run in its worker.
 function parkAll(s: Serve): Promise<Park[]> {
     return Promise.all(
-        Object.keys(generate.units(UNITS)).map((unit) => s.park("tuRun", unit, { at: "worker" })),
+        Object.keys(generate.units(UNITS)).map((unit) => s.park("unitRun", unit, { at: "worker" })),
     );
 }
 

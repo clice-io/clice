@@ -2,6 +2,7 @@ module clice;
 
 import :index.peer_queries;
 import :server.master;
+import :project.background_index;
 import :server.served_project;
 import :support.logging;
 import :support.timer;
@@ -73,7 +74,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         if(options.await_cold_attempt && !waited) {
             waited = true;
-            co_await sched.pump.await_attempt(session.path_id);
+            co_await await_index_attempt(project, session.path_id);
             continue;
         }
         co_return Route::Empty;

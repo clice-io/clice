@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Enforce the src/ include layering: core <- settings <- {project, worker} <- sched <- server,
-project <- analysis and {analysis, server} <- driver; inside core, support <- vfs <-
+"""Enforce the src/ include layering: core <- settings <- worker <- project <- {server,
+analysis} <- driver, analysis reaching no worker; inside core, support <- vfs <-
 command <- syntax <- compile <- semantic <- index <- feature.
 
 Each layer may include, or import the partitions of, downward only: clice is one
 module, clice, whose partitions are named after the layer they are in
-(`import :sched.graph;`), and the test helpers after `unittests`
+(`import :project.graph;`), and the test helpers after `unittests`
 (`unittests.utils.tester`), which the check verifies too. Bazel enforces the layering
 between its targets, as it checks that every header a source includes belongs to the
 target or its dependencies; the core directories share one target, so only this check
@@ -35,19 +35,17 @@ FORBIDDEN = {
             "settings/",
             "project/",
             "worker/",
-            "sched/",
             "server/",
             "analysis/",
             "driver/",
         ]
         for index, layer in enumerate(CORE)
     },
-    "settings": ["project/", "worker/", "sched/", "server/", "analysis/", "driver/"],
-    "project": ["worker/", "sched/", "server/", "analysis/", "driver/"],
-    "worker": ["project/", "sched/", "server/", "analysis/", "driver/"],
-    "sched": ["server/", "analysis/", "driver/"],
+    "settings": ["worker/", "project/", "server/", "analysis/", "driver/"],
+    "worker": ["project/", "server/", "analysis/", "driver/"],
+    "project": ["server/", "analysis/", "driver/"],
     "server": ["analysis/", "driver/"],
-    "analysis": ["worker/", "sched/", "server/", "driver/"],
+    "analysis": ["worker/", "server/", "driver/"],
 }
 
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
@@ -99,8 +97,8 @@ def main() -> int:
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- settings <- {project, worker} <- sched <- server, project <- analysis, "
-            "{analysis, server} <- driver; inside core, "
+            "core <- settings <- worker <- project <- {server, analysis} <- driver, analysis "
+            "reaching no worker; inside core, "
             + " <- ".join(CORE)
             + "; includes and imports go downward only."
         )

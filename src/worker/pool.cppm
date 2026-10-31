@@ -2,7 +2,6 @@ module clice:worker.pool;
 
 import :support.logging;
 import :support.prelude;
-import :support.signal;
 import :worker.probe;
 import :worker.protocol;
 import :worker.scheduler;
@@ -301,11 +300,6 @@ public:
     /// and friends. Requests need no call of their own — every stateful
     /// dispatch and every High stateless dispatch counts.
     void foreground_pulse();
-
-    /// Emitted when a stateless slot (re)enters service — spawn, respawn,
-    /// revive, scale-up. The indexer's capacity gate wakes on it instead of
-    /// spinning dispatch attempts against a pool with no schedulable worker.
-    Signal<> on_stateless_capacity;
 
     /// The death `error` reports, which named no request, was its request's
     /// doing after all (see deliver): like a death that names its request,
@@ -737,7 +731,7 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& par
         return std::pair{BuildKind::PCH, llvm::StringRef(params.file)};
     } else if constexpr(std::same_as<Params, worker::BuildPCMParams>) {
         return std::pair{BuildKind::PCM, llvm::StringRef(params.file)};
-    } else if constexpr(std::same_as<Params, worker::TURunParams>) {
+    } else if constexpr(std::same_as<Params, worker::UnitRunParams>) {
         return std::pair{BuildKind::Index, llvm::StringRef(params.file)};
     } else {
         return std::nullopt;

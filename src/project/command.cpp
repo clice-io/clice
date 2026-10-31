@@ -4,8 +4,9 @@ import :command.argument;
 import :command.file_kind;
 import :command.search_config;
 import :index.project_index;
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
+import :project.project;
 import :support.logging;
 import :syntax.header_context;
 import :syntax.include_resolver;
@@ -71,28 +72,30 @@ struct Language {
     std::string standard;
 };
 
-std::optional<Language> language_of(Project& project,
-                                    Fid file,
-                                    llvm::ArrayRef<CanonicalRef> paths,
-                                    const ContextChoice* choice) {
+std::optional<Language> command_language(Project& project,
+                                         Fid file,
+                                         llvm::ArrayRef<CanonicalRef> paths,
+                                         const ContextChoice* choice) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto candidate = pick_chosen_command(project,
-                                         file,
-                                         commands,
-                                         paths,
-                                         path,
-                                         choice ? llvm::StringRef(choice->command_hash) : "",
-                                         choice ? llvm::StringRef(choice->base_hash) : "");
+    auto candidate = chosen_candidate(project,
+                                      file,
+                                      commands,
+                                      paths,
+                                      path,
+                                      choice ? llvm::StringRef(choice->command_hash) : "",
+                                      choice ? llvm::StringRef(choice->base_hash) : "")
+                         .value_or(commands.front());
     auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
 
-    llvm::StringRef language = ref.input.value;
+    auto language = language_of(ref);
     Language result{
         .source = candidate.source,
-        .is_c = language == "c" || language == "c-header",
+        .is_c =
+            language == clang::driver::types::TY_C || language == clang::driver::types::TY_CHeader,
         .language_forced = !project.commands.forced_language(ref.command).empty(),
     };
     for(auto& arg: project.commands.get(ref.command).args) {
@@ -105,13 +108,13 @@ std::optional<Language> language_of(Project& project,
 
 }  // namespace
 
-Candidate pick_chosen_command(Project& project,
-                              Fid file,
-                              llvm::ArrayRef<Candidate> candidates,
-                              llvm::ArrayRef<CanonicalRef> paths,
-                              llvm::StringRef language_path,
-                              llvm::StringRef chosen_hash,
-                              llvm::StringRef chosen_base) {
+std::optional<Candidate> chosen_candidate(Project& project,
+                                          Fid file,
+                                          llvm::ArrayRef<Candidate> candidates,
+                                          llvm::ArrayRef<CanonicalRef> paths,
+                                          llvm::StringRef language_path,
+                                          llvm::StringRef chosen_hash,
+                                          llvm::StringRef chosen_base) {
     // The base identity resolved when the user chose is exact; the applied hash
     // remains as the fallback for choices saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
@@ -131,7 +134,7 @@ Candidate pick_chosen_command(Project& project,
             }
         }
     }
-    return candidates.front();
+    return std::nullopt;
 }
 
 CommandRef lent_command(Project& project,
@@ -165,13 +168,14 @@ std::optional<Candidate> chosen_host_command(Project& project,
     }
     auto host_path = project.file_table.resolve(host);
     CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    return pick_chosen_command(project,
-                               header,
-                               commands,
-                               edit_paths,
-                               host_path,
-                               chosen_hash,
-                               chosen_base);
+    return chosen_candidate(project,
+                            header,
+                            commands,
+                            edit_paths,
+                            host_path,
+                            chosen_hash,
+                            chosen_base)
+        .value_or(commands.front());
 }
 
 std::optional<CommandRef> host_command(Project& project,
@@ -192,7 +196,7 @@ const clang::LangOptions&
     dialect(Project& project, Fid file, const ContextChoice* choice, Fid host) {
     auto path = project.file_table.resolve(file);
     bool host_choice = choice && choice->host_path_id.valid();
-    auto own = language_of(project, file, path, host_choice ? nullptr : choice);
+    auto own = command_language(project, file, path, host_choice ? nullptr : choice);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->language_forced && own->source == CommandSource::CDBExact) {
@@ -204,7 +208,8 @@ const clang::LangOptions&
     // contributor union the way it does for the AST after an escalation.
     if(host.valid()) {
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang = language_of(project, host, edit_paths, host_choice ? choice : nullptr);
+        auto host_lang =
+            command_language(project, host, edit_paths, host_choice ? choice : nullptr);
         if(host_lang) {
             return dialect_of("", host_lang->is_c, host_lang->standard);
         }
@@ -224,9 +229,15 @@ const clang::LangOptions&
     return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 
-std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
-                                                                const CommandRequest& request,
-                                                                Resolution& resolution) {
+namespace {
+
+/// A header's command borrowed from its host, with the includer's context
+/// when the header needs it (in `resolution`); nullopt when no host stands
+/// in for it, or its context cannot be synthesized.
+std::optional<CommandRef> resolve_through_host(Project& project,
+                                               Fid path_id,
+                                               const CommandRequest& request,
+                                               Resolution& resolution) {
     auto search = find_host(project, path_id, request.choice);
     if(search.missing) {
         resolution.missing_tree = std::move(search.missing);
@@ -304,25 +315,12 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
     return borrow();
 }
 
-Resolution CommandResolver::resolve_command(Fid path_id,
-                                            std::string& directory,
-                                            std::vector<std::string>& arguments,
-                                            const CommandRequest& request) {
-    auto resolution = resolve(path_id, directory, arguments, request);
-    llvm::SmallVector<UnitCommand, 2> taken;
-    while(request.preprocess && resolution.missing_tree &&
-          !ranges::contains(taken, resolution.missing_tree->key)) {
-        taken.push_back(resolution.missing_tree->key);
-        take_tree(project, *resolution.missing_tree);
-        resolution = resolve(path_id, directory, arguments, request);
-    }
-    return resolution;
-}
-
-Resolution CommandResolver::resolve(Fid path_id,
-                                    std::string& directory,
-                                    std::vector<std::string>& arguments,
-                                    const CommandRequest& request) {
+/// resolve_command, the trees the host search misses left missing.
+Resolution resolve(Project& project,
+                   Fid path_id,
+                   std::string& directory,
+                   std::vector<std::string>& arguments,
+                   const CommandRequest& request) {
     auto path = project.file_table.resolve(path_id);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
@@ -348,7 +346,6 @@ Resolution CommandResolver::resolve(Fid path_id,
         }
         resolution.hidden = std::move(rendered.hidden);
         resolution.ref = ref;
-        resolution.source = ref.source;
         log_command_decision(path, tried, ref.source, arguments);
         return std::move(resolution);
     };
@@ -375,7 +372,7 @@ Resolution CommandResolver::resolve(Fid path_id,
     //    host source's CDB entry with file path replaced and preamble injected.
     if(has_host_choice) {
         tried.push_back("switch_context");
-        if(auto ref = resolve_through_host(path_id, request, resolution)) {
+        if(auto ref = resolve_through_host(project, path_id, request, resolution)) {
             return finish(*ref);
         }
     }
@@ -395,14 +392,15 @@ Resolution CommandResolver::resolve(Fid path_id,
             chosen_base = choice->base_hash;
         }
         auto picked =
-            pick_chosen_command(project, path_id, commands, path, path, chosen_hash, chosen_base);
+            chosen_candidate(project, path_id, commands, path, path, chosen_hash, chosen_base)
+                .value_or(commands.front());
         return finish_own(picked.command, picked.source, path, path);
     }
 
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
-        if(auto ref = resolve_through_host(path_id, request, resolution)) {
+        if(auto ref = resolve_through_host(project, path_id, request, resolution)) {
             return finish(*ref);
         }
     }
@@ -452,9 +450,28 @@ Resolution CommandResolver::resolve(Fid path_id,
     return finish_own(project.build.builtin(path), CommandSource::Fallback, path, path);
 }
 
-std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
-                                                    const Resolution& resolution,
-                                                    const CommandRequest& request) {
+}  // namespace
+
+Resolution resolve_command(Project& project,
+                           Fid path_id,
+                           std::string& directory,
+                           std::vector<std::string>& arguments,
+                           const CommandRequest& request) {
+    auto resolution = resolve(project, path_id, directory, arguments, request);
+    llvm::SmallVector<UnitCommand, 2> taken;
+    while(request.preprocess && resolution.missing_tree &&
+          !ranges::contains(taken, resolution.missing_tree->key)) {
+        taken.push_back(resolution.missing_tree->key);
+        take_tree(project, *resolution.missing_tree);
+        resolution = resolve(project, path_id, directory, arguments, request);
+    }
+    return resolution;
+}
+
+std::optional<CommandRef> pch_unit(Project& project,
+                                   Fid path_id,
+                                   const Resolution& resolution,
+                                   const CommandRequest& request) {
     llvm::SmallVector<CanonicalRef, 2> paths{project.file_table.resolve(path_id)};
     if(resolution.host.valid()) {
         paths.push_back(project.file_table.resolve(resolution.host));

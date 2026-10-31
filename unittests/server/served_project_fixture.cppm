@@ -1,7 +1,7 @@
 module clice:unittests.server.served_project_fixture;
 
 import :command.database;
-import :project.command_resolver;
+import :project.command;
 import :server.master;
 import :server.served_project;
 import :server.session;

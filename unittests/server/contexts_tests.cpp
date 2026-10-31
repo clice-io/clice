@@ -1,7 +1,7 @@
 module clice;
 
 import :command.table;
-import :project.command_resolver;
+import :project.command;
 import :project.contexts;
 import :project.hosting;
 import :project.project;
@@ -23,7 +23,6 @@ TempDir tmp;
 ServedProjectFixture fx{tmp.root};
 ServedProject& served = *fx.served;
 Project& project = served.project;
-CommandResolver& commands = served.commands;
 MasterServer& server = fx.server;
 
 /// The user chose `choice` for `path_id` in the fixture's project, as
@@ -70,21 +69,21 @@ ZEST_CASE(EditorSharesContext) {
     // Its trial found it needs the includer's context.
     std::string directory;
     std::vector<std::string> arguments;
-    auto first = commands.resolve_command(header, directory, arguments, {.preprocess = true});
+    auto first = resolve_command(project, header, directory, arguments, {.preprocess = true});
     ZASSERT(first.trial);
     auto version = current_dep(project.file_table, header)->version;
     project.hosting.trials.commit(*first.trial,
                                   {.self_contained = false, .text = version, .disk = version},
                                   {});
 
-    auto background = commands.resolve_command(header, directory, arguments);
-    ZASSERT(background.source == CommandSource::IncludeGraph);
+    auto background = resolve_command(project, header, directory, arguments);
+    ZASSERT(background.ref.source == CommandSource::IncludeGraph);
     ZASSERT(background.host == host);
     ZASSERT(background.synthesized != nullptr);
     ZASSERT(ranges::contains(arguments, background.synthesized->prefix));
 
     auto resolution = served.resolve_command(header, directory, arguments);
-    ZASSERT(resolution.source == CommandSource::IncludeGraph);
+    ZASSERT(resolution.ref.source == CommandSource::IncludeGraph);
     ZASSERT(resolution.synthesized == background.synthesized);
     ZASSERT(!project.choices.dirty);
 }
@@ -99,10 +98,11 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
 
-    commands.resolve_command(file, directory, arguments);
+    resolve_command(project, file, directory, arguments);
     ZASSERT(!fx.entry(file).guessed);
 
-    ZASSERT(served.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
+    ZASSERT(served.resolve_command(file, directory, arguments).ref.source ==
+            CommandSource::Fallback);
     ZASSERT(fx.entry(file).guessed);
 
     write_cdb(tmp,
@@ -110,9 +110,10 @@ ZEST_CASE(GuessedTracksEditorOnly) {
               build_cdb_json({
                   {tmp.root, path, {}}
     }));
-    commands.resolve_command(file, directory, arguments);
+    resolve_command(project, file, directory, arguments);
     ZASSERT(fx.entry(file).guessed);
-    ZASSERT(served.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
+    ZASSERT(served.resolve_command(file, directory, arguments).ref.source ==
+            CommandSource::CDBExact);
     ZASSERT(!fx.entry(file).guessed);
 }
 
@@ -146,7 +147,7 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
 
     // ...but background indexing must never see user choices.
     arguments.clear();
-    commands.resolve_command(file, directory, arguments);
+    resolve_command(project, file, directory, arguments);
     ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
 }
 

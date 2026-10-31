@@ -1,7 +1,7 @@
 module clice;
 
 import :index.project_index;
-import :project.command_resolver;
+import :project.command;
 import :project.contexts;
 import :project.hosting;
 import :project.project;
@@ -131,19 +131,14 @@ bool command_alive(Project& project,
                    Fid entry_file,
                    llvm::ArrayRef<CanonicalRef> paths,
                    const ContextChoice& choice) {
-    auto entry_path = project.file_table.resolve(entry_file);
-    for(auto& entry: project.build.commands(entry_file)) {
-        if(!choice.base_hash.empty() &&
-           project.commands.command_hash_hex(entry.command) == choice.base_hash) {
-            return true;
-        }
-        auto ref =
-            project.build.resolve(entry_file, entry.command, entry.source, paths, entry_path);
-        if(project.commands.command_hash_hex(ref.command) == choice.command_hash) {
-            return true;
-        }
-    }
-    return false;
+    return chosen_candidate(project,
+                            entry_file,
+                            project.build.commands(entry_file),
+                            paths,
+                            project.file_table.resolve(entry_file),
+                            choice.command_hash,
+                            choice.base_hash)
+        .has_value();
 }
 
 /// The context choices as the database's blob lays them out, field for
@@ -247,7 +242,8 @@ std::optional<ListedContext> current_context_item(Project& project,
         if(commands.empty()) {
             return std::nullopt;
         }
-        auto entry = pick_chosen_command(project, file, commands, path, path, hash, base);
+        auto entry = chosen_candidate(project, file, commands, path, path, hash, base)
+                         .value_or(commands.front());
         auto index = ranges::find_if(commands,
                                      [&](const Candidate& candidate) {
                                          return candidate.command == entry.command;

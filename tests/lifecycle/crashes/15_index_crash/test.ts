@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // bytes would crash the next run too. It is indexed again once it changes.
 
 test(async (t) => {
-    const s = await t.start({ crash: { request: "tuRun", file: "poison.cpp" } });
+    const s = await t.start({ crash: { request: "unitRun", file: "poison.cpp" } });
     s.open("main.cpp");
     await t.show("sync", { failed: (await s.sync()).failed });
     await t.show("symbols", s.workspaceSymbols("_fn"));

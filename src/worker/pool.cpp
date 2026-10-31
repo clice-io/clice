@@ -267,7 +267,6 @@ void WorkerPool::serving(std::size_t index, bool stateful) {
     if(!stateful) {
         scheduler.worker_ready(index, now());
         execute();
-        on_stateless_capacity.emit();
     }
     capacity_returned.set();
 }

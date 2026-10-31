@@ -5,12 +5,11 @@ import :index.project_index;
 import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
-import :project.command_resolver;
+import :project.background_index;
+import :project.command;
 import :project.project;
+import :project.reindex_queue;
 import :project.save;
-import :sched.index.pending_table;
-import :sched.index.pump;
-import :sched.stack;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -64,7 +63,6 @@ ZEST_SUITE(ProjectIndexSave) {
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
-IndexPump& pump = fx.pump;
 
 bool merge(llvm::StringRef data) {
     return fx.merge(data);
@@ -719,7 +717,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     merge(a2.data);
     save();
     ZASSERT(!project.index.shard(header_id));
-    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+    ZASSERT(!fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
     ZASSERT(!project.database->contains(index::BlobKind::Shard,
                                         IndexInternals::file_key(project.index, header_id)));
@@ -756,7 +754,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
-    pump.clear_pending(project.file_table.intern(Spelling::absolute(b.tu_path)));
+    clear_reindex(fx.project, project.file_table.intern(Spelling::absolute(b.tu_path)));
 
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
@@ -777,7 +775,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     // unservable; nothing else in this process would rebuild them (a
     // reverted header even reads fresh by hash), so the retirement must
     // re-enqueue pb itself.
-    ZASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
+    ZASSERT(fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
             ReindexReason::ContentChanged);
 }
 
@@ -908,8 +906,8 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
     ZASSERT(!project.index.shard(clean_id));
     ZASSERT(!project.index.shard(dirty_id));
-    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
-    ZASSERT(pump.pending_reason(dirty_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(dirty_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
     // The next save records the command snapshot in the fresh database.
@@ -970,7 +968,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(condemned);
     ZASSERT(project.database != nullptr);
     ZASSERT(!project.index.shard(path_id));
-    ZASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(path_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
     fx.save();
@@ -994,7 +992,7 @@ ZEST_CASE(GrownMapRetriesNow) {
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
-    auto task = f.pump.persist();
+    auto task = persist(f.project);
     f.loop.schedule(task);
     f.loop.run();
 
@@ -1009,18 +1007,16 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 
     async::event_loop loop;
     FileTable files;
-    Project project{files};
     WorkerPool pool{loop};
-    CommandResolver commands{project};
-    SchedulingStack stack(loop, project, commands, pool);
+    Project project{files, {}, &loop, &pool};
     auto& log = open_logged(tmp, project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     auto report = project.index.merge(indexed.data, {});
     ZASSERT(report);
-    stack.pump.apply_report(*report);
+    apply_report(project, *report);
 
-    auto task = stack.shutdown();
+    auto task = project.shutdown();
     loop.schedule(task);
     loop.run();
 
@@ -1075,8 +1071,8 @@ void a() { Box<A>{}.show(); }
     ZEXPECT(ranges::equal(instantiations->resolutions(), stored));
     ZEXPECT(f.project.index.live_uses(box_id).size() == 1u);
     ZEXPECT(count(*instantiations) == records);
-    ZEXPECT(
-        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+    ZEXPECT(!f.queue.pending_reason(
+        f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 ZEST_CASE(DamagedInstantiationsRebuildAll) {
@@ -1122,7 +1118,7 @@ void a() { Box<A>{}.show(); }
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.database->contains(index::BlobKind::InstantiationShard, box_key));
     ZEXPECT(
-        f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+        f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 };  // ZEST_SUITE(ProjectIndexSave)

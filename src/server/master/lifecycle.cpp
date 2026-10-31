@@ -261,7 +261,7 @@ async::task<> MasterServer::close() {
     client_watch.cancel();
     co_await client_watch.join();
     for(auto& project: projects) {
-        project->sched.close();
+        project->project.close();
     }
     lifecycle = ServerLifecycle::Exited;
 }

@@ -11,16 +11,22 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
+import :project.background_index;
 import :project.build;
 import :project.command_snapshot;
+import :project.graph;
 import :project.hosting;
 import :project.memo;
+import :project.pch;
+import :project.pcm;
+import :project.unit_run;
 import :semantic.symbol;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
+import :worker.pool;
 
 namespace clice {
 
@@ -174,7 +180,8 @@ struct ContextChoices {
     bool dirty = false;
 };
 
-/// All persistent, project-wide state derived from files on disk.
+/// All persistent, project-wide state derived from files on disk, and what
+/// the project builds from it: its PCHs, its modules and its units' index.
 ///
 /// Design principle: open files are never depended upon by other files.
 /// Dependencies always point to disk files.  This enforces a clean two-layer
@@ -193,9 +200,25 @@ struct ContextChoices {
 ///   - Opening         (open, once)
 ///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
+///
+/// A project builds through `loop` and `pool`, which an owner that builds
+/// (the server, `clice index`, `clice lint`) hands it at construction and
+/// keeps alive past it; the read-only entry points construct it without
+/// them and never reach the build functions (pch.cppm, pcm.cppm,
+/// unit_run.cppm, background_index.cppm). The task graph's rounds and the
+/// background index's tasks use the members before them: an owner awaits
+/// stop_background_index() and shutdown() before the project dies.
 struct Project {
-    explicit Project(FileTable& file_table, CanonicalPath root = {}) :
-        root(std::move(root)), file_table(file_table) {}
+    explicit Project(FileTable& file_table,
+                     CanonicalPath root = {},
+                     async::event_loop* loop = nullptr,
+                     WorkerPool* pool = nullptr);
+
+    /// The event loop and the worker pool the project builds with; null for
+    /// a read-only open.
+    async::event_loop* loop;
+
+    WorkerPool* pool;
 
     /// The project's root: the `${workspace}` value, the anchor of rules and
     /// databases no configuration file supplied, the enumeration root of
@@ -314,7 +337,7 @@ struct Project {
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the served project's change handling (PCMBuilder::invalidate).
+    /// the served project's change handling (invalidate_module).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
@@ -372,6 +395,81 @@ struct Project {
             request_flush();
         }
     }
+
+    /// The PCH nodes' ids, interned by key monotonically, never recycled:
+    /// the graph may retain an id in edges or rounds long after the key's
+    /// entry went.
+    llvm::StringMap<std::uint64_t> pch_ids;
+
+    /// Per PCH node, the request its dispatch owner stashed: replaced by the
+    /// spawning acquisition, read by its round and any stale-retry rounds,
+    /// and cleared when a current round commits a result or nobody waits on
+    /// the key any more.
+    std::vector<PCHRequest> pch_requests;
+
+    /// Keys of pch_cache entries whose pch.idx index is currently loaded,
+    /// most recently used first (see enforce_loaded_budget).
+    llvm::SmallVector<std::string, 8> loaded_pch_states;
+
+    /// Open-document count provider, connected by the server. Sizes the
+    /// loaded-state budget; unset (tests, tools) falls back to a small
+    /// editor-like working set.
+    std::function<std::size_t()> open_documents;
+
+    /// The import scans of open buffers, and of units' disk text: kept while
+    /// the arguments and the project's disk state (context_epoch) stay the
+    /// same — and for a buffer, its directives. A failed module's every
+    /// importer waits on it again, and each wait would preprocess it again.
+    llvm::DenseMap<Fid, ImportScan> buffer_scans;
+
+    llvm::DenseMap<Fid, ImportScan> disk_scans;
+
+    /// Preprocessor passes direct_deps() ran.
+    std::uint64_t import_scans = 0;
+
+    /// The plan of each unit run waiting for its round, and the outcome of
+    /// each round finished whose run_unit has not taken it yet.
+    llvm::DenseMap<Fid, UnitRunPlan> unit_run_plans;
+
+    llvm::DenseMap<Fid, UnitRunOutcome> unit_run_outcomes;
+
+    /// TUs whose last result named a variant by hash that the project index
+    /// did not hold for its file: the next run sends every section's bytes,
+    /// so the rerun cannot fail the same way.
+    llvm::DenseSet<Fid> send_in_full;
+
+    /// TUs whose last run crashed its worker over their target's
+    /// precompiled header, with its key: the next run leaves it out.
+    llvm::DenseMap<Fid, std::string> crashed_over_pch;
+
+    /// What each TU's runs in this session measured: the peak of the last
+    /// finished one, at least what a run killed for memory before it
+    /// reached, and the memory one killed since reached. Ahead of the
+    /// manifest's peak, which only an index that merged records.
+    llvm::DenseMap<Fid, RequestCost> unit_run_costs;
+
+    /// The task graph the PCH, PCM and unit-run nodes build on, the
+    /// server's AST nodes beside them. Its rounds use everything above.
+    TaskGraph graph;
+
+    BackgroundIndex background_index;
+
+    /// Persist the index and the cache store's manifest as they stand, a
+    /// round running or not: a cold round covers the whole project, and a
+    /// process killed mid-round loses only what merged since the last
+    /// checkpoint.
+    async::task<> checkpoint();
+
+    /// The shutdown tail once compile and index work is quiesced (contract
+    /// 11; stop_background_index() ran): wind down the graph's rounds, then
+    /// the final save. The owner closes the cache store next (see close).
+    async::task<> shutdown();
+
+    /// Close the cache store once no build of this project is awaited:
+    /// after the pool stopped, or right after shutdown() while the pool
+    /// serves other projects — a worker still finishing a cancelled build
+    /// then only fails its write.
+    void close();
 
     /// The PCM of each built module of `modules`, under its name: what a
     /// compile importing them hands clang.

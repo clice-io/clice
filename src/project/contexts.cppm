@@ -1,6 +1,6 @@
 module clice:project.contexts;
 
-import :project.command_resolver;
+import :project.command;
 import :project.project;
 import :support.prelude;
 

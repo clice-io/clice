@@ -155,6 +155,11 @@ std::optional<llvm::SmallVector<Host>> include_chains(Project& project,
                                                       const UnitCommand& unit,
                                                       Fid header);
 
+/// The language a command compiles its unit as — a `-x` in the entry or a
+/// rule's append included, else the unit's suffix as its driver reads it
+/// (`g++` takes a `.c` as C++).
+clang::driver::types::ID language_of(const CommandRef& command);
+
 /// The unit's own command `candidate`, rules applied, and its key.
 TreeRequest tree_request(Project& project, Fid unit, const Candidate& candidate);
 

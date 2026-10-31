@@ -7,13 +7,13 @@ import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
-import :project.command_resolver;
+import :project.background_index;
+import :project.command;
+import :project.graph;
 import :project.hosting;
+import :project.pch;
+import :project.pcm;
 import :project.project;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.graph;
-import :sched.stack;
 import :server.session;
 import :settings.settings;
 import :support.anomaly;
@@ -192,7 +192,7 @@ struct RouteOptions {
 
     /// The feature has no refresh request, so an empty reply to a cold
     /// document would be cached by the client for good — no signal ever
-    /// makes it re-pull. Await the didOpen boost once (bounded by one index
+    /// makes it re-pull. Await the didOpen index_first once (bounded by one index
     /// attempt) before answering Empty, and decide again from whatever
     /// source is there once it finishes: the shard, the escalated compile,
     /// or honestly empty under readonly "on".
@@ -218,8 +218,8 @@ Value empty_value() {
     }
 }
 
-/// One project the server serves: the project on disk and its scheduling
-/// stack over the process's worker pool, the open documents the master
+/// One project the server serves: the project on disk, which builds over
+/// the process's worker pool, the open documents the master
 /// routed to it, and everything the project derives for them. Its work is
 /// split in files: lifetime and adoption (served_project.cpp), compiling the
 /// open documents (compile.cpp), what answers a request on them now and
@@ -252,7 +252,7 @@ public:
     void start();
 
     /// Quiesce compile and index work and persist the final state; then
-    /// sched.close() releases the store — once the pool stopped at exit, or
+    /// project.close() releases the store — once the pool stopped at exit, or
     /// right away for a project removed while the pool serves others (a
     /// worker still finishing a cancelled build of it only fails its
     /// write).
@@ -396,7 +396,7 @@ public:
     /// Whether a round of the document is live: it will send a compile of
     /// its own, so a lost worker-side AST needs no invalidation.
     bool compiling(Fid path_id) const {
-        return sched.graph.is_compiling(node(path_id));
+        return project.graph.is_compiling(node(path_id));
     }
 
     /// The document's latest compile, or null before its first compile.
@@ -431,7 +431,7 @@ public:
     /// Whether the file's escalated document holds text no background run
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
-    /// (TURunFamily::Plan::skipped_diagnostics).
+    /// (UnitRunPlan::skipped_diagnostics).
     bool lacks_skipped_diagnostics(Fid path_id) const;
 
     /// Interrupt every in-flight parse and wait for the detached compile
@@ -538,7 +538,7 @@ public:
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
 
     /// Whether an open document's own compile serves the file's index
-    /// (IndexPump::compiled_by_session): an escalated document's does,
+    /// (BackgroundIndex::compiled_by_session): an escalated document's does,
     /// unless it skips the bodies of the headers — then only a background
     /// run shows what the skipped bodies hold (report_skipped_diagnostics).
     bool compiled_by_session(Fid path_id) const;
@@ -708,15 +708,11 @@ public:
 
     MasterServer& server;
 
+    /// Built over the server's pool, its runners set at construction —
+    /// nodes materialize on demand, so a module-free project pays nothing.
+    /// The background index is serving-neutral; the document-side policy is
+    /// installed into its hooks at construction.
     Project project;
-
-    CommandResolver commands{project};
-
-    /// The scheduling core the batch driver runs too, its builders
-    /// registered at construction — nodes materialize on demand, so a
-    /// module-free project pays nothing. The pump is serving-neutral; the
-    /// document-side policy is installed into its hooks at construction.
-    SchedulingStack sched;
 
     /// Problems found while reading the settings, kept so the client can
     /// publish them as diagnostics on the configuration file's URI, and the
@@ -734,8 +730,8 @@ private:
     // served_project.cpp
 
     /// Decide a freshly opened index-only document's serving: escalate one
-    /// that already diverged from its shard, or boost the file's background
-    /// indexing when nothing can serve it. Escalated documents need no
+    /// that already diverged from its shard, or index the file first in the
+    /// background when nothing can serve it. Escalated documents need no
     /// decision — builds are pull-driven.
     void decide_serving(ServedDocument& document);
 
@@ -751,7 +747,7 @@ private:
     void schedule_metadata_flush();
     async::task<> metadata_flush_task();
 
-    /// The periodic SchedulingStack::checkpoint().
+    /// The periodic Project::checkpoint().
     async::task<> checkpoint_task();
 
     /// Drop pch_cache metadata for blobs the store's LRU evicted from
@@ -781,13 +777,12 @@ private:
     /// the import next to the file's own diagnostics; one whose build
     /// crashed a worker also goes into the document's records, and is
     /// refused until the document's record lets it retry.
-    async::task<std::optional<PCMBuilder::ModuleDeps>>
-        depend_modules(RoundContext& ctx,
-                       const Ticket& ticket,
-                       const Resolution& resolution,
-                       llvm::StringRef directory,
-                       const std::vector<std::string>& arguments,
-                       llvm::StringRef text);
+    async::task<std::optional<ModuleDeps>> depend_modules(RoundContext& ctx,
+                                                          const Ticket& ticket,
+                                                          const Resolution& resolution,
+                                                          llvm::StringRef directory,
+                                                          const std::vector<std::string>& arguments,
+                                                          llvm::StringRef text);
 
     /// Whose fault a worker death under the document's compile is, tried
     /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
@@ -808,7 +803,7 @@ private:
 
         Decision decision = Decision::None;
 
-        PCHBuilder::Request request;
+        PCHRequest request;
 
         /// The preamble ends before the text's own, at a completion's point:
         /// what the request loads is its own, not the document's.
@@ -819,9 +814,9 @@ private:
     /// command `resolution` gave the document: the editor's build, skipping
     /// function bodies, but for a modular parse (ModuleDeps::modular), which
     /// reads the index's, the one every PCM is built over.
-    std::optional<PCHBuilder::Request> declared_pch(Fid path_id,
-                                                    const Resolution& resolution,
-                                                    const PCMBuilder::ModuleDeps& imports);
+    std::optional<PCHRequest> declared_pch(Fid path_id,
+                                           const Resolution& resolution,
+                                           const ModuleDeps& imports);
 
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none. `point` is where a
@@ -833,7 +828,7 @@ private:
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const Resolution& resolution,
-                     const PCMBuilder::ModuleDeps& imports,
+                     const ModuleDeps& imports,
                      llvm::StringRef base);
 
     /// Revalidate or build the preamble PCH of `text` through the builder,
@@ -849,7 +844,7 @@ private:
                                                        const std::string& directory,
                                                        const std::vector<std::string>& arguments,
                                                        const Resolution& resolution,
-                                                       const PCMBuilder::ModuleDeps& imports);
+                                                       const ModuleDeps& imports);
 
     /// The document's round moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
@@ -1060,7 +1055,8 @@ private:
 
     bool metadata_flush_scheduled = false;
 
-    /// The pump's progress, relayed to the master, and its index changes.
+    /// The background index's progress, relayed to the master, and its index
+    /// changes.
     Signal<>::Connection progress_conn;
     Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;
 
@@ -1185,7 +1181,7 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
     // answering clears it (see Session).
     Session::Attempt attempt(session, kind);
     bool compile = false;
-    auto& pool = sched.pool;
+    auto& pool = *project.pool;
     co_return co_await deliver(
         pool,
         true,
@@ -1279,7 +1275,7 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
         refused = !admits(session, kind, &attempt, parses);
         return !refused;
     };
-    auto& pool = sched.pool;
+    auto& pool = *project.pool;
     co_return co_await deliver(
         pool,
         false,

@@ -6,7 +6,7 @@ import :compile.diagnostic;
 import :index.include_tree;
 import :index.project_index;
 import :index.tu_manifest;
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :support.logging;
@@ -16,16 +16,13 @@ import :vfs.path;
 
 namespace clice {
 
-namespace {
-
 namespace types = clang::driver::types;
 
-/// The language a command compiles its unit as — a `-x` in the entry or
-/// a rule's append included, else the unit's suffix as its driver reads
-/// it (`g++` takes a `.c` as C++).
 types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.input.value);
 }
+
+namespace {
 
 /// Whether `type` is C++ or a C++ module unit: the two share flags, so
 /// each lends to the other.

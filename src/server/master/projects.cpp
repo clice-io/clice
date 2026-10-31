@@ -31,7 +31,8 @@ static ServedProject* deepest_holding(llvm::ArrayRef<std::shared_ptr<ServedProje
 }
 
 /// Add what `progress` counts to `into`.
-static void add_progress(IndexPump::Progress& into, const IndexPump::Progress& progress) {
+static void add_progress(BackgroundIndex::Progress& into,
+                         const BackgroundIndex::Progress& progress) {
     into.total += progress.total;
     into.completed += progress.completed;
     into.dispatched += progress.dispatched;
@@ -286,7 +287,7 @@ void MasterServer::serve_folders() {
         serving.push_back(make_project(std::move(root)));
         // Nothing compiles or indexes under no build until it starts.
         serving.back()->loaded.reset();
-        serving.back()->sched.pump.pause_indexing();
+        pause_indexing(serving.back()->project);
         waiting_projects.push_back(serving.back().get());
         made.push_back(serving.back().get());
     }
@@ -328,7 +329,7 @@ void MasterServer::serve_folders() {
     projects_generation += 1;
     for(auto* project: starting) {
         project->start();
-        project->sched.pump.resume_indexing();
+        resume_indexing(project->project);
         // The documents it held while it waited.
         for(auto& [path_id, document]: documents) {
             if(document.owner == project) {
@@ -352,7 +353,7 @@ void MasterServer::serve_folders() {
         }
         bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
             co_await project->shutdown();
-            project->sched.close();
+            project->project.close();
         }(std::move(project)));
     }
     if(client) {
@@ -361,12 +362,12 @@ void MasterServer::serve_folders() {
 }
 
 void MasterServer::index_progress_changed(ServedProject& changed) {
-    using Stage = IndexPump::Progress::Stage;
-    // A stopping project's pump winds down outside the round.
+    using Stage = BackgroundIndex::Progress::Stage;
+    // A stopping project's background index winds down outside the round.
     if(ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
-    auto& now = changed.sched.pump.progress();
+    auto& now = changed.project.background_index.progress;
     auto it = index_round.find(&changed);
     if(it == index_round.end()) {
         if(now.stage == Stage::End) {
@@ -382,8 +383,8 @@ void MasterServer::index_progress_changed(ServedProject& changed) {
 }
 
 void MasterServer::fold_index_progress() {
-    using Stage = IndexPump::Progress::Stage;
-    IndexPump::Progress all = ended_rounds;
+    using Stage = BackgroundIndex::Progress::Stage;
+    BackgroundIndex::Progress all = ended_rounds;
     bool active = false;
     for(auto& one:
         views::transform(index_round, [](auto& entry) -> auto& { return entry.second; })) {

@@ -6,15 +6,10 @@ import :index.database;
 import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
-import :project.command_resolver;
+import :project.background_index;
 import :project.project;
+import :project.reindex_queue;
 import :project.save;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.builders.turun;
-import :sched.graph;
-import :sched.index.pending_table;
-import :sched.index.pump;
 import :support.bytes;
 import :support.prelude;
 import :unittests.utils.temp_dir;
@@ -27,42 +22,34 @@ import :worker.pool;
 
 namespace clice::testing {
 
-/// Test fixture with friend access to the pump's internals. The take
-/// wrappers (merge/save/load/drop_index) route each index report back into
-/// the pump, as the production callers do.
+/// Test fixture with friend access to the reindex queue's internals. The
+/// take wrappers (merge/save/load/drop_index) route each index report back
+/// into the background index, as the production callers do.
 struct IndexerFixture {
-    using Decision = PendingTable::FailureDecision;
+    using Decision = ReindexQueue::FailureDecision;
 
-    constexpr static unsigned budget = IndexPump::max_requeue_attempts;
+    constexpr static unsigned budget = BackgroundIndex::max_requeue_attempts;
 
     async::event_loop loop;
     FileTable files;
-    Project project{files};
     WorkerPool pool{loop};
-    CommandResolver commands{project};
-    TaskGraph graph;
-    PCHBuilder pch{graph, project, pool};
-    PCMBuilder pcm{graph, project, commands, pch, pool};
-    TURunFamily turun{graph, project, commands, pcm, pch, pool};
-    IndexPump pump{loop, project, turun, pool};
+    Project project{files, {}, &loop, &pool};
+    BackgroundIndex& background = project.background_index;
+    ReindexQueue& queue = project.background_index.queue;
 
-    IndexerFixture() {
-        turun.register_runner();
-    }
-
-    /// Merge a worker result and take its report, as the TURun round does.
+    /// Merge a worker result and take its report, as the unit run does.
     bool merge(llvm::StringRef data) {
         auto report = project.index.merge(data, {});
         if(report) {
-            pump.apply_report(*report);
+            apply_report(project, *report);
         }
         return report.has_value();
     }
 
-    /// One save with the pump's debt snapshot, its report taken back —
+    /// One save with the background index's debt, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        pump.apply_report(co_await save_project(project, loop, pump.save_debt(), search));
+        apply_report(project, co_await save_project(project, loop, save_debt(project), search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
@@ -70,14 +57,14 @@ struct IndexerFixture {
     /// (false = a header of another format, or corrupt).
     bool load() {
         auto result = load_saved(project, project.database && !project.database->read_only());
-        pump.apply_report(result.report);
+        apply_report(project, result.report);
         return result.decoded;
     }
 
     void drop_index(Fid id) {
         index::IndexReport report;
         project.index.drop(id, report);
-        pump.apply_report(report);
+        apply_report(project, report);
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
@@ -85,48 +72,48 @@ struct IndexerFixture {
         reopen_fresh_database(project);
     }
 
-    /// Record a terminally failed attempt, as run_index_task's failure
+    /// Record a terminally failed attempt, as the index task's failure
     /// decisions do.
     void mark_failed(Fid id) {
-        pump.failed_ids.insert(id);
+        background.failed.insert(id);
     }
 
     /// Fail the entry's current dispatch: the launch sequence number matches.
-    Decision fail(Fid id, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, seq(id)}, failure);
+    Decision fail(Fid id, ReindexQueue::Failure failure) {
+        return queue.on_dispatch_failure({id, seq(id)}, failure);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) sequence number.
-    Decision fail_at(Fid id, std::uint64_t seq, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, seq}, failure);
+    Decision fail_at(Fid id, std::uint64_t seq, ReindexQueue::Failure failure) {
+        return queue.on_dispatch_failure({id, seq}, failure);
     }
 
     std::uint64_t seq(Fid id) {
-        auto it = pump.pending_table.entries.find(id);
-        return it == pump.pending_table.entries.end() ? std::numeric_limits<std::uint64_t>::max()
-                                                      : it->second.seq;
+        auto it = queue.entries.find(id);
+        return it == queue.entries.end() ? std::numeric_limits<std::uint64_t>::max()
+                                         : it->second.seq;
     }
 
     unsigned attempts(Fid id) {
-        auto it = pump.pending_table.entries.find(id);
-        return it == pump.pending_table.entries.end() ? 0u : it->second.requeue_attempts;
+        auto it = queue.entries.find(id);
+        return it == queue.entries.end() ? 0u : it->second.requeue_attempts;
     }
 
     void set_attempts(Fid id, unsigned n) {
-        pump.pending_table.entries.find(id)->second.requeue_attempts = n;
+        queue.entries.find(id)->second.requeue_attempts = n;
     }
 
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
     void consume(Fid id) {
-        pump.pending_table.queued.erase(id);
+        queue.queued_files.erase(id);
     }
 
-    /// Complete an attempt for `seq` on the loop, as run_index_task's
-    /// tail does — waking waiters requires a running loop.
+    /// Complete an attempt for `seq` on the loop, as the index task's tail
+    /// does — waking waiters requires a running loop.
     void wake_waiters(Fid id, std::uint64_t seq) {
         auto body = [&]() -> async::task<> {
-            pump.wake_attempt_waits(id, seq);
+            wake_attempt_waits(project, id, seq);
             co_return;
         };
         auto task = body();
@@ -135,13 +122,13 @@ struct IndexerFixture {
     }
 
     /// Start a fresh staleness round: per-round FileVersion results are
-    /// cleared by run_background_indexing, which these tests bypass.
+    /// cleared by run_index_round, which these tests bypass.
     void begin_round() {
         project.index.begin_round();
     }
 
     /// The instantiation keys the worker indexing `tu` may skip, as the
-    /// TURun round asks for them.
+    /// unit run asks for them.
     std::vector<std::uint64_t> known_instantiations(Fid tu) {
         return project.index.known_instantiations(tu, project.dep_graph.include_closure(tu));
     }
@@ -161,7 +148,7 @@ struct IndexerFixture {
     /// One background round as a schedulable task, for tests that need to
     /// interleave other tasks with it.
     async::task<> round_task() {
-        return pump.run_background_indexing();
+        return run_index_round(project);
     }
 
     /// Run one background round to completion on the fixture's loop.

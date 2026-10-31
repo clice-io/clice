@@ -1,8 +1,8 @@
 module clice;
 
 import :compile.compilation;
-import :sched.builders.build_common;
-import :sched.builders.turun;
+import :project.precompiled;
+import :project.unit_run;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
@@ -16,7 +16,7 @@ import :worker.pool;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(TURunLint) {
+ZEST_SUITE(UnitRunLint) {
 
 ZEST_CASE(ModuleLintScanParity) {
     // Only a scan under the lint round's extra args discovers the import
@@ -47,16 +47,14 @@ ZEST_CASE(ModuleLintScanParity) {
     store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
-    f.pcm.register_runner();
-
-    TURunFamily::Plan plan;
+    UnitRunPlan plan;
     plan.tidy = tidy::TidyParams{
         .checks = "-*,bugprone-integer-division",
         .extra_args = {"-DUSE_M"},
     };
 
     auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
-    TURunFamily::Outcome outcome;
+    UnitRunOutcome outcome;
     bool done = false;
     auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
@@ -65,9 +63,9 @@ ZEST_CASE(ModuleLintScanParity) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        outcome = co_await f.turun.run(n_id, std::move(plan), {});
+        outcome = co_await run_unit(f.project, n_id, std::move(plan));
 
-        co_await f.graph.shutdown();
+        co_await f.project.graph.shutdown();
         co_await f.pool.stop();
         done = true;
     };
@@ -76,16 +74,16 @@ ZEST_CASE(ModuleLintScanParity) {
     f.loop.run();
     ZEXPECT(done);
 
-    ZEXPECT(outcome.result == TURunFamily::Result::Completed);
+    ZEXPECT(outcome.result == UnitRunOutcome::Result::Completed);
     // The finding inside the gated region proves the parse saw the
     // extras and consumed the edge-built PCM.
     ZASSERT(!outcome.tidy_diagnostics.empty());
     ZEXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
 }
 
-};  // ZEST_SUITE(TURunLint)
+};  // ZEST_SUITE(UnitRunLint)
 
-ZEST_SUITE(TURunIndex) {
+ZEST_SUITE(UnitRunIndex) {
 
 ZEST_CASE(OutdatedRerunsInFull) {
     // Two headers with the same bytes share one variant identity. Only
@@ -114,7 +112,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZASSERT(!f.project.index.shard(x2_id));
 
     auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
-    std::vector<TURunFamily::Result> results;
+    std::vector<UnitRunOutcome::Result> results;
     bool done = false;
     auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
@@ -124,12 +122,12 @@ ZEST_CASE(OutdatedRerunsInFull) {
         ZASSERT(f.pool.start(opts));
 
         for(int run = 0; run < 2; run += 1) {
-            TURunFamily::Plan plan;
+            UnitRunPlan plan;
             plan.index = true;
-            results.push_back((co_await f.turun.run(b_id, std::move(plan), {})).result);
+            results.push_back((co_await run_unit(f.project, b_id, std::move(plan))).result);
         }
 
-        co_await f.graph.shutdown();
+        co_await f.project.graph.shutdown();
         co_await f.pool.stop();
         done = true;
     };
@@ -138,8 +136,8 @@ ZEST_CASE(OutdatedRerunsInFull) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum TURunFamily::Result;
-    ZEXPECT(results == (std::vector<TURunFamily::Result>{Preempted, Completed}));
+    using enum UnitRunOutcome::Result;
+    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Preempted, Completed}));
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
@@ -167,12 +165,11 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     ZASSERT(store);
     store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
-    f.pcm.register_runner();
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<TURunFamily::Result> results;
+    std::vector<UnitRunOutcome::Result> results;
     std::size_t pcms_before_impl = 0;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -186,12 +183,12 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
             if(llvm::StringRef(name) == "impl.cpp") {
                 pcms_before_impl = f.project.pcm_builds.size();
             }
-            TURunFamily::Plan plan;
+            UnitRunPlan plan;
             plan.index = true;
-            results.push_back((co_await f.turun.run(id(name), std::move(plan), {})).result);
+            results.push_back((co_await run_unit(f.project, id(name), std::move(plan))).result);
         }
 
-        co_await f.graph.shutdown();
+        co_await f.project.graph.shutdown();
         co_await f.pool.stop();
         done = true;
     };
@@ -200,8 +197,8 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum TURunFamily::Result;
-    ZEXPECT(results == (std::vector<TURunFamily::Result>{Completed, Completed, Completed}));
+    using enum UnitRunOutcome::Result;
+    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
     ZEXPECT(f.project.pcm_builds.size() == 1u);
     auto build = f.project.pcm_builds.find(id("m.cppm"));
@@ -231,7 +228,6 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     ZASSERT(store);
     store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
-    f.pcm.register_runner();
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -252,11 +248,11 @@ ZEST_CASE(CrashedModuleStaysRefused) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        TURunFamily::Plan plan;
+        UnitRunPlan plan;
         plan.index = true;
-        co_await f.turun.run(id("use.cpp"), std::move(plan), {});
+        co_await run_unit(f.project, id("use.cpp"), std::move(plan));
 
-        co_await f.graph.shutdown();
+        co_await f.project.graph.shutdown();
         co_await f.pool.stop();
         done = true;
     };
@@ -325,7 +321,6 @@ ZEST_CASE(CrashCountsOnPCH) {
     store->register_namespace(
         {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
-    f.pch.register_runner();
 
     auto consume_failures = [&] {
         unsigned count = 0;
@@ -336,7 +331,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<TURunFamily::Result> results;
+    std::vector<UnitRunOutcome::Result> results;
     std::vector<unsigned> counts;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -348,13 +343,13 @@ ZEST_CASE(CrashCountsOnPCH) {
 
         for(auto name:
             {"self.cpp", "self.cpp", "main.cpp", "main.cpp", "ok.cpp", "main.cpp", "main.cpp"}) {
-            TURunFamily::Plan plan;
+            UnitRunPlan plan;
             plan.index = true;
-            results.push_back((co_await f.turun.run(id(name), std::move(plan), {})).result);
+            results.push_back((co_await run_unit(f.project, id(name), std::move(plan))).result);
             counts.push_back(consume_failures());
         }
 
-        co_await f.graph.shutdown();
+        co_await f.project.graph.shutdown();
         co_await f.pool.stop();
         done = true;
     };
@@ -363,19 +358,19 @@ ZEST_CASE(CrashCountsOnPCH) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum TURunFamily::Result;
-    ZEXPECT(results == (std::vector<TURunFamily::Result>{Preempted,
-                                                         Crashed,
-                                                         Preempted,
-                                                         Completed,
-                                                         Completed,
-                                                         Preempted,
-                                                         Completed}));
+    using enum UnitRunOutcome::Result;
+    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Preempted,
+                                                            Crashed,
+                                                            Preempted,
+                                                            Completed,
+                                                            Completed,
+                                                            Preempted,
+                                                            Completed}));
     ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
     logging::reset_anomaly_for_testing();
 }
 
-};  // ZEST_SUITE(TURunIndex)
+};  // ZEST_SUITE(UnitRunIndex)
 
 }  // namespace
 }  // namespace clice::testing

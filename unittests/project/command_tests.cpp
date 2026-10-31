@@ -1,7 +1,7 @@
 module clice;
 
 import :command.table;
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :unittests.utils.cdb_helper;
@@ -11,7 +11,7 @@ import :unittests.utils;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(CommandResolver) {
+ZEST_SUITE(ResolveCommand) {
 
 ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     /// A unity build under a default command: main.cpp includes part.cpp
@@ -25,7 +25,6 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     tmp.touch("src/part.h", "");
     FileTable files;
     Project project{files};
-    CommandResolver resolver(project);
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
@@ -40,12 +39,13 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
 
     std::string directory;
     std::vector<std::string> arguments;
-    ZEXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
+    ZEXPECT(resolve_command(project, part, directory, arguments).ref.source ==
+            CommandSource::Default);
     ZEXPECT(
         ranges::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
     auto header_resolution =
-        resolver.resolve_command(header, directory, arguments, {.preprocess = true});
-    ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
+        resolve_command(project, header, directory, arguments, {.preprocess = true});
+    ZEXPECT(header_resolution.ref.source == CommandSource::IncludeGraph);
     ZEXPECT(header_resolution.host == main);
 }
 
@@ -57,7 +57,6 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     tmp.touch("src/part.h", "");
     FileTable files;
     Project project{files};
-    CommandResolver resolver(project);
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
@@ -77,11 +76,11 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     };
     std::string directory;
     std::vector<std::string> arguments;
-    ZEXPECT(resolver.resolve_command(main, directory, arguments, request).source ==
+    ZEXPECT(resolve_command(project, main, directory, arguments, request).ref.source ==
             CommandSource::Default);
     ZEXPECT(has_extra(arguments));
-    auto header_resolution = resolver.resolve_command(header, directory, arguments, request);
-    ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
+    auto header_resolution = resolve_command(project, header, directory, arguments, request);
+    ZEXPECT(header_resolution.ref.source == CommandSource::IncludeGraph);
     ZEXPECT(has_extra(arguments));
 }
 
@@ -103,7 +102,6 @@ ZEST_CASE(TreeSkipsFirstHost) {
     }));
     FileTable files;
     Project project{files};
-    CommandResolver resolver(project);
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
@@ -118,15 +116,15 @@ ZEST_CASE(TreeSkipsFirstHost) {
     auto b = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     std::string directory;
     std::vector<std::string> arguments;
-    auto waiting = resolver.resolve_command(header, directory, arguments);
+    auto waiting = resolve_command(project, header, directory, arguments);
     ZASSERT(waiting.missing_tree);
     ZEXPECT(waiting.missing_tree->key.first == a);
     ZEXPECT(!waiting.host.valid());
     // Meanwhile the header stands on a.cpp's command.
-    ZEXPECT(waiting.source == CommandSource::IncludeGraph);
+    ZEXPECT(waiting.ref.source == CommandSource::IncludeGraph);
     ZEXPECT(ranges::any_of(arguments,
                            [](llvm::StringRef argument) { return argument.contains("config_a"); }));
-    auto resolution = resolver.resolve_command(header, directory, arguments, {.preprocess = true});
+    auto resolution = resolve_command(project, header, directory, arguments, {.preprocess = true});
     ZEXPECT(!resolution.missing_tree);
     ZEXPECT(resolution.host == b);
 }
@@ -165,7 +163,6 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     }));
     FileTable files;
     Project project{files};
-    CommandResolver resolver(project);
     project.file_table.intern(Spelling::absolute(tmp.path("later.h")));
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
@@ -180,7 +177,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
         std::string directory;
         std::vector<std::string> arguments;
         auto resolution =
-            resolver.resolve_command(file, directory, arguments, {.preprocess = true});
+            resolve_command(project, file, directory, arguments, {.preprocess = true});
         std::vector<std::string> names;
         for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
             if(arguments[i] == "-include") {
@@ -215,7 +212,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     }));
 }
 
-};  // ZEST_SUITE(CommandResolver)
+};  // ZEST_SUITE(ResolveCommand)
 
 }  // namespace
 }  // namespace clice::testing

@@ -1,11 +1,12 @@
 module clice;
 
-import :settings.settings;
 import :index.database;
 import :index.project_index;
+import :project.background_index;
 import :project.command_snapshot;
+import :project.reindex_queue;
 import :project.save;
-import :sched.index.pending_table;
+import :settings.settings;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
@@ -42,7 +43,7 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(UnchangedCommandKept) {
@@ -67,7 +68,7 @@ ZEST_CASE(UnchangedCommandKept) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(RemovedEntryKeepsIndex) {
@@ -93,7 +94,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(UndeclaredSourceRetires) {
@@ -136,7 +137,7 @@ ZEST_CASE(UndeclaredSourceRetires) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(SourceRelocationPersists) {
@@ -181,7 +182,7 @@ ZEST_CASE(SourceRelocationPersists) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
     ZASSERT(f.project.command_snapshot.owes_save(f.project));
     f.save();
     ZASSERT(f.project.database->advance_read_snapshot());
@@ -261,7 +262,7 @@ ZEST_CASE(DefaultCommandKept) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(UncoveredDefaultRetires) {
@@ -290,7 +291,7 @@ ZEST_CASE(UncoveredDefaultRetires) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(ExcludedRuleDropsIndex) {
@@ -320,7 +321,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(RuleChangeReindexed) {
@@ -354,7 +355,7 @@ ZEST_CASE(RuleChangeReindexed) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(HeaderIndexedAloneLeaves) {
@@ -385,7 +386,7 @@ ZEST_CASE(HeaderIndexedAloneLeaves) {
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
     ZASSERT(!f.project.index.indexed(header_id));
-    ZASSERT(!f.pump.pending_reason(header_id).has_value());
+    ZASSERT(!f.queue.pending_reason(header_id).has_value());
 }
 
 ZEST_CASE(UnitRuleChangeReindexed) {
@@ -420,7 +421,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(CDBWriteFailureRetried) {
@@ -526,7 +527,7 @@ ZEST_CASE(DroppedUnitDebtRetried) {
         f.load();
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         ZASSERT(!f.project.index.indexed(tu_id));
-        ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+        ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
         f.save();
     }
 
@@ -537,7 +538,7 @@ ZEST_CASE(DroppedUnitDebtRetried) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(VanishedUnitDebtDies) {
@@ -577,7 +578,7 @@ ZEST_CASE(VanishedUnitDebtDies) {
     add_default_rule(f, "clang++ -DFOO=2 -c");
     f.load();
     ZASSERT(
-        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(src))).has_value());
+        !f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(src))).has_value());
 }
 
 ZEST_CASE(FailedUnitInSnapshot) {
@@ -616,7 +617,7 @@ ZEST_CASE(FailedUnitInSnapshot) {
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     add_default_rule(f);
     f.load();
-    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(other))) ==
+    ZASSERT(f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(other))) ==
             ReindexReason::ContentChanged);
 }
 
@@ -658,14 +659,14 @@ ZEST_CASE(LateDebtShutdownRetry) {
 
     index::IndexReport report;
     auto body = [&]() -> async::task<> {
-        report = co_await save_project(f.project, f.loop, f.pump.save_debt());
+        report = co_await save_project(f.project, f.loop, save_debt(f.project));
     };
     auto task = body();
     f.loop.schedule(task);
     f.loop.run();
 
     ZASSERT(report.owes_retry);
-    f.pump.apply_report(report);
+    apply_report(f.project, report);
 
     // The retry persists into the freshly reopened database, snapshot
     // included.

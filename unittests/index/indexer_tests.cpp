@@ -14,10 +14,10 @@ import :semantic.identity;
 import :semantic.selection;
 import :support.bytes;
 import :support.logging;
-import :unittests.utils;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
+import :unittests.utils;
 
 namespace clice::testing {
 

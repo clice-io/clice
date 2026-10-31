@@ -8,15 +8,19 @@ import :settings.settings;
 import :feature.query;
 import :index.query;
 import :index.writer_lock;
+import :project.background_index;
 import :project.project;
-import :sched.batch;
 import :server.control;
+import :support.anomaly;
 import :support.json;
 import :support.logging;
 import :support.prelude;
 import :support.process;
+import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
+import :worker.pool;
+import :worker.protocol;
 
 namespace clice::driver {
 
@@ -557,6 +561,235 @@ inline std::vector<std::string> stale_files(const Project& project,
     listed.erase(duplicates.begin(), duplicates.end());
     return listed;
 }
+
+/// A snapshot of a batch index run's progress within the current round:
+/// units finished (indexed, skipped as fresh, or failed) against the
+/// round's total, and the files failed for good so far.
+struct BatchProgress {
+    std::size_t completed = 0;
+    std::size_t total = 0;
+    std::size_t failed = 0;
+};
+
+/// The project a batch run works on, as the command read it.
+struct BatchProject {
+    /// The project's root as the command line spells it; the result names
+    /// files under this spelling.
+    Spelling root;
+
+    /// Its settings (load_settings), without errors.
+    LoadedSettings loaded;
+
+    /// Stateless worker count override; 0 runs one per logical core for
+    /// indexing, the configuration's count for linting.
+    std::uint32_t workers = 0;
+};
+
+struct BatchOptions {
+    BatchProject project;
+
+    /// Called on the event loop when a round begins or ends and every ten
+    /// seconds in between; null for no progress reporting.
+    llvm::function_ref<void(const BatchProgress&)> on_progress;
+};
+
+/// What a batch indexing run did, for the driver's report. The run's own
+/// story goes to the log; this carries only what the CLI prints and the
+/// exit code encodes.
+struct BatchResult {
+    int exit_code = 0;
+
+    /// A signal interrupted the run; the saved progress (all of it unless
+    /// `unsaved`) lets a rerun resume.
+    bool interrupted = false;
+
+    /// The run reached its final summary (early failures skip it).
+    bool completed = false;
+
+    std::size_t indexed_tus = 0;
+
+    std::size_t shard_count = 0;
+    std::uint64_t shard_bytes = 0;
+    std::size_t symbol_count = 0;
+
+    /// Paths of the units that failed for good, sorted.
+    std::vector<std::string> failed;
+
+    /// A unit whose worker ran out of memory with no other work beside it,
+    /// at `memory` bytes: it does not fit this machine.
+    struct TooBig {
+        std::string unit;
+
+        std::uint64_t memory = 0;
+    };
+
+    /// The units too big for this machine, sorted by path.
+    std::vector<TooBig> too_big;
+
+    /// A unit indexed although its compile reported errors.
+    struct UnitErrors {
+        std::string unit;
+        std::vector<worker::LocatedMessage> errors;
+    };
+
+    /// The units indexed although their compile reported errors, sorted
+    /// by path: their index holds what parsed.
+    std::vector<UnitErrors> compiled_with_errors;
+
+    /// The session log directory; empty when file logging is off.
+    std::string log_dir;
+
+    /// Index state remained that the final save could not commit; a rerun
+    /// cannot resume from it.
+    bool unsaved = false;
+
+    /// The index database was damaged: the final save discarded it, and
+    /// the next run rebuilds the index.
+    bool damaged = false;
+
+    double seconds = 0;
+};
+
+/// One-shot batch indexing on the project's own builds — no sessions, no
+/// transports: open the project, drain the background index, persist, and
+/// wind down in contract-11 order. Runs its own event loop to completion.
+/// Rounds start immediately and indexing happens even when the settings
+/// keep the background index disabled — running the command is the
+/// request itself.
+BatchResult run_batch_index(const BatchOptions& options);
+
+/// What a batch run of `clice index` or `clice lint` works on: the
+/// process's own file table and worker pool, and the project building over
+/// them.
+struct BatchRun {
+    async::event_loop& loop;
+
+    FileTable files;
+
+    WorkerPool pool{loop};
+
+    Project project{files, {}, &loop, &pool};
+
+    /// The session log directory start_batch created; empty when file
+    /// logging is off.
+    std::string log_dir;
+
+    explicit BatchRun(async::event_loop& loop) : loop(loop) {}
+};
+
+/// A path a worker reported, as the user knows the file; empty for none.
+inline void show_path(FileTable& files, std::string& path) {
+    if(!path.empty()) {
+        path = files.display_identity(path);
+    }
+}
+
+/// Batch startup: the command's settings with the run's overrides
+/// (`workers` for the project's), the session file logger, and the worker
+/// pool. `log_tag` names the log files after the subcommand.
+inline bool start_batch(BatchRun& run,
+                        const BatchProject& batch,
+                        std::uint32_t workers,
+                        llvm::StringRef log_tag) {
+    auto& project = run.project;
+    run.files.spell_root(batch.root);
+    project.root = CanonicalPath(batch.root);
+    project.settings = batch.loaded.settings;
+    auto& cfg = project.settings.project;
+    cfg.idle_timeout_ms.value = 0;
+    if(workers != 0) {
+        cfg.stateless_worker_count.value = workers;
+        cfg.min_stateless_worker_count.value =
+            std::min(cfg.min_stateless_worker_count.value, workers);
+        cfg.max_stateless_worker_count.value = workers;
+    }
+
+    if(cfg.cache_dir_defaulted.value) {
+        CacheStore::write_ignore_markers(cfg.cache_dir);
+    }
+
+    if(!cfg.logging_dir.empty()) {
+        auto session_log_dir = logging::session_log_directory(cfg.logging_dir);
+        if(logging::file_logger(log_tag, session_log_dir, logging::options)) {
+            LOG_INFO("Session log directory: {}", session_log_dir);
+            run.log_dir = std::move(session_log_dir);
+        }
+    }
+
+    WorkerPoolOptions pool_opts;
+    // Stateful workers host open documents; a batch run has none.
+    pool_opts.stateful_count = 0;
+    pool_opts.stateless_count = cfg.stateless_worker_count;
+    pool_opts.min_stateless = cfg.min_stateless_worker_count;
+    pool_opts.max_stateless = cfg.max_stateless_worker_count;
+    pool_opts.log_dir = run.log_dir;
+    if(!run.pool.start(pool_opts)) {
+        LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
+        return false;
+    }
+    return true;
+}
+
+/// Quiesce the background index, then the shared contract-11 tail.
+inline async::task<> shutdown(BatchRun& run) {
+    co_await stop_background_index(run.project);
+    co_await run.project.shutdown();
+    co_await run.pool.stop();
+    run.project.close();
+}
+
+inline async::task<> checkpoints(BatchRun& run) {
+    while(true) {
+        // Time is the feature: the checkpoints' pace.
+        co_await async::sleep(checkpoint_interval());
+        co_await run.project.checkpoint();
+    }
+}
+
+/// A batch run's signal handling and the order of its ending. Interruption
+/// is judged only after the project shut down and the watchers finished: a
+/// signal arriving while the final save/teardown ran must still report an
+/// interruption, not a normal completion with exit code 0.
+struct Lifetime {
+    BatchRun& run;
+    bool stop_requested = false;
+    async::cancellation_source stop;
+    async::task_group<> aux;
+
+    explicit Lifetime(BatchRun& run) : run(run) {
+        // Every signal stops gracefully: in-flight files are abandoned,
+        // finished ones are persisted, and a rerun resumes from there. A
+        // closed terminal sends SIGHUP.
+        auto interrupt = [this] {
+            LOG_INFO("Interrupted; saving indexing progress");
+            stop.cancel();
+        };
+        aux.spawn(watch_termination(SIGINT, stop_requested, interrupt));
+        aux.spawn(watch_termination(SIGTERM, stop_requested, interrupt));
+#ifndef _WIN32
+        aux.spawn(watch_termination(SIGHUP, stop_requested, interrupt));
+#endif
+        aux.spawn(checkpoints(run));
+        aux.spawn(run.files.disk.end_turns(run.loop));
+    }
+
+    async::cancellation_token token() {
+        return stop.token();
+    }
+
+    /// Shuts the project down and stops the watchers; whether the run was
+    /// interrupted.
+    async::task<bool> finish() {
+        co_await shutdown(run);
+        aux.cancel();
+        co_await aux.join();
+        co_return stop_requested;
+    }
+};
+
+/// The subcommands of `clice index` that read the persisted index: its
+/// stats and what it records of a symbol, a file and a unit.
+std::vector<Operation> index_record_operations();
 
 /// How a run's index came up to date through the running server: the
 /// server's pid and its answer.

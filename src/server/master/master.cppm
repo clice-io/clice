@@ -3,7 +3,7 @@ module clice:server.master;
 import :feature.semantic_tokens;
 import :index.query;
 import :project.project;
-import :sched.index.pump;
+import :project.background_index;
 import :server.extension;
 import :server.served_project;
 import :server.session;
@@ -298,7 +298,7 @@ public:
     /// One look, taken in one turn after the disk changes the file table
     /// saw are applied, at read-only views: `editor` has no request
     /// unanswered but syncs (kotatsu lists a request from its dispatch on), no
-    /// task-graph round is live, the index pump is idle, and no removed
+    /// task-graph round is live, the background index is idle, and no removed
     /// folder's project is still shutting down (its end may start the
     /// folder again). Work starts inside one of these or from a new
     /// message, so the look is exact — with periodic ticks off, as tests
@@ -345,7 +345,7 @@ public:
     /// The projects' indexing rounds as one: it begins with the first
     /// project's round and ends with the last one's, and a project whose
     /// round ended keeps its counts in it until then.
-    IndexPump::Progress index_progress{.stage = IndexPump::Progress::Stage::End};
+    BackgroundIndex::Progress index_progress{.stage = BackgroundIndex::Progress::Stage::End};
 
     /// Why the server must restart, oldest first (ask_restart).
     std::vector<RestartReason> restart_reasons;
@@ -498,8 +498,8 @@ private:
     /// The last progress of each project taking part in the current
     /// index_progress round, and the counts of the rounds that ended within
     /// it and were followed by another (or whose project was removed).
-    llvm::DenseMap<ServedProject*, IndexPump::Progress> index_round;
-    IndexPump::Progress ended_rounds;
+    llvm::DenseMap<ServedProject*, BackgroundIndex::Progress> index_round;
+    BackgroundIndex::Progress ended_rounds;
 
     /// Cancellation scope of the serving phase. run_serve_mode serves until
     /// it fires; schedule_shutdown() cancels the source, unwinding the

@@ -2,6 +2,7 @@ module clice;
 
 import :index.instantiation_shard;
 import :index.project_index;
+import :project.pch;
 import :server.served_project;
 
 namespace clice {
@@ -9,9 +10,9 @@ namespace clice {
 namespace {
 
 /// The preamble index of PCH `key`, loaded on its first read: the live
-/// sources are views, and the load only fills the builder's cache.
-std::shared_ptr<index::TUIndex> preamble_of(const PCHBuilder& pch, llvm::StringRef key) {
-    return const_cast<PCHBuilder&>(pch).preamble_state(key);
+/// sources are views, and the load only fills the project's cache.
+std::shared_ptr<index::TUIndex> preamble_of(const Project& project, llvm::StringRef key) {
+    return preamble_state(const_cast<Project&>(project), key);
 }
 
 /// An open document's index as the live sources hand it out: `shard` in
@@ -73,7 +74,7 @@ std::shared_ptr<index::TUIndex> overlay_of(const ServedProject& served,
     if(!document.latest || !document.latest->loaded_pch()) {
         return nullptr;
     }
-    return preamble_of(served.sched.pch, *document.latest->loaded_pch());
+    return preamble_of(served.project, *document.latest->loaded_pch());
 }
 
 }  // namespace
@@ -158,7 +159,7 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
         if(key.empty() || !seen.insert(key).second) {
             return true;
         }
-        auto state = preamble_of(sched.pch, key);
+        auto state = preamble_of(project, key);
         return state ? visit(*state) : true;
     };
     for(auto& [file, document]: documents) {
@@ -199,7 +200,7 @@ void
     if(!compiled || !compiled->base_pch_key) {
         return;
     }
-    if(auto state = preamble_of(sched.pch, *compiled->base_pch_key)) {
+    if(auto state = preamble_of(project, *compiled->base_pch_key)) {
         visit(*state);
     }
 }

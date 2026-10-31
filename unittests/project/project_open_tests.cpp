@@ -1,7 +1,7 @@
 module clice;
 
-import :settings.settings;
 import :project.project;
+import :settings.settings;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;

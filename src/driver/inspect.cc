@@ -25,7 +25,7 @@ import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :semantic.symbol;
@@ -625,14 +625,14 @@ std::string build_pch(Project& project,
 std::expected<CompilationInput, std::string> project_input(const SourceFile& file,
                                                            Project& project,
                                                            const ContextChoice* choice) {
-    CommandResolver commands(project);
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        return commands.resolve_command(path_id,
-                                        input.directory,
-                                        input.arguments,
-                                        {.choice = choice, .preprocess = true});
+        return resolve_command(project,
+                               path_id,
+                               input.directory,
+                               input.arguments,
+                               {.choice = choice, .preprocess = true});
     };
     auto resolution = resolve();
     if(resolution.trial && !resolution.self_contained) {
@@ -670,7 +670,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
-    if(auto writer = commands.pch_unit(path_id, resolution)) {
+    if(auto writer = pch_unit(project, path_id, resolution)) {
         if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }

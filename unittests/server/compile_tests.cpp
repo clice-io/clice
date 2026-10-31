@@ -2,9 +2,9 @@ module clice;
 
 import :feature.diagnostics;
 import :feature.hover;
+import :project.graph;
 import :project.hosting;
-import :sched.builders.pcm;
-import :sched.graph;
+import :project.pcm;
 import :server.master;
 import :server.served_project;
 import :server.session;
@@ -13,9 +13,9 @@ import :syntax.dependency_graph;
 import :syntax.position;
 import :unittests.server.served_project_fixture;
 import :unittests.server.worker_test_helpers;
-import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :worker.pool;
@@ -308,7 +308,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 
         // Not served.shutdown(): it stops the compiles again, and a task
         // group is joined once.
-        co_await served.sched.graph.shutdown();
+        co_await served.project.graph.shutdown();
         co_await fixture.server.pool.stop();
         done = true;
     };
@@ -613,19 +613,18 @@ ZEST_CASE(ImportScanPerUnit) {
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        auto& pcm = served.sched.pcm;
         ZASSERT(co_await served.ensure_compiled(plain));
-        plain_scans = pcm.import_scans;
+        plain_scans = served.project.import_scans;
         ZASSERT(co_await served.ensure_compiled(main));
-        first_scans = pcm.import_scans;
+        first_scans = served.project.import_scans;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        body_scans = pcm.import_scans;
+        body_scans = served.project.import_scans;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        import_scans = pcm.import_scans;
+        import_scans = served.project.import_scans;
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -679,7 +678,7 @@ ZEST_CASE(BufferImportRecorded) {
 
     // The unresolved-import edge survives the commit: a first provider's update
     // must reach this document's node.
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
+    auto dirtied = served.project.graph.update(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -727,7 +726,7 @@ ZEST_CASE(IncludeImportRecorded) {
     fixture.loop.run();
     ZEXPECT(done);
 
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
+    auto dirtied = served.project.graph.update(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -776,7 +775,7 @@ ZEST_CASE(HostImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
+    auto dirtied = served.project.graph.update(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -825,7 +824,7 @@ ZEST_CASE(SuffixImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
+    auto dirtied = served.project.graph.update(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -878,7 +877,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
     ZEXPECT(served.latest(header->path_id)->host == unit->path_id);
-    ZEXPECT(served.sched.pcm.import_scans == 0u);
+    ZEXPECT(served.project.import_scans == 0u);
 }
 
 };  // ZEST_SUITE(CompileGuards)

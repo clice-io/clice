@@ -1,12 +1,14 @@
-module clice:project.command_resolver;
+module clice:project.command;
 
 import :command.table;
 import :project.hosting;
-import :project.project;
 import :support.prelude;
 import :vfs.file_system;
 
 namespace clice {
+
+struct Project;
+struct ContextChoice;
 
 /// What one resolution asks for beyond the file itself. The editor fields
 /// are filled by the served project for editor-facing compiles of open
@@ -35,16 +37,17 @@ struct CommandRequest {
     bool preprocess = false;
 };
 
-/// Pick the candidate matching a chosen command (multi-configuration files
-/// and hosts), defaulting to the build's first command. `paths` are the
-/// files whose edits the published hash was computed with.
-Candidate pick_chosen_command(Project& project,
-                              Fid file,
-                              llvm::ArrayRef<Candidate> candidates,
-                              llvm::ArrayRef<CanonicalRef> paths,
-                              llvm::StringRef language_path,
-                              llvm::StringRef chosen_hash,
-                              llvm::StringRef chosen_base);
+/// The candidate a chosen command names (multi-configuration files and
+/// hosts): its base command hash, resolved when chosen, else its applied
+/// hash under the current edits of `paths`, the files whose edits the
+/// published hash was computed with; none when no candidate is it.
+std::optional<Candidate> chosen_candidate(Project& project,
+                                          Fid file,
+                                          llvm::ArrayRef<Candidate> candidates,
+                                          llvm::ArrayRef<CanonicalRef> paths,
+                                          llvm::StringRef language_path,
+                                          llvm::StringRef chosen_hash,
+                                          llvm::StringRef chosen_base);
 
 /// `command`, one of `host`'s, as `host` lends it to `header`: edited by
 /// the rules of both files and a run's extras, compiled as the host's
@@ -85,8 +88,6 @@ const clang::LangOptions&
 
 /// How a file's command was resolved.
 struct Resolution {
-    CommandSource source = CommandSource::Fallback;
-
     /// The host whose command an IncludeGraph resolution borrowed;
     /// invalid for every other source.
     Fid host;
@@ -107,7 +108,8 @@ struct Resolution {
     Fid forced;
 
     /// The command selection behind the rendered arguments, for
-    /// structured consumers (search config, language queries).
+    /// structured consumers (search config, language queries), and where it
+    /// came from (CommandRef::source).
     CommandRef ref;
 
     /// The header context the arguments name (-include of its prefix),
@@ -148,52 +150,29 @@ struct Resolution {
     vfs::HiddenFiles hidden;
 };
 
-/// Composes a file's final compile command from the project on disk.
-///
-/// The build (`Build`) says what a file compiles as; hosting (`find_host`)
-/// says which unit stands in for a header without a command of its own,
-/// whether the header compiles alone, and the context restoring its
-/// includer's preprocessor state when it does not. `resolve_command`
-/// applies them in order — own entry, host, default command, lender,
-/// builtin — then the rule edits and a run's extras; an editor request
-/// layers the user's context choice on top.
-class CommandResolver {
-public:
-    explicit CommandResolver(Project& project) : project(project) {}
+/// Compose a file's final compile command from the project on disk, fill
+/// its arguments and report where they came from. The build (`Build`) says
+/// what a file compiles as; hosting (`find_host`) says which unit stands in
+/// for a header without a command of its own, whether the header compiles
+/// alone, and the context restoring its includer's preprocessor state when
+/// it does not. Tries, in order: the chosen host, the file's own command, a
+/// header context through the include graph, a default command, a lender
+/// and finally the builtin command — so it always succeeds — then the rule
+/// edits and a run's extras; an editor request layers the user's context
+/// choice on top. Emits a per-file decision log (tiers tried, tier hit,
+/// command hash).
+Resolution resolve_command(Project& project,
+                           Fid path_id,
+                           std::string& directory,
+                           std::vector<std::string>& arguments,
+                           const CommandRequest& request = {});
 
-    /// Fill compile arguments for a file and report where they came from.
-    /// Tries, in order: the chosen host, the file's own command, a header
-    /// context through the include graph, a default command, a lender and
-    /// finally the builtin command — so it always succeeds. Emits a
-    /// per-file decision log (tiers tried, tier hit, command hash).
-    Resolution resolve_command(Fid path_id,
-                               std::string& directory,
-                               std::vector<std::string>& arguments,
-                               const CommandRequest& request = {});
-
-    /// Build::pch_unit for the command `resolution` and `request` gave
-    /// `path_id`: edited by the rules of the files it was resolved for (a
-    /// borrowing header's and its host's) and the request's extras.
-    std::optional<CommandRef> pch_unit(Fid path_id,
-                                       const Resolution& resolution,
-                                       const CommandRequest& request = {});
-
-private:
-    /// resolve_command, the trees the host search misses left missing.
-    Resolution resolve(Fid path_id,
-                       std::string& directory,
-                       std::vector<std::string>& arguments,
-                       const CommandRequest& request);
-
-    /// A header's command borrowed from its host, with the includer's
-    /// context when the header needs it (in `resolution`); nullopt when no
-    /// host stands in for it, or its context cannot be synthesized.
-    std::optional<CommandRef> resolve_through_host(Fid path_id,
-                                                   const CommandRequest& request,
-                                                   Resolution& resolution);
-
-private:
-    Project& project;
-};
+/// Build::pch_unit for the command `resolution` and `request` gave
+/// `path_id`: edited by the rules of the files it was resolved for (a
+/// borrowing header's and its host's) and the request's extras.
+std::optional<CommandRef> pch_unit(Project& project,
+                                   Fid path_id,
+                                   const Resolution& resolution,
+                                   const CommandRequest& request = {});
 
 }  // namespace clice

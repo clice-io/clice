@@ -10,10 +10,10 @@ import :index.instantiation_shard;
 import :index.project_index;
 import :index.symbol;
 import :index.tu_index;
+import :project.background_index;
 import :project.project;
+import :project.reindex_queue;
 import :project.save;
-import :sched.index.pending_table;
-import :sched.index.pump;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
@@ -40,7 +40,6 @@ ZEST_SUITE(ProjectIndexMerge) {
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
-IndexPump& pump = fx.pump;
 
 bool merge(llvm::StringRef data) {
     return fx.merge(data);
@@ -100,7 +99,7 @@ int use() { return 1; }
     DepState input{.path_id = header, .version = project.file_table.intern_version(header, 1)};
     auto report = project.index.merge(planted, {input});
     ZASSERT(report);
-    pump.apply_report(*report);
+    apply_report(fx.project, *report);
     auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
     llvm::SmallVector<Fid> reached;
     project.index.for_each_file_of_local(helper, header, [&](Fid file) {
@@ -322,7 +321,7 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
     merge(a.data);
     merge(b.data);
     auto b_tu = project.file_table.intern(Spelling::absolute(b.tu_path));
-    ZASSERT(!pump.pending_reason(b_tu).has_value());
+    ZASSERT(!fx.queue.pending_reason(b_tu).has_value());
 
     // The header moves to a new content generation and only ga catches up:
     // the rebuilt blob discards gb's variant. With no pending slot left for
@@ -338,9 +337,9 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
 
-    ZASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(b_tu) == ReindexReason::ContentChanged);
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
-    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+    ZASSERT(!fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
 }
 

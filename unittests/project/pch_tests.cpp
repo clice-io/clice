@@ -1,6 +1,7 @@
 module clice;
 
-import :sched.builders.pch;
+import :project.pch;
+import :project.project;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.temp_dir;
@@ -14,17 +15,15 @@ namespace {
 /// exactly once, whatever happens to the joiners or to the owner's own
 /// frame, and the key is refused until a consumer retries it. Real workers,
 /// poisoned via the crash pragma.
-ZEST_SUITE(PCHBuilderAcquisition, zest::LoopFixture) {
+ZEST_SUITE(PCHAcquisition, zest::LoopFixture) {
 
 TempDir tmp;
 std::string src;
 FileTable files;
-Project project{files};
 WorkerPool pool{loop};
-TaskGraph graph;
-PCHBuilder pch{graph, project, pool};
+Project project{files, {}, &loop, &pool};
 
-PCHBuilderAcquisitionTEST() {
+PCHAcquisitionTEST() {
     // Hang detection: real workers build here, slowly on a loaded machine.
     watchdog = chrono::seconds(45);
     tmp.touch("a.cpp", "");
@@ -35,10 +34,9 @@ PCHBuilderAcquisitionTEST() {
     store->register_namespace(
         {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
     project.store.emplace(std::move(*store));
-    pch.register_runner();
 }
 
-PCHBuilder::Request request(llvm::StringRef text) {
+PCHRequest request(llvm::StringRef text) {
     return {
         .pch_key = "shared-key",
         .file = src,
@@ -61,7 +59,7 @@ void execute(F&& fn) {
 
         co_await fn();
 
-        co_await graph.shutdown();
+        co_await project.graph.shutdown();
         co_await pool.stop();
     };
     auto [ran] = run(body());
@@ -78,23 +76,23 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHBuilder::Outcome> a, b;
+    std::optional<PCHOutcome> a, b;
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_a = [&]() -> async::task<> {
-            a = co_await pch.acquire(request(poison));
+            a = co_await acquire_pch(project, request(poison));
         };
         auto acquire_b = [&]() -> async::task<> {
-            b = co_await pch.acquire(request(poison));
+            b = co_await acquire_pch(project, request(poison));
         };
         co_await async::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHBuilder::Outcome::Failed);
-    ZEXPECT(b == PCHBuilder::Outcome::Failed);
+    ZEXPECT(a == PCHOutcome::Failed);
+    ZEXPECT(b == PCHOutcome::Failed);
     ZEXPECT(deaths == 1);
-    auto* crash = pch.crashed("shared-key");
+    auto* crash = build_crash(project, "shared-key");
     ZASSERT(crash != nullptr);
     ZEXPECT(!crash->cause.empty());
 
@@ -108,18 +106,18 @@ ZEST_CASE(OwnerGoneStillRecords) {
     // round's crashes still count).
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
-    std::optional<PCHBuilder::Outcome> joined;
+    std::optional<PCHOutcome> joined;
     async::cancellation_source owner_scope;
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_owner = [&]() -> async::task<> {
-            auto result =
-                co_await async::with_token(pch.acquire(request(poison)), owner_scope.token());
+            auto result = co_await async::with_token(acquire_pch(project, request(poison)),
+                                                     owner_scope.token());
             ZEXPECT(result.is_cancelled());
         };
         auto acquire_joiner = [&]() -> async::task<> {
-            joined = co_await pch.acquire(request(poison));
+            joined = co_await acquire_pch(project, request(poison));
         };
         auto cancel_owner = [&]() -> async::task<> {
             owner_scope.cancel();
@@ -128,8 +126,8 @@ ZEST_CASE(OwnerGoneStillRecords) {
         co_await async::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
     });
 
-    ZEXPECT(joined == PCHBuilder::Outcome::Failed);
-    ZEXPECT(pch.crashed("shared-key") != nullptr);
+    ZEXPECT(joined == PCHOutcome::Failed);
+    ZEXPECT(build_crash(project, "shared-key") != nullptr);
 
     logging::reset_anomaly_for_testing();
 }
@@ -141,21 +139,21 @@ ZEST_CASE(ForgetLiftsRefusal) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHBuilder::Outcome> refused, retried;
+    std::optional<PCHOutcome> refused, retried;
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
-        co_await pch.acquire(request(poison));
+        co_await acquire_pch(project, request(poison));
         // Refused before any dispatch: no second death.
-        refused = co_await pch.acquire(request(poison));
+        refused = co_await acquire_pch(project, request(poison));
         ZASSERT(deaths == 1);
 
-        pch.forget_failure("shared-key");
-        retried = co_await pch.acquire(request(poison));
+        forget_build_failure(project, "shared-key");
+        retried = co_await acquire_pch(project, request(poison));
     });
 
-    ZEXPECT(refused == PCHBuilder::Outcome::Failed);
-    ZEXPECT(retried == PCHBuilder::Outcome::Failed);
+    ZEXPECT(refused == PCHOutcome::Failed);
+    ZEXPECT(retried == PCHOutcome::Failed);
     ZEXPECT(deaths == 2);
 
     logging::reset_anomaly_for_testing();
@@ -174,7 +172,7 @@ ZEST_CASE(DeclaredCrashLifts) {
     tmp.touch("a.h", "#pragma clang __debug crash\n");
     auto header = tmp.path("a.h");
     auto whole = [&] {
-        return PCHBuilder::Request{
+        return PCHRequest{
             .pch_key = "declared-key",
             .file = header,
             .directory = tmp.path("."),
@@ -182,19 +180,19 @@ ZEST_CASE(DeclaredCrashLifts) {
             .whole_file = true,
         };
     };
-    std::optional<PCHBuilder::Outcome> refused, fixed;
+    std::optional<PCHOutcome> refused, fixed;
 
     execute([&]() -> async::task<> {
-        co_await pch.acquire(whole());
-        refused = co_await pch.acquire(whole());
+        co_await acquire_pch(project, whole());
+        refused = co_await acquire_pch(project, whole());
         ZASSERT(deaths == 1);
 
         tmp.touch("a.h", "#define FIXED 1\n");
-        fixed = co_await pch.acquire(whole());
+        fixed = co_await acquire_pch(project, whole());
     });
 
-    ZEXPECT(refused == PCHBuilder::Outcome::Failed);
-    ZEXPECT(fixed == PCHBuilder::Outcome::Ready);
+    ZEXPECT(refused == PCHOutcome::Failed);
+    ZEXPECT(fixed == PCHOutcome::Ready);
     ZEXPECT(deaths == 1);
 
     logging::reset_anomaly_for_testing();
@@ -203,22 +201,22 @@ ZEST_CASE(DeclaredCrashLifts) {
 ZEST_CASE(SharedBuildBothReady) {
     // The success half of the matrix: one build serves every joiner, no
     // crash is recorded, and the pair ends up registered under the key.
-    std::optional<PCHBuilder::Outcome> a, b;
+    std::optional<PCHOutcome> a, b;
 
     execute([&]() -> async::task<> {
         auto text = "#define X 1\n";
         auto acquire_a = [&]() -> async::task<> {
-            a = co_await pch.acquire(request(text));
+            a = co_await acquire_pch(project, request(text));
         };
         auto acquire_b = [&]() -> async::task<> {
-            b = co_await pch.acquire(request(text));
+            b = co_await acquire_pch(project, request(text));
         };
         co_await async::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHBuilder::Outcome::Ready);
-    ZEXPECT(b == PCHBuilder::Outcome::Ready);
-    ZEXPECT(pch.crashed("shared-key") == nullptr);
+    ZEXPECT(a == PCHOutcome::Ready);
+    ZEXPECT(b == PCHOutcome::Ready);
+    ZEXPECT(build_crash(project, "shared-key") == nullptr);
     auto it = project.pch_cache.find("shared-key");
     ZASSERT(it != project.pch_cache.end());
     ZEXPECT(!it->second.path.empty());
@@ -231,57 +229,57 @@ ZEST_CASE(ConsumeFailuresStopKey) {
     // read would rebuild forever without one. A clean consumption clears
     // the record; failures in a row stop the key and acquisition fails
     // fast, before any dispatch.
-    std::optional<PCHBuilder::Outcome> cleared, stopped;
+    std::optional<PCHOutcome> cleared, stopped;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.consume_failed("shared-key");
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.consume_succeeded("shared-key");
-        pch.consume_failed("shared-key");
-        cleared = co_await pch.acquire(request("#define X 1\n"));
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        pch_consume_failed(project, "shared-key");
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        pch_consume_succeeded(project, "shared-key");
+        pch_consume_failed(project, "shared-key");
+        cleared = co_await acquire_pch(project, request("#define X 1\n"));
 
-        pch.consume_failed("shared-key");
-        stopped = co_await pch.acquire(request("#define X 1\n"));
+        pch_consume_failed(project, "shared-key");
+        stopped = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(cleared == PCHBuilder::Outcome::Ready);
-    ZEXPECT(stopped == PCHBuilder::Outcome::Failed);
+    ZEXPECT(cleared == PCHOutcome::Ready);
+    ZEXPECT(stopped == PCHOutcome::Failed);
 }
 
 ZEST_CASE(SharedPairFailsOnce) {
     // Two parses read the same pair and both fail to: the second finds it
     // retracted already, and the key keeps building.
-    std::optional<PCHBuilder::Outcome> rebuilt;
+    std::optional<PCHOutcome> rebuilt;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
-        pch.consume_failed("shared-key");
-        pch.consume_failed("shared-key");
-        rebuilt = co_await pch.acquire(request("#define X 1\n"));
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        pch_consume_failed(project, "shared-key");
+        pch_consume_failed(project, "shared-key");
+        rebuilt = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(rebuilt == PCHBuilder::Outcome::Ready);
+    ZEXPECT(rebuilt == PCHOutcome::Ready);
 }
 
 ZEST_CASE(EvictedPairNotCounted) {
     // A pair the store evicted while a parse read it says nothing of its
     // bytes: its consumers' failures count nothing, and the key keeps
     // building however often that happens.
-    std::optional<PCHBuilder::Outcome> first, second;
+    std::optional<PCHOutcome> first, second;
     execute([&]() -> async::task<> {
         auto evict = [&] {
             project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
         };
-        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHBuilder::Outcome::Ready);
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
         evict();
-        pch.consume_failed("shared-key");
-        first = co_await pch.acquire(request("#define X 1\n"));
+        pch_consume_failed(project, "shared-key");
+        first = co_await acquire_pch(project, request("#define X 1\n"));
         evict();
-        pch.consume_failed("shared-key");
-        second = co_await pch.acquire(request("#define X 1\n"));
+        pch_consume_failed(project, "shared-key");
+        second = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(first == PCHBuilder::Outcome::Ready);
-    ZEXPECT(second == PCHBuilder::Outcome::Ready);
+    ZEXPECT(first == PCHOutcome::Ready);
+    ZEXPECT(second == PCHOutcome::Ready);
 }
 
-};  // ZEST_SUITE(PCHBuilderAcquisition)
+};  // ZEST_SUITE(PCHAcquisition)
 
 }  // namespace
 }  // namespace clice::testing

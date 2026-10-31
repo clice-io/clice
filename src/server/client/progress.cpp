@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.protocol;
-import :sched.index.pump;
+import :project.background_index;
 import :server.client;
 import :server.master;
 import :vfs.path;
@@ -10,7 +10,7 @@ namespace clice {
 
 void LSPClient::report_index_progress() {
     auto& p = server.index_progress;
-    using Stage = IndexPump::Progress::Stage;
+    using Stage = BackgroundIndex::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {
         case Stage::Begin: {

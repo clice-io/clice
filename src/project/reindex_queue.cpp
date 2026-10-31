@@ -1,13 +1,13 @@
 module clice;
 
-import :sched.index.pending_table;
+import :project.reindex_queue;
 
 namespace clice {
 
-bool PendingTable::record(Fid id, ReindexReason reason) {
+void ReindexQueue::record(Fid id, ReindexReason reason) {
     // A fresh slot means any prior slot was already consumed (or none
     // existed); a queued-and-unconsumed slot makes this call a duplicate.
-    bool fresh_slot = queued.insert(id).second;
+    bool fresh_slot = queued_files.insert(id).second;
 
     // Within one queued slot ContentChanged is absorbing: a deps-only
     // cascade cannot downgrade a file whose own content already changed.
@@ -30,12 +30,52 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
         }
         it->second.seq = seq;
     }
-
-    return fresh_slot;
+    if(fresh_slot) {
+        slots.push_back(id);
+    }
 }
 
-std::optional<PendingTable::TakenReindex> PendingTable::take(Fid id) {
-    queued.erase(id);
+void ReindexQueue::move_to_front(Fid id) {
+    auto it = std::find(slots.begin() + position, slots.end(), id);
+    if(it == slots.end()) {
+        return;
+    }
+    auto past_round = it >= slots.begin() + round_end;
+    std::rotate(slots.begin() + (past_round ? round_end : position), it, it + 1);
+}
+
+std::size_t ReindexQueue::begin_round(llvm::function_ref<bool(Fid)> first) {
+    std::stable_partition(slots.begin() + position, slots.end(), first);
+    round_end = slots.size();
+    return round_end - position;
+}
+
+std::optional<ReindexQueue::TakenReindex> ReindexQueue::take_next() {
+    while(position < round_end) {
+        auto id = slots[position];
+        position += 1;
+        queued_files.erase(id);
+        if(auto it = entries.find(id); it != entries.end()) {
+            return TakenReindex{id, it->second.seq};
+        }
+    }
+    return std::nullopt;
+}
+
+void ReindexQueue::end_round() {
+    round_end = position;
+    if(position < slots.size()) {
+        return;
+    }
+    // A pending reindex legitimately outlives the round (one the graph
+    // refused keeps its booking); a queued slot must not.
+    assert(queued_files.empty() && "a drained queue must leave no unconsumed slot");
+    slots.clear();
+    position = 0;
+    round_end = 0;
+}
+
+std::optional<ReindexQueue::TakenReindex> ReindexQueue::peek(Fid id) const {
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
@@ -43,32 +83,24 @@ std::optional<PendingTable::TakenReindex> PendingTable::take(Fid id) {
     return TakenReindex{id, it->second.seq};
 }
 
-std::optional<PendingTable::TakenReindex> PendingTable::peek(Fid id) const {
-    auto it = entries.find(id);
-    if(it == entries.end()) {
-        return std::nullopt;
-    }
-    return TakenReindex{id, it->second.seq};
-}
-
-void PendingTable::finish(const TakenReindex& taken) {
+void ReindexQueue::finish(const TakenReindex& taken) {
     if(auto it = entries.find(taken.id); it != entries.end() && it->second.seq == taken.seq) {
         entries.erase(it);
     }
 }
 
-bool PendingTable::outdated(const TakenReindex& taken) const {
+bool ReindexQueue::outdated(const TakenReindex& taken) const {
     auto it = entries.find(taken.id);
     return it == entries.end() || it->second.content_seq > taken.seq;
 }
 
-PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenReindex& taken,
-                                                               Failure failure) {
+ReindexQueue::FailureDecision ReindexQueue::on_dispatch_failure(const TakenReindex& taken,
+                                                                Failure failure) {
     // Only while the entry survives: a file removed from disk mid-flight
     // was cleared and has nothing to redo.
     auto it = entries.find(taken.id);
     if(it == entries.end()) {
-        return {FailureDecision::Dropped};
+        return FailureDecision::Dropped;
     }
 
     // The failed dispatch carried bytes a ContentChanged recording has
@@ -76,18 +108,18 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenReinde
     // it neither spends the fresh budget nor requeues — the newer
     // content's own booking redoes the work.
     if(it->second.content_seq > taken.seq) {
-        return {FailureDecision::Outdated};
+        return FailureDecision::Outdated;
     }
 
     if(failure == Failure::Crashed ||
        (failure == Failure::Lost && it->second.requeue_attempts >= max_requeue_attempts)) {
-        // Giving up accepts the staleness, so clear the table state
+        // Giving up accepts the staleness, so clear the pending state
         // here rather than relying on the attempt's sequence-guarded
         // finish: a deps-only recording that arrived mid-flight bumped
         // the sequence number, and the guard would leave that downgraded entry
         // booked — a doomed retry that spends one more worker.
         clear(taken.id);
-        return {FailureDecision::GaveUp};
+        return FailureDecision::GaveUp;
     }
     if(failure == Failure::Lost) {
         it->second.requeue_attempts += 1;
@@ -96,22 +128,13 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenReinde
     // Requeue with the reason this dispatch carried, not the entry's
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
-    // restore the table entry afterwards.
+    // restore the entry afterwards.
     auto reason =
         it->second.content_seq == taken.seq ? ReindexReason::ContentChanged : it->second.reason;
     auto attempts = it->second.requeue_attempts;
-    bool needs_slot = record(taken.id, reason);
+    record(taken.id, reason);
     entries.find(taken.id)->second.requeue_attempts = attempts;
-    return {FailureDecision::Requeued, needs_slot};
-}
-
-llvm::SmallVector<Fid> PendingTable::pending_files() const {
-    llvm::SmallVector<Fid> files;
-    files.reserve(entries.size());
-    for(auto id: views::transform(entries, [](auto& entry) -> auto& { return entry.first; })) {
-        files.push_back(id);
-    }
-    return files;
+    return FailureDecision::Requeued;
 }
 
 }  // namespace clice

@@ -1,8 +1,11 @@
 module clice;
 
-import :sched.builders.build_common;
-import :sched.builders.pcm;
-import :support.anomaly;
+import :project.background_index;
+import :project.command;
+import :project.pch;
+import :project.pcm;
+import :project.precompiled;
+import :project.project;
 import :support.logging;
 import :syntax.header_context;
 import :syntax.preamble;
@@ -14,15 +17,21 @@ import :worker.protocol;
 
 namespace clice {
 
+namespace {
+
 /// Changes whenever a PCM build of the same command comes to write another
 /// BMI, or its key comes to name another build, so a blob or a record an
 /// older clice stored is not taken for the new one.
 constexpr llvm::StringRef pcm_version = "5";
 
+NodeId node(Fid path_id) {
+    return {NodeKind::PCM, path_id.raw};
+}
+
 /// The provider an import in `importer` resolves to among several of one
 /// name: the nearest — the fewest directories up from the importer to one
 /// holding it — and the first by path among equally near ones.
-static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer) {
+Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer) {
     if(providers.size() == 1) {
         return providers.front();
     }
@@ -39,41 +48,79 @@ static Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> provider
     });
 }
 
-PCMBuilder::PCMBuilder(TaskGraph& graph,
-                       Project& project,
-                       CommandResolver& commands,
-                       PCHBuilder& pch,
-                       WorkerPool& pool) :
-    graph(graph), project(project), commands(commands), pch(pch), pool(pool) {}
-
-void PCMBuilder::register_runner() {
-    graph.set_runner(NodeKind::PCM, [this](RoundContext& ctx, NodeId id) {
-        return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
-    });
+/// Move the build's PCM to `previous`, removing the one it replaced.
+void move_to_previous(Project& project, PCMBuild& build) {
+    if(build.blob.empty()) {
+        return;
+    }
+    if(!build.previous.empty()) {
+        project.store->invalidate("pcm", build.previous);
+    }
+    build.previous = std::exchange(build.blob, {});
 }
 
-async::task<PCMBuilder::ModuleDeps> PCMBuilder::direct_deps(Fid path_id) {
-    // The same resolution the real build uses (run() below): a module unit
-    // scanned with a different command than it compiles with would edge
-    // against a different dependency set.
+/// The build's PCM, or the PCH it was built over, left the store: forget it
+/// and mark the module dirty, so its next round builds again. Returns
+/// whether it had.
+bool drop_evicted(Project& project, Fid module, PCMBuild& build) {
+    if(build.path.empty()) {
+        return false;
+    }
+    if(!fs::exists(build.path)) {
+        build.blob.clear();
+    } else if(build.pch.empty() || fs::exists(build.pch)) {
+        return false;
+    }
+    // Product tier only: the blob vanished, or the PCH it names to its
+    // importers did; its content did not, so importers' committed results
+    // stay valid. A full invalidate_module() here would void the very
+    // consumer round that is revalidating before rebuilding its imports —
+    // under a cache budget smaller than the working set, that voids and
+    // respawns the waiter forever.
+    build.path.clear();
+    project.graph.mark_dirty(node(module));
+    return true;
+}
+
+}  // namespace
+
+llvm::SmallVector<Fid> ModuleDeps::resolved() const {
+    llvm::SmallVector<Fid> modules;
+    for(auto dep: declared) {
+        if(!is_unresolved_import(dep)) {
+            modules.push_back(dep.file());
+        }
+    }
+    return modules;
+}
+
+bool ModuleDeps::modular() const {
+    return module_unit ||
+           ranges::any_of(declared, [](NodeId dep) { return !is_unresolved_import(dep); });
+}
+
+async::task<ModuleDeps> direct_deps(Project& project, Fid path_id) {
+    // The same resolution the real build uses (pcm_round below): a module
+    // unit scanned with a different command than it compiles with would
+    // edge against a different dependency set.
     std::string directory;
     std::vector<std::string> arguments;
-    auto resolution = commands.resolve_command(path_id, directory, arguments);
+    auto resolution = resolve_command(project, path_id, directory, arguments);
 
     std::vector<const char*> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    co_return co_await direct_deps(path_id, resolution, argv, directory, std::nullopt);
+    co_return co_await direct_deps(project, path_id, resolution, argv, directory, std::nullopt);
 }
 
-async::task<PCMBuilder::ModuleDeps>
-    PCMBuilder::direct_deps(Fid path_id,
-                            const Resolution& resolution,
-                            llvm::ArrayRef<const char*> arguments,
-                            llvm::StringRef directory,
-                            std::optional<llvm::StringRef> content) {
+async::task<ModuleDeps> direct_deps(Project& project,
+                                    Fid path_id,
+                                    const Resolution& resolution,
+                                    llvm::ArrayRef<const char*> arguments,
+                                    llvm::StringRef directory,
+                                    std::optional<llvm::StringRef> content) {
     auto& dep_graph = project.dep_graph;
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
@@ -101,10 +148,10 @@ async::task<PCMBuilder::ModuleDeps>
     auto arguments_hash = llvm::xxh3_64bits(joined);
     auto epoch = project.context_epoch;
 
-    auto& memos = content ? buffer_scans : disk_scans;
-    ScanMemo scan;
-    if(auto memo = memos.find(path_id);
-       memo != memos.end() && memo->second.directives == directives &&
+    auto& scans = content ? project.buffer_scans : project.disk_scans;
+    ImportScan scan;
+    if(auto memo = scans.find(path_id);
+       memo != scans.end() && memo->second.directives == directives &&
        memo->second.bound == bound && memo->second.arguments == arguments_hash &&
        memo->second.epoch == epoch) {
         scan = memo->second;
@@ -132,7 +179,7 @@ async::task<PCMBuilder::ModuleDeps>
             append_include(text, suffix);
             content = text;
         }
-        import_scans += 1;
+        project.import_scans += 1;
         auto scanned = co_await async::queue(
             [&] { return scan_precise(arguments, directory, content, std::move(vfs)); });
         scan = {.directives = directives,
@@ -147,73 +194,58 @@ async::task<PCMBuilder::ModuleDeps>
             scan.imports.push_back(std::move(scanned.module_name));
             scan.offsets.push_back(std::numeric_limits<std::uint32_t>::max());
         }
-        memos[path_id] = scan;
+        scans[path_id] = scan;
     }
 
     // Every scanned name goes into the edge set, resolved or not: an
-    // unresolved name edges to its sentinel, which is what lets the
-    // name's first provider re-dirty this unit through the ordinary
-    // cascade later — no side bookkeeping of who failed against it.
+    // unresolved name edges to its unresolved-import node, which is what
+    // lets the name's first provider re-dirty this unit through the
+    // ordinary cascade later — no side bookkeeping of who failed against it.
     ModuleDeps deps{
         .offsets = {scan.offsets.begin(), scan.offsets.end()},
         .module_unit = scan.module_unit
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
-        if(providers.empty()) {
-            deps.declared.push_back(unresolved_node(name));
-        } else {
-            auto provider = nearest_provider(project.file_table, providers, path_id);
-            deps.resolved.push_back(provider);
-            deps.declared.push_back(node(provider));
-        }
+        deps.declared.push_back(
+            providers.empty() ? unresolved_import(name)
+                              : node(nearest_provider(project.file_table, providers, path_id)));
     }
     co_return deps;
 }
 
-llvm::SmallVector<NodeId> PCMBuilder::provider_appeared(llvm::StringRef name) {
-    return graph.update(unresolved_node(name));
+llvm::SmallVector<NodeId> provider_appeared(Project& project, llvm::StringRef name) {
+    return project.graph.update(unresolved_import(name));
 }
 
-void PCMBuilder::declare_deps(Fid path_id, llvm::ArrayRef<NodeId> deps) {
-    graph.declare(node(path_id), deps);
-}
-
-void PCMBuilder::retire_blob(PCMBuild& build) {
-    if(build.blob.empty()) {
-        return;
+void declare_imports(Project& project, RoundContext& ctx, NodeId self, const ModuleDeps& deps) {
+    project.graph.declare(self, deps.declared);
+    for(auto dep: deps.declared) {
+        if(is_unresolved_import(dep)) {
+            ctx.reference(dep);
+        }
     }
-    if(!build.previous.empty()) {
-        project.store->invalidate("pcm", build.previous);
-    }
-    build.previous = std::exchange(build.blob, {});
 }
 
-async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
+async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId id) {
+    auto path_id = id.file();
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
     if(auto* inputs = project.build_inputs(path_id);
        inputs && deps_changed(project.file_table, *inputs)) {
-        disk_scans.erase(path_id);
+        project.disk_scans.erase(path_id);
     }
 
     // The import list is scanner truth, not build output: commit it as
-    // durable edges before building, so a unit whose build fails stays
-    // cascade-reachable from its imports — fixing an import must re-dirty
-    // the units it broke. The lazy per-round resolve is what keeps the
-    // edges honest: a CDB or import change is always seen by the next
-    // round. Each depend() then records the candidate edge (interest- and
-    // foreground-visible immediately) and waits for the dependency.
-    auto deps = co_await direct_deps(path_id);
-    declare_deps(path_id, deps.declared);
-    for(auto dep: deps.declared) {
-        if(is_unresolved(dep)) {
-            ctx.reference(dep);
-        }
-    }
+    // durable edges before building. The lazy per-round resolve is what
+    // keeps the edges honest: a CDB or import change is always seen by the
+    // next round. Each depend() then records the candidate edge (interest-
+    // and foreground-visible immediately) and waits for the dependency.
+    auto deps = co_await direct_deps(project, path_id);
+    declare_imports(project, ctx, id, deps);
 
     worker::BuildPCMParams bp;
-    auto resolution = commands.resolve_command(path_id, bp.directory, bp.arguments);
+    auto resolution = resolve_command(project, path_id, bp.directory, bp.arguments);
     bp.hidden = resolution.hidden;
 
     // A unit of a target with precompiled headers builds over clice's own
@@ -225,8 +257,8 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // same one. One that did not build leaves the header to the unit's own
     // parse, as for any other unit.
     std::optional<std::string> pch_key;
-    if(auto unit = commands.pch_unit(path_id, resolution)) {
-        auto request = pch.precompiled_header(*unit, /*skip_bodies=*/false);
+    if(auto unit = pch_unit(project, path_id, resolution)) {
+        auto request = declared_pch_request(project, *unit, /*skip_bodies=*/false);
         auto key = request.pch_key;
         // Removed behind the store's back, by another process sharing the
         // cache: an importer reading it only through the PCM never reports
@@ -234,9 +266,9 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
         if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
                                                   !it->second.path.empty() &&
                                                   !fs::exists(it->second.path)) {
-            pch.invalidate(key);
+            discard_pch(project, key);
         }
-        switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
+        switch(co_await ctx.depend(prepare_pch(project, std::move(request)))) {
             case DependResult::Ready: pch_key = std::move(key); break;
             case DependResult::Failed: break;
             case DependResult::Cancelled: co_return RoundOutcome::Stale;
@@ -247,13 +279,14 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // importer explains its diagnostics from it meanwhile. An import ready
     // early can have lost its PCM by the time the last one is, evicted or
     // being rebuilt: the key and the build read what each import built.
+    auto resolved = deps.resolved();
     for(bool built = false; !built;) {
-        for(auto dep: deps.resolved) {
+        for(auto dep: resolved) {
             switch(co_await ctx.depend(node(dep))) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: {
                     auto& build = project.pcm_builds[path_id];
-                    retire_blob(build);
+                    move_to_previous(project, build);
                     build = {.previous = std::move(build.previous)};
                     project.failures.pcm_builds.commit(path_id, {.import = dep}, {});
                     co_return RoundOutcome::Failed;
@@ -262,9 +295,9 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
             }
         }
         built = true;
-        for(auto dep: deps.resolved) {
+        for(auto dep: resolved) {
             auto& build = project.pcm_builds.find(dep)->second;
-            if(build.path.empty() || drop_evicted(dep, build)) {
+            if(build.path.empty() || drop_evicted(project, dep, build)) {
                 built = false;
             }
         }
@@ -305,11 +338,10 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     // the PCH it reads: rebuilt, that one has another name.
     std::string imports;
     for(auto dep: deps.declared) {
-        if(is_unresolved(dep)) {
+        if(is_unresolved_import(dep)) {
             imports += std::format("?{:x}", dep.key);
         } else {
-            imports +=
-                project.pcm_builds.find(Fid{static_cast<std::uint32_t>(dep.key)})->second.key;
+            imports += project.pcm_builds.find(dep.file())->second.key;
         }
         imports.push_back('\0');
     }
@@ -376,80 +408,48 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     auto blob = std::format("{}-{:08x}{:08x}", pcm_key, random(), random());
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
-    project.fill_pcm_deps(bp.pcms, closure(deps.resolved).getArrayRef());
+    project.fill_pcm_deps(bp.pcms, module_closure(project, resolved).getArrayRef());
 
-    // The modules it imports are inputs as much as its own text — the
-    // PCM embeds what it read of them — and theirs already carry their own
-    // imports', so the snapshot is transitive. Taken before the build: an
-    // eviction arriving during it must not drop them.
-    auto imported = project.module_inputs(deps.resolved);
-
-    // The interest class is read at dispatch time: a foreground requester
-    // may have joined after this round started. The advisory token rides
-    // into the pool, which cancels the request over IPC while this
-    // frame keeps awaiting the real reply (contract 2 — the slot frees
-    // only when the worker is truly idle).
-    auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
+    // The modules it imports are inputs as much as its own text — the PCM
+    // embeds what it read of them — and theirs already carry their own
+    // imports', so the snapshot is transitive. Taken before the build, with
+    // the PCH it reads: an eviction arriving during it must not drop them.
+    auto before = project.module_inputs(resolved);
+    merge_deps(before, {&precompiled});
     // What a build that crashes is known to read, sampled before it runs: a
     // save arriving mid-build is not what crashed.
-    auto known = imported;
-    merge_deps(known, {&precompiled});
+    auto known = before;
     if(auto own = current_dep(project.file_table, path_id)) {
         known.push_back(*own);
     }
-    auto result = co_await deliver(
-        pool,
-        false,
-        [&] { return pool.send_stateless(bp, priority, ctx.token()); },
-        [&](const ipc::Error& error) {
-            project.failures.pcm_builds.commit(
-                path_id,
-                {.key = pcm_key, .record = failed_build(worker::death_of(error), error.message)},
-                std::move(known));
-        });
-
-    // A foreground reclaim or an advisory cancel is no decision on the
-    // unit: report the round stale so waiters drive a retry instead of
-    // failing their whole chain.
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
-        LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
-        co_return RoundOutcome::Stale;
-    }
-    auto inputs = [&] {
-        auto snapshot =
-            capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-        merge_deps(snapshot, {&imported, &precompiled});
-        return snapshot;
-    };
-    if(!result.has_value() || !result.value().success) {
-        auto& build = project.pcm_builds[path_id];
-        retire_blob(build);
-        if(expected_build_failure(result)) {
-            LOG_WARN("BuildPCM failed for module {}: {}",
-                     module_name,
-                     build_failure_message(result));
-            // A round overtaken in flight records its inputs all the same:
-            // they no longer match, and its successor rebuilds.
-            if(result.has_value()) {
-                project.failures.pcm_builds.commit(
-                    path_id,
-                    {.key = pcm_key, .record = failed_build({}, result.value().first_error)},
-                    inputs());
-            }
-        } else {
-            LOG_ANOMALY(PCMBuildFail,
-                        "PCM build failed for module {}: {}",
-                        module_name,
-                        build_failure_message(result));
+    auto built = co_await send_precompiled(project,
+                                           ctx,
+                                           bp,
+                                           "PCM",
+                                           std::format("module {}", module_name),
+                                           std::move(known),
+                                           before,
+                                           [&](FailureRecord record, DepsSnapshot inputs) {
+                                               // A round overtaken in flight records its inputs all
+                                               // the same: they no longer match, and its successor
+                                               // rebuilds.
+                                               project.failures.pcm_builds.commit(
+                                                   path_id,
+                                                   {.key = pcm_key, .record = std::move(record)},
+                                                   std::move(inputs));
+                                           });
+    if(!built) {
+        if(built.error() == RoundOutcome::Failed) {
+            move_to_previous(project, project.pcm_builds[path_id]);
         }
-        co_return RoundOutcome::Failed;
+        co_return built.error();
     }
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
         co_await async::queue([&] { return project.store->commit(std::move(pending)); });
     auto& build = project.pcm_builds[path_id];
-    retire_blob(build);
+    move_to_previous(project, build);
     if(!committed.has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;
@@ -458,20 +458,19 @@ async::task<RoundOutcome> PCMBuilder::run(RoundContext& ctx, Fid path_id) {
     build.blob = std::move(blob);
     build.path = std::move(committed.value());
     build.pch = std::move(bp.pch);
-    build.deps = inputs();
+    build.deps = read_inputs(project, *built, before);
     LOG_INFO("Built PCM for module {}: {}", module_name, build.path);
 
     project.mark_precompiled_dirty();
 
-    // Signal that new index data is available for background merge.
-    if(on_indexing_needed)
-        on_indexing_needed();
+    // New index data is available for background merge.
+    schedule_index(project);
 
     co_return RoundOutcome::Success;
 }
 
-std::optional<PCMBuilder::BuildFailure> PCMBuilder::build_failure(Fid module) const {
-    BuildFailure failure;
+std::optional<ModuleBuildFailure> module_build_failure(const Project& project, Fid module) {
+    ModuleBuildFailure failure;
     for(auto current = module;;) {
         if(auto seen = ranges::find(failure.chain, current); seen != failure.chain.end()) {
             failure.cycle = seen - failure.chain.begin();
@@ -490,27 +489,27 @@ std::optional<PCMBuilder::BuildFailure> PCMBuilder::build_failure(Fid module) co
     }
 }
 
-bool PCMBuilder::forget_failure(Fid module) {
+bool forget_build_failure(Project& project, Fid module) {
     return project.failures.pcm_builds.forget(module);
 }
 
-llvm::SetVector<Fid> PCMBuilder::closure(llvm::ArrayRef<Fid> modules) const {
+llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules) {
     llvm::SetVector<Fid> read(modules.begin(), modules.end());
     for(std::size_t i = 0; i < read.size(); i += 1) {
         auto it = project.pcm_builds.find(read[i]);
         if(it == project.pcm_builds.end() || it->second.path.empty()) {
             continue;
         }
-        for(auto dep: graph.dependencies(node(read[i]))) {
-            if(dep.kind == NodeKind::PCM && !is_unresolved(dep)) {
-                read.insert(Fid{static_cast<std::uint32_t>(dep.key)});
+        for(auto dep: project.graph.dependencies(node(read[i]))) {
+            if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
+                read.insert(dep.file());
             }
         }
     }
     return read;
 }
 
-const FailureRecord* PCMBuilder::crashed(Fid module) {
+const FailureRecord* build_crash(Project& project, Fid module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
     // importers fail to index until then.
@@ -518,30 +517,10 @@ const FailureRecord* PCMBuilder::crashed(Fid module) {
     return failed && failed->result.record.crashed() ? &failed->result.record : nullptr;
 }
 
-bool PCMBuilder::drop_evicted(Fid module, PCMBuild& build) {
-    if(build.path.empty()) {
-        return false;
-    }
-    if(!fs::exists(build.path)) {
-        build.blob.clear();
-    } else if(build.pch.empty() || fs::exists(build.pch)) {
-        return false;
-    }
-    // Artifact tier only: the blob vanished, or the PCH it names to its
-    // importers did; its content did not, so importers' committed results
-    // stay valid. A full invalidate() here would void the very consumer
-    // round that is revalidating before rebuilding its imports — under a
-    // cache budget smaller than the working set, that voids and respawns
-    // the waiter forever.
-    build.path.clear();
-    graph.mark_dirty(node(module));
-    return true;
-}
-
-bool PCMBuilder::revalidate_blobs() {
+bool revalidate_pcms(Project& project) {
     bool evicted = false;
     for(auto& [pid, build]: project.pcm_builds) {
-        if(drop_evicted(pid, build)) {
+        if(drop_evicted(project, pid, build)) {
             evicted = true;
         }
     }
@@ -551,16 +530,17 @@ bool PCMBuilder::revalidate_blobs() {
     // The units importing an evicted one look again too, through every
     // level: their own PCMs still hold — their next rounds keep them — but
     // a round is what rebuilds an import first.
+    auto& graph = project.graph;
     for(bool marked = true; marked;) {
         marked = false;
-        for(auto pid: views::transform(project.pcm_builds,
-                                       [](auto& entry) -> auto& { return entry.first; })) {
+        for(auto& [pid, build]: project.pcm_builds) {
             auto id = node(pid);
             if(!graph.has_node(id) || graph.is_dirty(id)) {
                 continue;
             }
             if(ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
-                   return dep.kind == NodeKind::PCM && !is_unresolved(dep) && graph.is_dirty(dep);
+                   return dep.kind == NodeKind::PCM && !is_unresolved_import(dep) &&
+                          graph.is_dirty(dep);
                })) {
                 graph.mark_dirty(id);
                 marked = true;
@@ -570,37 +550,39 @@ bool PCMBuilder::revalidate_blobs() {
     return true;
 }
 
-async::task<std::optional<PCMBuilder::ModuleDeps>>
-    PCMBuilder::prepare_deps(Fid path_id,
-                             const Resolution& resolution,
-                             llvm::ArrayRef<const char*> arguments,
-                             llvm::StringRef directory,
-                             llvm::StringRef content) {
+async::task<std::optional<ModuleDeps>> build_imports(Project& project,
+                                                     Fid path_id,
+                                                     const Resolution& resolution,
+                                                     llvm::ArrayRef<const char*> arguments,
+                                                     llvm::StringRef directory,
+                                                     llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a
-    // provider appearing for a sentinel) cascades to the open TUs
+    // provider appearing for an unresolved import) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = co_await direct_deps(path_id,
+    auto deps = co_await direct_deps(project,
+                                     path_id,
                                      resolution,
                                      arguments,
                                      directory,
                                      std::optional<llvm::StringRef>(content));
-    // A module unit's PCM node carries its ARTIFACT's edge truth, owned
-    // by its own rounds — a request's buffer view must not overwrite it
-    // (an unsaved removed import would disconnect the cached PCM from
-    // the very dependency whose save should invalidate it). Plain TUs'
-    // consumer nodes never run rounds; the declaration is theirs alone.
+    // A module unit's PCM node carries its PCM's edge truth, owned by its
+    // own rounds — a request's buffer view must not overwrite it (an
+    // unsaved removed import would disconnect the cached PCM from the very
+    // dependency whose save should invalidate it). Plain TUs' consumer
+    // nodes never run rounds; the declaration is theirs alone.
     if(project.dep_graph.module_of(path_id).empty()) {
-        declare_deps(path_id, deps.declared);
+        project.graph.declare(node(path_id), deps.declared);
     }
-    if(deps.resolved.empty()) {
+    auto resolved = deps.resolved();
+    if(resolved.empty()) {
         co_return deps;
     }
 
     for(int attempt = 0; attempt < 3; attempt += 1) {
-        bool any_evicted = revalidate_blobs();
+        bool any_evicted = revalidate_pcms(project);
         if(attempt > 0 && !any_evicted) {
             break;
         }
@@ -609,9 +591,9 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
         // background budget cannot throttle them. A module that did not
         // build is the compile's to report.
         std::vector<async::task<JoinOutcome>> waits;
-        waits.reserve(deps.resolved.size());
-        for(auto dep: deps.resolved) {
-            waits.push_back(graph.request(node(dep), {.foreground = true}));
+        waits.reserve(resolved.size());
+        for(auto dep: resolved) {
+            waits.push_back(project.graph.request(node(dep), {.foreground = true}));
         }
         auto results = co_await async::when_all(std::move(waits));
         if(ranges::contains(results, JoinOutcome::Shutdown)) {
@@ -621,16 +603,20 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
     co_return deps;
 }
 
-bool PCMBuilder::tracks(Fid path_id) const {
-    return graph.has_node(node(path_id));
+bool pcm_tracked(const Project& project, Fid path_id) {
+    return project.graph.has_node(node(path_id));
 }
 
-llvm::SmallVector<Fid> PCMBuilder::invalidate(Fid path_id) {
+llvm::SmallVector<Fid> invalidate_module(Project& project, Fid path_id) {
     llvm::SmallVector<Fid> dirtied;
-    for(auto id: graph.update(node(path_id))) {
-        dirtied.push_back(Fid{static_cast<std::uint32_t>(id.key)});
+    for(auto id: project.graph.update(node(path_id))) {
+        dirtied.push_back(id.file());
     }
     return dirtied;
+}
+
+void forget_buffer_scan(Project& project, Fid path_id) {
+    project.buffer_scans.erase(path_id);
 }
 
 }  // namespace clice

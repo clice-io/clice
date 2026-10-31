@@ -6,7 +6,7 @@ import :index.project_index;
 import :index.project_records;
 import :index.symbol_query;
 import :project.project;
-import :sched.index.pending_table;
+import :project.reindex_queue;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -436,8 +436,8 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
     f.save();
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.index.indexed(tu_id));
-    ZEXPECT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
-    ZEXPECT(f.pump.pending_reason(solo) == ReindexReason::ContentChanged);
+    ZEXPECT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZEXPECT(f.queue.pending_reason(solo) == ReindexReason::ContentChanged);
     ZEXPECT(!f.project.database->contains(index::BlobKind::Shard, header_key));
 }
 
@@ -690,7 +690,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     ZASSERT(condemned);
     ZASSERT(f.project.database != nullptr);
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(UnreadableHeaderPreserved) {

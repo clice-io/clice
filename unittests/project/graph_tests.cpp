@@ -1,13 +1,13 @@
 module clice;
 
-import :sched.graph;
+import :project.graph;
 import :unittests.utils.async;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
-/// Two arbitrary families exercising the multi-family surface.
+/// Two arbitrary kinds exercising the multi-kind surface.
 constexpr NodeKind KindA = NodeKind{1};
 constexpr NodeKind KindB = NodeKind{2};
 
@@ -55,8 +55,8 @@ TaskGraph::RoundRunner instant(const Adjacency& adj) {
 /// Runner driven manually by per-node gates: the test observes when a
 /// round reaches its dispatch (started) and decides when and how it
 /// completes. The dispatch races its gate against the round's advisory
-/// token — the run-to-reply discipline every real family follows.
-struct ManualFamily {
+/// token — the run-to-reply discipline every real runner follows.
+struct ManualRunner {
     struct Gate {
         async::event started;
         async::event proceed;
@@ -264,22 +264,22 @@ ZEST_CASE(product_dirty_inflight_commits) {
     // Marking while a round is in flight neither voids nor re-runs it:
     // the round is already producing the fresh product, and its commit
     // clears the flag it finds set.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             graph.mark_dirty(a(1));
-            mf.open({a(1)});
+            manual.open({a(1)});
             co_return;
         };
 
         co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
         ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
@@ -287,15 +287,15 @@ ZEST_CASE(product_dirty_inflight_commits) {
 ZEST_CASE(concurrent_requests_share) {
     // Two concurrent requests for the same node join one round: a single
     // dispatch serves both.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
 
     Probe p1, p2;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             ZEXPECT(graph.refcount(a(1)) == 2u);
-            mf.open({a(1)});
+            manual.open({a(1)});
             co_return;
         };
 
@@ -303,12 +303,12 @@ ZEST_CASE(concurrent_requests_share) {
 
         ZEXPECT(p1.outcome == JoinOutcome::Success);
         ZEXPECT(p2.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
     });
 }
 
-ZEST_CASE(cross_family_edge) {
-    // A KindA node depending on a KindB node: the edge crosses families and
+ZEST_CASE(cross_kind_edge) {
+    // A KindA node depending on a KindB node: the edge crosses kinds and
     // update() cascades across it.
     Adjacency adj;
     adj[a(1)] = {b(7)};
@@ -340,24 +340,24 @@ ZEST_CASE(edge_live_before_commit) {
     // The dependent's round is still in flight when its dependency is
     // updated: the cascade must reach the dependent through the candidate
     // edge — the round never committed, so no durable edge exists yet.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(5)};
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(5)};
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1)});
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(b(5)).started.wait();
-            mf.gate(b(5)).started.reset();
+            co_await manual.gate(b(5)).started.wait();
+            manual.gate(b(5)).started.reset();
 
             auto dirtied = graph.update(b(5));
             ZEXPECT(ranges::contains(dirtied, a(1)));
 
-            co_await mf.gate(b(5)).started.wait();
-            ZEXPECT(mf.gate(b(5)).calls == 2);
-            mf.open({b(5)});
+            co_await manual.gate(b(5)).started.wait();
+            ZEXPECT(manual.gate(b(5)).calls == 2);
+            manual.open({b(5)});
             co_return;
         };
 
@@ -395,11 +395,11 @@ ZEST_CASE(voided_candidates_discarded) {
     // An overtaken round's candidate edges are discarded at commit: the
     // durable set still reflects the last successful round, not the
     // declarations of the round that update() voided.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(2)};
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1), b(2), b(3)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(2)};
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1), b(2), b(3)});
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -410,13 +410,13 @@ ZEST_CASE(voided_candidates_discarded) {
         // it has declared the candidate edge to b(3) but not committed. The
         // observer joins OneAttempt so the voided round finishing leaves a
         // quiescent graph instead of respawning against the closed gate.
-        mf.adj[a(1)] = {b(3)};
-        mf.gate(a(1)).proceed.reset();
-        mf.gate(a(1)).started.reset();
+        manual.adj[a(1)] = {b(3)};
+        manual.gate(a(1)).proceed.reset();
+        manual.gate(a(1)).started.reset();
         graph.update(a(1));
 
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
 
             // The candidate edge is already cascade-visible, and the
             // durable edge from the last success still cascades too.
@@ -437,7 +437,7 @@ ZEST_CASE(voided_candidates_discarded) {
         ZEXPECT(ranges::contains(graph.update(b(2)), a(1)));
 
         // A fresh terminal join commits the flipped imports.
-        mf.open({a(1)});
+        manual.open({a(1)});
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Success);
         ZEXPECT(graph.dependencies(a(1))[0] == b(3));
@@ -503,11 +503,11 @@ ZEST_CASE(failed_keeps_declared) {
     // topology standing: a unit whose build breaks must stay
     // cascade-reachable from its declared imports, or fixing an import
     // could never re-dirty it.
-    ManualFamily mf;
-    mf.adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, mf.runner());
-    mf.gate(a(2)).result = RoundOutcome::Failed;
-    mf.open({a(2), a(3)});
+    ManualRunner manual;
+    manual.adj[a(2)] = {a(3)};
+    graph.set_runner(KindA, manual.runner());
+    manual.gate(a(2)).result = RoundOutcome::Failed;
+    manual.open({a(2), a(3)});
 
     execute([&]() -> async::task<> {
         graph.declare(a(2), {a(1)});
@@ -525,17 +525,17 @@ ZEST_CASE(commit_overwrites_declare) {
     // declaration. Benign by the topology invariant — had the content
     // changed between the two resolves, update() would have voided the
     // round; unchanged content resolves to the same set.
-    ManualFamily mf;
-    mf.adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, mf.runner());
-    mf.open({a(3)});
+    ManualRunner manual;
+    manual.adj[a(2)] = {a(3)};
+    graph.set_runner(KindA, manual.runner());
+    manual.open({a(3)});
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(2)).started.wait();
+            co_await manual.gate(a(2)).started.wait();
             graph.declare(a(2), {a(1)});
-            mf.open({a(2)});
+            manual.open({a(2)});
             co_return;
         };
 
@@ -558,31 +558,31 @@ ZEST_CASE(stale_success_discarded) {
     // The closure ignores its token and reports Success after update()
     // overtook the round: the result must not count — the node stays
     // dirty and the waiter drives a fresh round.
-    ManualFamily mf;
-    mf.stubborn = true;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    manual.stubborn = true;
+    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
-            mf.gate(a(1)).started.reset();
+            co_await manual.gate(a(1)).started.wait();
+            manual.gate(a(1)).started.reset();
 
             graph.update(a(1));
 
             // Advisory cancellation: the round is signalled, not killed.
             ZEXPECT(graph.is_compiling(a(1)));
 
-            mf.open({a(1)});
-            co_await mf.gate(a(1)).started.wait();
-            ZEXPECT(mf.gate(a(1)).calls == 2);
+            manual.open({a(1)});
+            co_await manual.gate(a(1)).started.wait();
+            ZEXPECT(manual.gate(a(1)).calls == 2);
             co_return;
         };
 
         co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(a(1)).calls == 2);
+        ZEXPECT(manual.gate(a(1)).calls == 2);
         ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
@@ -590,22 +590,22 @@ ZEST_CASE(stale_success_discarded) {
 ZEST_CASE(stale_failure_retries) {
     // A Failed reply from an overtaken round is no decision about the new
     // content: waiters retry instead of propagating the failure.
-    ManualFamily mf;
-    mf.stubborn = true;
-    mf.gate(a(1)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    manual.stubborn = true;
+    manual.gate(a(1)).result = RoundOutcome::Failed;
+    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
-            mf.gate(a(1)).started.reset();
+            co_await manual.gate(a(1)).started.wait();
+            manual.gate(a(1)).started.reset();
 
             graph.update(a(1));
-            mf.gate(a(1)).result = RoundOutcome::Success;
-            mf.open({a(1)});
+            manual.gate(a(1)).result = RoundOutcome::Success;
+            manual.open({a(1)});
 
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             co_return;
         };
 
@@ -613,7 +613,7 @@ ZEST_CASE(stale_failure_retries) {
 
         // The stale Failed never reached the waiter.
         ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(a(1)).calls == 2);
+        ZEXPECT(manual.gate(a(1)).calls == 2);
     });
 }
 
@@ -647,13 +647,13 @@ ZEST_CASE(salvage_before_stale) {
 ZEST_CASE(one_attempt_stale) {
     // OneAttempt observes exactly one attempt: an overtaken round returns
     // Stale to the caller instead of retrying.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             graph.update(a(1));
             co_return;
         };
@@ -662,7 +662,7 @@ ZEST_CASE(one_attempt_stale) {
                                  driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Stale);
-        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
         ZEXPECT(graph.is_dirty(a(1)));
     });
 }
@@ -685,14 +685,14 @@ ZEST_CASE(one_attempt_clean) {
 ZEST_CASE(abandoned_validity) {
     // The validity predicate goes false while the join waits: the next
     // continuation point abandons instead of retrying.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
 
     bool valid = true;
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             valid = false;
             graph.update(a(1));
             co_return;
@@ -702,7 +702,7 @@ ZEST_CASE(abandoned_validity) {
                                  driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Abandoned);
-        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
     });
 }
 
@@ -713,18 +713,18 @@ ZEST_CASE(abandoned_validity) {
 ZEST_CASE(failed_propagates) {
     // A failing dependency fails the depender without dispatching it;
     // both stay dirty.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(2)};
-    mf.gate(b(2)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1), b(2)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(2)};
+    manual.gate(b(2)).result = RoundOutcome::Failed;
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
         auto outcome = co_await graph.request(a(1));
         ZEXPECT(outcome == JoinOutcome::Failed);
-        ZEXPECT(mf.gate(b(2)).calls == 1);
-        ZEXPECT(mf.gate(a(1)).calls == 0);
+        ZEXPECT(manual.gate(b(2)).calls == 1);
+        ZEXPECT(manual.gate(a(1)).calls == 0);
         ZEXPECT(graph.is_dirty(a(1)));
         ZEXPECT(graph.is_dirty(b(2)));
     });
@@ -733,22 +733,22 @@ ZEST_CASE(failed_propagates) {
 ZEST_CASE(failure_not_sticky) {
     // Failure propagates without retry, but a new request tries again and
     // succeeds once the dependency compiles.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(2)};
-    mf.gate(b(2)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1), b(2)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(2)};
+    manual.gate(b(2)).result = RoundOutcome::Failed;
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
         auto first = co_await graph.request(a(1));
         ZEXPECT(first == JoinOutcome::Failed);
 
-        mf.gate(b(2)).result = RoundOutcome::Success;
+        manual.gate(b(2)).result = RoundOutcome::Success;
         auto second = co_await graph.request(a(1));
         ZEXPECT(second == JoinOutcome::Success);
-        ZEXPECT(mf.gate(b(2)).calls == 2);
-        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(manual.gate(b(2)).calls == 2);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
     });
 }
 
@@ -760,13 +760,13 @@ ZEST_CASE(requester_cancel_releases) {
     // The requester's frame unwinds mid-round: interest drops to zero, the
     // advisory token fires after one tick, the closure winds down and the
     // graph quiesces with the node still dirty.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(a(1)).started.wait();
+            co_await manual.gate(a(1)).started.wait();
             probe.source.cancel();
             co_await wait_until([&] { return !graph.is_compiling(a(1)); });
 
@@ -774,7 +774,7 @@ ZEST_CASE(requester_cancel_releases) {
             ZEXPECT(probe.outcome == std::nullopt);
             ZEXPECT(graph.is_dirty(a(1)));
             ZEXPECT(graph.refcount(a(1)) == 0u);
-            ZEXPECT(mf.gate(a(1)).calls == 1);
+            ZEXPECT(manual.gate(a(1)).calls == 1);
             co_return;
         };
 
@@ -786,27 +786,27 @@ ZEST_CASE(shared_dep_survives_cancel) {
     // Two chains share one dependency; cancelling one requester must only
     // wind down its own chain — the shared dependency keeps compiling for
     // the survivor.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(5)};
-    mf.adj[a(3)] = {b(5)};
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1), a(3)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(5)};
+    manual.adj[a(3)] = {b(5)};
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1), a(3)});
 
     Probe p1, p3;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(b(5)).started.wait();
+            co_await manual.gate(b(5)).started.wait();
             ZEXPECT(graph.refcount(b(5)) == 2u);
 
             p1.source.cancel();
             co_await wait_until([&] { return !graph.is_compiling(a(1)); });
 
             ZEXPECT(graph.is_compiling(b(5)));
-            ZEXPECT(mf.gate(b(5)).calls == 1);
+            ZEXPECT(manual.gate(b(5)).calls == 1);
             ZEXPECT(graph.refcount(b(5)) == 1u);
 
-            mf.open({b(5)});
+            manual.open({b(5)});
             co_return;
         };
 
@@ -814,7 +814,7 @@ ZEST_CASE(shared_dep_survives_cancel) {
 
         ZEXPECT(p1.outcome == std::nullopt);
         ZEXPECT(p3.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(b(5)).calls == 1);
+        ZEXPECT(manual.gate(b(5)).calls == 1);
     });
 }
 
@@ -823,16 +823,16 @@ ZEST_CASE(transient_drop_handover) {
     // the retry re-acquires the dependency within the same drain cycle, so
     // its in-flight round is handed over — neither cancelled nor
     // restarted.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(2)};
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
-    mf.open({a(1)});
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(2)};
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
+    manual.open({a(1)});
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
-            co_await mf.gate(b(2)).started.wait();
+            co_await manual.gate(b(2)).started.wait();
             ZEXPECT(graph.is_compiling(a(1)));
 
             graph.update(a(1));
@@ -841,17 +841,17 @@ ZEST_CASE(transient_drop_handover) {
             // The depender's round was respawned; the dependency kept
             // compiling throughout.
             ZEXPECT(graph.is_compiling(b(2)));
-            ZEXPECT(mf.gate(b(2)).calls == 1);
+            ZEXPECT(manual.gate(b(2)).calls == 1);
             ZEXPECT(graph.refcount(b(2)) == 1u);
 
-            mf.open({b(2)});
+            manual.open({b(2)});
             co_return;
         };
 
         co_await async::when_all(run_request(a(1), probe), driver());
 
         ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(mf.gate(b(2)).calls == 1);
+        ZEXPECT(manual.gate(b(2)).calls == 1);
         ZEXPECT(!graph.is_dirty(a(1)));
         ZEXPECT(!graph.is_dirty(b(2)));
     });
@@ -999,18 +999,18 @@ ZEST_CASE(foreground_skips_clean_deps) {
 ZEST_CASE(foreground_resets_zero) {
     // The foreground flag is sticky while any interest remains and reset
     // when the count returns to zero: a later background request runs Low.
-    ManualFamily mf;
-    graph.set_runner(KindA, mf.runner());
-    mf.open({a(1)});
+    ManualRunner manual;
+    graph.set_runner(KindA, manual.runner());
+    manual.open({a(1)});
 
     execute([&]() -> async::task<> {
         co_await graph.request(a(1), {.foreground = true});
-        ZEXPECT(mf.gate(a(1)).classes[0]);
+        ZEXPECT(manual.gate(a(1)).classes[0]);
 
         graph.update(a(1));
         co_await graph.request(a(1));
-        ZASSERT(mf.gate(a(1)).calls == 2);
-        ZEXPECT(!mf.gate(a(1)).classes[1]);
+        ZASSERT(manual.gate(a(1)).calls == 2);
+        ZEXPECT(!manual.gate(a(1)).classes[1]);
     });
 }
 
@@ -1071,14 +1071,14 @@ ZEST_CASE(shutdown_with_inflight) {
     // shutdown() with rounds in flight: every advisory token fires, the
     // closures wind down with real replies, pending joins resolve with
     // Shutdown, and the graph quiesces.
-    ManualFamily mf;
-    mf.adj[a(1)] = {b(4)};
-    graph.set_runner(KindA, mf.runner());
-    graph.set_runner(KindB, mf.runner());
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(4)};
+    graph.set_runner(KindA, manual.runner());
+    graph.set_runner(KindB, manual.runner());
 
     Probe probe;
     auto driver = [&]() -> async::task<> {
-        co_await mf.gate(b(4)).started.wait();
+        co_await manual.gate(b(4)).started.wait();
         co_await graph.shutdown();
         co_return;
     };

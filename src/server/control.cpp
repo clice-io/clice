@@ -79,21 +79,21 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             IndexResult result;
             llvm::SmallVector<Fid> files;
             for(auto member: members) {
-                if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
+                if(enqueue_reindex(srv.project, member, ReindexReason::DepsOnly)) {
                     files.push_back(member);
                 }
             }
-            srv.sched.pump.schedule(/*immediate=*/true);
+            schedule_index(srv.project, /*immediate=*/true);
             for(auto file: files) {
                 // One await covers one attempt; a crash or preemption
                 // requeues the file behind it.
-                while(srv.sched.pump.pending_reason(file)) {
-                    co_await srv.sched.pump.await_attempt(file);
+                while(srv.project.background_index.queue.pending_reason(file)) {
+                    co_await await_index_attempt(srv.project, file);
                 }
             }
             // The round persists at its end; the asker reads the disk, so its
             // index must be there before the answer.
-            co_await srv.sched.pump.persist();
+            co_await persist(srv.project);
             if(has_unsaved_state(srv.project)) {
                 co_await async::fail(
                     ipc::Error{"part of the index could not be persisted; see the server log"});

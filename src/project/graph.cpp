@@ -1,6 +1,6 @@
 module clice;
 
-import :sched.graph;
+import :project.graph;
 
 namespace clice {
 
@@ -46,9 +46,7 @@ void TaskGraph::set_runner(NodeKind kind, RoundRunner run) {
 }
 
 void TaskGraph::acquire(NodeId id) {
-    auto& node = nodes[id];
-    node.id = id;
-    node.refcount += 1;
+    nodes[id].refcount += 1;
 }
 
 void TaskGraph::release(NodeId id) {
@@ -207,7 +205,7 @@ void TaskGraph::set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps) {
 }
 
 void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
-    nodes[id].id = id;
+    nodes.try_emplace(id);
 
     // Broken input can name a unit as its own import; a node never
     // depends on itself (the same rule depend() enforces).
@@ -218,7 +216,7 @@ void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
         }
     }
     for(auto dep: unique) {
-        nodes[dep].id = dep;
+        nodes.try_emplace(dep);
     }
     set_durable_edges(id, unique);
 }
@@ -267,36 +265,37 @@ async::task<DependResult> TaskGraph::depend_from(NodeId self,
     co_return *result ? DependResult::Ready : DependResult::Failed;
 }
 
-async::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
+async::task<std::optional<RoundOutcome>> TaskGraph::await_round(NodeId id,
+                                                                std::optional<NodeId> waiter) {
+    if(!nodes.find(id)->second.dirty) {
+        co_return RoundOutcome::Success;
+    }
+    if(!nodes.find(id)->second.compiling && !spawn_round(id)) {
+        co_return std::nullopt;
+    }
+
+    // Re-find: spawn_round runs the closure synchronously, which may
+    // rehash the map (and may even finish the round outright).
+    auto round = nodes.find(id)->second.round;
+
+    // Blocking on a node whose live wait chain reaches back to the
+    // waiting node would deadlock — fail as a dependency cycle instead.
+    if(!round->completion.is_set() && waiter && has_wait_cycle(id, *waiter)) {
+        co_return RoundOutcome::Failed;
+    }
+
+    co_await round->completion.wait();
+    co_return round->outcome;
+}
+
+async::task<bool> TaskGraph::join_node(NodeId id, NodeId waiter) {
     while(true) {
-        auto& node = nodes.find(id)->second;
-        if(!node.dirty) {
-            co_return true;
-        }
-
-        if(!node.compiling && !spawn_round(id)) {
-            co_return false;  // graph is shutting down
-        }
-
-        // Re-find: spawn_round runs the closure synchronously, which may
-        // rehash the map (and may even finish the round outright).
-        auto round = nodes.find(id)->second.round;
-
-        // Blocking on a node whose live wait chain reaches back to the
-        // waiting node would deadlock — fail as a dependency cycle instead.
-        if(!round->completion.is_set() && waiter && has_wait_cycle(id, *waiter)) {
-            co_return false;
-        }
-
-        co_await round->completion.wait();
-
-        switch(round->outcome) {
-            case RoundOutcome::Success: co_return true;
-            case RoundOutcome::Failed: co_return false;
-            // The round ended without a result; we still hold interest,
-            // so drive a new one. Each retry consumes one staleness event
-            // — this terminates once the events stop.
-            case RoundOutcome::Stale: break;
+        // A stale round ended without a result; we still hold interest,
+        // so drive a new one. Each retry consumes one staleness event —
+        // this terminates once the events stop.
+        auto outcome = co_await await_round(id, waiter);
+        if(outcome != RoundOutcome::Stale) {
+            co_return outcome == RoundOutcome::Success;
         }
     }
 }
@@ -313,20 +312,11 @@ async::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
         if(options.validity && !options.validity()) {
             co_return JoinOutcome::Abandoned;
         }
-
-        auto& node = nodes.find(id)->second;
-        if(!node.dirty) {
-            co_return JoinOutcome::Success;
-        }
-
-        if(!node.compiling && !spawn_round(id)) {
+        auto outcome = co_await await_round(id, std::nullopt);
+        if(!outcome) {
             co_return JoinOutcome::Shutdown;
         }
-
-        auto round = nodes.find(id)->second.round;
-        co_await round->completion.wait();
-
-        switch(round->outcome) {
+        switch(*outcome) {
             case RoundOutcome::Success: co_return JoinOutcome::Success;
             case RoundOutcome::Failed: co_return JoinOutcome::Failed;
             case RoundOutcome::Stale:

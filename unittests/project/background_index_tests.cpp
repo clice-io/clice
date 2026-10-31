@@ -1,8 +1,8 @@
 module clice;
 
 import :index.project_index;
-import :sched.index.pending_table;
-import :sched.index.pump;
+import :project.background_index;
+import :project.reindex_queue;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
@@ -13,42 +13,42 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(IndexPumpRequeue) {
+ZEST_SUITE(BackgroundIndexRequeue) {
 
 ZEST_CASE(PreemptionKeepsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
 
     // A preemption under memory pressure requeues without spending the
     // crash budget, no matter how often it repeats.
     for(unsigned i = 0; i < 2 * IndexerFixture::budget; i += 1) {
-        ZASSERT(int(f.fail(id, PendingTable::Failure::Preempted)) ==
+        ZASSERT(int(f.fail(id, ReindexQueue::Failure::Preempted)) ==
                 int(IndexerFixture::Decision::Requeued));
     }
     ZASSERT(f.attempts(id) == 0u);
-    ZASSERT(f.pump.pending_reason(id));
+    ZASSERT(f.queue.pending_reason(id));
 }
 
 ZEST_CASE(OwnCrashGivesUp) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/poison.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
 
     // The run named by its dying worker would crash the next one too: the
     // file waits for its content to change.
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Crashed)) ==
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Crashed)) ==
             int(IndexerFixture::Decision::GaveUp));
-    ZASSERT(!f.pump.pending_reason(id).has_value());
+    ZASSERT(!f.queue.pending_reason(id).has_value());
 }
 
 ZEST_CASE(LostSpendsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/poison.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
 
     for(unsigned i = 0; i < IndexerFixture::budget; i += 1) {
-        ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+        ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) ==
                 int(IndexerFixture::Decision::Requeued));
     }
     ZASSERT(f.attempts(id) == IndexerFixture::budget);
@@ -56,37 +56,37 @@ ZEST_CASE(LostSpendsBudget) {
     // A preemption still requeues a file whose budget is spent: dropping
     // it would erase the pending state and serve the stale shard as fresh.
     // Only the next lost run gives up.
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Preempted)) ==
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Preempted)) ==
             int(IndexerFixture::Decision::Requeued));
     ZASSERT(f.attempts(id) == IndexerFixture::budget);
 
     // Giving up clears the pending slot: nothing is left to requeue, and
     // the stale shard serves as fresh — the accepted cost of abandoning.
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::GaveUp));
-    ZASSERT(!f.pump.pending_reason(id).has_value());
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) == int(IndexerFixture::Decision::GaveUp));
+    ZASSERT(!f.queue.pending_reason(id).has_value());
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
 }
 
 ZEST_CASE(StaleCrashKeepsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/edited.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
     auto stale = f.seq(id);
 
     // The user fixes the file while the old bytes' dispatch is in flight:
     // the stale crash must not spend the fixed content's budget or touch
     // its pending slot.
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-    ZASSERT(int(f.fail_at(id, stale, PendingTable::Failure::Lost)) ==
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
+    ZASSERT(int(f.fail_at(id, stale, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::Outdated));
     ZASSERT(f.attempts(id) == 0u);
-    ZASSERT(f.pump.pending_reason(id));
+    ZASSERT(f.queue.pending_reason(id));
 }
 
 ZEST_CASE(DepsDowngradeKeepsDebt) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/c.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
     auto launch = f.seq(id);
 
     // The content pass is dispatched; a deps-only cascade arrives mid-flight
@@ -94,19 +94,19 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     // edit. The pass fails — the requeue must restore the ContentChanged
     // debt or the stale shard stops being suppressed.
     f.consume(id);
-    f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::DepsOnly));
+    enqueue_reindex(f.project, id, ReindexReason::DepsOnly);
+    ZASSERT(int(*f.queue.pending_reason(id)) == int(ReindexReason::DepsOnly));
 
-    ZASSERT(int(f.fail_at(id, launch, PendingTable::Failure::Lost)) ==
+    ZASSERT(int(f.fail_at(id, launch, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::Requeued));
-    ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::ContentChanged));
+    ZASSERT(int(*f.queue.pending_reason(id)) == int(ReindexReason::ContentChanged));
     ZASSERT(f.attempts(id) == 1u);
 }
 
 ZEST_CASE(GaveUpClearsDowngraded) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/d.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
     auto launch = f.seq(id);
     f.set_attempts(id, IndexerFixture::budget);
 
@@ -114,27 +114,27 @@ ZEST_CASE(GaveUpClearsDowngraded) {
     // its last life. The downgraded entry must not stay queued: its retry
     // is doomed, and the give-up already accepted the staleness.
     f.consume(id);
-    f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ZASSERT(int(f.fail_at(id, launch, PendingTable::Failure::Lost)) ==
+    enqueue_reindex(f.project, id, ReindexReason::DepsOnly);
+    ZASSERT(int(f.fail_at(id, launch, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::GaveUp));
-    ZASSERT(!f.pump.pending_reason(id).has_value());
+    ZASSERT(!f.queue.pending_reason(id).has_value());
 }
 
 ZEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
 }
 
 ZEST_CASE(AttemptWaitPerSeq) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/waited.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
     auto launch = f.seq(id);
 
     bool first_woke = false;
     auto first_body = [&]() -> async::task<> {
-        co_await f.pump.await_attempt(id);
+        co_await await_index_attempt(f.project, id);
         first_woke = true;
     };
     auto first = first_body();
@@ -144,10 +144,10 @@ ZEST_CASE(AttemptWaitPerSeq) {
     // A requeue arrives mid-flight: the entry stays pending under a fresh
     // sequence number, and a new waiter binds to that newer attempt.
     f.consume(id);
-    f.pump.enqueue(id, ReindexReason::DepsOnly);
+    enqueue_reindex(f.project, id, ReindexReason::DepsOnly);
     bool second_woke = false;
     auto second_body = [&]() -> async::task<> {
-        co_await f.pump.await_attempt(id);
+        co_await await_index_attempt(f.project, id);
         second_woke = true;
     };
     auto second = second_body();
@@ -169,22 +169,22 @@ ZEST_CASE(AttemptWaitPerSeq) {
 ZEST_CASE(ContentChangeResetsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/fixed.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
 
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::Requeued));
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::Requeued));
     ZASSERT(f.attempts(id) == 2u);
 
     // The user fixes the file: new content starts a fresh poison budget.
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
     ZASSERT(f.attempts(id) == 0u);
 
     // A deps-only cascade is not new content and keeps the attempt count.
-    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+    ZASSERT(int(f.fail(id, ReindexQueue::Failure::Lost)) ==
             int(IndexerFixture::Decision::Requeued));
-    f.pump.enqueue(id, ReindexReason::DepsOnly);
+    enqueue_reindex(f.project, id, ReindexReason::DepsOnly);
     ZASSERT(f.attempts(id) == 1u);
 }
 
@@ -198,21 +198,21 @@ ZEST_CASE(RoundSnapshotBoundary) {
     auto b = f.project.file_table.intern(Spelling::absolute("/fake/b.cpp"));
     auto c = f.project.file_table.intern(Spelling::absolute("/fake/c.cpp"));
 
-    f.pump.enqueue(a, ReindexReason::ContentChanged);
-    f.pump.enqueue(b, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, a, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, b, ReindexReason::ContentChanged);
 
     // Grow the queue from inside the round: the first Report enqueues a
     // third file, which must arrive past the round snapshot and wait for the
     // next round instead of being consumed by this one.
     bool grew = false;
-    IndexPump::Progress first_end;
-    auto conn = f.pump.on_progress_changed.connect([&] {
-        auto& progress = f.pump.progress();
-        if(progress.stage == IndexPump::Progress::Stage::Report && !grew) {
+    BackgroundIndex::Progress first_end;
+    auto conn = f.background.on_progress_changed.connect([&] {
+        auto& progress = f.background.progress;
+        if(progress.stage == BackgroundIndex::Progress::Stage::Report && !grew) {
             grew = true;
-            f.pump.enqueue(c, ReindexReason::ContentChanged);
+            enqueue_reindex(f.project, c, ReindexReason::ContentChanged);
         }
-        if(progress.stage == IndexPump::Progress::Stage::End && first_end.total == 0) {
+        if(progress.stage == BackgroundIndex::Progress::Stage::End && first_end.total == 0) {
             first_end = progress;
         }
     });
@@ -223,13 +223,13 @@ ZEST_CASE(RoundSnapshotBoundary) {
     ZASSERT(first_end.total == 2u);
     ZASSERT(first_end.dispatched == 2u);
     ZASSERT(first_end.completed == 2u);
-    ZASSERT(f.pump.pending_files() == 1u);
+    ZASSERT(f.queue.queued() == 1u);
 
     f.run_round();
 
-    ZASSERT(f.pump.pending_files() == 0u);
-    ZASSERT(f.pump.failed().size() == 3u);
-    ZASSERT(f.pump.is_idle());
+    ZASSERT(f.queue.queued() == 0u);
+    ZASSERT(f.background.failed.size() == 3u);
+    ZASSERT(index_idle(f.project));
 }
 
 ZEST_CASE(PauseResumesRound) {
@@ -238,23 +238,23 @@ ZEST_CASE(PauseResumesRound) {
 
     auto a = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
     auto b = f.project.file_table.intern(Spelling::absolute("/fake/b.cpp"));
-    f.pump.enqueue(a, ReindexReason::ContentChanged);
-    f.pump.enqueue(b, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, a, ReindexReason::ContentChanged);
+    enqueue_reindex(f.project, b, ReindexReason::ContentChanged);
 
     // Pause from inside the round (the first Report), resume from a
     // separately scheduled task: the feeder must park on the resume event
     // and drain the rest of the round afterwards.
     bool paused = false;
-    auto conn = f.pump.on_progress_changed.connect([&] {
-        if(f.pump.progress().stage == IndexPump::Progress::Stage::Report && !paused) {
+    auto conn = f.background.on_progress_changed.connect([&] {
+        if(f.background.progress.stage == BackgroundIndex::Progress::Stage::Report && !paused) {
             paused = true;
-            f.pump.pause_indexing();
+            pause_indexing(f.project);
         }
     });
 
     auto resume_body = [&]() -> async::task<> {
         co_await async::yield();
-        f.pump.resume_indexing();
+        resume_indexing(f.project);
     };
     auto round = f.round_task();
     auto resumer = resume_body();
@@ -263,17 +263,17 @@ ZEST_CASE(PauseResumesRound) {
     f.loop.run();
 
     ZASSERT(paused);
-    ZASSERT(f.pump.pending_files() == 0u);
-    ZASSERT(f.pump.failed().size() == 2u);
-    ZASSERT(f.pump.is_idle());
+    ZASSERT(f.queue.queued() == 0u);
+    ZASSERT(f.background.failed.size() == 2u);
+    ZASSERT(index_idle(f.project));
 }
 
-};  // ZEST_SUITE(IndexPumpRequeue)
+};  // ZEST_SUITE(BackgroundIndexRequeue)
 
-/// The index's serving-neutral change reports and the pump taking them:
-/// every index-changing source reports debt and index changes, the save
-/// carries the pump's debt snapshot both ways.
-ZEST_SUITE(IndexPumpReports) {
+/// The index's serving-neutral change reports and the background index
+/// taking them: every index-changing source reports debt and index changes,
+/// the save carries the background index's debt both ways.
+ZEST_SUITE(BackgroundIndexReports) {
 
 ZEST_CASE(MergeReportsIndexChanged) {
     IndexerFixture f;
@@ -283,7 +283,7 @@ ZEST_CASE(MergeReportsIndexChanged) {
     ZASSERT(!indexed.data.empty());
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_index_changed.connect(
+    auto conn = f.background.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     ZASSERT(f.merge(indexed.data));
 
@@ -308,14 +308,14 @@ ZEST_CASE(DropReportsServedIndex) {
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_index_changed.connect(
+    auto conn = f.background.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     index::IndexReport report;
     f.project.index.drop(tu_id, report);
     ZASSERT(ranges::contains(report.index_changed(), tu_id));
     ZASSERT(ranges::contains(report.index_changed(), header_id));
 
-    f.pump.apply_report(report);
+    apply_report(f.project, report);
     ZASSERT(ranges::contains(notified, header_id));
 }
 
@@ -344,7 +344,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     ZASSERT(f.project.index.shard(header_id) != nullptr);
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_index_changed.connect(
+    auto conn = f.background.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
@@ -352,8 +352,8 @@ ZEST_CASE(RetireReportsIndexChanged) {
     ZASSERT(ranges::contains(notified, header_id));
 }
 
-ZEST_CASE(BoostRearmsIdleTimer) {
-    // s#9: a boost colliding with an already-armed idle timer must re-arm
+ZEST_CASE(IndexFirstRearmsIdleTimer) {
+    // s#9: an index_first colliding with an already-armed idle timer must re-arm
     // it to fire now. Un-fixed, this test waits out the full idle window
     // below instead of finishing promptly.
     IndexerFixture f;
@@ -361,17 +361,35 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     f.project.settings.project.idle_timeout_ms.value = 60'000;
 
     auto id = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-    f.pump.schedule();
-    f.pump.boost(id);
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
+    schedule_index(f.project);
+    index_first(f.project, id);
     f.loop.run();
 
-    ZASSERT(f.pump.is_idle());
-    ZASSERT(f.pump.failed().size() == 1u);
+    ZASSERT(index_idle(f.project));
+    ZASSERT(f.background.failed.size() == 1u);
 }
 
-ZEST_CASE(BoostSparesRunningRound) {
-    // A file boosted while the running round has it in flight is queued
+ZEST_CASE(SaveStartsOwedRound) {
+    // A save outside any round that leaves reindexes queued starts their
+    // round at once, rather than leaving them to the next edit or
+    // checkpoint (10-10#2).
+    IndexerFixture f;
+    f.project.settings.project.enable_indexing.value = true;
+    f.project.settings.project.idle_timeout_ms.value = 60'000;
+
+    auto id = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
+    enqueue_reindex(f.project, id, ReindexReason::ContentChanged);
+    auto task = persist(f.project);
+    f.loop.schedule(task);
+    f.loop.run();
+
+    ZASSERT(index_idle(f.project));
+    ZASSERT(f.background.failed.size() == 1u);
+}
+
+ZEST_CASE(IndexFirstSparesRunningRound) {
+    // A file put first while the running round has it in flight is queued
     // past the round and leads the next one. Moved into the running round,
     // it would run there a second time and push the round's last file out.
     IndexerFixture f;
@@ -381,31 +399,31 @@ ZEST_CASE(BoostSparesRunningRound) {
     llvm::SmallVector<Fid> files;
     for(auto name: {"/fake/a.cpp", "/fake/b.cpp", "/fake/c.cpp"}) {
         files.push_back(f.project.file_table.intern(Spelling::absolute(name)));
-        f.pump.enqueue(files.back(), ReindexReason::DepsOnly);
+        enqueue_reindex(f.project, files.back(), ReindexReason::DepsOnly);
     }
 
-    // Asked for each dispatched deps-only slot: the boost arrives while the
+    // Asked for each dispatched deps-only slot: the index_first arrives while the
     // second file is taken.
     std::vector<llvm::SmallVector<Fid>> rounds(1);
-    f.pump.compiled_by_session = [&](Fid id) {
+    f.background.compiled_by_session = [&](Fid id) {
         if(rounds.size() == 1 && rounds.front().size() == 1) {
-            f.pump.boost(id);
+            index_first(f.project, id);
         }
         rounds.back().push_back(id);
         return false;
     };
-    auto conn = f.pump.on_progress_changed.connect([&] {
-        if(f.pump.progress().stage == IndexPump::Progress::Stage::End) {
+    auto conn = f.background.on_progress_changed.connect([&] {
+        if(f.background.progress.stage == BackgroundIndex::Progress::Stage::End) {
             rounds.emplace_back();
         }
     });
-    f.pump.schedule();
+    schedule_index(f.project);
     f.loop.run();
 
     ZEXPECT(rounds.size() == 3u);
     ZEXPECT(rounds[0] == files);
     ZEXPECT(rounds[1] == llvm::SmallVector<Fid>{files[1]});
-    ZEXPECT(f.pump.is_idle());
+    ZEXPECT(index_idle(f.project));
 }
 
 ZEST_CASE(EmptyRoundBuildsSearch) {
@@ -468,7 +486,7 @@ ZEST_CASE(EmptyRoundDiscardsDamage) {
     ZEXPECT(condemned);
 }
 
-};  // ZEST_SUITE(IndexPumpReports)
+};  // ZEST_SUITE(BackgroundIndexReports)
 
 }  // namespace
 }  // namespace clice::testing

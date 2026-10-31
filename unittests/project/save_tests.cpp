@@ -3,10 +3,11 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :index.symbol_query;
+import :project.background_index;
 import :project.contexts;
 import :project.project;
+import :project.reindex_queue;
 import :project.save;
-import :sched.index.pending_table;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
@@ -364,18 +365,21 @@ ZEST_CASE(IdleSaveShrinks) {
     // Only a save after which no indexing is queued shrinks the file.
     ShrinkProject p;
     auto& space = p.spy();
-    auto persist = [&](index::SearchRebuild search) {
-        auto task = p.f.pump.persist(search);
+    auto save = [&](index::SearchRebuild search) {
+        auto task = persist(p.f.project, search);
         p.f.loop.schedule(task);
         p.f.loop.run();
     };
-    persist(index::SearchRebuild::Never);
-    persist(index::SearchRebuild::Behind);
+    save(index::SearchRebuild::Never);
+    save(index::SearchRebuild::Behind);
     ZEXPECT(space.copies == 0u);
-    persist(index::SearchRebuild::Idle);
+    save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
-    p.f.pump.enqueue(p.unit("b.cpp"), ReindexReason::ContentChanged);
-    persist(index::SearchRebuild::Idle);
+    // Off, the reindex stays queued: on, the save starts its round, whose
+    // own idle save shrinks.
+    p.f.project.settings.project.enable_indexing.value = false;
+    enqueue_reindex(p.f.project, p.unit("b.cpp"), ReindexReason::ContentChanged);
+    save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
 }
 
@@ -387,7 +391,7 @@ ZEST_CASE(LostShrinkSavesAgain) {
     space.forced_swap = index::BlobDatabase::Swap::Lost;
     p.f.project.choices.bytes = "choices";
     p.f.project.choices.dirty = true;
-    auto task = p.f.pump.persist(index::SearchRebuild::Idle);
+    auto task = persist(p.f.project, index::SearchRebuild::Idle);
     p.f.loop.schedule(task);
     p.f.loop.run();
     ZEXPECT(!p.f.project.choices.dirty);

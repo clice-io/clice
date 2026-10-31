@@ -1,6 +1,6 @@
 module clice;
 
-import :project.command_resolver;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :server.master;
@@ -17,16 +17,17 @@ Resolution ServedProject::resolve_command(Fid path_id,
                                           std::vector<std::string>& arguments,
                                           const ContextChoice* candidate) {
     auto resolution =
-        commands.resolve_command(path_id,
-                                 directory,
-                                 arguments,
-                                 {
-                                     .choice = candidate ? candidate : active_choice(path_id),
-                                     .open = true,
-                                 });
+        clice::resolve_command(project,
+                               path_id,
+                               directory,
+                               arguments,
+                               {
+                                   .choice = candidate ? candidate : active_choice(path_id),
+                                   .open = true,
+                               });
     if(auto* document = find_document(path_id); document && !candidate) {
-        document->guessed = resolution.source == CommandSource::Inferred ||
-                            resolution.source == CommandSource::Fallback;
+        document->guessed = resolution.ref.source == CommandSource::Inferred ||
+                            resolution.ref.source == CommandSource::Fallback;
     }
     return resolution;
 }

@@ -156,13 +156,13 @@ struct CompileParams {
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
-    /// See TURunParams::index_output_path.
+    /// See UnitRunParams::index_output_path.
     std::string index_output_path;
 
-    /// See TURunParams::known_instantiations.
+    /// See UnitRunParams::known_instantiations.
     std::vector<std::uint64_t> known_instantiations;
 
-    /// See TURunParams::standard_library_instantiations.
+    /// See UnitRunParams::standard_library_instantiations.
     bool standard_library_instantiations = false;
 
     /// Run clang-tidy over the parse with this frozen configuration.
@@ -209,7 +209,7 @@ struct CompileResult {
     /// Serialized TUIndex of the focus file.
     std::vector<std::byte> tu_index_data;
 
-    /// See TURunResult::index_in_file.
+    /// See UnitRunResult::index_in_file.
     bool index_in_file = false;
 };
 
@@ -281,7 +281,7 @@ struct BuildPCMParams {
 
 /// One whole-TU run: a single parse serving the products the frozen plan
 /// names — the full index, a clang-tidy pass, or both.
-struct TURunParams {
+struct UnitRunParams {
     std::string file;
     std::string directory;
     /// See CompilationInput::project_root.
@@ -456,7 +456,7 @@ struct TidyDiagnostic {
     std::vector<LocatedMessage> notes;
 };
 
-struct TURunResult {
+struct UnitRunResult {
     bool success = true;
     std::string error;
 
@@ -603,7 +603,7 @@ struct GateReleaseParams {
 template <typename Params>
 constexpr inline bool is_build =
     std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
-    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, UnitRunParams> ||
     std::same_as<Params, IncludeTreeParams>;
 
 }  // namespace clice::worker
@@ -682,9 +682,9 @@ struct RequestTraits<clice::worker::BuildPCMParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::TURunParams> {
-    using Result = clice::worker::TURunResult;
-    constexpr inline static std::string_view method = "clice/worker/tuRun";
+struct RequestTraits<clice::worker::UnitRunParams> {
+    using Result = clice::worker::UnitRunResult;
+    constexpr inline static std::string_view method = "clice/worker/unitRun";
 };
 
 template <>

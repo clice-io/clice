@@ -4,11 +4,12 @@ import :feature.diagnostics;
 import :index.shard;
 import :index.symbol;
 import :index.tu_manifest;
+import :project.background_index;
+import :project.graph;
 import :project.hosting;
+import :project.pcm;
 import :project.project;
-import :sched.builders.pcm;
-import :sched.graph;
-import :sched.index.pending_table;
+import :project.reindex_queue;
 import :server.served_project;
 import :server.session;
 import :settings.settings;
@@ -57,10 +58,10 @@ struct Harness {
 
     /// The files the background index owes a reindex for `reason`, sorted.
     llvm::SmallVector<Fid> queued(ReindexReason reason) {
-        auto& pump = served.sched.pump;
-        auto debt = pump.save_debt();
+        auto& queue = served.project.background_index.queue;
+        auto debt = save_debt(served.project);
         auto files = ranges::to<llvm::SmallVector<Fid>>(
-            views::filter(debt, [&](Fid file) { return pump.pending_reason(file) == reason; }));
+            views::filter(debt, [&](Fid file) { return queue.pending_reason(file) == reason; }));
         ranges::sort(files);
         return files;
     }
@@ -80,7 +81,7 @@ ZEST_SUITE(Changes, Harness) {
 ZEST_CASE(EmptyBatchNoEffects) {
     served.disk_changed({});
 
-    ZASSERT(served.sched.pump.save_debt().empty());
+    ZASSERT(save_debt(served.project).empty());
 }
 
 ZEST_CASE(NewProviderDirtiesImporters) {
@@ -104,20 +105,21 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     auto closed = fixture.intern("/proj/closed.cpp");
     auto open = fixture.open("/proj/open.cpp", "")->path_id;
     index_unit(closed);
-    served.sched.graph.declare({NodeKind::UnitRun, closed.raw}, {PCMBuilder::unresolved_node("m")});
-    served.sched.graph.declare({NodeKind::AST, open.raw}, {PCMBuilder::unresolved_node("m")});
+    served.project.graph.declare({NodeKind::UnitRun, closed.raw}, {unresolved_import("m")});
+    served.project.graph.declare({NodeKind::AST, open.raw}, {unresolved_import("m")});
 
     served.disk_changed({iface});
 
-    ZEXPECT(served.sched.pump.pending_reason(closed) == ReindexReason::ContentChanged);
+    ZEXPECT(served.project.background_index.queue.pending_reason(closed) ==
+            ReindexReason::ContentChanged);
     ZEXPECT(invalidated(open));
     ZEXPECT(project.index.indexed(closed));
 
     // The same save again: the name already has its provider.
-    served.sched.pump.clear_pending(closed);
+    clear_reindex(served.project, closed);
     auto epoch = fixture.entry(open).epoch;
     served.disk_changed({iface});
-    ZEXPECT(!served.sched.pump.pending_reason(closed).has_value());
+    ZEXPECT(!served.project.background_index.queue.pending_reason(closed).has_value());
     ZEXPECT(fixture.entry(open).epoch == epoch);
 }
 
@@ -136,12 +138,11 @@ ZEST_CASE(ReloadProviderCascades) {
     auto iface = fixture.intern(tmp.path("m.cppm"));
     auto removed = fixture.intern(tmp.path("old.cpp"));
     index_unit(removed);
-    served.sched.graph.declare({NodeKind::UnitRun, removed.raw},
-                               {PCMBuilder::unresolved_node("m")});
+    served.project.graph.declare({NodeKind::UnitRun, removed.raw}, {unresolved_import("m")});
 
     fixture.build_changed({.added = {iface}, .removed = {removed}});
 
-    ZEXPECT(!served.sched.pump.pending_reason(removed).has_value());
+    ZEXPECT(!served.project.background_index.queue.pending_reason(removed).has_value());
     ZEXPECT(!project.index.indexed(removed));
 }
 
@@ -181,8 +182,8 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     auto node = [](Fid pid) {
         return NodeId{NodeKind::PCM, pid.raw};
     };
-    served.sched.graph.declare(node(open_user), {node(mod)});
-    served.sched.graph.declare(node(closed_user), {node(mod)});
+    served.project.graph.declare(node(open_user), {node(mod)});
+    served.project.graph.declare(node(closed_user), {node(mod)});
 
     served.disk_changed({mod});
 
@@ -325,13 +326,13 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     project.dep_graph.set_includes(kept, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    served.sched.pump.enqueue(removed, ReindexReason::ContentChanged);
+    enqueue_reindex(served.project, removed, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed);
 
     served.disk_changed({removed, header});
 
-    ZASSERT(!served.sched.pump.pending_reason(removed).has_value());
-    ZASSERT(served.sched.pump.pending_reason(kept) == ReindexReason::DepsOnly);
+    ZASSERT(!served.project.background_index.queue.pending_reason(removed).has_value());
+    ZASSERT(served.project.background_index.queue.pending_reason(kept) == ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(RescanKeepsGuardedProvider) {
@@ -478,7 +479,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.sched.graph.declare(
+    served.project.graph.declare(
         NodeId{
             NodeKind::PCM,
             user.raw
@@ -488,7 +489,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
 
     served.disk_changed({header});
 
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue.pending_reason(user) == ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(FailedModuleHeaderCascades) {
@@ -497,7 +498,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.sched.graph.declare(
+    served.project.graph.declare(
         NodeId{
             NodeKind::PCM,
             user.raw
@@ -509,12 +510,12 @@ ZEST_CASE(FailedModuleHeaderCascades) {
 
     ZASSERT(ranges::contains(served.readers(header), mod));
     served.disk_changed({header});
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue.pending_reason(user) == ReindexReason::DepsOnly);
 
-    served.sched.pump.clear_pending(user);
+    clear_reindex(served.project, user);
     project.file_table.disk.saw_missing(header);
     served.disk_changed({header});
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue.pending_reason(user) == ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(AppearedHeaderCascades) {
@@ -547,7 +548,7 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     project.dep_graph.set_includes(other_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    served.sched.pump.enqueue(removed_tu, ReindexReason::ContentChanged);
+    enqueue_reindex(served.project, removed_tu, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed_tu);
     auto epoch = project.context_epoch;
 
@@ -560,7 +561,7 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     ZASSERT(project.context_epoch == epoch + 1);
     // The removal clears any pending-reindex state recorded earlier: the
     // shard keeps serving and nothing is left to reindex.
-    ZASSERT(served.sched.pump.save_debt().empty());
+    ZASSERT(save_debt(served.project).empty());
 }
 
 ZEST_CASE(RemoveRecreateOrder) {
@@ -575,7 +576,7 @@ ZEST_CASE(RemoveRecreateOrder) {
     fs::remove_all(tmp.path("a.cpp"));
     project.file_table.disk.look(file);
     served.disk_changed({file});
-    ZASSERT(!served.sched.pump.pending_reason(file).has_value());
+    ZASSERT(!served.project.background_index.queue.pending_reason(file).has_value());
 
     // Delete then recreate (an editor's atomic save): the later change must
     // survive — the recreated file needs its reindex.
@@ -584,7 +585,8 @@ ZEST_CASE(RemoveRecreateOrder) {
     tmp.touch("a.cpp", "int a;");
     project.file_table.disk.look(file);
     served.disk_changed({file});
-    ZASSERT(served.sched.pump.pending_reason(file) == ReindexReason::ContentChanged);
+    ZASSERT(served.project.background_index.queue.pending_reason(file) ==
+            ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(CDBAddedScansAndEnqueues) {
@@ -691,8 +693,8 @@ ZEST_CASE(CDBChangedCascadesModule) {
     auto node = [](Fid pid) {
         return NodeId{NodeKind::PCM, pid.raw};
     };
-    served.sched.graph.declare(node(open_user), {node(mod)});
-    served.sched.graph.declare(node(closed_user), {node(mod)});
+    served.project.graph.declare(node(open_user), {node(mod)});
+    served.project.graph.declare(node(closed_user), {node(mod)});
     index_unit(mod);
 
     fixture.build_changed({.changed = {mod}});
@@ -783,7 +785,7 @@ ZEST_CASE(CDBEmptyDeltaNoEffects) {
 
     fixture.build_changed({});
 
-    ZASSERT(served.sched.pump.save_debt().empty());
+    ZASSERT(save_debt(served.project).empty());
     ZASSERT(project.context_epoch == epoch);
 }
 

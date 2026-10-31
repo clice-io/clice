@@ -1000,7 +1000,7 @@ export class Serve extends Client {
     /// Park the next `work` on `file` until the test releases it: at its
     /// reply, for a build ("compile", "pch", "pcm", "index"; held in the
     /// master as clice/internal/hold), or where it starts in its worker
-    /// ("compile", "completion", "tuRun", "hover"; gated as
+    /// ("compile", "completion", "unitRun", "hover"; gated as
     /// clice/internal/gate), so a cancel, an edit or a death arrives mid-work.
     /// Resolves once placed; a park left unreleased goes with the server.
     async park(work: string, file: string, options: { at: "reply" | "worker" }): Promise<Park> {

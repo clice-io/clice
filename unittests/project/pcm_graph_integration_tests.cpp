@@ -4,7 +4,7 @@ import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
-import :sched.graph;
+import :project.graph;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :unittests.utils.async;
@@ -26,7 +26,7 @@ NodeId nid(std::uint32_t path_id) {
 }
 
 /// Legacy-shaped adapter driving the generalized TaskGraph, so the case
-/// bodies keep the old CompileGraph vocabulary: one family whose runner
+/// bodies keep the old CompileGraph vocabulary: one kind whose runner
 /// declares the resolver's edges via depend() and then dispatches.
 struct GraphShim {
     TaskGraph graph;

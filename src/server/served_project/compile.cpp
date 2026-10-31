@@ -7,10 +7,14 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
-import :project.command_resolver;
+import :project.background_index;
+import :project.command;
+import :project.graph;
+import :project.pch;
+import :project.pcm;
 import :project.hosting;
 import :project.project;
-import :sched.builders.build_common;
+import :project.precompiled;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -40,35 +44,34 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
 
 /// Why each import that failed to build did not, named by module.
 static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
-                                                           const PCMBuilder& pcm,
-                                                           const DependencyGraph& graph) {
+                                                           const Project& project) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
-        auto failure = pcm.build_failure(module);
+        auto failure = module_build_failure(project, module);
         if(!failure) {
             continue;
         }
         auto& named = failures.emplace_back(
             feature::ModuleFailure{.error = failure->error, .cycle = failure->cycle});
         for(auto unit: failure->chain) {
-            named.chain.push_back(graph.module_of(unit).str());
+            named.chain.push_back(project.dep_graph.module_of(unit).str());
         }
     }
     return failures;
 }
 
 /// The imports of a module several units provide, each resolved to the
-/// nearest of them (PCMBuilder::direct_deps).
-static std::vector<feature::ModuleChoice> module_choices(const PCMBuilder::ModuleDeps& imports,
+/// nearest of them (direct_deps).
+static std::vector<feature::ModuleChoice> module_choices(const ModuleDeps& imports,
                                                          const Project& project) {
     auto& graph = project.dep_graph;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
     std::vector<feature::ModuleChoice> choices;
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
-        if(PCMBuilder::is_unresolved(dep)) {
+        if(is_unresolved_import(dep)) {
             continue;
         }
-        auto chosen = Fid{static_cast<std::uint32_t>(dep.key)};
+        auto chosen = dep.file();
         auto name = graph.module_of(chosen);
         auto providers = graph.lookup_module(name);
         if(providers.size() < 2) {
@@ -88,17 +91,16 @@ static std::vector<feature::ModuleChoice> module_choices(const PCMBuilder::Modul
     return choices;
 }
 
-std::optional<PCHBuilder::Request>
-    ServedProject::declared_pch(Fid path_id,
-                                const Resolution& resolution,
-                                const PCMBuilder::ModuleDeps& imports) {
-    auto unit = commands.pch_unit(path_id, resolution);
+std::optional<PCHRequest> ServedProject::declared_pch(Fid path_id,
+                                                      const Resolution& resolution,
+                                                      const ModuleDeps& imports) {
+    auto unit = pch_unit(project, path_id, resolution);
     if(!unit) {
         return std::nullopt;
     }
-    return sched.pch.precompiled_header(*unit,
-                                        project.settings.project.skip_header_bodies &&
-                                            !imports.modular());
+    return declared_pch_request(project,
+                                *unit,
+                                project.settings.project.skip_header_bodies && !imports.modular());
 }
 
 ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
@@ -107,7 +109,7 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
                                                const std::string& directory,
                                                const std::vector<std::string>& arguments,
                                                const Resolution& resolution,
-                                               const PCMBuilder::ModuleDeps& imports,
+                                               const ModuleDeps& imports,
                                                llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
     auto* synthesized = resolution.synthesized.get();
@@ -158,8 +160,8 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
             continue;
         }
         imported = true;
-        if(!PCMBuilder::is_unresolved(dep)) {
-            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+        if(!is_unresolved_import(dep)) {
+            auto module = dep.file();
             if(auto it = project.pcm_builds.find(module);
                it != project.pcm_builds.end() && !it->second.path.empty()) {
                 pcm_keys += it->second.key;
@@ -224,7 +226,8 @@ ServedProject::PCHPlan ServedProject::plan_pch(Fid path_id,
         .partial = partial,
     };
     if(imported) {
-        project.fill_pcm_deps(plan.request.pcms, sched.pcm.closure(imports.resolved).getArrayRef());
+        project.fill_pcm_deps(plan.request.pcms,
+                              module_closure(project, imports.resolved()).getArrayRef());
         plan.request.modules = std::move(modules);
     }
     return plan;
@@ -307,7 +310,7 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
                  *consumed,
                  file);
         suspects.pch = *consumed;
-        sched.pch.consume_failed(*consumed);
+        pch_consume_failed(project, *consumed);
         return true;
     }
     record_crash(session, feature::RequestKind::Compile, worker::death_of(error), error.message);
@@ -366,11 +369,11 @@ void ServedProject::retry_after_save(Session& session) {
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
-        for(auto dep: sched.graph.dependencies(importer)) {
-            if(dep.kind != NodeKind::PCM || PCMBuilder::is_unresolved(dep)) {
+        for(auto dep: project.graph.dependencies(importer)) {
+            if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
                 continue;
             }
-            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            auto module = dep.file();
             if(seen.insert(module).second) {
                 modules.push_back(module);
             }
@@ -378,20 +381,20 @@ void ServedProject::retry_after_save(Session& session) {
     };
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        retry |= sched.pcm.forget_failure(modules[i]);
+        retry |= forget_build_failure(project, modules[i]);
         add_imports({NodeKind::PCM, modules[i].raw});
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
-            retry |= sched.pch.forget_failure(*compiled->pch_key);
-        } else if(auto preamble = sched.pch.preamble_state(*compiled->pch_key);
+            retry |= forget_build_failure(project, *compiled->pch_key);
+        } else if(auto preamble = preamble_state(project, *compiled->pch_key);
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
                                              })) {
-            sched.pch.invalidate(*compiled->pch_key);
+            discard_pch(project, *compiled->pch_key);
             retry = true;
         }
     }
@@ -460,11 +463,11 @@ void ServedProject::each_input(Fid path_id,
             visit(it->second.deps);
         }
     }
-    for(auto dep: sched.graph.dependencies(node(path_id))) {
-        if(dep.kind != NodeKind::PCM || PCMBuilder::is_unresolved(dep)) {
+    for(auto dep: project.graph.dependencies(node(path_id))) {
+        if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
             continue;
         }
-        if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
+        if(auto* inputs = project.build_inputs(dep.file())) {
             visit(*inputs);
         }
     }
@@ -480,7 +483,7 @@ void ServedProject::mark_not_current(Fid path_id) {
 void ServedProject::edited(Session& session) {
     auto path_id = session.path_id;
     mark_not_current(path_id);
-    sched.graph.update(node(path_id));
+    project.graph.update(node(path_id));
     // The round still observes the real reply to its cancelled send
     // (crash accounting depends on it — contract 2).
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
@@ -496,7 +499,7 @@ void ServedProject::invalidate(Fid path_id) {
     // The in-flight round's token fires, but its parse keeps running: the
     // buffer is unchanged, so the product is worth publishing as bounded
     // staleness before the round reports Stale.
-    sched.graph.update(node(path_id));
+    project.graph.update(node(path_id));
 }
 
 void ServedProject::choice_changed(Session& session) {
@@ -519,7 +522,7 @@ void ServedProject::choice_changed(Session& session) {
     }
     document.deps.reset();
     mark_not_current(path_id);
-    sched.graph.update(node(path_id));
+    project.graph.update(node(path_id));
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
     }
@@ -589,7 +592,7 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
     // consumer's PCH staleness discovery dirties this node through the
     // graph cascade without touching the compile table, and a PCH
     // rebuilt before the next request would read fresh again here.
-    if(current(path_id) && !sched.graph.is_dirty(node(path_id))) {
+    if(current(path_id) && !project.graph.is_dirty(node(path_id))) {
         // No early return: the changes one check finds cascade together.
         bool stale = false;
         each_input(path_id, [&](const DepsSnapshot& deps) {
@@ -619,13 +622,13 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
     // the join instead: the result would describe a buffer that no longer
     // exists, and the editor re-requests after an edit.
     auto gen = session->generation;
-    auto outcome = co_await sched.graph.request(
+    auto outcome = co_await project.graph.request(
         node(path_id),
         {.foreground = true, .validity = [session, gen] { return session->generation == gen; }});
     co_return outcome == JoinOutcome::Success;
 }
 
-async::task<std::optional<PCMBuilder::ModuleDeps>>
+async::task<std::optional<ModuleDeps>>
     ServedProject::depend_modules(RoundContext& ctx,
                                   const Ticket& ticket,
                                   const Resolution& resolution,
@@ -657,22 +660,16 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto deps = co_await sched.pcm.direct_deps(path_id,
-                                               resolution,
-                                               argv,
-                                               directory,
-                                               std::optional<llvm::StringRef>(text));
-    sched.graph.declare(node(path_id), deps.declared);
-    // Unresolved imports join the round's candidates too: a successful commit
-    // replaces the declaration with them, and a declare-only edge would
-    // vanish with it.
-    for(auto dep: deps.declared) {
-        if(PCMBuilder::is_unresolved(dep)) {
-            ctx.reference(dep);
-        }
-    }
+    auto deps = co_await direct_deps(project,
+                                     path_id,
+                                     resolution,
+                                     argv,
+                                     directory,
+                                     std::optional<llvm::StringRef>(text));
+    declare_imports(project, ctx, node(path_id), deps);
     auto kind = feature::RequestKind::PCM;
-    if(deps.resolved.empty()) {
+    auto modules = deps.resolved();
+    if(modules.empty()) {
         ticket.session->succeeded(kind, ticket.generation);
         co_return deps;
     }
@@ -692,13 +689,13 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
     // revalidation closed — hence the bounded retry until the set is
     // stable. Past the bound the parse fails visibly on the missing file.
     for(int pass = 0; pass < 3; pass += 1) {
-        bool any_evicted = sched.pcm.revalidate_blobs();
+        bool any_evicted = revalidate_pcms(project);
         if(pass > 0 && !any_evicted) {
             break;
         }
 
-        for(auto dep: deps.resolved) {
-            if(auto* crash = sched.pcm.crashed(dep)) {
+        for(auto dep: modules) {
+            if(auto* crash = build_crash(project, dep)) {
                 if(!retry) {
                     // Booked once: a round on unchanged inputs is no new
                     // crash.
@@ -712,7 +709,7 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
                     ctx.reference({NodeKind::PCM, dep.raw});
                     continue;
                 }
-                sched.pcm.forget_failure(dep);
+                forget_build_failure(project, dep);
             }
             switch(co_await ctx.depend({NodeKind::PCM, dep.raw})) {
                 case DependResult::Ready: break;
@@ -720,7 +717,7 @@ async::task<std::optional<PCMBuilder::ModuleDeps>>
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
-                    if(auto* crash = sched.pcm.crashed(dep)) {
+                    if(auto* crash = build_crash(project, dep)) {
                         record_crash(session, kind, crash->death, crash->cause);
                         crashed = true;
                         retry = false;
@@ -817,7 +814,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         if(!ticket.fresh()) {
             co_return RoundOutcome::Stale;
         }
-        auto source = resolution.source;
+        auto source = resolution.ref.source;
         auto* synthesized = resolution.synthesized.get();
         if(synthesized) {
             params.synthesized = synthesized->files;
@@ -862,9 +859,9 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             enter_phase(path_id, CompilePhase::Preamble);
             if(auto request = declared_pch(path_id, resolution, *imports)) {
                 auto key = request->pch_key;
-                switch(co_await ctx.depend(sched.pch.prepare(std::move(*request)))) {
+                switch(co_await ctx.depend(prepare_pch(project, std::move(*request)))) {
                     case DependResult::Ready:
-                        if(!sched.pch.reads(key, path_id)) {
+                        if(!pch_reads(project, key, path_id)) {
                             base_pch = key;
                         }
                         break;
@@ -890,14 +887,14 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                     // A preamble whose build crashed a worker — for this
                     // document or another sharing it — is refused until
                     // this one's record lets it retry.
-                    if(auto* crash = sched.pch.crashed(pch_key)) {
+                    if(auto* crash = build_crash(project, pch_key)) {
                         if(!pch_retry) {
                             record_crash(session, PCH, crash->death, crash->cause);
                             co_return RoundOutcome::Failed;
                         }
-                        sched.pch.forget_failure(pch_key);
+                        forget_build_failure(project, pch_key);
                     }
-                    auto dep = sched.pch.prepare(std::move(plan.request));
+                    auto dep = prepare_pch(project, std::move(plan.request));
                     switch(co_await ctx.depend(dep)) {
                         case DependResult::Ready:
                             // Adoption is gated on the round outcome and on
@@ -919,7 +916,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                             // The build itself crashed a worker: this round
                             // stops before the parse, which would feed the
                             // same preamble to one more worker.
-                            if(auto* crash = sched.pch.crashed(pch_key)) {
+                            if(auto* crash = build_crash(project, pch_key)) {
                                 record_crash(session, PCH, crash->death, crash->cause);
                                 co_return RoundOutcome::Failed;
                             }
@@ -956,7 +953,8 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // the pair's fault: the preamble's PCH, else the build's.
         auto consumed_pch = adopted_pch ? adopted_pch : base_pch;
 
-        project.fill_pcm_deps(params.pcms, sched.pcm.closure(imports->resolved).getArrayRef());
+        project.fill_pcm_deps(params.pcms,
+                              module_closure(project, imports->resolved()).getArrayRef());
 
         if(!ticket.fresh()) {
             LOG_INFO("compile round: outdated before send for {}", file_path);
@@ -970,7 +968,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // below and rehash the map from under a held pointer.
         std::shared_ptr<index::TUIndex> preamble_state;
         if(adopted_pch.has_value()) {
-            preamble_state = sched.pch.preamble_state(*adopted_pch);
+            preamble_state = clice::preamble_state(project, *adopted_pch);
         }
         if(preamble_state) {
             auto regions = preamble_state->inactive_regions();
@@ -1079,7 +1077,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             // round finishes Stale (the retract re-dirties the key its
             // candidate edge points at), the waiter respawns it, and without
             // the stopped key each respawn would rebuild and fail forever.
-            sched.pch.consume_failed(*consumed_pch);
+            pch_consume_failed(project, *consumed_pch);
             if(!precompiled_retried) {
                 precompiled_retried = true;
                 // Rerun the same attempt so the trial semantics are
@@ -1140,9 +1138,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             diagnostics = feature::with_preamble(std::move(diagnostics),
                                                  preamble_diagnostics(*preamble_state));
         }
-        feature::explain_failed_imports(
-            diagnostics,
-            module_failures(imports->resolved, sched.pcm, project.dep_graph));
+        feature::explain_failed_imports(diagnostics, module_failures(imports->resolved(), project));
         for(auto& choice: module_choices(*imports, project)) {
             diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
         }
@@ -1191,7 +1187,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // fresh failure to read the shared key, and clearing here would
         // reset the count it just paid for.
         if(still_current && consuming_pch && !result.value().pch_suspect) {
-            sched.pch.consume_succeeded(*consumed_pch);
+            pch_consume_succeeded(project, *consumed_pch);
         }
 
         auto& index_data = result.value().tu_index_data;
@@ -1257,8 +1253,8 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // FIXME: released even while another open document still fails on that
         // preamble: its next compile runs the failing build once more.
         if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
-           !sched.pch.crashed(*entry.latest->pch_key)) {
-            sched.pch.forget_failure(*entry.latest->pch_key);
+           !build_crash(project, *entry.latest->pch_key)) {
+            forget_build_failure(project, *entry.latest->pch_key);
         }
         entry.latest = std::move(next);
         if(tidy_config) {
@@ -1287,7 +1283,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         if(server.client && owns(*session)) {
             server.client->index_served.erase(session->path_id);
         }
-        sched.pump.schedule();
+        schedule_index(project);
         co_return still_current ? RoundOutcome::Success : RoundOutcome::Stale;
     }
     // Every arm of the two-send loop commits or returns; the trial's
@@ -1303,7 +1299,7 @@ async::task<std::optional<std::string>>
                               const std::string& directory,
                               const std::vector<std::string>& arguments,
                               const Resolution& resolution,
-                              const PCMBuilder::ModuleDeps& imports) {
+                              const ModuleDeps& imports) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
     auto adoptable = [&] {
@@ -1316,8 +1312,8 @@ async::task<std::optional<std::string>>
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
-        if(co_await sched.pch.acquire(std::move(*request)) == PCHBuilder::Outcome::Ready &&
-           !sched.pch.reads(key, path_id)) {
+        if(co_await acquire_pch(project, std::move(*request)) == PCHOutcome::Ready &&
+           !pch_reads(project, key, path_id)) {
             base = key;
         }
     }
@@ -1345,15 +1341,15 @@ async::task<std::optional<std::string>>
     // (the caller checks); only a compile round the document's record lets
     // retry builds it again.
     auto kind = feature::RequestKind::PCH;
-    if(auto* crash = sched.pch.crashed(pch_key)) {
+    if(auto* crash = build_crash(project, pch_key)) {
         // Booked once: a request on unchanged inputs is no new crash.
         if(!session->crash_record(kind)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
     }
-    if(co_await sched.pch.acquire(std::move(plan.request)) != PCHBuilder::Outcome::Ready) {
-        if(auto* crash = sched.pch.crashed(pch_key)) {
+    if(co_await acquire_pch(project, std::move(plan.request)) != PCHOutcome::Ready) {
+        if(auto* crash = build_crash(project, pch_key)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
@@ -1395,7 +1391,7 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto imports = co_await sched.pcm.prepare_deps(path_id, resolution, argv, directory, text);
+    auto imports = co_await build_imports(project, path_id, resolution, argv, directory, text);
     if(!imports) {
         co_return false;
     }
@@ -1416,7 +1412,7 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
         }
     }
 
-    project.fill_pcm_deps(inputs.pcms, sched.pcm.closure(imports->resolved).getArrayRef());
+    project.fill_pcm_deps(inputs.pcms, module_closure(project, imports->resolved()).getArrayRef());
 
     co_return true;
 }
