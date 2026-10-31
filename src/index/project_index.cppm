@@ -51,7 +51,7 @@ public:
     }
 
     /// This save left state that an immediate retry commits: reindexes
-    /// owed after its command snapshot serialized (write-time
+    /// owed after its build snapshot serialized (write-time
     /// corruption recovery), or a batch a full map refused before the
     /// map grew.
     bool owes_retry = false;

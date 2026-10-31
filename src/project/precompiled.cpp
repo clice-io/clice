@@ -43,6 +43,10 @@ struct CachePCHEntry {
 
     /// See PCHState::base; absent for none.
     std::optional<std::string> base;
+
+    /// See PCHState::base_blob; absent for none, and in records written
+    /// before it was recorded.
+    std::optional<std::string> base_blob;
 };
 
 struct CachePCMEntry {
@@ -163,6 +167,7 @@ std::string serialize_precompiled_records(Project& project) {
         dump_deps(st.deps, entry.deps);
         if(!st.base.empty()) {
             entry.base = st.base;
+            entry.base_blob = st.base_blob;
         }
         data.pch.push_back(std::move(entry));
     }
@@ -258,6 +263,7 @@ void load_precompiled_records(Project& project, llvm::StringRef bytes) {
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);
         st.base = entry.base.value_or("");
+        st.base_blob = entry.base_blob.value_or("");
         st.index_path = *index_path;
     }
 

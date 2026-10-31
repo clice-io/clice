@@ -72,3 +72,18 @@ test("the pch leaves the store", async (t) => {
     s.edit("src/app.cpp", { replace: "return twice();", with: "return twice() + 1;" });
     expect(await s.errors("src/app.cpp")).toEqual([]);
 });
+
+test("the pch leaves the store after a restart", async (t) => {
+    // The same, with the PCMs the first server built read back from its
+    // records.
+    const first = await t.start({ config: { project: { enable_indexing: false } } });
+    expect(await first.errors("src/app.cpp")).toEqual([]);
+    await first.stop();
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    expect(await s.errors("src/app.cpp")).toEqual([]);
+    for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
+        t.disk.rm(pch);
+    }
+    s.edit("src/app.cpp", { replace: "return twice();", with: "return twice() + 1;" });
+    expect(await s.errors("src/app.cpp")).toEqual([]);
+});

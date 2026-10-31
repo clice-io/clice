@@ -38,24 +38,23 @@ struct CommandRequest {
 };
 
 /// The candidate a chosen command names (multi-configuration files and
-/// hosts): its base command hash, resolved when chosen, else its applied
-/// hash under the current edits of `paths`, the files whose edits the
-/// published hash was computed with; none when no candidate is it.
+/// hosts): its base command hash, resolved when chosen, else its hash as
+/// `file` compiles under it now — `host`'s candidates lent by `host`, the
+/// file's own for none; none when no candidate is it.
 std::optional<Candidate> chosen_candidate(Project& project,
                                           Fid file,
                                           llvm::ArrayRef<Candidate> candidates,
-                                          llvm::ArrayRef<CanonicalRef> paths,
-                                          llvm::StringRef language_path,
+                                          Fid host,
                                           llvm::StringRef chosen_hash,
                                           llvm::StringRef chosen_base);
 
 /// `command`, one of `host`'s, as `host` lends it to `header`: edited by
-/// the rules of both files and a run's extras, compiled as the host's
-/// language.
+/// the rules of the file it is from and the header's, and a run's extras,
+/// compiled as the host's language (Build::apply_rules).
 CommandRef lent_command(Project& project,
                         Fid header,
                         Fid host,
-                        CommandID command,
+                        const Candidate& command,
                         llvm::ArrayRef<std::string> extra_prepend = {},
                         llvm::ArrayRef<std::string> extra_append = {});
 
@@ -88,17 +87,17 @@ const clang::LangOptions&
 
 /// How a file's command was resolved.
 struct Resolution {
-    /// The host whose command an IncludeGraph resolution borrowed;
-    /// invalid for every other source.
+    /// The command the file compiles under before the rules edit it, and
+    /// the file it is from.
+    Candidate candidate;
+
+    /// The host a Host resolution compiles the file in; invalid for every
+    /// other source.
     Fid host;
 
     /// The place among the ones the host's compile enters the header at
     /// that the header compiles as (see include_chains).
     std::uint32_t occurrence = 0;
-
-    /// The unit whose command an Inferred resolution borrowed; invalid for
-    /// every other source.
-    Fid lender;
 
     /// The file the host's command forces in that the compile enters the
     /// header through, where the chain starts — the header itself when the
@@ -124,7 +123,8 @@ struct Resolution {
     DepsSnapshot embedded;
 
     /// The host whose includer context the header needed but whose include
-    /// chain the synthesis could not follow: the command fell back past it.
+    /// chain the synthesis could not follow: the header compiles under its
+    /// command without it.
     Fid unmatched_host;
 
     /// The include tree the header's host search needs and no run took: the
@@ -152,15 +152,14 @@ struct Resolution {
 
 /// Compose a file's final compile command from the project on disk, fill
 /// its arguments and report where they came from. The build (`Build`) says
-/// what a file compiles as; hosting (`find_host`) says which unit stands in
-/// for a header without a command of its own, whether the header compiles
-/// alone, and the context restoring its includer's preprocessor state when
-/// it does not. Tries, in order: the chosen host, the file's own command, a
-/// header context through the include graph, a default command, a lender
-/// and finally the builtin command — so it always succeeds — then the rule
-/// edits and a run's extras; an editor request layers the user's context
-/// choice on top. Emits a per-file decision log (tiers tried, tier hit,
-/// command hash).
+/// what a file compiles as; hosting (find_chosen_host, find_ranked_host)
+/// says which unit stands in for a header without a command of its own,
+/// whether the header compiles alone, and the context restoring its
+/// includer's preprocessor state when it does not. Tries, in order: the
+/// chosen host, the file's own command, the host ranking first, a default
+/// command, a nearby member's command and finally the builtin command — so it always
+/// succeeds — then the rule edits and a run's extras. Emits a per-file
+/// decision log (tiers tried, tier hit, command hash).
 Resolution resolve_command(Project& project,
                            Fid path_id,
                            std::string& directory,
@@ -169,13 +168,13 @@ Resolution resolve_command(Project& project,
 
 /// The identity of the command the build compiles `unit` under, as its
 /// index records it: the default selection (Build::commands' first) with
-/// the unit's rule edits; 0 when the build compiles it under none. A run's
-/// extras are not part of it.
+/// the rule edits Build::apply_rules makes of it; 0 when the build compiles
+/// it under none. A run's extras are not part of it.
 std::uint64_t command_identity(Project& project, Fid unit);
 
 /// Build::pch_unit for the command `resolution` and `request` gave
-/// `path_id`: edited by the rules of the files it was resolved for (a
-/// borrowing header's and its host's) and the request's extras.
+/// `path_id`: edited by the rules the command was edited by and the
+/// request's extras.
 std::optional<CommandRef> pch_unit(Project& project,
                                    Fid path_id,
                                    const Resolution& resolution,

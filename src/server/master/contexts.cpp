@@ -219,10 +219,10 @@ async::task<ext::SwitchContextResult>
 /// How clice/currentContext names where a command comes from.
 static std::string_view source_name(CommandSource source) {
     switch(source) {
-        case CommandSource::CDBExact: return "database";
-        case CommandSource::IncludeGraph: return "host";
+        case CommandSource::Database: return "database";
+        case CommandSource::Host: return "host";
         case CommandSource::Default: return "default";
-        case CommandSource::Inferred: return "inferred";
+        case CommandSource::Borrowed: return "borrowed";
         case CommandSource::Fallback: return "fallback";
     }
     std::unreachable();
@@ -250,7 +250,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
         command.arguments.emplace_back(argument);
     }
     command.source = source_name(resolution.ref.source);
-    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
+    auto from = resolution.host.valid() ? resolution.host : resolution.candidate.from;
     if(from.valid()) {
         command.from = feature::to_uri(project.file_table.display(from));
     }

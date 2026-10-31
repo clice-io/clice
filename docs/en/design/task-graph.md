@@ -84,7 +84,7 @@ Each node uses a dirty flag to indicate that a rebuild is needed. The generation
 
 Module nodes maintain forward dependencies (modules they import) and reverse dependencies (modules importing them). Forward dependencies are obtained via lazy resolution; reverse dependencies are back-filled at resolution time. Reverse dependencies are the basis for cascading notifications on file changes — starting from the modified module, following reverse edges finds all affected modules.
 
-The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. The PCM family uses this registry to resolve `import` statements to concrete file paths. When several units declare one module name, an import resolves to the nearest of them — the fewest directories up from the importing file — and the importer shows a warning naming the others.
+The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. The PCM nodes' rounds use this registry to resolve `import` statements to concrete file paths. When several units declare one module name, an import resolves to the nearest of them — the fewest directories up from the importing file — and the importer shows a warning naming the others.
 
 ## Implementation
 
@@ -165,7 +165,7 @@ Before a document AST or interactive build is dispatched, its dependency prepara
 
 - **Why lazy dependency resolution?** Dependency resolution requires running the Clang preprocessor (precise scanning) on each module file, which is not cheap. If all module dependencies were resolved at startup, it would add to startup time. Lazy resolution ensures only modules actually needed for compilation are scanned — opening a file doesn't trigger scanning the entire module graph.
 
-- **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally check again; the PCM family answers that check from the failed build's record while its key and inputs hold, and builds again once one of them changes or an importer is saved.
+- **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally check again; the module's round answers that check from the failed build's record while its key and inputs hold, and builds again once one of them changes or an importer is saved.
 
 - **Why store PCMs in a separate cache directory?** clangd shares PCM files with the build system, which causes file-locking conflicts — the language server holds the PCM open, preventing the build system from overwriting it (see [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice keeps its PCMs in its own cache directory, avoiding this problem. The trade-off is additional disk space usage and extra time for first-time compilation.
 

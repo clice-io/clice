@@ -86,23 +86,18 @@ struct HeaderContext {
     std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
-/// A unit and the one of its base commands that a file outside the build
-/// borrows.
-struct Lender {
-    Fid unit;
-    CommandID command;
-};
-
-/// The commands the build's units can lend — every command of every
-/// member but the borrowed ones, by unit path — and the header search
-/// directories they cover, by identity, as indexes into `commands`.
-/// Rebuilt when Project::commands_epoch moves, so a resolution scans no
-/// unit.
-struct LenderIndex {
+/// The commands the members can lend — every command of every member but
+/// the builtin ones, by member path — and the header search directories
+/// they cover, by identity, as indexes into `commands`. Rebuilt when
+/// Project::commands_epoch moves, so a resolution scans no member.
+struct BorrowableCommands {
     struct Command {
-        Lender lender;
+        Fid member;
 
-        /// What the command compiles its unit as.
+        /// The command as the member compiles under it.
+        Candidate command;
+
+        /// What the command compiles its member as.
         clang::driver::types::ID language;
     };
 
@@ -140,14 +135,15 @@ struct Hosting {
     /// included.
     Memo<Fid, HeaderContext> contexts;
 
-    /// What a file without a command can borrow (see command_lender).
-    LenderIndex lenders;
+    /// What a file without a command can borrow (see borrowed_command).
+    BorrowableCommands borrowable;
 };
 
 /// Every place the compile of the unit `unit` names, under the command it
 /// names, enters `header`, in the order it does, by the unit's include
 /// tree: its index manifest's for the command the index runs under, its
-/// first, else the one a preprocess run took. Empty when the compile never enters the header.
+/// first, while the index was built under it (command_identity), else the
+/// one a preprocess run took. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: the manifest cannot — the unit or a file on its way changed
 /// since, a file appeared where the compile looked and found none, or a forced file a precompiled
 /// header held hides the way in — and no run took one since the inputs it read last changed.
@@ -190,10 +186,13 @@ struct HostSearch {
     std::optional<TreeRequest> missing;
 };
 
-/// The host a header compiles under: the chosen one while its compile
-/// enters the header at the chosen place, else the first ranked one whose
-/// compile enters it, where it first does.
-HostSearch find_host(Project& project, Fid header, const ContextChoice* choice);
+/// The host the user chose for a header, while its compile enters the
+/// header at the chosen place; none else.
+HostSearch find_chosen_host(Project& project, Fid header, const ContextChoice& choice);
+
+/// The first ranked host whose compile enters the header, where it first
+/// does.
+HostSearch find_ranked_host(Project& project, Fid header);
 
 /// The host `header` compiles under with nothing chosen, or waits for the
 /// include tree of; invalid for a file no unit includes. A header compiled
@@ -265,15 +264,18 @@ void take_tree(Project& project, const TreeRequest& request);
 Memo<Fid, HeaderContext>::Entry
     synthesize(Project& project, Fid header, const Host& host, const CommandRef& command);
 
-/// The lender of a file with neither an entry nor a host
-/// (CommandSource::Inferred), among the units the build declares in a
+/// The command a file with neither an entry nor a host borrows
+/// (CommandSource::Borrowed), from a member other than the file, in a
 /// language the file can be part of (a `.h` matches any, a `.c` borrows
 /// C++ only from a `.c` unit compiled as C++, a C++ source and a C++
 /// module unit borrow from each other): one in the file's directory —
 /// same stem first, then by name — with its first command; else, for a
-/// header, the unit whose command's header search directories contain
-/// it, nearest directory first, with that command; else the unit closest
-/// by path. Nullopt when the build has no such unit.
-std::optional<Lender> command_lender(Project& project, Fid file);
+/// header, the member whose command's header search directories contain
+/// it, nearest directory first, with that command; else the member
+/// closest by path. A provisional member lends the command it borrows
+/// only when `provisional`: the members' own commands are chosen among
+/// the units the build declares, so none rests on another's. Nullopt
+/// when there is no such member.
+std::optional<Candidate> borrowed_command(Project& project, Fid file, bool provisional);
 
 }  // namespace clice

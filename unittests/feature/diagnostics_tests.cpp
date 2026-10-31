@@ -24,7 +24,7 @@ ZEST_SUITE(diagnostics) {
 ZEST_CASE(InferredCommandWarns) {
     /// A guessed command explains an include it did not find, at the top.
     feature::CompileDiagnostics compiled{
-        .source = CommandSource::Inferred,
+        .source = CommandSource::Borrowed,
         .own = {error_at(10, "'a.h' file not found", clang::diag::err_pp_file_not_found)},
     };
     auto diagnostics = feature::shown_diagnostics(compiled, {});
@@ -35,7 +35,7 @@ ZEST_CASE(InferredCommandWarns) {
 
     /// The database's own command, or a missing include it cannot explain,
     /// gets none.
-    compiled.source = CommandSource::CDBExact;
+    compiled.source = CommandSource::Database;
     ZEXPECT(feature::shown_diagnostics(compiled, {}).size() == 1u);
     compiled.source = CommandSource::Fallback;
     compiled.own = {error_at(10, "use of undeclared identifier 'x'")};
@@ -47,14 +47,14 @@ ZEST_CASE(UnmatchedContextWarns) {
     /// top, naming the host.
     auto diagnostics = feature::shown_diagnostics(
         {
-            .source = CommandSource::Inferred,
+            .source = CommandSource::Borrowed,
             .unmatched_host = "src/a.cpp",
         },
         {});
     ZASSERT(diagnostics.size() == 1u);
     ZEXPECT(diagnostics[0].code == "unmatched-includer-context");
     ZEXPECT(diagnostics[0].range.begin == 0u);
-    ZEXPECT(feature::shown_diagnostics({.source = CommandSource::IncludeGraph}, {}).empty());
+    ZEXPECT(feature::shown_diagnostics({.source = CommandSource::Host}, {}).empty());
 }
 
 ZEST_CASE(QueryFailureWarns) {
@@ -62,7 +62,7 @@ ZEST_CASE(QueryFailureWarns) {
     /// with the query's error.
     auto diagnostics = feature::shown_diagnostics(
         {
-            .source = CommandSource::CDBExact,
+            .source = CommandSource::Database,
             .query_failure = "Driver riscv32-wch-elf-gcc not found or not executable",
         },
         {});

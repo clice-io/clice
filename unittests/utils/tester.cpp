@@ -291,7 +291,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     CommandRef ref{entry->file,
                    entry->command,
                    commands.input_kind(entry->command, src_path),
-                   CommandSource::CDBExact};
+                   CommandSource::Database};
     auto rendered = toolchain.render(ref, database.spelling(ref.file));
     params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 

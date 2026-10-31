@@ -52,8 +52,10 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     }
     // Several databases listing the file (an outer folder discovers a
     // nested one's): the deepest project holding it wins, else the first.
+    // A provisional member is no listing: the project it was recorded in
+    // holds it until a database lists it.
     auto lists = [&](ServedProject& project) {
-        return !project.project.build.commands(path_id).empty();
+        return project.project.build.declared(path_id);
     };
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;

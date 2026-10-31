@@ -45,7 +45,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
         ranges::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
     auto header_resolution =
         resolve_command(project, header, directory, arguments, {.preprocess = true});
-    ZEXPECT(header_resolution.ref.source == CommandSource::IncludeGraph);
+    ZEXPECT(header_resolution.ref.source == CommandSource::Host);
     ZEXPECT(header_resolution.host == main);
 }
 
@@ -80,7 +80,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
             CommandSource::Default);
     ZEXPECT(has_extra(arguments));
     auto header_resolution = resolve_command(project, header, directory, arguments, request);
-    ZEXPECT(header_resolution.ref.source == CommandSource::IncludeGraph);
+    ZEXPECT(header_resolution.ref.source == CommandSource::Host);
     ZEXPECT(has_extra(arguments));
 }
 
@@ -119,9 +119,9 @@ ZEST_CASE(TreeSkipsFirstHost) {
     auto waiting = resolve_command(project, header, directory, arguments);
     ZASSERT(waiting.missing_tree);
     ZEXPECT(waiting.missing_tree->key.first == a);
-    ZEXPECT(!waiting.host.valid());
-    // Meanwhile the header stands on a.cpp's command.
-    ZEXPECT(waiting.ref.source == CommandSource::IncludeGraph);
+    // Meanwhile the header stands on a.cpp's command, a.cpp its host.
+    ZEXPECT(waiting.host == a);
+    ZEXPECT(waiting.ref.source == CommandSource::Host);
     ZEXPECT(ranges::any_of(arguments,
                            [](llvm::StringRef argument) { return argument.contains("config_a"); }));
     auto resolution = resolve_command(project, header, directory, arguments, {.preprocess = true});

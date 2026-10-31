@@ -30,7 +30,7 @@ struct ToolchainEntries {
         return {entry.file,
                 entry.command,
                 commands.input_kind(entry.command, file),
-                CommandSource::CDBExact};
+                CommandSource::Database};
     }
 
     std::string key(const CommandRef& ref) {

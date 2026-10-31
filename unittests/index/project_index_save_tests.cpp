@@ -910,7 +910,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     ZASSERT(fx.queue.pending_reason(dirty_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
-    // The next save records the command snapshot in the fresh database.
+    // The next save records the build snapshot in the fresh database.
     fx.save();
     ZASSERT(!has_unsaved_state(project));
 }
@@ -1053,6 +1053,7 @@ void a() { Box<A>{}.show(); }
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"a.cpp"}});
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
         ZASSERT(f.merge(indexed.data));
         auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
@@ -1064,6 +1065,7 @@ void a() { Box<A>{}.show(); }
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"a.cpp"}});
     f.load();
     auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
     auto* instantiations = f.project.index.instantiation_shard(box_id);

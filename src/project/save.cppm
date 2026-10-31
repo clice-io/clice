@@ -39,9 +39,7 @@ SavedLoad load_saved(Project& project, bool reconcile);
 /// and the reindexes that owes come back in the report with owes_retry
 /// set.
 async::task<index::IndexReport>
-    save_project(Project& project,
-                 async::event_loop& loop,
-                 index::SearchRebuild search = index::SearchRebuild::Behind);
+    save_project(Project& project, index::SearchRebuild search = index::SearchRebuild::Behind);
 
 /// Whether state remains that no save committed. After a final save this
 /// means write failures whose retry never came — the one-shot `clice index`
@@ -63,11 +61,11 @@ bool shrink_due(const index::PageUsage& usage);
 /// indexing is idle: the copy takes seconds on a large project, and it
 /// replaces the file only while no other process has the database open —
 /// else the file shrinks at a later call.
-async::task<index::IndexReport> shrink_database(Project& project, async::event_loop& loop);
+async::task<index::IndexReport> shrink_database(Project& project);
 
 /// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty
-/// one, the index and the persisted command snapshot starting over with
+/// one, the index and the persisted build snapshot starting over with
 /// it, so the session's rebuild persists instead of waiting for the next
 /// start. A failed reopen leaves persistence disabled for the session.
 void reopen_fresh_database(Project& project);

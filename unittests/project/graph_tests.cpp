@@ -21,11 +21,61 @@ NodeId b(std::uint64_t key) {
 
 using Adjacency = llvm::DenseMap<NodeId, llvm::SmallVector<NodeId>>;
 
-/// A cancellable request join and its observed terminal state.
-/// outcome stays empty while running and after requester cancellation.
+/// What an attempt does once its node's dependencies hold.
+using Body = std::function<async::task<Result>(Attempt&)>;
+
+/// The retry of a join that waits out every stale attempt.
+constexpr auto always = [] {
+    return true;
+};
+
+async::task<Result> reply(Result result) {
+    co_return result;
+}
+
+/// Reply once `event` is set, ignoring the advisory token.
+async::task<Result> reply_after(async::event& event, Result result) {
+    co_await event.wait();
+    co_return result;
+}
+
+async::task<> acquire_permit(async::semaphore& permits) {
+    co_await permits.acquire();
+}
+
+/// Succeed once a permit is free, or end Stale when the attempt's advisory
+/// token fires first.
+async::task<Result> take_permit(async::semaphore& permits, Attempt& attempt) {
+    auto waited = co_await async::with_token(acquire_permit(permits), attempt.token());
+    co_return waited.is_cancelled() ? Result::Stale : Result::Success;
+}
+
+Work after_deps(const Adjacency& adj, Body body);
+
+async::task<Result> run_after_deps(const Adjacency& adj, Body body, Attempt& attempt) {
+    if(auto it = adj.find(attempt.node()); it != adj.end()) {
+        for(auto dep: it->second) {
+            auto result = co_await attempt.depend(dep, after_deps(adj, body));
+            if(result != Result::Success) {
+                co_return result;
+            }
+        }
+    }
+    co_return co_await body(attempt);
+}
+
+/// Work that waits on the node's dependencies in `adj`, each built with this
+/// same work, then runs `body`; a dependency that does not succeed ends the
+/// attempt with its result.
+Work after_deps(const Adjacency& adj, Body body) {
+    return {.run = [&adj, body](Attempt& attempt) { return run_after_deps(adj, body, attempt); }};
+}
+
+/// A cancellable join and its observed result: result stays empty while the
+/// join runs and after the waiter's cancellation.
 struct Probe {
     async::cancellation_source source;
-    std::optional<JoinOutcome> outcome;
+    std::optional<Result> result;
     bool done = false;
 };
 
@@ -34,33 +84,33 @@ ZEST_SUITE(TaskGraph, zest::LoopFixture) {
 std::vector<NodeId> ran;
 TaskGraph graph;
 
-/// Runner that resolves dependencies from a shared adjacency, then
-/// records the run and succeeds.
-TaskGraph::RoundRunner instant(const Adjacency& adj) {
-    return [this, &adj](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-        if(auto it = adj.find(id); it != adj.end()) {
-            for(auto dep: it->second) {
-                switch(co_await ctx.depend(dep)) {
-                    case DependResult::Ready: break;
-                    case DependResult::Failed: co_return RoundOutcome::Failed;
-                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
-                }
-            }
-        }
-        ran.push_back(id);
-        co_return RoundOutcome::Success;
-    };
+/// Work that resolves dependencies from a shared adjacency, then records the
+/// run and succeeds.
+Work instant(const Adjacency& adj) {
+    return after_deps(adj, [this](Attempt& attempt) {
+        ran.push_back(attempt.node());
+        return reply(Result::Success);
+    });
 }
 
-/// Runner driven manually by per-node gates: the test observes when a
-/// round reaches its dispatch (started) and decides when and how it
-/// completes. The dispatch races its gate against the round's advisory
-/// token — the run-to-reply discipline every real runner follows.
+/// Wait on `dep` with `work`, then record the run.
+async::task<Result> wait_on(Attempt& attempt, NodeId dep, Work work) {
+    auto result = co_await attempt.depend(dep, std::move(work));
+    if(result == Result::Success) {
+        ran.push_back(attempt.node());
+    }
+    co_return result;
+}
+
+/// Work driven manually by per-node gates: the test observes when an attempt
+/// reaches its dispatch (started) and decides when and how it completes. The
+/// dispatch races its gate against the attempt's advisory token — the
+/// run-to-reply discipline every real attempt follows.
 struct ManualRunner {
     struct Gate {
         async::event started;
         async::event proceed;
-        RoundOutcome result = RoundOutcome::Success;
+        Result result = Result::Success;
         int calls = 0;
         std::vector<bool> classes;
     };
@@ -85,37 +135,30 @@ struct ManualRunner {
         }
     }
 
-    TaskGraph::RoundRunner runner() {
-        return [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-            if(auto it = adj.find(id); it != adj.end()) {
-                for(auto dep: it->second) {
-                    switch(co_await ctx.depend(dep)) {
-                        case DependResult::Ready: break;
-                        case DependResult::Failed: co_return RoundOutcome::Failed;
-                        case DependResult::Cancelled: co_return RoundOutcome::Stale;
-                    }
-                }
-            }
+    Work work() {
+        return after_deps(adj, [this](Attempt& attempt) { return dispatch(attempt); });
+    }
 
-            auto& g = gate(id);
-            g.calls += 1;
-            g.classes.push_back(ctx.foreground());
-            g.started.set();
+    async::task<Result> dispatch(Attempt& attempt) {
+        auto& g = gate(attempt.node());
+        g.calls += 1;
+        g.classes.push_back(attempt.foreground());
+        g.started.set();
 
-            if(stubborn) {
-                co_await g.proceed.wait();
-                co_return g.result;
-            }
-
-            auto proceed = [&]() -> async::task<> {
-                co_await g.proceed.wait();
-            };
-            auto waited = co_await async::with_token(proceed(), ctx.token());
-            if(waited.is_cancelled()) {
-                co_return RoundOutcome::Stale;
-            }
+        if(stubborn) {
+            co_await g.proceed.wait();
             co_return g.result;
-        };
+        }
+
+        auto waited = co_await async::with_token(opened(g), attempt.token());
+        if(waited.is_cancelled()) {
+            co_return Result::Stale;
+        }
+        co_return g.result;
+    }
+
+    static async::task<> opened(Gate& g) {
+        co_await g.proceed.wait();
     }
 };
 
@@ -133,43 +176,41 @@ void execute(F&& fn) {
     run(wrapper());
 }
 
-async::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
-    auto result =
-        co_await async::with_token(graph.request(id, std::move(options)), probe.source.token());
+async::task<> run_join(NodeId id, Work work, Probe& probe, JoinOptions options = {}) {
+    auto result = co_await async::with_token(graph.join(id, std::move(work), std::move(options)),
+                                             probe.source.token());
     probe.done = true;
     if(result.has_value()) {
-        probe.outcome = *result;
+        probe.result = *result;
     }
 }
 
 /// ============================================================================
-///                           Basic rounds & joins
+///                          Basic attempts & joins
 /// ============================================================================
 
-ZEST_CASE(request_no_deps) {
-    // A node without dependencies runs one round and becomes clean.
+ZEST_CASE(join_no_deps) {
+    // A node without dependencies runs one attempt and becomes clean.
     Adjacency adj;
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(ran.size() == 1u);
         ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
-ZEST_CASE(request_dep_chain) {
-    // 1 -> 2 -> 3: rounds commit bottom-up along declared edges, and the
-    // durable edge sets reflect the declarations.
+ZEST_CASE(join_dep_chain) {
+    // 1 -> 2 -> 3: attempts commit bottom-up along their waits, and each
+    // node's edges are the waits of its successful attempt.
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(ran.size() == 3u);
         ZEXPECT(ranges::find(ran, a(3)) < ranges::find(ran, a(2)));
         ZEXPECT(ranges::find(ran, a(2)) < ranges::find(ran, a(1)));
@@ -185,110 +226,49 @@ ZEST_CASE(diamond_dedup) {
     adj[a(1)] = {a(2), a(3)};
     adj[a(2)] = {a(4)};
     adj[a(3)] = {a(4)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(ranges::count(ran, a(4)) == 1);
         ZEXPECT(!graph.is_dirty(a(4)));
     });
 }
 
-ZEST_CASE(second_request_skips) {
-    // A clean node is not re-run by a later request.
+ZEST_CASE(second_join_skips) {
+    // A clean node is not re-run by a later join.
     Adjacency adj;
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        co_await graph.request(a(1));
+        co_await graph.join(a(1), instant(adj), {.retry = always});
         ZEXPECT(ran.size() == 1u);
-        co_await graph.request(a(1));
+        co_await graph.join(a(1), instant(adj), {.retry = always});
         ZEXPECT(ran.size() == 1u);
     });
 }
 
-ZEST_CASE(reference_survives_commit) {
-    // reference() records a candidate edge to a node that never runs: it
-    // must survive the successful commit (candidates replace the durable
-    // set) so a later update on the referenced node re-dirties this one.
+ZEST_CASE(declared_survives_commit) {
+    // An edge set_edges() declares to a node that never runs survives a
+    // successful attempt that waits on nothing, so a later invalidate() on
+    // that node re-dirties this one.
     NodeId unresolved{KindB, (1ull << 63) | 42};
-    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
-        ctx.reference(unresolved);
-        ran.push_back(a(1));
-        co_return RoundOutcome::Success;
-    });
+    Adjacency adj;
 
-    Probe probe;
     execute([&]() -> async::task<> {
-        co_await run_request(a(1), probe);
-        ZASSERT(probe.outcome == JoinOutcome::Success);
+        graph.set_edges(a(1), {unresolved});
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZASSERT(result == Result::Success);
 
-        auto dirtied = graph.update(unresolved);
+        auto dirtied = graph.invalidate(unresolved);
         ZEXPECT(ranges::find(dirtied, a(1)) != dirtied.end());
         ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
-ZEST_CASE(product_dirty_no_cascade) {
-    // The eviction tier: the marked node alone rebuilds on next demand.
-    // Dependents stay clean — they consumed the content, which did not
-    // change — so a later request through them touches nothing.
-    Adjacency adj;
-    adj[a(1)] = {a(2)};
-    graph.set_runner(KindA, instant(adj));
-
-    Probe warm, hit, rebuild;
-    execute([&]() -> async::task<> {
-        co_await run_request(a(1), warm);
-        ZASSERT(ran.size() == std::size_t(2));
-
-        graph.mark_dirty(a(2));
-        ZASSERT(graph.is_dirty(a(2)));
-        ZASSERT(!graph.is_dirty(a(1)));
-
-        co_await run_request(a(1), hit);
-        ZASSERT(ran.size() == std::size_t(2));
-
-        co_await run_request(a(2), rebuild);
-        ZASSERT(ran.size() == std::size_t(3));
-        ZEXPECT(ran.back() == a(2));
-        ZEXPECT(!graph.is_dirty(a(2)));
-    });
-    ZEXPECT(warm.outcome == JoinOutcome::Success);
-    ZEXPECT(hit.outcome == JoinOutcome::Success);
-    ZEXPECT(rebuild.outcome == JoinOutcome::Success);
-}
-
-ZEST_CASE(product_dirty_inflight_commits) {
-    // Marking while a round is in flight neither voids nor re-runs it:
-    // the round is already producing the fresh product, and its commit
-    // clears the flag it finds set.
-    ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
-
-    Probe probe;
-    execute([&]() -> async::task<> {
-        auto driver = [&]() -> async::task<> {
-            co_await manual.gate(a(1)).started.wait();
-            graph.mark_dirty(a(1));
-            manual.open({a(1)});
-            co_return;
-        };
-
-        co_await async::when_all(run_request(a(1), probe), driver());
-
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(manual.gate(a(1)).calls == 1);
-        ZEXPECT(!graph.is_dirty(a(1)));
-    });
-}
-
-ZEST_CASE(concurrent_requests_share) {
-    // Two concurrent requests for the same node join one round: a single
+ZEST_CASE(concurrent_joins_share) {
+    // Two concurrent joins of the same node share one attempt: a single
     // dispatch serves both.
     ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
 
     Probe p1, p2;
     execute([&]() -> async::task<> {
@@ -299,31 +279,197 @@ ZEST_CASE(concurrent_requests_share) {
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), p1), run_request(a(1), p2), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), p1, {.retry = always}),
+                                 run_join(a(1), manual.work(), p2, {.retry = always}),
+                                 driver());
 
-        ZEXPECT(p1.outcome == JoinOutcome::Success);
-        ZEXPECT(p2.outcome == JoinOutcome::Success);
+        ZEXPECT(p1.result == Result::Success);
+        ZEXPECT(p2.result == Result::Success);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
+    });
+}
+
+ZEST_CASE(waiter_work_runs_once) {
+    // A second waiter of a node mid-attempt waits on that attempt: its own
+    // work never runs, and it gets the attempt's result.
+    ManualRunner manual;
+    manual.gate(a(1)).result = Result::Failed;
+    bool other_ran = false;
+    Work other{.run = [&other_ran](Attempt&) {
+        other_ran = true;
+        return reply(Result::Success);
+    }};
+
+    Probe p1, p2;
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
+            co_await manual.gate(a(1)).started.wait();
+            manual.open({a(1)});
+            co_return;
+        };
+
+        co_await async::when_all(run_join(a(1), manual.work(), p1),
+                                 run_join(a(1), other, p2),
+                                 driver());
+
+        ZEXPECT(p1.result == Result::Failed);
+        ZEXPECT(p2.result == Result::Failed);
+        ZEXPECT(!other_ran);
         ZEXPECT(manual.gate(a(1)).calls == 1);
     });
 }
 
 ZEST_CASE(cross_kind_edge) {
     // A KindA node depending on a KindB node: the edge crosses kinds and
-    // update() cascades across it.
+    // invalidate() cascades across it.
     Adjacency adj;
     adj[a(1)] = {b(7)};
-    graph.set_runner(KindA, instant(adj));
-    graph.set_runner(KindB, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(ran.size() == 2u);
         ZEXPECT(graph.dependencies(a(1))[0] == b(7));
 
-        auto dirtied = graph.update(b(7));
+        auto dirtied = graph.invalidate(b(7));
         ZEXPECT(ranges::contains(dirtied, a(1)));
         ZEXPECT(graph.is_dirty(a(1)));
+    });
+}
+
+/// ============================================================================
+///                             Product checks
+/// ============================================================================
+
+ZEST_CASE(check_holds_skips_attempt) {
+    // The check is asked only of a clean node, and Holds answers Success
+    // without an attempt.
+    Adjacency adj;
+    int checks = 0;
+    auto work = instant(adj);
+    work.check = [&checks] {
+        checks += 1;
+        return Check::Holds;
+    };
+
+    execute([&]() -> async::task<> {
+        co_await graph.join(a(1), work);
+        ZEXPECT(checks == 0);
+        ZEXPECT(ran.size() == 1u);
+
+        auto result = co_await graph.join(a(1), work);
+        ZEXPECT(result == Result::Success);
+        ZEXPECT(checks == 1);
+        ZEXPECT(ran.size() == 1u);
+    });
+}
+
+ZEST_CASE(product_gone_no_cascade) {
+    // 1 -> 2: a waiter of 2 finding its product gone rebuilds 2 alone. Node
+    // 1 consumed content that did not change: it stays clean, and a later
+    // join of it runs nothing.
+    Adjacency adj;
+    adj[a(1)] = {a(2)};
+    auto gone = instant(adj);
+    gone.check = [] {
+        return Check::ProductGone;
+    };
+
+    execute([&]() -> async::task<> {
+        co_await graph.join(a(1), instant(adj));
+        ZASSERT(ran.size() == std::size_t(2));
+
+        auto rebuild = co_await graph.join(a(2), gone);
+        ZEXPECT(rebuild == Result::Success);
+        ZASSERT(ran.size() == std::size_t(3));
+        ZEXPECT(ran.back() == a(2));
+        ZEXPECT(!graph.is_dirty(a(2)));
+        ZEXPECT(!graph.is_dirty(a(1)));
+
+        auto hit = co_await graph.join(a(1), instant(adj));
+        ZEXPECT(hit == Result::Success);
+        ZEXPECT(ran.size() == std::size_t(3));
+    });
+}
+
+ZEST_CASE(check_inputs_changed_propagates) {
+    // 1 -> 2: a waiter of 2 finding its inputs changed invalidates 2 with its
+    // dependents — 2 rebuilds at once, 1 on its next join.
+    Adjacency adj;
+    adj[a(1)] = {a(2)};
+    auto changed = instant(adj);
+    changed.check = [] {
+        return Check::InputsChanged;
+    };
+
+    execute([&]() -> async::task<> {
+        co_await graph.join(a(1), instant(adj));
+        ZASSERT(ran.size() == std::size_t(2));
+
+        auto rebuild = co_await graph.join(a(2), changed);
+        ZEXPECT(rebuild == Result::Success);
+        ZASSERT(ran.size() == std::size_t(3));
+        ZEXPECT(ran.back() == a(2));
+        ZEXPECT(graph.is_dirty(a(1)));
+
+        auto rerun = co_await graph.join(a(1), instant(adj));
+        ZEXPECT(rerun == Result::Success);
+        ZASSERT(ran.size() == std::size_t(4));
+        ZEXPECT(ran.back() == a(1));
+        ZEXPECT(ranges::count(ran, a(2)) == 2);
+    });
+}
+
+ZEST_CASE(check_spares_finder) {
+    // An attempt whose wait finds its dependency's inputs changed waits for
+    // the fresh product: the invalidation overtakes what was built from the
+    // old one, not that attempt.
+    Adjacency none;
+    auto changed = instant(none);
+    changed.check = [] {
+        return Check::InputsChanged;
+    };
+    Work first{
+        .run = [this, changed](Attempt& attempt) { return wait_on(attempt, a(2), changed); }};
+
+    execute([&]() -> async::task<> {
+        ZASSERT(co_await graph.join(a(2), instant(none)) == Result::Success);
+        auto result = co_await graph.join(a(1), first);
+        ZEXPECT(result == Result::Success);
+        ZEXPECT(ran == (std::vector<NodeId>{a(2), a(2), a(1)}));
+        ZEXPECT(!graph.is_dirty(a(1)));
+    });
+}
+
+ZEST_CASE(inflight_skips_check) {
+    // A waiter reaching a node mid-attempt joins that attempt: it is already
+    // producing a fresh product, so the waiter's check is never asked and
+    // nothing re-runs.
+    ManualRunner manual;
+    int checks = 0;
+    auto gone = manual.work();
+    gone.check = [&checks] {
+        checks += 1;
+        return Check::ProductGone;
+    };
+
+    Probe first, second;
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
+            co_await manual.gate(a(1)).started.wait();
+            manual.open({a(1)});
+            co_return;
+        };
+
+        co_await async::when_all(run_join(a(1), manual.work(), first),
+                                 run_join(a(1), gone, second),
+                                 driver());
+
+        ZEXPECT(first.result == Result::Success);
+        ZEXPECT(second.result == Result::Success);
+        ZEXPECT(checks == 0);
+        ZEXPECT(manual.gate(a(1)).calls == 1);
+        ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
@@ -331,19 +477,18 @@ ZEST_CASE(cross_kind_edge) {
 ///                     Edge publication (contract 14)
 /// ============================================================================
 ///
-/// An edge takes effect for cascade and interest the moment depend()
-/// records it; only a current successful round replaces the durable set,
-/// and overtaken rounds' candidates are discarded. declare() commits
-/// facade-known topology into the same durable set without a round.
+/// An edge takes effect for invalidation and interest the moment depend()
+/// records it; only a current successful attempt replaces the node's waited
+/// edges, and an overtaken or failed attempt's waits are discarded.
+/// set_edges() declares edges beside them without an attempt, and
+/// invalidation follows both.
 
 ZEST_CASE(edge_live_before_commit) {
-    // The dependent's round is still in flight when its dependency is
-    // updated: the cascade must reach the dependent through the candidate
-    // edge — the round never committed, so no durable edge exists yet.
+    // The dependent's attempt is still in flight when its dependency is
+    // invalidated: the cascade must reach the dependent through the live
+    // wait — the attempt never committed, so no waited edge exists yet.
     ManualRunner manual;
     manual.adj[a(1)] = {b(5)};
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
     manual.open({a(1)});
 
     Probe probe;
@@ -352,7 +497,7 @@ ZEST_CASE(edge_live_before_commit) {
             co_await manual.gate(b(5)).started.wait();
             manual.gate(b(5)).started.reset();
 
-            auto dirtied = graph.update(b(5));
+            auto dirtied = graph.invalidate(b(5));
             ZEXPECT(ranges::contains(dirtied, a(1)));
 
             co_await manual.gate(b(5)).started.wait();
@@ -361,9 +506,9 @@ ZEST_CASE(edge_live_before_commit) {
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(probe.result == Result::Success);
         ZEXPECT(!graph.is_dirty(a(1)));
         ZEXPECT(!graph.is_dirty(b(5)));
     });
@@ -371,196 +516,224 @@ ZEST_CASE(edge_live_before_commit) {
 
 ZEST_CASE(success_replaces_edges) {
     // A re-resolve that drops a dependency detaches its reverse edge once
-    // the new round commits: updating the ex-dependency no longer cascades.
+    // the new attempt commits: invalidating the ex-dependency no longer
+    // cascades.
     Adjacency adj;
     adj[a(1)] = {b(2)};
-    graph.set_runner(KindA, instant(adj));
-    graph.set_runner(KindB, instant(adj));
 
     execute([&]() -> async::task<> {
-        co_await graph.request(a(1));
+        co_await graph.join(a(1), instant(adj), {.retry = always});
         ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
         adj[a(1)] = {b(3)};
-        graph.update(a(1));
-        co_await graph.request(a(1));
+        graph.invalidate(a(1));
+        co_await graph.join(a(1), instant(adj), {.retry = always});
 
         ZEXPECT(graph.dependencies(a(1))[0] == b(3));
-        ZEXPECT(!ranges::contains(graph.update(b(2)), a(1)));
-        ZEXPECT(ranges::contains(graph.update(b(3)), a(1)));
+        ZEXPECT(!ranges::contains(graph.invalidate(b(2)), a(1)));
+        ZEXPECT(ranges::contains(graph.invalidate(b(3)), a(1)));
     });
 }
 
-ZEST_CASE(voided_candidates_discarded) {
-    // An overtaken round's candidate edges are discarded at commit: the
-    // durable set still reflects the last successful round, not the
-    // declarations of the round that update() voided.
+ZEST_CASE(overtaken_waits_discarded) {
+    // An overtaken attempt's waits are discarded at commit: the edges still
+    // reflect the last successful attempt, not the waits of the attempt
+    // invalidate() overtook.
     ManualRunner manual;
     manual.adj[a(1)] = {b(2)};
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
     manual.open({a(1), b(2), b(3)});
 
     Probe probe;
     execute([&]() -> async::task<> {
-        co_await graph.request(a(1));
+        co_await graph.join(a(1), manual.work(), {.retry = always});
         ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
-        // Flip the imports and drive a new round parked in its dispatch:
-        // it has declared the candidate edge to b(3) but not committed. The
-        // observer joins OneAttempt so the voided round finishing leaves a
-        // quiescent graph instead of respawning against the closed gate.
+        // Flip the imports and drive a new attempt parked in its dispatch:
+        // it has waited on b(3) but not committed. The observer joins
+        // without retry so the overtaken attempt finishing leaves a
+        // quiescent graph instead of starting another against the closed
+        // gate.
         manual.adj[a(1)] = {b(3)};
         manual.gate(a(1)).proceed.reset();
         manual.gate(a(1)).started.reset();
-        graph.update(a(1));
+        graph.invalidate(a(1));
 
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(1)).started.wait();
 
-            // The candidate edge is already cascade-visible, and the
-            // durable edge from the last success still cascades too.
-            ZEXPECT(ranges::contains(graph.update(b(3)), a(1)));
-            ZEXPECT(ranges::contains(graph.update(b(2)), a(1)));
+            // The live wait is already cascade-visible, and the waited edge
+            // from the last success still cascades too.
+            ZEXPECT(ranges::contains(graph.invalidate(b(3)), a(1)));
+            ZEXPECT(ranges::contains(graph.invalidate(b(2)), a(1)));
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}),
-                                 driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe), driver());
 
-        // The void discarded the candidates: the durable set still points
-        // at b(2), and only it cascades.
-        ZEXPECT(probe.outcome == JoinOutcome::Stale);
+        // The overtaken attempt's waits were discarded: the edges still
+        // point at b(2), and only it cascades.
+        ZEXPECT(probe.result == Result::Stale);
         ZEXPECT(!graph.is_compiling(a(1)));
         ZEXPECT(graph.dependencies(a(1))[0] == b(2));
-        ZEXPECT(!ranges::contains(graph.update(b(3)), a(1)));
-        ZEXPECT(ranges::contains(graph.update(b(2)), a(1)));
+        ZEXPECT(!ranges::contains(graph.invalidate(b(3)), a(1)));
+        ZEXPECT(ranges::contains(graph.invalidate(b(2)), a(1)));
 
         // A fresh terminal join commits the flipped imports.
         manual.open({a(1)});
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), manual.work(), {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(graph.dependencies(a(1))[0] == b(3));
     });
 }
 
-ZEST_CASE(declare_no_round) {
-    // declare() commits durable edges without rounds or interest: the
-    // nodes exist, the cascade reaches the declared consumer, and nothing
-    // ever compiles.
+ZEST_CASE(set_edges_no_attempt) {
+    // set_edges() records edges without attempts or interest: the nodes
+    // exist, the cascade reaches the declaring node, and nothing ever
+    // compiles.
     execute([&]() -> async::task<> {
-        graph.declare(a(2), {a(1)});
+        graph.set_edges(a(2), {a(1)});
         ZEXPECT(graph.has_node(a(1)));
         ZEXPECT(graph.has_node(a(2)));
         ZEXPECT(graph.refcount(a(1)) == 0u);
         ZEXPECT(graph.refcount(a(2)) == 0u);
         ZEXPECT(!graph.is_compiling(a(2)));
 
-        auto dirtied = graph.update(a(1));
+        auto dirtied = graph.invalidate(a(1));
         ZEXPECT(ranges::contains(dirtied, a(1)));
         ZEXPECT(ranges::contains(dirtied, a(2)));
         co_return;
     });
 }
 
-ZEST_CASE(declare_replaces) {
-    // A later declare replaces the edge set — the no-round analogue of a
-    // successful round's promotion. An empty replacement clears the edges
-    // but keeps the node: a consumer whose last import was removed stops
-    // cascading yet stays tracked.
+ZEST_CASE(set_edges_replaces) {
+    // A later set_edges() replaces the declared edges. An empty replacement
+    // clears them but keeps the node: a consumer whose last import was
+    // removed stops cascading yet stays tracked.
     execute([&]() -> async::task<> {
-        graph.declare(a(3), {a(1)});
-        graph.declare(a(3), {a(2)});
-        ZEXPECT(!ranges::contains(graph.update(a(1)), a(3)));
-        ZEXPECT(ranges::contains(graph.update(a(2)), a(3)));
+        graph.set_edges(a(3), {a(1)});
+        graph.set_edges(a(3), {a(2)});
+        ZEXPECT(!ranges::contains(graph.invalidate(a(1)), a(3)));
+        ZEXPECT(ranges::contains(graph.invalidate(a(2)), a(3)));
 
-        graph.declare(a(3), {});
-        ZEXPECT(!ranges::contains(graph.update(a(2)), a(3)));
+        graph.set_edges(a(3), {});
+        ZEXPECT(!ranges::contains(graph.invalidate(a(2)), a(3)));
         ZEXPECT(graph.has_node(a(3)));
         co_return;
     });
 }
 
-ZEST_CASE(round_replaces_declared) {
-    // A declared node that later runs a real round: the current
-    // successful round's candidates replace the declared edges.
+ZEST_CASE(set_edges_dedup_and_self) {
+    // Broken input can name a dependency twice or the node itself: the
+    // declared edges keep each dependency once and never the node.
+    execute([&]() -> async::task<> {
+        graph.set_edges(a(1), {a(2), a(2), a(1), a(3)});
+        ZEXPECT(graph.dependencies(a(1)) == (llvm::SmallVector<NodeId>{a(2), a(3)}));
+        co_return;
+    });
+}
+
+ZEST_CASE(success_keeps_declared) {
+    // A node with declared edges that then runs a successful attempt keeps
+    // them: its waits stand beside the declaration, and invalidation
+    // follows both.
     Adjacency adj;
     adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        graph.declare(a(2), {a(1)});
-        auto outcome = co_await graph.request(a(2));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        graph.set_edges(a(2), {a(1)});
+        auto result = co_await graph.join(a(2), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Success);
 
-        ZEXPECT(!ranges::contains(graph.update(a(1)), a(2)));
-        ZEXPECT(ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(ranges::contains(graph.invalidate(a(1)), a(2)));
+        ZEXPECT(ranges::contains(graph.invalidate(a(3)), a(2)));
     });
 }
 
 ZEST_CASE(failed_keeps_declared) {
-    // A failed round discards its candidates and leaves the declared
-    // topology standing: a unit whose build breaks must stay
-    // cascade-reachable from its declared imports, or fixing an import
-    // could never re-dirty it.
+    // A failed attempt discards its waits and leaves the declared edges
+    // standing: a unit whose build breaks must stay cascade-reachable from
+    // its declared imports, or fixing an import could never re-dirty it.
     ManualRunner manual;
     manual.adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, manual.runner());
-    manual.gate(a(2)).result = RoundOutcome::Failed;
+    manual.gate(a(2)).result = Result::Failed;
     manual.open({a(2), a(3)});
 
     execute([&]() -> async::task<> {
-        graph.declare(a(2), {a(1)});
-        auto outcome = co_await graph.request(a(2));
-        ZEXPECT(outcome == JoinOutcome::Failed);
+        graph.set_edges(a(2), {a(1)});
+        auto result = co_await graph.join(a(2), manual.work(), {.retry = always});
+        ZEXPECT(result == Result::Failed);
 
-        ZEXPECT(ranges::contains(graph.update(a(1)), a(2)));
-        ZEXPECT(!ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(ranges::contains(graph.invalidate(a(1)), a(2)));
+        ZEXPECT(!ranges::contains(graph.invalidate(a(3)), a(2)));
     });
 }
 
-ZEST_CASE(commit_overwrites_declare) {
-    // A declare against an in-flight round is answered at commit: a
-    // current Success promotes its candidates over the interim
-    // declaration. Benign by the topology invariant — had the content
-    // changed between the two resolves, update() would have voided the
-    // round; unchanged content resolves to the same set.
+ZEST_CASE(set_edges_mid_attempt) {
+    // set_edges() against an in-flight attempt stands through its commit: a
+    // current Success adds its waits beside the declaration instead of
+    // replacing it.
     ManualRunner manual;
     manual.adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, manual.runner());
     manual.open({a(3)});
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(2)).started.wait();
-            graph.declare(a(2), {a(1)});
+            graph.set_edges(a(2), {a(1)});
             manual.open({a(2)});
             co_return;
         };
 
-        co_await async::when_all(run_request(a(2), probe), driver());
+        co_await async::when_all(run_join(a(2), manual.work(), probe, {.retry = always}), driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(!ranges::contains(graph.update(a(1)), a(2)));
-        ZEXPECT(ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(probe.result == Result::Success);
+        ZEXPECT(ranges::contains(graph.invalidate(a(1)), a(2)));
+        ZEXPECT(ranges::contains(graph.invalidate(a(3)), a(2)));
+    });
+}
+
+ZEST_CASE(dependencies_union) {
+    // A node's edges are its declared ones plus the waits of its last
+    // successful attempt, each once: a failed attempt leaves the waited set
+    // alone, a later success replaces it.
+    ManualRunner manual;
+    manual.adj[a(1)] = {a(2), a(3)};
+    manual.open({a(1), a(2), a(3), a(4)});
+
+    execute([&]() -> async::task<> {
+        graph.set_edges(a(1), {a(2)});
+        co_await graph.join(a(1), manual.work());
+        ZEXPECT(graph.dependencies(a(1)) == (llvm::SmallVector<NodeId>{a(2), a(3)}));
+
+        manual.adj[a(1)] = {a(4)};
+        manual.gate(a(1)).result = Result::Failed;
+        graph.invalidate(a(1));
+        auto failed = co_await graph.join(a(1), manual.work());
+        ZEXPECT(failed == Result::Failed);
+        ZEXPECT(graph.dependencies(a(1)) == (llvm::SmallVector<NodeId>{a(2), a(3)}));
+
+        manual.adj[a(1)].clear();
+        manual.gate(a(1)).result = Result::Success;
+        auto succeeded = co_await graph.join(a(1), manual.work());
+        ZEXPECT(succeeded == Result::Success);
+        ZEXPECT(graph.dependencies(a(1)) == (llvm::SmallVector<NodeId>{a(2)}));
     });
 }
 
 /// ============================================================================
-///                  Round identity filter & run-to-reply
+///                 Attempt identity filter & run-to-reply
 /// ============================================================================
 ///
-/// The graph never destroys a running round; an overtaken round runs to
+/// The graph never destroys a running attempt; an overtaken attempt runs to
 /// its real reply, and whatever it reports arrives as Stale.
 
 ZEST_CASE(stale_success_discarded) {
-    // The closure ignores its token and reports Success after update()
-    // overtook the round: the result must not count — the node stays
-    // dirty and the waiter drives a fresh round.
+    // The work ignores its token and reports Success after invalidate()
+    // overtook the attempt: the result must not count — the node stays
+    // dirty and the waiter drives a fresh attempt.
     ManualRunner manual;
     manual.stubborn = true;
-    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -568,9 +741,9 @@ ZEST_CASE(stale_success_discarded) {
             co_await manual.gate(a(1)).started.wait();
             manual.gate(a(1)).started.reset();
 
-            graph.update(a(1));
+            graph.invalidate(a(1));
 
-            // Advisory cancellation: the round is signalled, not killed.
+            // Advisory cancellation: the attempt is signalled, not killed.
             ZEXPECT(graph.is_compiling(a(1)));
 
             manual.open({a(1)});
@@ -579,21 +752,20 @@ ZEST_CASE(stale_success_discarded) {
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(probe.result == Result::Success);
         ZEXPECT(manual.gate(a(1)).calls == 2);
         ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
 ZEST_CASE(stale_failure_retries) {
-    // A Failed reply from an overtaken round is no decision about the new
+    // A Failed reply from an overtaken attempt is no decision about the new
     // content: waiters retry instead of propagating the failure.
     ManualRunner manual;
     manual.stubborn = true;
-    manual.gate(a(1)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, manual.runner());
+    manual.gate(a(1)).result = Result::Failed;
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -601,108 +773,112 @@ ZEST_CASE(stale_failure_retries) {
             co_await manual.gate(a(1)).started.wait();
             manual.gate(a(1)).started.reset();
 
-            graph.update(a(1));
-            manual.gate(a(1)).result = RoundOutcome::Success;
+            graph.invalidate(a(1));
+            manual.gate(a(1)).result = Result::Success;
             manual.open({a(1)});
 
             co_await manual.gate(a(1)).started.wait();
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
 
         // The stale Failed never reached the waiter.
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(probe.result == Result::Success);
         ZEXPECT(manual.gate(a(1)).calls == 2);
     });
 }
 
 ZEST_CASE(salvage_before_stale) {
-    // A round may publish side effects and then report Stale (bounded-
+    // An attempt may publish side effects and then report Stale (bounded-
     // stale publication): the graph has no say over what happened before
     // the report — the side effect stands, and the join retries.
     int calls = 0;
     int salvaged = 0;
-    graph.set_runner(KindA, [&](RoundContext&, NodeId) -> async::task<RoundOutcome> {
+    Work work{.run = [&](Attempt&) {
         calls += 1;
         if(calls == 1) {
             salvaged += 1;
-            co_return RoundOutcome::Stale;
+            return reply(Result::Stale);
         }
-        co_return RoundOutcome::Success;
-    });
+        return reply(Result::Success);
+    }};
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), work, {.retry = always});
+        ZEXPECT(result == Result::Success);
         ZEXPECT(calls == 2);
         ZEXPECT(salvaged == 1);
     });
 }
 
 /// ============================================================================
-///                              Join kinds
+///                               Join retry
 /// ============================================================================
 
 ZEST_CASE(one_attempt_stale) {
-    // OneAttempt observes exactly one attempt: an overtaken round returns
-    // Stale to the caller instead of retrying.
+    // A join without retry observes exactly one attempt: an overtaken
+    // attempt returns Stale to the caller instead of retrying.
     ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(1)).started.wait();
-            graph.update(a(1));
+            graph.invalidate(a(1));
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe, {.kind = JoinKind::OneAttempt}),
-                                 driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe), driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Stale);
+        ZEXPECT(probe.result == Result::Stale);
         ZEXPECT(manual.gate(a(1)).calls == 1);
         ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
 ZEST_CASE(one_attempt_clean) {
-    // OneAttempt on a clean node succeeds without a round.
+    // A join without retry on a clean node succeeds without an attempt.
     Adjacency adj;
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        co_await graph.request(a(1));
+        co_await graph.join(a(1), instant(adj), {.retry = always});
         ZEXPECT(ran.size() == 1u);
 
-        auto outcome = co_await graph.request(a(1), {.kind = JoinKind::OneAttempt});
-        ZEXPECT(outcome == JoinOutcome::Success);
+        auto result = co_await graph.join(a(1), instant(adj));
+        ZEXPECT(result == Result::Success);
         ZEXPECT(ran.size() == 1u);
     });
 }
 
-ZEST_CASE(abandoned_validity) {
-    // The validity predicate goes false while the join waits: the next
-    // continuation point abandons instead of retrying.
+ZEST_CASE(retry_predicate) {
+    // The predicate is asked after each Stale attempt, not when the join
+    // starts: one that turned false while its join waited ends it Stale,
+    // while a join whose predicate holds drives a second attempt.
     ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
-
     bool valid = true;
-    Probe probe;
+
+    Probe declined, retried;
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(1)).started.wait();
+            manual.gate(a(1)).started.reset();
             valid = false;
-            graph.update(a(1));
+            graph.invalidate(a(1));
+
+            co_await manual.gate(a(1)).started.wait();
+            manual.open({a(1)});
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe, {.validity = [&] { return valid; }}),
-                                 driver());
+        co_await async::when_all(
+            run_join(a(1), manual.work(), declined, {.retry = [&] { return valid; }}),
+            run_join(a(1), manual.work(), retried, {.retry = always}),
+            driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Abandoned);
-        ZEXPECT(manual.gate(a(1)).calls == 1);
+        ZEXPECT(declined.result == Result::Stale);
+        ZEXPECT(retried.result == Result::Success);
+        ZEXPECT(manual.gate(a(1)).calls == 2);
     });
 }
 
@@ -711,18 +887,16 @@ ZEST_CASE(abandoned_validity) {
 /// ============================================================================
 
 ZEST_CASE(failed_propagates) {
-    // A failing dependency fails the depender without dispatching it;
-    // both stay dirty.
+    // A failing dependency fails the depender without dispatching it; both
+    // stay dirty.
     ManualRunner manual;
     manual.adj[a(1)] = {b(2)};
-    manual.gate(b(2)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
+    manual.gate(b(2)).result = Result::Failed;
     manual.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Failed);
+        auto result = co_await graph.join(a(1), manual.work(), {.retry = always});
+        ZEXPECT(result == Result::Failed);
         ZEXPECT(manual.gate(b(2)).calls == 1);
         ZEXPECT(manual.gate(a(1)).calls == 0);
         ZEXPECT(graph.is_dirty(a(1)));
@@ -731,22 +905,20 @@ ZEST_CASE(failed_propagates) {
 }
 
 ZEST_CASE(failure_not_sticky) {
-    // Failure propagates without retry, but a new request tries again and
+    // Failure propagates without retry, but a new join tries again and
     // succeeds once the dependency compiles.
     ManualRunner manual;
     manual.adj[a(1)] = {b(2)};
-    manual.gate(b(2)).result = RoundOutcome::Failed;
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
+    manual.gate(b(2)).result = Result::Failed;
     manual.open({a(1), b(2)});
 
     execute([&]() -> async::task<> {
-        auto first = co_await graph.request(a(1));
-        ZEXPECT(first == JoinOutcome::Failed);
+        auto first = co_await graph.join(a(1), manual.work(), {.retry = always});
+        ZEXPECT(first == Result::Failed);
 
-        manual.gate(b(2)).result = RoundOutcome::Success;
-        auto second = co_await graph.request(a(1));
-        ZEXPECT(second == JoinOutcome::Success);
+        manual.gate(b(2)).result = Result::Success;
+        auto second = co_await graph.join(a(1), manual.work(), {.retry = always});
+        ZEXPECT(second == Result::Success);
         ZEXPECT(manual.gate(b(2)).calls == 2);
         ZEXPECT(manual.gate(a(1)).calls == 1);
     });
@@ -756,12 +928,11 @@ ZEST_CASE(failure_not_sticky) {
 ///                        Interest & cancellation
 /// ============================================================================
 
-ZEST_CASE(requester_cancel_releases) {
-    // The requester's frame unwinds mid-round: interest drops to zero, the
-    // advisory token fires after one tick, the closure winds down and the
+ZEST_CASE(waiter_cancel_releases) {
+    // The waiter's frame unwinds mid-attempt: interest drops to zero, the
+    // advisory token fires after one tick, the work winds down and the
     // graph quiesces with the node still dirty.
     ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
 
     Probe probe;
     execute([&]() -> async::task<> {
@@ -771,26 +942,24 @@ ZEST_CASE(requester_cancel_releases) {
             co_await wait_until([&] { return !graph.is_compiling(a(1)); });
 
             ZEXPECT(probe.done);
-            ZEXPECT(probe.outcome == std::nullopt);
+            ZEXPECT(probe.result == std::nullopt);
             ZEXPECT(graph.is_dirty(a(1)));
             ZEXPECT(graph.refcount(a(1)) == 0u);
             ZEXPECT(manual.gate(a(1)).calls == 1);
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
     });
 }
 
 ZEST_CASE(shared_dep_survives_cancel) {
-    // Two chains share one dependency; cancelling one requester must only
-    // wind down its own chain — the shared dependency keeps compiling for
-    // the survivor.
+    // Two chains share one dependency; cancelling one waiter must only wind
+    // down its own chain — the shared dependency keeps compiling for the
+    // survivor.
     ManualRunner manual;
     manual.adj[a(1)] = {b(5)};
     manual.adj[a(3)] = {b(5)};
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
     manual.open({a(1), a(3)});
 
     Probe p1, p3;
@@ -810,23 +979,23 @@ ZEST_CASE(shared_dep_survives_cancel) {
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), p1), run_request(a(3), p3), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), p1, {.retry = always}),
+                                 run_join(a(3), manual.work(), p3, {.retry = always}),
+                                 driver());
 
-        ZEXPECT(p1.outcome == std::nullopt);
-        ZEXPECT(p3.outcome == JoinOutcome::Success);
+        ZEXPECT(p1.result == std::nullopt);
+        ZEXPECT(p3.result == Result::Success);
         ZEXPECT(manual.gate(b(5)).calls == 1);
     });
 }
 
 ZEST_CASE(transient_drop_handover) {
-    // The depender is updated while waiting on its unchanged dependency:
+    // The depender is invalidated while waiting on its unchanged dependency:
     // the retry re-acquires the dependency within the same drain cycle, so
-    // its in-flight round is handed over — neither cancelled nor
+    // its in-flight attempt is handed over — neither cancelled nor
     // restarted.
     ManualRunner manual;
     manual.adj[a(1)] = {b(2)};
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
     manual.open({a(1)});
 
     Probe probe;
@@ -835,10 +1004,10 @@ ZEST_CASE(transient_drop_handover) {
             co_await manual.gate(b(2)).started.wait();
             ZEXPECT(graph.is_compiling(a(1)));
 
-            graph.update(a(1));
+            graph.invalidate(a(1));
             co_await async::yield();
 
-            // The depender's round was respawned; the dependency kept
+            // The depender's attempt was restarted; the dependency kept
             // compiling throughout.
             ZEXPECT(graph.is_compiling(b(2)));
             ZEXPECT(manual.gate(b(2)).calls == 1);
@@ -848,9 +1017,9 @@ ZEST_CASE(transient_drop_handover) {
             co_return;
         };
 
-        co_await async::when_all(run_request(a(1), probe), driver());
+        co_await async::when_all(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
 
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(probe.result == Result::Success);
         ZEXPECT(manual.gate(b(2)).calls == 1);
         ZEXPECT(!graph.is_dirty(a(1)));
         ZEXPECT(!graph.is_dirty(b(2)));
@@ -862,23 +1031,22 @@ ZEST_CASE(transient_drop_handover) {
 /// ============================================================================
 
 ZEST_CASE(foreground_late_join) {
-    // A foreground requester joins a Low round that then reports Stale:
-    // the respawn re-reads the interest class, so the retry dispatches
-    // foreground instead of staying cancellable Low.
+    // A foreground waiter joins a Low attempt that then reports Stale: the
+    // retry re-reads the interest class, so it dispatches foreground instead
+    // of staying cancellable Low.
     async::event started;
     async::event proceed;
     int calls = 0;
     std::vector<bool> classes;
-    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId) -> async::task<RoundOutcome> {
+    Work work{.run = [&](Attempt& attempt) {
         calls += 1;
-        classes.push_back(ctx.foreground());
+        classes.push_back(attempt.foreground());
         if(calls == 1) {
             started.set();
-            co_await proceed.wait();
-            co_return RoundOutcome::Stale;
+            return reply_after(proceed, Result::Stale);
         }
-        co_return RoundOutcome::Success;
-    });
+        return reply(Result::Success);
+    }};
 
     Probe background, foreground;
     execute([&]() -> async::task<> {
@@ -888,14 +1056,15 @@ ZEST_CASE(foreground_late_join) {
             co_return;
         };
 
-        // The foreground request joins while the first round is parked
+        // The foreground join arrives while the first attempt is parked
         // inside its dispatch.
-        co_await async::when_all(run_request(a(1), background),
-                                 run_request(a(1), foreground, {.foreground = true}),
-                                 driver());
+        co_await async::when_all(
+            run_join(a(1), work, background, {.retry = always}),
+            run_join(a(1), work, foreground, {.foreground = true, .retry = always}),
+            driver());
 
-        ZEXPECT(background.outcome == JoinOutcome::Success);
-        ZEXPECT(foreground.outcome == JoinOutcome::Success);
+        ZEXPECT(background.result == Result::Success);
+        ZEXPECT(foreground.result == Result::Success);
         ZASSERT(calls == 2);
         ZEXPECT(!classes[0]);
         ZEXPECT(classes[1]);
@@ -903,9 +1072,9 @@ ZEST_CASE(foreground_late_join) {
 }
 
 ZEST_CASE(foreground_spreads_edges) {
-    // Foreground must travel the live candidate edges: a foreground join
-    // at the root upgrades a deep dependency already parked in a Low
-    // round, so its preempted retry dispatches foreground.
+    // Foreground must travel the live waits: a foreground join at the root
+    // upgrades a deep dependency already parked in a Low attempt, so its
+    // preempted retry dispatches foreground.
     async::event started;
     async::event proceed;
     int deep_calls = 0;
@@ -913,26 +1082,17 @@ ZEST_CASE(foreground_spreads_edges) {
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(3)};
-    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-        if(auto it = adj.find(id); it != adj.end()) {
-            for(auto dep: it->second) {
-                switch(co_await ctx.depend(dep)) {
-                    case DependResult::Ready: break;
-                    case DependResult::Failed: co_return RoundOutcome::Failed;
-                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
-                }
-            }
+    auto work = after_deps(adj, [&](Attempt& attempt) {
+        if(attempt.node() != a(3)) {
+            return reply(Result::Success);
         }
-        if(id == a(3)) {
-            deep_calls += 1;
-            deep_classes.push_back(ctx.foreground());
-            if(deep_calls == 1) {
-                started.set();
-                co_await proceed.wait();
-                co_return RoundOutcome::Stale;
-            }
+        deep_calls += 1;
+        deep_classes.push_back(attempt.foreground());
+        if(deep_calls == 1) {
+            started.set();
+            return reply_after(proceed, Result::Stale);
         }
-        co_return RoundOutcome::Success;
+        return reply(Result::Success);
     });
 
     Probe background, foreground;
@@ -943,14 +1103,15 @@ ZEST_CASE(foreground_spreads_edges) {
             co_return;
         };
 
-        // The background request parks a(3); the foreground request then
-        // joins at the root and must upgrade through two candidate edges.
-        co_await async::when_all(run_request(a(2), background),
-                                 run_request(a(1), foreground, {.foreground = true}),
-                                 driver());
+        // The background join parks a(3); the foreground join then arrives
+        // at the root and must upgrade through two live waits.
+        co_await async::when_all(
+            run_join(a(2), work, background, {.retry = always}),
+            run_join(a(1), work, foreground, {.foreground = true, .retry = always}),
+            driver());
 
-        ZEXPECT(background.outcome == JoinOutcome::Success);
-        ZEXPECT(foreground.outcome == JoinOutcome::Success);
+        ZEXPECT(background.result == Result::Success);
+        ZEXPECT(foreground.result == Result::Success);
         ZASSERT(deep_calls == 2);
         ZEXPECT(!deep_classes[0]);
         ZEXPECT(deep_classes[1]);
@@ -958,38 +1119,31 @@ ZEST_CASE(foreground_spreads_edges) {
 }
 
 ZEST_CASE(foreground_skips_clean_deps) {
-    // A foreground request answered by a clean cached chain must not tag
-    // the chain's durable dependencies: no request ever acquires a clean
-    // dependency, so nothing would reset the mark, and an unrelated
-    // background rebuild much later would dispatch at foreground class.
+    // A foreground join answered by a clean cached chain must not tag the
+    // chain's settled edges: no join ever acquires a clean dependency, so
+    // nothing would reset the mark, and an unrelated background rebuild
+    // much later would dispatch at foreground class.
     std::vector<bool> dep_classes;
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.set_runner(KindA, [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-        if(auto it = adj.find(id); it != adj.end()) {
-            for(auto dep: it->second) {
-                if(co_await ctx.depend(dep) != DependResult::Ready) {
-                    co_return RoundOutcome::Failed;
-                }
-            }
+    auto work = after_deps(adj, [&](Attempt& attempt) {
+        if(attempt.node() == a(2)) {
+            dep_classes.push_back(attempt.foreground());
         }
-        if(id == a(2)) {
-            dep_classes.push_back(ctx.foreground());
-        }
-        co_return RoundOutcome::Success;
+        return reply(Result::Success);
     });
 
     Probe warm, hit, rebuild;
     execute([&]() -> async::task<> {
-        // Build the chain clean at Low, then answer a foreground request
-        // from the clean root outright.
-        co_await run_request(a(1), warm);
-        co_await run_request(a(1), hit, {.foreground = true});
+        // Build the chain clean at Low, then answer a foreground join from
+        // the clean root outright.
+        co_await run_join(a(1), work, warm, {.retry = always});
+        co_await run_join(a(1), work, hit, {.foreground = true, .retry = always});
 
-        graph.update(a(2));
-        co_await run_request(a(2), rebuild);
+        graph.invalidate(a(2));
+        co_await run_join(a(2), work, rebuild, {.retry = always});
 
-        ZEXPECT(rebuild.outcome == JoinOutcome::Success);
+        ZEXPECT(rebuild.result == Result::Success);
         ZASSERT(dep_classes.size() == std::size_t(2));
         ZEXPECT(!dep_classes[0]);
         ZEXPECT(!dep_classes[1]);
@@ -998,17 +1152,16 @@ ZEST_CASE(foreground_skips_clean_deps) {
 
 ZEST_CASE(foreground_resets_zero) {
     // The foreground flag is sticky while any interest remains and reset
-    // when the count returns to zero: a later background request runs Low.
+    // when the count returns to zero: a later background join runs Low.
     ManualRunner manual;
-    graph.set_runner(KindA, manual.runner());
     manual.open({a(1)});
 
     execute([&]() -> async::task<> {
-        co_await graph.request(a(1), {.foreground = true});
+        co_await graph.join(a(1), manual.work(), {.foreground = true, .retry = always});
         ZEXPECT(manual.gate(a(1)).classes[0]);
 
-        graph.update(a(1));
-        co_await graph.request(a(1));
+        graph.invalidate(a(1));
+        co_await graph.join(a(1), manual.work(), {.retry = always});
         ZASSERT(manual.gate(a(1)).calls == 2);
         ZEXPECT(!manual.gate(a(1)).classes[1]);
     });
@@ -1022,44 +1175,41 @@ ZEST_CASE(self_depend_fails) {
     // A node depending on itself fails immediately.
     Adjacency adj;
     adj[a(1)] = {a(1)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Failed);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Failed);
     });
 }
 
 ZEST_CASE(depend_cycle_fails) {
-    // 1 -> 2 -> 1: the depend that would close the wait loop detects it
-    // and fails the round instead of deadlocking.
+    // 1 -> 2 -> 1: the depend that would close the wait loop detects it and
+    // fails the attempt instead of deadlocking.
     Adjacency adj;
     adj[a(1)] = {a(2)};
     adj[a(2)] = {a(1)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto outcome = co_await graph.request(a(1));
-        ZEXPECT(outcome == JoinOutcome::Failed);
+        auto result = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(result == Result::Failed);
     });
 }
 
-ZEST_CASE(update_introduces_cycle) {
-    // The cycle only appears after an update changes the declared imports;
-    // the retry detects it and fails instead of hanging.
+ZEST_CASE(invalidate_introduces_cycle) {
+    // The cycle only appears after an invalidate() follows a change of the
+    // imports; the retry detects it and fails instead of hanging.
     Adjacency adj;
     adj[a(1)] = {a(2)};
-    graph.set_runner(KindA, instant(adj));
 
     execute([&]() -> async::task<> {
-        auto first = co_await graph.request(a(1));
-        ZEXPECT(first == JoinOutcome::Success);
+        auto first = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(first == Result::Success);
 
         adj[a(2)] = {a(1)};
-        graph.update(a(2));
+        graph.invalidate(a(2));
 
-        auto second = co_await graph.request(a(1));
-        ZEXPECT(second == JoinOutcome::Failed);
+        auto second = co_await graph.join(a(1), instant(adj), {.retry = always});
+        ZEXPECT(second == Result::Failed);
     });
 }
 
@@ -1068,13 +1218,11 @@ ZEST_CASE(update_introduces_cycle) {
 /// ============================================================================
 
 ZEST_CASE(shutdown_with_inflight) {
-    // shutdown() with rounds in flight: every advisory token fires, the
-    // closures wind down with real replies, pending joins resolve with
-    // Shutdown, and the graph quiesces.
+    // shutdown() with attempts in flight: every advisory token fires, the
+    // work winds down with real replies, pending joins end Stale even when
+    // they would retry, and the graph quiesces.
     ManualRunner manual;
     manual.adj[a(1)] = {b(4)};
-    graph.set_runner(KindA, manual.runner());
-    graph.set_runner(KindB, manual.runner());
 
     Probe probe;
     auto driver = [&]() -> async::task<> {
@@ -1083,10 +1231,10 @@ ZEST_CASE(shutdown_with_inflight) {
         co_return;
     };
 
-    run(run_request(a(1), probe), driver());
+    run(run_join(a(1), manual.work(), probe, {.retry = always}), driver());
 
     ZEXPECT(probe.done);
-    ZEXPECT(probe.outcome == JoinOutcome::Shutdown);
+    ZEXPECT(probe.result == Result::Stale);
     ZEXPECT(graph.idle());
 }
 
@@ -1095,10 +1243,10 @@ ZEST_CASE(shutdown_with_inflight) {
 /// ============================================================================
 
 ZEST_CASE(randomized_stress) {
-    // A fixed-seed, single-threaded interleaving of requests,
-    // cancellations, updates and dispatch completions. Every dispatch
-    // races a semaphore against its advisory token — the run-to-reply
-    // discipline — and the structural invariants hold at every step.
+    // A fixed-seed, single-threaded interleaving of joins, cancellations,
+    // invalidations and dispatch completions. Every dispatch races a
+    // semaphore against its advisory token — the run-to-reply discipline —
+    // and the structural invariants hold at every step.
     async::semaphore permits{0};
     Adjacency adj;
     adj[a(1)] = {a(2), a(3)};
@@ -1108,28 +1256,8 @@ ZEST_CASE(randomized_stress) {
     adj[a(6)] = {b(4), a(7)};
     adj[a(7)] = {b(5)};
     adj[a(8)] = {a(6)};
-
-    auto runner = [&](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-        if(auto it = adj.find(id); it != adj.end()) {
-            for(auto dep: it->second) {
-                switch(co_await ctx.depend(dep)) {
-                    case DependResult::Ready: break;
-                    case DependResult::Failed: co_return RoundOutcome::Failed;
-                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
-                }
-            }
-        }
-        auto acquire = [&]() -> async::task<> {
-            co_await permits.acquire();
-        };
-        auto waited = co_await async::with_token(acquire(), ctx.token());
-        if(waited.is_cancelled()) {
-            co_return RoundOutcome::Stale;
-        }
-        co_return RoundOutcome::Success;
-    };
-    graph.set_runner(KindA, runner);
-    graph.set_runner(KindB, runner);
+    auto work =
+        after_deps(adj, [&permits](Attempt& attempt) { return take_permit(permits, attempt); });
 
     execute([&]() -> async::task<> {
         std::mt19937 rng(20260826u);
@@ -1143,7 +1271,7 @@ ZEST_CASE(randomized_stress) {
             switch(rng() % 4) {
                 case 0: {
                     auto& probe = probes.emplace_back(std::make_unique<Probe>());
-                    inflight.spawn(run_request(roots[rng() % 3], *probe));
+                    inflight.spawn(run_join(roots[rng() % 3], work, *probe, {.retry = always}));
                     break;
                 }
                 case 1: {
@@ -1153,7 +1281,7 @@ ZEST_CASE(randomized_stress) {
                     break;
                 }
                 case 2: {
-                    graph.update(all[rng() % 8]);
+                    graph.invalidate(all[rng() % 8]);
                     break;
                 }
                 case 3: {
@@ -1168,7 +1296,7 @@ ZEST_CASE(randomized_stress) {
             ZEXPECT(graph.consistent());
         }
 
-        // Drain: cancel every outstanding request and wait for them all.
+        // Drain: cancel every outstanding join and wait for them all.
         for(auto& probe: probes) {
             probe->source.cancel();
         }

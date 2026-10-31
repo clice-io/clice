@@ -48,6 +48,11 @@ struct PCHState {
     /// preamble's PCH is built over and chains onto; empty for none.
     std::string base;
 
+    /// The blob of the base's build it chains onto: the PCH names that very
+    /// file, so a rebuilt base, under another name, leaves it nothing to
+    /// load.
+    std::string base_blob;
+
     /// Path of the paired pch.idx index.
     std::string index_path;
 
@@ -57,7 +62,7 @@ struct PCHState {
 
     /// Open the blob on first use (memory-mapped, no deserialization).
     /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next PCH round
+    /// degrade (no overlay, no preamble links) and the next PCH attempt
     /// treats the incomplete pair as a cache miss.
     const std::shared_ptr<index::TUIndex>& load_state();
 };
@@ -69,8 +74,8 @@ struct PCHState {
 /// preamble's PCH is built over the declared one its command reads.
 ///
 /// One node per content-addressed key in the task graph, no edges; one
-/// round is one revalidation or build. The project owns the shared side:
-/// the pair-atomic store commit and cache metadata (a round runs to a real
+/// attempt is one revalidation or build. The project owns the shared side:
+/// the pair-atomic store commit and cache metadata (an attempt runs to a real
 /// reply, so no cancellation can split blob from metadata), the failures
 /// of the keys' builds and consumption (Project::failures). The adoption
 /// side stays with the server: which document points at the key and the
@@ -116,17 +121,6 @@ struct PCHRequest {
     bool skip_bodies = false;
 };
 
-/// What one acquisition observed.
-enum class PCHOutcome : std::uint8_t {
-    /// A fresh pair is registered under the key (revalidated or just
-    /// built) — adopt it.
-    Ready,
-    Failed,
-    /// The observed attempt ended without a result (advisory cancellation,
-    /// shutdown): no adoption, but no failure result either.
-    Preempted,
-};
-
 /// When reading a key's pairs stops it from building: two failures in a
 /// row within the cooldown. A stop must never be final: what fails may live
 /// in content the key cannot see (a header the preamble includes), so
@@ -138,18 +132,20 @@ constexpr inline FailurePolicy pch_consume_policy{
     .cooldown = chrono::minutes(5),
 };
 
-/// Join the key's round, spawning one when none is live. The spawning
-/// acquisition is the dispatch owner: its inputs feed the build. One
-/// acquisition observes exactly one attempt; retry policy stays with the
-/// caller.
-async::task<PCHOutcome> acquire_pch(Project& project, PCHRequest request);
+/// The graph node of the PCH registered under `pch_key`.
+inline NodeId pch_node(llvm::StringRef pch_key) {
+    return {NodeKind::PCH, llvm::xxh3_64bits(pch_key)};
+}
 
-/// The stash-only half of acquire_pch, for waits that must be recorded as
-/// graph edges: intern the key, re-dirty a stale clean node, and install
-/// the dispatch owner's inputs when the caller's join will spawn the round.
-/// The caller then waits through RoundContext::depend on the returned node
-/// — the only wait form a round may use.
-NodeId prepare_pch(Project& project, PCHRequest request);
+/// How to build the PCH `request` names: an attempt revalidates the pair
+/// registered under its key or builds it with the request's inputs, and a
+/// clean node's pair is checked complete, in the store and read from
+/// unchanged inputs — anything else is a change for its dependents.
+Work pch_work(Project& project, PCHRequest request);
+
+/// Wait for the PCH from outside the graph, foreground, one attempt;
+/// retry policy stays with the caller.
+async::task<Result> acquire_pch(Project& project, PCHRequest request);
 
 /// The request for clice's own build of the precompiled header the command
 /// of `unit` writes (Build::pch_unit): the unit's whole file, under that
@@ -163,7 +159,7 @@ PCHRequest declared_pch_request(Project& project, const CommandRef& unit, bool s
 bool pch_reads(const Project& project, llvm::StringRef key, Fid file);
 
 /// The crash of the key's last build, while the inputs it is known to have
-/// read hold: a round's crash is recorded whatever became of the request
+/// read hold: an attempt's crash is recorded whatever became of the request
 /// that spawned it (contract 12), and every consumer that finds it books it
 /// against its own document instead of burning a worker of its own. One
 /// document's records cannot contain it alone: the PCH is shared.
@@ -175,7 +171,7 @@ const FailureRecord* build_crash(Project& project, llvm::StringRef pch_key);
 /// releases it. Returns whether it had failed.
 bool forget_build_failure(Project& project, llvm::StringRef pch_key);
 
-/// A round for the key is in flight; its commit will republish over
+/// An attempt for the key is in flight; its commit will republish over
 /// concurrent store retractions.
 bool pch_building(const Project& project, llvm::StringRef pch_key);
 
@@ -204,7 +200,7 @@ void pch_consume_succeeded(Project& project, llvm::StringRef pch_key);
 /// `.pch.idx` blobs: when the blob turns out unreadable, the on-disk pair
 /// is discarded from the store as well — otherwise every later session
 /// re-adopts the corrupt pair from the precompiled records and silently
-/// degrades again. With the pair gone the next ensure_pch is a miss and
+/// degrades again. With the pair gone the next acquisition is a miss and
 /// rebuilds both halves. Loads count against the loaded-state budget (see
 /// enforce_loaded_budget).
 std::shared_ptr<index::TUIndex> preamble_state(Project& project, llvm::StringRef pch_key);
@@ -216,12 +212,5 @@ std::shared_ptr<index::TUIndex> preamble_state(Project& project, llvm::StringRef
 /// Unloading only drops the entry's reference: consumers holding the
 /// shared_ptr finish safely, and the next use reopens the blob from disk.
 void enforce_loaded_budget(Project& project);
-
-/// The buffer text the dispatch owners' requests hold (see
-/// Project::pch_requests).
-std::size_t stashed_pch_bytes(const Project& project);
-
-/// One round of a PCH node, the graph's runner for NodeKind::PCH.
-async::task<RoundOutcome> pch_round(Project& project, RoundContext& ctx, NodeId id);
 
 }  // namespace clice

@@ -1,0 +1,14 @@
+["opened source hosts its header".alone]
+errors = [
+    {
+        at = "⟦Ctx⟧ use();",
+        severity = "error",
+        message = "unknown type name 'Ctx'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
+]
+
+["opened source hosts its header".header.compile_command]
+source = "host"
+from = "lib/main.cpp"

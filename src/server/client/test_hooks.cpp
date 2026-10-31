@@ -209,7 +209,6 @@ void LSPClient::register_test_hooks() {
                     }
                 }
                 stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
-                stats.pch_stashed_bytes += stashed_pch_bytes(served->project);
 
                 stats.index_inmemory_shards += project.index.pending_shard_writes();
                 stats.index_shard_content_bytes += project.index.shard_bytes();

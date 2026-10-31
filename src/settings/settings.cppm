@@ -85,7 +85,9 @@ struct Rule {
                          "declares a source, every compile_commands.json in "
                          "the project root and its immediate subdirectories "
                          "loads, and so do the ones in the directories above "
-                         "a file when it is opened.")
+                         "a file when it is opened; a directory below the root "
+                         "with a clice.toml or .clice/config.toml of its own "
+                         "is another project, and none in it loads.")
     <std::vector<std::string>> compile_commands;
 
     KOTATSU_ANNOTATE(defaulted = true,

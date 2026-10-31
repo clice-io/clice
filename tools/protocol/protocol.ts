@@ -52,10 +52,10 @@ export interface CompileCommand {
     /// Where the command comes from: an entry of a compilation database,
     /// the command of a source including the header, the default_command
     /// of a rule, the command of a unit nearby, or clice's own.
-    source: "database" | "host" | "default" | "inferred" | "fallback";
+    source: "database" | "host" | "default" | "borrowed" | "fallback";
 
-    /// The file whose command it borrows: a header's host, the unit an
-    /// inferred command comes from when the source is not one of the build
+    /// The file whose command it borrows: a header's host, the unit a
+    /// borrowed command comes from when the source is not one of the build
     /// yet (a saved source joined it with the command it borrowed).
     from: string | null;
 
@@ -271,7 +271,6 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
-    pchStashedBytes: number;
     indexInmemoryShards: number;
     indexShardContentBytes: number;
     lastSaveShards: number;

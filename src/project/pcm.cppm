@@ -63,13 +63,13 @@ struct ModuleFailure {
 /// A scan's module dependencies: the full durable edge set of a unit, a
 /// node per module unit it imports and one unresolved import per name no
 /// unit provides. A module unit's PCM is one node per unit in the task
-/// graph, edged to the modules it imports; one round is one PCM build (or
+/// graph, edged to the modules it imports; one attempt is one PCM build (or
 /// the revalidation of the last one). The project owns the PCM policy:
 /// cache key computation and hit checks, store commits, the modules' build
 /// failures (Project::failures), and the cooperative response to advisory
-/// cancellation (a voided round tells its worker to stop and still reports
-/// the real outcome — contract 2). The graph owns identity, edges, rounds
-/// and interest.
+/// cancellation (an overtaken attempt tells its worker to stop and still
+/// reports the real result — contract 2). The graph owns identity, edges,
+/// attempts and interest.
 struct ModuleDeps {
     llvm::SmallVector<NodeId, 8> declared;
 
@@ -124,8 +124,8 @@ struct ModuleBuildFailure {
 };
 
 /// The graph identity of an import that resolves to nothing: a node that
-/// never runs a round and exists only to be edged at. When the name's
-/// first provider appears, provider_appeared() updates it and the ordinary
+/// never runs an attempt and exists only to be edged at. When the name's
+/// first provider appears, provider_appeared() invalidates it and the ordinary
 /// cascade reaches every consumer whose scan declared the edge — no side
 /// bookkeeping of who failed against the name. The high bit keeps the key
 /// space disjoint from path_ids.
@@ -142,54 +142,55 @@ inline NodeId module_node(Fid module) {
     return {NodeKind::PCM, module.raw};
 }
 
-/// Wait for the modules a compile imports, through `wait`, which waits for
-/// each once and says whether to go on (false when the round waiting was
-/// cancelled). A clean module promises its PCM and every PCM below it, but
-/// the store's LRU can evict one, or the PCH one was built over, while its
-/// node stays clean: after each wait the modules and every module below
-/// them are checked, and one whose product is gone is marked dirty with the
-/// modules between it and `modules`, and they are waited for again. A
-/// rebuild can itself evict another module under budget pressure, so the
-/// wait runs at most three times; past that the parse fails visibly on the
-/// missing file. False when `wait` said so.
-async::task<bool> wait_imports(Project& project,
-                               llvm::ArrayRef<Fid> modules,
-                               llvm::function_ref<async::task<bool>()> wait);
+/// How to build a module unit's PCM: an attempt declares the unit's
+/// imports as the node's edges, waits on them and on the precompiled header
+/// its command declares, keeps the last build while it holds, else
+/// dispatches a new one. A clean node holds while its PCM, every PCM below
+/// it and the PCHs they were built over are on disk: the store's LRU, or
+/// another process sharing the cache, can remove one behind the graph's
+/// back. Only the module that lost it builds again, the ones above it
+/// keep their builds: its content did not change.
+Work module_work(Project& project, Fid module);
+
+/// Whether `modules` and every module below them have their PCMs on disk,
+/// and the PCHs those were built over. A wait on one can outlast another:
+/// the store's LRU evicts it under the budget, or another process sharing
+/// the cache removes it. One found gone is forgotten (its build no longer
+/// names a PCM), so waiting on it again builds it again. Every one is
+/// looked at: a gone one found later must not survive an early return.
+bool imports_present(Project& project, llvm::ArrayRef<Fid> modules);
+
+/// How many times a compile waits on its imports for all of them to be
+/// present at once: a rebuild can itself evict another module under budget
+/// pressure. Past that a module build fails unrecorded, and a parse fails
+/// visibly on the missing file.
+constexpr inline int import_passes = 3;
 
 /// Scan the imports of a request that compiles under `arguments` with
 /// `content` as the focus file and the resolution's synthesized context
 /// served from memory (the stateless requests' builds — the scan must see
 /// the buffer's imports under the request's command), declare them as the
-/// file's edges and wait for their modules (wait_imports), foreground. A
-/// module that did not build is the compile's to report, as the stateful
-/// compile does; none only when the graph shut down.
+/// edges of `consumer`, the file's node, and wait for their modules,
+/// foreground. A module that did not build is the compile's to report, as
+/// the stateful compile does; none only when the graph shut down.
 async::task<std::optional<ModuleDeps>> build_imports(Project& project,
+                                                     NodeId consumer,
                                                      Fid path_id,
                                                      const Resolution& resolution,
                                                      llvm::ArrayRef<std::string> arguments,
                                                      llvm::StringRef directory,
                                                      llvm::StringRef content);
 
-/// Commit `deps`, a scan of the file of the round's node `self`, as the
-/// node's durable edges (TaskGraph::declare), and reference its unresolved
-/// imports from the round, whose successful commit replaces the
-/// declaration with its candidates. The scan outlives the round: a unit
-/// whose build fails stays cascade-reachable from its imports, so fixing or
-/// providing an import re-dirties it — the include reverse map carries no
-/// import edges, and the index records only imports that resolved
-/// (ProjectIndex::importers).
-void declare_imports(Project& project, RoundContext& ctx, NodeId self, const ModuleDeps& deps);
-
 /// Whether the graph has a node for this module unit (it was built or
 /// depended on before).
 bool pcm_tracked(const Project& project, Fid path_id);
 
-/// Mark a module unit and its transitive importers dirty, voiding in-flight
-/// rounds: their next rounds check their builds again, and a build whose
-/// key and inputs still hold is kept — the single write point for PCM
-/// content invalidation. A product-only loss (cache eviction) goes through
-/// wait_imports instead, which re-dirties without voiding in-flight rounds:
-/// what they read is unchanged. Returns the dirtied nodes' files,
+/// Mark a module unit and its transitive importers dirty, overtaking
+/// in-flight attempts: their next attempts check their builds again, and a
+/// build whose key and inputs still hold is kept — the single write point
+/// for PCM content invalidation. A product-only loss (cache eviction) is
+/// the node's check instead (module_work), which re-dirties the module alone:
+/// what its importers read is unchanged. Returns the dirtied nodes' files,
 /// of every kind.
 llvm::SmallVector<Fid> invalidate_module(Project& project, Fid path_id);
 
@@ -201,20 +202,20 @@ void forget_buffer_scan(Project& project, Fid path_id);
 /// document instead of burning a worker of its own.
 const FailureRecord* build_crash(Project& project, Fid module);
 
-/// Why the module's last round failed, when it failed on the user's code;
+/// Why the module's last build failed, when it failed on the user's code;
 /// nullopt for any other failure (a crash, an outage).
 std::optional<ModuleBuildFailure> module_build_failure(const Project& project, Fid module);
 
 /// Forget the module's failed build, a crash or errors in the user's code,
-/// so the next round builds it again: an importer whose own record lets it
+/// so the next attempt builds it again: an importer whose own record lets it
 /// retry, or that was saved, retries it. A failed build is otherwise kept
 /// until its key or one of its inputs changes. Returns whether it had
 /// failed.
 bool forget_build_failure(Project& project, Fid module);
 
-/// A module name gained a provider it lacked: void the dependents of its
-/// unresolved import (their keys name the import as unresolved, so their
-/// next rounds rebuild) and return them for serving-side treatment.
+/// A module name gained a provider it lacked: invalidate the dependents of
+/// its unresolved import (their keys name the import as unresolved, so
+/// their next attempts rebuild) and return them for serving-side treatment.
 llvm::SmallVector<NodeId> provider_appeared(Project& project, llvm::StringRef name);
 
 /// The direct module dependencies of the unit under exactly the arguments
@@ -257,10 +258,5 @@ const DepsSnapshot* build_inputs(const Project& project, Fid module);
 /// The build_inputs of `modules`, each once: what their PCMs were built
 /// from, their imports' inputs included, or what keeps them failing.
 DepsSnapshot module_inputs(const Project& project, llvm::ArrayRef<Fid> modules);
-
-/// One round of a PCM node, the graph's runner for NodeKind::PCM: declare
-/// the dependency edges, wait on the imports, keep the last build while it
-/// holds, else dispatch a new one.
-async::task<RoundOutcome> pcm_round(Project& project, RoundContext& ctx, NodeId id);
 
 }  // namespace clice

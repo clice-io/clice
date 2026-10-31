@@ -103,8 +103,8 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     auto closed = fixture.intern("/proj/closed.cpp");
     auto open = fixture.open("/proj/open.cpp", "")->path_id;
     index_unit(closed);
-    served.project.graph.declare({NodeKind::UnitRun, closed.raw}, {unresolved_import("m")});
-    served.project.graph.declare({NodeKind::AST, open.raw}, {unresolved_import("m")});
+    served.project.graph.set_edges({NodeKind::Unit, closed.raw}, {unresolved_import("m")});
+    served.project.graph.set_edges({NodeKind::AST, open.raw}, {unresolved_import("m")});
 
     served.disk_changed({iface});
 
@@ -136,7 +136,7 @@ ZEST_CASE(ReloadProviderCascades) {
     auto iface = fixture.intern(tmp.path("m.cppm"));
     auto removed = fixture.intern(tmp.path("old.cpp"));
     index_unit(removed);
-    served.project.graph.declare({NodeKind::UnitRun, removed.raw}, {unresolved_import("m")});
+    served.project.graph.set_edges({NodeKind::Unit, removed.raw}, {unresolved_import("m")});
 
     fixture.build_changed({.added = {iface}, .removed = {removed}});
 
@@ -175,10 +175,9 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     auto mod = fixture.intern("/proj/m.cppm");
     auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges declare_imports declares in production —
-    // no rounds.
-    served.project.graph.declare(module_node(open_user), {module_node(mod)});
-    served.project.graph.declare(module_node(closed_user), {module_node(mod)});
+    // The edges their attempts declare in production — no attempt runs.
+    served.project.graph.set_edges(module_node(open_user), {module_node(mod)});
+    served.project.graph.set_edges(module_node(closed_user), {module_node(mod)});
 
     served.disk_changed({mod});
 
@@ -474,7 +473,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.project.graph.declare(NodeId{NodeKind::PCM, user.raw}, {module_node(mod)});
+    served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
     project.pcm_builds[mod].deps.push_back({.path_id = header});
 
     served.disk_changed({header});
@@ -488,7 +487,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
     auto user = fixture.intern("/proj/user.cpp");
-    served.project.graph.declare(NodeId{NodeKind::PCM, user.raw}, {module_node(mod)});
+    served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
     project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
@@ -632,6 +631,9 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     ZASSERT(project.index.indexed(closed_id));
     ZASSERT(project.index.shard(closed_id) != nullptr);
     ZASSERT(project.index.shard(open_id) != nullptr);
+    // What they walked under the old command no other unit may skip.
+    ZEXPECT(IndexInternals::outdated(project.index, open_id));
+    ZEXPECT(IndexInternals::outdated(project.index, closed_id));
 }
 
 ZEST_CASE(CDBAddedOpenMarksDirty) {
@@ -672,10 +674,9 @@ ZEST_CASE(CDBChangedCascadesModule) {
     auto mod = fixture.intern("/proj/m.cppm");
     auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
     auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges declare_imports declares in production —
-    // no rounds.
-    served.project.graph.declare(module_node(open_user), {module_node(mod)});
-    served.project.graph.declare(module_node(closed_user), {module_node(mod)});
+    // The edges their attempts declare in production — no attempt runs.
+    served.project.graph.set_edges(module_node(open_user), {module_node(mod)});
+    served.project.graph.set_edges(module_node(closed_user), {module_node(mod)});
     index_unit(mod);
 
     fixture.build_changed({.changed = {mod}});

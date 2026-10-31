@@ -678,7 +678,7 @@ ZEST_CASE(BufferImportRecorded) {
 
     // The unresolved-import edge survives the commit: a first provider's update
     // must reach this document's node.
-    auto dirtied = served.project.graph.update(unresolved_import("m"));
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -726,7 +726,7 @@ ZEST_CASE(IncludeImportRecorded) {
     fixture.loop.run();
     ZEXPECT(done);
 
-    auto dirtied = served.project.graph.update(unresolved_import("m"));
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -775,7 +775,7 @@ ZEST_CASE(HostImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.project.graph.update(unresolved_import("m"));
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
@@ -824,7 +824,7 @@ ZEST_CASE(SuffixImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.project.graph.update(unresolved_import("m"));
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();

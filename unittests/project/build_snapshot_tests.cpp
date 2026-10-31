@@ -10,6 +10,7 @@ import :settings.settings;
 import :support.bytes;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
+import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -46,6 +47,8 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    // What its index walked under the old command no other unit may skip.
+    ZEXPECT(IndexInternals::outdated(f.project.index, tu_id));
 }
 
 ZEST_CASE(UnchangedCommandKept) {
@@ -71,6 +74,7 @@ ZEST_CASE(UnchangedCommandKept) {
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
+    ZEXPECT(!IndexInternals::outdated(f.project.index, tu_id));
 }
 
 ZEST_CASE(VanishedDatabaseKeepsIndex) {
@@ -111,7 +115,7 @@ ZEST_CASE(VanishedDatabaseKeepsIndex) {
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(NestedDatabaseRetires) {
+ZEST_CASE(NestedDatabaseDropsIndex) {
     TempDir tmp;
     tmp.touch("sub/a.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("sub/a.cpp");
@@ -146,7 +150,7 @@ ZEST_CASE(NestedDatabaseRetires) {
     ZEXPECT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
 }
 
-ZEST_CASE(UndeclaredSourceRetires) {
+ZEST_CASE(UndeclaredSourceDropsIndex) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -240,7 +244,7 @@ ZEST_CASE(SourceRelocationPersists) {
     ZEXPECT(llvm::StringRef(remembered.sources.front().str()).ends_with("b/compile_commands.json"));
 }
 
-ZEST_CASE(DiscoveredRelocationRetires) {
+ZEST_CASE(DiscoveredRelocationDropsIndex) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     tmp.touch("other.cpp", "int other() { return 2; }\n");
@@ -314,7 +318,7 @@ ZEST_CASE(DefaultCommandKept) {
     ZASSERT(!f.queue.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(UncoveredDefaultRetires) {
+ZEST_CASE(UncoveredDefaultDropsIndex) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -706,7 +710,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
 
     index::IndexReport report;
     auto body = [&]() -> async::task<> {
-        report = co_await save_project(f.project, f.loop);
+        report = co_await save_project(f.project);
     };
     auto task = body();
     f.loop.schedule(task);

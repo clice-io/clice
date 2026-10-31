@@ -50,9 +50,7 @@ bool has_unsaved_state(const Project& project) {
     return project.index.has_unsaved_state() || project.build_snapshot.owes_save(project);
 }
 
-async::task<index::IndexReport> save_project(Project& project,
-                                             async::event_loop& loop,
-                                             index::SearchRebuild search) {
+async::task<index::IndexReport> save_project(Project& project, index::SearchRebuild search) {
     index::IndexReport report;
     // A read-only session (batch lint, stats) keeps its metadata in memory
     // and exits with it — it must never write into a database a concurrent
@@ -156,7 +154,7 @@ async::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    if(!co_await index.migrate_views(db, loop, report)) {
+    if(!co_await index.migrate_views(db, *project.loop, report)) {
         recover_corrupt_database(project, report);
     }
 
@@ -174,7 +172,7 @@ bool shrink_due(const index::PageUsage& usage) {
     return free >= worth && free * 4 >= usage.pages * usage.page_size;
 }
 
-async::task<index::IndexReport> shrink_database(Project& project, async::event_loop& loop) {
+async::task<index::IndexReport> shrink_database(Project& project) {
     index::IndexReport report;
     if(!project.database || project.database->read_only()) {
         co_return report;
@@ -224,7 +222,7 @@ async::task<index::IndexReport> shrink_database(Project& project, async::event_l
         case Database::Swap::Kept: project.shrink_failed = true; break;
         case Database::Swap::Replaced: break;
     }
-    if(!co_await project.index.rebind_views(db, loop, /*at_once=*/true)) {
+    if(!co_await project.index.rebind_views(db, *project.loop, /*at_once=*/true)) {
         recover_corrupt_database(project, report);
         co_return report;
     }

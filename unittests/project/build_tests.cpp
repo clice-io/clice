@@ -63,13 +63,11 @@ struct Layout {
         CanonicalRef file = identity;
         auto id = files.intern(file);
         auto candidates = build.commands(id);
-        auto ref = candidates.empty()
-                       ? build.resolve(id, build.builtin(file), CommandSource::Fallback, file, file)
-                       : build.resolve(id,
-                                       candidates.front().command,
-                                       candidates.front().source,
-                                       file,
-                                       file);
+        auto ref =
+            build.apply_rules(id,
+                              candidates.empty() ? Candidate{.base = build.builtin(file),
+                                                             .source = CommandSource::Fallback}
+                                                 : candidates.front());
         return commands.render_driver(ref, cdb.spelling(ref.file));
     }
 
@@ -231,6 +229,35 @@ ZEST_CASE(WalkResolvesLinks) {
 };
 #endif
 
+ZEST_CASE(DefaultSourcesLeaveNestedProjects) {
+    /// A rule without patterns covers the whole tree but the projects
+    /// nested in it.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[[rules]]\ndefault_command = \"clang++ -std=c++20\"\n");
+    tmp.touch("main.cpp", "int main() {}\n");
+    tmp.touch("other/b.cpp", "");
+    tmp.touch("sub/clice.toml", "");
+    tmp.touch("sub/a.cpp", "");
+    tmp.touch("tool/.clice/config.toml", "");
+    tmp.touch("tool/c.cpp", "");
+
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
+    FileTable files;
+    CommandTable commands;
+    CompilationDatabase cdb{files, commands};
+    Build build{settings, project_root, cdb, files};
+    build.reset_active(settings.fallback_configuration());
+    auto fid = [&](llvm::StringRef name) {
+        return files.intern(CanonicalPath(Spelling::absolute(tmp.path(name))));
+    };
+    auto members = build.members();
+    ZEXPECT(ranges::contains(members, fid("main.cpp")));
+    ZEXPECT(ranges::contains(members, fid("other/b.cpp")));
+    ZEXPECT(!ranges::contains(members, fid("sub/a.cpp")));
+    ZEXPECT(!ranges::contains(members, fid("tool/c.cpp")));
+};
+
 ZEST_CASE(FormatSet) {
     /// The format set reads its own rule field: a `lint = false` directory
     /// still formats, a `format = false` one does not.
@@ -281,7 +308,7 @@ ZEST_CASE(PatternRootsEnumerate) {
     ZEXPECT(build.commands(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
     auto util = build.commands(files.intern(Spelling::absolute(tmp.path("lib/util.cpp"))));
     ZASSERT(util.size() == 1U);
-    ZEXPECT(has_arg(commands.render_full(util.front().command), "LIB"));
+    ZEXPECT(has_arg(commands.render_full(util.front().base), "LIB"));
 };
 
 ZEST_CASE(EditHashKeepsAnchor) {
@@ -299,9 +326,7 @@ ZEST_CASE(EditHashKeepsAnchor) {
         CommandTable commands;
         CompilationDatabase cdb{files, commands};
         Build build{settings, project_root, cdb, files};
-        CanonicalPath main(Spelling::absolute(tmp.path("main.cpp")));
-        CanonicalRef file = main;
-        return build.edit_hash(file);
+        return build.edit_hash(files.intern(Spelling::absolute(tmp.path("main.cpp"))), {});
     };
     ZEXPECT(hash(tmp.root) == hash(tmp.root));
     ZEXPECT(hash(tmp.root) != hash(tmp.path(".clice")));
@@ -756,37 +781,35 @@ ZEST_CASE(RuleTurnsQueryOff) {
     CanonicalRef third_party_file = third_party;
     ZEXPECT(build.edits(own_file).query_toolchain);
     ZEXPECT(!build.edits(vendor_file).query_toolchain);
-    ZEXPECT(build.edit_hash(own_file) != build.edit_hash(vendor_file));
-    ZEXPECT(build.edit_hash(third_party_file) != 0);
+    ZEXPECT(build.edit_hash(files.intern(own_file), {}) !=
+            build.edit_hash(files.intern(vendor_file), {}));
+    ZEXPECT(build.edit_hash(files.intern(third_party_file), {}) != 0);
 
     // One command under the same appends: only the query tells them apart.
     auto command = std::format("clang++ {}", vendor.str());
     auto entry = *cdb.add_command(tmp.root, vendor.str(), llvm::StringRef(command));
     auto unqueried =
-        build.resolve(entry.file, entry.command, CommandSource::CDBExact, vendor_file, vendor_file);
-    auto queried = build.resolve(files.intern(own_file),
-                                 entry.command,
-                                 CommandSource::Inferred,
-                                 own_file,
-                                 own_file);
+        build.apply_rules(entry.file, {.base = entry.command, .source = CommandSource::Database});
+    auto queried = build.apply_rules(files.intern(own_file),
+                                     {.base = entry.command, .source = CommandSource::Database});
     ZEXPECT(!commands.get(unqueried.command).query_toolchain);
     ZEXPECT(commands.get(queried.command).query_toolchain);
 
-    auto lent = build.lend(entry.command, vendor_file, own_file);
-    auto borrowed =
-        build.resolve(files.intern(own_file), lent, CommandSource::Inferred, own_file, own_file);
+    auto borrowed = build.apply_rules(
+        files.intern(own_file),
+        {.base = entry.command, .source = CommandSource::Borrowed, .from = entry.file});
     ZEXPECT(!commands.get(borrowed.command).query_toolchain);
 };
 
-ZEST_CASE(LendMergesRules) {
-    /// A borrowed command carries the edits of the rules matching its lender
-    /// but not the borrower; rendered as the borrower's own it gains the
-    /// borrower's, so a rule matching both applies once.
+ZEST_CASE(BorrowMergesRules) {
+    /// A borrowed command is edited by the rules matching the file it is
+    /// from and the borrower, in declaration order, a rule matching both
+    /// once.
     TempDir tmp;
     tmp.touch("src/a.cpp", "");
     Settings settings;
-    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
     settings.rules.push_back(Rule{.patterns = {"new/**"}, .append = {"-DOWN"}});
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
     settings.rules.push_back(Rule{.patterns = {"**/*"}, .append = {"-DBOTH"}});
     CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
     settings.finalize(project_root);
@@ -799,11 +822,16 @@ ZEST_CASE(LendMergesRules) {
     auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
     auto lender = *cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
 
-    CanonicalPath identity(Spelling::absolute(tmp.path("new/n.cpp")));
-    CanonicalRef file = identity;
-    auto lent = build.lend(lender.command, files.resolve(lender.file), file);
-    auto ref = build.resolve(files.intern(file), lent, CommandSource::Inferred, file, file);
+    auto ref = build.apply_rules(
+        files.intern(Spelling::absolute(tmp.path("new/n.cpp"))),
+        {.base = lender.command, .source = CommandSource::Borrowed, .from = lender.file});
     auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
+    auto at = [&](llvm::StringRef macro) {
+        return ranges::find_if(
+                   argv,
+                   [&](const char* arg) { return llvm::StringRef(arg).contains(macro); }) -
+               argv.begin();
+    };
     auto count = [&](llvm::StringRef macro) {
         return ranges::count_if(argv, [&](const char* arg) {
             return llvm::StringRef(arg).contains(macro);
@@ -812,6 +840,45 @@ ZEST_CASE(LendMergesRules) {
     ZEXPECT(count("LENDER") == 1);
     ZEXPECT(count("OWN") == 1);
     ZEXPECT(count("BOTH") == 1);
+    ZEXPECT(at("OWN") < at("LENDER"));
+    ZEXPECT(at("LENDER") < at("BOTH"));
+};
+
+ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
+    /// The precompiled header a borrowed command reads builds under the
+    /// rules that edited the command: the lender's as well as the
+    /// borrower's.
+    TempDir tmp;
+    tmp.touch("pch.hxx", "");
+    tmp.touch("pch.hxx.cxx", "");
+    tmp.touch("src/a.cpp", "");
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
+    settings.finalize(project_root);
+
+    FileTable files;
+    CommandTable commands;
+    CompilationDatabase cdb{files, commands};
+    Build build{settings, project_root, cdb, files};
+    build.reset_active("");
+    auto pch = tmp.path("pch.hxx.pch");
+    auto writes = std::format("clang++ -Xclang -emit-pch -x c++-header -o {} {}",
+                              pch,
+                              tmp.path("pch.hxx.cxx"));
+    cdb.add_command(tmp.root, tmp.path("pch.hxx.cxx"), llvm::StringRef(writes));
+    auto reads =
+        std::format("clang++ -Xclang -include-pch -Xclang {} {}", pch, tmp.path("src/a.cpp"));
+    auto lender = *cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(reads));
+
+    auto borrower = files.intern(Spelling::absolute(tmp.path("new/n.cpp")));
+    Candidate borrowed{.base = lender.command,
+                       .source = CommandSource::Borrowed,
+                       .from = lender.file};
+    auto ref = build.apply_rules(borrower, borrowed);
+    auto writer = build.pch_unit(borrower, borrowed, ref.command);
+    ZASSERT(writer);
+    ZEXPECT(has_arg(commands.render_full(writer->command), "LENDER"));
 };
 
 /// The builtin fallback render for a file without an entry and no default

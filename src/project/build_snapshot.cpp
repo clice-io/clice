@@ -201,17 +201,15 @@ void BuildSnapshot::reconcile(Project& project, index::IndexReport& report) {
             // listed it loaded fine this session, as the live reload's
             // removed branch does; one that failed to load keeps its
             // last-known entries serving. Otherwise the default command
-            // that covered it is gone, unless none ever did.
+            // that covered it is gone.
             if(auto it = before.find(project_index.portable(path));
                it != before.end() && !it->second->sources.empty()) {
                 if(!healthy(*it->second)) {
                     continue;
                 }
                 LOG_INFO("No compilation database lists {} any more; dropping its index", path);
-            } else if(project_index.indexed_command(unit) != 0) {
-                LOG_INFO("The build no longer compiles {}; dropping its index", path);
             } else {
-                continue;
+                LOG_INFO("The build no longer compiles {}; dropping its index", path);
             }
             project_index.drop(unit, report);
             continue;
@@ -220,6 +218,7 @@ void BuildSnapshot::reconcile(Project& project, index::IndexReport& report) {
         // it) with nothing left to reindex.
         if(command != project_index.indexed_command(unit) && fs::exists(path)) {
             LOG_INFO("Compile command changed since the last session; reindexing {}", path);
+            project_index.mark_outdated(unit);
             report.add_reindex(unit);
         }
     }

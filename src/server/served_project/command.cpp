@@ -26,7 +26,7 @@ Resolution ServedProject::resolve_command(Fid path_id,
                                    .open = true,
                                });
     if(auto* document = find_document(path_id); document && !candidate) {
-        document->guessed = resolution.ref.source == CommandSource::Inferred ||
+        document->guessed = resolution.ref.source == CommandSource::Borrowed ||
                             resolution.ref.source == CommandSource::Fallback;
     }
     return resolution;

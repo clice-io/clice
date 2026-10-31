@@ -12,9 +12,14 @@ stdout = '''
         "path": "${WS}/src/new.cpp",
         "kind": "source",
         "moduleName": null
+      },
+      {
+        "path": "${WS}/src/opened.cpp",
+        "kind": "source",
+        "moduleName": null
       }
     ],
-    "total": 2
+    "total": 3
   },
   "stale": []
 }

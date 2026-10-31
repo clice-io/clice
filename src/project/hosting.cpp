@@ -188,8 +188,8 @@ std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
     return hosts;
 }
 
-const LenderIndex& lender_index(Project& project) {
-    auto& index = project.hosting.lenders;
+const BorrowableCommands& borrowable_commands(Project& project) {
+    auto& index = project.hosting.borrowable;
     if(index.epoch == project.commands_epoch) {
         return index;
     }
@@ -200,16 +200,17 @@ const LenderIndex& lender_index(Project& project) {
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule covers with a default command that is no compile
-        // command has none; a provisional member's is borrowed, and never
-        // lent on.
+        // command has none; lending the builtin one would only name a guess
+        // borrowed.
         for(auto& candidate: project.build.commands(member)) {
-            if(candidate.source == CommandSource::Inferred) {
+            if(candidate.source == CommandSource::Fallback) {
                 continue;
             }
             auto ref = tree_request(project, member, candidate).command;
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
-                .lender = {.unit = member, .command = candidate.command},
+                .member = member,
+                .command = candidate,
                 .language = language_of(ref),
             });
             for(auto& search_dir: project.toolchain.search_config(ref).dirs) {
@@ -228,8 +229,7 @@ const LenderIndex& lender_index(Project& project) {
 }  // namespace
 
 TreeRequest tree_request(Project& project, Fid unit, const Candidate& candidate) {
-    auto path = project.file_table.resolve(unit);
-    auto command = project.build.resolve(unit, candidate.command, candidate.source, path, path);
+    auto command = project.build.apply_rules(unit, candidate);
     return {
         .key = {unit, project.commands.command_hash(command.command)},
         .command = command
@@ -240,9 +240,11 @@ std::optional<llvm::SmallVector<Host>> include_chains(Project& project,
                                                       const UnitCommand& unit,
                                                       Fid header) {
     auto [host, command] = unit;
-    // The index runs a unit under its first command.
+    // The index runs a unit under its first command, and its tree is that
+    // command's while the index records it was built under it.
     if(auto commands = project.build.commands(host);
-       !commands.empty() && tree_request(project, host, commands.front()).key.second == command) {
+       !commands.empty() && tree_request(project, host, commands.front()).key.second == command &&
+       project.index.indexed_command(host) == command_identity(project, host)) {
         if(auto manifest = project.index.manifest(host)) {
             if(auto found = tree_chains(project,
                                         host,
@@ -341,37 +343,43 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     return ranking.hosts;
 }
 
-HostSearch find_host(Project& project, Fid header, const ContextChoice* choice) {
-    auto search = [&](Fid host,
-                      const Candidate& candidate,
-                      std::uint32_t occurrence) -> std::optional<HostSearch> {
-        auto request = tree_request(project, host, candidate);
-        auto chains = include_chains(project, request.key, header);
-        if(!chains) {
-            return HostSearch{.missing = std::move(request)};
-        }
-        if(occurrence < chains->size()) {
-            return HostSearch{.host = std::move((*chains)[occurrence]), .occurrence = occurrence};
-        }
-        return std::nullopt;
-    };
+namespace {
 
-    // The choice holds while its host's compile enters the header where it
-    // says; otherwise the header compiles as if nothing were chosen.
-    if(choice && choice->host_path_id.valid()) {
-        auto host = choice->host_path_id;
-        if(auto picked = chosen_host_command(project,
-                                             header,
-                                             host,
-                                             choice->command_hash,
-                                             choice->base_hash)) {
-            if(auto found = search(host, *picked, choice->occurrence.value_or(0))) {
-                return std::move(*found);
-            }
+/// Where `host` under its own command `candidate` enters `header` at its
+/// `occurrence`th place; none when it enters it fewer times.
+std::optional<HostSearch> enter_at(Project& project,
+                                   Fid header,
+                                   Fid host,
+                                   const Candidate& candidate,
+                                   std::uint32_t occurrence) {
+    auto request = tree_request(project, host, candidate);
+    auto chains = include_chains(project, request.key, header);
+    if(!chains) {
+        return HostSearch{.missing = std::move(request)};
+    }
+    if(occurrence < chains->size()) {
+        return HostSearch{.host = std::move((*chains)[occurrence]), .occurrence = occurrence};
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+HostSearch find_chosen_host(Project& project, Fid header, const ContextChoice& choice) {
+    auto host = choice.host_path_id;
+    if(auto picked =
+           chosen_host_command(project, header, host, choice.command_hash, choice.base_hash)) {
+        if(auto found = enter_at(project, header, host, *picked, choice.occurrence.value_or(0))) {
+            return std::move(*found);
         }
     }
+    return {};
+}
+
+HostSearch find_ranked_host(Project& project, Fid header) {
     for(auto host: ranked_hosts(project, header)) {
-        if(auto found = search(host, host_commands(project, header, host).front(), 0)) {
+        if(auto found =
+               enter_at(project, header, host, host_commands(project, header, host).front(), 0)) {
             return std::move(*found);
         }
     }
@@ -379,7 +387,7 @@ HostSearch find_host(Project& project, Fid header, const ContextChoice* choice) 
 }
 
 Fid host_of(Project& project, Fid header) {
-    auto search = find_host(project, header, nullptr);
+    auto search = find_ranked_host(project, header);
     if(search.missing) {
         return search.missing->key.first;
     }
@@ -655,39 +663,45 @@ Memo<Fid, HeaderContext>::Entry
     return commit();
 }
 
-std::optional<Lender> command_lender(Project& project, Fid file) {
+std::optional<Candidate> borrowed_command(Project& project, Fid file, bool provisional) {
     auto& files = project.file_table;
     auto path = files.resolve(file);
     bool header = is_header_path(path);
     auto dir = path::parent(path);
     auto stem = path::stem(path);
-    auto& index = lender_index(project);
-    auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(path, files.resolve(command.lender.unit), command.language);
+    auto& index = borrowable_commands(project);
+    auto fits = [&](const BorrowableCommands::Command& command) {
+        return command.member != file &&
+               (provisional || command.command.source != CommandSource::Borrowed) &&
+               compatible(path, files.resolve(command.member), command.language);
     };
 
-    // Every unit with its first command of the family, in path order.
-    llvm::SmallVector<Lender> units;
+    using Command = BorrowableCommands::Command;
+    auto lent = [](const Command& command) {
+        return command.command.lent(command.member, CommandSource::Borrowed);
+    };
+    // Every member with its first command of the family, in path order.
+    llvm::SmallVector<const Command*> units;
     for(auto& command: index.commands) {
-        if(fits(command) && (units.empty() || units.back().unit != command.lender.unit)) {
-            units.push_back(command.lender);
+        if(fits(command) && (units.empty() || units.back()->member != command.member)) {
+            units.push_back(&command);
         }
     }
     if(units.empty()) {
         return std::nullopt;
     }
-    auto unit_path = [&](const Lender& lender) {
-        return files.resolve(lender.unit);
+    auto unit_path = [&](const Command* command) {
+        return files.resolve(command->member);
     };
 
-    auto siblings =
-        ranges::to<llvm::SmallVector<Lender>>(views::filter(units, [&](const Lender& lender) {
-            return path::parent(unit_path(lender)) == dir;
+    auto siblings = ranges::to<llvm::SmallVector<const Command*>>(
+        views::filter(units, [&](const Command* command) {
+            return path::parent(unit_path(command)) == dir;
         }));
     if(!siblings.empty()) {
-        return *ranges::min_element(siblings, {}, [&](const Lender& lender) {
-            return std::tuple(path::stem(unit_path(lender)) != stem, unit_path(lender));
-        });
+        return lent(**ranges::min_element(siblings, {}, [&](const Command* command) {
+            return std::tuple(path::stem(unit_path(command)) != stem, unit_path(command));
+        }));
     }
 
     // A header some command's header search reaches: that unit's code
@@ -701,16 +715,16 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
             }
             for(auto position: it->second) {
                 if(fits(index.commands[position])) {
-                    return index.commands[position].lender;
+                    return lent(index.commands[position]);
                 }
             }
         }
     }
 
     // The closest unit in the directory tree, then by name.
-    return *ranges::min_element(units, {}, [&](const Lender& lender) {
-        return std::tuple(tree_distance(path, unit_path(lender)), unit_path(lender));
-    });
+    return lent(**ranges::min_element(units, {}, [&](const Command* command) {
+        return std::tuple(tree_distance(path, unit_path(command)), unit_path(command));
+    }));
 }
 
 }  // namespace clice

@@ -16,7 +16,7 @@ import :vfs.file_table;
 namespace clice::testing {
 namespace {
 
-using DispatchFn = std::function<async::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
+using DispatchFn = std::function<async::task<Result>(std::uint32_t path_id, bool foreground)>;
 using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
 constexpr NodeKind test_kind = NodeKind{1};
@@ -26,36 +26,42 @@ NodeId nid(std::uint32_t path_id) {
 }
 
 /// Legacy-shaped adapter driving the generalized TaskGraph, so the case
-/// bodies keep the old CompileGraph vocabulary: one kind whose runner
-/// declares the resolver's edges via depend() and then dispatches.
+/// bodies keep the old CompileGraph vocabulary: one kind whose work waits
+/// on the resolver's edges via depend() and then dispatches.
 struct GraphShim {
     TaskGraph graph;
+    DispatchFn dispatch;
+    ResolveFn resolve;
 
-    GraphShim(DispatchFn dispatch, ResolveFn resolve) {
-        graph.set_runner(test_kind,
-                         [dispatch = std::move(dispatch),
-                          resolve = std::move(resolve)](RoundContext& ctx,
-                                                        NodeId id) -> async::task<RoundOutcome> {
-                             auto path_id = static_cast<std::uint32_t>(id.key);
-                             for(auto dep: resolve(path_id)) {
-                                 switch(co_await ctx.depend(nid(dep))) {
-                                     case DependResult::Ready: break;
-                                     case DependResult::Failed: co_return RoundOutcome::Failed;
-                                     case DependResult::Cancelled: co_return RoundOutcome::Stale;
-                                 }
-                             }
-                             co_return co_await dispatch(path_id, ctx.foreground());
-                         });
+    GraphShim(DispatchFn dispatch, ResolveFn resolve) :
+        dispatch(std::move(dispatch)), resolve(std::move(resolve)) {}
+
+    Work work() {
+        return {.run = [this](Attempt& attempt) { return build(attempt); }};
+    }
+
+    async::task<Result> build(Attempt& attempt) {
+        auto path_id = static_cast<std::uint32_t>(attempt.node().key);
+        for(auto dep: resolve(path_id)) {
+            switch(co_await attempt.depend(nid(dep), work())) {
+                case Result::Success: break;
+                case Result::Failed: co_return Result::Failed;
+                case Result::Stale: co_return Result::Stale;
+            }
+        }
+        co_return co_await dispatch(path_id, attempt.foreground());
     }
 
     async::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
-        auto outcome = co_await graph.request(nid(path_id), {.foreground = foreground});
-        co_return outcome == JoinOutcome::Success;
+        auto result = co_await graph.join(nid(path_id),
+                                          work(),
+                                          {.foreground = foreground, .retry = [] { return true; }});
+        co_return result == Result::Success;
     }
 
     llvm::SmallVector<std::uint32_t> update(std::uint32_t path_id) {
         llvm::SmallVector<std::uint32_t> dirtied;
-        for(auto id: graph.update(nid(path_id))) {
+        for(auto id: graph.invalidate(nid(path_id))) {
             dirtied.push_back(static_cast<std::uint32_t>(id.key));
         }
         return dirtied;
@@ -93,17 +99,17 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
                          const TempDir& tmp,
                          std::uint32_t& builds,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id, bool) -> async::task<RoundOutcome> {
+    return [&](std::uint32_t path_id, bool) -> async::task<Result> {
         auto file_path = cdb.files().resolve(Fid{path_id});
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
-            co_return RoundOutcome::Failed;
+            co_return Result::Failed;
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
                        entry.command,
                        cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::CDBExact};
+                       CommandSource::Database};
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -129,9 +135,9 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 
         if(unit->has_output()) {
             pcm_paths[path_id] = pcm;
-            co_return RoundOutcome::Success;
+            co_return Result::Success;
         }
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     };
 }
 
@@ -147,7 +153,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
         CommandRef ref{entry.file,
                        entry.command,
                        cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::CDBExact};
+                       CommandSource::Database};
 
         auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
@@ -1131,7 +1137,7 @@ ZEST_CASE(module_implementation_unit) {
         CommandRef impl_ref{impl_entry.file,
                             impl_entry.command,
                             env.cdb.commands().input_kind(impl_entry.command, impl_path),
-                            CommandSource::CDBExact};
+                            CommandSource::Database};
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
@@ -1190,7 +1196,7 @@ ZEST_CASE(shared_dep_import_switch) {
     async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<RoundOutcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1255,7 +1261,7 @@ ZEST_CASE(shared_dep_import_switch) {
 }
 
 /// ============================================================================
-///   Shared dependency failure propagates to every consumer of the same round
+///   Shared dependency failure propagates to every consumer of the same attempt
 /// ============================================================================
 
 ZEST_CASE(shared_dep_fails_both) {
@@ -1283,12 +1289,12 @@ ZEST_CASE(shared_dep_fails_both) {
     auto pid_c = env.lookup("C");
     ZASSERT(pid_shared != UINT32_MAX);
 
-    // Gate the shared module so both consumers join the same failing round.
+    // Gate the shared module so both consumers join the same failing attempt.
     async::event shared_started;
     async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<RoundOutcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1316,7 +1322,7 @@ ZEST_CASE(shared_dep_fails_both) {
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await shared_started.wait();
-            // Both chains hold interest in the same round.
+            // Both chains hold interest in the same attempt.
             co_await wait_until([&] { return cg->refcount(pid_shared) == 2u; });
             shared_proceed.set();
             co_return;
@@ -1324,7 +1330,7 @@ ZEST_CASE(shared_dep_fails_both) {
 
         co_await async::when_all(request_a(), request_c(), driver());
 
-        // One failing round, both consumers fail without retry.
+        // One failing attempt, both consumers fail without retry.
         ZEXPECT(result_a == false);
         ZEXPECT(result_c == false);
         ZEXPECT(shared_calls == 1);

@@ -238,7 +238,6 @@ int run_file(const FileOptions& opts) {
     auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
-    CanonicalRef identity = files.resolve(file);
     auto entries = project.build.entries(file);
     if(entries.empty()) {
         LOG_ERROR("No compilation database lists {}", files.display(file));
@@ -246,11 +245,9 @@ int run_file(const FileOptions& opts) {
     }
     llvm::SmallVector<CommandRef> refs;
     for(auto& entry: entries) {
-        refs.push_back(project.build.resolve(file,
-                                             entry.command,
-                                             CommandSource::CDBExact,
-                                             identity,
-                                             identity));
+        refs.push_back(
+            project.build.apply_rules(file,
+                                      {.base = entry.command, .source = CommandSource::Database}));
     }
     project.toolchain.warm(refs);
     FileCommands commands{.file = files.display(file)};
@@ -355,12 +352,9 @@ int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool 
         LOG_ERROR("Not a compile command: {}", join_command(command));
         return 1;
     }
-    CanonicalRef identity = project.file_table.resolve(entry->file);
-    auto ref = project.build.resolve(entry->file,
-                                     entry->command,
-                                     CommandSource::CDBExact,
-                                     identity,
-                                     identity);
+    auto ref =
+        project.build.apply_rules(entry->file,
+                                  {.base = entry->command, .source = CommandSource::Database});
     project.toolchain.warm(ref);
     auto rendered = render_command(project, ref, {.shadowed_dirs = false});
     if(json) {
@@ -409,12 +403,9 @@ int convert_database(Project& project, const Spelling& path) {
     llvm::DenseMap<std::uint32_t, CommandRef> refs;
     std::vector<CommandRef> all;
     for(auto& entry: cdb.entries()) {
-        CanonicalRef identity = files.resolve(entry.file);
-        auto ref = project.build.resolve(entry.file,
-                                         entry.command,
-                                         CommandSource::CDBExact,
-                                         identity,
-                                         identity);
+        auto ref =
+            project.build.apply_rules(entry.file,
+                                      {.base = entry.command, .source = CommandSource::Database});
         refs.try_emplace(entry.ordinal, ref);
         all.push_back(ref);
     }

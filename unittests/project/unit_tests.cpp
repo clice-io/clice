@@ -2,7 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :project.precompiled;
-import :project.unit_run;
+import :project.unit;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
@@ -16,10 +16,10 @@ import :worker.pool;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(UnitRunLint) {
+ZEST_SUITE(UnitLint) {
 
 ZEST_CASE(ModuleLintScanParity) {
-    // Only a scan under the lint round's extra args discovers the import
+    // Only a scan under the lint pass's extra args discovers the import
     // they gate, and edges it so the PCM exists when the worker's parse
     // (which sees the extras) consumes it. Only n.cppm runs, so the
     // import's PCM cannot arrive any other way.
@@ -47,14 +47,14 @@ ZEST_CASE(ModuleLintScanParity) {
     store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
-    UnitRunPlan plan;
-    plan.tidy = tidy::TidyParams{
+    UnitRequest request;
+    request.tidy = tidy::TidyParams{
         .checks = "-*,bugprone-integer-division",
         .extra_args = {"-DUSE_M"},
     };
 
     auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
-    UnitRunOutcome outcome;
+    std::optional<UnitResult> result;
     bool done = false;
     auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
@@ -63,7 +63,7 @@ ZEST_CASE(ModuleLintScanParity) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        outcome = co_await run_unit(f.project, n_id, std::move(plan));
+        result = co_await compile_unit(f.project, n_id, std::move(request));
 
         co_await f.project.graph.shutdown();
         co_await f.pool.stop();
@@ -74,16 +74,17 @@ ZEST_CASE(ModuleLintScanParity) {
     f.loop.run();
     ZEXPECT(done);
 
-    ZEXPECT(outcome.result == UnitRunOutcome::Result::Completed);
+    ZASSERT(result);
+    ZEXPECT(result->status == UnitResult::Status::Completed);
     // The finding inside the gated region proves the parse saw the
     // extras and consumed the edge-built PCM.
-    ZASSERT(!outcome.tidy_diagnostics.empty());
-    ZEXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
+    ZASSERT(!result->tidy_diagnostics.empty());
+    ZEXPECT(result->tidy_diagnostics[0].check == "bugprone-integer-division");
 }
 
-};  // ZEST_SUITE(UnitRunLint)
+};  // ZEST_SUITE(UnitLint)
 
-ZEST_SUITE(UnitRunIndex) {
+ZEST_SUITE(UnitIndex) {
 
 ZEST_CASE(OutdatedRerunsInFull) {
     // Two headers with the same bytes share one variant identity. Only
@@ -112,7 +113,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZASSERT(!f.project.index.shard(x2_id));
 
     auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
-    std::vector<UnitRunOutcome::Result> results;
+    std::vector<UnitResult::Status> results;
     bool done = false;
     auto body = [&]() -> async::task<> {
         WorkerPoolOptions opts;
@@ -122,9 +123,9 @@ ZEST_CASE(OutdatedRerunsInFull) {
         ZASSERT(f.pool.start(opts));
 
         for(int run = 0; run < 2; run += 1) {
-            UnitRunPlan plan;
-            plan.index = true;
-            results.push_back((co_await run_unit(f.project, b_id, std::move(plan))).result);
+            UnitRequest request;
+            request.index = true;
+            results.push_back((co_await compile_unit(f.project, b_id, std::move(request)))->status);
         }
 
         co_await f.project.graph.shutdown();
@@ -136,8 +137,8 @@ ZEST_CASE(OutdatedRerunsInFull) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum UnitRunOutcome::Result;
-    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Preempted, Completed}));
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Preempted, Completed}));
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
@@ -169,7 +170,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<UnitRunOutcome::Result> results;
+    std::vector<UnitResult::Status> results;
     std::size_t pcms_before_impl = 0;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -183,9 +184,10 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
             if(llvm::StringRef(name) == "impl.cpp") {
                 pcms_before_impl = f.project.pcm_builds.size();
             }
-            UnitRunPlan plan;
-            plan.index = true;
-            results.push_back((co_await run_unit(f.project, id(name), std::move(plan))).result);
+            UnitRequest request;
+            request.index = true;
+            results.push_back(
+                (co_await compile_unit(f.project, id(name), std::move(request)))->status);
         }
 
         co_await f.project.graph.shutdown();
@@ -197,8 +199,8 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum UnitRunOutcome::Result;
-    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Completed, Completed, Completed}));
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
     ZEXPECT(f.project.pcm_builds.size() == 1u);
     auto build = f.project.pcm_builds.find(id("m.cppm"));
@@ -234,7 +236,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<UnitRunOutcome::Result> results;
+    std::vector<UnitResult::Status> results;
     std::string evicted;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -244,15 +246,17 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        UnitRunPlan first;
+        UnitRequest first;
         first.index = true;
-        results.push_back((co_await run_unit(f.project, id("use.cpp"), std::move(first))).result);
+        results.push_back(
+            (co_await compile_unit(f.project, id("use.cpp"), std::move(first)))->status);
         evicted = f.project.pcm_builds.find(id("low.cppm"))->second.path;
         ZASSERT(!evicted.empty());
         ZASSERT(fs::remove(evicted).has_value());
-        UnitRunPlan second;
+        UnitRequest second;
         second.index = true;
-        results.push_back((co_await run_unit(f.project, id("use.cpp"), std::move(second))).result);
+        results.push_back(
+            (co_await compile_unit(f.project, id("use.cpp"), std::move(second)))->status);
 
         co_await f.project.graph.shutdown();
         co_await f.pool.stop();
@@ -263,8 +267,8 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum UnitRunOutcome::Result;
-    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Completed, Completed}));
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
     auto low = f.project.pcm_builds.find(id("low.cppm"));
     ZASSERT(low != f.project.pcm_builds.end());
     ZEXPECT(!low->second.path.empty());
@@ -313,9 +317,9 @@ ZEST_CASE(CrashedModuleStaysRefused) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        UnitRunPlan plan;
-        plan.index = true;
-        co_await run_unit(f.project, id("use.cpp"), std::move(plan));
+        UnitRequest request;
+        request.index = true;
+        co_await compile_unit(f.project, id("use.cpp"), std::move(request));
 
         co_await f.project.graph.shutdown();
         co_await f.pool.stop();
@@ -396,7 +400,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<UnitRunOutcome::Result> results;
+    std::vector<UnitResult::Status> results;
     std::vector<unsigned> counts;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -408,9 +412,10 @@ ZEST_CASE(CrashCountsOnPCH) {
 
         for(auto name:
             {"self.cpp", "self.cpp", "main.cpp", "main.cpp", "ok.cpp", "main.cpp", "main.cpp"}) {
-            UnitRunPlan plan;
-            plan.index = true;
-            results.push_back((co_await run_unit(f.project, id(name), std::move(plan))).result);
+            UnitRequest request;
+            request.index = true;
+            results.push_back(
+                (co_await compile_unit(f.project, id(name), std::move(request)))->status);
             counts.push_back(consume_failures());
         }
 
@@ -423,19 +428,19 @@ ZEST_CASE(CrashCountsOnPCH) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum UnitRunOutcome::Result;
-    ZEXPECT(results == (std::vector<UnitRunOutcome::Result>{Preempted,
-                                                            Crashed,
-                                                            Preempted,
-                                                            Completed,
-                                                            Completed,
-                                                            Preempted,
-                                                            Completed}));
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Preempted,
+                                                        Crashed,
+                                                        Preempted,
+                                                        Completed,
+                                                        Completed,
+                                                        Preempted,
+                                                        Completed}));
     ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
     logging::reset_anomaly_for_testing();
 }
 
-};  // ZEST_SUITE(UnitRunIndex)
+};  // ZEST_SUITE(UnitIndex)
 
 }  // namespace
 }  // namespace clice::testing

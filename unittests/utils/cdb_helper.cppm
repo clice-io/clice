@@ -98,7 +98,7 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
     CommandRef ref{entry.file,
                    applied,
                    commands.input_kind(applied, file),
-                   CommandSource::CDBExact};
+                   CommandSource::Database};
     auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
@@ -117,7 +117,7 @@ inline ScanReport scan_all(CompilationDatabase& cdb, Toolchain& toolchain, Depen
         units.push_back({entry.file,
                          entry.command,
                          cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
-                         CommandSource::CDBExact});
+                         CommandSource::Database});
     }
     return scan_dependency_graph(cdb, toolchain, graph, units);
 }

@@ -19,6 +19,21 @@ test("sub serves its files", async (t) => {
     expect(await s.errors("sub/a.cpp")).toEqual([]);
 });
 
+// sub's database, which the first run loaded, is sub's own once sub is a
+// project: the next run leaves its unit out.
+test("sub becomes a project between runs", async (t) => {
+    t.disk.rm("sub/clice.toml");
+    await t.cli("index --jobs 1");
+    t.disk.write("sub/clice.toml", '[[rules]]\nappend = ["-DIN_SUB"]\n');
+    await t.cli("index --jobs 1");
+    await t.cli("index unit sub/a.cpp");
+});
+
+test("a root whose only database is sub's", { errors: ["Nothing to index"] }, async (t) => {
+    t.disk.database({ "sub/a.cpp": [] }, "sub");
+    await t.cli("index --jobs 1");
+});
+
 // main.cpp includes sub's header, which sub formats under its own rules.
 test("clice format leaves sub alone", async (t) => {
     await t.cli("format");
@@ -54,6 +69,7 @@ test("a project appears above a provisional member", async (t) => {
     const s = await t.start();
     s.open("scratch/pkg/new.cpp");
     s.save("scratch/pkg/new.cpp");
+    s.close("scratch/pkg/new.cpp");
     await s.sync();
     t.disk.write("scratch/pkg/clice.toml", "");
     await t.show("asked", await s.restarted());

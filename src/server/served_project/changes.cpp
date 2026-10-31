@@ -150,7 +150,7 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
             continue;
         }
         auto path_id = id.file();
-        if(id.kind == NodeKind::UnitRun) {
+        if(id.kind == NodeKind::Unit) {
             reindex(path_id, true);
         } else if(id.kind == NodeKind::AST) {
             if(find_document(path_id)) {
@@ -330,6 +330,7 @@ void ServedProject::build_changed(CDBDiff delta) {
             apply_report(project, report);
             clear_reindex(project, path_id);
         } else {
+            project.index.mark_outdated(path_id);
             reindex(path_id, true);
         }
 
@@ -525,15 +526,8 @@ std::vector<CanonicalPath> ServedProject::configuration_dirs() const {
     if(root.empty()) {
         return dirs;
     }
-    if(auto entries = fs::Directory::open(root)) {
-        for(auto& entry: *entries) {
-            if(!entry) {
-                break;
-            }
-            if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
-                dirs.emplace_back(Spelling::absolute(path::join(root, entry->name)));
-            }
-        }
+    for(auto& subdirectory: direct_subdirectories(root)) {
+        dirs.emplace_back(subdirectory);
     }
     auto down_to = [&](CanonicalRef path) {
         path::walk_ancestors(path.parent(), [&](CanonicalRef dir) {

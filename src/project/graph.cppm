@@ -7,24 +7,22 @@ namespace clice {
 
 /// The kinds partitioning the graph's node space, each with its own key
 /// convention: PCM nodes are module-unit path ids (unresolved imports take
-/// the high half of the key space), PCH nodes are interned preamble keys,
-/// AST nodes are open documents' path ids, unit-run nodes are TU path ids.
-/// 0xFF is reserved for map sentinels.
+/// the high half of the key space), PCH nodes are the hash of the PCH's
+/// key, AST nodes are open documents' path ids, unit nodes are the units'
+/// path ids. 0xFF is reserved for map sentinels.
 enum class NodeKind : std::uint8_t {
     PCM = 1,
     PCH = 2,
     AST = 3,
-    UnitRun = 4,
+    Unit = 4,
 };
 
-/// Identity of a task-graph node. Each kind interns its own keys —
-/// monotonically, never recycling: the graph may retain an id in edges or
-/// rounds long after its runner dropped what the node built.
+/// Identity of a task-graph node.
 struct NodeId {
     NodeKind kind = NodeKind{0};
     std::uint64_t key = 0;
 
-    /// The file a PCM, AST or unit-run node is keyed by.
+    /// The file a PCM, AST or unit node is keyed by.
     Fid file() const {
         return Fid{static_cast<std::uint32_t>(key)};
     }
@@ -49,103 +47,91 @@ struct llvm::DenseMapInfo<clice::NodeId> {
 
 namespace clice {
 
-/// Result of one round, as reported by the kind's runner and then filtered
-/// through round identity: a round that update() overtook mid-flight is
-/// recorded Stale whatever it reported — its result is about content that
-/// no longer exists.
-enum class RoundOutcome : std::uint8_t {
-    /// No result: the round was overtaken (content update, loss of
-    /// interest, scheduler preemption). Waiters that still hold interest
-    /// drive a fresh round. The closure may have published salvage results
-    /// before reporting Stale; the graph has no say over them.
-    Stale,
+/// How an attempt, a dependency wait or a join ended.
+enum class Result : std::uint8_t {
+    /// The node holds a product of its current content.
     Success,
-    /// The round failed on current content; waiters propagate the failure
-    /// instead of retrying. Not sticky: a later request tries again.
+    /// The attempt failed on current content, or waiting would close a
+    /// cycle. Not sticky: a later wait tries again.
     Failed,
-};
-
-/// Terminal state of a request() join.
-enum class JoinOutcome : std::uint8_t {
-    Success,
-    Failed,
-    /// OneAttempt only: the observed attempt ended without a result.
+    /// No result: the attempt was overtaken by a content change, lost all
+    /// interest, or the graph is shutting down. An attempt overtaken
+    /// mid-flight ends Stale whatever it reported.
     Stale,
-    /// The validity predicate went false; the join stopped waiting.
-    Abandoned,
-    /// The graph is shutting down.
-    Shutdown,
 };
 
-/// Result of RoundContext::depend().
-enum class DependResult : std::uint8_t {
-    /// The dependency reached a current successful state.
-    Ready,
-    /// The dependency failed terminally, or the edge closes a wait cycle.
-    Failed,
-    /// This round's advisory token fired while waiting; the closure should
-    /// wind down and report Stale.
-    Cancelled,
+/// What a clean node's product looks like when a waiter reaches it.
+enum class Check : std::uint8_t {
+    Holds,
+    /// The product left the disk while what it was built from stayed: the
+    /// node builds again, and what its dependents built from it stands.
+    ProductGone,
+    /// What it was built from changed: the node and its dependents are
+    /// stale — but for the attempt that found it, which waits for the fresh
+    /// product and has read nothing of the old one.
+    InputsChanged,
 };
 
-enum class JoinKind : std::uint8_t {
-    /// Retry through stale attempts until Success or Failed.
-    UntilTerminal,
-    /// Observe exactly one attempt and return its outcome.
-    OneAttempt,
+class Attempt;
+
+/// How to build a node, carried by whoever waits on it: a waiter that
+/// finds the node dirty with no attempt running starts one with its own
+/// work, so every waiter of a node passes equivalent work.
+struct Work {
+    /// One attempt. It runs to a real result: cancellation is advisory
+    /// (Attempt::token()), and the graph never destroys a running attempt.
+    std::function<async::task<Result>(Attempt&)> run;
+
+    /// Asked when a waiter reaches a clean node; null when a clean node
+    /// always holds.
+    std::function<Check()> check;
 };
 
 struct JoinOptions {
-    JoinKind kind = JoinKind::UntilTerminal;
-
     /// Dispatch the awaited chain at user-visible priority.
     bool foreground = false;
 
-    /// Requester validity, checked before every (re)wait; a false return
-    /// abandons the join. Null means always valid. Gates continuation only
-    /// — a terminal outcome already observed is returned as-is.
-    std::function<bool()> validity;
+    /// Whether to wait out an attempt that ended Stale with a fresh one,
+    /// asked after each; null for one attempt.
+    std::function<bool()> retry;
 };
 
 class TaskGraph;
 
-/// Handed to a kind's runner; valid until the round's task
-/// completes. Every graph-node wait inside a round MUST go through
-/// depend() — it is the only point that records the edge for cascade,
-/// interest and cycle detection; a bare request() from a round bypasses
-/// all three.
-struct RoundContext {
-    /// Record a candidate edge to `dep` and wait until it is usable. The
-    /// edge takes effect for cascade and interest the moment this is
-    /// called; it becomes durable only if this round commits Success while
-    /// still current.
-    async::task<DependResult> depend(NodeId dep);
+/// Handed to an attempt's work; valid until the attempt completes. Every
+/// graph-node wait inside an attempt goes through depend(): it is the only
+/// point that records the edge for invalidation, interest and cycle
+/// detection.
+class Attempt {
+public:
+    /// Wait until `dep` holds a current product, building it with `work`
+    /// when it has to. The edge counts for invalidation and interest from
+    /// the moment of the call, and stays one of this node's edges when the
+    /// attempt succeeds. Stale when this attempt was overtaken while
+    /// waiting: it should wind down and report Stale.
+    async::task<Result> depend(NodeId dep, Work work);
 
-    /// depend() without the dispatch or the wait: record the candidate
-    /// edge to a node that never runs (an unresolved import a scan consumed the
-    /// absence of). Same cascade/interest/foreground semantics, same
-    /// durable promotion on a successful commit — which is the point: a
-    /// declared-only edge would be replaced by the commit's candidates.
-    void reference(NodeId dep);
-
-    /// Whether this round's result would still count if it committed now.
+    /// Whether this attempt's result would still count if it finished now.
     bool current() const;
 
     /// Live interest class of the node — read at dispatch time, a
-    /// foreground requester may have joined after the round started.
+    /// foreground waiter may have joined after the attempt started.
     bool foreground() const;
 
-    /// Advisory cancellation: fires when the round is overtaken or loses
-    /// all interest. The closure picks its response points and still
-    /// reports a real outcome — the graph never destroys a running round.
+    /// Advisory cancellation: fires when the attempt is overtaken or loses
+    /// all interest.
     const async::cancellation_token& token() const {
         return tok;
+    }
+
+    NodeId node() const {
+        return self;
     }
 
 private:
     friend class TaskGraph;
 
-    RoundContext(TaskGraph& graph, NodeId self, async::cancellation_token tok) :
+    Attempt(TaskGraph& graph, NodeId self, async::cancellation_token tok) :
         graph(graph), self(self), tok(std::move(tok)) {}
 
     TaskGraph& graph;
@@ -154,77 +140,50 @@ private:
 };
 
 /// Dependency graph over nodes of several kinds with interest-counted
-/// cancellation — the thin scheduling core. Only four things live here: node identity, data
-/// edges, rounds, and interest/priority. Everything else (what a node
-/// builds, cache keys, crash tables, retry budgets) belongs to the
-/// runners.
+/// cancellation — the thin scheduling core: node identity, edges,
+/// attempts, and interest and priority. What a node builds, its cache keys
+/// and its failure records belong to the work its waiters carry.
 ///
-/// Each dirty node is driven by rounds produced by its kind's runner,
-/// spawned into the graph's task group. Lifecycle by phase:
+/// Lifecycle by phase:
 ///
-/// - Request arrival: request() takes a root reference and joins the
-///   node's round, spawning one if none is live. A round declares its
-///   dependencies through RoundContext::depend(), which acquires edge
-///   references and waits for them before the closure dispatches its own
-///   work.
-/// - Request cancel: the requester's frame unwinds and drops its root
-///   reference. A node whose interest stays at zero for an event-loop
-///   tick has its round's advisory token fired; the closure winds down
-///   and reports, and the finished round releases its edge references,
-///   cascading the loss of interest. A transient drop (a retry
-///   re-acquiring a retained dependency) does not disturb the running
-///   round.
-/// - Content update: update() marks the node and its transitive
-///   dependents dirty and fires their rounds' tokens — the results are
-///   stale. Interest is untouched; waiters observe the stale round and
-///   drive a fresh one.
-/// - Round completion: the reported outcome passes through round identity
-///   (an overtaken round commits Stale regardless), Success promotes the
-///   round's candidate edges to the durable edge set, and waiters wake.
+/// - Wait: join() takes a root reference, Attempt::depend() an edge
+///   reference; a clean node is checked (Work::check) and a dirty one
+///   gets an attempt of the waiter's work unless one runs already.
+/// - Cancel: a waiter's frame unwinds and drops its reference. A node
+///   whose interest stays at zero for an event-loop tick has its attempt's
+///   advisory token fired; the work winds down and reports, and the
+///   finished attempt releases its edge references, cascading the loss of
+///   interest. A transient drop (a retry re-acquiring a retained
+///   dependency) does not disturb the running attempt.
+/// - Content change: invalidate() marks the node and its transitive
+///   dependents dirty and fires their attempts' tokens. Interest is
+///   untouched; waiters see the stale attempt and drive a fresh one.
+/// - Completion: the reported result passes through attempt identity (an
+///   overtaken attempt ends Stale), Success makes the attempt's waits the
+///   node's waited edges, and waiters wake.
+///
+/// A node's edges are the ones set_edges() declared and the ones its last
+/// successful attempt waited on; invalidation follows both.
 class TaskGraph {
 public:
-    /// Produces one round of a node. The returned task runs to a real
-    /// reply: cancellation is advisory (RoundContext::token()), and the
-    /// graph never destroys a running round.
-    using RoundRunner = std::function<async::task<RoundOutcome>(RoundContext& ctx, NodeId id)>;
-
-    /// Each kind's runner is set once, before any request for its nodes.
-    void set_runner(NodeKind kind, RoundRunner run);
-
-    /// Join a node's compilation from outside the graph (root interest).
-    async::task<JoinOutcome> request(NodeId id, JoinOptions options = {});
+    /// Wait for a node's product from outside the graph (root interest).
+    async::task<Result> join(NodeId id, Work work, JoinOptions options = {});
 
     /// Mark a node and all transitive dependents dirty, firing in-flight
-    /// rounds' advisory tokens (their results are stale). Returns the set
-    /// of nodes that were marked dirty.
-    llvm::SmallVector<NodeId> update(NodeId id);
+    /// attempts' advisory tokens (their results are stale). Returns the
+    /// nodes marked.
+    llvm::SmallVector<NodeId> invalidate(NodeId id);
 
-    /// The product tier of invalidation: the node's committed outcome is
-    /// still true of its inputs — only its on-disk product vanished
-    /// (cache eviction). Marks the node alone so the next depend or
-    /// request rebuilds it: no dependent cascade (dependents consumed
-    /// the content, which did not change) and no round voiding (an
-    /// in-flight round is already producing a fresh product). Content
-    /// changes stay with update() — cascading eviction would void the
-    /// very consumer round waiting to rebuild the import, and a working
-    /// set larger than the cache budget would spin that waiter forever.
-    void mark_dirty(NodeId id);
+    /// Declare the node's edges from what its sources say — a scan's
+    /// imports, which must stay edges through a failed build, or fixing an
+    /// import could never re-dirty the node. Materializes every named
+    /// node, replaces the previous declaration (self and duplicate edges
+    /// dropped), takes no interest and leaves dirtiness untouched.
+    void set_edges(NodeId id, llvm::ArrayRef<NodeId> deps);
 
-    /// Commit `deps` as the durable edge set of `id` without running a
-    /// round — the no-round counterpart of a successful round's candidate
-    /// promotion. Facades use it for topology that is scanner truth
-    /// rather than build output: consumer TUs that never run rounds, and
-    /// a unit's imports, which must survive a failed build or fixing an
-    /// import could never re-dirty the unit. Materializes every named
-    /// node, replaces the previous set (self and duplicate edges
-    /// dropped), takes no interest and leaves dirtiness untouched —
-    /// invalidation stays with update(). A later current successful round
-    /// replaces the declaration with its candidates.
-    void declare(NodeId id, llvm::ArrayRef<NodeId> deps);
-
-    /// Fire every round's token, refuse new rounds, and wait for all round
-    /// frames to unwind. Must be awaited exactly once before the graph is
-    /// destroyed.
+    /// Fire every attempt's token, refuse new attempts, and wait for all
+    /// attempt frames to unwind. Must be awaited exactly once before the
+    /// graph is destroyed.
     async::task<> shutdown();
 
     bool has_node(NodeId id) const;
@@ -232,66 +191,68 @@ public:
     bool is_compiling(NodeId id) const;
 
     /// Current in-flight interest count: whether anyone still waits on the
-    /// node (a runner dropping a round's inputs; testing).
+    /// node.
     std::uint32_t refcount(NodeId id) const;
 
-    /// Durable edge set: the candidates of the last current successful
-    /// round (testing/diagnostics).
-    llvm::ArrayRef<NodeId> dependencies(NodeId id) const;
+    /// The node's edges: declared and waited on by its last successful
+    /// attempt, each once.
+    llvm::SmallVector<NodeId> dependencies(NodeId id) const;
 
     /// All bookkeeping is quiesced: nothing compiling, no interest held
-    /// and every round's completion has fired.
+    /// and every attempt's completion has fired.
     bool idle() const;
 
-    /// The nodes whose round is in flight.
+    /// The nodes whose attempt is in flight.
     llvm::SmallVector<NodeId> compiling() const;
 
     /// Structural sanity that holds at every drain boundary: a compiling
-    /// node has an unfinished round, and a finished round never leaves the
-    /// compiling flag behind.
+    /// node has an unfinished attempt, and a finished attempt never leaves
+    /// the compiling flag behind.
     bool consistent() const;
 
 private:
-    friend struct RoundContext;
+    friend class Attempt;
     struct RootGuard;
 
-    /// State of one round. Waiters capture the shared_ptr before
-    /// suspending so the completion event outlives map mutations and the
-    /// round task that publishes the outcome.
-    struct Round {
+    /// One attempt. Waiters capture the shared_ptr before suspending so the
+    /// completion event outlives map mutations and the attempt task that
+    /// publishes the result.
+    struct AttemptState {
         async::event completion;
-        RoundOutcome outcome = RoundOutcome::Stale;
+        Result result = Result::Stale;
 
-        /// Node generation this round was spawned against; the commit
+        /// Node generation this attempt was started against; the commit
         /// filter compares it to decide whether the result still counts.
         std::uint64_t generation = 0;
 
-        /// Candidate edges declared via depend(), deduplicated, in
-        /// declaration order; doubles as the edge-reference registry
-        /// released when the round finishes.
-        llvm::SmallVector<NodeId, 8> candidates;
+        /// Edges recorded via depend(), deduplicated, in order; doubles as
+        /// the edge-reference registry released when the attempt finishes.
+        llvm::SmallVector<NodeId, 8> waits;
     };
 
     struct Node {
-        /// Durable edges, replaced only by a current successful round.
-        llvm::SmallVector<NodeId> deps;
+        /// The edges set_edges() declared.
+        llvm::SmallVector<NodeId> declared;
 
-        /// Durable back-edges: nodes whose durable set contains this one.
+        /// The edges the last current successful attempt waited on.
+        llvm::SmallVector<NodeId> waited;
+
+        /// Back-edges: nodes whose declared or waited edges name this one.
         llvm::SmallVector<NodeId> dependents;
 
-        /// Back-edges of live rounds' candidate sets — an edge is
-        /// cascade-visible from the moment depend() records it.
-        llvm::SmallVector<NodeId> candidate_dependents;
+        /// Back-edges of live attempts' waits — an edge is visible to
+        /// invalidation from the moment depend() records it.
+        llvm::SmallVector<NodeId> waiting_dependents;
 
         bool dirty = true;
         bool compiling = false;
 
-        /// In-flight interest count: one per request() join plus one per
-        /// candidate edge held by a live round. Staying at zero while
-        /// compiling fires this node's round token. Not a lifetime count.
+        /// In-flight interest count: one per join plus one per edge a live
+        /// attempt waits on. Staying at zero while compiling fires the
+        /// attempt's token. Not a lifetime count.
         std::uint32_t refcount = 0;
 
-        /// A foreground requester holds (or held) interest in this round.
+        /// A foreground waiter holds (or held) interest in this attempt.
         /// Sticky while any interest remains and reset when the count
         /// returns to zero.
         bool foreground = false;
@@ -299,18 +260,23 @@ private:
         /// A zero-interest cancellation check is already queued.
         bool zero_check_pending = false;
 
-        /// Monotonic counter bumped by update(); the round-identity filter
-        /// compares against it at commit.
+        /// Monotonic counter bumped by invalidate(); the attempt-identity
+        /// filter compares against it at commit.
         std::uint64_t generation = 0;
 
-        /// Advisory cancellation scope of the current round; replaced
-        /// after every cancel so the next round starts with a fresh token.
+        /// Advisory cancellation scope of the current attempt; replaced
+        /// after every cancel so the next attempt starts with a fresh
+        /// token.
         std::unique_ptr<async::cancellation_source> source =
             std::make_unique<async::cancellation_source>();
 
-        /// Current (or most recent) round.
-        std::shared_ptr<Round> round;
+        /// Current (or most recent) attempt.
+        std::shared_ptr<AttemptState> attempt;
     };
+
+    /// invalidate(), the attempt of `spared` left current: it is the waiter
+    /// whose check found the change.
+    llvm::SmallVector<NodeId> invalidate(NodeId id, std::optional<NodeId> spared);
 
     /// Interest +1; creates the node if needed.
     void acquire(NodeId id);
@@ -319,70 +285,71 @@ private:
     /// drops to zero mid-compile.
     void release(NodeId id);
 
-    /// Fires the node's round token if its interest is still zero one
+    /// Fires the node's attempt token if its interest is still zero one
     /// event-loop tick after release() saw it drop. The delay lets
-    /// transient drops survive: a retry respawning after update()
+    /// transient drops survive: a retry starting after invalidate()
     /// re-acquires its retained dependencies within the same drain cycle.
     async::task<> zero_interest_check(NodeId id);
 
-    /// Fire the current round's advisory token and install a fresh scope.
-    void cancel_round(Node& node);
+    /// Fire the current attempt's advisory token and install a fresh scope.
+    void cancel_attempt(Node& node);
 
     /// Mark a node and its live edge closure foreground; nodes depended
-    /// later inherit through depend()'s propagation.
+    /// on later inherit through depend()'s propagation.
     void mark_foreground(NodeId id);
 
-    /// Start a round for a dirty node in the graph's task group. Returns
-    /// false when the graph is shutting down.
-    bool spawn_round(NodeId id);
+    /// Start an attempt of `work` for a dirty node in the graph's task
+    /// group. Returns false when the graph is shutting down.
+    bool start_attempt(NodeId id, Work work);
 
-    async::task<> round_task(NodeId id,
-                             std::shared_ptr<Round> round,
-                             async::cancellation_token token);
+    async::task<> attempt_task(NodeId id,
+                               std::shared_ptr<AttemptState> attempt,
+                               Work work,
+                               async::cancellation_token token);
 
-    /// Synchronous commit: filter the reported outcome through round
-    /// identity, remove candidate back-edges, promote candidates to the
-    /// durable set on current success, release edge references and wake
-    /// waiters.
-    void finish_round(NodeId id, Round& round, RoundOutcome reported);
+    /// Synchronous commit: filter the reported result through attempt
+    /// identity, remove the waits' back-edges, make them the waited edges
+    /// on current success, release edge references and wake waiters.
+    void finish_attempt(NodeId id, AttemptState& attempt, Result reported);
 
-    /// Replace the durable edge set and its back-edges. Shared by round
-    /// commit (candidates promote) and declare(); every named node must
-    /// already exist.
-    void set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps);
+    /// Replace one of the node's edge sets and keep the back-edges of
+    /// their union.
+    void replace_edges(NodeId id,
+                       llvm::SmallVector<NodeId> Node::* set,
+                       llvm::ArrayRef<NodeId> deps);
 
-    /// Register `dep` in the current round's candidate set of `self`: one
+    /// Register `dep` among the current attempt's waits of `self`: one
     /// interest reference, the back-edge, and foreground propagation, all
-    /// at once. Idempotent per round.
-    void record_candidate(NodeId self, NodeId dep);
+    /// at once. Idempotent per attempt.
+    void record_wait(NodeId self, NodeId dep);
 
-    /// RoundContext::depend() body.
-    async::task<DependResult> depend_from(NodeId self, async::cancellation_token token, NodeId dep);
+    /// Attempt::depend() body.
+    async::task<Result>
+        depend_from(NodeId self, async::cancellation_token token, NodeId dep, Work work);
 
-    /// See RoundContext::reference().
-    void reference_from(NodeId self, NodeId dep);
+    /// Wait for one attempt of a node: Success at once for a clean node
+    /// whose product holds; otherwise the running attempt, or one of
+    /// `work` started now. Failed when waiting would close a cycle back to
+    /// `waiter`, the node doing the waiting (joins pass none); none when
+    /// the graph is shutting down.
+    async::task<std::optional<Result>> await_attempt(NodeId id,
+                                                     const Work& work,
+                                                     std::optional<NodeId> waiter);
 
-    /// Wait for one round of a node, spawning it when none is live: its
-    /// outcome, Success at once for a clean node; Failed when waiting would
-    /// close a cycle back to `waiter`, the node doing the waiting (requests
-    /// pass none); none when the graph is shutting down.
-    async::task<std::optional<RoundOutcome>> await_round(NodeId id, std::optional<NodeId> waiter);
+    /// Wait until a node reaches Success or Failed, starting fresh attempts
+    /// while stale ones end.
+    async::task<Result> join_node(NodeId id, Work work, NodeId waiter);
 
-    /// Wait until a node reaches a terminal outcome, respawning its round
-    /// whenever a stale one invalidates the previous attempt.
-    async::task<bool> join_node(NodeId id, NodeId waiter);
-
-    /// Whether waiting on `target` would deadlock: walks live rounds'
-    /// candidate edges to see if the wait chain reaches back to `waiter`.
+    /// Whether waiting on `target` would deadlock: walks live attempts'
+    /// waits to see if the wait chain reaches back to `waiter`.
     bool has_wait_cycle(NodeId target, NodeId waiter) const;
 
-    llvm::DenseMap<unsigned, RoundRunner> runners;
     llvm::DenseMap<NodeId, Node> nodes;
 
-    /// Refuses new rounds once shutdown begins.
+    /// Refuses new attempts once shutdown begins.
     bool closed = false;
 
-    /// Owns every round task; structured shutdown via shutdown().
+    /// Owns every attempt task; structured shutdown via shutdown().
     /// Completed child frames are reclaimed eagerly by the group.
     async::task_group<> tasks;
 };

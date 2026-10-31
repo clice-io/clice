@@ -9,13 +9,29 @@ import :vfs.file_table;
 
 namespace clice {
 
-/// A command a file compiles under: one of its database entries
-/// (CDBExact); for a file without entries that a rule's default command
-/// covers, that command (Default); for a provisional member, the command it
-/// borrows (Inferred).
+/// A command a file compiles under, before the rules edit it: one of its
+/// database entries (Database); for a file without entries that a rule's
+/// default command covers, that command (Default); for a provisional
+/// member, the command it borrows (Borrowed), or the builtin one when no
+/// unit lends it any (Fallback); for a header, one of its host's (Host).
 struct Candidate {
-    CommandID command;
+    /// The command as the entry, the rule or the builtin gives it.
+    CommandID base;
+
     CommandSource source;
+
+    /// The file the command is the command of, when not the file compiling
+    /// under it: the header's host, or the unit lending it — the first of a
+    /// chain of lenders, whose command it is. Invalid for the file's own.
+    Fid from;
+
+    /// This command of `owner` as `owner` lends it to another file, `as`
+    /// Host or Borrowed: from `owner`, or from the file it is from in turn.
+    Candidate lent(Fid owner, CommandSource as) const {
+        return {.base = base, .source = as, .from = from.valid() ? from : owner};
+    }
+
+    friend bool operator==(const Candidate&, const Candidate&) = default;
 };
 
 /// The rules-applied edits of a set of files: every matching active rule
@@ -96,14 +112,13 @@ public:
 
     /// The commands a file compiles under, in build order: its entries, or
     /// the default command of the first matching rule that declares one, or
-    /// the command a provisional member borrows. The first is the default
+    /// a provisional member's command. The first is the default
     /// selection; empty when the file has none — such a file is never a
     /// header's host.
     llvm::SmallVector<Candidate, 2> commands(Fid file);
 
     /// The edits the rules matching any of `paths` contribute, in
-    /// declaration order, each rule once — a header borrowing a host's
-    /// command passes both so it inherits the host's edits.
+    /// declaration order, each rule once.
     Edits edits(llvm::ArrayRef<CanonicalRef> paths) const;
 
     Edits edits(CanonicalRef path) const {
@@ -116,22 +131,19 @@ public:
     /// clang does not know counting as C++.
     CommandID builtin(CanonicalRef path);
 
-    /// Apply the edits of `paths` (and a run's extras) to `base`: the
-    /// effective command of `file`, whose language is derived from the
-    /// edited command and `language_path` (the file itself, or the host a
-    /// header borrows from).
-    CommandRef resolve(Fid file,
-                       CommandID base,
-                       CommandSource source,
-                       llvm::ArrayRef<CanonicalRef> paths,
-                       llvm::StringRef language_path,
-                       llvm::ArrayRef<std::string> extra_prepend = {},
-                       llvm::ArrayRef<std::string> extra_append = {});
+    /// `candidate` as `file` compiles under it: edited by the rules matching
+    /// the file it is from and `file` itself, each once in declaration
+    /// order, and by a run's extras; in the language of the file it is from
+    /// for a header, or for a file compiling in its host, else in its own.
+    CommandRef apply_rules(Fid file,
+                           const Candidate& candidate,
+                           llvm::ArrayRef<std::string> extra_prepend = {},
+                           llvm::ArrayRef<std::string> extra_append = {});
 
-    /// Hash of the edits for `paths`, 0 when none apply: the rules' part of
-    /// a unit's command identity (command_identity), the project root taken
-    /// as `${workspace}`.
-    std::uint64_t edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
+    /// Hash of the edits apply_rules makes of `candidate` for `file`, 0
+    /// when none apply: the rules' part of a command identity
+    /// (command_identity), the project root taken as `${workspace}`.
+    std::uint64_t edit_hash(Fid file, const Candidate& candidate) const;
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
@@ -139,19 +151,19 @@ public:
     /// then the provisional members.
     std::vector<Fid> members();
 
-    /// Record that the user saved `file`, a source the build does not
-    /// declare: a provisional member while it has a lender and no host (see
+    /// Record that the user opened or saved `file`, a source the build does
+    /// not declare: a provisional member while no unit hosts it (see
     /// Project::refresh_provisional), until an entry or a rule covers it.
     /// False when it is recorded already, or lies in a project nested in
     /// the root (nested_project).
     bool record(Fid file);
 
-    /// Drop the record of `file`, and its borrowed command.
+    /// Drop the record of `file`, and its command.
     void forget(Fid file);
 
-    /// The files the user saved that the build does not declare, unordered:
-    /// persisted with the index, so the members they make outlive the
-    /// session.
+    /// The files the user opened or saved that the build does not declare,
+    /// unordered: persisted with the index, so the members they make
+    /// outlive the session.
     const llvm::DenseSet<Fid>& recorded() const {
         return records;
     }
@@ -161,15 +173,9 @@ public:
         return records_generation;
     }
 
-    /// Set the command a recorded file borrows as a provisional member,
-    /// nullopt while it is none; returns the one it borrowed before.
-    std::optional<CommandID> borrow(Fid file, std::optional<CommandID> command);
-
-    /// The command `file` borrows from `lender` compiling under `command`:
-    /// the edits of the rules matching the lender but not the file applied,
-    /// so rendering it as the file's own command, which applies the file's
-    /// rules, edits it for both, each rule once.
-    CommandID lend(CommandID command, CanonicalRef lender, CanonicalRef file);
+    /// Set the command a recorded file compiles under as a provisional
+    /// member, nullopt while it is none; returns the one it had before.
+    std::optional<Candidate> set_command(Fid file, std::optional<Candidate> command);
 
     /// The directories the default-command rules cover sources under, none
     /// inside another, and the cache directory a walk of them skips.
@@ -210,17 +216,18 @@ public:
     bool declared(Fid file);
 
     /// The command of the entry writing the precompiled header `command`
-    /// reads (CommandTable::pch_inputs) — the
-    /// `cmake_pch.hxx.cxx` entry of a CMake target with precompiled
-    /// headers; of the configurations writing one each from that file, the
-    /// one writing this very PCH. The PCH on disk may come from another
-    /// compiler, so clice builds its own under that command, edited as the
-    /// reading command was — by the rules matching `paths` and a run's
-    /// extras: built under other flags, it would hold other code than that
-    /// command parses. Nullopt when the build writes none of them, and for
-    /// a command writing a precompiled header itself.
-    std::optional<CommandRef> pch_unit(CommandID command,
-                                       llvm::ArrayRef<CanonicalRef> paths,
+    /// reads (CommandTable::pch_inputs), `command` being `candidate` as
+    /// `file` compiles under it — the `cmake_pch.hxx.cxx` entry of a CMake
+    /// target with precompiled headers; of the configurations writing one
+    /// each from that file, the one writing this very PCH. The PCH on disk
+    /// may come from another compiler, so clice builds its own under that
+    /// command, edited as the reading command was — by the rules
+    /// apply_rules applies and a run's extras: built under other flags, it
+    /// would hold other code than that command parses. Nullopt when the build writes none of them,
+    /// and for a command writing a precompiled header itself.
+    std::optional<CommandRef> pch_unit(Fid file,
+                                       const Candidate& candidate,
+                                       CommandID command,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
 
@@ -238,6 +245,10 @@ public:
 
 private:
     llvm::SmallVector<const CompiledRule*> matching(CanonicalRef path) const;
+
+    /// The files whose rules edit `candidate` for `file`: the one it is
+    /// from, then `file`.
+    llvm::SmallVector<CanonicalRef, 2> rule_paths(Fid file, const Candidate& candidate) const;
 
     /// The edits of `matched` rules, in declaration order.
     Edits edits_of(llvm::ArrayRef<const CompiledRule*> matched) const;
@@ -306,7 +317,7 @@ private:
     std::optional<std::vector<Fid>> covered_sources;
     llvm::DenseSet<Fid> records;
     std::uint64_t records_generation = 0;
-    llvm::DenseMap<Fid, CommandID> provisional;
+    llvm::DenseMap<Fid, Candidate> provisional;
 
     /// declared_source's answers, valid while the database holds
     /// `declared_source_count` sources.
@@ -328,9 +339,9 @@ private:
 /// deeper, then by path.
 std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database);
 
-/// Every file under the walk's roots, version control metadata and the
-/// cache directory skipped. File system work only, so it can run off the
-/// event loop: a rule without patterns has the whole project walked.
+/// Every file under the walk's roots, version control metadata, the cache
+/// directory and the projects nested in a root skipped. File system work only, so it can run off
+/// the event loop: a rule without patterns has the whole project walked.
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 
 /// Whether `file` is the project's own — what a refactoring may edit and

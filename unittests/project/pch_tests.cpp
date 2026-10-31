@@ -67,7 +67,7 @@ void execute(F&& fn) {
 }
 
 ZEST_CASE(PoisonKeyRecordsOnce) {
-    // Two acquires of one poisoned key observe the same Failed round; the
+    // Two acquires of one poisoned key observe the same Failed attempt; the
     // worker names the build, so its one death is attributed to it at once — no
     // resend — and recorded on the key.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
@@ -76,7 +76,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHOutcome> a, b;
+    std::optional<Result> a, b;
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
@@ -89,8 +89,8 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
         co_await async::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHOutcome::Failed);
-    ZEXPECT(b == PCHOutcome::Failed);
+    ZEXPECT(a == Result::Failed);
+    ZEXPECT(b == Result::Failed);
     ZEXPECT(deaths == 1);
     auto* crash = build_crash(project, "shared-key");
     ZASSERT(crash != nullptr);
@@ -101,12 +101,12 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
 
 ZEST_CASE(OwnerGoneStillRecords) {
     // The dispatch owner's request is cancelled right after its spawn: the
-    // round runs to its real reply, so the death is still recorded on the key —
+    // attempt runs to its real reply, so the death is still recorded on the key —
     // a crash is never dropped because the requester went away (a stale
-    // round's crashes still count).
+    // attempt's crashes still count).
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
-    std::optional<PCHOutcome> joined;
+    std::optional<Result> joined;
     async::cancellation_source owner_scope;
 
     execute([&]() -> async::task<> {
@@ -126,7 +126,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
         co_await async::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
     });
 
-    ZEXPECT(joined == PCHOutcome::Failed);
+    ZEXPECT(joined == Result::Failed);
     ZEXPECT(build_crash(project, "shared-key") != nullptr);
 
     logging::reset_anomaly_for_testing();
@@ -139,7 +139,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
     pool.on_crash = [&](const WorkerCrashInfo&) {
         deaths += 1;
     };
-    std::optional<PCHOutcome> refused, retried;
+    std::optional<Result> refused, retried;
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
@@ -152,8 +152,8 @@ ZEST_CASE(ForgetLiftsRefusal) {
         retried = co_await acquire_pch(project, request(poison));
     });
 
-    ZEXPECT(refused == PCHOutcome::Failed);
-    ZEXPECT(retried == PCHOutcome::Failed);
+    ZEXPECT(refused == Result::Failed);
+    ZEXPECT(retried == Result::Failed);
     ZEXPECT(deaths == 2);
 
     logging::reset_anomaly_for_testing();
@@ -180,7 +180,7 @@ ZEST_CASE(DeclaredCrashLifts) {
             .whole_file = true,
         };
     };
-    std::optional<PCHOutcome> refused, fixed;
+    std::optional<Result> refused, fixed;
 
     execute([&]() -> async::task<> {
         co_await acquire_pch(project, whole());
@@ -191,8 +191,8 @@ ZEST_CASE(DeclaredCrashLifts) {
         fixed = co_await acquire_pch(project, whole());
     });
 
-    ZEXPECT(refused == PCHOutcome::Failed);
-    ZEXPECT(fixed == PCHOutcome::Ready);
+    ZEXPECT(refused == Result::Failed);
+    ZEXPECT(fixed == Result::Success);
     ZEXPECT(deaths == 1);
 
     logging::reset_anomaly_for_testing();
@@ -201,7 +201,7 @@ ZEST_CASE(DeclaredCrashLifts) {
 ZEST_CASE(SharedBuildBothReady) {
     // The success half of the matrix: one build serves every joiner, no
     // crash is recorded, and the pair ends up registered under the key.
-    std::optional<PCHOutcome> a, b;
+    std::optional<Result> a, b;
 
     execute([&]() -> async::task<> {
         auto text = "#define X 1\n";
@@ -214,8 +214,8 @@ ZEST_CASE(SharedBuildBothReady) {
         co_await async::when_all(acquire_a(), acquire_b());
     });
 
-    ZEXPECT(a == PCHOutcome::Ready);
-    ZEXPECT(b == PCHOutcome::Ready);
+    ZEXPECT(a == Result::Success);
+    ZEXPECT(b == Result::Success);
     ZEXPECT(build_crash(project, "shared-key") == nullptr);
     auto it = project.pch_cache.find("shared-key");
     ZASSERT(it != project.pch_cache.end());
@@ -229,11 +229,11 @@ ZEST_CASE(ConsumeFailuresStopKey) {
     // read would rebuild forever without one. A clean consumption clears
     // the record; failures in a row stop the key and acquisition fails
     // fast, before any dispatch.
-    std::optional<PCHOutcome> cleared, stopped;
+    std::optional<Result> cleared, stopped;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == Result::Success);
         pch_consume_failed(project, "shared-key");
-        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == Result::Success);
         pch_consume_succeeded(project, "shared-key");
         pch_consume_failed(project, "shared-key");
         cleared = co_await acquire_pch(project, request("#define X 1\n"));
@@ -241,33 +241,33 @@ ZEST_CASE(ConsumeFailuresStopKey) {
         pch_consume_failed(project, "shared-key");
         stopped = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(cleared == PCHOutcome::Ready);
-    ZEXPECT(stopped == PCHOutcome::Failed);
+    ZEXPECT(cleared == Result::Success);
+    ZEXPECT(stopped == Result::Failed);
 }
 
 ZEST_CASE(SharedPairFailsOnce) {
     // Two parses read the same pair and both fail to: the second finds it
     // retracted already, and the key keeps building.
-    std::optional<PCHOutcome> rebuilt;
+    std::optional<Result> rebuilt;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == Result::Success);
         pch_consume_failed(project, "shared-key");
         pch_consume_failed(project, "shared-key");
         rebuilt = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(rebuilt == PCHOutcome::Ready);
+    ZEXPECT(rebuilt == Result::Success);
 }
 
 ZEST_CASE(EvictedPairNotCounted) {
     // A pair the store evicted while a parse read it says nothing of its
     // bytes: its consumers' failures count nothing, and the key keeps
     // building however often that happens.
-    std::optional<PCHOutcome> first, second;
+    std::optional<Result> first, second;
     execute([&]() -> async::task<> {
         auto evict = [&] {
             project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
         };
-        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == PCHOutcome::Ready);
+        ZASSERT(co_await acquire_pch(project, request("#define X 1\n")) == Result::Success);
         evict();
         pch_consume_failed(project, "shared-key");
         first = co_await acquire_pch(project, request("#define X 1\n"));
@@ -275,8 +275,8 @@ ZEST_CASE(EvictedPairNotCounted) {
         pch_consume_failed(project, "shared-key");
         second = co_await acquire_pch(project, request("#define X 1\n"));
     });
-    ZEXPECT(first == PCHOutcome::Ready);
-    ZEXPECT(second == PCHOutcome::Ready);
+    ZEXPECT(first == Result::Success);
+    ZEXPECT(second == Result::Success);
 }
 
 };  // ZEST_SUITE(PCHAcquisition)

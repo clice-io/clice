@@ -6,7 +6,7 @@ source = "host"
 from = "src/main.cpp"
 
 [test."src/extra.cpp".compile_command]
-source = "inferred"
+source = "borrowed"
 from = "src/main.cpp"
 
 [test."tools/gen.cpp".compile_command]

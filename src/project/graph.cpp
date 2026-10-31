@@ -4,9 +4,9 @@ import :project.graph;
 
 namespace clice {
 
-/// Request scope: holds the root reference for one request() join. The
-/// destructor runs on every exit path, including cancellation unwind of
-/// the requester's frame.
+/// Join scope: holds the root reference for one join(). The destructor
+/// runs on every exit path, including cancellation unwind of the waiter's
+/// frame.
 struct TaskGraph::RootGuard {
     TaskGraph& graph;
     NodeId id;
@@ -23,26 +23,17 @@ struct TaskGraph::RootGuard {
     }
 };
 
-async::task<DependResult> RoundContext::depend(NodeId dep) {
-    return graph.depend_from(self, tok, dep);
+async::task<Result> Attempt::depend(NodeId dep, Work work) {
+    return graph.depend_from(self, tok, dep, std::move(work));
 }
 
-void RoundContext::reference(NodeId dep) {
-    graph.reference_from(self, dep);
-}
-
-bool RoundContext::current() const {
+bool Attempt::current() const {
     auto& node = graph.nodes.find(self)->second;
-    return node.round->generation == node.generation;
+    return node.attempt->generation == node.generation;
 }
 
-bool RoundContext::foreground() const {
+bool Attempt::foreground() const {
     return graph.nodes.find(self)->second.foreground;
-}
-
-void TaskGraph::set_runner(NodeKind kind, RoundRunner run) {
-    assert(!runners.contains(std::to_underlying(kind)) && "runner set twice");
-    runners[std::to_underlying(kind)] = std::move(run);
 }
 
 void TaskGraph::acquire(NodeId id) {
@@ -57,17 +48,17 @@ void TaskGraph::release(NodeId id) {
         node.foreground = false;
     }
 
-    // No interest left in an in-flight round. The drop is often transient —
-    // a stale round's edges being re-acquired by the retry that replaces
-    // it — so don't cancel right away: defer the decision by one event-loop
-    // tick. Synchronous re-acquisition happens within the current drain
-    // cycle, strictly before the check fires, so retained dependencies are
-    // handed over to the new round instead of being killed and restarted;
-    // only a sustained zero cancels.
+    // No interest left in an in-flight attempt. The drop is often
+    // transient — a stale attempt's edges being re-acquired by the retry
+    // that replaces it — so don't cancel right away: defer the decision by
+    // one event-loop tick. Synchronous re-acquisition happens within the
+    // current drain cycle, strictly before the check fires, so retained
+    // dependencies are handed over to the new attempt instead of being
+    // killed and restarted; only a sustained zero cancels.
     if(node.refcount == 0 && node.compiling && !node.zero_check_pending) {
         node.zero_check_pending = true;
         if(!tasks.spawn(zero_interest_check(id))) {
-            // Graph is shutting down; every round token fires anyway.
+            // Graph is shutting down; every attempt token fires anyway.
             nodes.find(id)->second.zero_check_pending = false;
         }
     }
@@ -82,14 +73,14 @@ async::task<> TaskGraph::zero_interest_check(NodeId id) {
     auto& node = nodes.find(id)->second;
     node.zero_check_pending = false;
     if(node.refcount == 0 && node.compiling) {
-        // Advisory: the closure winds down and reports, and the finished
-        // round releases its own edge references in turn (cascading the
+        // Advisory: the work winds down and reports, and the finished
+        // attempt releases its own edge references in turn (cascading the
         // loss of interest).
-        cancel_round(node);
+        cancel_attempt(node);
     }
 }
 
-void TaskGraph::cancel_round(Node& node) {
+void TaskGraph::cancel_attempt(Node& node) {
     node.source->cancel();
     node.source = std::make_unique<async::cancellation_source>();
 }
@@ -107,104 +98,105 @@ void TaskGraph::mark_foreground(NodeId id) {
 
     // A late join must upgrade the whole live edge closure, not just the
     // root: a dependency already running at Low re-reads its class when a
-    // preempted round retries, and without the closure mark that retry
+    // preempted attempt retries, and without the closure mark that retry
     // would stay Low — cancellable by the very foreground waiting on it.
-    // Only live rounds' candidate edges propagate: they hold interest, so
-    // the flag is guaranteed its refcount-zero reset. Durable edges would
-    // tag clean cached dependencies no request ever acquires — the mark
-    // could never clear, and an unrelated background rebuild much later
-    // would run at foreground class. Edges the round declares later
-    // inherit through depend().
-    if(node.compiling && node.round) {
-        for(auto dep: node.round->candidates) {
+    // Only live attempts' waits propagate: they hold interest, so the flag
+    // is guaranteed its refcount-zero reset. Settled edges would tag clean
+    // cached dependencies no waiter ever acquires — the mark could never
+    // clear, and an unrelated background rebuild much later would run at
+    // foreground class. Edges the attempt waits on later inherit through
+    // depend().
+    if(node.compiling && node.attempt) {
+        for(auto dep: node.attempt->waits) {
             mark_foreground(dep);
         }
     }
 }
 
-bool TaskGraph::spawn_round(NodeId id) {
+bool TaskGraph::start_attempt(NodeId id, Work work) {
     if(closed) {
         return false;
     }
 
     auto& node = nodes.find(id)->second;
-    assert(!node.compiling && "spawn requested while a round is in flight");
-    assert(runners.contains(std::to_underlying(id.kind)) && "request for a kind without a runner");
+    assert(!node.compiling && "attempt started while one is in flight");
     node.compiling = true;
-    node.round = std::make_shared<Round>();
-    node.round->generation = node.generation;
-    auto round = node.round;
+    node.attempt = std::make_shared<AttemptState>();
+    node.attempt->generation = node.generation;
+    auto attempt = node.attempt;
     auto token = node.source->token();
 
-    // spawn resumes the round synchronously up to its first suspension,
+    // spawn resumes the attempt synchronously up to its first suspension,
     // which may insert nodes and invalidate references — don't touch
     // `node` below.
-    [[maybe_unused]] bool spawned = tasks.spawn(round_task(id, round, std::move(token)));
+    [[maybe_unused]] bool spawned =
+        tasks.spawn(attempt_task(id, attempt, std::move(work), std::move(token)));
     assert(spawned && "task group refused a spawn before shutdown");
     return true;
 }
 
-async::task<> TaskGraph::round_task(NodeId id,
-                                    std::shared_ptr<Round> round,
-                                    async::cancellation_token token) {
-    RoundContext ctx(*this, id, std::move(token));
-    auto reported = co_await runners.find(std::to_underlying(id.kind))->second(ctx, id);
-    finish_round(id, *round, reported);
+async::task<> TaskGraph::attempt_task(NodeId id,
+                                      std::shared_ptr<AttemptState> attempt,
+                                      Work work,
+                                      async::cancellation_token token) {
+    Attempt context(*this, id, std::move(token));
+    auto reported = co_await work.run(context);
+    finish_attempt(id, *attempt, reported);
 }
 
-void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
+void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported) {
     auto& node = nodes.find(id)->second;
-    assert(node.compiling && node.round.get() == &round && "round bookkeeping out of sync");
+    assert(node.compiling && node.attempt.get() == &attempt && "attempt bookkeeping out of sync");
 
-    // An overtaken round has no result about the current content,
+    // An overtaken attempt has no result about the current content,
     // whatever it reported: a stale Success must not clear dirty, and a
     // stale Failed must not stop waiters from retrying with the new
-    // content. Outcome always passes through round identity.
-    auto outcome = node.generation == round.generation ? reported : RoundOutcome::Stale;
+    // content.
+    auto result = node.generation == attempt.generation ? reported : Result::Stale;
 
-    // Candidate back-edges go with the round.
-    for(auto dep: round.candidates) {
-        auto& backs = nodes.find(dep)->second.candidate_dependents;
+    // The waits' back-edges go with the attempt.
+    for(auto dep: attempt.waits) {
+        auto& backs = nodes.find(dep)->second.waiting_dependents;
         auto pos = ranges::find(backs, id);
-        assert(pos != backs.end() && "candidate back-edge lost");
+        assert(pos != backs.end() && "wait back-edge lost");
         backs.erase(pos);
     }
 
-    if(outcome == RoundOutcome::Success) {
+    if(result == Result::Success) {
         node.dirty = false;
-
-        // Only a current successful round may replace the durable edge
-        // set; stale and failed candidate sets are discarded above.
-        set_durable_edges(id, round.candidates);
+        replace_edges(id, &Node::waited, attempt.waits);
     }
 
-    node.compiling = false;
+    // Re-find: replace_edges may materialize nodes.
+    nodes.find(id)->second.compiling = false;
 
-    for(auto dep: round.candidates) {
+    for(auto dep: attempt.waits) {
         release(dep);
     }
 
     // Publish last: resumes triggered by set() are deferred by the event
     // loop, so nothing re-enters the graph mid-commit.
-    round.outcome = outcome;
-    round.completion.set();
+    attempt.result = result;
+    attempt.completion.set();
 }
 
-void TaskGraph::set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps) {
-    auto& node = nodes.find(id)->second;
-    for(auto dep: node.deps) {
+void TaskGraph::replace_edges(NodeId id,
+                              llvm::SmallVector<NodeId> Node::* set,
+                              llvm::ArrayRef<NodeId> deps) {
+    for(auto dep: dependencies(id)) {
         auto& backs = nodes.find(dep)->second.dependents;
         auto pos = ranges::find(backs, id);
-        assert(pos != backs.end() && "durable back-edge lost");
+        assert(pos != backs.end() && "back-edge lost");
         backs.erase(pos);
     }
-    node.deps.assign(deps.begin(), deps.end());
-    for(auto dep: deps) {
+    auto& edges = nodes.find(id)->second.*set;
+    edges.assign(deps.begin(), deps.end());
+    for(auto dep: dependencies(id)) {
         nodes.find(dep)->second.dependents.push_back(id);
     }
 }
 
-void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
+void TaskGraph::set_edges(NodeId id, llvm::ArrayRef<NodeId> deps) {
     nodes.try_emplace(id);
 
     // Broken input can name a unit as its own import; a node never
@@ -218,90 +210,92 @@ void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
     for(auto dep: unique) {
         nodes.try_emplace(dep);
     }
-    set_durable_edges(id, unique);
+    replace_edges(id, &Node::declared, unique);
 }
 
-void TaskGraph::record_candidate(NodeId self, NodeId dep) {
-    auto round = nodes.find(self)->second.round;
-    if(ranges::contains(round->candidates, dep)) {
+void TaskGraph::record_wait(NodeId self, NodeId dep) {
+    auto attempt = nodes.find(self)->second.attempt;
+    if(ranges::contains(attempt->waits, dep)) {
         return;
     }
-    round->candidates.push_back(dep);
+    attempt->waits.push_back(dep);
     acquire(dep);
-    nodes.find(dep)->second.candidate_dependents.push_back(self);
+    nodes.find(dep)->second.waiting_dependents.push_back(self);
     // Re-find: acquire may rehash the map.
     if(nodes.find(self)->second.foreground) {
         mark_foreground(dep);
     }
 }
 
-void TaskGraph::reference_from(NodeId self, NodeId dep) {
-    if(dep == self) {
-        return;
-    }
-    record_candidate(self, dep);
-}
-
-async::task<DependResult> TaskGraph::depend_from(NodeId self,
-                                                 async::cancellation_token token,
-                                                 NodeId dep) {
+async::task<Result>
+    TaskGraph::depend_from(NodeId self, async::cancellation_token token, NodeId dep, Work work) {
     // A node can never wait on itself.
     if(dep == self) {
-        co_return DependResult::Failed;
+        co_return Result::Failed;
     }
 
-    // Synchronous phase: the edge takes effect for cascade, interest and
-    // foreground the moment it is declared — no window between "the round
-    // uses dep" and "update(dep) reaches the round".
-    record_candidate(self, dep);
+    // Synchronous phase: the edge takes effect for invalidation, interest
+    // and foreground the moment it is recorded — no window between "the
+    // attempt uses dep" and "invalidate(dep) reaches the attempt".
+    record_wait(self, dep);
 
-    // Race the dependency wait against this round's own advisory token: a
-    // voided round must stop blocking on slow dependencies and wind down,
-    // or it would delay the fresh round behind it.
-    auto result = co_await async::with_token(join_node(dep, self), token);
+    // Race the dependency wait against this attempt's own advisory token:
+    // a voided attempt must stop blocking on slow dependencies and wind
+    // down, or it would delay the fresh attempt behind it.
+    auto result = co_await async::with_token(join_node(dep, std::move(work), self), token);
     if(result.is_cancelled()) {
-        co_return DependResult::Cancelled;
+        co_return Result::Stale;
     }
-    co_return *result ? DependResult::Ready : DependResult::Failed;
+    co_return *result;
 }
 
-async::task<std::optional<RoundOutcome>> TaskGraph::await_round(NodeId id,
-                                                                std::optional<NodeId> waiter) {
+async::task<std::optional<Result>> TaskGraph::await_attempt(NodeId id,
+                                                            const Work& work,
+                                                            std::optional<NodeId> waiter) {
     if(!nodes.find(id)->second.dirty) {
-        co_return RoundOutcome::Success;
+        switch(work.check ? work.check() : Check::Holds) {
+            case Check::Holds: co_return Result::Success;
+            // Only the node: what its dependents built from the product
+            // stands.
+            case Check::ProductGone: nodes.find(id)->second.dirty = true; break;
+            case Check::InputsChanged: invalidate(id, waiter); break;
+        }
     }
-    if(!nodes.find(id)->second.compiling && !spawn_round(id)) {
+    if(!nodes.find(id)->second.compiling && !start_attempt(id, work)) {
         co_return std::nullopt;
     }
 
-    // Re-find: spawn_round runs the closure synchronously, which may
-    // rehash the map (and may even finish the round outright).
-    auto round = nodes.find(id)->second.round;
+    // Re-find: start_attempt runs the work synchronously, which may rehash
+    // the map (and may even finish the attempt outright).
+    auto attempt = nodes.find(id)->second.attempt;
 
-    // Blocking on a node whose live wait chain reaches back to the
-    // waiting node would deadlock — fail as a dependency cycle instead.
-    if(!round->completion.is_set() && waiter && has_wait_cycle(id, *waiter)) {
-        co_return RoundOutcome::Failed;
+    // Blocking on a node whose live wait chain reaches back to the waiting
+    // node would deadlock — fail as a dependency cycle instead.
+    if(!attempt->completion.is_set() && waiter && has_wait_cycle(id, *waiter)) {
+        co_return Result::Failed;
     }
 
-    co_await round->completion.wait();
-    co_return round->outcome;
+    co_await attempt->completion.wait();
+    co_return attempt->result;
 }
 
-async::task<bool> TaskGraph::join_node(NodeId id, NodeId waiter) {
+async::task<Result> TaskGraph::join_node(NodeId id, Work work, NodeId waiter) {
     while(true) {
-        // A stale round ended without a result; we still hold interest,
+        // A stale attempt ended without a result; we still hold interest,
         // so drive a new one. Each retry consumes one staleness event —
         // this terminates once the events stop.
-        auto outcome = co_await await_round(id, waiter);
-        if(outcome != RoundOutcome::Stale) {
-            co_return outcome == RoundOutcome::Success;
+        auto result = co_await await_attempt(id, work, waiter);
+        if(!result) {
+            co_return Result::Stale;
+        }
+        if(*result != Result::Stale) {
+            co_return *result;
         }
     }
 }
 
-async::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
-    // Root reference, dropped when the requester exits or its frame is
+async::task<Result> TaskGraph::join(NodeId id, Work work, JoinOptions options) {
+    // Root reference, dropped when the waiter exits or its frame is
     // cancelled.
     RootGuard scope(*this, id);
     if(options.foreground) {
@@ -309,26 +303,21 @@ async::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
     }
 
     while(true) {
-        if(options.validity && !options.validity()) {
-            co_return JoinOutcome::Abandoned;
+        auto result = co_await await_attempt(id, work, std::nullopt);
+        if(!result) {
+            co_return Result::Stale;
         }
-        auto outcome = co_await await_round(id, std::nullopt);
-        if(!outcome) {
-            co_return JoinOutcome::Shutdown;
-        }
-        switch(*outcome) {
-            case RoundOutcome::Success: co_return JoinOutcome::Success;
-            case RoundOutcome::Failed: co_return JoinOutcome::Failed;
-            case RoundOutcome::Stale:
-                if(options.kind == JoinKind::OneAttempt) {
-                    co_return JoinOutcome::Stale;
-                }
-                break;
+        if(*result != Result::Stale || !options.retry || !options.retry()) {
+            co_return *result;
         }
     }
 }
 
-llvm::SmallVector<NodeId> TaskGraph::update(NodeId id) {
+llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id) {
+    return invalidate(id, std::nullopt);
+}
+
+llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id, std::optional<NodeId> spared) {
     llvm::SmallVector<NodeId> queue;
     llvm::SmallVector<NodeId> dirtied;
     llvm::DenseSet<NodeId> visited;
@@ -346,35 +335,26 @@ llvm::SmallVector<NodeId> TaskGraph::update(NodeId id) {
         }
         auto& node = it->second;
 
-        // The in-flight result (if any) is stale: fire the round's token.
-        // Interest is untouched — waiters keep their references and drive
-        // a fresh round once the overtaken one finishes.
-        cancel_round(node);
+        // The in-flight result (if any) is stale: fire the attempt's
+        // token. Interest is untouched — waiters keep their references and
+        // drive a fresh attempt once the overtaken one finishes.
+        if(current != spared) {
+            cancel_attempt(node);
+            node.generation += 1;
+        }
         node.dirty = true;
-        node.generation += 1;
         dirtied.push_back(current);
 
         queue.append(node.dependents.begin(), node.dependents.end());
-        queue.append(node.candidate_dependents.begin(), node.candidate_dependents.end());
+        queue.append(node.waiting_dependents.begin(), node.waiting_dependents.end());
     }
 
     return dirtied;
 }
 
-void TaskGraph::mark_dirty(NodeId id) {
-    auto it = nodes.find(id);
-    if(it == nodes.end()) {
-        return;
-    }
-    // No generation bump and no token: an in-flight round is already
-    // producing the fresh product this mark asks for, and its commit
-    // clears the flag it would find set.
-    it->second.dirty = true;
-}
-
 bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
-    // BFS from the target through live rounds' candidate edges — the
-    // exact set of waits currently in force.
+    // BFS from the target through live attempts' waits — the exact set of
+    // waits currently in force.
     llvm::SmallVector<NodeId> queue;
     llvm::DenseSet<NodeId> visited;
     queue.push_back(target);
@@ -386,11 +366,11 @@ bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
         }
 
         auto it = nodes.find(current);
-        if(it == nodes.end() || !it->second.compiling || !it->second.round) {
+        if(it == nodes.end() || !it->second.compiling || !it->second.attempt) {
             continue;
         }
 
-        for(auto dep: it->second.round->candidates) {
+        for(auto dep: it->second.attempt->waits) {
             if(dep == waiter) {
                 return true;
             }
@@ -401,12 +381,12 @@ bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
 }
 
 async::task<> TaskGraph::shutdown() {
-    // Structured shutdown: refuse new rounds, fire every advisory token,
-    // then wait for the round frames to unwind — each closure still
-    // reports a real outcome on the way out.
+    // Structured shutdown: refuse new attempts, fire every advisory token,
+    // then wait for the attempt frames to unwind — each still reports a
+    // real result on the way out.
     closed = true;
     for(auto& [_, node]: nodes) {
-        cancel_round(node);
+        cancel_attempt(node);
     }
     co_await tasks.join();
 }
@@ -430,16 +410,27 @@ std::uint32_t TaskGraph::refcount(NodeId id) const {
     return it != nodes.end() ? it->second.refcount : 0;
 }
 
-llvm::ArrayRef<NodeId> TaskGraph::dependencies(NodeId id) const {
+llvm::SmallVector<NodeId> TaskGraph::dependencies(NodeId id) const {
+    llvm::SmallVector<NodeId> edges;
     auto it = nodes.find(id);
-    return it != nodes.end() ? llvm::ArrayRef<NodeId>(it->second.deps) : llvm::ArrayRef<NodeId>();
+    if(it == nodes.end()) {
+        return edges;
+    }
+    for(auto* set: {&it->second.declared, &it->second.waited}) {
+        for(auto dep: *set) {
+            if(!ranges::contains(edges, dep)) {
+                edges.push_back(dep);
+            }
+        }
+    }
+    return edges;
 }
 
 bool TaskGraph::idle() const {
     return ranges::all_of(nodes, [](const auto& entry) {
         const auto& node = entry.second;
-        bool round_done = !node.round || node.round->completion.is_set();
-        return !node.compiling && node.refcount == 0 && round_done;
+        bool attempt_done = !node.attempt || node.attempt->completion.is_set();
+        return !node.compiling && node.refcount == 0 && attempt_done;
     });
 }
 
@@ -456,7 +447,7 @@ llvm::SmallVector<NodeId> TaskGraph::compiling() const {
 bool TaskGraph::consistent() const {
     return ranges::all_of(nodes, [](const auto& entry) {
         const auto& node = entry.second;
-        return !node.compiling || (node.round && !node.round->completion.is_set());
+        return !node.compiling || (node.attempt && !node.attempt->completion.is_set());
     });
 }
 

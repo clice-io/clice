@@ -407,7 +407,7 @@ export module m;
         units.push_back({entry.file,
                          applied,
                          commands.input_kind(applied, file_table.resolve(entry.file)),
-                         CommandSource::CDBExact});
+                         CommandSource::Database});
     }
     scan_dependency_graph(cdb, toolchain, graph, units);
 
@@ -450,7 +450,7 @@ export module m1;
         {file,
          candidates[1].command,
          commands.input_kind(candidates[1].command, tmp.path("src/m.cppm")),
-         CommandSource::CDBExact}
+         CommandSource::Database}
     };
     DependencyGraph graph_v2;
     scan_dependency_graph(cdb, toolchain, graph_v2, v2_units);

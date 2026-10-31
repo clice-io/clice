@@ -6,7 +6,7 @@ import :project.command;
 import :project.pch;
 import :project.pcm;
 import :project.project;
-import :project.unit_run;
+import :project.unit;
 import :support.bytes;
 import :support.logging;
 import :support.timer;
@@ -18,50 +18,18 @@ namespace clice {
 
 namespace {
 
-NodeId node(Fid path_id) {
-    return {NodeKind::UnitRun, path_id.raw};
-}
-
-}  // namespace
-
-async::task<UnitRunOutcome> run_unit(Project& project, Fid path_id, UnitRunPlan plan) {
-    project.unit_run_plans[path_id] = std::move(plan);
-    // A clean node left by an earlier success must not satisfy this request
-    // without running: the request's existence means work is owed, so
-    // re-mark the node dirty. Unit-run nodes have no dependents — the
-    // update cascades nowhere.
-    project.graph.update(node(path_id));
-    auto join = co_await project.graph.request(node(path_id), {.kind = JoinKind::OneAttempt});
-    project.unit_run_plans.erase(path_id);
-    auto it = project.unit_run_outcomes.find(path_id);
-    if(it == project.unit_run_outcomes.end()) {
-        assert(join == JoinOutcome::Shutdown && "a finished unit run records its outcome");
-        co_return UnitRunOutcome{};
-    }
-    auto outcome = std::move(it->second);
-    project.unit_run_outcomes.erase(it);
-    co_return outcome;
-}
-
-async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, NodeId id) {
-    using Result = UnitRunOutcome::Result;
-    auto path_id = id.file();
-    auto& finished = project.unit_run_outcomes;
-    auto it = project.unit_run_plans.find(path_id);
-    assert(it != project.unit_run_plans.end() && "a unit run's round spawns only under run_unit");
-    // Copied: the map may rehash under a concurrent run_unit for another
-    // file while this round is suspended.
-    auto plan = it->second;
-
+async::task<UnitResult>
+    compile(Project& project, Attempt& attempt, Fid path_id, UnitRequest request) {
+    using Status = UnitResult::Status;
     auto file_path = std::string(project.file_table.resolve(path_id));
 
     worker::UnitRunParams params;
     params.file = file_path;
     params.project_root = project.root.str();
-    params.index = plan.index;
-    params.errors = plan.errors;
-    params.tidy = std::move(plan.tidy);
-    // Whole-TU runs stick to the build's units and their commands: a
+    params.index = request.index;
+    params.errors = request.errors;
+    params.tidy = std::move(request.tidy);
+    // Units stick to the build's units and their commands: a
     // header, compiled alone under a borrowed command, would fill the
     // index (and the lint report) with guesses, and the units reading it
     // index it as their compile sees it. A file the build dropped whose
@@ -75,12 +43,10 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
         bool read = !project.dep_graph.find_readers(path_id).empty();
         project.index.for_each_contributor(path_id, [&](Fid) { read = true; });
         if(!project.index.indexed(path_id) && !read) {
-            finished[path_id] = {.result = Result::Failed,
+            co_return UnitResult{.status = Status::Failed,
                                  .error = "no compile command found; the file stays uncovered"};
-            co_return RoundOutcome::Failed;
         }
-        finished[path_id] = {.result = Result::Skipped};
-        co_return RoundOutcome::Stale;
+        co_return UnitResult{.status = Status::Skipped};
     }
     // A lint plan's extra args join the driver command here, before
     // toolchain resolution — the driver interprets them (pass-throughs,
@@ -101,7 +67,7 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
     // The editor shows them for a file of its own database entry only
     // (ServedProject::shown_skipped_diagnostics).
     params.skipped_diagnostics =
-        plan.skipped_diagnostics && resolved.ref.source == CommandSource::CDBExact;
+        request.skipped_diagnostics && resolved.ref.source == CommandSource::Database;
 
     // A unit waits on the PCMs of its imports: the PCMs handed to the worker
     // below would otherwise race a cold build and parse without the module
@@ -116,19 +82,18 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
                                      params.arguments,
                                      params.directory,
                                      std::nullopt);
-    declare_imports(project, ctx, id, deps);
+    project.graph.set_edges(attempt.node(), deps.declared);
     auto modules = deps.resolved();
-    auto wait = [&]() -> async::task<bool> {
+    for(int pass = 0; pass < import_passes; pass += 1) {
         for(auto dep: modules) {
-            if(co_await ctx.depend(module_node(dep)) == DependResult::Cancelled) {
-                co_return false;
+            if(co_await attempt.depend(module_node(dep), module_work(project, dep)) ==
+               Result::Stale) {
+                co_return UnitResult{.status = Status::Preempted};
             }
         }
-        co_return true;
-    };
-    if(!modules.empty() && !co_await wait_imports(project, modules, wait)) {
-        finished[path_id] = {.result = Result::Preempted};
-        co_return RoundOutcome::Stale;
+        if(imports_present(project, modules)) {
+            break;
+        }
     }
 
     // A unit of a target with precompiled headers parses over clice's own
@@ -149,8 +114,8 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
            crashed != project.crashed_over_pch.end() && crashed->second == key) {
             left_out_pch = key;
         } else {
-            switch(co_await ctx.depend(prepare_pch(project, std::move(request)))) {
-                case DependResult::Ready:
+            switch(co_await attempt.depend(pch_node(key), pch_work(project, std::move(request)))) {
+                case Result::Success:
                     if(auto it = project.pch_cache.find(key); it != project.pch_cache.end() &&
                                                               !it->second.path.empty() &&
                                                               !pch_reads(project, key, path_id)) {
@@ -159,10 +124,8 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
                         consumed_pch = key;
                     }
                     break;
-                case DependResult::Failed: break;
-                case DependResult::Cancelled:
-                    finished[path_id] = {.result = Result::Preempted};
-                    co_return RoundOutcome::Stale;
+                case Result::Failed: break;
+                case Result::Stale: co_return UnitResult{.status = Status::Preempted};
             }
         }
     }
@@ -172,7 +135,7 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
     // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = module_inputs(project, modules);
     merge_deps(imports, {&precompiled});
-    if(plan.index && !project.send_in_full.erase(path_id)) {
+    if(request.index && !project.send_in_full.erase(path_id)) {
         auto include_closure = project.dep_graph.include_closure(path_id);
         params.known_variants = project.index.known_variants(path_id, include_closure);
         params.known_instantiations =
@@ -182,12 +145,12 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
         project.settings.project.standard_library_instantiations;
 
     std::optional<CacheStore::PendingEntry> transfer;
-    if(plan.index && project.store) {
+    if(request.index && project.store) {
         transfer = project.store->begin_transfer();
         params.index_output_path = transfer->tmp_path;
     }
 
-    auto& costs = project.unit_run_costs;
+    auto& costs = project.unit_costs;
     RequestCost cost;
     if(auto it = costs.find(path_id); it != costs.end()) {
         cost = it->second;
@@ -198,7 +161,7 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
     ScopedTimer timer;
     auto reply = co_await project.pool->send_stateless(params,
                                                        worker::Priority::Low,
-                                                       ctx.token(),
+                                                       attempt.token(),
                                                        cost,
                                                        &measured);
     // The samples may miss a peak a killed run already reached.
@@ -207,9 +170,9 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
         costs[path_id] = {.peak = peak};
     }
     if(reply.has_value() && reply.value().success) {
-        // A voided round's success clears nothing: the void may be another
-        // consumer's failure to read the pair.
-        if(!consumed_pch.empty() && ctx.current()) {
+        // An overtaken attempt's success clears nothing: what overtook it
+        // may be another consumer's failure to read the pair.
+        if(!consumed_pch.empty() && attempt.current()) {
             pch_consume_succeeded(project, consumed_pch);
         }
         // The unit parses without the precompiled header it crashed over:
@@ -227,36 +190,33 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
         if(value.index_in_file) {
             auto read = fs::File::open(transfer->tmp_path).and_then(fs::Mapping::map);
             if(!read) {
-                finished[path_id] = {.result = Result::Failed,
+                co_return UnitResult{.status = Status::Failed,
                                      .error = std::format("reading the index from {} failed: {}",
                                                           transfer->tmp_path,
                                                           read.error().message())};
-                co_return RoundOutcome::Failed;
             }
             transferred = std::move(*read);
             index_bytes = transferred.bytes();
         }
-        if(plan.index && index_bytes.empty()) {
-            finished[path_id] = {.result = Result::Failed,
+        if(request.index && index_bytes.empty()) {
+            co_return UnitResult{.status = Status::Failed,
                                  .error = "the worker returned no TUIndex"};
-            co_return RoundOutcome::Failed;
         }
-        UnitRunOutcome outcome;
-        outcome.result = Result::Completed;
-        outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
-        outcome.errors = std::move(value.errors);
-        outcome.skipped_diagnostics = std::move(value.skipped_diagnostics);
-        outcome.text_hash = value.text_hash;
-        outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
-        if(plan.index) {
+        UnitResult result;
+        result.status = Status::Completed;
+        result.tidy_diagnostics = std::move(value.tidy_diagnostics);
+        result.errors = std::move(value.errors);
+        result.skipped_diagnostics = std::move(value.skipped_diagnostics);
+        result.text_hash = value.text_hash;
+        result.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
+        if(request.index) {
             // A newer content-level invalidation during this build (or a
             // removal clearing the entry) means this result describes text
             // that no longer exists. Drop the merge; the follow-up slot
             // redoes it.
-            if(plan.outdated && plan.outdated()) {
+            if(request.outdated && request.outdated()) {
                 LOG_INFO("Discarding outdated index result for {}", file_path);
-                finished[path_id] = {.result = Result::Skipped};
-                co_return RoundOutcome::Stale;
+                co_return UnitResult{.status = Status::Skipped};
             }
             ScopedTimer merge_timer;
             // A run shorter than a sample interval measured nothing: the
@@ -266,82 +226,110 @@ async::task<RoundOutcome> unit_run_round(Project& project, RoundContext& ctx, No
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
                     project.send_in_full.insert(path_id);
-                    finished[path_id] = {.result = Result::Preempted,
+                    co_return UnitResult{.status = Status::Preempted,
                                          .error =
                                              "a variant the result named by hash is not stored"};
-                    co_return RoundOutcome::Stale;
                 }
                 // Rejected wholesale: the file's index is missing or stale,
                 // which is a failure, not a completed index.
-                finished[path_id] = {.result = Result::Failed,
+                co_return UnitResult{.status = Status::Failed,
                                      .error = "the TUIndex result failed verification"};
-                co_return RoundOutcome::Failed;
             }
-            outcome.report = std::move(*report);
-            outcome.perf.merge_ms = merge_timer.ms();
+            result.report = std::move(*report);
+            result.perf.merge_ms = merge_timer.ms();
         }
-        finished[path_id] = std::move(outcome);
-        co_return RoundOutcome::Success;
+        co_return result;
     }
 
     if(reply.has_value()) {
         project.crashed_over_pch.erase(path_id);
-        finished[path_id] = {
-            .result = Result::Failed,
+        co_return UnitResult{
+            .status = Status::Failed,
             .tidy_diagnostics = std::move(reply.value().tidy_diagnostics),
             .error = reply.value().error,
         };
-        co_return RoundOutcome::Failed;
     }
     if(reply.error().code == worker::dispatch_errc::cancelled) {
-        finished[path_id] = {.result = Result::Preempted, .error = reply.error().message};
-        co_return RoundOutcome::Stale;
+        co_return UnitResult{.status = Status::Preempted, .error = reply.error().message};
     }
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
         // The precompiled header it read may be what crashed it, as for a
-        // compile (ServedProject::attribute_crash): the next run parses without
-        // it, and only that run's success counts against it. Discarding
+        // compile (ServedProject::attribute_crash): the next compile parses
+        // without it, and only that compile's success counts against it. Discarding
         // the pair at once would fail every unit of the target queued on
         // it, for each unit that crashes on its own code.
         if(!consumed_pch.empty()) {
             project.crashed_over_pch[path_id] = consumed_pch;
-            finished[path_id] = {.result = Result::Preempted,
+            co_return UnitResult{.status = Status::Preempted,
                                  .error =
                                      "it crashed the worker over its target's precompiled "
-                                     "header, which its next run leaves out: " +
+                                     "header, which its next compile leaves out: " +
                                      reply.error().message};
-            co_return RoundOutcome::Stale;
         }
         project.crashed_over_pch.erase(path_id);
-        finished[path_id] = {.result = Result::Crashed,
+        co_return UnitResult{.status = Status::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
-        co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::out_of_memory) {
         auto& data = *reply.error().data;
         auto memory = data["memory"].get_uint().value_or(0);
         auto alone = data["alone"].get_bool().value_or(false);
         costs[path_id] = {.peak = cost.peak, .floor = std::max(cost.floor, memory)};
-        finished[path_id] = {.result = alone ? Result::TooBig : Result::OutOfMemory,
+        co_return UnitResult{.status = alone ? Status::TooBig : Status::OutOfMemory,
                              .error = reply.error().message,
                              .memory = memory};
-        co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::worker_died ||
        reply.error().code == worker::dispatch_errc::worker_lost) {
-        finished[path_id] = {.result = Result::Lost, .error = reply.error().message};
-        co_return RoundOutcome::Stale;
+        co_return UnitResult{.status = Status::Lost, .error = reply.error().message};
     }
     if(reply.error().code == worker::dispatch_errc::worker_unavailable &&
        project.pool->revives_slots()) {
         // The outage is a window, not a decision: the pool revives dead
         // slots, so the requeued attempt can succeed once one returns to
         // service. Without revival the failure below is terminal.
-        finished[path_id] = {.result = Result::Preempted, .error = reply.error().message};
-        co_return RoundOutcome::Stale;
+        co_return UnitResult{.status = Status::Preempted, .error = reply.error().message};
     }
-    finished[path_id] = {.result = Result::Failed, .error = reply.error().message};
-    co_return RoundOutcome::Failed;
+    co_return UnitResult{.status = Status::Failed, .error = reply.error().message};
+}
+
+/// One attempt, its result kept in `slot` for the waiter.
+async::task<Result> attempt_compile(Project& project,
+                                    Attempt& attempt,
+                                    Fid path_id,
+                                    UnitRequest request,
+                                    std::shared_ptr<std::optional<UnitResult>> slot) {
+    auto& result = slot->emplace(co_await compile(project, attempt, path_id, std::move(request)));
+    using enum UnitResult::Status;
+    switch(result.status) {
+        case Completed: co_return Result::Success;
+        case Failed: co_return Result::Failed;
+        case Skipped:
+        case Crashed:
+        case Lost:
+        case Preempted:
+        case OutOfMemory:
+        case TooBig: co_return Result::Stale;
+    }
+    std::unreachable();
+}
+
+}  // namespace
+
+async::task<std::optional<UnitResult>> compile_unit(Project& project,
+                                                    Fid path_id,
+                                                    UnitRequest request) {
+    NodeId id{NodeKind::Unit, path_id.raw};
+    // Unit nodes have no dependents: the invalidation cascades nowhere.
+    project.graph.invalidate(id);
+    auto slot = std::make_shared<std::optional<UnitResult>>();
+    Work work{.run = [&project, path_id, request = std::move(request), slot](Attempt& attempt) {
+        return attempt_compile(project, attempt, path_id, request, slot);
+    }};
+    // An attempt of an earlier request still winding down is waited out:
+    // this one's compile follows it.
+    co_await project.graph.join(id, std::move(work), {.retry = [slot] { return !*slot; }});
+    co_return std::move(*slot);
 }
 
 }  // namespace clice

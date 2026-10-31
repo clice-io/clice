@@ -406,14 +406,14 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
     auto source = compiled.source;
-    if(source != CommandSource::CDBExact && source != CommandSource::Default &&
+    if(source != CommandSource::Database && source != CommandSource::Default &&
        ranges::any_of(diagnostics, is_file_not_found)) {
         warn("inferred-compile-command",
              std::format("No compilation database entry for this file (compile command was {}), "
                          "so some includes may not be found. Configure compile_commands.json for "
                          "accurate diagnostics.",
                          source == CommandSource::Fallback ? "synthesized from defaults"
-                         : source == CommandSource::Inferred
+                         : source == CommandSource::Borrowed
                              ? "borrowed from a nearby translation unit"
                              : "inferred from an including file"),
              "https://docs.clice.io/clice/guide/quick-start#project-setup");

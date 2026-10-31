@@ -79,11 +79,11 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
     for(auto& project: projects) {
         for(auto id: project->project.graph.compiling()) {
             auto file = [&] {
-                return files.display(Fid{static_cast<std::uint32_t>(id.key)});
+                return files.display(id.file());
             };
             switch(id.kind) {
                 case NodeKind::AST: lines.push_back(std::format("compile {}", file())); break;
-                case NodeKind::UnitRun: lines.push_back(std::format("index {}", file())); break;
+                case NodeKind::Unit: lines.push_back(std::format("index {}", file())); break;
                 case NodeKind::PCM: lines.push_back(std::format("pcm {}", file())); break;
                 case NodeKind::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
             }

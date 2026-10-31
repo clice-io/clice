@@ -302,7 +302,7 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
     // corruption aborts the AST reader (report_fatal_error in the bitstream
     // reader) before any diagnostic can anchor, so the pch_suspect gate
     // never gets a say. The first such death retracts the pair and the
-    // round runs again on a rebuilt one; a death on the rebuilt pair is the
+    // attempt runs again on a rebuilt one; a death on the rebuilt pair is the
     // document's own.
     if(consumed && suspects.pch != *consumed) {
         LOG_WARN("Compile crashed reading PCH pair {} for {}; retracting the pair",
@@ -363,7 +363,7 @@ void ServedProject::retry_after_save(Session& session) {
     // until what it read, or is known to have read, changes. A failed
     // build's inputs miss a lookup in a directory that did not exist yet,
     // so a save retries its failed preamble too. Either refusal leaves the
-    // compile standing, so only a fresh round asks for the PCH or PCM again.
+    // compile standing, so only a fresh attempt asks for the PCH or PCM again.
     bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
@@ -407,7 +407,7 @@ std::vector<feature::FileDiagnostic>
                                              const CompileOutput& output) const {
     auto it = skipped.find(session.path_id);
     if(it == skipped.end() || it->second.text_hash != session.hash ||
-       output.diagnostics.source != CommandSource::CDBExact || active_choice(session.path_id)) {
+       output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
     return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
@@ -482,8 +482,8 @@ void ServedProject::mark_not_current(Fid path_id) {
 void ServedProject::edited(Session& session) {
     auto path_id = session.path_id;
     mark_not_current(path_id);
-    project.graph.update(node(path_id));
-    // The round still observes the real reply to its cancelled send
+    project.graph.invalidate(node(path_id));
+    // The attempt still observes the real reply to its cancelled send
     // (crash accounting depends on it — contract 2).
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
@@ -495,10 +495,10 @@ void ServedProject::edited(Session& session) {
 
 void ServedProject::invalidate(Fid path_id) {
     mark_not_current(path_id);
-    // The in-flight round's token fires, but its parse keeps running: the
+    // The in-flight attempt's token fires, but its parse keeps running: the
     // buffer is unchanged, so the product is worth publishing as bounded
-    // staleness before the round reports Stale.
-    project.graph.update(node(path_id));
+    // staleness before the attempt reports Stale.
+    project.graph.invalidate(node(path_id));
 }
 
 void ServedProject::choice_changed(Session& session) {
@@ -521,7 +521,7 @@ void ServedProject::choice_changed(Session& session) {
     }
     document.deps.reset();
     mark_not_current(path_id);
-    project.graph.update(node(path_id));
+    project.graph.invalidate(node(path_id));
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
     }
@@ -605,7 +605,7 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
         // queued cascade first, then the document recompiles now, whether
         // or not the dependency graph knows the edge (a macro include) —
         // both synchronously: applied on a later turn, the cascade would
-        // void the round about to compile the new content.
+        // void the attempt about to compile the new content.
         server.apply_disk_changes();
         // The changes can take the document to another project: a context
         // choice whose host stopped including it.
@@ -615,20 +615,25 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
         inputs_changed(*session);
     }
 
-    // Join the document's round, retrying through stale attempts (a Lost
+    // Join the document's compile, retrying through stale attempts (a Lost
     // invalidation mid-flight yields Stale and the next attempt recompiles)
-    // until a terminal outcome. A buffer edit or session replacement ends
+    // until a terminal result. A buffer edit or session replacement ends
     // the join instead: the result would describe a buffer that no longer
     // exists, and the editor re-requests after an edit.
     auto gen = session->generation;
-    auto outcome = co_await project.graph.request(
+    auto result = co_await project.graph.join(
         node(path_id),
-        {.foreground = true, .validity = [session, gen] { return session->generation == gen; }});
-    co_return outcome == JoinOutcome::Success;
+        compile_work(path_id),
+        {.foreground = true, .retry = [session, gen] { return session->generation == gen; }});
+    co_return result == Result::Success;
+}
+
+Work ServedProject::compile_work(Fid path_id) {
+    return {.run = [this, path_id](Attempt& attempt) { return compile(attempt, path_id); }};
 }
 
 async::task<std::optional<ModuleDeps>>
-    ServedProject::depend_modules(RoundContext& ctx,
+    ServedProject::depend_modules(Attempt& attempt,
                                   const Ticket& ticket,
                                   const Resolution& resolution,
                                   llvm::StringRef directory,
@@ -636,11 +641,11 @@ async::task<std::optional<ModuleDeps>>
                                   llvm::StringRef text) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
-    // Imports come from the round's buffer snapshot under the round's own
+    // Imports come from the attempt's buffer snapshot under its own
     // resolved command — the same text and flags the parse will consume,
     // so a context choice or donated header host cannot enable an import
     // the scan missed. An unsaved `import m;` builds its PCM now, and the
-    // next edit's round re-resolves — the outdated round's build loses
+    // next edit's attempt re-resolves — the outdated attempt's build loses
     // interest and winds down on its own (the PCH pattern). Module names
     // still resolve against the on-disk module map; a module unit is
     // somebody else's saved file. The remap stays engaged even for an
@@ -650,7 +655,7 @@ async::task<std::optional<ModuleDeps>>
     // The import list is scanner truth, not build output: commit it as
     // durable edges before waiting, so a document whose compile fails
     // stays cascade-reachable from its imports — fixing or providing an
-    // import must re-dirty the documents it broke. The per-round resolve
+    // import must re-dirty the documents it broke. The per-attempt resolve
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
     // too: a durable import edge earned earlier must stop cascading here.
@@ -660,7 +665,7 @@ async::task<std::optional<ModuleDeps>>
                                      arguments,
                                      directory,
                                      std::optional<llvm::StringRef>(text));
-    declare_imports(project, ctx, node(path_id), deps);
+    project.graph.set_edges(attempt.node(), deps.declared);
     auto kind = feature::RequestKind::PCM;
     auto modules = deps.resolved();
     if(modules.empty()) {
@@ -672,33 +677,32 @@ async::task<std::optional<ModuleDeps>>
     // until the record of one lets it retry: a change to its inputs, or a
     // save (see Session).
     // FIXME: an edit within the spacing of the module's crash is spent here:
-    // the round runs without the module and finishes current, so the module waits
+    // the attempt runs without the module and finishes current, so the module waits
     // for the next edit or save, not for the spacing to pass.
     bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
-    Session::Attempt attempt(*session, kind);
+    Session::Dispatch pcm_attempt(*session, kind);
     bool crashed = false;
 
-    auto wait = [&]() -> async::task<bool> {
+    for(int pass = 0; pass < import_passes; pass += 1) {
         for(auto dep: modules) {
+            // Still an edge when skipped: the declaration above keeps it, so a
+            // later build of it, by an importer whose record lets it retry,
+            // re-dirties this document.
             if(auto* crash = build_crash(project, dep)) {
                 if(!retry) {
-                    // Booked once: a round on unchanged inputs is no new
+                    // Booked once: an attempt on unchanged inputs is no new
                     // crash.
                     if(!session->crash_record(kind)) {
                         record_crash(session, kind, crash->death, crash->cause);
                     }
                     crashed = true;
-                    // Still an input: a later build of it, by an importer
-                    // whose record lets it retry, must re-dirty this
-                    // document.
-                    ctx.reference(module_node(dep));
                     continue;
                 }
                 forget_build_failure(project, dep);
             }
-            switch(co_await ctx.depend(module_node(dep))) {
-                case DependResult::Ready: break;
-                case DependResult::Failed:
+            switch(co_await attempt.depend(module_node(dep), module_work(project, dep))) {
+                case Result::Success: break;
+                case Result::Failed:
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
@@ -708,13 +712,12 @@ async::task<std::optional<ModuleDeps>>
                         retry = false;
                     }
                     break;
-                case DependResult::Cancelled: co_return false;
+                case Result::Stale: co_return std::nullopt;
             }
         }
-        co_return true;
-    };
-    if(!co_await wait_imports(project, modules, wait)) {
-        co_return std::nullopt;
+        if(imports_present(project, modules)) {
+            break;
+        }
     }
     if(!crashed) {
         ticket.session->succeeded(kind, ticket.generation);
@@ -722,16 +725,17 @@ async::task<std::optional<ModuleDeps>>
     co_return deps;
 }
 
-async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_id) {
-    // Only a join for a document of this project spawns a round, and the
-    // round gets here before its first suspension: nothing can have closed
+async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
+    // Only a join for a document of this project starts an attempt, and the
+    // attempt gets here before its first suspension: nothing can have closed
     // or moved it.
     auto* document = find_document(path_id);
-    assert(document && "AST round for a document not this project's");
+    assert(document && "AST attempt for a document not this project's");
     auto session = document->session;
+    auto idle = llvm::make_scope_exit([&] { enter_phase(path_id, CompilePhase::Idle); });
 
-    // The round's content identity. The graph's round identity covers
-    // invalidation (ctx.current()); this covers the buffer itself — a
+    // The attempt's content identity. The graph's attempt identity covers
+    // invalidation (attempt.current()); this covers the buffer itself — a
     // didChange or session replacement makes every product describe text
     // that no longer exists, so the commit discards wholesale, while a
     // Lost invalidation (generation unchanged) still publishes salvage.
@@ -740,21 +744,21 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
     // Covers every spawn path, including waiter-driven respawns: content
     // that just crashed a worker must not reach one more.
     if(compile_stopped(*session)) {
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     }
 
     ScopedTimer timer;
     auto file_path = std::string(project.file_table.resolve(path_id));
 
-    LOG_INFO("compile round: starting path_id={} gen={}", path_id, ticket.generation);
+    LOG_INFO("compile: starting path_id={} gen={}", path_id, ticket.generation);
     enter_phase(path_id, CompilePhase::Command);
 
-    // A round past the gate on a crashed compile or preamble is its retry,
-    // and stops the others until its outcome (Session invariant 2).
+    // An attempt past the gate on a crashed compile or preamble is its retry,
+    // and stops the others until its result (Session invariant 2).
     using enum feature::RequestKind;
-    Session::Attempt compile_attempt(*session, Compile);
+    Session::Dispatch compile_attempt(*session, Compile);
     bool pch_retry = session->crash_record(PCH) != nullptr;
-    Session::Attempt pch_attempt(*session, PCH);
+    Session::Dispatch pch_attempt(*session, PCH);
 
     // clang-tidy runs where `clice lint` checks, unless its configuration
     // does not parse, which `clice lint` refuses too, a crash of its is
@@ -763,7 +767,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
     // resolving its configuration looked at join the deps either way: a
     // fix there is a change that retries a stopped pass.
     std::optional<tidy::TidyResolution> tidy_config;
-    std::optional<Session::Attempt> tidy_attempt;
+    std::optional<Session::Dispatch> tidy_attempt;
     if(project.settings.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
@@ -781,7 +785,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
     bool precompiled_retried = false;
     auto known_instantiations =
         project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
-    for(int attempt = 0; attempt < 2; attempt += 1) {
+    for(int send = 0; send < 2; send += 1) {
         worker::CompileParams params;
         params.known_instantiations = known_instantiations;
         params.standard_library_instantiations =
@@ -801,7 +805,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                 return ticket.fresh();
             });
         if(!ticket.fresh()) {
-            co_return RoundOutcome::Stale;
+            co_return Result::Stale;
         }
         auto source = resolution.ref.source;
         auto* synthesized = resolution.synthesized.get();
@@ -813,26 +817,26 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         // A header no trial says compiles alone compiles without its
         // includer's context first: this compile is the trial, and the
         // commit gates what it may write.
-        auto trial = attempt == 0 && !resolution.self_contained ? resolution.trial : std::nullopt;
+        auto trial = send == 0 && !resolution.self_contained ? resolution.trial : std::nullopt;
 
         enter_phase(path_id, CompilePhase::Modules);
-        auto imports = co_await depend_modules(ctx,
+        auto imports = co_await depend_modules(attempt,
                                                ticket,
                                                resolution,
                                                params.directory,
                                                params.arguments,
                                                params.text);
         if(!imports) {
-            co_return RoundOutcome::Stale;
+            co_return Result::Stale;
         }
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: outdated before PCH for {}", file_path);
-            co_return RoundOutcome::Stale;
+            LOG_INFO("compile: outdated before PCH for {}", file_path);
+            co_return Result::Stale;
         }
 
-        // Build or reuse the PCH through prepare_pch — the depend records
-        // the Ast→Pch edge, so a staleness discovery on the shared pair
+        // Build or reuse the PCH through depend — it records the AST→PCH
+        // edge, so a staleness discovery on the shared pair
         // cascades here. Under readonly = "on" the build compiles without
         // a preamble instead — completion and signature help pay full
         // parses, the profile's stated trade. A failed pair is the same
@@ -848,14 +852,15 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             enter_phase(path_id, CompilePhase::Preamble);
             if(auto request = declared_pch(path_id, resolution, *imports)) {
                 auto key = request->pch_key;
-                switch(co_await ctx.depend(prepare_pch(project, std::move(*request)))) {
-                    case DependResult::Ready:
+                switch(co_await attempt.depend(pch_node(key),
+                                               pch_work(project, std::move(*request)))) {
+                    case Result::Success:
                         if(!pch_reads(project, key, path_id)) {
                             base_pch = key;
                         }
                         break;
-                    case DependResult::Failed: break;
-                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                    case Result::Failed: break;
+                    case Result::Stale: co_return Result::Stale;
                 }
             }
             auto plan = plan_pch(path_id,
@@ -879,44 +884,44 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                     if(auto* crash = build_crash(project, pch_key)) {
                         if(!pch_retry) {
                             record_crash(session, PCH, crash->death, crash->cause);
-                            co_return RoundOutcome::Failed;
+                            co_return Result::Failed;
                         }
                         forget_build_failure(project, pch_key);
                     }
-                    auto dep = prepare_pch(project, std::move(plan.request));
-                    switch(co_await ctx.depend(dep)) {
-                        case DependResult::Ready:
-                            // Adoption is gated on the round outcome and on
-                            // this round's own validity: a newer generation or a
+                    switch(co_await attempt.depend(pch_node(pch_key),
+                                                   pch_work(project, std::move(plan.request)))) {
+                        case Result::Success:
+                            // Adoption is gated on the attempt's result and
+                            // its own validity: a newer generation or a
                             // Lost-type invalidation while we waited means
                             // the resolved command may describe nothing —
                             // neither the key nor the record it clears
-                            // belongs to this round anymore. Adopting a
+                            // belongs to this attempt anymore. Adopting a
                             // proven-good PCH clears the document's
                             // PCH record as surely as building one — but
                             // only its own; every consumer clears for
                             // itself.
-                            if(ctx.current() && ticket.fresh()) {
+                            if(attempt.current() && ticket.fresh()) {
                                 adopted_pch = pch_key;
                                 ticket.session->succeeded(PCH, ticket.generation);
                             }
                             break;
-                        case DependResult::Failed:
-                            // The build itself crashed a worker: this round
+                        case Result::Failed:
+                            // The build itself crashed a worker: this attempt
                             // stops before the parse, which would feed the
                             // same preamble to one more worker.
                             if(auto* crash = build_crash(project, pch_key)) {
                                 record_crash(session, PCH, crash->death, crash->cause);
-                                co_return RoundOutcome::Failed;
+                                co_return Result::Failed;
                             }
                             // A build that failed without a crash answered:
                             // the preamble no longer crashes.
-                            if(ctx.current()) {
+                            if(attempt.current()) {
                                 ticket.session->succeeded(PCH, ticket.generation);
                             }
                             failed_pch = pch_key;
                             break;
-                        case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                        case Result::Stale: co_return Result::Stale;
                     }
                     break;
                 }
@@ -945,8 +950,8 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         params.pcms = imported_pcms(project, imports->resolved());
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: outdated before send for {}", file_path);
-            co_return RoundOutcome::Stale;
+            LOG_INFO("compile: outdated before send for {}", file_path);
+            co_return Result::Stale;
         }
 
         // Seed the worker's inactive-region state from the PCH's preamble:
@@ -967,17 +972,17 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
 
         enter_phase(path_id, CompilePhase::Parsing);
 
-        // The send carries the interrupt, not the round's advisory token:
-        // the master must observe the request's real outcome — the crash
+        // The send carries the interrupt, not the attempt's advisory token:
+        // the master must observe the request's real result — the crash
         // accounting below depends on it (contract 2) — and a cancelled
         // send still awaits the worker's answer. Only an edit, a choice change or a stop
         // interrupts the parse (see edited, choice_changed and stop_compiles), and the stale reply
         // is discarded at the validity gate below. A death
         // that is not this compile's doing resends it once — the attempt
-        // only stops early once the buffer moved on, since the next round
+        // only stops early once the buffer moved on, since the next attempt
         // compiles that.
         //
-        // Crash accounting runs even for outdated rounds: the crash came
+        // Crash accounting runs even for outdated attempts: the crash came
         // from content this document dispatched, and skipping it would let a
         // poison file dodge its stop by being edited between dispatch and
         // the crash response (contract 12).
@@ -1015,12 +1020,12 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                     attribute_crash(session, params.tidy.has_value(), consumed_pch, error);
             });
         if(retry_without_suspect) {
-            co_return RoundOutcome::Stale;
+            co_return Result::Stale;
         }
 
         if(!ticket.fresh()) {
-            LOG_INFO("compile round: outdated reply for {}", file_path);
-            co_return RoundOutcome::Stale;
+            LOG_INFO("compile: outdated reply for {}", file_path);
+            co_return Result::Stale;
         }
 
         if(!result.has_value()) {
@@ -1039,15 +1044,15 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             // the document keeps what it showed: a worker outage or a
             // second death of somebody else's doing says nothing about its
             // code.
-            co_return RoundOutcome::Failed;
+            co_return Result::Failed;
         }
 
         // The PCH quality gate: a failed parse whose diagnostics name
         // the consumed PCH (worker-side pch_suspect — setup failure and
-        // fatal error alike). The PCH round validated the pair fresh via its
+        // fatal error alike). The PCH attempt validated the pair fresh via its
         // deps, yet the frontend could not read it — the bytes on disk
-        // are the suspect. Retract the pair (store + cache) and rerun the
-        // round once; the next attempt misses and rebuilds both halves.
+        // are the suspect. Retract the pair (store + cache) and send once
+        // more; the PCH's next attempt misses and rebuilds both halves.
         // Without this write-back a corrupt blob is trusted for the life
         // of the store and the file stays broken on every restart. A
         // setup failure whose diagnostics do NOT name the blob (bad
@@ -1061,30 +1066,30 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                      file_path);
             // Retract unconditionally — an unreadable pair never survives,
             // even when its consumption is stopped — but rerun only once.
-            // The consumption's record bounds the cross-round shape: this
-            // round finishes Stale (the retract re-dirties the key its
-            // candidate edge points at), the waiter respawns it, and without
-            // the stopped key each respawn would rebuild and fail forever.
+            // The consumption's record bounds the cross-attempt shape: this
+            // attempt finishes Stale (waiting on the retracted key again
+            // finds it changed, which overtakes this attempt), the waiter
+            // starts another, and without the stopped key each would
+            // rebuild and fail forever.
             pch_consume_failed(project, *consumed_pch);
             if(!precompiled_retried) {
                 precompiled_retried = true;
-                // Rerun the same attempt so the trial semantics are
-                // untouched (the loop counter is about trial rounds, not
-                // PCH retries).
-                attempt -= 1;
+                // Redo the same send so the trial semantics are untouched
+                // (the loop counter is about trial sends, not PCH retries).
+                send -= 1;
                 continue;
             }
             // The rebuilt pair is unreadable again: the storage itself is
             // failing, and another rebuild would fare no better. The
-            // round proceeds — a Done reply publishes its real fatal
+            // attempt proceeds — a Done reply publishes its real fatal
             // diagnostics, a non-Done one falls to the honest gap below.
         }
 
         // A non-Done reply past the gate is a non-result: committing it
         // would freeze the document on a product that never existed —
         // no index, an empty deps snapshot nothing can invalidate.
-        // Outdated rounds were already discarded at the validity gate
-        // above, so this round's inputs are broken in a way a PCH rebuild
+        // Outdated attempts were already discarded at the validity gate
+        // above, so this attempt's inputs are broken in a way a PCH rebuild
         // cannot fix.
         if(result.value().status != worker::CompileStatus::Done) {
             LOG_WARN("Compile produced no result for {} (status={})",
@@ -1109,16 +1114,16 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
                            .failed = setup_fail,
             });
             push_output(*session, true);
-            co_return RoundOutcome::Failed;
+            co_return Result::Failed;
         }
 
         // A trial invalidated mid-flight is discarded whole: its result is
         // a conditional write like the latest compile's current flag, and its
         // diagnostics come from a compile deliberately run without includer
         // context — they are never published, including on this path.
-        if(trial && !ctx.current()) {
+        if(trial && !attempt.current()) {
             LOG_INFO("Discarding invalidated self-containment trial for {}", file_path);
-            co_return RoundOutcome::Stale;
+            co_return Result::Stale;
         }
 
         auto& diagnostics = result.value().diagnostics;
@@ -1159,19 +1164,19 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
         }
 
         // The commit: build the whole package off to the side, then
-        // install it with no suspension before the outcome becomes
+        // install it with no suspension before the result becomes
         // visible (contract 16) — a joiner must never see Success before
         // the latest compile describes the buffer it compiled. A Lost
-        // invalidation mid-flight (ctx no longer current, generation
+        // invalidation mid-flight (the attempt no longer current, generation
         // unchanged) commits the same package as bounded staleness —
         // recorded, published, but not current — and reports Stale so
         // waiters drive the recompile.
-        bool still_current = ctx.current();
+        bool still_current = attempt.current();
 
         // The parse read the pair and completed without finding it
-        // unreadable — and the round still describes live inputs: the
-        // key's consumption failures were transient, not the storage. A
-        // voided round clears nothing: the void may BE another consumer's
+        // unreadable — and the attempt still describes live inputs: the
+        // key's consumption failures were transient, not the storage. An
+        // overtaken attempt clears nothing: what overtook it may BE another consumer's
         // fresh failure to read the shared key, and clearing here would
         // reset the count it just paid for.
         if(still_current && consuming_pch && !result.value().pch_suspect) {
@@ -1272,7 +1277,7 @@ async::task<RoundOutcome> ServedProject::run_round(RoundContext& ctx, Fid path_i
             server.client->index_served.erase(session->path_id);
         }
         schedule_index(project);
-        co_return still_current ? RoundOutcome::Success : RoundOutcome::Stale;
+        co_return still_current ? Result::Success : Result::Stale;
     }
     // Every arm of the two-send loop commits or returns; the trial's
     // continue only fires on the first send, the PCH retry only once.
@@ -1296,11 +1301,11 @@ async::task<std::optional<std::string>>
     };
 
     // The precompiled header the build declares for the command, as a
-    // compile round takes it (see run_round()).
+    // compile takes it (see compile()).
     std::optional<std::string> base;
     if(auto request = declared_pch(path_id, resolution, imports)) {
         auto key = request->pch_key;
-        if(co_await acquire_pch(project, std::move(*request)) == PCHOutcome::Ready &&
+        if(co_await acquire_pch(project, std::move(*request)) == Result::Success &&
            !pch_reads(project, key, path_id)) {
             base = key;
         }
@@ -1326,7 +1331,7 @@ async::task<std::optional<std::string>>
     auto pch_key = plan.request.pch_key;
 
     // A preamble that crashed a worker stops the document's content builds
-    // (the caller checks); only a compile round the document's record lets
+    // (the caller checks); only a compile the document's record lets
     // retry builds it again.
     auto kind = feature::RequestKind::PCH;
     if(auto* crash = build_crash(project, pch_key)) {
@@ -1336,14 +1341,14 @@ async::task<std::optional<std::string>>
         }
         co_return base;
     }
-    if(co_await acquire_pch(project, std::move(plan.request)) != PCHOutcome::Ready) {
+    if(co_await acquire_pch(project, std::move(plan.request)) != Result::Success) {
         if(auto* crash = build_crash(project, pch_key)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         co_return base;
     }
 
-    // Adoption is gated on the round outcome, never on leftover cache
+    // Adoption is gated on the acquisition's result, never on leftover cache
     // paths, and on the buffer and compile this request was taken on: a
     // newer generation or a Lost-type invalidation while we waited means the
     // resolved command may describe nothing — neither the key write nor
@@ -1374,7 +1379,13 @@ async::task<bool> ServedProject::prepare_stateless_inputs(const Ticket& ticket,
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse
     // needs it.
-    auto imports = co_await build_imports(project, path_id, resolution, arguments, directory, text);
+    auto imports = co_await build_imports(project,
+                                          node(path_id),
+                                          path_id,
+                                          resolution,
+                                          arguments,
+                                          directory,
+                                          text);
     if(!imports) {
         co_return false;
     }

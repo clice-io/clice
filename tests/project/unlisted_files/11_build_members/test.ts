@@ -15,9 +15,7 @@ test("query lists the members", async (t) => {
     await s.diagnostics("src/opened.cpp");
     await s.stop();
 
-    // The command's arguments are the resolved compiler's, which differ on
-    // every host; "provisional" against "inferred" in them is whether the
-    // build counts the file a member, which this lists. A header is never
-    // one, a build tree holds none, and opening records nothing.
+    // Opening a source records it as saving does. A header is never a
+    // member, and a build tree holds none.
     await t.cli("query project-files");
 });

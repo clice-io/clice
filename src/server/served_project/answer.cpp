@@ -166,10 +166,10 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
 
 bool ServedProject::admits(const Session& session,
                            feature::RequestKind kind,
-                           const Session::Attempt* attempt,
+                           const Session::Dispatch* dispatch,
                            bool parses) const {
     auto now = Session::Clock::now();
-    if(attempt ? attempt->crashed_meanwhile() : session.crash_stops(kind, now)) {
+    if(dispatch ? dispatch->crashed_meanwhile() : session.crash_stops(kind, now)) {
         return false;
     }
     return !parses || !compile_stopped(session);
@@ -188,7 +188,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
         LOG_DEBUG("Format: {} is stopped by a crash", path);
         co_return std::nullopt;
     }
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
 
     worker::FormatParams params;
     params.file = files.display(session.path_id);
@@ -199,7 +199,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
 
     ScopedTimer timer;
     bool refused = false;
-    auto result = co_await send_stateless(ticket, kind, params, attempt, false, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, dispatch, false, token, refused);
     if(refused) {
         LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
         if(!ticket.fresh()) {

@@ -12,7 +12,7 @@ import :project.pch;
 import :project.pcm;
 import :project.project;
 import :project.save;
-import :project.unit_run;
+import :project.unit;
 import :settings.settings;
 import :support.json;
 import :support.logging;
@@ -29,18 +29,7 @@ Project::Project(FileTable& file_table,
                  CanonicalPath root,
                  async::event_loop* loop,
                  WorkerPool* pool) :
-    loop(loop), pool(pool), root(std::move(root)), file_table(file_table) {
-    if(!pool) {
-        return;
-    }
-    graph.set_runner(NodeKind::PCH,
-                     [this](RoundContext& ctx, NodeId id) { return pch_round(*this, ctx, id); });
-    graph.set_runner(NodeKind::PCM,
-                     [this](RoundContext& ctx, NodeId id) { return pcm_round(*this, ctx, id); });
-    graph.set_runner(NodeKind::UnitRun, [this](RoundContext& ctx, NodeId id) {
-        return unit_run_round(*this, ctx, id);
-    });
-}
+    loop(loop), pool(pool), root(std::move(root)), file_table(file_table) {}
 
 async::task<> Project::checkpoint() {
     if(store) {
@@ -137,15 +126,18 @@ CDBDiff Project::refresh_provisional() {
         auto hosted = ranges::any_of(dep_graph.find_host_sources(file), [&](Fid root) {
             return root != file && build.declared(root);
         });
-        std::optional<CommandID> command;
+        // One no unit lends a command compiles under the builtin one, a
+        // member all the same: the host of the headers it includes.
+        std::optional<Candidate> command;
         if(!hosted) {
-            if(auto lender = command_lender(*this, file)) {
-                command = build.lend(lender->command,
-                                     file_table.resolve(lender->unit),
-                                     file_table.resolve(file));
+            if(auto borrowed = borrowed_command(*this, file, false)) {
+                command = borrowed;
+            } else {
+                command = {.base = build.builtin(file_table.resolve(file)),
+                           .source = CommandSource::Fallback};
             }
         }
-        auto before = build.borrow(file, command);
+        auto before = build.set_command(file, command);
         if(before == command) {
             continue;
         }

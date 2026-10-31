@@ -279,7 +279,7 @@ struct BuildPCMParams {
     std::string output_path;
 };
 
-/// One whole-TU run: a single parse serving the products the frozen plan
+/// One unit run: a single parse serving the products the frozen plan
 /// names — the full index, a clang-tidy pass, or both.
 struct UnitRunParams {
     std::string file;

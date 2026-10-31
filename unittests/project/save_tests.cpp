@@ -230,7 +230,7 @@ struct ShrinkProject {
     index::IndexReport shrink() {
         index::IndexReport report;
         auto run = [&]() -> async::task<> {
-            report = co_await shrink_database(f.project, f.loop);
+            report = co_await shrink_database(f.project);
         };
         auto task = run();
         f.loop.schedule(task);
@@ -342,7 +342,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     auto& space = p.spy();
     ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
     auto shrink = [&]() -> async::task<> {
-        co_await shrink_database(p.f.project, p.f.loop);
+        co_await shrink_database(p.f.project);
     };
     auto shrink_task = shrink();
     auto save_task = p.f.async_save(index::SearchRebuild::Idle);

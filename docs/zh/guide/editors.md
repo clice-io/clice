@@ -5,7 +5,7 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 所有配置的前提：
 
 - `clice` 可执行文件位于 `PATH` 中（或在下面的代码片段中使用绝对路径）。
-- 你的项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再搜索其每个直接子目录）。
+- 你的项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再搜索其每个不含自己 `clice.toml` 的直接子目录）。
 
 ## 编译器环境
 

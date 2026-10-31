@@ -6,7 +6,7 @@ import :project.background_index;
 import :project.discovery;
 import :project.project;
 import :project.save;
-import :project.unit_run;
+import :project.unit;
 import :support.logging;
 import :support.timer;
 
@@ -99,12 +99,12 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
 }
 
 async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pass) {
-    using Result = UnitRunOutcome::Result;
+    using enum UnitResult::Status;
     auto& project = run.project;
     auto file = project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
-    UnitRunPlan plan;
-    plan.index = with_index && project.build.indexed(file);
+    UnitRequest request;
+    request.index = with_index && project.build.indexed(file);
     bool failed = false;
     if(project.build.lintable(file)) {
         auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
@@ -116,10 +116,10 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
             }
             failed = true;
         } else {
-            plan.tidy = std::move(resolution.params);
+            request.tidy = std::move(resolution.params);
         }
     }
-    if(!plan.tidy && !plan.index) {
+    if(!request.tidy && !request.index) {
         if(failed) {
             pass.failed.insert(path_id);
         }
@@ -128,40 +128,49 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
         co_return;
     }
 
-    // One retry: a lost run or a preemption says nothing about the TU, and
-    // a one-shot pass has no later round to requeue into. A run that
-    // crashed its worker would crash the retry too. One whose memory ran
-    // out beside other work reruns until it fits or is found too big:
-    // each rerun waits for at least the memory the last one reached. Every
-    // run waits while the pool revives a worker: a dispatch then would fail
-    // at once for want of one.
+    // One retry: a lost compile or a preemption says nothing about the TU,
+    // and a one-shot pass has no later round to requeue into. A compile
+    // that crashed its worker would crash the retry too. One whose memory
+    // ran out beside other work compiles again until it fits or is found
+    // too big: each retry waits for at least the memory the last one
+    // reached. Every compile waits while the pool revives a worker: a
+    // dispatch then would fail at once for want of one.
     co_await run.pool.await_capacity(false);
-    auto outcome = co_await run_unit(project, path_id, plan);
+    auto result = co_await compile_unit(project, path_id, request);
     // FIXME: unbounded: two units whose allocations fail before the first
     // sample raise their floors by nothing and can die beside each other again
     // and again (commit exhaustion on Windows).
-    while(outcome.result == Result::OutOfMemory) {
+    while(result && result->status == OutOfMemory) {
         co_await run.pool.await_capacity(false);
-        outcome = co_await run_unit(project, path_id, plan);
+        result = co_await compile_unit(project, path_id, request);
     }
-    if(outcome.result == Result::Lost || outcome.result == Result::Preempted) {
+    if(result && (result->status == Lost || result->status == Preempted)) {
         co_await run.pool.await_capacity(false);
-        outcome = co_await run_unit(project, path_id, plan);
+        result = co_await compile_unit(project, path_id, request);
     }
 
-    switch(outcome.result) {
-        case Result::Completed: {
-            if(plan.tidy) {
+    if(!result) {
+        if(failed) {
+            pass.failed.insert(path_id);
+        }
+        pass.inflight -= 1;
+        pass.task_done.set();
+        co_return;
+    }
+
+    switch(result->status) {
+        case Completed: {
+            if(request.tidy) {
                 pass.checked += 1;
             }
             if(with_index) {
-                apply_report(project, outcome.report);
+                apply_report(project, result->report);
             }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
             // broken code is not a clean run. So does a finding no file
             // holds (the configuration's).
-            ranges::copy_if(outcome.tidy_diagnostics,
+            ranges::copy_if(result->tidy_diagnostics,
                             std::back_inserter(pass.findings),
                             [&](const worker::TidyDiagnostic& d) {
                                 auto& files = project.file_table;
@@ -171,39 +180,36 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
                             });
             break;
         }
-        case Result::Skipped:
-        case Result::Failed: {
+        case Skipped:
+        case Failed: {
             // Skipped means no real compile command (the index path keeps
             // the last-known index then; lint has nothing to keep) — either way
             // the TU went unchecked. A command clang rejected says why.
-            ranges::move(outcome.tidy_diagnostics, std::back_inserter(pass.findings));
+            ranges::move(result->tidy_diagnostics, std::back_inserter(pass.findings));
             failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,
-                     outcome.error.empty() ? "no compile command found" : outcome.error);
+                     result->error.empty() ? "no compile command found" : result->error);
             break;
         }
-        case Result::Crashed: {
+        case Crashed: {
             failed = true;
-            LOG_WARN("Lint gave up on {}: {}", file, outcome.error);
+            LOG_WARN("Lint gave up on {}: {}", file, result->error);
             break;
         }
-        case Result::TooBig: {
+        case TooBig: {
             failed = true;
             LOG_WARN(
                 "Lint gave up on {}: it does not fit in memory, its worker reached {} MiB alone",
                 file,
-                outcome.memory >> 20);
+                result->memory >> 20);
             break;
         }
-        case Result::Lost:
-        case Result::Preempted:
-        case Result::OutOfMemory: {
+        case Lost:
+        case Preempted:
+        case OutOfMemory: {
             failed = true;
-            LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);
-            break;
-        }
-        case Result::Shutdown: {
+            LOG_WARN("Lint gave up on {} after a retry: {}", file, result->error);
             break;
         }
     }

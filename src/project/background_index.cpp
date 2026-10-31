@@ -5,7 +5,7 @@ import :project.background_index;
 import :project.command;
 import :project.project;
 import :project.save;
-import :project.unit_run;
+import :project.unit;
 import :support.environment;
 import :support.logging;
 import :support.process;
@@ -50,15 +50,15 @@ void record_too_big(BackgroundIndex& background, Fid file, std::uint64_t memory)
     background.too_big[file] = memory;
 }
 
-/// One dispatched unit of a background round: admit, run the TU through
-/// its unit-run node, take the merge report, finish the taken reindex and
-/// report progress.
+/// One dispatched unit of a background round: admit, compile the TU
+/// through its unit node, take the merge report, finish the taken reindex
+/// and report progress.
 async::task<> run_index_task(Project& project,
                              ReindexQueue::TakenReindex taken,
                              std::size_t index,
                              std::size_t total,
                              RoundState& round) {
-    using Result = UnitRunOutcome::Result;
+    using Status = UnitResult::Status;
     auto& background = project.background_index;
     auto& queue = background.queue;
     auto path_id = taken.id;
@@ -76,15 +76,15 @@ async::task<> run_index_task(Project& project,
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != command_identity(project, path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-        auto outcome =
-            co_await run_unit(project,
-                              path_id,
-                              {.index = true,
-                               .errors = background.errors_wanted,
-                               .skipped_diagnostics = skipped,
-                               .outdated = [&queue, taken] { return queue.outdated(taken); }});
-        if(outcome.result == Result::Shutdown) {
-            // The graph refused the round: nothing ran, so the reindex
+        auto result =
+            co_await compile_unit(project,
+                                  path_id,
+                                  {.index = true,
+                                   .errors = background.errors_wanted,
+                                   .skipped_diagnostics = skipped,
+                                   .outdated = [&queue, taken] { return queue.outdated(taken); }});
+        if(!result) {
+            // The graph shut down: nothing ran, so the reindex
             // stays booked for the final snapshot and the next session;
             // only the round bookkeeping below still runs so a live feeder
             // is not left waiting on this slot.
@@ -96,15 +96,15 @@ async::task<> run_index_task(Project& project,
         // The report's reindexes are booked before the finish and the
         // waiter wake-ups below: a waker re-deriving its route must never
         // observe an index as current that the merge just declared stale.
-        apply_report(project, outcome.report);
-        switch(outcome.result) {
-            case Result::Completed: {
-                record_indexed(background, path_id, std::move(outcome.errors));
+        apply_report(project, result->report);
+        switch(result->status) {
+            case Status::Completed: {
+                record_indexed(background, path_id, std::move(result->errors));
                 if(auto pending = queue.peek(path_id);
                    skipped && pending && pending->seq == taken.seq) {
                     background.on_skipped_diagnostics(path_id,
-                                                      outcome.text_hash,
-                                                      std::move(outcome.skipped_diagnostics));
+                                                      result->text_hash,
+                                                      std::move(result->skipped_diagnostics));
                 }
                 background.indexed += 1;
                 LOG_PERF("index",
@@ -112,24 +112,24 @@ async::task<> run_index_task(Project& project,
                          index,
                          total,
                          file_path,
-                         outcome.perf.bytes,
-                         outcome.perf.index_ms,
-                         outcome.perf.merge_ms);
+                         result->perf.bytes,
+                         result->perf.index_ms,
+                         result->perf.merge_ms);
                 break;
             }
-            case Result::Skipped: {
+            case Status::Skipped: {
                 break;
             }
-            case Result::Failed: {
-                LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, outcome.error);
+            case Status::Failed: {
+                LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result->error);
                 record_failed(background, path_id);
                 break;
             }
-            case Result::Crashed:
-            case Result::TooBig:
-            case Result::Lost:
-            case Result::Preempted:
-            case Result::OutOfMemory: {
+            case Status::Crashed:
+            case Status::TooBig:
+            case Status::Lost:
+            case Status::Preempted:
+            case Status::OutOfMemory: {
                 // Preempted, killed for memory beside other work or lost to
                 // a worker death: the work itself is fine — requeue the
                 // file with its original reason so the next round redoes it
@@ -138,9 +138,9 @@ async::task<> run_index_task(Project& project,
                 // or that ran out of memory alone, waits for the file to
                 // change: the same bytes would again.
                 using enum ReindexQueue::Failure;
-                auto failure = outcome.result == Result::Crashed || outcome.result == Result::TooBig
+                auto failure = result->status == Status::Crashed || result->status == Status::TooBig
                                    ? Crashed
-                               : outcome.result == Result::Lost ? Lost
+                               : result->status == Status::Lost ? Lost
                                                                 : Preempted;
                 switch(queue.on_dispatch_failure(taken, failure)) {
                     case ReindexQueue::FailureDecision::Dropped: {
@@ -167,15 +167,15 @@ async::task<> run_index_task(Project& project,
                         // diagnostic surface. Cross-file references
                         // into this file stay stale until its content
                         // changes.
-                        if(outcome.result == Result::TooBig) {
+                        if(result->status == Status::TooBig) {
                             LOG_WARN(
                                 "[{}/{}] {} does not fit in memory: its worker reached {} MiB "
                                 "alone; its cross-file data stays stale until it changes",
                                 index,
                                 total,
                                 file_path,
-                                outcome.memory >> 20);
-                            record_too_big(background, path_id, outcome.memory);
+                                result->memory >> 20);
+                            record_too_big(background, path_id, result->memory);
                             break;
                         }
                         LOG_WARN(
@@ -184,7 +184,7 @@ async::task<> run_index_task(Project& project,
                             index,
                             total,
                             file_path,
-                            outcome.error);
+                            result->error);
                         record_failed(background, path_id);
                         break;
                     }
@@ -194,21 +194,18 @@ async::task<> run_index_task(Project& project,
                                      index,
                                      total,
                                      file_path,
-                                     outcome.error);
+                                     result->error);
                         } else {
                             LOG_INFO("[{}/{}] Index requeued for {}: {}",
                                      index,
                                      total,
                                      file_path,
-                                     outcome.error);
+                                     result->error);
                         }
                         break;
                     }
                 }
                 break;
-            }
-            case Result::Shutdown: {
-                std::unreachable();
             }
         }
     }
@@ -482,23 +479,26 @@ void apply_report(Project& project, const index::IndexReport& report) {
 async::task<> persist(Project& project, index::SearchRebuild search) {
     auto& queue = project.background_index.queue;
     bool retry = true;
+    bool owed = false;
     while(retry) {
-        auto report = co_await save_project(project, *project.loop, search);
+        auto report = co_await save_project(project, search);
         retry = report.owes_retry;
+        owed |= !report.reindex().empty();
         apply_report(project, report);
         // No more indexing is queued, so no save is due for a while: the
         // file may shrink — unless a file was queued while the save ran. A
         // shrink that discarded the database owes the fresh one a save.
         if(!retry && search == index::SearchRebuild::Idle && queue.queued() == 0) {
-            report = co_await shrink_database(project, *project.loop);
+            report = co_await shrink_database(project);
             retry = report.owes_retry;
+            owed |= !report.reindex().empty();
             apply_report(project, report);
         }
     }
     // A save the compaction or a discarded database owed reindexes to queued
     // them: they need a round of their own when none is running.
-    if(queue.queued() > 0) {
-        schedule_index(project, /*immediate=*/true);
+    if(owed) {
+        schedule_index(project);
     }
 }
 

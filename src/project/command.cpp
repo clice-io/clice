@@ -59,51 +59,244 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
     return std::numeric_limits<std::size_t>::max();
 }
 
-/// The language of the command a file compiles with — among a
-/// multi-configuration file's or host's entries the chosen one, else the
-/// first, or the default command covering it — rules applied, like the
-/// resolve path's effective command: whether it compiles the file as C,
-/// whether an -x forces that (the driver override beats every suffix
-/// heuristic), and the last -std value.
+/// What a command compiles its file as: whether as C, whether an -x
+/// forces that (the driver override beats every suffix heuristic), and the
+/// last -std value.
 struct Language {
-    CommandSource source;
     bool is_c = false;
     bool language_forced = false;
     std::string standard;
 };
 
-std::optional<Language> command_language(Project& project,
-                                         Fid file,
-                                         llvm::ArrayRef<CanonicalRef> paths,
-                                         const ContextChoice* choice) {
-    auto path = project.file_table.resolve(file);
-    auto commands = project.build.commands(file);
-    if(commands.empty()) {
-        return std::nullopt;
-    }
-    auto candidate = chosen_candidate(project,
-                                      file,
-                                      commands,
-                                      paths,
-                                      path,
-                                      choice ? llvm::StringRef(choice->command_hash) : "",
-                                      choice ? llvm::StringRef(choice->base_hash) : "")
-                         .value_or(commands.front());
-    auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
-
+Language language_facts(Project& project, const CommandRef& ref) {
     auto language = language_of(ref);
-    Language result{
-        .source = candidate.source,
+    Language facts{
         .is_c =
             language == clang::driver::types::TY_C || language == clang::driver::types::TY_CHeader,
         .language_forced = !project.commands.forced_language(ref.command).empty(),
     };
     for(auto& arg: project.commands.get(ref.command).args) {
         if(arg.opt_id == clang_options::OPT_std_EQ && arg.values.size() == 1) {
-            result.standard = arg.values[0];
+            facts.standard = arg.values[0];
         }
     }
-    return result;
+    return facts;
+}
+
+/// One resolution as its tiers run: each tier answers the candidate the
+/// file compiles under, or none to pass on to the next.
+struct Tiers {
+    Project& project;
+    Fid file;
+    CanonicalRef path;
+    const CommandRequest& request;
+    Resolution& resolution;
+
+    /// The user's host choice; null for none.
+    const ContextChoice* host_choice() const {
+        auto* choice = request.choice;
+        return choice && choice->host_path_id.valid() ? choice : nullptr;
+    }
+
+    /// A header's command lent by the host `search` found, with the
+    /// includer's context when the header needs it and it can be
+    /// synthesized; the host's command alone while the include tree the
+    /// search needs is not taken, or the context cannot be followed. None
+    /// when no host stands in for it.
+    std::optional<Candidate> through_host(HostSearch search) {
+        auto host_file = search.host      ? search.host->file
+                         : search.missing ? search.missing->key.first
+                                          : Fid{};
+        if(!host_file.valid()) {
+            return std::nullopt;
+        }
+        auto* choice = host_choice();
+        bool chosen = choice && choice->host_path_id == host_file;
+        // The host search ranks only hosts with a command fitting the header.
+        auto picked = *chosen_host_command(project,
+                                           file,
+                                           host_file,
+                                           chosen ? llvm::StringRef(choice->command_hash) : "",
+                                           chosen ? llvm::StringRef(choice->base_hash) : "");
+        auto candidate = picked.lent(host_file, CommandSource::Host);
+        resolution.host = host_file;
+        // Until the host's include tree the search waits on is taken, the
+        // header stands on that host's command, without its includer's
+        // context: a compile takes the tree and resolves again.
+        if(search.missing) {
+            resolution.missing_tree = std::move(search.missing);
+            return candidate;
+        }
+        auto& host = *search.host;
+        resolution.occurrence = search.occurrence;
+        resolution.forced = host.chain.front() != host.file ? host.chain.front() : Fid{};
+        LOG_INFO("resolve_command: {} borrows the command of {}",
+                 path,
+                 project.file_table.resolve(host.file));
+        // A header the command forces in itself has nothing to cut: the
+        // -includes ahead of it are its context.
+        if(host.chain.size() > 1) {
+            in_context(host, candidate, chosen);
+        }
+        // The chain decides the host as a synthesized context's text does:
+        // a change of a file on it may take the header elsewhere.
+        if(!resolution.synthesized) {
+            for(auto chained: host.chain) {
+                if(chained == file) {
+                    continue;
+                }
+                if(auto dep = current_dep(project.file_table, chained)) {
+                    resolution.embedded.push_back(*dep);
+                }
+            }
+        }
+        return candidate;
+    }
+
+    /// Whether the header compiles in its includer's context under
+    /// `candidate`, and the context when it does. A host the user chose is
+    /// chosen for its preprocessor state, so the header always compiles in
+    /// its context; one that cannot be followed leaves the header the
+    /// host's command alone (Resolution::unmatched_host).
+    void in_context(const Host& host, const Candidate& candidate, bool chosen) {
+        // What the header borrows is the host's command whatever a run adds.
+        auto lent = project.build.apply_rules(file, candidate);
+        std::optional<bool> alone = false;
+        if(!chosen) {
+            auto trial = TrialKey{file, project.commands.command_hash(lent.command)};
+            alone = self_contained(project, trial, request.open);
+            resolution.trial = trial;
+            resolution.self_contained = alone;
+        }
+        if(alone != false) {
+            return;
+        }
+        auto context = synthesize(project, file, host, lent);
+        if(!context.result.synthesized) {
+            resolution.unmatched_host = host.file;
+            return;
+        }
+        resolution.synthesized = std::move(context.result.synthesized);
+        resolution.embedded = std::move(context.trace);
+    }
+
+    /// 1. The host the user chose (clice/switchContext), while its compile
+    ///    enters the file where the choice says.
+    std::optional<Candidate> chosen_host() {
+        auto* choice = host_choice();
+        if(!choice) {
+            return std::nullopt;
+        }
+        return through_host(find_chosen_host(project, file, *choice));
+    }
+
+    /// 2. The file's own command: a database entry, the default command of
+    ///    a source the build compiles as a unit, or a provisional member's
+    ///    command. A header's default command is only the last resort
+    ///    below, after host inference. Multi-config projects honor the
+    ///    user's chosen entry, matched by command hash so the choice
+    ///    survives reordering.
+    std::optional<Candidate> own() {
+        if(!project.build.unit(file)) {
+            return std::nullopt;
+        }
+        auto commands = project.build.commands(file);
+        auto* choice = host_choice() ? nullptr : request.choice;
+        return chosen_candidate(project,
+                                file,
+                                commands,
+                                {},
+                                choice ? llvm::StringRef(choice->command_hash) : "",
+                                choice ? llvm::StringRef(choice->base_hash) : "")
+            .value_or(commands.front());
+    }
+
+    /// 3. The host that ranks first for the file, a header without a
+    ///    command of its own.
+    std::optional<Candidate> ranked_host() {
+        return through_host(find_ranked_host(project, file));
+    }
+
+    /// 4. A rule's default command for a file the build does not compile
+    ///    as a unit (a header under a default-command rule).
+    std::optional<Candidate> default_command() {
+        auto commands = project.build.commands(file);
+        if(commands.empty()) {
+            return std::nullopt;
+        }
+        return Candidate{.base = commands.front().base, .source = CommandSource::Default};
+    }
+
+    /// 5. A nearby member's command, edited for both files as a
+    ///    provisional member's is.
+    std::optional<Candidate> borrowed() {
+        auto borrowed = borrowed_command(project, file, true);
+        if(borrowed) {
+            LOG_INFO("resolve_command: {} borrows the command of {}",
+                     path,
+                     project.file_table.resolve(borrowed->from));
+        }
+        return borrowed;
+    }
+
+    /// 6. The builtin fallback, so the file still compiles and produces
+    ///    diagnostics instead of failing silently.
+    std::optional<Candidate> fallback() {
+        return Candidate{.base = project.build.builtin(path), .source = CommandSource::Fallback};
+    }
+};
+
+/// resolve_command, the trees the host search misses left missing.
+Resolution resolve(Project& project,
+                   Fid path_id,
+                   std::string& directory,
+                   std::vector<std::string>& arguments,
+                   const CommandRequest& request) {
+    auto path = project.file_table.resolve(path_id);
+    Resolution resolution;
+    Tiers tiers{project, path_id, path, request, resolution};
+    constexpr std::pair<llvm::StringRef, std::optional<Candidate> (Tiers::*)()> order[] = {
+        {"chosen_host", &Tiers::chosen_host    },
+        {"own",         &Tiers::own            },
+        {"ranked_host", &Tiers::ranked_host    },
+        {"default",     &Tiers::default_command},
+        {"borrowed",    &Tiers::borrowed       },
+        {"fallback",    &Tiers::fallback       },
+    };
+    llvm::SmallVector<llvm::StringRef, 6> tried;
+    std::optional<Candidate> candidate;
+    for(auto [name, tier]: order) {
+        tried.push_back(name);
+        if((candidate = (tiers.*tier)())) {
+            break;
+        }
+    }
+
+    auto ref =
+        project.build.apply_rules(path_id, *candidate, request.extra_prepend, request.extra_append);
+    // A header borrowing its host's command compiles as the host's
+    // language, with the header injected as the input; the synthesized
+    // prefix lands after the host's own user-content flags (its -includes
+    // run first, but for the one the context enters the header through and
+    // those after it).
+    RenderOptions options;
+    if(resolution.synthesized) {
+        options.preamble = resolution.synthesized->prefix.c_str();
+    }
+    options.kept_includes = includes_before(project, ref, resolution.forced);
+    directory = project.commands.get(ref.command).directory;
+    auto rendered = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
+    arguments.assign(rendered.argv.begin(), rendered.argv.end());
+    // The builtin command names a compiler no build chose: clang's own
+    // reading of it, when that compiler is missing, loses nothing.
+    if(ref.source != CommandSource::Fallback) {
+        resolution.query_failure = std::move(rendered.query_failure);
+    }
+    resolution.hidden = std::move(rendered.hidden);
+    resolution.candidate = *candidate;
+    resolution.ref = ref;
+    log_command_decision(path, tried, ref.source, arguments);
+    return resolution;
 }
 
 }  // namespace
@@ -111,8 +304,7 @@ std::optional<Language> command_language(Project& project,
 std::optional<Candidate> chosen_candidate(Project& project,
                                           Fid file,
                                           llvm::ArrayRef<Candidate> candidates,
-                                          llvm::ArrayRef<CanonicalRef> paths,
-                                          llvm::StringRef language_path,
+                                          Fid host,
                                           llvm::StringRef chosen_hash,
                                           llvm::StringRef chosen_base) {
     // The base identity resolved when the user chose is exact; the applied hash
@@ -120,15 +312,16 @@ std::optional<Candidate> chosen_candidate(Project& project,
     // (and cannot distinguish candidates the rules collapse together).
     if(!chosen_base.empty()) {
         for(auto& entry: candidates) {
-            if(project.commands.command_hash_hex(entry.command) == chosen_base) {
+            if(project.commands.command_hash_hex(entry.base) == chosen_base) {
                 return entry;
             }
         }
     }
     if(!chosen_hash.empty()) {
         for(auto& entry: candidates) {
-            auto ref =
-                project.build.resolve(file, entry.command, entry.source, paths, language_path);
+            auto ref = project.build.apply_rules(
+                file,
+                host.valid() ? entry.lent(host, CommandSource::Host) : entry);
             if(project.commands.command_hash_hex(ref.command) == chosen_hash) {
                 return entry;
             }
@@ -140,21 +333,13 @@ std::optional<Candidate> chosen_candidate(Project& project,
 CommandRef lent_command(Project& project,
                         Fid header,
                         Fid host,
-                        CommandID command,
+                        const Candidate& command,
                         llvm::ArrayRef<std::string> extra_prepend,
                         llvm::ArrayRef<std::string> extra_append) {
-    // The header inherits the host's world: the rules matching the host
-    // and the rules matching the header both edit the borrowed command,
-    // each once, in declaration order.
-    auto host_path = project.file_table.resolve(host);
-    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    return project.build.resolve(header,
-                                 command,
-                                 CommandSource::IncludeGraph,
-                                 edit_paths,
-                                 host_path,
-                                 extra_prepend,
-                                 extra_append);
+    return project.build.apply_rules(header,
+                                     command.lent(host, CommandSource::Host),
+                                     extra_prepend,
+                                     extra_append);
 }
 
 std::optional<Candidate> chosen_host_command(Project& project,
@@ -166,15 +351,7 @@ std::optional<Candidate> chosen_host_command(Project& project,
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto host_path = project.file_table.resolve(host);
-    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    return chosen_candidate(project,
-                            header,
-                            commands,
-                            edit_paths,
-                            host_path,
-                            chosen_hash,
-                            chosen_base)
+    return chosen_candidate(project, header, commands, host, chosen_hash, chosen_base)
         .value_or(commands.front());
 }
 
@@ -189,34 +366,50 @@ std::optional<CommandRef> host_command(Project& project,
     if(!picked) {
         return std::nullopt;
     }
-    return lent_command(project, header, host, picked->command, extra_prepend, extra_append);
+    return lent_command(project, header, host, *picked, extra_prepend, extra_append);
 }
 
 const clang::LangOptions&
     dialect(Project& project, Fid file, const ContextChoice* choice, Fid host) {
     auto path = project.file_table.resolve(file);
     bool host_choice = choice && choice->host_path_id.valid();
-    auto own = command_language(project, file, path, host_choice ? nullptr : choice);
+    std::optional<CommandRef> own;
+    if(auto commands = project.build.commands(file); !commands.empty()) {
+        auto* own_choice = host_choice ? nullptr : choice;
+        auto candidate =
+            chosen_candidate(project,
+                             file,
+                             commands,
+                             {},
+                             own_choice ? llvm::StringRef(own_choice->command_hash) : "",
+                             own_choice ? llvm::StringRef(own_choice->base_hash) : "")
+                .value_or(commands.front());
+        own = project.build.apply_rules(file, candidate);
+    }
+    auto own_facts = own ? std::optional(language_facts(project, *own)) : std::nullopt;
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
-    if(own && own->language_forced && own->source == CommandSource::CDBExact) {
-        return dialect_of("", own->is_c, own->standard);
+    if(own_facts && own_facts->language_forced && own->source == CommandSource::Database) {
+        return dialect_of("", own_facts->is_c, own_facts->standard);
     }
 
     // A header's active context (the user's persisted choice, else the
     // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
     if(host.valid()) {
-        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang =
-            command_language(project, host, edit_paths, host_choice ? choice : nullptr);
-        if(host_lang) {
-            return dialect_of("", host_lang->is_c, host_lang->standard);
+        bool chosen = host_choice && choice->host_path_id == host;
+        if(auto lent = host_command(project,
+                                    file,
+                                    host,
+                                    chosen ? llvm::StringRef(choice->command_hash) : "",
+                                    chosen ? llvm::StringRef(choice->base_hash) : "")) {
+            auto facts = language_facts(project, *lent);
+            return dialect_of("", facts.is_c, facts.standard);
         }
     }
 
-    if(own && own->language_forced) {
-        return dialect_of("", own->is_c, own->standard);
+    if(own_facts && own_facts->language_forced) {
+        return dialect_of("", own_facts->is_c, own_facts->standard);
     }
 
     bool contributed = false;
@@ -226,231 +419,10 @@ const clang::LangOptions&
         c_only = c_only && llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
     });
     c_only = contributed && c_only;
-    return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
+    return dialect_of(path,
+                      c_only,
+                      own_facts ? llvm::StringRef(own_facts->standard) : llvm::StringRef());
 }
-
-namespace {
-
-/// A header's command borrowed from its host, with the includer's context
-/// when the header needs it (in `resolution`); nullopt when no host stands
-/// in for it, or its context cannot be synthesized.
-std::optional<CommandRef> resolve_through_host(Project& project,
-                                               Fid path_id,
-                                               const CommandRequest& request,
-                                               Resolution& resolution) {
-    auto search = find_host(project, path_id, request.choice);
-    if(search.missing) {
-        resolution.missing_tree = std::move(search.missing);
-        return std::nullopt;
-    }
-    if(!search.host) {
-        return std::nullopt;
-    }
-    auto& host = *search.host;
-    auto* choice = request.choice;
-    bool chosen = choice && choice->host_path_id == host.file;
-    llvm::StringRef chosen_hash = chosen ? llvm::StringRef(choice->command_hash) : "";
-    llvm::StringRef chosen_base = chosen ? llvm::StringRef(choice->base_hash) : "";
-    // The host search ranks only hosts with a command fitting the header.
-    auto ref = *host_command(project,
-                             path_id,
-                             host.file,
-                             chosen_hash,
-                             chosen_base,
-                             request.extra_prepend,
-                             request.extra_append);
-    auto path = project.file_table.resolve(path_id);
-    auto host_path = project.file_table.resolve(host.file);
-    auto borrow = [&] {
-        // The chain decides the host as a synthesized context's text does:
-        // a change of a file on it may take the header elsewhere.
-        if(!resolution.synthesized) {
-            for(auto file: host.chain) {
-                if(file == path_id) {
-                    continue;
-                }
-                if(auto dep = current_dep(project.file_table, file)) {
-                    resolution.embedded.push_back(*dep);
-                }
-            }
-        }
-        resolution.host = host.file;
-        resolution.occurrence = search.occurrence;
-        resolution.forced = host.chain.front() != host.file ? host.chain.front() : Fid{};
-        LOG_INFO("resolve_command: {} borrows the command of {} (synthesized={})",
-                 path,
-                 host_path,
-                 resolution.synthesized != nullptr);
-        return ref;
-    };
-    // A header the command forces in itself has nothing to cut: the
-    // -includes ahead of it are its context.
-    if(host.chain.size() == 1) {
-        return borrow();
-    }
-
-    // What the header borrows is the host's command whatever a run adds.
-    auto lent = *host_command(project, path_id, host.file, chosen_hash, chosen_base);
-    // A host the user chose is chosen for its preprocessor state, so the
-    // header always compiles in its context.
-    std::optional<TrialKey> trial;
-    std::optional<bool> alone = false;
-    if(!chosen) {
-        trial = TrialKey{path_id, project.commands.command_hash(lent.command)};
-        alone = self_contained(project, *trial, request.open);
-    }
-    if(alone == false) {
-        auto context = synthesize(project, path_id, host, lent);
-        if(!context.result.synthesized) {
-            resolution.unmatched_host = host.file;
-            return std::nullopt;
-        }
-        resolution.synthesized = std::move(context.result.synthesized);
-        resolution.embedded = std::move(context.trace);
-    }
-    if(trial) {
-        resolution.trial = trial;
-        resolution.self_contained = alone;
-    }
-    return borrow();
-}
-
-/// resolve_command, the trees the host search misses left missing.
-Resolution resolve(Project& project,
-                   Fid path_id,
-                   std::string& directory,
-                   std::vector<std::string>& arguments,
-                   const CommandRequest& request) {
-    auto path = project.file_table.resolve(path_id);
-    llvm::SmallVector<llvm::StringRef, 4> tried;
-    Resolution resolution;
-
-    auto finish = [&](const CommandRef& ref) {
-        // A header borrowing its host's command compiles as the host's
-        // language, with the header injected as the input; the synthesized
-        // prefix lands after the host's own user-content flags (its
-        // -includes run first, but for the one the context enters the
-        // header through and those after it).
-        RenderOptions options;
-        if(resolution.synthesized) {
-            options.preamble = resolution.synthesized->prefix.c_str();
-        }
-        options.kept_includes = includes_before(project, ref, resolution.forced);
-        directory = project.commands.get(ref.command).directory;
-        auto rendered = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
-        arguments.assign(rendered.argv.begin(), rendered.argv.end());
-        // The builtin command names a compiler no build chose: clang's own
-        // reading of it, when that compiler is missing, loses nothing.
-        if(ref.source != CommandSource::Fallback) {
-            resolution.query_failure = std::move(rendered.query_failure);
-        }
-        resolution.hidden = std::move(rendered.hidden);
-        resolution.ref = ref;
-        log_command_decision(path, tried, ref.source, arguments);
-        return std::move(resolution);
-    };
-
-    // `base` with the rule edits of `paths` and the run's extras applied:
-    // an entry, a default command, a borrowed or the builtin one alike.
-    auto finish_own = [&](CommandID base,
-                          CommandSource source,
-                          llvm::ArrayRef<CanonicalRef> paths,
-                          llvm::StringRef language_path) {
-        return finish(project.build.resolve(path_id,
-                                            base,
-                                            source,
-                                            paths,
-                                            language_path,
-                                            request.extra_prepend,
-                                            request.extra_append));
-    };
-
-    const ContextChoice* choice = request.choice;
-    bool has_host_choice = choice && choice->host_path_id.valid();
-
-    // 1. If the file has an active header context via switchContext, use the
-    //    host source's CDB entry with file path replaced and preamble injected.
-    if(has_host_choice) {
-        tried.push_back("switch_context");
-        if(auto ref = resolve_through_host(project, path_id, request, resolution)) {
-            return finish(*ref);
-        }
-    }
-
-    // 2. The file's own command: a database entry, the default command of
-    //    a source the build compiles as a unit, or the command a
-    //    provisional member borrows. A header's default command is only
-    //    the last resort below, after host inference.
-    //    Multi-config projects honor the user's chosen entry, matched by
-    //    command hash so the choice survives reordering.
-    tried.push_back("cdb");
-    auto commands = project.build.commands(path_id);
-    if(project.build.unit(path_id)) {
-        llvm::StringRef chosen_hash, chosen_base;
-        if(choice && !has_host_choice) {
-            chosen_hash = choice->command_hash;
-            chosen_base = choice->base_hash;
-        }
-        auto picked =
-            chosen_candidate(project, path_id, commands, path, path, chosen_hash, chosen_base)
-                .value_or(commands.front());
-        return finish_own(picked.command, picked.source, path, path);
-    }
-
-    // 3. No CDB entry — try automatic header context resolution.
-    if(!has_host_choice) {
-        tried.push_back("include_graph");
-        if(auto ref = resolve_through_host(project, path_id, request, resolution)) {
-            return finish(*ref);
-        }
-    }
-
-    // Until the host's include tree the search waits on is taken, the
-    // header stands on that host's command, without its includer's
-    // context: a compile takes the tree and resolves again.
-    if(auto& missing = resolution.missing_tree) {
-        auto host = missing->key.first;
-        bool chosen = has_host_choice && choice->host_path_id == host;
-        if(auto ref = host_command(project,
-                                   path_id,
-                                   host,
-                                   chosen ? llvm::StringRef(choice->command_hash) : "",
-                                   chosen ? llvm::StringRef(choice->base_hash) : "",
-                                   request.extra_prepend,
-                                   request.extra_append)) {
-            return finish(*ref);
-        }
-    }
-
-    // 4. A rule's default command for a file the build does not compile as
-    //    a unit (a header under a default-command rule).
-    if(!commands.empty()) {
-        tried.push_back("default");
-        return finish_own(commands.front().command, CommandSource::Default, path, path);
-    }
-
-    // 5. A nearby unit's command, edited for both files as a provisional
-    //    member's is. A header compiles in that unit's language — a `.h`
-    //    as C++, not as a header job; a source in its own, which lending
-    //    only ever matches or crosses between C++ and its modules.
-    tried.push_back("inferred");
-    if(auto lender = command_lender(project, path_id)) {
-        auto lender_path = project.file_table.resolve(lender->unit);
-        LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
-        resolution.lender = lender->unit;
-        return finish_own(project.build.lend(lender->command, lender_path, path),
-                          CommandSource::Inferred,
-                          path,
-                          is_header_path(path) ? lender_path : path);
-    }
-
-    // 6. The builtin fallback, so the file still compiles and produces
-    //    diagnostics instead of failing silently.
-    tried.push_back("fallback");
-    return finish_own(project.build.builtin(path), CommandSource::Fallback, path, path);
-}
-
-}  // namespace
 
 Resolution resolve_command(Project& project,
                            Fid path_id,
@@ -473,8 +445,9 @@ std::uint64_t command_identity(Project& project, Fid unit) {
     if(commands.empty()) {
         return 0;
     }
-    std::uint64_t parts[] = {project.commands.command_hash(commands.front().command),
-                             project.build.edit_hash(project.file_table.resolve(unit))};
+    auto& candidate = commands.front();
+    std::uint64_t parts[] = {project.commands.command_hash(candidate.base),
+                             project.build.edit_hash(unit, candidate)};
     return llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(parts), sizeof(parts)));
 }
 
@@ -482,12 +455,9 @@ std::optional<CommandRef> pch_unit(Project& project,
                                    Fid path_id,
                                    const Resolution& resolution,
                                    const CommandRequest& request) {
-    llvm::SmallVector<CanonicalRef, 2> paths{project.file_table.resolve(path_id)};
-    if(resolution.host.valid()) {
-        paths.push_back(project.file_table.resolve(resolution.host));
-    }
-    return project.build.pch_unit(resolution.ref.command,
-                                  paths,
+    return project.build.pch_unit(path_id,
+                                  resolution.candidate,
+                                  resolution.ref.command,
                                   request.extra_prepend,
                                   request.extra_append);
 }

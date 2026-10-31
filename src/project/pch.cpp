@@ -12,18 +12,6 @@ namespace clice {
 
 namespace {
 
-NodeId node(std::uint64_t key_id) {
-    return {NodeKind::PCH, key_id};
-}
-
-std::uint64_t intern(Project& project, llvm::StringRef pch_key) {
-    auto [it, inserted] = project.pch_ids.try_emplace(pch_key, project.pch_requests.size());
-    if(inserted) {
-        project.pch_requests.emplace_back();
-    }
-    return it->second;
-}
-
 /// Forget an entry and discard the pairs it names.
 void drop(Project& project, llvm::StringMap<PCHState>::iterator entry) {
     if(project.store) {
@@ -37,13 +25,14 @@ void drop(Project& project, llvm::StringMap<PCHState>::iterator entry) {
 }
 
 /// Why the pair registered under the key cannot be adopted as it is; empty
-/// when it can: complete, both halves in the store, and what it read
-/// unchanged. Both halves must be present: a PCH whose pch.idx index is gone
-/// (crash between commits, failed aux commit) rebuilds whole. The store
-/// lookup refreshes the blob's LRU position, and a passing deps check may
-/// repair the snapshot's stat fast path in place. An entry whose blobs the
-/// store's LRU evicted goes, or the content-keyed map grows for the
-/// server's lifetime.
+/// when it can: complete, both halves in the store, the PCH on disk, and
+/// what it read unchanged. Both halves must be present: a PCH whose pch.idx
+/// index is gone (crash between commits, failed aux commit) rebuilds whole.
+/// The store lookup refreshes the blob's LRU position, and a passing deps
+/// check may repair the snapshot's stat fast path in place. An entry whose
+/// blobs the store's LRU evicted, or whose PCH left the disk behind the
+/// store's back, goes, or the content-keyed map grows for the server's
+/// lifetime.
 llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
@@ -54,7 +43,7 @@ llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
         return "incomplete_entry";
     }
     if(!project.store || !project.store->lookup("pch", st.blob) ||
-       !project.store->lookup_aux("pch", st.blob)) {
+       !project.store->lookup_aux("pch", st.blob) || !fs::exists(st.path)) {
         drop(project, it);
         return "evicted";
     }
@@ -62,6 +51,12 @@ llvm::StringRef revalidate(Project& project, llvm::StringRef pch_key) {
     // rather than serving a PCH with no index forever.
     if(st.index_path.empty()) {
         return "idx_unreadable";
+    }
+    if(!st.base.empty()) {
+        auto base = project.pch_cache.find(st.base);
+        if(base == project.pch_cache.end() || base->second.blob != st.base_blob) {
+            return "base_rebuilt";
+        }
     }
     if(deps_changed(project.file_table, st.deps)) {
         return "deps_changed";
@@ -110,18 +105,14 @@ void touch_loaded_state(Project& project, llvm::StringRef pch_key) {
 }
 
 /// One attempt: revalidate the registered pair, or dispatch a build with
-/// the dispatch owner's inputs and commit the pair.
-async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint64_t key_id) {
-    // Copy the dispatch owner's stash: a stale round's retry re-reads it,
-    // and the interned-key vector may grow while this frame is suspended,
-    // so never hold references into it.
-    auto request = project.pch_requests[key_id];
+/// the request's inputs and commit the pair.
+async::task<Result> build(Project& project, Attempt& attempt, PCHRequest request) {
     const auto& pch_key = request.pch_key;
 
     auto pch_miss = revalidate(project, pch_key);
     if(pch_miss.empty()) {
         LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
-        co_return RoundOutcome::Success;
+        co_return Result::Success;
     }
     LOG_PERF("cache",
              "ns=pch event=miss reason={} key={} file={}",
@@ -131,10 +122,10 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
 
     if(!project.store) {
         LOG_WARN("PCH build skipped: cache store is unavailable");
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     }
     if(refused(project, pch_key, request.file)) {
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
@@ -162,13 +153,15 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
     // What the imported modules' PCMs and the PCH built over were built
     // from as the build starts.
     auto before = module_inputs(project, request.modules);
+    std::string base_blob;
     if(!request.base.empty()) {
         auto it = project.pch_cache.find(request.base);
         if(it == project.pch_cache.end() || it->second.path.empty()) {
             LOG_DEBUG("PCH build for {} skipped: the PCH it builds over is gone", bp.file);
-            co_return RoundOutcome::Failed;
+            co_return Result::Failed;
         }
         bp.pch = it->second.path;
+        base_blob = it->second.blob;
         merge_deps(before, {&it->second.deps});
     }
     // What a build that crashes is known to read, sampled before it runs:
@@ -190,7 +183,7 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
     // its priority.
     auto built = co_await send_precompiled(
         project,
-        ctx,
+        attempt,
         bp,
         bp.file,
         std::move(known),
@@ -215,34 +208,34 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
     };
 
     auto committed = co_await async::queue([&]() -> PairCommit {
-        PairCommit outcome;
+        PairCommit commit;
         auto pch_path = project.store->commit(std::move(pending));
         if(!pch_path) {
             // pending_idx cleans its own tmp blob when the frame unwinds.
-            return outcome;
+            return commit;
         }
-        outcome.pch_path = std::move(*pch_path);
+        commit.pch_path = std::move(*pch_path);
 
         // The pair is only usable complete: when the index blob cannot be
-        // published, discard the PCH too — the next round rebuilds both.
+        // published, discard the PCH too — the next attempt rebuilds both.
         auto index_path = project.store->commit(std::move(pending_idx));
         if(!index_path) {
             project.store->invalidate("pch", blob);
-            return outcome;
+            return commit;
         }
-        outcome.index_path = std::move(*index_path);
-        outcome.state = load_pch_index(*outcome.index_path);
+        commit.index_path = std::move(*index_path);
+        commit.state = load_pch_index(*commit.index_path);
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
         // whose preamble state every consumer would fail to load.
-        if(!outcome.state) {
+        if(!commit.state) {
             project.store->invalidate("pch", blob);
         }
-        return outcome;
+        return commit;
     });
     if(!committed.pch_path.has_value()) {
         LOG_WARN("Failed to commit PCH for {}", bp.file);
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     }
     if(!committed.index_path.has_value() || !committed.state) {
         if(!committed.index_path.has_value()) {
@@ -256,7 +249,7 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
         if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
             drop(project, it);
         }
-        co_return RoundOutcome::Failed;
+        co_return Result::Failed;
     }
 
     auto& st = project.pch_cache[pch_key];
@@ -267,6 +260,7 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
     st.base = request.base;
+    st.base_blob = std::move(base_blob);
     st.deps = read_inputs(project, *built, before);
     st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
@@ -279,7 +273,7 @@ async::task<RoundOutcome> attempt(Project& project, RoundContext& ctx, std::uint
 
     project.mark_precompiled_dirty();
 
-    co_return RoundOutcome::Success;
+    co_return Result::Success;
 }
 
 }  // namespace
@@ -314,7 +308,7 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
         if(!state) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks
-            // incomplete and ensure_pch rebuilds it on the next compile.
+            // incomplete and the next acquisition rebuilds it.
             LOG_WARN("Failed to open pch.idx envelope {}", index_path);
             index_path.clear();
         }
@@ -348,60 +342,27 @@ bool pch_reads(const Project& project, llvm::StringRef key, Fid file) {
                           [&](const DepState& dep) { return dep.path_id == file; });
 }
 
-NodeId prepare_pch(Project& project, PCHRequest request) {
-    auto key_id = intern(project, request.pch_key);
-    auto id = node(key_id);
-    auto& graph = project.graph;
-
-    // A clean node can go stale behind the graph's back: LRU eviction,
-    // deps drift, a discarded pair. Re-dirty it so a fresh round
-    // revalidates or rebuilds.
-    if(graph.has_node(id) && !graph.is_dirty(id) && !graph.is_compiling(id) &&
-       !revalidate(project, request.pch_key).empty()) {
-        graph.update(id);
-    }
-
-    // The caller's join spawns a round synchronously only for a dirty
-    // node with no round live (a missing node is created dirty) — that
-    // caller is the dispatch owner: stash its inputs for the round. A
-    // clean fresh node's join consumes nothing, and a stash left there
-    // would pin the request's buffer in the monotonic table for as long as
-    // the key stays fresh.
-    if(!graph.is_compiling(id) && (!graph.has_node(id) || graph.is_dirty(id))) {
-        project.pch_requests[key_id] = std::move(request);
-    }
-    return id;
+Work pch_work(Project& project, PCHRequest request) {
+    auto shared = std::make_shared<const PCHRequest>(std::move(request));
+    return {
+        .run = [&project, shared](Attempt& attempt) { return build(project, attempt, *shared); },
+        .check =
+            [&project, shared] {
+                return revalidate(project, shared->pch_key).empty() ? Check::Holds
+                                                                    : Check::InputsChanged;
+            },
+    };
 }
 
-async::task<PCHOutcome> acquire_pch(Project& project, PCHRequest request) {
-    auto id = prepare_pch(project, std::move(request));
-    switch(co_await project.graph.request(id, {.kind = JoinKind::OneAttempt, .foreground = true})) {
-        case JoinOutcome::Success: co_return PCHOutcome::Ready;
-        case JoinOutcome::Failed: co_return PCHOutcome::Failed;
-        case JoinOutcome::Stale:
-        case JoinOutcome::Abandoned:
-        case JoinOutcome::Shutdown: co_return PCHOutcome::Preempted;
-    }
-    std::unreachable();
-}
-
-async::task<RoundOutcome> pch_round(Project& project, RoundContext& ctx, NodeId id) {
-    auto outcome = co_await attempt(project, ctx, id.key);
-    // A stale round's replacement respawns through join_node without
-    // passing prepare_pch(), so attempt() copies the stash instead of
-    // consuming it. Retire it on a current round's result, or once nobody
-    // waits on the key: an overtaken or preempted round its waiters retry
-    // still needs the inputs, one that lost every waiter (the preamble
-    // being typed moved on to another key) never runs again.
-    if((outcome != RoundOutcome::Stale && ctx.current()) || project.graph.refcount(id) == 0) {
-        project.pch_requests[id.key] = {};
-    }
-    co_return outcome;
+async::task<Result> acquire_pch(Project& project, PCHRequest request) {
+    auto id = pch_node(request.pch_key);
+    co_return co_await project.graph.join(id,
+                                          pch_work(project, std::move(request)),
+                                          {.foreground = true});
 }
 
 bool pch_building(const Project& project, llvm::StringRef pch_key) {
-    auto it = project.pch_ids.find(pch_key);
-    return it != project.pch_ids.end() && project.graph.is_compiling(node(it->second));
+    return project.graph.is_compiling(pch_node(pch_key));
 }
 
 void discard_pch(Project& project, llvm::StringRef pch_key) {
@@ -461,7 +422,7 @@ std::shared_ptr<index::TUIndex> preamble_state(Project& project, llvm::StringRef
         // The blob was just found unreadable (load_state cleared the
         // path): a pair that looks complete on disk but cannot be opened
         // would be served to every session for the rest of the store's
-        // life. Discard it now; the entry itself stays until ensure_pch
+        // life. Discard it now; the entry itself stays until the next acquisition
         // re-checks the store and rebuilds the pair.
         LOG_WARN("Discarding PCH pair {} with unreadable pch.idx envelope", pch_key);
         project.store->invalidate("pch", st.blob);
@@ -508,14 +469,6 @@ void enforce_loaded_budget(Project& project) {
         it->second.state.reset();
         lru.erase(lru.begin() + i);
     }
-}
-
-std::size_t stashed_pch_bytes(const Project& project) {
-    std::size_t bytes = 0;
-    for(auto& request: project.pch_requests) {
-        bytes += request.content.size();
-    }
-    return bytes;
 }
 
 }  // namespace clice

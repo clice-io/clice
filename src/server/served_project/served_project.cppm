@@ -155,7 +155,7 @@ struct ServedDocument {
     ServingMode serving = ServingMode::Escalated;
 
     /// The last resolution of the document's command borrowed or
-    /// synthesized it (Inferred, Fallback). A database change may give it a
+    /// synthesized it (Borrowed, Fallback). A database change may give it a
     /// real command or change its lender's, which the change's own delta
     /// cannot tell: every change recompiles it.
     bool guessed = false;
@@ -283,16 +283,21 @@ public:
     /// about a document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
-    /// After the editor saved a file routed here: record a source of the
-    /// project the build does not declare as a provisional member
-    /// (Build::record), the build following it as a database reload would.
+    /// After the editor saved a file routed here: record it as a member
+    /// (record_member).
     void record_saved(Fid path_id);
+
+    /// Record `path_id`, an open or saved source of the project the build
+    /// does not declare, as a provisional member (Build::record). Whether
+    /// it was recorded now: the build then follows it as a database reload
+    /// would (build_changed), which the caller asks for.
+    bool record_member(Fid path_id);
 
     // compile.cpp
 
     /// Compile an open document's AST if it is not current: join the
     /// document's round (spawning one if none is live) and retry through
-    /// stale attempts until a terminal outcome. Returns true when the
+    /// stale attempts until a terminal result. Returns true when the
     /// latest compile is current on return. A new generation of the
     /// document abandons the join — the editor re-requests after an edit,
     /// so the result would describe a buffer that no longer exists.
@@ -431,7 +436,7 @@ public:
     /// Whether the file's escalated document holds text no background run
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
-    /// (UnitRunPlan::skipped_diagnostics).
+    /// (UnitRequest::skipped_diagnostics).
     bool lacks_skipped_diagnostics(Fid path_id) const;
 
     /// Interrupt every in-flight parse and wait for the detached compile
@@ -623,7 +628,7 @@ public:
         directive_links(const Ticket& ticket, async::cancellation_token token);
 
     /// Whether a dispatch of `kind` may reach a worker: its record does not
-    /// stop it — or, once an attempt holds it, `kind` did not crash during
+    /// stop it — or, once a Dispatch holds it, `kind` did not crash during
     /// its flight — and for a build that parses the document (`parses`),
     /// neither does the compile's or its preamble's. One check admits a
     /// dispatch, of every kind: before its inputs are prepared, and again
@@ -632,7 +637,7 @@ public:
     /// the same content meanwhile.
     bool admits(const Session& session,
                 feature::RequestKind kind,
-                const Session::Attempt* attempt,
+                const Session::Dispatch* dispatch,
                 bool parses) const;
 
     /// Ask the worker holding the document's AST: compile it if it is not
@@ -771,20 +776,24 @@ private:
     /// self-containment trial and its stopped request kinds start over.
     void inputs_changed(Session& session);
 
-    /// One compile round; see run_round's comments for its obligations.
-    async::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
+    /// How to compile the open document: its AST node's work.
+    Work compile_work(Fid path_id);
 
-    /// The module-dependency phase of a round: resolve imports from the
-    /// round's buffer snapshot under the round's resolved command,
-    /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
-    /// (scanner truth — they must survive a failed compile or fixing an
-    /// import could never re-dirty this document), and wait on each
-    /// import through depend. Returns the imports, none when cancelled: an
-    /// import whose build failed is left to the parse, which reports it on
-    /// the import next to the file's own diagnostics; one whose build
-    /// crashed a worker also goes into the document's records, and is
-    /// refused until the document's record lets it retry.
-    async::task<std::optional<ModuleDeps>> depend_modules(RoundContext& ctx,
+    /// One attempt of the document's compile; see its comments for its
+    /// obligations.
+    async::task<Result> compile(Attempt& attempt, Fid path_id);
+
+    /// The module-dependency phase of a compile: resolve imports from the
+    /// attempt's buffer snapshot under its resolved command, declare the
+    /// AST→PCM edges (scanner truth — they must survive a failed compile or
+    /// fixing an import could never re-dirty this document), and wait on
+    /// each import through depend. Returns the imports, none when the
+    /// attempt is overtaken: an import whose build failed is left to the
+    /// parse, which reports it on the import next to the file's own
+    /// diagnostics; one whose build crashed a worker also goes into the
+    /// document's records, and is refused until the document's record lets
+    /// it retry.
+    async::task<std::optional<ModuleDeps>> depend_modules(Attempt& attempt,
                                                           const Ticket& ticket,
                                                           const Resolution& resolution,
                                                           llvm::StringRef directory,
@@ -905,14 +914,14 @@ private:
                                    bool& unanswered);
 
     /// Send a stateless request of `kind` carrying the document's content,
-    /// which `attempt` holds from its first admission on: admitted again
+    /// which `dispatch` holds from its first admission on: admitted again
     /// once it has its slot and before every resend. `refused` reports one
     /// never sent. `parses`: see admits.
     template <typename Params>
     RequestResult<Params> send_stateless(const Ticket& ticket,
                                          feature::RequestKind kind,
                                          const Params& params,
-                                         const Session::Attempt& attempt,
+                                         const Session::Dispatch& dispatch,
                                          bool parses,
                                          async::cancellation_token token,
                                          bool& refused);
@@ -1186,7 +1195,7 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
     // A query that kills the worker is this document's doing even though
     // its compile finished: per-kind record, since only this query kind
     // answering clears it (see Session).
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
     bool compile = false;
     auto& pool = *project.pool;
     co_return co_await deliver(
@@ -1197,7 +1206,7 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
                 if(std::exchange(compile, true) && !co_await ensure_compiled(ticket.session)) {
                     co_return unsent();
                 }
-                if(!admits(session, kind, &attempt, false)) {
+                if(!admits(session, kind, &dispatch, false)) {
                     co_return unsent();
                 }
                 auto result =
@@ -1273,13 +1282,13 @@ template <typename Params>
 RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
                                                     feature::RequestKind kind,
                                                     const Params& params,
-                                                    const Session::Attempt& attempt,
+                                                    const Session::Dispatch& dispatch,
                                                     bool parses,
                                                     async::cancellation_token token,
                                                     bool& refused) {
     auto& session = *ticket.session;
     auto admitted = [&] {
-        refused = !admits(session, kind, &attempt, parses);
+        refused = !admits(session, kind, &dispatch, parses);
         return !refused;
     };
     auto& pool = *project.pool;
@@ -1313,7 +1322,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         LOG_DEBUG("{}: {} is stopped by a crash", label, path);
         co_return empty_value<Result>();
     }
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
 
     params.file = path;
     params.text = session.text().str();
@@ -1361,7 +1370,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // this one while it was prepared or waited for a worker, stops the
     // content: it is not dispatched again.
     bool refused = false;
-    auto result = co_await send_stateless(ticket, kind, params, attempt, true, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, dispatch, true, token, refused);
     if(refused) {
         LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
         if(!ticket.fresh() && !snapshot()) {

@@ -51,15 +51,15 @@ struct InputKind {
 };
 
 /// Where the compile command for a file came from. Anything other than
-/// CDBExact means the command was guessed to some degree, which is why
+/// Database means the command was guessed to some degree, which is why
 /// diagnostics produced with it may deserve a guidance note (see
 /// feature::shown_diagnostics).
 enum class CommandSource : std::uint8_t {
     /// Direct compilation database entry for the file.
-    CDBExact,
+    Database,
     /// Header compiled in the context of a host source found through the
     /// include graph (automatic or via clice/switchContext).
-    IncludeGraph,
+    Host,
     /// Synthesized default command — no CDB entry and no usable host source.
     Fallback,
     /// A rule's default_command: declared by the user for files without an
@@ -68,8 +68,8 @@ enum class CommandSource : std::uint8_t {
     /// Borrowed from a unit of the build near the file — a sibling, one
     /// whose header search reaches it, or the closest by path — for a file
     /// with neither an entry nor a host, a provisional member's included
-    /// (see command_lender).
-    Inferred,
+    /// (see borrowed_command).
+    Borrowed,
 };
 
 /// A resolved command selection for one file: the final (rules-applied)

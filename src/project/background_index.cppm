@@ -40,7 +40,7 @@ struct BackgroundIndex {
 
     /// Under `skip_header_bodies`, every index run also brings back the
     /// diagnostics an editor can get wrong on its file
-    /// (UnitRunPlan::skipped_diagnostics), handed here with the hash of the
+    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
     /// text they describe — unless a reindex booked during the run says
     /// they describe inputs that changed.
     std::function<void(Fid path_id,
@@ -190,14 +190,14 @@ void clear_reindex(Project& project, Fid path_id);
 
 /// Schedule background indexing (respects idle timeout and dedup).
 /// `immediate` skips the idle batching window — used by the round tail for
-/// work requeued during the round that just ended, after a save that
-/// queued reindexes, and by index_first, which re-arms an already-armed
-/// timer to fire now (waiting out a previously scheduled idle window would
-/// starve the reader).
+/// work requeued during the round that just ended, and by index_first, which re-arms an
+/// already-armed timer to fire now (waiting out a previously scheduled idle window would starve the
+/// reader).
 void schedule_index(Project& project, bool immediate = false);
 
-/// One round now, without the idle delay: index the files queued when it
-/// starts, save, and schedule the next round for what it queued.
+/// One round, once the idle delay schedule_index armed has passed: index
+/// the files queued when it starts, save, and schedule the next round for
+/// what it queued.
 async::task<> run_index_round(Project& project);
 
 /// At the start of a run writing the index: queue every member the index

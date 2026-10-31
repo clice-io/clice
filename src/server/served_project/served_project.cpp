@@ -31,13 +31,6 @@ namespace clice {
 
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
-    project.graph.set_runner(NodeKind::AST,
-                             [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-                                 auto path_id = id.file();
-                                 auto outcome = co_await run_round(ctx, path_id);
-                                 enter_phase(path_id, CompilePhase::Idle);
-                                 co_return outcome;
-                             });
     project.index_query.attach(*this);
     // The loaded-state budget follows the open-document count, which the
     // project cannot see.
@@ -194,6 +187,14 @@ void ServedProject::start() {
     // the load: divergence detection sees the persisted shards it just
     // loaded (a restored unsaved buffer must escalate, not read as merely
     // unindexed).
+    bool recorded = false;
+    for(auto& [path_id, document]: documents) {
+        recorded = record_member(path_id) || recorded;
+    }
+    if(recorded) {
+        build_changed({});
+        schedule_metadata_flush();
+    }
     for(auto& [path_id, document]: documents) {
         decide_serving(document);
     }
@@ -277,6 +278,10 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     if(!started || broken()) {
         return;
     }
+    if(record_member(path_id)) {
+        build_changed({});
+        schedule_metadata_flush();
+    }
     server.recheck_choice(path_id);
     decide_serving(document);
 }
@@ -325,7 +330,7 @@ void ServedProject::release(Fid path_id) {
     auto path = project.file_table.resolve(path_id);
     server.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
     server.pool.remove_owner(path_id.raw);
-    project.graph.update(node(path_id));
+    project.graph.invalidate(node(path_id));
     forget_buffer_scan(project, path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
@@ -358,19 +363,23 @@ void ServedProject::record_saved(Fid path_id) {
             }
         }
     }
+    if(record_member(path_id)) {
+        build_changed({});
+        schedule_metadata_flush();
+    }
+}
+
+bool ServedProject::record_member(Fid path_id) {
     // A header compiles through a host or a lender, never as a member; a
     // build tree or the cache holds no sources of the project's own.
     auto path = project.file_table.resolve(path_id);
-    if(project.root.empty() || !is_source_path(path) || project.build.declared(path_id)) {
-        return;
-    }
-    if(!project_file(project.root, project.settings.project.cache_identity, path) ||
+    if(project.root.empty() || !is_source_path(path) || project.build.declared(path_id) ||
+       !project_file(project.root, project.settings.project.cache_identity, path) ||
        !project.build.record(path_id)) {
-        return;
+        return false;
     }
     LOG_INFO("Recorded {} as a provisional member", path);
-    build_changed({});
-    schedule_metadata_flush();
+    return true;
 }
 
 void ServedProject::schedule_metadata_flush() {

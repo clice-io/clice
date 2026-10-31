@@ -15,6 +15,11 @@ bool configured(const Spelling& dir);
 /// project's, not `project_root`'s. Empty when there is none.
 CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path);
 
+/// The project root's direct subdirectories, symlinked ones among them —
+/// a symlinked build directory is a build directory too, even before its
+/// target exists — in name order.
+llvm::SmallVector<Spelling> direct_subdirectories(CanonicalRef project_root);
+
 /// Where a `compile_commands.json` is looked for when no rule declares
 /// one: the project root, then its direct subdirectories in name order,
 /// but for those with a configuration file of their own (nested_project).

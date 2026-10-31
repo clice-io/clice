@@ -13,6 +13,7 @@ import :project.reindex_queue;
 import :project.save;
 import :support.bytes;
 import :support.prelude;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
@@ -38,6 +39,23 @@ struct IndexerFixture {
     BackgroundIndex& background = project.background_index;
     ReindexQueue& queue = project.background_index.queue;
 
+    struct Unit {
+        std::string name;
+        std::vector<std::string> extra_args;
+    };
+
+    /// List `units` — files of `tmp`, each with the extra arguments it is
+    /// indexed with — in the project's compilation database, as the build
+    /// lists the units a test indexes: a load keeps a unit's index only
+    /// while the build compiles it.
+    void list_units(TempDir& tmp, llvm::ArrayRef<Unit> units) {
+        std::vector<CDBEntry> entries;
+        for(auto& unit: units) {
+            entries.push_back({tmp.root, tmp.path(unit.name), unit.extra_args});
+        }
+        write_cdb(tmp, project.cdb, build_cdb_json(entries));
+    }
+
     /// Merge a worker result under the command the build gives its unit and
     /// take its report, as the unit run does.
     bool merge(llvm::StringRef data) {
@@ -56,7 +74,7 @@ struct IndexerFixture {
     /// One save, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        apply_report(project, co_await save_project(project, loop, search));
+        apply_report(project, co_await save_project(project, search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled

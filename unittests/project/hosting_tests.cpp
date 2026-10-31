@@ -11,6 +11,7 @@ import :compile.diagnostic;
 import :feature.diagnostics;
 import :index.project_index;
 import :index.tu_manifest;
+import :project.command;
 import :project.hosting;
 import :project.project;
 import :unittests.utils.cdb_helper;
@@ -51,9 +52,16 @@ struct TreeProject {
         return tree_request(project, host, project.build.commands(host).front());
     }
 
-    /// The host find_host finds for `header` with nothing pinned.
+    /// The host ranking first for `header`.
     std::optional<Host> host(Fid header) {
-        return find_host(project, header, nullptr).host;
+        return find_ranked_host(project, header).host;
+    }
+
+    /// Record `manifest` as the index of `unit`, built under the command
+    /// the build gives it.
+    void index(Fid unit, index::TUManifest manifest) {
+        manifest.command = command_identity(project, unit);
+        project.index.apply_manifest(unit, std::move(manifest));
     }
 
     /// include_chains under `host`'s first command.
@@ -106,7 +114,7 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
     ZEXPECT(ranked[0] == far);
     ZEXPECT(ranked[1] == near);
     /// The search waits for the first one's include tree.
-    auto search = find_host(project, header, nullptr);
+    auto search = find_ranked_host(project, header);
     ZEXPECT(!search.host.has_value());
     ZASSERT(search.missing);
     ZEXPECT(search.missing->key.first == far);
@@ -209,8 +217,8 @@ ZEST_CASE(HostsMatchLanguage) {
     /// the C unit would compile as C under its command.
     auto kernel_cl = project.file_table.intern(Spelling::absolute(tmp.path("c/kernel.cl")));
     auto objc = project.file_table.intern(Spelling::absolute(tmp.path("c/new.m")));
-    ZEXPECT(!command_lender(project, kernel_cl).has_value());
-    ZEXPECT(!command_lender(project, objc).has_value());
+    ZEXPECT(!borrowed_command(project, kernel_cl, false).has_value());
+    ZEXPECT(!borrowed_command(project, objc, false).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
@@ -242,8 +250,8 @@ ZEST_CASE(HostsMatchLanguage) {
     /// command would compile as CUDA.
     auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
     auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
-    ZEXPECT(command_lender(project, gpu_header)->unit == kernel);
-    ZEXPECT(!command_lender(project, gpu_source).has_value());
+    ZEXPECT(borrowed_command(project, gpu_header, false)->from == kernel);
+    ZEXPECT(!borrowed_command(project, gpu_source, false).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
@@ -259,11 +267,11 @@ ZEST_CASE(HostsMatchLanguage) {
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
     ZASSERT(fitting.size() == 1u);
-    ZEXPECT(fitting.front().command == cxx.command);
+    ZEXPECT(fitting.front().base == cxx.command);
     ZEXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
 };
 
-ZEST_CASE(LenderSibling) {
+ZEST_CASE(BorrowSibling) {
     /// A file without a command borrows from a unit in its directory, the
     /// one sharing its stem before the first by name; a `.c` only from a C
     /// unit, and nothing when the build has none.
@@ -286,12 +294,12 @@ ZEST_CASE(LenderSibling) {
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
-    ZEXPECT(command_lender(project, header)->unit == same_stem);
-    ZEXPECT(command_lender(project, other)->unit == first);
-    ZEXPECT(!command_lender(project, plain).has_value());
+    ZEXPECT(borrowed_command(project, header, false)->from == same_stem);
+    ZEXPECT(borrowed_command(project, other, false)->from == first);
+    ZEXPECT(!borrowed_command(project, plain, false).has_value());
 };
 
-ZEST_CASE(LenderCxxDriverC) {
+ZEST_CASE(BorrowCxxDriverC) {
     /// A `.c` borrows from a `.c` unit its C++ driver compiles as C++.
     TempDir tmp;
     tmp.touch("lib/a.c", "");
@@ -305,10 +313,10 @@ ZEST_CASE(LenderCxxDriverC) {
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
     auto unit = project.file_table.intern(Spelling::absolute(tmp.path("lib/a.c")));
-    ZEXPECT(command_lender(project, borrower)->unit == unit);
+    ZEXPECT(borrowed_command(project, borrower, false)->from == unit);
 };
 
-ZEST_CASE(LenderByDirectories) {
+ZEST_CASE(BorrowByDirectories) {
     /// Away from every unit's directory, a file borrows from the unit the
     /// fewest directories off, not the one sharing the longest spelling.
     TempDir tmp;
@@ -324,10 +332,10 @@ ZEST_CASE(LenderByDirectories) {
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
     auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
-    ZEXPECT(command_lender(project, borrower)->unit == parent);
+    ZEXPECT(borrowed_command(project, borrower, false)->from == parent);
 };
 
-ZEST_CASE(LenderSearchDir) {
+ZEST_CASE(BorrowSearchDir) {
     /// A header under a command's header search directory borrows that
     /// command — the entry that searches there, not the unit's first —
     /// over the unit closest by path; a source there borrows the closest.
@@ -348,17 +356,17 @@ ZEST_CASE(LenderSearchDir) {
     auto near = add("include/near.cpp", "");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
-    auto lender = command_lender(project, header);
-    ZASSERT(lender);
-    ZEXPECT(lender->unit == searching.file);
-    ZEXPECT(lender->command == searching.command);
+    auto borrowed = borrowed_command(project, header, false);
+    ZASSERT(borrowed);
+    ZEXPECT(borrowed->from == searching.file);
+    ZEXPECT(borrowed->base == searching.command);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
-    ZEXPECT(command_lender(project, source)->unit == near.file);
+    ZEXPECT(borrowed_command(project, source, false)->from == near.file);
 };
 
 #ifndef _WIN32
-ZEST_CASE(LenderSearchDirSymlink) {
+ZEST_CASE(BorrowSearchDirSymlink) {
     /// A command's search directory reaching the header through a symlink
     /// lends it that command, over the unit beside the header's real path.
     TempDir tmp;
@@ -379,13 +387,13 @@ ZEST_CASE(LenderSearchDirSymlink) {
     add("vendor/b.cpp", "");
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("vendor/real/orphan.h")));
-    auto lender = command_lender(project, header);
-    ZASSERT(lender);
-    ZEXPECT(lender->unit == searching.file);
+    auto borrowed = borrowed_command(project, header, false);
+    ZASSERT(borrowed);
+    ZEXPECT(borrowed->from == searching.file);
 };
 #endif
 
-ZEST_CASE(LenderIgnoresCommandless) {
+ZEST_CASE(BorrowIgnoresCommandless) {
     /// A member a rule covers with a default command that is no compile
     /// command lends nothing.
     TempDir tmp;
@@ -399,10 +407,10 @@ ZEST_CASE(LenderIgnoresCommandless) {
     project.build.reset_active("");
     ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
-    ZEXPECT(!command_lender(project, header).has_value());
+    ZEXPECT(!borrowed_command(project, header, false).has_value());
 };
 
-ZEST_CASE(LenderAcrossModules) {
+ZEST_CASE(BorrowAcrossModules) {
     /// A C++ source and a C++ module unit lend to each other: the first
     /// module interface among `.cpp` units borrows their command, and an
     /// implementation unit its interface's.
@@ -422,8 +430,10 @@ ZEST_CASE(LenderAcrossModules) {
     auto intern = [&](llvm::StringRef file) {
         return project.file_table.intern(Spelling::absolute(tmp.path(file)));
     };
-    ZEXPECT(command_lender(project, intern("src/first.cppm"))->unit == intern("src/a.cpp"));
-    ZEXPECT(command_lender(project, intern("mods/m_impl.cpp"))->unit == intern("mods/m.cppm"));
+    ZEXPECT(borrowed_command(project, intern("src/first.cppm"), false)->from ==
+            intern("src/a.cpp"));
+    ZEXPECT(borrowed_command(project, intern("mods/m_impl.cpp"), false)->from ==
+            intern("mods/m.cppm"));
 };
 
 ZEST_CASE(NestedProjectRecordsNothing) {
@@ -445,9 +455,11 @@ ZEST_CASE(NestedProjectRecordsNothing) {
 };
 
 ZEST_CASE(ProvisionalMembers) {
-    /// A recorded file is a member under its lender's command while it has
-    /// a lender and no host; it lends to no one, and an entry listing it
-    /// takes over from the record.
+    /// A recorded file is a member while no unit hosts it: under the command
+    /// a unit lends it, else the builtin one. Members borrow only from the
+    /// units the build declares; a file outside the build borrows from one,
+    /// the command still the unit's. An entry listing it takes over from
+    /// the record.
     TempDir tmp;
     FileTable files;
     Project project{files};
@@ -472,13 +484,18 @@ ZEST_CASE(ProvisionalMembers) {
     ZEXPECT(project.build.unit(saved));
     auto commands = project.build.commands(saved);
     ZASSERT(commands.size() == 1u);
-    ZEXPECT(commands.front().source == CommandSource::Inferred);
+    ZEXPECT(commands.front().source == CommandSource::Borrowed);
     ZEXPECT(project.build.members().back() == saved);
 
-    /// `a_new.cpp` sorts first in the directory, yet `b.cpp` lends: a
-    /// provisional member lends to no one.
+    /// `a_new.cpp` sorts first in the directory: it lends to a file outside
+    /// the build, never to a member, and what it lends is `b.cpp`'s.
     project.commands_epoch += 1;
-    ZEXPECT(command_lender(project, intern("src/other.cpp"))->unit == unit.file);
+    auto other = intern("src/other.cpp");
+    ZEXPECT(borrowed_command(project, other, false)->from == unit.file);
+    auto chained = borrowed_command(project, other, true);
+    ZASSERT(chained);
+    ZEXPECT(chained->from == unit.file);
+    ZEXPECT(chained->base == unit.command);
 
     /// A unit sorting before `b.cpp` lends instead: the member's command
     /// changes with it.
@@ -486,14 +503,16 @@ ZEST_CASE(ProvisionalMembers) {
     project.commands_epoch += 1;
     ZEXPECT(project.refresh_provisional().changed == llvm::SmallVector<Fid>{saved});
 
-    /// No C unit lends to a `.c` yet: recorded, not a member until one does.
+    /// No C unit lends to a `.c` yet: a member under the builtin command
+    /// until one does.
     auto c_file = intern("src/new.c");
     project.build.record(c_file);
-    ZEXPECT(project.refresh_provisional().empty());
-    ZEXPECT(!project.build.unit(c_file));
+    ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{c_file});
+    ZEXPECT(project.build.commands(c_file).front().source == CommandSource::Fallback);
     add("clang", "src/legacy.c");
     project.commands_epoch += 1;
-    ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{c_file});
+    ZEXPECT(project.refresh_provisional().changed == llvm::SmallVector<Fid>{c_file});
+    ZEXPECT(project.build.commands(c_file).front().source == CommandSource::Borrowed);
 
     /// A file a unit includes keeps compiling in its includer's context.
     auto included = intern("src/table.cpp");
@@ -516,7 +535,7 @@ ZEST_CASE(ProvisionalMembers) {
     add("clang++", "src/a_new.cpp");
     ZEXPECT(project.refresh_provisional().empty());
     ZEXPECT(!project.build.recorded().contains(saved));
-    ZEXPECT(project.build.commands(saved).front().source == CommandSource::CDBExact);
+    ZEXPECT(project.build.commands(saved).front().source == CommandSource::Database);
 };
 
 ZEST_CASE(ChainsFollowTree) {
@@ -542,7 +561,7 @@ ZEST_CASE(ChainsFollowTree) {
         {.file = p.version(bar, bar_text), .parent = 0, .line = 2},
         {.file = p.version(bar, bar_text), .line = 2, .skipped = true},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     auto host = p.host(bar);
     ZASSERT(host);
@@ -574,11 +593,11 @@ ZEST_CASE(TreeRulesOutHost) {
         {.file = p.version(shared, shared_text), .line = 1},
         {.file = p.version(config_a, ""), .parent = 0, .line = 2},
     };
-    p.project.index.apply_manifest(a, std::move(manifest));
+    p.index(a, std::move(manifest));
 
     ZEXPECT(count_occurrences(p.project, a, config_b) == 0u);
     /// b.cpp's compile may enter it: the search waits for its tree.
-    auto search = find_host(p.project, config_b, nullptr);
+    auto search = find_ranked_host(p.project, config_b);
     ZASSERT(search.missing);
     ZEXPECT(search.missing->key.first == b);
     llvm::StringRef b_text = "#include \"shared.h\"\n";
@@ -622,7 +641,7 @@ ZEST_CASE(ChainsInCompileOrder) {
         {.file = p.version(mid, mid_text), .line = 1},
         {.file = p.version(list, "X(a)\n"), .parent = 1, .line = 1},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     auto found = p.chains(main, list);
     ZASSERT(found);
@@ -654,7 +673,7 @@ ZEST_CASE(ForcedIncludeEnters) {
         {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 2},
         {.file = p.version(t, "#pragma once\n"), .line = 1, .skipped = true},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     auto found = p.chains(main, t);
     ZASSERT(found);
@@ -688,7 +707,7 @@ ZEST_CASE(PrecompiledHeaderHidesWay) {
     manifest.nodes = {
         {.file = p.version(a, a_text), .line = 1, .skipped = true},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     ZEXPECT(!p.chains(main, t).has_value());
     p.project.hosting.trees.commit(
@@ -771,10 +790,10 @@ ZEST_CASE(ForcedGainsInclude) {
     manifest.nodes = {
         {.file = old_version, .line = 300},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     ZEXPECT(!p.chains(main, t).has_value());
-    auto search = find_host(p.project, t, nullptr);
+    auto search = find_ranked_host(p.project, t);
     ZASSERT(search.missing);
     ZEXPECT(search.missing->key.first == main);
 };
@@ -800,7 +819,7 @@ ZEST_CASE(SkippedAloneRulesOut) {
         {.file = p.version(a, a_text), .line = 1},
         {.file = p.version(b, b_text), .line = 2, .skipped = true},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     ZEXPECT(!p.host(b).has_value());
 };
@@ -823,12 +842,37 @@ ZEST_CASE(ContributorHosts) {
     manifest.contributions = {
         {VersionID{p.version(config_b, "")}, 1}
     };
-    p.project.index.apply_manifest(b, std::move(manifest));
+    p.index(b, std::move(manifest));
 
     auto host = p.host(config_b);
     ZASSERT(host);
     ZEXPECT(host->file == b);
     ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1});
+};
+
+ZEST_CASE(OtherCommandTreeWaits) {
+    /// The unit's command changed since its index was built: the manifest's
+    /// tree is the old command's, and the search waits for a preprocess
+    /// run's.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"bar.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto bar = p.write("bar.h", "int b;\n");
+    p.project.dep_graph.set_includes(main, 0, {{bar}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(bar, "int b;\n"), .line = 1},
+    };
+    p.index(main, manifest);
+    ZEXPECT(p.chains(main, bar).has_value());
+
+    manifest.command = command_identity(p.project, main) + 1;
+    p.project.index.apply_manifest(main, std::move(manifest));
+    ZEXPECT(!p.chains(main, bar).has_value());
 };
 
 ZEST_CASE(StaleTreeWaits) {
@@ -849,10 +893,10 @@ ZEST_CASE(StaleTreeWaits) {
         {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
         {.file = p.version(bar, "int b;\n"), .parent = 0, .line = 2},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     ZEXPECT(!p.chains(main, bar).has_value());
-    auto search = find_host(p.project, bar, nullptr);
+    auto search = find_ranked_host(p.project, bar);
     ZASSERT(search.missing);
     ZEXPECT(search.missing->key.first == main);
 };
@@ -871,7 +915,7 @@ ZEST_CASE(AppearedFileWaits) {
     manifest.built_at = 1;
     manifest.tu_version = root;
     manifest.absent = absent;
-    p.project.index.apply_manifest(unity, std::move(manifest));
+    p.index(unity, std::move(manifest));
     auto before = p.chains(unity, part);
     ZASSERT(before);
     ZEXPECT(before->empty());
@@ -911,7 +955,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
         {.file = p.version(t, "#pragma once\nint t;\n"), .line = 2, .skipped = true},
         {.file = p.version(u, "#pragma once\nint u;\n"), .line = 3},
     };
-    p.project.index.apply_manifest(main, std::move(manifest));
+    p.index(main, std::move(manifest));
 
     ZEXPECT(!p.chains(main, t).has_value());
     auto once = p.chains(main, u);
@@ -937,7 +981,7 @@ ZEST_CASE(RankingSeesContributor) {
     manifest.contributions = {
         {VersionID{p.version(header, "")}, 1}
     };
-    p.project.index.apply_manifest(b, std::move(manifest));
+    p.index(b, std::move(manifest));
     ZEXPECT(ranked_hosts(p.project, header) == (llvm::SmallVector<Fid>{a, b}));
 };
 
@@ -979,7 +1023,7 @@ ZEST_CASE(FailedTreeHostsNothing) {
 
     commit_failed_tree(p.project, p.tree(a));
     ZEXPECT(p.chains(a, t)->empty());
-    auto search = find_host(p.project, t, nullptr);
+    auto search = find_ranked_host(p.project, t);
     ZASSERT(search.missing);
     ZEXPECT(search.missing->key.first == b);
 
@@ -1041,6 +1085,38 @@ ZEST_CASE(TrialFollowsItsInputs) {
     p.write("dep.h", "struct Widget {};\n");
     files.disk.end_turn();
     ZEXPECT(!self_contained(p.project, other, true).has_value());
+};
+
+ZEST_CASE(UnmatchedContextKeepsHost) {
+    /// A header needing its includer's context that the synthesis cannot
+    /// follow compiles under its host's command without it, not under a
+    /// command borrowed elsewhere.
+    TreeProject p;
+    llvm::StringRef main_text = "int x;\n";
+    auto main = p.write("main.cpp", main_text);
+    auto t = p.write("t.h", "int t;\n");
+    p.project.dep_graph.set_includes(main, 0, {{t}});
+    p.project.dep_graph.build_reverse_map();
+    index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(t, "int t;\n"), .line = 1},
+    };
+    p.index(main, std::move(manifest));
+
+    auto lent = lent_command(p.project, t, main, p.project.build.commands(main).front());
+    auto version = current_dep(p.project.file_table, t)->version;
+    p.project.hosting.trials.commit({t, p.project.commands.command_hash(lent.command)},
+                                    {.self_contained = false, .text = version, .disk = version},
+                                    {});
+
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto resolution = resolve_command(p.project, t, directory, arguments);
+    ZEXPECT(resolution.ref.source == CommandSource::Host);
+    ZEXPECT(resolution.unmatched_host == main);
+    ZEXPECT(resolution.synthesized == nullptr);
 };
 
 ZEST_CASE(FailedContextRemembered) {

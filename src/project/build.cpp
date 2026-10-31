@@ -128,13 +128,13 @@ llvm::SmallVector<CompilationEntry, 2> Build::entries(Fid file) const {
 llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
     llvm::SmallVector<Candidate, 2> result;
     for(auto& entry: entries(file)) {
-        result.push_back({.command = entry.command, .source = CommandSource::CDBExact});
+        result.push_back({.base = entry.command, .source = CommandSource::Database});
     }
     if(result.empty()) {
         if(auto id = default_command(files.resolve(file))) {
-            result.push_back({.command = *id, .source = CommandSource::Default});
+            result.push_back({.base = *id, .source = CommandSource::Default});
         } else if(auto it = provisional.find(file); it != provisional.end()) {
-            result.push_back({.command = it->second, .source = CommandSource::Inferred});
+            result.push_back(it->second);
         }
     }
     return result;
@@ -255,19 +255,33 @@ CommandID Build::builtin(CanonicalRef path) {
     return *intern(Spelling(path.parent()), arguments);
 }
 
-CommandRef Build::resolve(Fid file,
-                          CommandID base,
-                          CommandSource source,
-                          llvm::ArrayRef<CanonicalRef> paths,
-                          llvm::StringRef language_path,
-                          llvm::ArrayRef<std::string> extra_prepend,
-                          llvm::ArrayRef<std::string> extra_append) {
-    auto edit = edits(paths);
-    auto applied = apply(base, edit.options(extra_prepend, extra_append));
-    return {file, applied, command_table.input_kind(applied, language_path), source};
+llvm::SmallVector<CanonicalRef, 2> Build::rule_paths(Fid file, const Candidate& candidate) const {
+    llvm::SmallVector<CanonicalRef, 2> paths;
+    if(candidate.from.valid()) {
+        paths.push_back(files.resolve(candidate.from));
+    }
+    paths.push_back(files.resolve(file));
+    return paths;
 }
 
-std::uint64_t Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
+CommandRef Build::apply_rules(Fid file,
+                              const Candidate& candidate,
+                              llvm::ArrayRef<std::string> extra_prepend,
+                              llvm::ArrayRef<std::string> extra_append) {
+    auto paths = rule_paths(file, candidate);
+    auto applied = apply(candidate.base, edits(paths).options(extra_prepend, extra_append));
+    // A header borrowing a command compiles as that command's unit does — a
+    // `.h` as C++, not as a header job — and so does a file in its host; a
+    // source in its own language, which lending only ever matches or
+    // crosses between C++ and its modules.
+    bool foreign = candidate.from.valid() &&
+                   (candidate.source == CommandSource::Host || is_header_path(paths.back()));
+    auto language_path = foreign ? paths.front() : paths.back();
+    return {file, applied, command_table.input_kind(applied, language_path), candidate.source};
+}
+
+std::uint64_t Build::edit_hash(Fid file, const Candidate& candidate) const {
+    auto paths = rule_paths(file, candidate);
     auto edit = edits(paths);
     if(edit.empty()) {
         return 0;
@@ -323,12 +337,11 @@ bool Build::formattable(CanonicalRef path) const {
 llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
     llvm::SmallVector<CommandRef> result;
     for(auto member: members) {
-        auto path = files.resolve(member);
         // Two databases listing the file with the same command make one
         // unit: the scan would only read it twice.
         auto first = result.size();
         for(auto& candidate: commands(member)) {
-            auto unit = resolve(member, candidate.command, candidate.source, path, path);
+            auto unit = apply_rules(member, candidate);
             bool seen = ranges::any_of(llvm::ArrayRef(result).drop_front(first),
                                        [&](const CommandRef& other) {
                                            return other.command == unit.command &&
@@ -381,9 +394,9 @@ void Build::forget(Fid file) {
     provisional.erase(file);
 }
 
-std::optional<CommandID> Build::borrow(Fid file, std::optional<CommandID> command) {
-    assert(records.contains(file) && "only a recorded file borrows");
-    std::optional<CommandID> before;
+std::optional<Candidate> Build::set_command(Fid file, std::optional<Candidate> command) {
+    assert(records.contains(file) && "only a recorded file is a provisional member");
+    std::optional<Candidate> before;
     if(auto it = provisional.find(file); it != provisional.end()) {
         before = it->second;
     }
@@ -393,17 +406,6 @@ std::optional<CommandID> Build::borrow(Fid file, std::optional<CommandID> comman
         provisional.erase(file);
     }
     return before;
-}
-
-CommandID Build::lend(CommandID command, CanonicalRef lender, CanonicalRef file) {
-    auto own = matching(file);
-    auto matched = matching(lender);
-    matched.erase(
-        ranges::remove_if(matched,
-                          [&](const CompiledRule* rule) { return ranges::contains(own, rule); })
-            .begin(),
-        matched.end());
-    return apply(command, edits_of(matched).options());
 }
 
 llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
@@ -465,8 +467,9 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
-std::optional<CommandRef> Build::pch_unit(CommandID command,
-                                          llvm::ArrayRef<CanonicalRef> paths,
+std::optional<CommandRef> Build::pch_unit(Fid file,
+                                          const Candidate& candidate,
+                                          CommandID command,
                                           llvm::ArrayRef<std::string> extra_prepend,
                                           llvm::ArrayRef<std::string> extra_append) {
     if(command_table.pch_output(command)) {
@@ -482,13 +485,12 @@ std::optional<CommandRef> Build::pch_unit(CommandID command,
                 return entry.source == writer.source && entry.ordinal == writer.ordinal;
             });
             if(active) {
-                return resolve(writer.file,
-                               writer.command,
-                               CommandSource::CDBExact,
-                               paths,
-                               files.resolve(writer.file),
-                               extra_prepend,
-                               extra_append);
+                auto edits = this->edits(rule_paths(file, candidate));
+                auto applied = apply(writer.command, edits.options(extra_prepend, extra_append));
+                return CommandRef{writer.file,
+                                  applied,
+                                  command_table.input_kind(applied, files.resolve(writer.file)),
+                                  CommandSource::Database};
             }
         }
     }
@@ -573,8 +575,10 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
             }
             if(entry->type == fs::FileType::Directory) {
                 auto name = entry->name();
-                if(name == ".git" || (name == path::filename(walk.cache_dir) &&
-                                      root.entry(entry->path) == walk.cache_dir)) {
+                if(name == ".git" ||
+                   (name == path::filename(walk.cache_dir) &&
+                    root.entry(entry->path) == walk.cache_dir) ||
+                   configured(Spelling::absolute(entry->path))) {
                     entries.skip();
                 }
                 continue;

@@ -47,15 +47,15 @@ DepsSnapshot read_inputs(Project& project,
 /// read (`known`), and one that failed on the user's code on what it read
 /// (read_inputs over `before`); any other failure is clice's own breakage,
 /// an anomaly. The interest class is read at dispatch time: a foreground
-/// requester may have joined after the round started. The advisory token
+/// waiter may have joined after the attempt started. The advisory token
 /// rides into the pool, which cancels the request over IPC while this frame
 /// keeps awaiting the real reply (contract 2). The reply of a build that
-/// succeeded; else the round's outcome — Stale for a build the round
+/// succeeded; else the attempt's result — Stale for a build the attempt
 /// withdrew, which is no decision on it.
 template <typename Params>
-async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
+async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     send_precompiled(Project& project,
-                     RoundContext& ctx,
+                     Attempt& attempt,
                      const Params& params,
                      llvm::StringRef whom,
                      DepsSnapshot known,
@@ -63,11 +63,11 @@ async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
                      llvm::function_ref<void(FailureRecord, DepsSnapshot)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
-    auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
+    auto priority = attempt.foreground() ? worker::Priority::High : worker::Priority::Low;
     auto result = co_await deliver(
         *project.pool,
         false,
-        [&] { return project.pool->send_stateless(params, priority, ctx.token()); },
+        [&] { return project.pool->send_stateless(params, priority, attempt.token()); },
         [&](const ipc::Error& error) {
             fail(failed_build(worker::death_of(error), error.message), std::move(known));
         });
@@ -76,7 +76,7 @@ async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
     }
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("{} build preempted for {}, will retry", what, whom);
-        co_return std::unexpected(RoundOutcome::Stale);
+        co_return std::unexpected(Result::Stale);
     }
     // A build is expected to fail on the user's errors, or for an operational
     // reason (memory-pressure preemption, crash/restart window).
@@ -94,7 +94,7 @@ async::task<std::expected<worker::PrecompiledBuildResult, RoundOutcome>>
     } else {
         LOG_ANOMALY(PCMBuildFail, "PCM build failed for {}: {}", whom, message);
     }
-    co_return std::unexpected(RoundOutcome::Failed);
+    co_return std::unexpected(Result::Failed);
 }
 
 }  // namespace clice

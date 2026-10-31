@@ -54,35 +54,34 @@ CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path) {
     return found;
 }
 
-llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
-    llvm::SmallVector<Spelling> places;
-    if(project_root.empty()) {
-        return places;
-    }
-    places.emplace_back(database_name, Spelling(project_root));
-
-    // Name order, so build/ and out/ side by side load in the same order on
-    // every start rather than whichever the directory listing yields first.
+llvm::SmallVector<Spelling> direct_subdirectories(CanonicalRef project_root) {
     llvm::SmallVector<Spelling> subdirectories;
     if(auto entries = fs::Directory::open(project_root)) {
         for(auto& entry: *entries) {
             if(!entry) {
                 break;
             }
-            // A symlinked build directory is a build directory too, even
-            // before its target exists. One with a configuration file of
-            // its own is a project of its own.
             if(entry->type == fs::FileType::Symlink || entry->type == fs::FileType::Directory) {
-                auto subdirectory = Spelling::absolute(path::join(project_root, entry->name));
-                if(!configured(subdirectory)) {
-                    subdirectories.push_back(std::move(subdirectory));
-                }
+                subdirectories.push_back(Spelling::absolute(path::join(project_root, entry->name)));
             }
         }
     }
+    // Name order, so build/ and out/ side by side load in the same order on
+    // every start rather than whichever the directory listing yields first.
     ranges::sort(subdirectories);
-    for(auto& subdirectory: subdirectories) {
-        places.emplace_back(database_name, subdirectory);
+    return subdirectories;
+}
+
+llvm::SmallVector<Spelling> database_places(CanonicalRef project_root) {
+    llvm::SmallVector<Spelling> places;
+    if(project_root.empty()) {
+        return places;
+    }
+    places.emplace_back(database_name, Spelling(project_root));
+    for(auto& subdirectory: direct_subdirectories(project_root)) {
+        if(!configured(subdirectory)) {
+            places.emplace_back(database_name, subdirectory);
+        }
     }
     return places;
 }
@@ -220,18 +219,11 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
         return "no file on disk matches a rule with a default_command.";
     }
     std::vector<std::string> nested;
-    if(auto entries = fs::Directory::open(root)) {
-        for(auto& entry: *entries) {
-            if(!entry) {
-                break;
-            }
-            if(entry->type == fs::FileType::Directory &&
-               configured(Spelling::absolute(path::join(root, entry->name)))) {
-                nested.push_back(entry->name);
-            }
+    for(auto& subdirectory: direct_subdirectories(CanonicalPath(Spelling::absolute(root)))) {
+        if(configured(subdirectory)) {
+            nested.emplace_back(path::filename(subdirectory));
         }
     }
-    ranges::sort(nested);
     std::string projects;
     if(nested.size() == 1) {
         projects = std::format(" {} has its own configuration file and is a project of its own.",

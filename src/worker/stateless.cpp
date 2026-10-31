@@ -427,10 +427,10 @@ static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
-        LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
+        LOG_WARN("Unit run failed: file={}, {}ms", params.file, timer.ms());
         auto errors = collect_errors(*unit);
         if(errors.empty()) {
-            return {false, "TU run compilation failed"};
+            return {false, "Unit run compilation failed"};
         }
         // A command clang rejects before parsing: lint reports why, as
         // clang-tidy does.
@@ -452,7 +452,7 @@ static worker::UnitRunResult handle_unit_run(const worker::UnitRunParams& params
     // Building and serializing the index costs a large share of the pass;
     // skip it when the cancellation arrived after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
-        return {false, "TU run cancelled"};
+        return {false, "Unit run cancelled"};
     }
     worker::UnitRunResult result;
     result.success = true;

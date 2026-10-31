@@ -371,7 +371,7 @@ ZEST_CASE(IndexFirstRearmsIdleTimer) {
     ZASSERT(f.background.failed.size() == 1u);
 }
 
-ZEST_CASE(OtherCommandRunsCurrentIndex) {
+ZEST_CASE(OtherCommandNotSkipped) {
     // The skip check runs a unit whose index is current by content but was
     // built under another command than the build gives it — as a run that
     // started under the old command merges it.
@@ -403,9 +403,44 @@ ZEST_CASE(OtherCommandRunsCurrentIndex) {
 }
 
 ZEST_CASE(SaveStartsOwedRound) {
-    // A save outside any round that leaves reindexes queued starts their
-    // round at once, rather than leaving them to the next edit or
-    // checkpoint (10-10#2).
+    // A save outside any round that finds the database corrupt owes every
+    // unit a reindex: their round starts, rather than waiting for the next
+    // edit or checkpoint.
+    struct CorruptOnWrite final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        bool poisoned = false;
+
+        bool write(llvm::ArrayRef<Blob>, llvm::ArrayRef<index::BlobKey>) override {
+            poisoned = true;
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+    };
+
+    TempDir tmp;
+    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
+    f.project.settings.project.enable_indexing.value = true;
+    f.project.settings.project.idle_timeout_ms.value = 0;
+    ZASSERT(f.merge(index_file(tmp, tmp.path("main.cpp")).data));
+
+    auto task = persist(f.project);
+    f.loop.schedule(task);
+    f.loop.run();
+
+    ZASSERT(index_idle(f.project));
+    ZEXPECT(f.background.failed.size() == 1u);
+}
+
+ZEST_CASE(SaveKeepsQueuedSchedule) {
+    // A reindex an edit queued waits out the idle window its own schedule
+    // armed: a save meanwhile owes it nothing.
     IndexerFixture f;
     f.project.settings.project.enable_indexing.value = true;
     f.project.settings.project.idle_timeout_ms.value = 60'000;
@@ -416,8 +451,8 @@ ZEST_CASE(SaveStartsOwedRound) {
     f.loop.schedule(task);
     f.loop.run();
 
-    ZASSERT(index_idle(f.project));
-    ZASSERT(f.background.failed.size() == 1u);
+    ZEXPECT(f.project.background_index.queue.queued() == 1u);
+    ZEXPECT(f.background.failed.empty());
 }
 
 ZEST_CASE(IndexFirstSparesRunningRound) {

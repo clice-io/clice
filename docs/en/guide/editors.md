@@ -5,7 +5,7 @@ clice implements the [Language Server Protocol](https://microsoft.github.io/lang
 All setups assume:
 
 - The `clice` executable is on your `PATH` (or use an absolute path in the snippets below).
-- Your project provides a `compile_commands.json` (by default clice searches the workspace root, then each of its immediate subdirectories).
+- Your project provides a `compile_commands.json` (by default clice searches the workspace root, then each of its immediate subdirectories without a `clice.toml` of its own).
 
 ## Compiler Environment
 

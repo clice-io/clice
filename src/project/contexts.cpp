@@ -59,15 +59,23 @@ std::string flags_label(Project& project, CommandID command, llvm::ArrayRef<Comm
 
 /// The command the file's own entry `entry` compiles it as.
 CommandID own_command(Project& project, Fid file, CommandID entry) {
-    auto path = project.file_table.resolve(file);
-    return project.build.resolve(file, entry, CommandSource::CDBExact, path, path).command;
+    return project.build.apply_rules(file, {.base = entry, .source = CommandSource::Database})
+        .command;
+}
+
+CommandID base_command(const CompilationEntry& entry) {
+    return entry.command;
+}
+
+CommandID base_command(const Candidate& candidate) {
+    return candidate.base;
 }
 
 /// The commands the file's own `entries` compile it as, one per entry.
 llvm::SmallVector<CommandID, 2> own_commands(Project& project, Fid file, const auto& entries) {
     llvm::SmallVector<CommandID, 2> commands;
     for(auto& entry: entries) {
-        commands.push_back(own_command(project, file, entry.command));
+        commands.push_back(own_command(project, file, base_command(entry)));
     }
     return commands;
 }
@@ -77,7 +85,7 @@ llvm::SmallVector<CommandID, 2> own_commands(Project& project, Fid file, const a
 llvm::SmallVector<CommandID, 2> lent_commands(Project& project, Fid file, Fid host) {
     llvm::SmallVector<CommandID, 2> lent;
     for(auto& candidate: host_commands(project, file, host)) {
-        lent.push_back(lent_command(project, file, host, candidate.command).command);
+        lent.push_back(lent_command(project, file, host, candidate).command);
     }
     return lent;
 }
@@ -122,20 +130,15 @@ ListedContext
     };
 }
 
-/// Whether a chosen command still has a live basis among `entry_file`'s
-/// candidates: its applied hash matches a candidate under the current edits
-/// of `paths` (the host and the header for a host's command), or its
-/// recorded base command hash still names one (a rule edit moves every
-/// applied hash; the base survives it).
-bool command_alive(Project& project,
-                   Fid entry_file,
-                   llvm::ArrayRef<CanonicalRef> paths,
-                   const ContextChoice& choice) {
+/// Whether a chosen command still has a live basis among the candidates of
+/// `host`, or of `file` itself for none: its hash as the file compiles under
+/// one now matches, or its recorded base command hash still names one (a
+/// rule edit moves every applied hash; the base survives it).
+bool command_alive(Project& project, Fid file, Fid host, const ContextChoice& choice) {
     return chosen_candidate(project,
-                            entry_file,
-                            project.build.commands(entry_file),
-                            paths,
-                            project.file_table.resolve(entry_file),
+                            file,
+                            project.build.commands(host.valid() ? host : file),
+                            host,
                             choice.command_hash,
                             choice.base_hash)
         .has_value();
@@ -242,13 +245,9 @@ std::optional<ListedContext> current_context_item(Project& project,
         if(commands.empty()) {
             return std::nullopt;
         }
-        auto entry = chosen_candidate(project, file, commands, path, path, hash, base)
-                         .value_or(commands.front());
-        auto index = ranges::find_if(commands,
-                                     [&](const Candidate& candidate) {
-                                         return candidate.command == entry.command;
-                                     }) -
-                     commands.begin();
+        auto entry =
+            chosen_candidate(project, file, commands, {}, hash, base).value_or(commands.front());
+        auto index = ranges::find(commands, entry) - commands.begin();
         return own_item(project, file, index, own_commands(project, file, commands));
     };
 
@@ -288,7 +287,7 @@ ContextChoice choice_of(Project& project,
     auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
         for(auto& entry: commands) {
             if(project.commands.command_hash_hex(listed(entry)) == *command_hash) {
-                return project.commands.command_hash_hex(entry.command);
+                return project.commands.command_hash_hex(entry.base);
             }
         }
         std::unreachable();
@@ -300,7 +299,7 @@ ContextChoice choice_of(Project& project,
     if(listed == file) {
         choice.command_hash = *command_hash;
         choice.base_hash = base_of(project.build.commands(file), [&](const Candidate& entry) {
-            return own_command(project, file, entry.command);
+            return own_command(project, file, entry.base);
         });
         return choice;
     }
@@ -310,7 +309,7 @@ ContextChoice choice_of(Project& project,
         choice.command_hash = *command_hash;
         choice.base_hash =
             base_of(host_commands(project, file, listed), [&](const Candidate& entry) {
-                return lent_command(project, file, listed, entry.command).command;
+                return lent_command(project, file, listed, entry).command;
             });
     }
     return choice;
@@ -337,11 +336,10 @@ bool choice_holds(Project& project, Fid file, const ContextChoice& choice) {
         if(occurrences && choice.occurrence.has_value() && *choice.occurrence >= *occurrences) {
             return false;
         }
-        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        return choice.command_hash.empty() || command_alive(project, host, edit_paths, choice);
+        return choice.command_hash.empty() || command_alive(project, file, host, choice);
     }
     return !choice.command_hash.empty() && !project.build.commands(file).empty() &&
-           command_alive(project, file, path, choice);
+           command_alive(project, file, {}, choice);
 }
 
 std::string serialize_choices(Project& project,

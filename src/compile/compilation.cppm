@@ -16,9 +16,9 @@ namespace clice {
 
 namespace tidy {
 
-/// The frozen clang-tidy configuration of one run. Plain data on purpose:
-/// it travels in worker requests and in a unit run's plan (UnitRunPlan),
-/// both of which freeze it at takeoff.
+/// The frozen clang-tidy configuration of one pass. Plain data on purpose:
+/// it travels in worker requests and in a unit's compile request
+/// (UnitRequest), both of which freeze it at takeoff.
 struct TidyParams {
     /// Effective checks glob list in clang-tidy syntax; empty falls back
     /// to the built-in default set.

@@ -77,13 +77,13 @@ ZEST_CASE(EditorSharesContext) {
                                   {});
 
     auto background = resolve_command(project, header, directory, arguments);
-    ZASSERT(background.ref.source == CommandSource::IncludeGraph);
+    ZASSERT(background.ref.source == CommandSource::Host);
     ZASSERT(background.host == host);
     ZASSERT(background.synthesized != nullptr);
     ZASSERT(ranges::contains(arguments, background.synthesized->prefix));
 
     auto resolution = served.resolve_command(header, directory, arguments);
-    ZASSERT(resolution.ref.source == CommandSource::IncludeGraph);
+    ZASSERT(resolution.ref.source == CommandSource::Host);
     ZASSERT(resolution.synthesized == background.synthesized);
     ZASSERT(!project.choices.dirty);
 }
@@ -113,8 +113,38 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     resolve_command(project, file, directory, arguments);
     ZASSERT(fx.entry(file).guessed);
     ZASSERT(served.resolve_command(file, directory, arguments).ref.source ==
-            CommandSource::CDBExact);
+            CommandSource::Database);
     ZASSERT(!fx.entry(file).guessed);
+}
+
+ZEST_CASE(StaleHostChoiceKeepsUnit) {
+    // A unit whose chosen host no longer enters it compiles under its own
+    // entry, whatever other host ranks first.
+    tmp.touch("part.cpp", "int part;\n");
+    tmp.touch("chosen.cpp", "");
+    tmp.touch("ranked.cpp", "#include \"part.cpp\"\n");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("part.cpp"),   {"-DOWN"}   },
+                  {tmp.root, tmp.path("chosen.cpp"), {"-DCHOSEN"}},
+                  {tmp.root, tmp.path("ranked.cpp"), {"-DRANKED"}},
+    }));
+    auto part = fx.intern(tmp.path("part.cpp"));
+    auto chosen = fx.intern(tmp.path("chosen.cpp"));
+    auto ranked = fx.intern(tmp.path("ranked.cpp"));
+    project.dep_graph.set_includes(ranked, 0, {{part}});
+    project.dep_graph.build_reverse_map();
+    for(auto host: {chosen, ranked}) {
+        take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+    }
+
+    ContextChoice choice{.host_path_id = chosen};
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto resolution = resolve_command(project, part, directory, arguments, {.choice = &choice});
+    ZEXPECT(resolution.ref.source == CommandSource::Database);
+    ZEXPECT(ranges::contains(arguments, "OWN"));
 }
 
 ZEST_CASE(ChoiceSteersEditorOnly) {

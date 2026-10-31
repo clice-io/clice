@@ -129,7 +129,7 @@ Session::Record* Session::find_record(feature::RequestKind kind) {
     return it != records.end() ? &it->second : nullptr;
 }
 
-Session::Attempt::Attempt(Session& session, feature::RequestKind kind) :
+Session::Dispatch::Dispatch(Session& session, feature::RequestKind kind) :
     session(session), kind(kind), changes(session.changes) {
     if(auto* record = session.find_record(kind)) {
         auto& failure = record->failure;
@@ -139,7 +139,7 @@ Session::Attempt::Attempt(Session& session, feature::RequestKind kind) :
     }
 }
 
-Session::Attempt::~Attempt() {
+Session::Dispatch::~Dispatch() {
     auto* record = session.find_record(kind);
     if(!record) {
         return;
@@ -153,7 +153,7 @@ Session::Attempt::~Attempt() {
     }
 }
 
-bool Session::Attempt::crashed_meanwhile() const {
+bool Session::Dispatch::crashed_meanwhile() const {
     auto* record = session.find_record(kind);
     return record && record->seq != seq;
 }

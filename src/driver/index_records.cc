@@ -138,7 +138,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Header,             "header"              },
     {index::BlobKind::SearchSegment,      "search segments"     },
     {index::BlobKind::BuildSnapshot,      "cdb"                 },
-    {index::BlobKind::PrecompiledRecords, "artifacts"           },
+    {index::BlobKind::PrecompiledRecords, "precompiled records" },
     {index::BlobKind::ContextChoices,     "contexts"            },
 };
 

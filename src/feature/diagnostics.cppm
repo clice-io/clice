@@ -111,7 +111,7 @@ FileDiagnostic file_warning(std::string message);
 struct CompileDiagnostics {
     /// How the compile command was made: a guessed one may explain the
     /// includes not found.
-    CommandSource source = CommandSource::CDBExact;
+    CommandSource source = CommandSource::Database;
 
     /// What the compile raised: the compiler's and clang-tidy's
     /// diagnostics, and clice's own about the compile; on a failure before

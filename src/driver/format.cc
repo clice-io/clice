@@ -127,9 +127,8 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
         }
     }
     for(auto member: members) {
-        auto path = files.resolve(member);
         for(auto& candidate: build.commands(member)) {
-            auto ref = build.resolve(member, candidate.command, candidate.source, path, path);
+            auto ref = build.apply_rules(member, candidate);
             auto search = project.toolchain.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
                 skip(CanonicalPath(Spelling::absolute(dir.path)));
