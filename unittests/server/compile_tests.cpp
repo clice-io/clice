@@ -1708,15 +1708,6 @@ ZEST_CASE(RecompileKeepsItsAST) {
     auto& served = *fixture.served;
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
-    auto path = std::string(served.project.file_table.resolve(a->path_id));
-    auto& probe = fixture.server.probe;
-    fixture.server.pool.probe = &probe;
-    async::event held;
-    std::uint64_t hold = 0;
-    auto connection = probe.on_held.connect([&](std::uint64_t id) {
-        hold = id;
-        held.set();
-    });
 
     bool recompiled = false;
     bool done = false;
@@ -1732,15 +1723,15 @@ ZEST_CASE(RecompileKeepsItsAST) {
         a->set_text("int alpha = 3;\n");
         a->generation += 1;
         served.edited(*a);
-        probe.hold(BuildKind::Compile, path);
+        auto gate = gate_compile(fixture, a->path_id);
         auto recompile = [&]() -> async::task<> {
             recompiled = co_await served.ensure_compiled(a);
         };
         async::task_group<> group;
         group.spawn(recompile());
-        co_await held.wait();
+        co_await parked(fixture.server.probe, gate);
         ZASSERT(co_await served.ensure_compiled(b));
-        probe.release(hold);
+        fixture.server.probe.release(gate);
         co_await group.join();
 
         ZEXPECT(recompiled);
