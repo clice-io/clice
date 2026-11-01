@@ -3,8 +3,9 @@ import type { Serve } from "@clice/tools/testing";
 import { test } from "@clice/tools/testing";
 
 // The pool keeps one AST: compiling b.cpp evicts a.cpp's. Back at a.cpp,
-// what its compile's AST answered answers again, with no compile and no
-// refresh: nothing it read changed. The rest compiles it once more.
+// what its compile's AST answered answers again, and its index answers its
+// navigation, with no compile and no refresh: nothing it read changed. The
+// rest compiles it once more.
 
 const KEEP_ONE = { project: { enable_indexing: false, max_resident_documents: 1 } };
 const REFRESH = "workspace/semanticTokens/refresh";
@@ -35,6 +36,7 @@ test("its answers come back", async (t) => {
         tokens: s.semanticTokens("a.cpp"),
         outline: s.documentSymbols("a.cpp"),
         hints: s.inlayHints(first),
+        definition: s.definition(t.at("a.cpp", "int NAME = |add(1, 2);")),
     });
     expect(await compiles(s, "a.cpp")).toBe(1);
     expect(await s.serverRequests(REFRESH)).toBe(refreshes);
