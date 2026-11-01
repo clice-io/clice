@@ -1694,8 +1694,10 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
 
         auto compiled_tokens = co_await tokens();
         auto compiled_hints = co_await hints(first);
-        ZASSERT(compiled_tokens && compiled_tokens.value().has_value());
-        ZASSERT(compiled_hints && !compiled_hints.value().empty());
+        ZASSERT(compiled_tokens);
+        ZASSERT(compiled_tokens.value().has_value());
+        ZASSERT(compiled_hints);
+        ZASSERT(!compiled_hints.value().empty());
         ZASSERT(co_await served.ensure_compiled(b));
         ZASSERT(!served.resident(a->path_id));
 
@@ -1704,7 +1706,8 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
         ZASSERT(co_await served.ensure_compiled(a, {.ast = false}));
         ZEXPECT(compiles() == 1u);
         ZEXPECT(!served.resident(a->path_id));
-        ZASSERT(kept_tokens && kept_hints);
+        ZASSERT(kept_tokens);
+        ZASSERT(kept_hints);
         ZEXPECT(kept_tokens.value()->size() == compiled_tokens.value()->size());
         ZEXPECT(kept_hints.value().size() == compiled_hints.value().size());
 
