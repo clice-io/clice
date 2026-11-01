@@ -87,15 +87,10 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     add_file("header.h", R"(
             #pragma once
             inline int twice(int value) { return value + value; }
-            namespace {
-            struct Hidden {
-                int get() const { return 1; }
-            };
-            }  // namespace
             template <typename T>
             struct Box {
                 T item;
-                int size() const { return twice(item.get()); }
+                int size() const { return twice(1); }
             };
             template <typename T>
             int measure(const T& box) { return box.size(); }
@@ -103,7 +98,7 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     add_focus("main.cpp", R"(
             #include "header.h"
             int main() {
-                Box<Hidden> box;
+                Box<int> box;
                 return measure(box) + twice(2);
             }
         )");
@@ -126,9 +121,7 @@ ZEST_CASE(SectionsNamingCoverEntries) {
     }
     ZASSERT(local);
 
-    // An instantiation names a symbol of internal linkage too.
     bool instantiated = false;
-    bool internal = false;
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         view.instantiation_shard(section).for_each_record(
             [&](const index::InstantiationRecord& record) {
@@ -138,14 +131,11 @@ ZEST_CASE(SectionsNamingCoverEntries) {
                     ZEXPECT(
                         ranges::contains(view.instantiation_sections_naming(record.from), section));
                 }
-                auto target = view.find_symbol(record.target);
-                internal |= target && target->scope != index::SymbolScope::External;
                 instantiated = true;
                 return true;
             });
     }
     ZASSERT(instantiated);
-    ZASSERT(internal);
 
     ZEXPECT(view.sections_naming(1).empty());
     ZEXPECT(!view.find_symbol(1));

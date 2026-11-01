@@ -347,10 +347,12 @@ struct CompletionParams {
     /// What the edits' ranges count in: the client's position encoding.
     PositionEncoding encoding = PositionEncoding::UTF16;
 
-    /// The names the index found for the typed prefix. When it found more
-    /// of them, the list is incomplete: the editor asks again as the prefix
-    /// grows.
-    feature::CompileCompletion names;
+    /// The names of other namespaces the index found for the typed prefix.
+    std::vector<feature::ScopeCandidate> candidates;
+
+    /// The index found more of them: the list is incomplete, so the editor
+    /// asks again as the prefix grows.
+    bool more_candidates = false;
 };
 
 /// A completion's reply: the list as the client takes it, and where the

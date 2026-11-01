@@ -207,20 +207,8 @@ struct CompilationParams {
     /// preamble enters (CompilationUnit::in_preamble), but those of
     /// templates likely to forward their arguments: the editor's compiles.
     /// Nothing in a skipped body is reported or instantiated, and so
-    /// neither is a declaration being unused, which such a body may use. A
-    /// completion skips every body but the one holding the point regardless.
+    /// neither is a declaration being unused, which such a body may use.
     bool skip_bodies = false;
-
-    /// A compile looking only for how the focus file's templates are
-    /// instantiated: it skips the focus file's function bodies as well, but
-    /// those of templates, the one holding `point`, and those naming one of
-    /// `names` or a template whose body does.
-    struct Instantiating {
-        std::uint32_t point = 0;
-        llvm::StringSet<> names;
-    };
-
-    std::optional<Instantiating> instantiating;
 
     /// Inactive regions of the consumed PCH's preamble share (flat
     /// begin/end offset pairs): the `#include`s there were never entered.
@@ -461,11 +449,6 @@ public:
     /// directive of this compile records.
     auto macro_definitions(llvm::StringRef name) -> llvm::SmallVector<const clang::MacroInfo*>;
 
-    /// The macros the compiler and the command line define, as the end of
-    /// the parse leaves them; not those the preprocessor makes up for every
-    /// compile (`__LINE__`).
-    auto predefined_macros() -> llvm::SmallVector<const clang::MacroInfo*>;
-
     /// The diagnostics the compile reported, each with its notes: the
     /// compiler's, and clang-tidy's findings in the editor shape. Those a
     /// suppression comment hides are left out, and a finding reported more
@@ -495,9 +478,6 @@ public:
     auto keywords() -> const clang::IdentifierTable&;
 
     clang::ASTContext& context();
-
-    /// The parse's Sema, while it runs.
-    clang::Sema& sema();
 
     llvm::DenseMap<clang::FileID, Directive>& directives();
 

@@ -496,19 +496,6 @@ auto CompilationUnit::macro_definitions(llvm::StringRef name)
     return definitions;
 }
 
-auto CompilationUnit::predefined_macros() -> llvm::SmallVector<const clang::MacroInfo*> {
-    auto& pp = instance->getPreprocessor();
-    llvm::SmallVector<const clang::MacroInfo*> macros;
-    for(const auto& entry: pp.macros(/*IncludeExternalMacros=*/false)) {
-        const auto* macro = pp.getMacroInfo(entry.first);
-        if(macro && !macro->isBuiltinMacro() &&
-           is_builtin_file(SM().getFileID(macro->getDefinitionLoc()))) {
-            macros.push_back(macro);
-        }
-    }
-    return macros;
-}
-
 auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
     return collected_diagnostics;
 }
@@ -642,10 +629,6 @@ llvm::DenseMap<clang::FileID, Directive>& CompilationUnit::directives() {
 
 clang::ASTContext& CompilationUnit::context() {
     return instance->getASTContext();
-}
-
-clang::Sema& CompilationUnit::sema() {
-    return instance->getSema();
 }
 
 }  // namespace clice

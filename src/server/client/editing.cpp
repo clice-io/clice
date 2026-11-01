@@ -181,7 +181,6 @@ void LSPClient::register_editing() {
             .query = query,
             .graph = project.project.dep_graph,
             .files = files,
-            .pch = project.preamble_pch_file(path_id),
             .search = [&] { return project.search_of(path_id); },
             .scope = scope,
         });
@@ -200,7 +199,8 @@ void LSPClient::register_editing() {
                                              worker::CompletionParams{
                                                  .client = completion_client,
                                                  .encoding = encoding,
-                                                 .names = compile,
+                                                 .candidates = compile.candidates,
+                                                 .more_candidates = compile.more_candidates,
                                              },
                                              ctx.cancellation)
                           .or_fail();
