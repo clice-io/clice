@@ -20,10 +20,3 @@ items = [
 
 [answers.typed_variable.completion]
 items = []
-
-[answers.partial_member.completion]
-items = [
-    { label = "count", kind = "Field", detail = "int" },
-    { label = "inner", kind = "Field", detail = "T" },
-    { label = "template", kind = "Keyword" },
-]

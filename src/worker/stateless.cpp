@@ -512,6 +512,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
+        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_precompiled(cp.input, params.pch, params.pcms);
@@ -539,6 +540,7 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
                   .directory = params.directory,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .completion = {.offset = params.offset},
+        .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
     use_precompiled(cp.input, params.pch, params.pcms);

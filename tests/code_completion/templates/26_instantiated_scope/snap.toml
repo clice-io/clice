@@ -4,14 +4,11 @@ items = [
     { label = "template", kind = "Keyword" },
 ]
 
-[answers.scope]
-wrong = "retries and value_type, of the int the return expects, should rank first: the compile completing there does not know the type expected"
-
 [answers.scope.completion]
 items = [
-    { label = "Settings", kind = "Class" },
     { label = "retries", kind = "Variable", detail = "int" },
     { label = "value_type", kind = "TypeParameter" },
+    { label = "Settings", kind = "Class" },
     { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Settings()", kind = "Method", detail = "void" },
 ]

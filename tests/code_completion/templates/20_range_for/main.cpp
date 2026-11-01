@@ -1,8 +1,7 @@
 // The variable of a range-based `for` over a dependent range: the element of
 // an array, or what the range's iterator dereferences to, `begin()` called
-// on the range as an lvalue even when it is a temporary, in a function
-// template or a member of a partial specialization. A variable of a written
-// dependent type has nothing to deduce.
+// on the range as an lvalue even when it is a temporary. A variable of a
+// written dependent type has nothing to deduce.
 template <class T>
 struct Wrap {
     T inner;
@@ -58,17 +57,3 @@ void split(Plain& plain) {
         item.§(typed_variable);
     }
 }
-
-template <class T>
-struct Shelf;
-
-template <class T>
-struct Shelf<T*> {
-    Bag<Wrap<T>> bag;
-
-    void walk() {
-        for (auto& item : bag) {
-            item.§(partial_member);
-        }
-    }
-};

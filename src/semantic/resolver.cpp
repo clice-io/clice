@@ -2348,6 +2348,9 @@ private:
         if(!function) {
             return nullptr;
         }
+        if(function == options.assumed && TTPT->getIndex() < options.assumed_arguments.size()) {
+            return &options.assumed_arguments[TTPT->getIndex()];
+        }
         auto* instantiation =
             llvm::dyn_cast_or_null<clang::FunctionDecl>(decls::only_instantiation(function));
         if(!instantiation) {

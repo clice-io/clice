@@ -145,9 +145,7 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
-    front_opts.SkipFunctionBodies = params.skip_bodies ||
-                                    params.kind == CompilationKind::Completion ||
-                                    params.instantiating.has_value();
+    front_opts.SkipFunctionBodies = params.skip_bodies;
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -322,38 +320,11 @@ static bool likely_forwarding(const clang::Decl* decl) {
     return param && param->getDepth() == function->getTemplateParameters()->getDepth();
 }
 
-bool macro_spells(clang::Preprocessor& pp,
-                  llvm::StringRef word,
-                  llvm::function_ref<bool(llvm::StringRef)> wanted,
-                  llvm::DenseMap<const clang::MacroInfo*, bool>& read) {
-    auto* identifier = pp.getIdentifierInfo(word);
-    const auto* macro = identifier->hasMacroDefinition() ? pp.getMacroInfo(identifier) : nullptr;
-    if(!macro) {
-        return false;
-    }
-    // A definition being read gives nothing to the macros it reaches again.
-    auto [entry, fresh] = read.try_emplace(macro, false);
-    if(!fresh) {
-        return entry->second;
-    }
-    bool spells = ranges::any_of(macro->tokens(), [&](const clang::Token& token) {
-        auto* spelled = token.getIdentifierInfo();
-        return spelled &&
-               (wanted(spelled->getName()) || macro_spells(pp, spelled->getName(), wanted, read));
-    });
-    read[macro] = spells;
-    return spells;
-}
-
 /// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
     ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
-        clang::MultiplexConsumer(std::move(consumer)), unit(unit) {
-        if(auto& instantiating = unit.params.instantiating; instantiating && instantiating->names) {
-            instantiating_names = *instantiating->names;
-        }
-    }
+        clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
 
     void collect_decl(clang::Decl* decl) {
         if(!unit.focus_file().contains(unit.produced_at(decl->getLocation()).file) &&
@@ -405,62 +376,24 @@ public:
                 collect_decl(decl);
             }
             collect_instantiation(decl);
-            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-                notice(function);
-            }
         }
 
         if(unit.params.stop->load()) {
             return false;
         }
 
-        return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !instantiation_found;
+        return clang::MultiplexConsumer::HandleTopLevelDecl(group);
     }
 
-    /// Asked under CompilationParams::skip_bodies and instantiating, and by
-    /// every completion's parse, which skips each body but the one holding
-    /// the point.
+    /// Asked under CompilationParams::skip_bodies, and by every completion's
+    /// parse, which skips each body but the one holding the point unless told
+    /// otherwise.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
-        auto file = unit.produced_at(decl->getLocation()).file;
-        if(auto& instantiating = unit.params.instantiating;
-           instantiating && file == unit.focus_file().file()) {
-            if(instantiation_found || !instantiating->names) {
-                return instantiation_found;
-            }
-            bool may = may_instantiate(decl, instantiating->point);
-            // A template's body is parsed, as its use may need it; one that
-            // names one of the names makes a body naming this template one
-            // that may instantiate them too.
-            auto* function = decl->getAsFunction();
-            if(!function || !function->isTemplated()) {
-                // A class's member may call a template its class declares
-                // after it, whose body the parse has not reached yet.
-                return !may && !llvm::isa<clang::CXXRecordDecl>(decl->getLexicalDeclContext());
-            }
-            if(may) {
-                if(auto* name = function->getIdentifier()) {
-                    instantiating_names.insert(name->getName());
-                }
-                for(auto* context = function->getDeclContext(); context;
-                    context = context->getParent()) {
-                    if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-                       record && record->isTemplated() && record->getIdentifier()) {
-                        instantiating_names.insert(record->getName());
-                    }
-                }
-                spelling_macros.clear();
-            }
-            return false;
-        }
-        return unit.in_preamble(file) && !likely_forwarding(decl);
-    }
-
-    void HandleCXXImplicitFunctionInstantiation(clang::FunctionDecl* decl) final {
-        notice(decl);
-        clang::MultiplexConsumer::HandleCXXImplicitFunctionInstantiation(decl);
+        return unit.in_preamble(unit.produced_at(decl->getLocation()).file) &&
+               !likely_forwarding(decl);
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
@@ -514,89 +447,9 @@ public:
     }
 
 private:
-    /// Whether the body of `decl` the parse stands before holds the point
-    /// or names one of instantiating_names (names), read raw from its `{` to the
-    /// matching `}`. One starting otherwise, at a constructor's
-    /// initializers, a `try` or a specifier after the declarator, is kept.
-    bool may_instantiate(const clang::Decl* decl, std::uint32_t point) {
-        auto& sources = unit.context().getSourceManager();
-        auto* function = decl->getAsFunction();
-        if(!function) {
-            return true;
-        }
-        auto declarator = sources.getExpansionRange(function->getEndLoc()).getEnd();
-        auto brace = clang::Lexer::findNextToken(declarator, sources, unit.lang_options());
-        if(!brace || !brace->is(clang::tok::l_brace)) {
-            return true;
-        }
-        auto [file, begin] = sources.getDecomposedLoc(brace->getLocation());
-        if(file != unit.focus_file().file()) {
-            return true;
-        }
-        auto buffer = sources.getBufferData(file);
-        clang::Lexer lexer(sources.getLocForStartOfFile(file),
-                           unit.lang_options(),
-                           buffer.begin(),
-                           buffer.begin() + begin + 1,
-                           buffer.end());
-        clang::Token token;
-        std::uint32_t depth = 1;
-        while(depth != 0 && !lexer.LexFromRawLexer(token)) {
-            if(token.is(clang::tok::l_brace)) {
-                depth += 1;
-            } else if(token.is(clang::tok::r_brace)) {
-                depth -= 1;
-            } else if(token.is(clang::tok::raw_identifier) && names(token.getRawIdentifier())) {
-                return true;
-            }
-        }
-        return begin <= point && point <= sources.getFileOffset(token.getLocation());
-    }
-
-    /// Notes a call past the point instantiating the template looked for
-    /// (CompilationParams::Instantiating::templated): Sema hands over a
-    /// deferred instantiation when it is called, one it instantiates at once,
-    /// a constexpr function's or a lambda's, when its body is.
-    void notice(const clang::FunctionDecl* function) {
-        auto& instantiating = unit.params.instantiating;
-        auto* pattern = function->getTemplateInstantiationPattern();
-        if(!instantiating || !instantiating->templated || instantiation_found || !pattern) {
-            return;
-        }
-        auto& sources = unit.context().getSourceManager();
-        auto focus = unit.focus_file().file();
-        auto declared = sources.getDecomposedExpansionLoc(pattern->getLocation());
-        auto called = sources.getDecomposedExpansionLoc(function->getPointOfInstantiation());
-        instantiation_found = declared == std::pair(focus, *instantiating->templated) &&
-                              called.first == focus && called.second > instantiating->point;
-    }
-
-    /// Whether `word` is one of instantiating_names, or a macro whose
-    /// expansion spells one.
-    bool names(llvm::StringRef word) {
-        auto named = [&](llvm::StringRef spelled) {
-            return instantiating_names.contains(spelled);
-        };
-        return named(word) ||
-               macro_spells(unit.instance->getPreprocessor(), word, named, spelling_macros);
-    }
-
-private:
     CompilationUnit& unit;
-
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
-
     llvm::DenseSet<const clang::Decl*> instantiations;
-
-    /// CompilationParams::Instantiating::names, and the templates whose
-    /// bodies name one.
-    llvm::StringSet<> instantiating_names;
-
-    /// What each macro definition gave names, until a name is added.
-    llvm::DenseMap<const clang::MacroInfo*, bool> spelling_macros;
-
-    /// A call past the point instantiated the template looked for.
-    bool instantiation_found = false;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
@@ -946,7 +799,6 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .completion = std::move(built.completion),
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
-            .instantiating = built.instantiating,
             .stop = built.stop,
         };
         again.input.pch = {};
@@ -969,7 +821,6 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .output_file = built.output_file,
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
-            .instantiating = built.instantiating,
             .stop = built.stop,
         };
         unit.reset();
