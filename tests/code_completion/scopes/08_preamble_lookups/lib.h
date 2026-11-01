@@ -28,6 +28,9 @@ inline namespace v1 {
 int helper_versioned();
 }  // namespace v1
 
+enum class Tone { tone_warm, tone_cold };
+using enum Tone;
+
 template <class T>
 concept helper_concept = true;
 
@@ -45,5 +48,6 @@ namespace inner = lib::detail;
 
 #define HELPER_MACRO(x) (x)
 #define HELPER_SPACE lib
+#define HELPER_SCOPE lib::
 #define HELPER_DETAIL detail
 #define HELPER_ROOT

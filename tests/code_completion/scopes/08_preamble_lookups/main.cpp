@@ -87,6 +87,18 @@ int empty_macro_qualifier() {
     return HELPER_ROOT::helper§(empty_macro_qualifier);
 }
 
+int macro_separator() {
+    return HELPER_SCOPE helper§(macro_separator);
+}
+
+lib::Tone brought_in_enumerator() {
+    return tone_§(using_enum);
+}
+
+lib::Tone qualified_enumerator() {
+    return lib::tone_§(qualified_using_enum);
+}
+
 lib::helper_type* make_helper();
 
 void arrow_after_call() {
