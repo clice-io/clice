@@ -90,7 +90,7 @@ struct FailureRecord {
     bool saved = false;
 
     /// An attempt is retrying the operation: the others wait for its
-    /// outcome instead of retrying beside it.
+    /// result instead of retrying beside it.
     bool trying = false;
 
     /// The record shows in the diagnostics of the document it stops.

@@ -55,9 +55,9 @@ const HANG_MS = 30 * 60_000;
 /// six hours: the slowest part takes under two.
 const INDEX_MS = 3 * 60 * 60_000;
 
-/// How the session log ends a unit's attempt (src/sched/index/pump.cpp).
+/// How the session log ends a unit's attempt (src/project/background_index.cpp).
 const ENDED =
-    /\] (?:Index failed for|Index dropped for removed file|Index failure for superseded content of|Index giving up on|Worker died while indexing|Index requeued for) (\S+?)[:;]?(?:\s|$)/;
+    /\] (?:Index failed for|Index dropped for removed file|Index failure for outdated content of|Index giving up on|Worker died while indexing|Index requeued for) (\S+?)[:;]?(?:\s|$)/;
 
 /// The units the session log shows begun and whose attempt has not ended.
 export function unitsInFlight(log: string): string[] {

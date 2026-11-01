@@ -113,7 +113,7 @@ auto semantic_tokens(SourceText& source,
 
 void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens) {
     llvm::DenseMap<std::uint32_t, std::uint32_t> modifiers;
-    preamble.shard_of(preamble.path_count() - 1)
+    preamble.shard_of(preamble.focus_file())
         .for_each_occurrence([&](const index::Occurrence& occurrence) {
             auto symbol = preamble.find_symbol(occurrence.target);
             if(symbol && symbol->token_class.kind == SemanticTokenKind::Macro) {

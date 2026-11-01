@@ -1422,13 +1422,13 @@ PartialChoice<Partial> select_partial_impl(clang::ASTContext& context,
     }
     for(auto& match: viable) {
         if(&match != best && !more_specialized(context, best->partial, match.partial)) {
-            return {.outcome = PartialOutcome::Ambiguous};
+            return {.result = PartialResult::Ambiguous};
         }
     }
     if(!best->verified) {
-        return {.outcome = PartialOutcome::Unverified};
+        return {.result = PartialResult::Unverified};
     }
-    return {.outcome = PartialOutcome::Selected, .winner = best->partial};
+    return {.result = PartialResult::Selected, .winner = best->partial};
 }
 
 }  // namespace

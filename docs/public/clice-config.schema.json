@@ -143,7 +143,7 @@
             "properties": {
                 "cache_dir": {
                     "type": "string",
-                    "description": "Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.",
+                    "description": "Directory for the unified on-disk cache (PCHs, PCMs and the index). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.",
                     "default": ""
                 },
                 "logging_dir": {
@@ -558,7 +558,7 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.",
+                    "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened; a directory below the root with a clice.toml or .clice/config.toml of its own is another project, and none in it loads.",
                     "default": []
                 },
                 "resolve_symlinks": {

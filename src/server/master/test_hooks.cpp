@@ -1,16 +1,15 @@
 module clice;
 
-import :sched.graph;
+import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
 import :worker.probe;
 
 namespace clice {
 
-/// Whether the project's index pump has work wait_idle() waits for. A queue
-/// no round will take, indexing being off, is none.
+/// Whether the project's background index has work wait_idle() waits for.
 static bool indexing(ServedProject& project) {
-    return project.project.settings.project.enable_indexing.value && !project.sched.pump.is_idle();
+    return !project.project.background_index.idle();
 }
 
 /// The requests of `editor` wait_idle() waits for: all but syncs.
@@ -27,7 +26,7 @@ async::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
         return awaited_requests(editor).empty() && waiting_projects.empty() &&
                ranges::none_of(projects,
                                [](auto& project) {
-                                   return !project->sched.graph.compiling().empty() ||
+                                   return !project->project.graph.compiling().empty() ||
                                           indexing(*project);
                                }) &&
                ranges::all_of(removed_projects, [](auto& weak) { return weak.expired(); });
@@ -77,23 +76,23 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
         }
     }
     for(auto& project: projects) {
-        for(auto id: project->sched.graph.compiling()) {
+        for(auto id: project->project.graph.compiling()) {
             auto file = [&] {
-                return files.display(Fid{static_cast<std::uint32_t>(id.key)});
+                return files.display(id.file());
             };
-            switch(id.family) {
-                case Family::AST: lines.push_back(std::format("compile {}", file())); break;
-                case Family::TURun: lines.push_back(std::format("index {}", file())); break;
-                case Family::PCM: lines.push_back(std::format("pcm {}", file())); break;
-                case Family::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
+            switch(id.kind) {
+                case NodeKind::AST: lines.push_back(std::format("compile {}", file())); break;
+                case NodeKind::Unit: lines.push_back(std::format("index {}", file())); break;
+                case NodeKind::PCM: lines.push_back(std::format("pcm {}", file())); break;
+                case NodeKind::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
             }
         }
         if(indexing(*project)) {
-            auto& pump = project->sched.pump;
-            lines.push_back(std::format("index round at {}/{}, {} files queued",
-                                        pump.progress().completed,
-                                        pump.progress().total,
-                                        pump.pending_files()));
+            auto& background = project->project.background_index;
+            lines.push_back(std::format("index pass at {}/{}, {} files queued",
+                                        background.progress().completed,
+                                        background.progress().total,
+                                        background.queue().queued()));
         }
     }
     return lines;

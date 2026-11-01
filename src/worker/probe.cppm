@@ -49,7 +49,7 @@ std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);
 /// while test hooks are on (project.test_hooks, see WorkerPool::probe): how
 /// many builds of each kind a worker ran per file, and holds that park a
 /// build's reply between its arrival and its delivery. Parked, the build is
-/// still in flight to the master — its round has not finished, the requests
+/// still in flight to the master — its attempt has not finished, the requests
 /// waiting on it wait on — though its worker is free again: a test acts
 /// while the master waits for a build, without making one slow. Watches
 /// announce what the background loops did, which parks nothing.
@@ -57,7 +57,7 @@ class BuildProbe {
 public:
     /// Builds a worker ran to their end — answered, or died running — per
     /// file, indexed by BuildKind. One the master withdrew (preempted,
-    /// superseded) is not counted and passes every hold.
+    /// outdated) is not counted and passes every hold.
     llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
 
     /// A worker ran a build of `kind` for `file` and its reply arrived:

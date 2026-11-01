@@ -14,8 +14,8 @@ stdout = '''
       "${WS}/mid.h"
     ],
     "transitiveDependents": [
-      "${WS}/mid.cpp",
       "${WS}/main.cpp",
+      "${WS}/mid.cpp",
       "${WS}/use.cpp"
     ],
     "affectedModules": [

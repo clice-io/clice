@@ -25,7 +25,8 @@ class IndexReport {
 public:
     /// TUs owed a ContentChanged reindex: their index is missing,
     /// stale or discarded and no in-process event would rebuild it.
-    /// The pump takes these before the current attempt finishes.
+    /// The background index takes these before the current attempt
+    /// finishes.
     llvm::ArrayRef<Fid> reindex() const {
         return reindex_ids;
     }
@@ -49,8 +50,8 @@ public:
         }
     }
 
-    /// This save left state that an immediate retry commits: debt
-    /// that showed up after its command snapshot serialized (write-time
+    /// This save left state that an immediate retry commits: reindexes
+    /// owed after its listings serialized (write-time
     /// corruption recovery), or a batch a full map refused before the
     /// map grew.
     bool owes_retry = false;
@@ -93,7 +94,7 @@ enum class MergeError : std::uint8_t {
 };
 
 /// What opening the database (ProjectIndex::open) found.
-enum class LoadOutcome : std::uint8_t {
+enum class LoadResult : std::uint8_t {
     /// The persisted index opened.
     Loaded,
     /// There was no header: a first run.
@@ -182,6 +183,10 @@ public:
 
     /// Whether `tu` has a current manifest.
     bool indexed(Fid tu) const;
+
+    /// The command identity `tu`'s current manifest was indexed under; 0
+    /// when it has none.
+    std::uint64_t indexed_command(Fid tu) const;
 
     /// A TU's current manifest, in the file table's version ids.
     std::optional<TUManifest> manifest(Fid tu) const;
@@ -276,6 +281,11 @@ public:
         return owed;
     }
 
+    /// The units outdated now (mark_outdated).
+    auto outdated_units() const {
+        return views::transform(outdated, [](const auto& entry) { return entry.first; });
+    }
+
     /// What an instantiation shard names a TU by.
     std::uint64_t unit_hash(Fid tu) const {
         return path_hash(portable(files.resolve(tu)));
@@ -291,13 +301,13 @@ public:
     /// Read the persisted index from `db`'s read snapshot — the header and
     /// the search index — and fetch everything else from it on first use.
     /// The snapshot stays pinned until a save of this index moves it on.
-    LoadOutcome open(BlobDatabase& db);
+    LoadResult open(BlobDatabase& db);
 
     /// The writer's start-up scan: every file record checked against the
     /// disk, and the TUs depending on a file whose content changed, on a
     /// place a failed lookup looked at that now holds a file, or on a
     /// changed input of a module or precompiled header. They are marked
-    /// behind the disk (mark_behind) too.
+    /// outdated (mark_outdated) too.
     llvm::SmallVector<Fid> stale_units();
 
     /// Forget everything read and merged, as after the database was
@@ -308,18 +318,18 @@ public:
     /// manifest, and write shard blobs only for variants no shard stores yet
     /// — a re-index whose entries are unchanged records its contributions and
     /// touches nothing else. `imports` is what the PCMs and the
-    /// precompiled header the parse read were built from; `peak` the memory
+    /// precompiled header the parse read were built from; `command` the
+    /// identity of the command it was indexed under and `peak` the memory
     /// its worker reached, which the manifest keeps.
     std::expected<IndexReport, MergeError> merge(llvm::StringRef tu_index,
-                                                 llvm::ArrayRef<DepState> imports,
+                                                 llvm::ArrayRef<Input> imports,
+                                                 std::uint64_t command = 0,
                                                  std::uint64_t peak = 0);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next
-    /// save. For invalidation content-based freshness cannot see — a
-    /// compile-command change — where a surviving manifest would keep
-    /// judging the old-command index fresh, in this session and after a
-    /// restart.
+    /// save. For a TU the build no longer compiles or a rule keeps out of
+    /// the index.
     void drop(Fid tu, IndexReport& report);
 
     /// The variant identities stored for the files `tu` is expected to
@@ -332,7 +342,7 @@ public:
     /// whose walk still holds, sorted: what the worker indexing `tu` may
     /// skip (TUIndexOptions::known_instantiations). A key holds while the
     /// run that walked it is its unit's current one and that unit is not
-    /// behind the disk (mark_behind) — the first unit to rebuild after an
+    /// outdated (mark_outdated) — the first unit to rebuild after an
     /// edit of a file the instantiation read walks the key again — and
     /// never for `tu` itself, whose rebuild is what would confirm it.
     std::vector<std::uint64_t> known_instantiations(Fid tu,
@@ -340,18 +350,18 @@ public:
 
     /// A file `tu` depends on changed now: until a run of `tu` that started
     /// later merges, the instantiation keys its index walked do not hold.
-    void mark_behind(Fid tu);
+    void mark_outdated(Fid tu);
 
-    /// Start a freshness round: FileVersion results hold for one round —
-    /// the disk can change under a running round, but staleness is
-    /// re-judged per round anyway.
-    void begin_round() {
+    /// Clear the staleness cache: FileVersion results hold for one pass —
+    /// the disk can change under a running pass, but staleness is
+    /// re-judged per pass anyway.
+    void clear_staleness_cache() {
         version_stale.clear();
     }
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
-    /// FileVersion among its dependencies. Valid only within one round:
-    /// the results are cleared by begin_round(), never here.
+    /// FileVersion among its dependencies. Valid only within one pass:
+    /// the results are cleared by clear_staleness_cache(), never here.
     bool needs_reindex(Fid file);
 
     /// Whether a save that may rebuild as much as `search` says changes the
@@ -604,7 +614,7 @@ private:
     void retire_instantiations(Fid file);
 
     /// Add every TU contributing to `file`'s shard to the report's
-    /// reindex debt. Used when the file's resident index is lost while its
+    /// reindexes. Used when the file's resident index is lost while its
     /// manifests still read fresh: no in-process event would ever rebuild
     /// it, and no start-up scan would either.
     void requeue_owners(Fid file, IndexReport& report);
@@ -613,7 +623,7 @@ private:
     /// reindex (owed_units) and the report asks for one.
     void owe(Fid tu, IndexReport& report);
 
-    /// Two-layer staleness test on a FileVersion, cached per round; a hash
+    /// Two-layer staleness test on a FileVersion, cached per pass; a hash
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
     bool file_version_stale(VersionID version);
@@ -730,17 +740,17 @@ private:
 
     llvm::SmallVector<std::uint32_t> search_drops;
 
-    /// Units behind the disk (mark_behind), with when they fell behind in
+    /// Outdated units (mark_outdated), with when they became outdated in
     /// milliseconds since the epoch, the clock built_at uses.
-    llvm::DenseMap<Fid, std::int64_t> behind;
+    llvm::DenseMap<Fid, std::int64_t> outdated;
 
     /// A record failed its checks since open.
     mutable bool damage = false;
 
     std::uint32_t saved_shards = 0;
 
-    /// Per-round FileVersion staleness results: many TUs share the same
-    /// versions, and one stat (or repair) per version per round is enough.
+    /// Per-pass FileVersion staleness results: many TUs share the same
+    /// versions, and one stat (or repair) per version per pass is enough.
     llvm::DenseMap<VersionID, bool> version_stale;
 };
 

@@ -27,10 +27,6 @@ struct WorkerPoolFixture {
 
     std::vector<WorkerCrashInfo> crash_reports;
 
-    /// Set whenever a stateless slot (re)enters service.
-    async::event serving{false};
-    Signal<>::Connection serving_connection;
-
     WorkerPoolFixture() : pool(loop) {
         // Unstarted, the pool schedules with the defaults; lift the
         // background ceiling so the slots a test adds bound it, and let
@@ -41,7 +37,6 @@ struct WorkerPoolFixture {
         pool.on_crash = [this](const WorkerCrashInfo& info) {
             crash_reports.push_back(info);
         };
-        serving_connection = pool.on_stateless_capacity.connect([this] { serving.set(); });
     }
 
     ~WorkerPoolFixture() {
@@ -223,10 +218,10 @@ struct WorkerPoolFixture {
                 pool,
                 true,
                 [&]() -> RequestResult<worker::HoverParams> {
-                    auto attempt = static_cast<std::size_t>(delivery.sends);
+                    auto send = static_cast<std::size_t>(delivery.sends);
                     delivery.sends += 1;
-                    if(attempt < errors.size()) {
-                        co_return kotatsu::outcome_error(errors[attempt]);
+                    if(send < errors.size()) {
+                        co_return kotatsu::outcome_error(errors[send]);
                     }
                     co_return std::nullopt;
                 },
@@ -306,8 +301,8 @@ struct WorkerPoolFixture {
         return pool.pending.begin()->first;
     }
 
-    static worker::TURunParams index_params(const std::string& file) {
-        worker::TURunParams params;
+    static worker::CompileUnitParams index_params(const std::string& file) {
+        worker::CompileUnitParams params;
         params.index = true;
         params.file = file;
         params.directory = "/tmp";
@@ -374,8 +369,8 @@ struct WorkerPoolFixture {
     /// or refilled.
     async::task<> serves(std::size_t idx) {
         while(!worker_alive(idx)) {
-            serving.reset();
-            co_await serving.wait();
+            pool.capacity_returned.reset();
+            co_await pool.capacity_returned.wait();
         }
     }
 
@@ -768,7 +763,7 @@ ZEST_CASE(GraceKillIsLost) {
     ZEXPECT(!death->out_of_memory);
     ZEXPECT(death->culprits.empty());
     // A run that never stopped spends its sender's retries.
-    ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/tuRun /a.cpp").code ==
+    ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/compileUnit /a.cpp").code ==
             worker::dispatch_errc::worker_lost);
 }
 
@@ -794,17 +789,17 @@ ZEST_CASE(DeadlineKillNames) {
     f.add_stateless();
     f.add_stateless();
     auto run = f.submit(worker::Priority::Low);
-    auto index = f.inflight(run->id, "clice/worker/tuRun /c.cpp", true);
+    auto index = f.inflight(run->id, "clice/worker/compileUnit /c.cpp", true);
     f.kill(0, false, scheduler::KillReason::Deadline, {run->id});
-    ZEXPECT(f.death(0, false)->culprits[0] == "clice/worker/tuRun /c.cpp");
+    ZEXPECT(f.death(0, false)->culprits[0] == "clice/worker/compileUnit /c.cpp");
     ZEXPECT(f.death(0, false)->cause == "killed after over 10 seconds of CPU time");
     ZEXPECT(!f.preempted(0));
 
     auto stuck = f.submit(worker::Priority::Low);
     ZASSERT(stuck->slot == 1u);
-    auto stalled = f.inflight(stuck->id, "clice/worker/tuRun /d.cpp", true);
+    auto stalled = f.inflight(stuck->id, "clice/worker/compileUnit /d.cpp", true);
     f.kill(1, false, scheduler::KillReason::Stalled, {stuck->id});
-    ZEXPECT(f.death(1, false)->culprits[0] == "clice/worker/tuRun /d.cpp");
+    ZEXPECT(f.death(1, false)->culprits[0] == "clice/worker/compileUnit /d.cpp");
     ZEXPECT(f.death(1, false)->cause == "killed after 300 seconds without using the CPU");
 }
 
@@ -814,7 +809,7 @@ ZEST_CASE(AllocationFailureIsBlameless) {
     auto request = f.submit(worker::Priority::Low);
     f.set_crash_streak(0, false, 1);
     // The abort an allocation failure ends in names its request.
-    f.set_stderr(0, "clice/worker/tuRun /a.cpp", true);
+    f.set_stderr(0, "clice/worker/compileUnit /a.cpp", true);
     std::vector<logging::AnomalyId> trapped;
     logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
 
@@ -1139,7 +1134,7 @@ ZEST_CASE(MemoryErrorCarriesData) {
     death.alone = true;
     death.in_flight = 1;
 
-    auto error = WorkerPoolFixture::death_error(death, "clice/worker/tuRun /a.cpp");
+    auto error = WorkerPoolFixture::death_error(death, "clice/worker/compileUnit /a.cpp");
     ZEXPECT(error.code == worker::dispatch_errc::out_of_memory);
     ZEXPECT(error.message == death.cause);
     ZASSERT(error.data.has_value());

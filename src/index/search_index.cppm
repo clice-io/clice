@@ -147,7 +147,7 @@ struct SearchHit {
 /// A search's answer: its best hits, and whether they are all of them —
 /// false when the limit cut the ranking, so a caller wanting more asks
 /// again with a wider one.
-struct SearchOutcome {
+struct SearchResult {
     std::vector<SearchHit> hits;
     bool exhausted = true;
 };
@@ -202,9 +202,9 @@ public:
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `wanted_file` says whether a file (a path id) is one of the
     /// query's paths; it is asked only when the query names paths.
-    SearchOutcome search(const SymbolQuery& query,
-                         std::uint32_t limit,
-                         llvm::function_ref<bool(std::uint32_t)> wanted_file) const;
+    SearchResult search(const SymbolQuery& query,
+                        std::uint32_t limit,
+                        llvm::function_ref<bool(std::uint32_t)> wanted_file) const;
 
 private:
     struct Segment;

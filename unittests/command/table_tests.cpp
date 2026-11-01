@@ -188,7 +188,7 @@ ZEST_CASE(ResourceDir) {
     CommandRef ref{entry.file,
                    entry.command,
                    commands.input_kind(entry.command, "main.cpp"),
-                   CommandSource::CDBExact};
+                   CommandSource::Database};
     auto argv = commands.render_driver(ref, database.spelling(ref.file));
 
     bool has_resource_dir = false;
@@ -210,7 +210,7 @@ ZEST_CASE(ResourceDir) {
     CommandRef ref2{entry2.file,
                     entry2.command,
                     commands2.input_kind(entry2.command, "main.cpp"),
-                    CommandSource::CDBExact};
+                    CommandSource::Database};
     auto argv2 = commands2.render_driver(ref2, database2.spelling(ref2.file));
     int count = 0;
     for(auto* arg: argv2) {

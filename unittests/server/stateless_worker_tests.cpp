@@ -198,7 +198,7 @@ ZEST_CASE(IndexRequest) {
     bool test_done = false;
 
     w.run([&]() -> async::task<> {
-        worker::TURunParams params;
+        worker::CompileUnitParams params;
         params.index = true;
         params.file = src;
         params.directory = "/tmp";
@@ -250,7 +250,7 @@ ZEST_CASE(BuildPCMRequest) {
         if(result.has_value()) {
             auto& build = result.value();
             ZEXPECT(build.success);
-            ZEXPECT(build.build_at > 0);
+            ZEXPECT(build.started_at > 0);
             // The module source itself must be a hashed dependency: the PCM
             // cache key embeds no content, so the deps snapshot is the only
             // thing that can see an offline edit of the interface. Deps name
@@ -393,7 +393,7 @@ ZEST_CASE(MultipleStatelessRequests) {
     w.run([&]() -> async::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
-            worker::TURunParams params;
+            worker::CompileUnitParams params;
             params.index = true;
             params.file = paths[i];
             params.directory = "/tmp";

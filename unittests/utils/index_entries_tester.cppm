@@ -23,7 +23,7 @@ struct IndexEntriesTester : Tester {
         bytes = index::build_tu_index(*unit);
         tu = index::TUIndex::from_bytes(as_chars(bytes));
 
-        auto focus_id = tu.path_count() - 1;
+        auto focus_id = tu.focus_file();
         entries = feature::extract_index_entries(tu.shard_of(focus_id));
     }
 
@@ -31,7 +31,7 @@ struct IndexEntriesTester : Tester {
         if(auto identity = tu.find_symbol(hash)) {
             return index::SymbolInfo::from(hash, *identity);
         }
-        auto focus_id = tu.path_count() - 1;
+        auto focus_id = tu.focus_file();
         if(auto identity = tu.shard_of(focus_id).find_symbol(hash)) {
             return index::SymbolInfo::from(hash, *identity);
         }

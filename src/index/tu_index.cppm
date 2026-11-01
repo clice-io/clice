@@ -54,9 +54,13 @@ public:
 
     std::int64_t built_at() const;
 
-    /// The focus file's path is always the last id, by IncludeTree
-    /// convention.
     std::uint32_t path_count() const;
+
+    /// The focus file's path id: always the last, by IncludeTree
+    /// convention.
+    std::uint32_t focus_file() const {
+        return path_count() - 1;
+    }
 
     llvm::StringRef path(std::uint32_t id) const;
 

@@ -3,14 +3,13 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :index.symbol_query;
-import :project.contexts;
+import :project.indexer;
 import :project.project;
-import :project.save;
-import :sched.index.pending_table;
+import :unittests.utils;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -34,12 +33,11 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         f.load();
         auto host = f.project.file_table.intern(Spelling::absolute(host_path));
         auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-        ContextChoice choice{host, 1, "applied", "base"};
+        ContextChoice choice{host, 1, "base"};
         std::pair<Fid, const ContextChoice*> choices[] = {
             {header, &choice}
         };
-        f.project.choices.bytes = serialize_choices(f.project, choices);
-        f.project.choices.dirty = true;
+        f.project.save_choices(choices);
         f.save();
         ZASSERT(!f.project.choices.dirty);
     }
@@ -49,14 +47,13 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     f.load();
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
     auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-    auto choices = parse_choices(f.project, f.project.choices.bytes);
+    auto choices = f.project.saved_choices();
     ZASSERT(choices.size() == 1u);
     ZASSERT(choices[0].first == header);
     auto& saved = choices[0].second;
-    ZASSERT(saved.host_path_id == host);
+    ZASSERT(saved.host == host);
     ZASSERT(saved.occurrence == std::optional<std::uint32_t>(1));
-    ZASSERT(saved.command_hash == "applied");
-    ZASSERT(saved.base_hash == "base");
+    ZASSERT(saved.base == "base");
     ZASSERT(!f.project.choices.dirty);
 }
 
@@ -109,7 +106,7 @@ ZEST_CASE(UnownedContextsPassThrough) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    f.project.mark_artifacts_dirty();
+    f.project.mark_precompiled_dirty();
     f.save();
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
@@ -215,6 +212,7 @@ struct ShrinkProject {
                   "int first_value() { return function_1(first_local); }\n");
         tmp.touch("b.cpp", "int second_value() { return 2; }\n");
         open_store(tmp, f.project);
+        list_unit(f.project.cdb, tmp.path("a.cpp"));
         ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
         f.save(index::SearchRebuild::Idle);
     }
@@ -229,7 +227,7 @@ struct ShrinkProject {
     index::IndexReport shrink() {
         index::IndexReport report;
         auto run = [&]() -> async::task<> {
-            report = co_await shrink_database(f.project, f.loop);
+            report = co_await f.project.shrink_database();
         };
         auto task = run();
         f.loop.schedule(task);
@@ -341,7 +339,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     auto& space = p.spy();
     ZASSERT(p.f.merge(index_file(p.tmp, p.tmp.path("b.cpp")).data));
     auto shrink = [&]() -> async::task<> {
-        co_await shrink_database(p.f.project, p.f.loop);
+        co_await p.f.project.shrink_database();
     };
     auto shrink_task = shrink();
     auto save_task = p.f.async_save(index::SearchRebuild::Idle);
@@ -364,18 +362,21 @@ ZEST_CASE(IdleSaveShrinks) {
     // Only a save after which no indexing is queued shrinks the file.
     ShrinkProject p;
     auto& space = p.spy();
-    auto persist = [&](index::SearchRebuild search) {
-        auto task = p.f.pump.persist(search);
+    auto save = [&](index::SearchRebuild search) {
+        auto task = p.f.project.save(search);
         p.f.loop.schedule(task);
         p.f.loop.run();
     };
-    persist(index::SearchRebuild::Never);
-    persist(index::SearchRebuild::Behind);
+    save(index::SearchRebuild::Never);
+    save(index::SearchRebuild::Behind);
     ZEXPECT(space.copies == 0u);
-    persist(index::SearchRebuild::Idle);
+    save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
-    p.f.pump.enqueue(p.unit("b.cpp"), ReindexReason::ContentChanged);
-    persist(index::SearchRebuild::Idle);
+    // Not started, the background index leaves the reindex queued:
+    // started, the save starts its pass, whose own idle save shrinks.
+    p.f.background.enqueue(list_unit(p.f.project.cdb, p.tmp.path("b.cpp")),
+                           ReindexReason::ContentChanged);
+    save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
 }
 
@@ -387,7 +388,7 @@ ZEST_CASE(LostShrinkSavesAgain) {
     space.forced_swap = index::BlobDatabase::Swap::Lost;
     p.f.project.choices.bytes = "choices";
     p.f.project.choices.dirty = true;
-    auto task = p.f.pump.persist(index::SearchRebuild::Idle);
+    auto task = p.f.project.save(index::SearchRebuild::Idle);
     p.f.loop.schedule(task);
     p.f.loop.run();
     ZEXPECT(!p.f.project.choices.dirty);

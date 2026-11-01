@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.protocol;
-import :project.contexts;
+import :project.command;
 import :project.project;
 import :server.master;
 import :server.served_project;
@@ -28,7 +28,7 @@ const MasterServer::ChoiceEntry* MasterServer::choice(Fid path_id) const {
 
 void MasterServer::load_choices(ServedProject& project) {
     bool dropped = false;
-    for(auto& [file, saved]: parse_choices(project.project, project.project.choices.bytes)) {
+    for(auto& [file, saved]: project.project.saved_choices()) {
         auto [it, inserted] = choices.try_emplace(file);
         auto& entry = it->second;
         // Of two projects that saved a choice for one file, the deeper root
@@ -46,7 +46,7 @@ void MasterServer::load_choices(ServedProject& project) {
             entry = {};
             save_choices(*other);
         }
-        bool active = choice_holds(project.project, file, saved);
+        bool active = project.project.choice_holds(file, saved);
         entry = {.choice = std::move(saved), .project = &project, .active = active};
     }
     if(dropped) {
@@ -60,7 +60,7 @@ bool MasterServer::recheck_choice(Fid path_id) {
         return false;
     }
     auto& entry = it->second;
-    bool active = choice_holds(entry.project->project, path_id, entry.choice);
+    bool active = entry.project->project.choice_holds(path_id, entry.choice);
     if(active == entry.active) {
         return false;
     }
@@ -78,12 +78,7 @@ void MasterServer::save_choices(ServedProject& project) {
             saved.emplace_back(file, &entry.choice);
         }
     }
-    auto& blob = project.project.choices;
-    blob.bytes = serialize_choices(project.project, saved);
-    blob.dirty = true;
-    if(project.project.request_flush) {
-        project.project.request_flush();
-    }
+    project.project.save_choices(saved);
 }
 
 void MasterServer::forget_choices(ServedProject& project) {
@@ -103,7 +98,7 @@ std::uint64_t MasterServer::context_epoch() {
     // while the projects stay the same.
     std::uint64_t sum = 0;
     for(auto& project: projects) {
-        sum += project->project.context_epoch;
+        sum += project->project.context_epoch();
     }
     if(std::pair(projects_generation, sum) != context_seen) {
         context_seen = {projects_generation, sum};
@@ -116,12 +111,12 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                                                      const ext::QueryContextParams& params) {
     constexpr std::size_t page_size = 10;
     auto& owner = owner_of(path_id);
-    auto items = list_contexts(owner.project, path_id);
+    auto items = owner.project.list_contexts(path_id);
     for(auto& project: projects) {
         if(project.get() == &owner) {
             continue;
         }
-        for(auto& item: list_contexts(project->project, path_id)) {
+        for(auto& item: project->project.list_contexts(path_id)) {
             if(ranges::none_of(items, [&](const ListedContext& known) {
                    return known.file == item.file && known.occurrence == item.occurrence &&
                           known.command_hash == item.command_hash;
@@ -158,11 +153,9 @@ async::task<ext::SwitchContextResult>
     auto offers = [&](ServedProject& project) -> async::task<bool> {
         // The listing counts the places the host's compile enters the file
         // by its include tree.
-        ContextChoice wanted{.host_path_id = context_path_id};
-        std::string directory;
-        std::vector<std::string> arguments;
-        co_await project.document_command(path_id, directory, arguments, &wanted);
-        co_return ranges::any_of(list_contexts(project.project, path_id),
+        ContextChoice wanted{.host = context_path_id};
+        co_await project.document_command(path_id, &wanted);
+        co_return ranges::any_of(project.project.list_contexts(path_id),
                                  [&](const ListedContext& item) {
                                      return item.file == context_path_id &&
                                             item.occurrence == params.occurrence &&
@@ -191,12 +184,11 @@ async::task<ext::SwitchContextResult>
         co_return result;
     }
     auto* previous = choice(path_id) ? choice(path_id)->project : nullptr;
+    // Of the listed items only the file's own entries name the file itself.
     choices[path_id] = {
-        .choice = choice_of(target->project,
-                            path_id,
-                            context_path_id,
-                            params.occurrence,
-                            params.command_hash),
+        .choice = {.host = context_path_id != path_id ? context_path_id : Fid{},
+                   .occurrence = params.occurrence,
+                   .base = params.command_hash.value_or("")},
         .project = target.get(),
     };
     save_choices(*target);
@@ -219,10 +211,10 @@ async::task<ext::SwitchContextResult>
 /// How clice/currentContext names where a command comes from.
 static std::string_view source_name(CommandSource source) {
     switch(source) {
-        case CommandSource::CDBExact: return "database";
-        case CommandSource::IncludeGraph: return "host";
+        case CommandSource::Database: return "database";
+        case CommandSource::Host: return "host";
         case CommandSource::Default: return "default";
-        case CommandSource::Inferred: return "inferred";
+        case CommandSource::Borrowed: return "borrowed";
         case CommandSource::Fallback: return "fallback";
     }
     std::unreachable();
@@ -238,10 +230,10 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     auto owner = document->owner->shared_from_this();
     auto& project = owner->project;
     auto& command = result.command.emplace();
-    std::vector<std::string> resolved;
     // As the document's compile does, with the tree of the host it waits
     // for: the compile in flight takes the same one.
-    auto resolution = co_await owner->document_command(path_id, command.directory, resolved);
+    auto resolution = co_await owner->document_command(path_id);
+    command.directory = resolution.directory;
     // The command line as its database or rule writes it, the rules
     // applied, rather than the frontend's the compile gets: the one a user
     // recognizes, and could run.
@@ -249,8 +241,8 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     for(auto* argument: project.commands.render_full(resolution.ref.command, file)) {
         command.arguments.emplace_back(argument);
     }
-    command.source = source_name(resolution.source);
-    auto from = resolution.host.valid() ? resolution.host : resolution.lender;
+    command.source = source_name(resolution.ref.source);
+    auto from = resolution.host.valid() ? resolution.host : resolution.candidate.from();
     if(from.valid()) {
         command.from = feature::to_uri(project.file_table.display(from));
     }
@@ -259,20 +251,19 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
-    if(auto item = current_context_item(project, path_id, active, resolution)) {
+    if(auto item = project.current_context_item(path_id, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
     if(auto* entry = choice(path_id); entry && !entry->active) {
         auto& waiting = entry->choice;
-        auto chosen = waiting.host_path_id.valid() ? waiting.host_path_id : path_id;
+        auto chosen = waiting.host.valid() ? waiting.host : path_id;
         auto shown = files.display(chosen);
         result.inactive_choice = ext::ContextItem{
             .label = std::string(path::filename(shown)),
             .description = shown,
             .uri = feature::to_uri(shown),
             .occurrence = waiting.occurrence,
-            .command_hash =
-                waiting.command_hash.empty() ? std::nullopt : std::optional(waiting.command_hash),
+            .command_hash = waiting.base.empty() ? std::nullopt : std::optional(waiting.base),
         };
     }
     result.epoch = context_epoch();

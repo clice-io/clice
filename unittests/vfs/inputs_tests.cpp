@@ -1,0 +1,287 @@
+module clice;
+
+import :unittests.utils.temp_dir;
+import :unittests.utils;
+import :vfs.file_system;
+import :vfs.file_table;
+
+namespace clice::testing {
+namespace {
+
+/// A started_at (milliseconds since epoch, like the worker's `unit.started_at()`)
+/// far enough in the future that every existing file clears the mtime guard.
+std::int64_t generous_started_at() {
+    return chrono::duration_cast<chrono::milliseconds>(
+               chrono::system_clock::now().time_since_epoch())
+               .count() +
+           10'000;
+}
+
+/// The consumed hash a worker would report for the file's current bytes
+/// (0 = unreadable, which no test here expects).
+std::uint64_t consumed_hash(llvm::StringRef path) {
+    auto text = vfs::read_text(path);
+    return text ? llvm::xxh3_64bits(*text) : 0;
+}
+
+/// Rewind a file's mtime out of the mtime-granularity guard window, the
+/// way real project files predate a server start. A freshly touched file
+/// is deliberately untrusted (see vfs::read_observed), so tests exercising
+/// the stat fast path must age their files first.
+void age_file(llvm::StringRef path) {
+    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+}
+
+/// Whether the file table answers the file's current stat without a read.
+bool confirmed(FileTable& pool, llvm::StringRef path) {
+    auto status = fs::status(path);
+    return status &&
+           pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
+}
+
+ZEST_SUITE(Inputs) {
+
+ZEST_CASE(FreshWhenUntouched) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    ZASSERT(snap.size() == 1u);
+    ZASSERT(inputs_hold(pool, snap));
+
+    // The check's read left the file's pair behind: the next check is a
+    // stat.
+    ZASSERT(confirmed(pool, dep));
+}
+
+ZEST_CASE(SnapshotsShareOneVersion) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    auto started_at = generous_started_at();
+    auto first = intern_inputs(pool,
+                               {
+                                   ReportedInput{dep, consumed_hash(dep)}
+    },
+                               started_at);
+    auto second = intern_inputs(pool,
+                                {
+                                    ReportedInput{dep, consumed_hash(dep)}
+    },
+                                started_at);
+    ZASSERT(pool.versions.size() == 1u);
+
+    // One check's read serves the other snapshot.
+    ZASSERT(inputs_hold(pool, first));
+    ZASSERT(confirmed(pool, dep));
+    ZASSERT(inputs_hold(pool, second));
+}
+
+ZEST_CASE(ImmediateEditDetected) {
+    // The F44 shape: the dependency is saved right after the build's
+    // freshness was captured — no watermark may bless it.
+    TempDir tmp;
+    tmp.touch("dep.h", "int value();\n");
+    auto dep = tmp.path("dep.h");
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    tmp.touch("dep.h", "int renamed();\n");
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(EveryChangeFound) {
+    // One check finds every changed dependency, so they cascade together.
+    TempDir tmp;
+    tmp.touch("a.h", "int a();\n");
+    tmp.touch("b.h", "int b();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+    age_file(a);
+    age_file(b);
+
+    FileTable pool;
+    pool.disk.read(pool.intern(Spelling::absolute(a)));
+    pool.disk.read(pool.intern(Spelling::absolute(b)));
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{a, consumed_hash(a)},
+                                  ReportedInput{b, consumed_hash(b)},
+    },
+                              generous_started_at());
+    tmp.touch("a.h", "int a2();\n");
+    tmp.touch("b.h", "int b2();\n");
+    ZASSERT(!inputs_hold(pool, snap));
+    ZASSERT(pool.disk.take_changes().size() == 2u);
+}
+
+ZEST_CASE(BackdatedEditDetected) {
+    // The F04 shape: the edit arrives with an mtime that does not move
+    // forward (rsync -t, git-restore-mtime). Equality comparison sends it
+    // to the hash layer regardless of the timestamp's direction.
+    TempDir tmp;
+    tmp.touch("dep.h", "int old_name();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    auto recorded_mtime = file_mtime_ns(dep);
+    ZASSERT(confirmed(pool, dep));
+
+    tmp.touch("dep.h", "int new_name();\n");  // same length
+    ZASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(TouchRepairsFastPath) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+
+    // Rewrite identical bytes: the stat moves, the content does not.
+    auto before = file_mtime_ns(dep);
+    tmp.touch("dep.h", "int f();\n");
+    ZASSERT(set_file_mtime(dep, before + 5'000'000'000));
+    ZASSERT(!confirmed(pool, dep));
+    ZASSERT(inputs_hold(pool, snap));
+
+    // The check's read moved the pair to the new stat.
+    ZASSERT(confirmed(pool, dep));
+}
+
+ZEST_CASE(PoisonedCaptureDetected) {
+    // The F01 shape: the dependency changed between the build reading it
+    // and the snapshot being captured. The consumed hash describes v1, the
+    // disk holds v2, and the capture-time stat must not bless v2.
+    TempDir tmp;
+    tmp.touch("dep.h", "int v1();\n");
+    auto dep = tmp.path("dep.h");
+    auto consumed = consumed_hash(dep);
+
+    tmp.touch("dep.h", "int v2();\n");
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed}
+    },
+                              /*started_at=*/1);
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(StalePairRereads) {
+    // The pair describes bytes the scan read; after an edit the live stat
+    // no longer matches it, so the check reads instead of answering with
+    // the old hash.
+    TempDir tmp;
+    tmp.touch("dep.h", "int v1();\n");
+    auto dep = tmp.path("dep.h");
+
+    FileTable pool;
+    age_file(dep);
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
+
+    tmp.touch("dep.h", "int v2();\n");
+    age_file(dep);
+    // Same-tick touches can age to a stat identical to the pair's on
+    // coarse-timestamp filesystems, and an equal-stat same-size rewrite
+    // is the accepted mtime residual — the premise here is a stat that
+    // does differ, so force it apart.
+    ZASSERT(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    ZASSERT(!confirmed(pool, dep));
+    ZASSERT(inputs_hold(pool, snap));
+    ZASSERT(confirmed(pool, dep));
+}
+
+ZEST_CASE(MissingTransitions) {
+    TempDir tmp;
+    auto dep = tmp.path("ghost.h");
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, 0}
+    },
+                              generous_started_at());
+    ZASSERT(snap[0].absent);
+
+    // Still missing: unchanged.
+    ZASSERT(inputs_hold(pool, snap));
+
+    // Appearing is a change, and the file table saw it.
+    tmp.touch("ghost.h", "int f();\n");
+    ZASSERT(!inputs_hold(pool, snap));
+    ZASSERT(!pool.disk.seen_missing(pool.intern(Spelling::absolute(dep))));
+}
+
+ZEST_CASE(AbsentPlaceFilled) {
+    // A place a failed lookup looked holds a file by the capture: the build
+    // never saw it, so the build is stale however old the file is.
+    TempDir tmp;
+    tmp.touch("gen.h", "int make();\n");
+    auto place = tmp.path("gen.h");
+    age_file(place);
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{.path = place, .absent = true}
+    },
+                              generous_started_at());
+    ZASSERT(snap[0].absent);
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(RemovedAfterBuild) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+
+    fs::remove(dep);
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+};  // ZEST_SUITE(Inputs)
+
+}  // namespace
+}  // namespace clice::testing

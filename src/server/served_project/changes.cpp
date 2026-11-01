@@ -1,9 +1,11 @@
 module clice;
 
 import :index.project_index;
-import :project.command_snapshot;
-import :project.contexts;
-import :sched.builders.pcm;
+import :project.command;
+import :project.discovery;
+import :project.graph.pcm;
+import :project.graph.task_graph;
+import :project.indexer;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -69,13 +71,15 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 
 void ServedProject::reindex(Fid path_id, bool content) {
     skipped.erase(path_id);
-    sched.pump.enqueue(path_id, content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
+    project.background_index.enqueue(path_id,
+                                     content ? ReindexReason::ContentChanged
+                                             : ReindexReason::DepsOnly);
 }
 
 /// An invalidated dependent recompiles when it is open, and reindexes
 /// unless its document's compile serves it.
 void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
-    project.index.mark_behind(path_id);
+    project.index.mark_outdated(path_id);
     mark_stale(path_id, refresh);
     if(!compiled_by_session(path_id)) {
         reindex(path_id, false);
@@ -83,35 +87,16 @@ void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
 }
 
 llvm::SmallVector<Fid> ServedProject::readers(Fid path_id) const {
-    auto result = project.dep_graph.find_readers(path_id);
-    auto add = [&](Fid reader) {
-        if(reader != path_id && !ranges::contains(result, reader)) {
-            result.push_back(reader);
-        }
-    };
-    project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) { add(tu); });
-    project.index.for_each_absent_lookup(path_id, add);
-    project.index.for_each_importer(path_id, add);
-    auto names = [&](const DepsSnapshot& deps) {
-        return ranges::any_of(deps, [&](const DepState& dep) { return dep.path_id == path_id; });
-    };
+    auto result = project.readers(path_id);
     for(auto& [document, served]: documents) {
         bool read = false;
-        each_input(document, [&](const DepsSnapshot& deps) { read = read || names(deps); });
-        if(read) {
-            add(document);
+        each_input(document, [&](const Inputs& inputs) {
+            read = read || ranges::contains(inputs, path_id, &Input::file);
+        });
+        if(read && document != path_id && !ranges::contains(result, document)) {
+            result.push_back(document);
         }
     }
-    for(auto& [unit, build]: project.pcm_builds) {
-        if(names(build.deps)) {
-            add(unit);
-        }
-    }
-    project.failures.pcm_builds.for_each([&](Fid unit, const auto& failed) {
-        if(names(failed.trace)) {
-            add(unit);
-        }
-    });
     return result;
 }
 
@@ -123,31 +108,28 @@ void ServedProject::mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh) {
 }
 
 void ServedProject::cascade_compile_graph(Fid path_id, bool& refresh) {
-    if(!sched.pcm.tracks(path_id)) {
-        return;
-    }
-    for(auto dirtied: sched.pcm.invalidate(path_id)) {
+    for(auto dirtied: project.invalidate_module(path_id)) {
         mark_dependent(dirtied, refresh);
     }
 }
 
 void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh) {
-    // Every consumer whose scan met the name unresolved holds a durable
-    // edge to its sentinel; the graph cascade is the complete list — no
+    // Every consumer whose scan met the name unresolved declared an
+    // edge to its unresolved-import node; the graph cascade is the complete list — no
     // side bookkeeping, no reverse-map walk. Their shards lack the
     // module's symbols and their dep snapshots never named the
     // interface, so the content-hash gate would filter a DepsOnly
     // reindex — ContentChanged bypasses it. Nothing is dropped: a
     // rebuild replaces the shards, and a unit that can no longer build keeps
     // its last-known one (queries withhold a deleted file's).
-    for(auto id: sched.pcm.provider_appeared(module_name)) {
-        if(PCMBuilder::is_unresolved(id)) {
+    for(auto id: project.provider_appeared(module_name)) {
+        if(is_unresolved_import(id)) {
             continue;
         }
-        auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
-        if(id.family == Family::TURun) {
+        auto path_id = id.file();
+        if(id.kind == NodeKind::Unit) {
             reindex(path_id, true);
-        } else if(id.family == Family::AST) {
+        } else if(id.kind == NodeKind::AST) {
             if(find_document(path_id)) {
                 mark_stale(path_id, refresh);
                 if(!compiled_by_session(path_id)) {
@@ -171,8 +153,8 @@ void ServedProject::rescan_disk_state(Fid path_id, bool& refresh) {
 
     // A rescan that introduced a module declaration may have given the
     // name its first provider: consumers that scanned it unresolved hold
-    // edges to its sentinel, not to any real node a module-graph cascade
-    // could reach.
+    // edges to its unresolved-import node, not to any real node a
+    // module-graph cascade could reach.
     if(!new_module.empty()) {
         if(project.dep_graph.lookup_module(new_module).size() == 1) {
             provider_appeared(new_module, refresh);
@@ -234,7 +216,7 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
             // other file compiles against and what the index describes.
             cascade_disk_content_change(path_id, refresh);
             // A unit of its own reads the file as well.
-            project.index.mark_behind(path_id);
+            project.index.mark_outdated(path_id);
             reindex(path_id, true);
             continue;
         }
@@ -254,46 +236,28 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
         // compile-graph cascade, which lists the removed module itself
         // among its dirtied units: the removal is the final word for the
         // file itself.
-        sched.pump.clear_pending(path_id);
+        project.background_index.forget(path_id);
         project.forget_file(path_id);
         // TODO: remove orphaned shards of files that stay deleted.
     }
     finish_changes(refresh);
 }
 
-void ServedProject::build_changed(CDBDiff delta) {
+void ServedProject::commands_changed(CDBDiff commands) {
     bool refresh = false;
-    // The lender set changed: every borrowed or synthesized command may
-    // resolve differently now — which no delta can tell, so all of them
-    // recompile.
-    project.commands_epoch += 1;
-    for(auto& [path_id, document]: documents) {
-        if(document.guessed) {
-            mark_stale(path_id, refresh);
-        }
+    auto changed = project.update_members(std::move(commands));
+    if(changed.empty()) {
+        finish_changes(refresh);
+        return;
     }
-    // With nothing reloaded the graph is the build's: only a file just
-    // recorded may join, against it.
-    if(delta.empty()) {
-        delta = project.refresh_provisional();
-        if(delta.empty()) {
-            finish_changes(refresh);
-            return;
-        }
-    }
+    auto& providers = changed.graph;
 
-    // The database already reloaded; derived state must follow. The
-    // provisional members join, change command or leave the way an entry
-    // does.
-    auto providers = project.rebuild_dependency_graph();
-    delta.append(providers.provisional);
-
-    // A module name that just gained its first provider: its sentinel's
+    // A module name that just gained its first provider: its unresolved-import node's
     // dependents are the TUs that scanned it unresolved — the delta walk
     // below cannot reach them (they hold no edge to any real node). A name
     // whose providers changed: importers hold edges to the ones they
     // picked, and when those entries are unchanged the delta walk cannot
-    // reach them either — cascade from them so their next rounds pick
+    // reach them either — cascade from them so their next attempts pick
     // again.
     for(auto& name: providers.appeared) {
         provider_appeared(name, refresh);
@@ -302,61 +266,26 @@ void ServedProject::build_changed(CDBDiff delta) {
         cascade_compile_graph(replaced, refresh);
     }
 
-    // Every delta entry needs the same treatment — the compile command is
-    // an input that content-based staleness cannot see, whether it
-    // appeared, changed or vanished. PCH/PCM keys embed the canonical
-    // flags, so pull-side caches miss naturally.
-    auto invalidate_entry = [&](Fid path_id, bool retired) {
-        // The next compile re-resolves the command (added: first real entry
-        // replaces the guessed one; changed: new flags; removed: fall back).
-        mark_stale(path_id, refresh);
-        // A TU the build stopped compiling — its database still loads but no
-        // longer lists it: its shard leaves the index and nothing is owed,
-        // unlike a file that vanished from disk, whose shard stays behind
-        // (queries withhold it). A TU whose command changed: its index
-        // describes a compile that no longer exists, and content-based
-        // freshness cannot see that — a surviving manifest would judge the
-        // queued reindex fresh and keep the old-command index serving, in
-        // this session and after a restart. ContentChanged: a new command
-        // can rewrite the index (macros, includes) as thoroughly as an edit.
-        index::IndexReport report;
-        project.index.drop(path_id, report);
-        sched.pump.apply_report(report);
-        if(retired) {
-            sched.pump.clear_pending(path_id);
-        } else {
-            reindex(path_id, true);
-        }
-
-        // A module unit's command change invalidates importers' PCMs
-        // (no-op for files the compile graph doesn't know).
+    // A module unit's command change invalidates importers' PCMs (no-op for
+    // files the compile graph doesn't know). PCH/PCM keys embed the
+    // canonical flags, so pull-side caches miss naturally.
+    auto& delta = changed.commands;
+    for(auto path_id: llvm::concat<const Fid>(delta.added, delta.changed, delta.removed)) {
+        skipped.erase(path_id);
         cascade_compile_graph(path_id, refresh);
+    }
 
-        // An open header borrowing the changed command compiled under one
-        // that no longer exists; one whose first compile is still in
-        // flight may be borrowing it.
-        for(auto& [header, document]: documents) {
-            if(document.latest ? document.latest->host == path_id : !project.build.unit(header)) {
-                mark_stale(header, refresh);
-            }
+    // An open document whose command moved recompiles: one whose entry
+    // appeared, changed or left, a header whose host's command did or that
+    // another host now ranks before it, a file borrowing a member's. One
+    // whose first compile is still in flight may have resolved before.
+    for(auto& [path_id, document]: documents) {
+        auto selected =
+            project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+        auto& latest = document.latest;
+        if(!latest || latest->command != selected.ref.command || latest->host != selected.host) {
+            mark_stale(path_id, refresh);
         }
-    };
-
-    for(auto path_id: delta.added) {
-        invalidate_entry(path_id, /*retired=*/false);
-    }
-    for(auto path_id: delta.changed) {
-        invalidate_entry(path_id, /*retired=*/false);
-    }
-    for(auto path_id: delta.removed) {
-        // The database that owned the entry reloaded fine and no longer
-        // lists the file: the build stopped compiling it — unless a rule's
-        // default command still covers it, which makes this a command
-        // change. (A database that vanishes keeps serving its entries — a
-        // missing file never reloads — so this is not a removal from
-        // disk.) The graph rebuild above already dropped a retired file's
-        // source role, and the choices' recheck sees it.
-        invalidate_entry(path_id, /*retired=*/project.build.commands(path_id).empty());
     }
     finish_changes(refresh);
 
@@ -365,19 +294,16 @@ void ServedProject::build_changed(CDBDiff delta) {
     if(!delta.added.empty() || !delta.removed.empty()) {
         server.reroute();
     }
+    // A database found or a member recorded: the directories on the way to
+    // it decide what loads too.
+    server.watch_settings();
 }
 
 void ServedProject::finish_changes(bool refresh) {
     // A change can remove the include edge or the entry a user's context
     // choice depends on, or bring it back.
     recheck_choices();
-    // Not before the server is ready: document-sync events are accepted
-    // early, but the scheduler reads settings that initialize() has not
-    // applied yet. The queue filled is kept — the project's start kicks the
-    // scheduler.
-    if(server.lifecycle == ServerLifecycle::Ready) {
-        sched.pump.schedule();
-    }
+    project.background_index.schedule();
     if(refresh && server.client) {
         server.client->refresh_diagnostics();
         server.client->refresh();
@@ -403,8 +329,8 @@ void ServedProject::recheck_choices() {
 }
 
 void ServedProject::asts_lost(llvm::ArrayRef<Fid> lost) {
-    // Compile inputs did not change, so trial state and self-containment
-    // results stay untouched. A live round sends a compile of its own,
+    // Compile inputs did not change, so self-containment results stay
+    // untouched. A live attempt sends a compile of its own,
     // which puts the AST back on a worker — invalidating it would only make
     // it finish stale and compile twice.
     for(auto path_id: lost) {
@@ -418,23 +344,22 @@ bool ServedProject::knows(Fid path_id) {
     if(broken()) {
         return false;
     }
-    return find_document(path_id) != nullptr || !project.build.commands(path_id).empty() ||
+    return find_document(path_id) != nullptr || !project.candidates(path_id).empty() ||
            project.dep_graph.knows(path_id) || !readers(path_id).empty();
 }
 
 void ServedProject::append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const {
     for(auto& [path_id, document]: documents) {
-        each_input(path_id, [&](const DepsSnapshot& deps) {
-            for(auto& dep: deps) {
-                files.push_back(dep.path_id);
+        each_input(path_id, [&](const Inputs& inputs) {
+            for(auto& dep: inputs) {
+                files.push_back(dep.file);
             }
         });
     }
 }
 
 bool ServedProject::databases_moved() const {
-    return resolved_databases(project.settings, project.build.active_configuration()) !=
-           project.resolved_databases;
+    return project.rules.resolved_databases() != project.resolved_databases;
 }
 
 std::size_t ServedProject::reload_databases(bool force) {
@@ -451,7 +376,7 @@ std::size_t ServedProject::reload_databases(bool force) {
         });
         return 0;
     }
-    if(!project.build.declares_sources()) {
+    if(!project.rules.declares_sources()) {
         discover_databases();
     }
     CDBDiff delta;
@@ -461,7 +386,7 @@ std::size_t ServedProject::reload_databases(bool force) {
     if(delta.empty()) {
         return 0;
     }
-    build_changed(std::move(delta));
+    commands_changed(std::move(delta));
     return 1;
 }
 
@@ -470,17 +395,17 @@ async::task<bool> ServedProject::poll_sources() {
         co_return false;
     }
     auto walked =
-        co_await async::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
-    auto added = project.build.refresh_default_sources(walked);
+        co_await async::queue([walk = project.rules.source_walk()] { return walk_sources(walk); });
+    auto added = project.refresh_default_sources(walked);
     if(added.empty()) {
         co_return false;
     }
-    build_changed({.added = std::move(added)});
+    commands_changed({.added = std::move(added)});
     co_return true;
 }
 
 void ServedProject::discover_around(Fid path_id) {
-    if(!watching || project.build.declares_sources() || !project.build.entries(path_id).empty()) {
+    if(!watching || project.rules.declares_sources() || !project.entries(path_id).empty()) {
         return;
     }
     auto path = project.file_table.resolve(path_id);
@@ -491,7 +416,7 @@ void ServedProject::discover_around(Fid path_id) {
     // A registered database whose load failed so far (absent at startup,
     // unreadable at an earlier open) gets another try: with polling off
     // nothing else would.
-    for(auto& database: compile_commands_above(path.parent(), project.root)) {
+    for(auto& database: databases_above(path.parent(), project.root)) {
         auto registered = project.cdb.find_source(database);
         if((registered && project.cdb.loaded(*registered)) ||
            (!registered && project.cdb.find_same_file(database))) {
@@ -507,8 +432,40 @@ void ServedProject::discover_around(Fid path_id) {
         }
     }
     if(!found.empty()) {
-        build_changed(std::move(found));
+        commands_changed(std::move(found));
     }
+}
+
+std::vector<CanonicalPath> ServedProject::configuration_dirs() const {
+    std::vector<CanonicalPath> dirs;
+    CanonicalRef root = project.root;
+    if(root.empty()) {
+        return dirs;
+    }
+    for(auto& subdirectory: direct_subdirectories(root)) {
+        dirs.emplace_back(subdirectory);
+    }
+    auto down_to = [&](CanonicalRef path) {
+        path::walk_ancestors(path.parent(), [&](CanonicalRef dir) {
+            if(dir == root || !path::is_within(dir, root)) {
+                return false;
+            }
+            dirs.emplace_back(dir);
+            return true;
+        });
+    };
+    for(std::uint32_t i = 0; i < project.cdb.source_count(); i += 1) {
+        down_to(CanonicalPath(Spelling::absolute(project.cdb.source_path(SourceID(i)))));
+    }
+    for(auto file: project.provisional.files()) {
+        down_to(project.file_table.resolve(file));
+    }
+    for(auto& entry: documents) {
+        down_to(project.file_table.resolve(entry.first));
+    }
+    ranges::sort(dirs);
+    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
+    return dirs;
 }
 
 void ServedProject::watch_checkout() {
@@ -567,7 +524,7 @@ llvm::SmallVector<std::optional<SourceID>>
     ServedProject::default_sources(llvm::ArrayRef<Fid> files) const {
     return ranges::to<llvm::SmallVector<std::optional<SourceID>>>(
         views::transform(files, [&](Fid file) -> std::optional<SourceID> {
-            auto entries = project.build.entries(file);
+            auto entries = project.entries(file);
             if(entries.empty()) {
                 return std::nullopt;
             }
@@ -594,10 +551,9 @@ void ServedProject::tick_database(WatchedDatabase& database, bool force, CDBDiff
     // an empty diff.
     database.pending.reset();
     bool exists = database.inputs.front()->stamp.has_value();
-    // A discovered database's presence ranks it (see Build::source_order):
+    // A discovered database's presence ranks it (see Project::source_order):
     // the files whose default entry moves with it change command.
-    bool flips =
-        project.cdb.present(database.id) != exists && project.build.discovered(database.id);
+    bool flips = project.cdb.present(database.id) != exists && project.discovered(database.id);
     llvm::SmallVector<Fid> shared;
     llvm::SmallVector<std::optional<SourceID>> before;
     if(flips) {
@@ -663,7 +619,7 @@ void ServedProject::discover_databases() {
     want(listed);
     for(auto& [path_id, document]: documents) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.entries(path_id).empty() && path::is_within(path, project.root)) {
+        if(project.entries(path_id).empty() && path::is_within(path, project.root)) {
             want(database_places_above(path.parent(), project.root));
         }
     }

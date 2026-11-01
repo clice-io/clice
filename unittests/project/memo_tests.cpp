@@ -11,14 +11,14 @@ namespace {
 
 ZEST_SUITE(Memo) {
 
-ZEST_CASE(TraceHolds) {
+ZEST_CASE(InputsHold) {
     /// A result holds while the files it read hold; one changing forgets it.
     TempDir tmp;
     tmp.touch("a.h", "int a;\n");
     FileTable files;
     auto a = files.intern(Spelling::absolute(tmp.path("a.h")));
     Memo<Fid, int> memo;
-    memo.commit(a, 1, {*current_dep(files, a)});
+    memo.commit(a, 1, {*current_input(files, a)});
     ZASSERT(memo.lookup(files, a));
     ZEXPECT(memo.lookup(files, a)->result == 1);
 
@@ -28,15 +28,15 @@ ZEST_CASE(TraceHolds) {
     ZEXPECT(memo.find(a) == nullptr);
 };
 
-ZEST_CASE(IncompleteTraceMisses) {
-    /// A file the trace names at no version — the bytes read were never
+ZEST_CASE(IncompleteInputsMiss) {
+    /// A file the inputs name at no version — the bytes read were never
     /// hashed — cannot prove the result holds.
     TempDir tmp;
     tmp.touch("a.h", "int a;\n");
     FileTable files;
     auto a = files.intern(Spelling::absolute(tmp.path("a.h")));
     Memo<Fid, int> memo;
-    memo.commit(a, 1, {{.path_id = a}});
+    memo.commit(a, 1, {{.file = a}});
     ZEXPECT(memo.lookup(files, a) == nullptr);
 };
 

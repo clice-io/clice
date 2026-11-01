@@ -733,7 +733,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
         // Aux first, then primary: whatever a failure leaves behind is a
         // served primary with a missing aux (a plain pair miss), never an
         // orphan aux.  A failed delete (e.g. the file is open on Windows)
-        // keeps the entry so the next eviction round retries it.
+        // keeps the entry so the next eviction pass retries it.
         if(!ns.config.aux_extension.empty()) {
             auto it = ns.entries.find(candidate.key);
             if(it->second.aux_size != 0) {

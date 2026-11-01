@@ -1,10 +1,10 @@
 import { test } from "@clice/tools/testing";
 
-// Files the index cannot serve fall back to compiling: orphan.cpp is on
-// disk but in no database and included by nothing, so indexing refuses
-// its guessed command; scratch.cpp is in the database but only an editor
-// buffer holds it, and indexing reads the disk. The outline asked first
-// waits for the failed attempt and is then answered by a compile.
+// Files the index cannot serve fall back to compiling: scratch.cpp is in
+// the database but only an editor buffer holds it, and indexing reads the
+// disk. orphan.cpp, in no database and included by nothing, joins the
+// members as it opens: the index serves it under the command it borrows,
+// and nothing compiles it.
 test(async (t) => {
     t.disk.database({ "main.cpp": [], "scratch.cpp": [] });
     const s = await t.start({ config: { project: { readonly: "auto" } } });

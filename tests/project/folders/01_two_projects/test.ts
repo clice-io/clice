@@ -151,8 +151,8 @@ test("indexing progress ends across folders", async (t) => {
         folders: ["alpha", "empty", "beta"],
         capabilities: { window: { workDoneProgress: true } },
     });
-    // A round is shown only once the client took its token: beta's unit
-    // held, the round outlasts that handshake. The progress the client
+    // A pass is shown only once the client took its token: beta's unit
+    // held, the pass outlasts that handshake. The progress the client
     // was sent is read raw: it is no request of the test's.
     const held = await s.park("index", "beta/main.cpp", { at: "reply" });
     s.open("alpha/main.cpp");
@@ -160,8 +160,8 @@ test("indexing progress ends across folders", async (t) => {
     await held.release();
     await s.indexed();
     await t.show("symbols", s.workspaceSymbols("_fn"));
-    // A folder with nothing to index never runs a round; the others'
-    // rounds still end the one the client sees: every round shown began
+    // A folder with nothing to index never runs a pass; the others'
+    // passes still end the one the client sees: every pass shown began
     // and ended, the last one too.
     const kinds = s.client.progressEvents
         .filter((event) => event.token === PROGRESS)

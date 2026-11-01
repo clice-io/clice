@@ -53,7 +53,7 @@ pin an item to keep it in the status bar — tells:
 
 - where its compile command comes from: `database` (an entry of a
   compilation database), `host` (the command of a source including the
-  header), `default` (a rule's `default_command`), `inferred` (borrowed from
+  header), `default` (a rule's `default_command`), `borrowed` (the command of
   a unit nearby) or `fallback` (clice's own), marked as a warning when the
   command is clice's own or its compiler could not be queried. **Show**, or
   `clice: Show Compile Command`, opens the whole command;

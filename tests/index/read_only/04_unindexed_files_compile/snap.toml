@@ -4,7 +4,7 @@ document_symbols = [
 ]
 
 [test."orphan pushed"]
-pushes = [[]]
+pushes = []
 
 [test.scratch]
 document_symbols = [

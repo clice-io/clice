@@ -1384,7 +1384,7 @@ std::expected<LoadedFacts, LoadError> load_facts(Project& project,
         return !path::is_absolute(path) && !path.starts_with(".") && !path.contains("/.");
     });
     if(project.index.damaged()) {
-        return std::unexpected(LoadError{.message = damaged_index_error(project)});
+        return std::unexpected(LoadError{.message = project.damaged_index_error()});
     }
     return LoadedFacts{.root = llvm::StringRef(project.root).str(), .facts = std::move(facts)};
 }

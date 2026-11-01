@@ -61,6 +61,8 @@ struct FileRecord {
 
     std::uint64_t run = 0;
 
+    std::uint64_t command = 0;
+
     friend bool operator==(const FileRecord&, const FileRecord&) = default;
 };
 

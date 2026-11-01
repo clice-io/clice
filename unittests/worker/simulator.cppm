@@ -138,9 +138,9 @@ inline std::uint64_t reserve(const SimMachine& machine) {
 
 }  // namespace sim
 
-/// Run the units through a WorkerScheduler as the pool and the index pump
-/// would: the pump keeps twice the background limit in flight and requeues
-/// a lost run into the next round; the pool carries out every action, a
+/// Run the units through a WorkerScheduler as the pool and the background
+/// index would: the background index keeps twice the background limit in flight and requeues
+/// a lost run into the next pass; the pool carries out every action, a
 /// process takes 0.3 s to start and 0.2 s to die, a cancelled compile stops
 /// within 0.2 s.
 inline SimResult simulate(const SimSpec& spec) {
@@ -209,7 +209,7 @@ inline SimResult simulate(const SimSpec& spec) {
     std::map<RequestId, Waiting> waiting;
     RequestId next_id = 1;
     std::deque<std::size_t> queue;
-    std::deque<std::size_t> next_round;
+    std::deque<std::size_t> next_pass;
     for(std::size_t i = 0; i < spec.units.size(); i += 1) {
         queue.push_back(i);
     }
@@ -248,7 +248,7 @@ inline SimResult simulate(const SimSpec& spec) {
     };
 
     auto requeue = [&](std::size_t unit) {
-        next_round.push_back(unit);
+        next_pass.push_back(unit);
     };
 
     auto give_up = [&](std::size_t unit, std::vector<std::size_t>& list) {
@@ -411,9 +411,9 @@ inline SimResult simulate(const SimSpec& spec) {
             run();
         }
 
-        if(queue.empty() && in_flight == 0 && !next_round.empty()) {
-            queue.assign(next_round.begin(), next_round.end());
-            next_round.clear();
+        if(queue.empty() && in_flight == 0 && !next_pass.empty()) {
+            queue.assign(next_pass.begin(), next_pass.end());
+            next_pass.clear();
         }
         auto window = 2 * core.background_limit(now);
         while(!queue.empty() && in_flight < window) {

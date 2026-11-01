@@ -17,7 +17,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     auto bytes = index::build_tu_index(unit);
     auto view = index::TUIndex::from_bytes(as_chars(bytes));
     ZASSERT(view.loaded());
-    focus = project.file_table.intern(Spelling::absolute(view.path(view.path_count() - 1)));
+    focus = project.file_table.intern(Spelling::absolute(view.path(view.focus_file())));
     ZASSERT(project.index.merge(as_chars(bytes), {}).has_value());
 }
 

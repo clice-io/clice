@@ -17,7 +17,7 @@ test("the automatic pick", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     s.open("utils.h");
-    // Settled, so no index round moves the epoch between the two answers.
+    // Settled, so no index pass moves the epoch between the two answers.
     await s.sync();
     await t.show("current", s.currentContext("utils.h"));
     const current = await s.currentContext("utils.h");

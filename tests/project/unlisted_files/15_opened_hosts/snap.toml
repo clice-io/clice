@@ -1,0 +1,19 @@
+["opened source hosts its header".alone]
+errors = [
+    {
+        at = "⟦Ctx⟧ use();",
+        severity = "error",
+        message = "unknown type name 'Ctx'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
+]
+
+["opened source hosts its header".header.compile_command]
+source = "fallback"
+from = "lib/main.cpp"
+
+["opened source stays a member"."after a restart"]
+workspace_symbols = [
+    { name = "Ctx", kind = "Struct", at = "lib/main.cpp │ struct ⟦Ctx⟧ {};" },
+]

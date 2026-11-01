@@ -1,17 +1,192 @@
 module clice;
 
+import :command.file_kind;
 import :driver.driver;
 import :feature.counterparts;
 import :feature.query;
+import :index.project_index;
 import :index.symbol_query;
-import :project.command_resolver;
-import :project.hosting;
 import :project.project;
-import :project.queries;
+import :syntax.dependency_graph;
+import :vfs.path;
 
 namespace clice::driver {
 
 namespace {
+
+struct FileInfo {
+    std::string path;
+    std::string kind;
+    std::optional<std::string> module_name;
+};
+
+struct ProjectFilesResult {
+    std::vector<FileInfo> files;
+    int total = 0;
+};
+
+struct DepEntry {
+    std::string path;
+    int depth = 0;
+};
+
+struct FileDepsResult {
+    std::string file;
+    std::vector<DepEntry> includes;
+    std::vector<DepEntry> includers;
+};
+
+struct ImpactAnalysisResult {
+    std::vector<std::string> direct_dependents;
+    std::vector<std::string> transitive_dependents;
+    std::vector<std::string> affected_modules;
+};
+
+/// The files reachable from `root` along `adjacent`, breadth first and
+/// each once: direct neighbours at depth 1, `max_depth` levels at most,
+/// 0 meaning unbounded.
+std::vector<DepEntry> collect_deps(Project& project,
+                                   Fid root,
+                                   int max_depth,
+                                   llvm::function_ref<llvm::SmallVector<Fid>(Fid)> adjacent) {
+    std::vector<DepEntry> entries;
+    llvm::SmallVector<std::pair<Fid, int>> queue{
+        {root, 0}
+    };
+    llvm::DenseSet<Fid> visited{root};
+    for(std::size_t i = 0; i < queue.size(); i += 1) {
+        auto [id, depth] = queue[i];
+        if(max_depth > 0 && depth >= max_depth) {
+            continue;
+        }
+        for(auto next: adjacent(id)) {
+            if(!visited.insert(next).second) {
+                continue;
+            }
+            queue.push_back({next, depth + 1});
+            entries.push_back({.path = project.file_table.display(next), .depth = depth + 1});
+        }
+    }
+    return entries;
+}
+
+/// The build's files, `filter` one of all, source, header, module; the
+/// error says why the question cannot be answered.
+std::expected<ProjectFilesResult, std::string> project_files(Project& project,
+                                                             llvm::StringRef filter) {
+    if(!ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
+                         filter)) {
+        return std::unexpected(
+            std::format("invalid filter '{}': expected all, source, header or module",
+                        std::string_view(filter)));
+    }
+    ProjectFilesResult result;
+    llvm::DenseSet<Fid> seen;
+    for(auto member: project.members()) {
+        auto file_path = project.file_table.resolve(member);
+        if(file_path.empty() || !seen.insert(member).second) {
+            continue;
+        }
+        auto module_name = project.dep_graph.module_of(member);
+        llvm::StringRef kind = !module_name.empty()        ? "module"
+                               : is_header_path(file_path) ? "header"
+                                                           : "source";
+        if(filter != "all" && filter != kind) {
+            continue;
+        }
+        FileInfo info{.path = project.file_table.display(member), .kind = kind.str()};
+        if(!module_name.empty()) {
+            info.module_name = module_name.str();
+        }
+        result.files.push_back(std::move(info));
+    }
+    if(filter == "all" || filter == "header") {
+        project.index.for_each_indexed_file([&](Fid path_id) {
+            auto path = project.file_table.resolve(path_id);
+            if(!seen.contains(path_id) && is_header_path(path)) {
+                seen.insert(path_id);
+                result.files.push_back(
+                    {.path = project.file_table.display(path_id), .kind = "header"});
+            }
+        });
+    }
+    result.total = static_cast<int>(result.files.size());
+    return result;
+}
+
+/// The files reachable from `path` along include edges, `direction` one of
+/// includes, includers, both; `depth` levels at most, 0 meaning unbounded.
+std::expected<FileDepsResult, std::string>
+    file_deps(Project& project, const Spelling& path, llvm::StringRef direction, int depth) {
+    if(!ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
+                         direction)) {
+        return std::unexpected(
+            std::format("invalid direction '{}': expected includes, includers or both",
+                        std::string_view(direction)));
+    }
+    if(depth < 0) {
+        return std::unexpected("depth must not be negative");
+    }
+    if(!fs::is_file(path)) {
+        return std::unexpected(std::format("no such file: {}", path));
+    }
+    FileDepsResult result{.file = path.str()};
+    auto file = project.file_table.find(path);
+    if(!file) {
+        return result;
+    }
+    result.file = project.file_table.display(*file);
+    if(direction != "includers") {
+        result.includes = collect_deps(project, *file, depth, [&](Fid id) {
+            return project.dep_graph.get_all_includes(id);
+        });
+    }
+    if(direction != "includes") {
+        result.includers = collect_deps(project, *file, depth, [&](Fid id) {
+            return llvm::SmallVector<Fid>(project.dep_graph.get_includers(id));
+        });
+    }
+    return result;
+}
+
+/// What a change to `path` reaches: its direct includers, the sources
+/// hosting it, and the modules among them.
+std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& project,
+                                                                 const Spelling& path) {
+    if(!fs::is_file(path)) {
+        return std::unexpected(std::format("no such file: {}", path));
+    }
+    ImpactAnalysisResult result;
+    auto file = project.file_table.find(path);
+    if(!file) {
+        return result;
+    }
+    llvm::DenseSet<Fid> seen{*file};
+    for(auto dependent: llvm::concat<const Fid>(project.dep_graph.get_includers(*file),
+                                                project.dep_graph.get_forcing_units(*file))) {
+        if(seen.insert(dependent).second) {
+            result.direct_dependents.push_back(project.file_table.display(dependent));
+        }
+    }
+    auto readers = project.readers(*file);
+    ranges::sort(readers, {}, [&](Fid reader) { return project.file_table.resolve(reader); });
+    for(auto reader: readers) {
+        if(seen.insert(reader).second) {
+            result.transitive_dependents.push_back(project.file_table.display(reader));
+        }
+    }
+    for(auto reader: readers) {
+        auto module_name = project.dep_graph.module_of(reader);
+        if(!module_name.empty()) {
+            result.affected_modules.push_back(module_name.str());
+        }
+    }
+    auto module_name = project.dep_graph.module_of(*file);
+    if(!module_name.empty()) {
+        result.affected_modules.push_back(module_name.str());
+    }
+    return result;
+}
 
 /// What every question takes.
 struct Options {
@@ -118,26 +293,26 @@ template <typename Ask>
 int run_query(const Options& opts, bool with_build, Ask ask) {
     auto opened = open_project(opts.where,
                                opts.fresh,
-                               with_build ? Project::OpenOptions::Build::Members
-                                          : Project::OpenOptions::Build::None);
+                               with_build ? Project::OpenOptions::Load::Members
+                                          : Project::OpenOptions::Load::Rules);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
     auto& project = (*opened)->project;
     auto ctx = query_context(project);
-    auto outcome = ask(project, ctx);
+    auto result = ask(project, ctx);
     if(project.index.damaged()) {
-        return fail(damaged_index_error(project));
+        return fail(project.damaged_index_error());
     }
 
     auto listed = std::move(ctx.unindexed);
     listed.append_range((*opened)->failed);
     auto stale = stale_files(project, std::move(listed));
-    if(outcome) {
-        print_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
+    if(result) {
+        print_json(Answer{.result = std::move(*result), .stale = std::move(stale)});
         return 0;
     }
-    Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
+    Failure failure{.error = std::move(result.error()), .stale = std::move(stale)};
     if(!ctx.candidates.empty()) {
         failure.candidates = std::move(ctx.candidates);
     }
@@ -227,7 +402,7 @@ CommandHandler build() {
                feature::query::Context& ctx,
                const Spelling& path,
                const FileQuestion&) {
-                return feature::counterparts(ctx, project.dep_graph, project.build.members(), path);
+                return feature::counterparts(ctx, project.dep_graph, project.members(), path);
             }),
     });
     operations.push_back({
@@ -259,20 +434,19 @@ CommandHandler build() {
     operations.push_back({
         .name = "document-symbols",
         .description = "A file's outline",
-        .run = file_question<FileQuestion>(
-            "clice query document-symbols <PATH> [OPTIONS]",
-            /*with_build=*/false,
-            [](Project& project,
-               feature::query::Context& ctx,
-               const Spelling& path,
-               const FileQuestion&) {
-                return feature::query::document_symbols(
-                    ctx,
-                    path,
-                    [&](Fid file) -> const clang::LangOptions& {
-                        return clice::dialect(project, file, nullptr, host_of(project, file));
-                    });
-            }),
+        .run = file_question<FileQuestion>("clice query document-symbols <PATH> [OPTIONS]",
+                                           /*with_build=*/false,
+                                           [](Project& project,
+                                              feature::query::Context& ctx,
+                                              const Spelling& path,
+                                              const FileQuestion&) {
+                                               return feature::query::document_symbols(
+                                                   ctx,
+                                                   path,
+                                                   [&](Fid file) -> const clang::LangOptions& {
+                                                       return project.dialect(file, nullptr);
+                                                   });
+                                           }),
     });
     operations.push_back({
         .name = "definition",

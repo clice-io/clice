@@ -196,7 +196,7 @@ class ConfigReads : public llvm::vfs::ProxyFileSystem {
 public:
     ConfigReads() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
 
-    std::vector<DepFile> files;
+    std::vector<ReportedInput> files;
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
         // clang-tidy's walk up a Windows path ends at the bare drive (`c:`,
@@ -435,8 +435,8 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
         return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
                ref.starts_with("-Wa,");
     };
-    // A -X<tool> forwards its next token, so the pair filters as one
-    // unit on the operand's outcome — a lone survivor would consume
+    // A -X<tool> forwards its next token, so the pair is kept or dropped
+    // as one unit by its operand — a lone survivor would consume
     // whatever follows it on the final command (the source path, say).
     auto forwards_operand = [](llvm::StringRef ref) {
         return ref == "-Xclang" || ref == "-Xpreprocessor" || ref == "-Xlinker" ||

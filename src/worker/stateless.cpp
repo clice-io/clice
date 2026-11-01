@@ -72,14 +72,14 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
     return std::nullopt;
 }
 
-/// Where an artifact build writes: the master's tmp path when it provided
+/// Where a PCH or PCM build writes: the master's tmp path when it provided
 /// one (already allocated by its CacheStore — the master commits with
 /// fsync + atomic rename after we report success), else a temporary file
 /// of our own.
-static std::expected<std::string, std::string> artifact_output(llvm::StringRef label,
-                                                               llvm::StringRef output_path,
-                                                               llvm::StringRef prefix,
-                                                               llvm::StringRef extension) {
+static std::expected<std::string, std::string> precompiled_output(llvm::StringRef label,
+                                                                  llvm::StringRef output_path,
+                                                                  llvm::StringRef prefix,
+                                                                  llvm::StringRef extension) {
     if(!output_path.empty()) {
         return output_path.str();
     }
@@ -93,20 +93,20 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
     return path;
 }
 
-/// The reply of a finished artifact build. Success hands the master the
+/// The reply of a finished PCH or PCM build. Success hands the master the
 /// path to commit; failure removes the half-written file and classifies
 /// the errors — `internal_error` marks a failure of the worker's own I/O,
 /// never the user's code, and must not be downgraded to an expected build
 /// failure. Either way the reply carries the build's inputs.
-static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
-                                                   bool success,
-                                                   const std::string& tmp_path,
-                                                   std::int64_t build_at,
-                                                   const auto& deps,
-                                                   llvm::ArrayRef<std::string> errors,
-                                                   bool internal_error) {
-    worker::ArtifactBuildResult result;
-    result.build_at = build_at;
+static worker::PrecompiledBuildResult finish_precompiled(llvm::StringRef label,
+                                                         bool success,
+                                                         const std::string& tmp_path,
+                                                         std::int64_t started_at,
+                                                         const auto& deps,
+                                                         llvm::ArrayRef<std::string> errors,
+                                                         bool internal_error) {
+    worker::PrecompiledBuildResult result;
+    result.started_at = started_at;
     result.deps = deps;
     if(success) {
         result.success = true;
@@ -127,14 +127,14 @@ static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
     return result;
 }
 
-/// What an artifact build read; a build that failed on errors read just as
+/// What a PCH or PCM build read; a build that failed on errors read just as
 /// much. The source of a PCM, or of a whole file's PCH, is an input of the
 /// build all the same, and unlike a preamble's PCH key their cache keys
 /// embed no content: only the deps see the source change. Named by its
 /// identity like every other dep: the command spells it as written, which
 /// consumers cannot stat reliably.
-static std::vector<DepFile> artifact_deps(CompilationUnit& unit, bool source) {
-    std::vector<DepFile> deps;
+static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool source) {
+    std::vector<ReportedInput> deps;
     if(!unit.completed()) {
         return deps;
     }
@@ -147,11 +147,12 @@ static std::vector<DepFile> artifact_deps(CompilationUnit& unit, bool source) {
     return deps;
 }
 
-static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams& params,
-                                                    const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::PrecompiledBuildResult
+    handle_build_pch(const worker::BuildPCHParams& params,
+                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    auto output = artifact_output("PCH", params.output_path, "clice-pch", "pch");
+    auto output = precompiled_output("PCH", params.output_path, "clice-pch", "pch");
     if(!output) {
         return {false, output.error()};
     }
@@ -170,7 +171,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
         cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
     }
     cp.input.add_synthesized(params.synthesized);
-    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
+    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -179,8 +180,8 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     // cancellation arriving between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit->build_at().count();
-    auto deps = artifact_deps(*unit, params.whole_file);
+    auto started_at = unit->started_at().count();
+    auto deps = precompiled_deps(*unit, params.whole_file);
 
     std::vector<std::string> errors;
     if(!success)
@@ -231,14 +232,15 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_artifact("PCH", success, *output, build_at, deps, errors, internal_error);
+    return finish_precompiled("PCH", success, *output, started_at, deps, errors, internal_error);
 }
 
-static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams& params,
-                                                    const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::PrecompiledBuildResult
+    handle_build_pcm(const worker::BuildPCMParams& params,
+                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    auto output = artifact_output("PCM", params.output_path, "clice-pcm", "pcm");
+    auto output = precompiled_output("PCM", params.output_path, "clice-pcm", "pcm");
     if(!output) {
         return {false, output.error()};
     }
@@ -251,14 +253,14 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
         .output_file = *output,
         .stop = stop,
     };
-    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
+    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit->build_at().count();
-    auto deps = artifact_deps(*unit, true);
+    auto started_at = unit->started_at().count();
+    auto deps = precompiled_deps(*unit, true);
 
     std::vector<std::string> errors;
     if(!success)
@@ -283,13 +285,13 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_artifact("PCM",
-                           success,
-                           *output,
-                           build_at,
-                           deps,
-                           errors,
-                           /*internal_error=*/false);
+    return finish_precompiled("PCM",
+                              success,
+                              *output,
+                              started_at,
+                              deps,
+                              errors,
+                              /*internal_error=*/false);
 }
 
 /// The batch tidy pass's findings, each where it is: unlike the LSP path,
@@ -397,13 +399,14 @@ static worker::IncludeTreeResult
         .content_hashes = std::move(tree.content_hashes),
         .nodes = std::move(tree.nodes),
         .deps = unit->deps(),
-        .build_at = unit->build_at().count(),
+        .started_at = unit->started_at().count(),
     };
 }
 
-static worker::TURunResult handle_turun(const worker::TURunParams& params,
-                                        const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("TURun request: file={}", params.file);
+static worker::CompileUnitResult
+    handle_compile_unit(const worker::CompileUnitParams& params,
+                        const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("Unit compile request: file={}", params.file);
     ScopedTimer timer;
 
     // One parse serves every product of the plan. The command-affecting
@@ -419,20 +422,20 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         .tidy = params.tidy,
         .stop = stop,
     };
-    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
+    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
-        LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
+        LOG_WARN("Unit compile failed: file={}, {}ms", params.file, timer.ms());
         auto errors = collect_errors(*unit);
         if(errors.empty()) {
-            return {false, "TU run compilation failed"};
+            return {false, "Unit compile failed"};
         }
         // A command clang rejects before parsing: lint reports why, as
         // clang-tidy does.
-        worker::TURunResult result{.success = false, .error = llvm::join(errors, "; ")};
+        worker::CompileUnitResult result{.success = false, .error = llvm::join(errors, "; ")};
         if(params.tidy) {
             for(auto& error: errors) {
                 result.tidy_diagnostics.push_back({
@@ -447,12 +450,12 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         return result;
     }
 
-    // Building and serializing the index costs a large share of the pass;
+    // Building and serializing the index costs a large share of the compile;
     // skip it when the cancellation arrived after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
-        return {false, "TU run cancelled"};
+        return {false, "Unit compile cancelled"};
     }
-    worker::TURunResult result;
+    worker::CompileUnitResult result;
     result.success = true;
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
@@ -488,7 +491,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
 
     LOG_PERF(
         "build",
-        "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
+        "kind=compile_unit file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
         params.file,
         index_bytes,
         result.tidy_diagnostics.size(),
@@ -511,7 +514,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
         .completion = {.offset = params.offset},
         .stop = stop,
     };
-    use_artifacts(cp.input, params.pch, params.pcms);
+    use_precompiled(cp.input, params.pch, params.pcms);
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
 
@@ -538,7 +541,7 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
         .completion = {.offset = params.offset},
         .stop = stop,
     };
-    use_artifacts(cp.input, params.pch, params.pcms);
+    use_precompiled(cp.input, params.pch, params.pcms);
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
 
@@ -657,13 +660,15 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_gates(peer, loop);
 
-    const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
+    const worker::PrecompiledBuildResult cancelled_build{.success = false,
+                                                         .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
     serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
-    serve<worker::TURunParams>(peer,
-                               worker::TURunResult{.success = false, .error = "Build cancelled"},
-                               &handle_turun,
-                               {.lowered = true});
+    serve<worker::CompileUnitParams>(
+        peer,
+        worker::CompileUnitResult{.success = false, .error = "Build cancelled"},
+        &handle_compile_unit,
+        {.lowered = true});
     serve<worker::IncludeTreeParams>(
         peer,
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},

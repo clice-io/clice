@@ -34,15 +34,22 @@ struct IndexInternals {
         record.stored.clear();
     }
 
-    /// Whether `tu` is behind the disk (ProjectIndex::mark_behind).
-    static bool behind(const index::ProjectIndex& index, Fid tu) {
-        return index.behind.contains(tu);
+    /// Whether `tu` is outdated (ProjectIndex::mark_outdated).
+    static bool outdated(const index::ProjectIndex& index, Fid tu) {
+        return index.outdated.contains(tu);
     }
 
-    /// Mark `tu` behind the disk since `when` (ms since the epoch), as
-    /// mark_behind does at the present.
-    static void fell_behind_at(index::ProjectIndex& index, Fid tu, std::int64_t when) {
-        index.behind[tu] = when;
+    /// Mark `tu` outdated since `when` (ms since the epoch), as
+    /// mark_outdated does at the present.
+    static void outdated_since(index::ProjectIndex& index, Fid tu, std::int64_t when) {
+        index.outdated[tu] = when;
+    }
+
+    /// Owe `tu` a reindex, as a rebuild discarding the variants it
+    /// contributed does (ProjectIndex::owed_units).
+    static void owe(index::ProjectIndex& index, Fid tu) {
+        index::IndexReport report;
+        index.owe(tu, report);
     }
 
     /// The id the database names `file` by, handed out on first use.

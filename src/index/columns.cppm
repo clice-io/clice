@@ -120,7 +120,7 @@ bool strictly_ascending(Column&& column) {
     return ranges::adjacent_find(column, std::greater_equal{}) == ranges::end(column);
 }
 
-/// Load-time verification outcome: the violated invariant, spelled for the
+/// Load-time verification result: the violated invariant, spelled for the
 /// log, or success.
 using CheckResult = std::expected<void, llvm::StringRef>;
 

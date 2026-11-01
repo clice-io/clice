@@ -406,14 +406,14 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
     auto source = compiled.source;
-    if(source != CommandSource::CDBExact && source != CommandSource::Default &&
+    if(source != CommandSource::Database && source != CommandSource::Default &&
        ranges::any_of(diagnostics, is_file_not_found)) {
         warn("inferred-compile-command",
              std::format("No compilation database entry for this file (compile command was {}), "
                          "so some includes may not be found. Configure compile_commands.json for "
                          "accurate diagnostics.",
                          source == CommandSource::Fallback ? "synthesized from defaults"
-                         : source == CommandSource::Inferred
+                         : source == CommandSource::Borrowed
                              ? "borrowed from a nearby translation unit"
                              : "inferred from an including file"),
              "https://docs.clice.io/clice/guide/quick-start#project-setup");
@@ -670,6 +670,32 @@ protocol::Diagnostic to_protocol(
     }
     result.message = std::move(message);
     return result;
+}
+
+std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
+    namespace diag = clang::diag;
+    constexpr static unsigned ids[] = {
+        diag::err_unknown_typename,
+        diag::err_unknown_typename_suggest,
+        diag::err_undeclared_var_use,
+        diag::err_undeclared_var_use_suggest,
+        diag::err_undeclared_use,
+        diag::err_undeclared_use_suggest,
+        diag::err_no_member,
+        diag::err_no_member_suggest,
+        diag::err_no_member_template,
+        diag::err_no_member_template_suggest,
+        diag::err_no_template,
+        diag::err_no_template_suggest,
+        diag::err_typename_nested_not_found,
+        diag::err_unknown_nested_typename_suggest,
+        diag::ext_implicit_function_decl_c99,
+        diag::err_pp_hash_error,
+        diag::err_pp_unterminated_conditional,
+    };
+    return ranges::count_if(diagnostics, [&](const FileDiagnostic& diagnostic) {
+        return diagnostic.level >= DiagnosticLevel::Error && ranges::contains(ids, diagnostic.id);
+    });
 }
 
 }  // namespace clice::feature

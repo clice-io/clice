@@ -254,7 +254,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                          SymbolHash hash,
                                          RelationKind kind,
                                          RelationVisitor visitor) const {
-    auto focus_id = state.path_count() - 1;
+    auto focus_id = state.focus_file();
     bool stopped = false;
     // What the TU's instantiations resolve in its other files, in the
     // coordinates of the text the TU read: the overlay's own entries of

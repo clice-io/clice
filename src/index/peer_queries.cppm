@@ -46,7 +46,7 @@ struct PeerQueries {
     /// Whether `from`'s shard for `file` stands among the answers of `asked`:
     /// any project's for a closed file; for an open one only the project
     /// serving its buffer — the others hold its disk shard, which the buffer
-    /// superseded — unless that project is not asked.
+    /// replaced — unless that project is not asked.
     bool answers_for(const IndexQuery& from, Fid file, llvm::ArrayRef<Asked> asked) const;
 
     /// `ask`'s sites from every query asked about each of `symbols`

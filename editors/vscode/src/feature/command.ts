@@ -16,7 +16,7 @@ function origin(command: CompileCommand): string {
             return `the command of ${from}, which includes it`;
         case "default":
             return "the default_command of a clice.toml rule";
-        case "inferred":
+        case "borrowed":
             return `borrowed from ${from === "" ? "a unit nearby" : from}: no compilation database lists the file`;
         case "fallback":
             return "clice's own: no compilation database lists the file, and no unit lends one";

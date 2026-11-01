@@ -1,171 +1,52 @@
 module clice:project.project;
 
 import :command.database;
+import :command.edit;
+import :command.normalize;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
-import :settings.settings;
+import :feature.diagnostics;
 import :index.database;
 import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
-import :project.build;
-import :project.command_snapshot;
-import :project.hosting;
+import :project.command;
+import :project.discovery;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.task_graph;
+import :project.graph.unit;
+import :project.indexer;
+import :project.listings;
+import :project.members;
 import :project.memo;
 import :semantic.symbol;
+import :settings.rules;
+import :settings.settings;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
+import :vfs.path;
+import :worker.pool;
+import :worker.protocol;
 
 namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
-/// Bump to discard all cached artifacts after incompatible format changes.
+/// Bump to discard the whole cache after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
 
-/// The user's choice for a file in the editor (clice/switchContext): the
-/// host to borrow a command from, or one of the file's own entries.
-/// Persisted in the context choices; validated on didOpen.
-struct ContextChoice {
-    /// Header context host; invalid = none.
-    Fid host_path_id;
-
-    /// Chosen include occurrence; no value = automatic.
-    std::optional<std::uint32_t> occurrence;
-
-    std::string command_hash;  ///< Chosen CDB entry (rules applied); empty = none.
-
-    /// Base command hash of the chosen entry, resolved when chosen. The
-    /// applied hash is the protocol identity; the base disambiguates
-    /// candidates whose applied hashes collapse under the current rules.
-    std::string base_hash;
-};
-
-/// Cached PCH state.  Stored in Project.pch_cache keyed by the content
-/// key (hex of xxh3_128bits over preamble text + directories + canonical
-/// flags), so files with identical preambles share one PCH.
-///
-/// Everything derived from the PCH build beyond validity metadata — the
-/// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the paired pch.idx index (the store's
-/// `.pch.idx` aux file), committed and evicted together with the PCH.
-/// Open a PCH's `.pch.idx` index (memory-mapped). Returns nullptr when
-/// the file is unreadable, structurally invalid, of a different format
-/// version, or any embedded shard blob fails verification — callers treat
-/// all of these as a PCH cache miss.
-std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
-
-struct PCHState {
-    /// The pair's name in the store: the key and a nonce of the build that
-    /// produced it. A rebuild publishes under a new name, never over the
-    /// old pair, which workers may still have mapped — Windows refuses to
-    /// replace a mapped file.
-    std::string blob;
-
-    /// The pair the latest build replaced, kept for one more build: a
-    /// consumer that took its path just before the replacement may not
-    /// have opened it yet.
-    std::string previous;
-
-    std::string path;
-    std::uint32_t bound = 0;
-    DepsSnapshot deps;
-
-    /// The key of the precompiled header the build declares that this
-    /// preamble's PCH is built over and chains onto; empty for none.
-    std::string base;
-
-    /// Path of the paired pch.idx index.
-    std::string index_path;
-
-    /// Lazily opened blob; shared so a consumer holding it across an await
-    /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::TUIndex> state;
-
-    /// Open the blob on first use (memory-mapped, no deserialization).
-    /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next PCH round
-    /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::TUIndex>& load_state();
-};
-
-/// The last build of a C++20 module unit that built: what it read and the
-/// PCM it wrote. Shared across all files that import the module; a build
-/// that failed is a failure record (ArtifactFailures::pcm_builds).
-struct PCMBuild {
-    /// The build's identity: "{module}-{hash}" over the unit's path and
-    /// canonical flags, the build configuration, and the key of every module
-    /// it imports (an unresolved import by its name) — so a command change
-    /// anywhere below the module changes its key too.
-    std::string key;
-
-    /// The PCM's name in the store: the key and a nonce of the build that
-    /// produced it. A rebuild publishes under a new name, never over the
-    /// old PCM, which a running compile may still read — and the record
-    /// names the very bytes it describes, whatever a crash before the
-    /// metadata flush or another writer of the store left behind.
-    std::string blob;
-
-    /// The PCM the latest build replaced, kept for one more build.
-    std::string previous;
-
-    /// The built PCM; empty while a rebuild runs, after a failure, and once
-    /// it or the PCH it was built over left the store.
-    std::string path;
-
-    /// The PCH the PCM was built over, which its importers read with it;
-    /// empty for none.
-    std::string pch;
-
-    /// What the build read and looked for, the inputs of the modules it
-    /// imports included; none while a rebuild runs.
-    DepsSnapshot deps;
-};
-
-/// A module unit's build that failed: on the user's code, on an import that
-/// failed in turn, or by crashing a worker.
-struct ModuleFailure {
-    /// The key of the build that failed (PCMBuild::key); empty when an
-    /// import failed it and it never ran.
-    std::string key;
-
-    /// The build's first error, or how the worker it crashed died; empty
-    /// when an import failed it.
-    FailureRecord record;
-
-    /// The import whose build failed, or that closed a cycle back to the
-    /// unit; invalid when the unit's own build failed.
-    Fid import;
-};
-
-/// What failed of the artifacts, each failure with the inputs it stands on
-/// (see Memo): those of a failed build are what it read, those of a crash
-/// what was known before it ran. Only a success of the same operation, a
-/// change of those inputs, or a consumer's save lets one run again — but for
-/// the consumption of a PCH, which only a consumer's success clears.
-struct ArtifactFailures {
-    /// The PCH builds by key.
-    Memo<std::string, FailureRecord> pch_builds;
-
-    /// The PCH pairs by key that a parse died reading or found unreadable:
-    /// rebuilding a pair every consumer fails on would fare no better.
-    Memo<std::string, FailureRecord> pch_consumes;
-
-    /// The module builds by unit.
-    Memo<Fid, ModuleFailure> pcm_builds;
-};
-
 /// The editor's context choices of the project, as its index database
-/// carries them beside the index. A save moves bytes only: the server
-/// serializes its choices into them whenever they change and parses them
-/// after a load (project/contexts), so a process without editor state writes
-/// back the bytes it loaded, and only into a database replacing a corrupt
-/// one.
+/// carries them beside the index. A save moves bytes only: the server keeps
+/// its choices in them whenever they change and reads them after a load
+/// (Project::save_choices, saved_choices), so a process without editor state
+/// writes back the bytes it loaded, and only into a database replacing a
+/// corrupt one.
 struct ContextChoices {
     /// The serialized choices; empty when there are none, or when
     /// serializing failed (the save then writes nothing).
@@ -174,28 +55,89 @@ struct ContextChoices {
     bool dirty = false;
 };
 
-/// All persistent, project-wide state derived from files on disk.
+/// The server's side of a served project: what the project asks of the
+/// documents open in it, and tells it of the index they read. A run of the
+/// command line has none (Project::serving).
+struct ServingSide {
+    /// How many documents are open: the loaded-index budget follows it.
+    virtual std::size_t open_documents() const = 0;
+
+    /// Whether an open document's own compile serves the file: a pending
+    /// reindex other than a change of its own content then is cleared
+    /// without a background compile, which would compile the file a second
+    /// time. The serving side books the file again when the document
+    /// closes.
+    virtual bool compiled_by_session(Fid file) const = 0;
+
+    /// Under `skip_header_bodies`, every index run also brings back the
+    /// diagnostics an editor can get wrong on its file
+    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
+    /// text they describe — unless a reindex booked during the run says
+    /// they describe inputs that changed.
+    virtual void report_skipped_diagnostics(Fid file,
+                                            std::uint64_t text_hash,
+                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
+
+    /// Whether the serving side lacks those diagnostics for the file: its
+    /// run goes ahead even when its index is current.
+    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
+
+    /// An index attempt of the file finished with no retry pending, before
+    /// its waiters wake (contract 15): the serving side decides whether the
+    /// finished state can ever serve an open session and escalates it
+    /// otherwise, so the waking waiters re-derive their route against the
+    /// escalated state. Also told of an index_first the background index
+    /// refuses — a file a rule keeps out of the index — since no attempt
+    /// will ever finish for it.
+    virtual void attempt_finished(Fid file) = 0;
+
+    /// Shards that may be index-served changed (merged, re-masked, dropped
+    /// or shed): the serving side refreshes the clients that read them.
+    virtual void index_changed(llvm::ArrayRef<Fid> files) = 0;
+
+    /// What the database carries beside the index changed — a precompiled
+    /// record, the context choices: the serving side saves it soon, where a
+    /// command-line run saves on its own cadence.
+    virtual void schedule_metadata_flush() = 0;
+
+protected:
+    ~ServingSide() = default;
+};
+
+/// A project: its build — the rules, the compilation databases and the
+/// members they make, the commands each file compiles under — and what it
+/// builds from it: its PCHs, its modules and its units' index, persisted in
+/// the cache directory. All of it derives from files on disk, never from an
+/// unsaved buffer: open files are never depended upon by other files, so a
+/// buffer's state stays with its document (Session) while the project
+/// tracks the disk, shared by every file.
 ///
-/// Design principle: open files are never depended upon by other files.
-/// Dependencies always point to disk files.  This enforces a clean two-layer
-/// architecture:
-///   - Global layer (Project): tracks disk truth, shared by all files
-///   - Per-file layer (Session): tracks buffer truth, isolated per TU
-///
-/// Project is the single source of truth for:
-///   - dependency relationships (include graph, module DAG)
-///   - compilation artifacts shared across files (PCH/PCM caches)
-///   - symbol index (ProjectIndex + per-file Shard blobs)
-///   - compilation database and settings
-///
-/// Project is NEVER modified by unsaved buffer content.  The only mutation
-/// paths are:
-///   - Opening         (open, once)
-///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
-///   - Background index (merge TUIndex results from stateless workers)
+/// Its owner — the server, or a command-line run — opens it once (open),
+/// tells it what changed on disk (rescan_disk_file, forget_file) and in the
+/// databases (update_members), starts its background index when the run
+/// indexes, and shuts it down (shutdown). A project builds through `loop`
+/// and `pool`, which an owner that builds (the server, `clice index`,
+/// `clice lint`) hands it at construction and keeps alive past it; the
+/// read-only entry points construct it without them and never reach the
+/// build functions (graph/pch.cpp, graph/pcm.cpp, graph/unit.cpp,
+/// indexer/background.cpp). The task graph's attempts and the background
+/// index's tasks use the members before them: an owner awaits shutdown()
+/// before the project dies.
 struct Project {
-    explicit Project(FileTable& file_table, CanonicalPath root = {}) :
-        root(std::move(root)), file_table(file_table) {}
+    explicit Project(FileTable& file_table,
+                     CanonicalPath root = {},
+                     async::event_loop* loop = nullptr,
+                     WorkerPool* pool = nullptr);
+
+    /// The event loop and the worker pool the project builds with; null for
+    /// a read-only open.
+    async::event_loop* loop;
+
+    WorkerPool* pool;
+
+    /// The server serving the project's documents; null for a command-line
+    /// run.
+    ServingSide* serving = nullptr;
 
     /// The project's root: the `${workspace}` value, the anchor of rules and
     /// databases no configuration file supplied, the enumeration root of
@@ -221,15 +163,27 @@ struct Project {
 
     CompilationDatabase cdb{file_table, commands};
 
-    /// Which entries and hand-written commands apply to a file under the
-    /// active configuration; the only reader of the rules.
-    Build build{settings, root, cdb, file_table};
+    /// The rules of clice.toml under the configuration open() activated;
+    /// those of the settings a Project is born with until then.
+    Rules rules{settings, root, {}};
 
-    /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
+    /// The commands the rules write by hand, and the builtin ones.
+    WrittenCommands written_commands{commands, file_table};
+
+    /// The commands the rules' edits make of others.
+    EditedCommands edited_commands{commands, file_table};
+
+    /// The sources the default-command rules cover, enumerated on first use
+    /// and again by refresh_default_sources.
+    std::optional<std::vector<Fid>> covered_sources;
+
+    ProvisionalMembers provisional;
+
+    /// Unified on-disk blob store for PCH, PCM and index blobs.  Opened by
     /// open() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
-    /// database, written by save_project.
+    /// database, written by write_database.
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
@@ -255,16 +209,6 @@ struct Project {
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
 
-    /// PCH cache, keyed by content key (preamble text + canonical flags),
-    /// so files with identical preambles share one PCH.  Hot-path mirror
-    /// of CacheStore state; blob paths come from the store.
-    llvm::StringMap<PCHState> pch_cache;
-
-    /// The last PCM build of each module unit that built.
-    llvm::DenseMap<Fid, PCMBuild> pcm_builds;
-
-    ArtifactFailures failures;
-
     /// The persisted index, read as it is used: the symbol and file
     /// records, the per-TU manifests, the per-file shard blobs and the name
     /// search index.
@@ -279,14 +223,13 @@ struct Project {
     /// live sources of the documents it serves.
     index::IndexQuery index_query{index, file_table, &freshness, nullptr};
 
-    /// The commands the index was built with, as the index database
-    /// records them.
-    CommandSnapshot command_snapshot;
+    /// What the index database records of the build's listings.
+    SavedListings listings;
 
     /// The editor's context choices, as the index database carries them.
     ContextChoices choices;
 
-    /// Serializes concurrent saves (save_project): the pump's round-end
+    /// Serializes concurrent saves (write_database): the background index's pass-end
     /// save, the master's metadata flush and the shutdown save may overlap
     /// on the event loop, and a save moves the dirty state into its batch
     /// assuming one save at a time.
@@ -296,25 +239,254 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
-    /// Monotonic generation of context-affecting project state: the include
-    /// graph, the include trees and self-containment results hosting
-    /// learns. clice/queryContext tags its results with it and
-    /// clice/switchContext rejects requests made against an older epoch,
-    /// so a client can never apply a context picked from a stale listing
-    /// without noticing.
-    std::uint64_t context_epoch = 1;
+    /// Moves whenever the disk state the dependency graph scans changes: a
+    /// file rescanned or gone, the graph rebuilt. A preprocessor run's
+    /// answer (an import scan) holds while it stays.
+    std::uint64_t disk_epoch = 1;
+
+    /// The generation of context-affecting project state: the disk state,
+    /// the include trees — a tree moves its host's contexts — and the
+    /// self-containment results — a header found self-contained lists the
+    /// hosts giving the same command once. clice/queryContext tags its
+    /// results with it and clice/switchContext rejects requests made against
+    /// an older epoch, so a client can never apply a context picked from a
+    /// stale listing without noticing.
+    std::uint64_t context_epoch() const {
+        return disk_epoch + hosting.trees.generation() + hosting.self_containment.generation();
+    }
 
     /// Generation of the build's commands: bumped when a database reloads
-    /// or a member appears, not on saves like context_epoch.
+    /// or a member appears, not on saves like disk_epoch.
     std::uint64_t commands_epoch = 1;
 
     /// What the project knows of the headers borrowing a unit's command.
     Hosting hosting;
 
+    /// Persistence signal for the precompiled records (the PCH and PCM
+    /// records, self-containment results) the index database carries
+    /// beyond the index itself: producers mark, the single write pipeline
+    /// (write_database) flushes it on its next run.
+    bool precompiled_dirty = false;
+
+    void mark_precompiled_dirty() {
+        precompiled_dirty = true;
+        if(serving) {
+            serving->schedule_metadata_flush();
+        }
+    }
+
+    /// The PCHs the cache holds, keyed by content key (preamble text +
+    /// canonical flags), so files with identical preambles share one PCH:
+    /// a mirror of the cache store's state, which names their paths, with
+    /// what failed of building and reading them.
+    llvm::StringMap<PCHEntry> pchs;
+
+    /// Keys of the entries whose pch.idx index is currently loaded, most
+    /// recently used first (see enforce_loaded_budget).
+    llvm::SmallVector<std::string, 8> loaded_pch_indexes;
+
+    /// The PCMs of the module units, by unit.
+    llvm::DenseMap<Fid, PCMEntry> pcms;
+
+    ImportScans import_scans;
+
+    /// What each unit's compiles in this session showed.
+    llvm::DenseMap<Fid, UnitHistory> unit_history;
+
+    /// The task graph the PCH, PCM and unit nodes build on, the server's
+    /// AST nodes beside them. Its attempts use everything above.
+    TaskGraph graph;
+
+    BackgroundIndex background_index{*this};
+
+    // open.cpp
+
+    /// How much of the project a run opens (open()).
+    struct OpenOptions {
+        /// What of the build loads.
+        enum class Load : std::uint8_t {
+            /// No database: the rules alone, for commands converted under
+            /// them.
+            Rules,
+            /// The databases alone, for the commands of one file.
+            Databases,
+            /// The databases, the provisional members the index remembers,
+            /// the members and the dependency graph.
+            Members,
+        };
+
+        /// How the cache — the store of PCHs and PCMs, the index database in
+        /// it — opens.
+        enum class Cache : std::uint8_t {
+            None,
+            /// Both read-only, without the writer lock, for a run reading
+            /// what others built: a concurrent writer keeps owning them, and
+            /// what the run changes stays in memory.
+            Read,
+            /// The store writable, for a run building PCHs and PCMs itself,
+            /// over the index read as Read reads it.
+            Build,
+            /// Both writable, the index database as its writer, under the
+            /// cache directory's writer lock.
+            Write,
+        };
+
+        /// The build configuration to activate (LoadedSettings::configuration).
+        llvm::StringRef configuration;
+
+        Load load = Load::Members;
+
+        Cache cache = Cache::None;
+
+        /// What the reads of the index withhold (FreshnessGate).
+        index::FreshnessOptions freshness;
+
+        /// The file a run is about: the databases in its directory and
+        /// above it up to the root join the ones discovered.
+        CanonicalPath file;
+    };
+
+    /// What open() found.
+    struct Opened {
+        /// The build's translation units: the indexing pass's work list,
+        /// so no driver walks the tree a second time.
+        std::vector<Fid> members;
+
+        /// The dependency scan from them.
+        ScanReport scan;
+
+        /// Why the index could not be read, for a run reading it: it opens
+        /// with none then. Empty when it was read.
+        std::string unreadable;
+    };
+
+    /// Open the project over its final settings (load_settings), once,
+    /// in a fixed order: the rules under the configuration; the cache store
+    /// and the index database; what the index remembers (the databases of
+    /// earlier sessions, the provisional members); the build; the saved
+    /// state — the index, the precompiled records, the context choices —
+    /// reconciled with the build when that is loaded (reconcile_index), the
+    /// reindexes that owes booked; for the index's writer, the units that
+    /// depend on a file that changed while no run wrote the index marked
+    /// outdated (ProjectIndex::stale_units). A run reading the index without
+    /// the build binds its tables alone, fetched on first use.
+    Opened open(const OpenOptions& options);
+
+    /// What a reader says of an index database the index reports damaged: a
+    /// writer discards one only when it meets the damage itself, which may sit
+    /// in records no `clice index` run reads, so the reader names the directory
+    /// to delete.
+    std::string damaged_index_error() const;
+
+    // members.cpp
+
+    /// Every registered database in the priority order `path` sees: those
+    /// the rules declare (Rules::database_order); then those no active rule
+    /// declares (discovered ones) — those still on disk before the
+    /// vanished, shallower before deeper, then by path. While the rules
+    /// declare sources, one only inactive rules declare is left out.
+    llvm::SmallVector<SourceID, 4> source_order(CanonicalRef path) const;
+
+    /// Whether discovery registered the source: no rule hides it
+    /// (Rules::hiding_databases).
+    bool discovered(SourceID id) const;
+
+    /// A file's database entries in source_order, within a source in file
+    /// order. The first is the default selection.
+    llvm::SmallVector<CompilationEntry, 2> entries(Fid file) const;
+
+    /// The commands a file compiles under, in build order: its entries, or
+    /// the default command of the first matching rule that declares one, or
+    /// a provisional member's command. The first is the default
+    /// selection; empty when the file has none — such a file is never a
+    /// header's host.
+    llvm::SmallVector<Candidate, 2> candidates(Fid file);
+
+    /// The interned default command of the first matching rule declaring
+    /// one; nullopt when no rule does or its command is not a compile
+    /// command.
+    std::optional<CommandID> default_command(CanonicalRef path);
+
+    /// The builtin command of a file nothing gives one
+    /// (CommandSource::Fallback), run from the file's directory: the driver
+    /// follows the language clang assigns to the file's extension, an
+    /// ambiguous `.h` and an extension clang does not know counting as C++.
+    CommandID fallback_command(CanonicalRef path);
+
+    /// The edits the rules make of `candidate` for `file`: those matching
+    /// the files the candidate is from (Candidate::rules_from) and `file`,
+    /// each once in declaration order.
+    Edits rule_edits(Fid file, const Candidate& candidate) const;
+
+    /// `candidate` as `file` compiles under it: edited by rule_edits and a
+    /// run's extras; in the language of the file it is from for a header, or
+    /// for a file compiling in its host, else in its own.
+    CommandRef apply_rules(Fid file,
+                           const Candidate& candidate,
+                           llvm::ArrayRef<std::string> extra_prepend = {},
+                           llvm::ArrayRef<std::string> extra_append = {});
+
+    /// Every translation unit of the project: files with entries, plus the
+    /// source files on disk that a default-command rule matches — enumerated
+    /// once and again by refresh_default_sources — then the provisional
+    /// members with a command, by path.
+    std::vector<Fid> members();
+
+    /// The scan units of `members`: every command of every member, so a
+    /// header reachable through only one of a file's entries still finds
+    /// that host.
+    llvm::SmallVector<CommandRef> scan_commands(llvm::ArrayRef<Fid> members);
+
+    /// Whether `file` is a translation unit of its own: declared() or a
+    /// provisional member with a command — the members() filter for one
+    /// file, so candidates() is never empty for a unit. A header is no unit;
+    /// its default command is the resolver's last resort after its hosts,
+    /// never its own command.
+    bool is_unit(Fid file);
+
+    /// Whether the build declares `file` a unit: it has a database entry,
+    /// or a default-command rule covers it and it is a source.
+    bool declared(Fid file);
+
+    /// Record that the user opened or saved `file`: a provisional member
+    /// while no unit hosts it (see refresh_provisional), until an entry or a
+    /// rule covers it. Only a source of the project's own the build does not
+    /// declare is one — none in a project nested in the root, a build tree
+    /// or the cache (project_file). False when it is none, or recorded
+    /// already.
+    bool record_provisional(Fid file);
+
+    /// Bring the provisional members in line with the build: drop the
+    /// record of a file the build declares now, and give every other
+    /// recorded file the command it borrows — a declared unit's, while no
+    /// declared unit includes it, by the dependency graph; the builtin one
+    /// when it borrows none — reporting the files that joined (`added`),
+    /// borrow another command (`changed`) or left (`removed`), as a database
+    /// reload reports its entries. The only writer of their commands.
+    CDBDiff refresh_provisional();
+
+    /// The directories the default-command rules cover sources under, walked
+    /// again (walk_sources): report the sources that appeared since the last
+    /// enumeration — a file created after startup joins the members; a
+    /// deleted one just leaves them. The server calls it every workspace poll
+    /// (ServedProject::poll_sources).
+    llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
+
+    /// The files whose compiles read `file`: the units including it, also
+    /// through a file their commands force in, by the dependency graph; the
+    /// units whose indexed compiles read it, looked for it in vain, or
+    /// imported a module built from it, by the index; the modules whose PCM
+    /// was built from it, or whose build failed on it.
+    llvm::SmallVector<Fid> readers(Fid file) const;
+
+    /// Whether some unit of the build the index is to hold has no record in
+    /// it yet (see feature::RenameScope::units_pending).
+    bool units_pending();
+
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added
     /// or removed, and its module declaration. The module-graph cascade is
-    /// the served project's change handling (PCMBuilder::invalidate).
+    /// the served project's change handling (invalidate_module).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
@@ -336,6 +508,9 @@ struct Project {
 
         /// How the provisional members followed (see refresh_provisional).
         CDBDiff provisional;
+
+        /// The last scan of the rebuild.
+        ScanReport scan;
     };
 
     /// Rebuild the dependency graph from scratch against the current
@@ -347,220 +522,609 @@ struct Project {
     /// unit includes one, and the graph takes them in.
     Rebuilt rebuild_dependency_graph();
 
-    /// Bring the provisional members (Build::record) in line with the build:
-    /// drop the record of a file the build declares now, and give every
-    /// other recorded file the command it borrows — its lender's, while it
-    /// has one and no declared unit includes it, by the dependency graph —
-    /// reporting the files that joined (`added`), borrow another command
-    /// (`changed`) or left (`removed`), as a database reload reports its
-    /// entries. The only writer of the borrowed commands.
-    CDBDiff refresh_provisional();
+    /// What a change of the build's commands changed (update_members).
+    struct MembersChanged {
+        /// The files whose commands appeared, changed or left — the
+        /// provisional members' among them.
+        CDBDiff commands;
 
-    /// Persistence signal for the artifact validity metadata (PCH/PCM
-    /// records, self-containment results) the index database carries
-    /// beyond the index itself: producers mark, the single write pipeline
-    /// (save_project) flushes it on its next run.
-    bool artifacts_dirty = false;
+        /// How the dependency graph followed.
+        Rebuilt graph;
 
-    /// Connected by the master to schedule a flush soon after a mark; unset
-    /// (tests, batch tools) means the owner saves on its own cadence.
-    std::function<void()> request_flush;
-
-    void mark_artifacts_dirty() {
-        artifacts_dirty = true;
-        if(request_flush) {
-            request_flush();
+        bool empty() const {
+            return commands.empty();
         }
-    }
+    };
 
-    /// The PCM of each built module of `modules`, under its name: what a
-    /// compile importing them hands clang.
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       llvm::ArrayRef<Fid> modules) const;
+    /// Follow a change of the build's commands: `commands`, what a database
+    /// reload or a walk of the default sources changed; none when only the
+    /// provisional members may have (a file just recorded). The provisional
+    /// members follow, the dependency graph is rebuilt, and the index follows
+    /// each file whose command changed: a unit the build stopped compiling
+    /// leaves it, one whose command changed keeps serving until its reindex
+    /// merges. The only writer of commands_epoch.
+    MembersChanged update_members(CDBDiff commands);
 
-    /// What decides whether the module's last PCM build still holds: what
-    /// it read, or — for a build an import failed — what the import's
-    /// failure rests on, down to the module whose own build failed. Null
-    /// for a module never built and for a cycle of imports failing each
-    /// other.
-    const DepsSnapshot* build_inputs(Fid module) const;
+    // discovery.cpp
 
-    /// The build_inputs of `modules`, each once: what their PCMs were built
+    /// The sentence the guidance of a project without a database ends with:
+    /// the rule that loads the compile_commands.json files discovery passes
+    /// over (deeper_databases). Empty when there is none, or the rules
+    /// declare the build's sources.
+    std::string deeper_databases_hint() const;
+
+    /// Whether a database the load found on disk could not be read, which its
+    /// load logged the reason for.
+    bool found_unreadable_database() const;
+
+    /// Why the build has no member, completing a batch command's "Nothing to
+    /// <verb>: ": a database it found that cannot be read, does not exist yet
+    /// or lists no file; the rules' default commands claiming no file; else
+    /// that no database was found in `root` or its direct subdirectories, the
+    /// subdirectories left out as projects of their own, and the deeper ones
+    /// there are.
+    std::string why_no_members(llvm::StringRef root) const;
+
+    /// What a refactoring may edit of the project (EditableFiles).
+    EditableFiles editable_files() const;
+
+    // command/resolve.cpp
+
+    /// The one of `candidates` whose base is `base` (ContextChoice::base);
+    /// none when no candidate is it.
+    std::optional<Candidate> chosen_candidate(llvm::ArrayRef<Candidate> candidates,
+                                              llvm::StringRef base);
+
+    /// The dialect a file's text is lexed in, `choice` the user's context
+    /// choice for it, null for none: the one of the command it compiles under
+    /// (select_command).
+    const clang::LangOptions& dialect(Fid file, const ContextChoice* choice);
+
+    /// The command a file compiles under, before anything is rendered: tries,
+    /// in order, the chosen host, the file's own command, the host ranking
+    /// first, a default command, a nearby member's command and finally the
+    /// builtin command — so it always succeeds — then the rule edits and a
+    /// run's extras. The rules (`rules`) and the members say what a file
+    /// compiles as; the hosts (find_chosen_host, find_ranked_host) which unit
+    /// stands in for a header without a command of its own, and the
+    /// self-containment check whether it needs its includer's context.
+    SelectedCommand select_command(Fid file, const CommandRequest& request = {});
+
+    /// `command` as a compile runs it: the arguments the toolchain renders,
+    /// from its working directory.
+    Rendered render(const CommandRef& command, const RenderOptions& options = {});
+
+    /// A file's final compile command: select_command, then the context
+    /// restoring the includer's preprocessor state of a header that needs
+    /// it, rendered. Emits a per-file decision log (tiers tried, tier hit,
+    /// command hash).
+    Resolution resolve_command(Fid file, const CommandRequest& request = {});
+
+    /// The identity of the command the build compiles `unit` under, as its
+    /// index records it: the default selection (candidates' first) with
+    /// the rule edits apply_rules makes of it; 0 when the build compiles
+    /// it under none. A run's extras are not part of it.
+    std::uint64_t command_identity(Fid unit);
+
+    /// The command of the entry writing the precompiled header that the
+    /// command `selection` and `request` give `file` reads
+    /// (CommandTable::pch_inputs) — the `cmake_pch.hxx.cxx` entry of a CMake
+    /// target with precompiled headers; of the configurations writing one
+    /// each from that file, the one writing this very PCH. The PCH on disk
+    /// may come from another compiler, so clice builds its own under that
+    /// command, edited as the reading command was — by the rules apply_rules
+    /// applies and the request's extras: built under other flags, it would
+    /// hold other code than that command parses. Nullopt when the build
+    /// writes none of them, and for a command writing a precompiled header
+    /// itself.
+    std::optional<CommandRef> pch_writer(Fid file,
+                                         const SelectedCommand& selection,
+                                         const CommandRequest& request = {});
+
+    // command/hosts.cpp
+
+    /// The translation units that can stand in for `header` — the units of the
+    /// build whose compiles read it by the lexical scan, also through a file
+    /// their commands force in, or by the entries their indexed compiles gave
+    /// it, that compile in a language the header can be part of (a `.h` in
+    /// any, a `.hpp` in C++ and the languages built on it, a `.cuh` only in
+    /// CUDA) and write no precompiled header — best first: units whose entries
+    /// come from the databases the header's own rules name, then the unit
+    /// sharing the header's stem, its directory, and path proximity.
+    llvm::SmallVector<Fid> ranked_hosts(Fid header);
+
+    /// The commands of `host` that compile `header` in a language it can be
+    /// part of, in the host's order: what the header may compile under, its
+    /// first the default. Empty when the host cannot stand in for it.
+    llvm::SmallVector<Candidate, 2> candidates(Fid header, Fid host);
+
+    /// The host the user chose for a header, while its compile enters the
+    /// header at the chosen place; none else.
+    HostSearch find_chosen_host(Fid header, const ContextChoice& choice);
+
+    /// The first ranked host whose compile enters the header, where it first
+    /// does.
+    HostSearch find_ranked_host(Fid header);
+
+    /// The host `header` compiles under with nothing chosen, or waits for the
+    /// include tree of; invalid for a file no unit includes. A header compiled
+    /// under its own entry has one too: the source its definitions belong in.
+    Fid host_of(Fid header);
+
+    /// The places the compile of `host` under its first command fitting
+    /// `header` enters it; nullopt when no tree tells.
+    std::optional<std::uint32_t> count_occurrences(Fid host, Fid header);
+
+    // command/include_trees.cpp
+
+    /// Every place the compile of the unit `unit` names, under the command it
+    /// names, enters `header`, in the order it does, by the unit's include
+    /// tree: its index manifest's for the command the index runs under, its
+    /// first, while the index was built under it (command_identity), else the
+    /// one a preprocess run took. Empty when the compile never enters the header.
+    /// Nullopt when no tree can tell: the manifest cannot — the unit or a file on its way changed
+    /// since, a file appeared where the compile looked and found none, or a forced file a
+    /// precompiled header held hides the way in — and no run took one since the inputs it read last
+    /// changed.
+    std::optional<llvm::SmallVector<Host>> include_chains(const UnitCommand& unit, Fid header);
+
+    /// The unit's own command `candidate`, rules applied, and its key.
+    TreeRequest tree_request(Fid unit, const Candidate& candidate);
+
+    /// Remember the tree a preprocess run under `request` took: the files it
+    /// read (`paths` with the hashes of the bytes read, the unit's own last),
+    /// its include nodes over them, and every file it read or looked for
+    /// (`deps`), the run started at `started_at`.
+    void commit_tree(const TreeRequest& request,
+                     llvm::ArrayRef<std::string> paths,
+                     llvm::ArrayRef<std::uint64_t> hashes,
+                     std::vector<index::IncludeNode> nodes,
+                     llvm::ArrayRef<ReportedInput> deps,
+                     std::int64_t started_at);
+
+    /// Remember that the run under `request` failed: the unit's command cannot
+    /// preprocess it as the unit stands now.
+    void commit_failed_tree(const TreeRequest& request);
+
+    /// Take the tree `request` names with a preprocess run in this process, as
+    /// a worker takes it for the server: the command line's way, which runs no
+    /// workers.
+    void take_tree(const TreeRequest& request);
+
+    // command/self_contained.cpp
+
+    /// The self-containment check's result for `key`; nullopt when no check
+    /// stands for it. `open`: the header is a document the user edits, whose
+    /// text moves with every keystroke: a result holds while its disk content
+    /// stays as it was when the check ran, as typing never runs the check
+    /// again; otherwise while the disk holds the text the check compiled.
+    std::optional<bool> self_contained(const SelfContainmentKey& key, bool open);
+
+    /// Remember what the self-containment check of `key` found: `diagnostics`,
+    /// what the header's compile without its includer's context raised over
+    /// `text`, having read `inputs`.
+    void commit_self_containment(const SelfContainmentKey& key,
+                                 llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                 VersionID text,
+                                 Inputs inputs);
+
+    /// The header's buffer was saved as `text`: the check of `key`, when one
+    /// found it self-contained and `leans` says the compile of that text shows
+    /// what an includer provides, is forgotten, to run again; any other result
+    /// holds for the saved text. Whether it was forgotten.
+    bool header_saved(const SelfContainmentKey& key, VersionID text, bool leans);
+
+    // command/synthesis.cpp
+
+    /// The context `header` compiles in under `host`, its command `command`
+    /// borrowed, with the files it embeds: the includer's state up to where
+    /// the compile enters it, read from disk — never from open buffers: open
+    /// files are no dependency of other files. Null when the synthesis cannot
+    /// follow the chain under the command; remembered either way while the
+    /// chain files hold.
+    Memo<Fid, HeaderContext>::Entry synthesize(Fid header,
+                                               const Host& host,
+                                               const CommandRef& command);
+
+    // command/borrow.cpp
+
+    /// The command a file with neither an entry nor a host borrows
+    /// (CommandSource::Borrowed), from a member other than the file, in a
+    /// language the file can be part of (a `.h` matches any, a `.c` borrows
+    /// C++ only from a `.c` unit compiled as C++, a C++ source and a C++
+    /// module unit borrow from each other): one in the file's directory —
+    /// same stem first, then by name — with its first command; else, for a
+    /// header, the member whose command's header search directories contain
+    /// it, nearest directory first, with that command; else the member
+    /// closest by path. A provisional member gives the command it borrows
+    /// only when `provisional`: the members' own commands are chosen among
+    /// the units the build declares, so none rests on another's. Nullopt
+    /// when there is no such member.
+    std::optional<Candidate> borrowed_command(Fid file, bool provisional);
+
+    // command/contexts.cpp
+
+    /// The contexts a file can compile in, in this project: its hosts, ranked,
+    /// each with the commands it gives and the places it enters the header at,
+    /// then the file's own database entries. Contexts compiling the same under
+    /// one command list once.
+    std::vector<ListedContext> list_contexts(Fid file);
+
+    /// The listing's item for the context the file compiles in as `resolution`
+    /// picked it: the host it compiles in, else its own entry; none for a
+    /// rule's default command or a borrowed one.
+    std::optional<ListedContext> current_context_item(Fid file, const Resolution& resolution);
+
+    /// Whether `choice` holds against the build and the include trees: its host
+    /// still compiles and enters the file, at its occurrence when it names one,
+    /// and its command still exists — an own entry's, or the host's it names.
+    /// A host whose include tree no run took yet holds.
+    bool choice_holds(Fid file, const ContextChoice& choice);
+
+    /// Keep `choices` for the next save, as the project's database carries
+    /// them (files named portably), replacing those kept before.
+    void save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices);
+
+    /// The choices kept for the database, as a load read them or
+    /// save_choices last kept them; none from bytes that do not parse.
+    std::vector<std::pair<Fid, ContextChoice>> saved_choices();
+
+    // graph/pch.cpp
+
+    /// The entry of `key` while its PCH is built; null else.
+    const PCHEntry* built_pch(llvm::StringRef key) const;
+
+    /// How to build the PCH `request` names: an attempt revalidates the pair
+    /// registered under its key or builds it with the request's inputs, and a
+    /// clean node's pair is checked complete, in the store and read from
+    /// unchanged inputs — anything else is a change for its dependents.
+    Work pch_work(PCHRequest request);
+
+    /// Wait for the PCH from outside the graph, foreground, one attempt;
+    /// retry policy stays with the caller.
+    async::task<Result> acquire_pch(PCHRequest request);
+
+    /// The request for clice's own build of the precompiled header the command
+    /// of `unit` writes (Project::pch_writer): the unit's whole file, under that
+    /// command. The editor's build skips function bodies, the index's keeps
+    /// them: they are two PCHs.
+    PCHRequest declared_pch_request(const CommandRef& unit, bool skip_bodies);
+
+    /// The PCH of the preamble of `text`, the buffer of `file` compiled under
+    /// `arguments` from `directory` as `resolution` resolved them, with
+    /// `imports` its imports: keyed by the preamble text and the
+    /// frontend-relevant flags, so files with the same preamble share it.
+    /// `base` is the key of the precompiled header the build declares for
+    /// the command, built already; empty for none. `point` is where a
+    /// completion's parse stops: the preamble ends before the line holding
+    /// it, so the lines typed there keep the PCH of the lines above them.
+    PreamblePCH preamble_pch(Fid file,
+                             llvm::StringRef text,
+                             std::optional<std::uint32_t> point,
+                             const Resolution& resolution,
+                             const Imports& imports,
+                             llvm::StringRef base);
+
+    /// Whether the PCH registered under `key` read `file`: a parse of that very
+    /// file cannot load it — clang refuses a PCH whose input the parse serves
+    /// from a buffer, and the guard the PCH defines would skip the file's text.
+    bool pch_reads(llvm::StringRef key, Fid file) const;
+
+    /// The crash of the key's last build, while the inputs it is known to have
+    /// read hold: an attempt's crash is recorded whatever became of the request
+    /// that spawned it (contract 12), and every consumer that finds it books it
+    /// against its own document instead of burning a worker of its own. One
+    /// document's records cannot contain it alone: the PCH is shared.
+    const FailureRecord* build_crash(llvm::StringRef pch_key);
+
+    /// Forget the key's failed build, a crash or errors in the user's code, so
+    /// the next request builds it again: a consumer whose own record lets it
+    /// retry, or that was saved, retries it, and one moving to another key
+    /// releases it. Returns whether it had failed.
+    bool forget_build_failure(llvm::StringRef pch_key);
+
+    /// Discard a pair the frontend could not consume: remove both blobs from
+    /// the store and drop the idle cache entry, so the next acquisition misses
+    /// and rebuilds instead of trusting corrupt bytes for the life of the
+    /// store.
+    void discard_pch(llvm::StringRef pch_key);
+
+    /// A parse reading the pair died or found it unreadable: discard it AND
+    /// count a failure of its consumption — unless the pair was gone from the
+    /// store by then: evicted under the parse, which says nothing of its bytes,
+    /// or discarded by a failure counted already. Each successful rebuild
+    /// clears the build's failure, so the consumption keeps a record of its
+    /// own; enough failures stop the key and acquisitions fail fast, so
+    /// consumers fall back to compiling without a PCH instead of rebuilding and
+    /// failing forever over failing storage.
+    void pch_consume_failed(llvm::StringRef pch_key);
+
+    /// A parse read the key's pair and completed: its consumption failures were
+    /// transient — without this, two unrelated hiccups far apart would stop a
+    /// key that rebuilds fine in between.
+    void pch_consume_succeeded(llvm::StringRef pch_key);
+
+    /// Open the pch.idx index of a cached PCH. The single consumption gate for
+    /// `.pch.idx` blobs: when the blob turns out unreadable, the on-disk pair
+    /// is discarded from the store as well — otherwise every later session
+    /// re-adopts the corrupt pair from the precompiled records and silently
+    /// degrades again. With the pair gone the next acquisition is a miss and
+    /// rebuilds both halves. Loads count against the loaded-index budget (see
+    /// enforce_loaded_budget).
+    std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
+
+    /// Forget the entries whose pairs the store's LRU evicted from disk (inside
+    /// a commit, maybe on a worker thread), or the content-keyed map grows
+    /// for the server's lifetime even for keys never requested again.
+    void forget_evicted_pchs();
+
+    /// Unload pch.idx indexes beyond the budget (two per open document, plus
+    /// 2), least recently used first. Without this every preamble key ever
+    /// touched keeps its blob mapped for the server's lifetime — tens of MB per
+    /// key on real projects, released by neither didClose nor store eviction.
+    /// Unloading only drops the entry's reference: consumers holding the
+    /// shared_ptr finish safely, and the next use reopens the blob from disk.
+    void enforce_loaded_budget();
+
+    // graph/pcm.cpp
+
+    /// The entry of the module unit while its PCM is built; null else.
+    const PCMEntry* built_pcm(Fid module) const;
+
+    /// How to build a module unit's PCM: an attempt declares the unit's
+    /// imports as the node's edges, waits on them and on the precompiled header
+    /// its command declares, keeps the last build while it holds, else
+    /// dispatches a new one. A clean node holds while its PCM, every PCM below
+    /// it and the PCHs they were built over are on disk: the store's LRU, or
+    /// another process sharing the cache, can remove one behind the graph's
+    /// back. Only the module that lost it builds again, the ones above it
+    /// keep their builds: its content did not change.
+    Work module_work(Fid module);
+
+    /// Whether `modules` and every module below them have their PCMs on disk,
+    /// and the PCHs those were built over. A wait on one can outlast another:
+    /// the store's LRU evicts it under the budget, or another process sharing
+    /// the cache removes it. One found gone is forgotten (its build no longer
+    /// names a PCM), so waiting on it again builds it again. Every one is
+    /// looked at: a gone one found later must not survive an early return.
+    bool imports_present(llvm::ArrayRef<Fid> modules);
+
+    /// Wait in `attempt` on the PCMs of `modules`, each in turn, `failed`
+    /// told every one that failed to build; again while all built but one
+    /// left the cache by the time the last did — a rebuild can evict another
+    /// under the store's budget — import_passes times at most. Stale when
+    /// the attempt was overtaken; Success when every one built and they are
+    /// all on disk.
+    async::task<Result> wait_modules(Attempt& attempt,
+                                     llvm::ArrayRef<Fid> modules,
+                                     llvm::function_ref<void(Fid)> failed = {});
+
+    /// Scan the imports of a request that compiles under `resolution` with
+    /// `content` as the focus file and its synthesized context served from
+    /// memory (the stateless requests' builds — the scan must see the
+    /// buffer's imports under the request's command), declare them as the
+    /// edges of `consumer`, the file's node, and wait for their modules,
+    /// foreground. A module that did not build is the compile's to report, as
+    /// the stateful compile does; none only when the graph shut down.
+    async::task<std::optional<Imports>> build_imports(NodeId consumer,
+                                                      Fid path_id,
+                                                      const Resolution& resolution,
+                                                      llvm::StringRef content);
+
+    /// Mark a module unit and its transitive importers dirty, overtaking
+    /// in-flight attempts: their next attempts check their builds again, and a
+    /// build whose key and inputs still hold is kept — the single write point
+    /// for PCM content invalidation. A product-only loss (cache eviction) is
+    /// the node's check instead (module_work), which re-dirties the module alone:
+    /// what its importers read is unchanged. Returns the dirtied nodes' files,
+    /// of every kind.
+    llvm::SmallVector<Fid> invalidate_module(Fid path_id);
+
+    /// The crash of the module's last build, while what it is known to have
+    /// read holds: every importer that finds it books it against its own
+    /// document instead of burning a worker of its own.
+    const FailureRecord* build_crash(Fid module);
+
+    /// Why the module's last build failed, when it failed on the user's code;
+    /// nullopt for any other failure (a crash, an outage).
+    std::optional<feature::ModuleFailure> module_failure(Fid module) const;
+
+    /// Forget the module's failed build, a crash or errors in the user's code,
+    /// so the next attempt builds it again: an importer whose own record lets it
+    /// retry, or that was saved, retries it. A failed build is otherwise kept
+    /// until its key or one of its inputs changes. Returns whether it had
+    /// failed.
+    bool forget_build_failure(Fid module);
+
+    /// A module name gained a provider it lacked: invalidate the dependents of
+    /// its unresolved import (their keys name the import as unresolved, so
+    /// their next attempts rebuild) and return them for serving-side treatment.
+    llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
+
+    /// The direct module dependencies of the unit under the arguments
+    /// `resolution` renders, the ones its compile runs: a context choice or a
+    /// header's host cannot diverge between the scan and the parse.
+    /// Consumers declare the full edge set and wait on the resolved subset. The
+    /// header context the arguments name is served to the scan from memory. An
+    /// engaged `content` scans it in place of the file's on-disk text — even
+    /// when empty (an open buffer's imports count before they are saved, and
+    /// an emptied buffer has none).
+    ///
+    /// The scan is a preprocessor run over the whole unit: it runs on the
+    /// thread pool, the event loop only resolves the names it found. A unit
+    /// that can import nothing pays none: its own text has no module syntax,
+    /// neither it nor the host whose command it borrows reaches an import
+    /// candidate, and a buffer's directives are the ones the dependency scan
+    /// saw. A scan is reused while its arguments and the project's disk state
+    /// (disk_epoch) stay the same, a buffer's while its directive stream
+    /// does too.
+    async::task<Imports> scan_imports(Fid path_id,
+                                      const Resolution& resolution,
+                                      std::optional<llvm::StringRef> content);
+
+    /// The PCMs a compile importing `modules` reads, under their modules'
+    /// names: theirs and, below each that built, those of the modules it
+    /// imports in turn — clang loads every module below an import, and a built
+    /// module's imports are built too.
+    std::unordered_map<std::string, std::string> imported_pcms(llvm::ArrayRef<Fid> modules) const;
+
+    /// What decides whether the module's last PCM build still holds: what it
+    /// read, or — for a build an import failed — what the import's failure
+    /// rests on, down to the module whose own build failed. Null for a module
+    /// never built and for a cycle of imports failing each other.
+    const Inputs* module_inputs(Fid module) const;
+
+    /// The module_inputs of `modules`, each once: what their PCMs were built
     /// from, their imports' inputs included, or what keeps them failing.
-    DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
+    Inputs module_inputs(llvm::ArrayRef<Fid> modules) const;
 
-    /// How much of the project a run opens (open()).
-    struct OpenOptions {
-        /// What of the build loads.
-        enum class Build : std::uint8_t {
-            /// No database: the rules alone, for commands converted under
-            /// them.
-            None,
-            /// The databases alone, for the commands of one file.
-            Databases,
-            /// The databases, the provisional members the index remembers,
-            /// the members and the dependency graph.
-            Members,
-        };
+    // graph/unit.cpp
 
-        /// How the cache store opens.
-        enum class Store : std::uint8_t {
-            None,
-            /// For a run reading what others built.
-            ReadOnly,
-            /// For a run building artifacts (PCHs, PCMs) itself.
-            Writable,
-        };
+    /// Compile the unit once through its graph node. The node is invalidated
+    /// first: a request's existence means work is owed, and a clean node left by
+    /// an earlier success would otherwise satisfy the join without compiling.
+    /// Each consumer compiles a file once at a time (the background index's
+    /// queue, the lint pass). None when the graph shut down.
+    async::task<std::optional<UnitResult>> compile_unit(Fid path_id, UnitRequest request);
 
-        /// How the index database opens.
-        enum class Index : std::uint8_t {
-            None,
-            /// Read-only, without the writer lock: a concurrent writer keeps
-            /// owning it, and what the run changes stays in memory.
-            Read,
-            /// As the writer, under the cache directory's writer lock.
-            Write,
-        };
+    // graph/precompiled.cpp
 
-        /// The build configuration to activate (LoadedSettings::configuration).
-        llvm::StringRef configuration;
+    /// The precompiled records as the index database carries them (blob kind
+    /// PrecompiledRecords): the PCH and PCM validity metadata and the
+    /// self-containment checks, serialized from live state; empty on
+    /// serialization failure.
+    std::string serialize_precompiled_records();
 
-        Build build = Build::Members;
+    /// Restore the precompiled records a database held: the PCH and PCM entries
+    /// whose blobs the cache store still has, and the self-containment checks.
+    void load_precompiled_records(llvm::StringRef bytes);
 
-        Store store = Store::None;
+    /// What a PCH or PCM build read: what the worker reports, and `before`,
+    /// what the modules it imports and the PCH it is built over were built from
+    /// as it started — one rebuilt meanwhile stales it.
+    Inputs read_inputs(const worker::PrecompiledBuildResult& built, const Inputs& before);
 
-        Index index = Index::None;
+    /// Send a PCH or PCM build, `label` naming what it builds in the log (a
+    /// file, a module), and keep what did not build: a build that
+    /// crashed its worker is recorded through `fail` on what it was known to
+    /// read (`known`), and one that failed on the user's code on what it read
+    /// (read_inputs over `before`); any other failure is clice's own breakage,
+    /// an anomaly. The interest class is read at dispatch time: a foreground
+    /// waiter may have joined after the attempt started. The advisory token
+    /// rides into the pool, which cancels the request over IPC while this frame
+    /// keeps awaiting the real reply (contract 2). The reply of a build that
+    /// succeeded; else the attempt's result — Stale for a build the attempt
+    /// withdrew, which is no decision on it.
+    async::task<std::expected<worker::PrecompiledBuildResult, Result>>
+        send_precompiled(Attempt& attempt,
+                         const worker::BuildPCHParams& params,
+                         llvm::StringRef label,
+                         Inputs known,
+                         const Inputs& before,
+                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
-        /// The file a run is about: the databases in its directory and
-        /// above it up to the root join the ones discovered.
-        CanonicalPath file;
-    };
+    async::task<std::expected<worker::PrecompiledBuildResult, Result>>
+        send_precompiled(Attempt& attempt,
+                         const worker::BuildPCMParams& params,
+                         llvm::StringRef label,
+                         Inputs known,
+                         const Inputs& before,
+                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
-    /// What open() found.
-    struct Opened {
-        /// The build's translation units: the indexing pass's work list,
-        /// so no driver walks the tree a second time.
-        std::vector<Fid> members;
+    // listings.cpp
 
-        /// The dependency scan from them.
-        ScanReport scan;
+    /// The build's listings now, as the index database records them
+    /// (SavedListings).
+    SavedListings::Blob listed();
 
-        /// The units owed a reindex the load found: the ones a rule keeps
-        /// out or whose command changed while no server ran.
-        index::IndexReport report;
+    /// Bring the loaded index in line with the live build: a unit a rule
+    /// keeps out of the index leaves it, and so does one the build stopped
+    /// compiling — every database that listed it is healthy and lists it no
+    /// more, or the default command that covered it is gone — while one a
+    /// database that failed to load listed keeps serving its last-known
+    /// index, as the live database reload does; every unit whose command
+    /// changed while no server ran is owed a reindex in `report`, its index
+    /// serving until the reindex merges.
+    void reconcile_index(index::IndexReport& report);
 
-        /// Why the index could not be read, for a run reading it: it opens
-        /// with none then. Empty when it was read.
-        std::string unreadable;
-    };
+    // save.cpp
 
-    /// Open the project over its final settings (load_settings), once,
-    /// in a fixed order: the cache store and the index database; what the
-    /// index remembers (the databases of earlier sessions, the provisional
-    /// members); the build; the saved state — the index, the artifact
-    /// records, the context choices — reconciled with the build when that
-    /// is loaded: the units a rule keeps out and those whose command
-    /// changed while no server ran leave the index, in memory only when the
-    /// database is read-only. A run reading the index without the build
-    /// binds its tables alone, fetched on first use.
-    Opened open(const OpenOptions& options);
+    /// Save the index and take the report, again while a save owes a retry (a
+    /// grown map can still be too small); an idle save then shrinks the
+    /// database file when that is worth it (shrink_database). Reindexes the
+    /// saves queued start a pass when none runs.
+    async::task<> save(index::SearchRebuild search = index::SearchRebuild::Behind);
+
+    /// Take an index report — of the load, a save or a unit's merge: book its
+    /// reindexes, before the attempt that merged finishes and its waiters
+    /// wake, so a waker never observes an index as current that the report
+    /// just declared stale; and tell the serving side of its serving-index
+    /// changes.
+    void take_report(const index::IndexReport& report);
+
+    /// Persist the index and the cache store's manifest as they stand, a
+    /// pass running or not: a cold pass covers the whole project, and a
+    /// process killed mid-pass loses only what merged since the last
+    /// checkpoint; then forget the PCHs the store evicted.
+    async::task<> checkpoint();
+
+    /// The shutdown once its owner's compiles are quiesced (contract 11):
+    /// stop the background index, wind down the graph's attempts, save a last
+    /// time and close the cache store.
+    async::task<> shutdown();
+
+    /// Open what the project's database holds: the index (ProjectIndex::open),
+    /// the precompiled records into the project, the context choices; then, with
+    /// `reconcile` (the build is loaded), bring the index in line with the
+    /// build into `report` (reconcile_index) — in memory only on a read-only
+    /// database. The writer replaces a database of another format or found
+    /// corrupt by a fresh one; one whose header cannot be read is detached,
+    /// persistence off for the session. False when the database's header is
+    /// of another format or corrupt: a reader must report an unusable cache
+    /// instead of an empty index.
+    bool load_saved(bool reconcile, index::IndexReport& report);
+
+    /// Persist what the project's database carries: the index's dirty state
+    /// (ProjectIndex::begin_save), then the listings, the precompiled
+    /// records and the context choices, in one write offloaded to the kotatsu
+    /// thread pool. What the write fails to commit stays dirty for the next
+    /// save; a database the write finds corrupt is replaced by a fresh one,
+    /// and the reindexes that owes come back in the report with owes_retry
+    /// set.
+    async::task<index::IndexReport>
+        write_database(index::SearchRebuild search = index::SearchRebuild::Behind);
+
+    /// Whether state remains that no save committed. After a final save this
+    /// means write failures whose retry never came — the one-shot `clice index`
+    /// must not report a durable index from this.
+    bool has_unsaved_state() const;
+
+    /// The recovery from a database found corrupt after it was opened —
+    /// damaged pages, or a record failing its checks: nothing in it survives,
+    /// so the project starts over as a first run, every unit of the build and
+    /// every unit of its own the index held owed a reindex.
+    void recover_corrupt_database(index::IndexReport& report);
+
+    /// Replace the database file by a compact copy when shrink_due, no save
+    /// running meanwhile, and move the index's views onto it. Meant for when
+    /// indexing is idle: the copy takes seconds on a large project, and it
+    /// replaces the file only while no other process has the database open —
+    /// else the file shrinks at a later call.
+    async::task<index::IndexReport> shrink_database();
+
+    /// Confirmed corruption heals through rebuildability: condemn the corrupt
+    /// database (deleted on close) and continue on a freshly opened empty
+    /// one, the index and the persisted listings starting over with
+    /// it, so the session's rebuild persists instead of waiting for the next
+    /// start. A failed reopen leaves persistence disabled for the session.
+    void reopen_fresh_database();
 };
 
-/// What a reader says of an index database the index reports damaged: a
-/// writer discards one only when it meets the damage itself, which may sit
-/// in records no `clice index` run reads, so the reader names the directory
-/// to delete.
-std::string damaged_index_error(const Project& project);
+/// Whether a database file's free pages are worth a compact copy: a quarter
+/// of the file, and 64 MB at least.
+bool shrink_due(const index::PageUsage& usage);
 
-/// Where a `compile_commands.json` is looked for when no rule declares
-/// one: the project root, then its direct subdirectories in name order.
-llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
-
-/// The `compile_commands.json` files to load when no rule declares one:
-/// those of database_places that exist. Empty when none exists yet — the
-/// server keeps watching the places (ServedProject::discover_databases).
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef project_root);
-
-/// The `compile_commands.json` files discovery passes over, deeper than
-/// the root's direct subdirectories down to three directories below it
-/// (hidden directories, `node_modules` and the cache directory skipped),
-/// by path: what the guidance of a project without a database names.
-llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef project_root,
-                                                    CanonicalRef cache_dir);
-
-/// Whether `dir` is a project of its own: it holds a configuration file,
-/// or a compile_commands.json where startup discovery looks
-/// (discover_compile_commands).
-bool defines_project(CanonicalRef dir);
-
-/// The nearest directory at or above `start` holding a configuration file
-/// or a compile_commands.json, directly or in its build/ directory — its
-/// parent instead when it holds a database alone and the parent is such a
-/// directory — spelled as `start` is when `start` lies under it as spelled:
-/// the root of the project a directory belongs to, as the server finds it
-/// for a file outside every served folder and the command line from the
-/// current directory. Empty when no ancestor has either.
-Spelling find_project_root(const Spelling& start);
-
-/// The real paths that the databases of the rules active under
-/// `configuration` and resolving symlinks (Rule::resolve_symlinks)
-/// resolve to now, one per line; empty when no active rule resolves them.
-std::string resolved_databases(const Settings& settings, llvm::StringRef configuration);
-
-/// The index database of the build `configuration` reads, its databases
-/// `resolved` (resolved_databases): the configuration's own when nothing
-/// resolved; else the one of those real paths, or the own one of another
-/// configuration whose rules differ from its own only in naming exactly
-/// those databases directly.
-index::DatabaseKey database_key(const Settings& settings,
-                                llvm::StringRef configuration,
-                                llvm::StringRef resolved);
-
-/// The sentence the guidance of a project without a database ends with:
-/// the rule that loads the compile_commands.json files discovery passes
-/// over (deeper_compile_commands). Empty when there is none, or the rules
-/// declare the build's sources.
-std::string deeper_databases_hint(const Project& project);
-
-/// Whether a database the load found on disk could not be read, which its
-/// load logged the reason for.
-bool found_unreadable_database(const Project& project);
-
-/// Why the build has no member, completing a batch command's "Nothing to
-/// <verb>: ": a database it found that cannot be read, does not exist yet
-/// or lists no file; the rules' default commands claiming no file; else
-/// that no database was found in `root` or its direct subdirectories, and
-/// the deeper ones there are.
-std::string why_no_members(const Project& project, llvm::StringRef root);
-
-/// Where a `compile_commands.json` is looked for in `start` and its
-/// ancestors up to `project_root`, nearest first.
-llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef project_root);
-
-/// The `compile_commands.json` files of database_places_above that exist:
-/// the databases a file deeper in the tree than startup discovery looks
-/// may compile from.
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef project_root);
-
-/// Capture a staleness snapshot from a build's reported inputs, interning
-/// the consumed versions into the shared table.
-///
-/// `deps` carries the consumed-content hashes the worker computed at build
-/// time; `build_at` is milliseconds since epoch, sampled before the build
-/// started. A dependency the worker could not hash takes its hash from
-/// the disk only when the file is untouched since `build_at`.
-DepsSnapshot capture_deps_snapshot(FileTable& files,
-                                   llvm::ArrayRef<DepFile> deps,
-                                   std::int64_t build_at);
-
-/// The file as the disk holds it now, as a dependency of a build that
-/// reported nothing it read: a crash. None when the file cannot be read.
-std::optional<DepState> current_dep(FileTable& files, Fid file);
-
-/// Append the entries of `parts` that `into` lacks. A module's snapshot
-/// already carries its imports', so a plain concatenation of several
-/// repeats a module's inputs once per import path to it — exponentially
-/// many over a deep partition graph.
-void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts);
+/// How often a long-lived owner calls Project::checkpoint().
+chrono::milliseconds checkpoint_interval();
 
 }  // namespace clice

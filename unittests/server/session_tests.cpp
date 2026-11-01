@@ -298,32 +298,32 @@ ZEST_CASE(DeathCountsOnce) {
     ZEXPECT(doc.crash_notes()[0].count == 1u);
 }
 
-ZEST_CASE(AttemptHoldsRetry) {
+ZEST_CASE(DispatchHoldsRetry) {
     auto t0 = Clock::now();
     doc.crashed(RequestKind::Compile, "d1", "cause", t0);
     doc.saved();
     {
-        Session::Attempt attempt(doc, RequestKind::Compile);
+        Session::Dispatch dispatch(doc, RequestKind::Compile);
         ZEXPECT(doc.crash_stops(RequestKind::Compile, t0));
     }
     // Ended without a crash: the retry comes back.
     ZEXPECT(!doc.crash_stops(RequestKind::Compile, t0));
 
     {
-        Session::Attempt attempt(doc, RequestKind::Compile);
+        Session::Dispatch dispatch(doc, RequestKind::Compile);
         doc.crashed(RequestKind::Compile, "d2", "cause", t0);
     }
     ZEXPECT(doc.crash_stops(RequestKind::Compile, t0 + seconds(10)));
 }
 
 ZEST_CASE(SaveThenCrashStops) {
-    // The crash still spends the retry the attempt held, a save during its
+    // The crash still spends the retry the dispatch held, a save during its
     // flight included.
     auto t0 = Clock::now();
     doc.crashed(RequestKind::Compile, "d1", "cause", t0);
     doc.changed(t0);
     {
-        Session::Attempt attempt(doc, RequestKind::Compile);
+        Session::Dispatch dispatch(doc, RequestKind::Compile);
         doc.saved();
         doc.crashed(RequestKind::Compile, "d2", "cause", t0 + seconds(1));
     }
@@ -332,20 +332,20 @@ ZEST_CASE(SaveThenCrashStops) {
 
 ZEST_CASE(SiblingCrashMeanwhile) {
     auto t0 = Clock::now();
-    Session::Attempt attempt(doc, RequestKind::Hover);
-    ZEXPECT(!attempt.crashed_meanwhile());
+    Session::Dispatch dispatch(doc, RequestKind::Hover);
+    ZEXPECT(!dispatch.crashed_meanwhile());
     doc.crashed(RequestKind::Compile, "d1", "cause", t0);
-    ZEXPECT(!attempt.crashed_meanwhile());
+    ZEXPECT(!dispatch.crashed_meanwhile());
     doc.crashed(RequestKind::Hover, "d2", "cause", t0);
-    ZEXPECT(attempt.crashed_meanwhile());
+    ZEXPECT(dispatch.crashed_meanwhile());
 }
 
 ZEST_CASE(ChangeDuringFlightStands) {
-    // The crash describes the inputs the attempt carried; an edit during
+    // The crash describes the inputs the dispatch carried; an edit during
     // its flight is still untried.
     auto t0 = Clock::now();
     {
-        Session::Attempt attempt(doc, RequestKind::Compile);
+        Session::Dispatch dispatch(doc, RequestKind::Compile);
         doc.changed(t0);
         doc.crashed(RequestKind::Compile, "d1", "cause", t0 + seconds(20));
     }

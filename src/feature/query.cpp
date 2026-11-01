@@ -39,7 +39,7 @@ Lines lines_of(const index::Site& site) {
 
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no shard for.
-Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
+Result<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
@@ -60,8 +60,8 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
 /// shard for it, which the caller answers as not found with the file
 /// noted. A path filter spelling a path names its file or directory by
 /// identity, a relative one from the current directory.
-Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
-    auto anchor = [&](std::string& path) -> Outcome<bool> {
+Result<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
+    auto anchor = [&](std::string& path) -> Result<bool> {
         Spelling spelled(path, ctx.cwd);
         auto file = indexed_file(ctx, spelled);
         if(!file) {
@@ -152,7 +152,7 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
 /// The symbols a locator names; none is an unknown symbol. A locator
 /// naming a file the index has no shard for answers as unknown and notes
 /// the file.
-Outcome<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::SymbolQuery query) {
+Result<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::SymbolQuery query) {
     auto anchored = anchor_paths(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
@@ -178,7 +178,7 @@ std::unexpected<std::string> ambiguous(Context& ctx,
 }
 
 /// Resolve a locator to exactly one symbol.
-Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
+Result<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
     auto candidates = resolve(ctx, std::move(query));
     if(!candidates) {
         return std::unexpected(candidates.error());
@@ -227,7 +227,7 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
 /// The rename target of the symbols a locator names: one symbol's, or,
 /// for a name the overloads of one scope spell, all of theirs — renamed
 /// together, a call a template leaves open between them stays theirs.
-Outcome<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
+Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
@@ -305,7 +305,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<CallEdge> edges) {
 
 }  // namespace
 
-Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit) {
+Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit) {
     auto query = index::SymbolQuery::parse(text);
     if(!query) {
         return std::unexpected(query.error());
@@ -329,7 +329,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
     return result;
 }
 
-Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) {
+Result<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -354,7 +354,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     };
 }
 
-Outcome<DocumentSymbolsResult>
+Result<DocumentSymbolsResult>
     document_symbols(Context& ctx,
                      const Spelling& path,
                      llvm::function_ref<const clang::LangOptions&(Fid file)> dialect) {
@@ -414,7 +414,7 @@ Outcome<DocumentSymbolsResult>
     return result;
 }
 
-Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
+Result<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -447,9 +447,9 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     return result;
 }
 
-Outcome<ReferencesResult> references(Context& ctx,
-                                     index::SymbolQuery locator,
-                                     bool include_declaration) {
+Result<ReferencesResult> references(Context& ctx,
+                                    index::SymbolQuery locator,
+                                    bool include_declaration) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -570,9 +570,9 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
     return planned;
 }
 
-Outcome<CallGraphResult> call_graph(Context& ctx,
-                                    index::SymbolQuery locator,
-                                    llvm::StringRef direction) {
+Result<CallGraphResult> call_graph(Context& ctx,
+                                   index::SymbolQuery locator,
+                                   llvm::StringRef direction) {
     if(!ranges::contains(std::array<llvm::StringRef, 3>{"callers", "callees", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
@@ -594,7 +594,7 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     };
 }
 
-Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator) {
+Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a declaration is named by its whole name, not by a pattern");
     }
@@ -623,13 +623,13 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
     return hashes;
 }
 
-Outcome<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
-                                                               index::SymbolQuery locator) {
+Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
+                                                              index::SymbolQuery locator) {
     hold_to_whole_name(locator);
     return resolve(ctx, std::move(locator));
 }
 
-Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator) {
+Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -641,9 +641,9 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
     };
 }
 
-Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                            index::SymbolQuery locator,
-                                            llvm::StringRef direction) {
+Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
+                                           index::SymbolQuery locator,
+                                           llvm::StringRef direction) {
     if(!ranges::contains(std::array<llvm::StringRef, 3>{"supertypes", "subtypes", "both"},
                          direction)) {
         return std::unexpected(

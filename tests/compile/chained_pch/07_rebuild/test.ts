@@ -65,9 +65,9 @@ test("the base is gone while the server runs", async (t) => {
     t.disk.rm(base(t));
     s.edit("main.cpp", { replace: "twice_area(2)", with: "twice_area(5)" });
     expect(await s.errors("main.cpp")).toEqual([]);
-    // The parse finds the base gone and retracts the top, whose build over
-    // it fails and retracts the base: both are built again.
-    expect(await builds(s)).toEqual({ base: 2, top: 3 });
+    // The base is found gone before the parse and built again, and the
+    // top, chained onto the one gone, over the new one: each once more.
+    expect(await builds(s)).toEqual({ base: 2, top: 2 });
     await t.show("definition", s.definition(t.at("main.cpp", "|area(3)")));
 });
 

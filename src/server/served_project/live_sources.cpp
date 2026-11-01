@@ -9,9 +9,9 @@ namespace clice {
 namespace {
 
 /// The preamble index of PCH `key`, loaded on its first read: the live
-/// sources are views, and the load only fills the builder's cache.
-std::shared_ptr<index::TUIndex> preamble_of(const PCHBuilder& pch, llvm::StringRef key) {
-    return const_cast<PCHBuilder&>(pch).preamble_state(key);
+/// sources are views, and the load only fills the project's cache.
+std::shared_ptr<index::TUIndex> preamble_of(const Project& project, llvm::StringRef key) {
+    return const_cast<Project&>(project).preamble_index(key);
 }
 
 /// An open document's index as the live sources hand it out: `shard` in
@@ -35,7 +35,7 @@ index::IndexSource buffer_source(const ServedProject& served,
     // text they read.
     if(kind == index::IndexSource::Kind::SessionShard) {
         auto& state = *document.latest->index;
-        if(auto section = state.instantiation_section_of(state.path_count() - 1)) {
+        if(auto section = state.instantiation_section_of(state.focus_file())) {
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
     }
@@ -57,7 +57,7 @@ const index::Shard* buffer_shard(const ServedDocument& document) {
     // A shard compiled from exactly the buffer's bytes describes it however
     // its dependencies moved since (the shard's DepsOnly contract).
     auto& state = *compiled->index;
-    auto& shard = state.shard_of(state.path_count() - 1);
+    auto& shard = state.shard_of(state.focus_file());
     auto& session = *document.session;
     if(document.current || shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
@@ -73,7 +73,7 @@ std::shared_ptr<index::TUIndex> overlay_of(const ServedProject& served,
     if(!document.latest || !document.latest->loaded_pch()) {
         return nullptr;
     }
-    return preamble_of(served.sched.pch, *document.latest->loaded_pch());
+    return preamble_of(served.project, *document.latest->loaded_pch());
 }
 
 }  // namespace
@@ -135,7 +135,7 @@ void ServedProject::for_each_preamble(
         // built from. The prefix comparison validates the described region
         // directly — body edits never move preamble entries — so no dirty-flag
         // gating is needed on top.
-        auto last = state->path_count() - 1;
+        auto last = state->focus_file();
         if(project.file_table.find(Spelling::absolute(state->path(last))) != file ||
            !state->matches_preamble(document.session->text())) {
             continue;
@@ -158,7 +158,7 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
         if(key.empty() || !seen.insert(key).second) {
             return true;
         }
-        auto state = preamble_of(sched.pch, key);
+        auto state = preamble_of(project, key);
         return state ? visit(*state) : true;
     };
     for(auto& [file, document]: documents) {
@@ -170,8 +170,8 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
         if(!visit_key(key)) {
             return;
         }
-        auto it = project.pch_cache.find(key);
-        if(it != project.pch_cache.end() && !visit_key(std::string(it->second.base))) {
+        auto it = project.pchs.find(key);
+        if(it != project.pchs.end() && !visit_key(std::string(it->second.base))) {
             return;
         }
     }
@@ -193,8 +193,8 @@ std::string ServedProject::preamble_pch(Fid file) const {
     if(!preamble_index(file)) {
         return {};
     }
-    auto entry = project.pch_cache.find(*find_document(file)->latest->loaded_pch());
-    return entry == project.pch_cache.end() ? std::string() : entry->second.path;
+    auto entry = project.built_pch(*find_document(file)->latest->loaded_pch());
+    return entry ? entry->path : std::string();
 }
 
 void
@@ -207,7 +207,7 @@ void
     if(!compiled || !compiled->base_pch_key) {
         return;
     }
-    if(auto state = preamble_of(sched.pch, *compiled->base_pch_key)) {
+    if(auto state = preamble_of(project, *compiled->base_pch_key)) {
         visit(*state);
     }
 }

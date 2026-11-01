@@ -15,7 +15,8 @@ import :vfs.file_table;
 namespace clice::index {
 
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
-                                                           llvm::ArrayRef<DepState> imports,
+                                                           llvm::ArrayRef<Input> imports,
+                                                           std::uint64_t command,
                                                            std::uint64_t peak) {
     // Zero-copy consumption: the result stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
@@ -25,7 +26,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         LOG_WARN("Ignoring TUIndex that failed verification");
         return std::unexpected(MergeError::Invalid);
     }
-    auto focus_local_id = view.path_count() - 1;
+    auto focus_local_id = view.focus_file();
     llvm::StringRef tu_path = view.path(focus_local_id);
 
     // Interning paths only names them — pool ids left behind by a rejected
@@ -42,6 +43,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     TUManifest manifest;
     manifest.built_at = static_cast<std::uint64_t>(view.built_at());
     manifest.peak = peak;
+    manifest.command = command;
 
     std::uint32_t hits = 0;
     std::uint32_t appended = 0;
@@ -237,7 +239,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     }
     llvm::DenseSet<Fid> read_precompiled;
     for(auto& dep: imports) {
-        read_precompiled.insert(dep.path_id);
+        read_precompiled.insert(dep.file);
     }
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         if(read_precompiled.contains(file_ids_map[i])) {
@@ -327,11 +329,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // event reaching the module rebuilds. An input the module's build
     // could not version reads as stale until a rebuild names its bytes.
     for(auto& dep: imports) {
-        if(dep.missing) {
-            manifest.absent.push_back(files.intern_version(dep.path_id, 0));
+        if(dep.absent) {
+            manifest.absent.push_back(files.intern_version(dep.file, 0));
         } else {
             manifest.imports.push_back(dep.version.valid() ? dep.version
-                                                           : files.intern_version(dep.path_id, 0));
+                                                           : files.intern_version(dep.file, 0));
         }
     }
 
@@ -382,10 +384,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             }
         });
     }
-    // A run that started after the unit fell behind the disk has seen what
-    // the disk holds.
-    if(auto it = behind.find(tu_path_id); it != behind.end() && it->second < view.built_at()) {
-        behind.erase(it);
+    // A run that started after the unit became outdated has seen what the
+    // disk holds.
+    if(auto it = outdated.find(tu_path_id); it != outdated.end() && it->second < view.built_at()) {
+        outdated.erase(it);
     }
 
     LOG_INFO("Merged TUIndex: {} paths, {} sections ({} hits, {} appended, {} rebuilt)",
@@ -433,7 +435,7 @@ std::vector<std::uint64_t>
         auto [it, inserted] = holds.try_emplace(std::pair(producer.unit, producer.run));
         if(inserted) {
             auto unit = find_unit(producer.unit);
-            it->second = unit && *unit != tu && current_run(producer) && !behind.contains(*unit);
+            it->second = unit && *unit != tu && current_run(producer) && !outdated.contains(*unit);
         }
         return it->second;
     };
@@ -471,8 +473,8 @@ void ProjectIndex::drop(Fid tu_path_id, IndexReport& report) {
     }
 }
 
-void ProjectIndex::mark_behind(Fid tu) {
-    behind[tu] =
+void ProjectIndex::mark_outdated(Fid tu) {
+    outdated[tu] =
         chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch())
             .count();
 }

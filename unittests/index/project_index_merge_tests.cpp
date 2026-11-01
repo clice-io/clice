@@ -10,10 +10,8 @@ import :index.instantiation_shard;
 import :index.project_index;
 import :index.symbol;
 import :index.tu_index;
+import :project.indexer;
 import :project.project;
-import :project.save;
-import :sched.index.pending_table;
-import :sched.index.pump;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
@@ -40,7 +38,6 @@ ZEST_SUITE(ProjectIndexMerge) {
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
-IndexPump& pump = fx.pump;
 
 bool merge(llvm::StringRef data) {
     return fx.merge(data);
@@ -97,10 +94,10 @@ int use() { return 1; }
     ZEXPECT(!merge(planted));
 
     auto header = project.file_table.intern(Spelling::absolute(*header_path));
-    DepState input{.path_id = header, .version = project.file_table.intern_version(header, 1)};
+    Input input{.file = header, .version = project.file_table.intern_version(header, 1)};
     auto report = project.index.merge(planted, {input});
     ZASSERT(report);
-    pump.apply_report(*report);
+    fx.project.take_report(*report);
     auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
     llvm::SmallVector<Fid> reached;
     project.index.for_each_file_of_local(helper, header, [&](Fid file) {
@@ -109,7 +106,7 @@ int use() { return 1; }
     ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
 
     // One the build saw gone still came out of the precompiled header.
-    DepState gone{.path_id = header, .missing = true};
+    Input gone{.file = header, .absent = true};
     ZEXPECT(project.index.merge(planted, {gone}).has_value());
 }
 
@@ -162,7 +159,7 @@ ZEST_CASE(MergeHitWritesNothing) {
     ZASSERT(project.index.pending_shard_writes() == 0u);
 
     // A re-merge whose variant the shard already stores is the steady state of
-    // every background round: it must record contributions and touch no
+    // every background pass: it must record contributions and touch no
     // blob at all.
     merge(indexed.data);
     ZASSERT(project.index.pending_shard_writes() == 0u);
@@ -314,6 +311,11 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
               "inline int gen_fn() { return 1; }\n");
     tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
     tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+    fx.list_units(tmp,
+                  {
+                      {"ga.cpp"},
+                      {"gb.cpp", {"-DMODE"}}
+    });
 
     auto a = index_file(tmp, tmp.path("ga.cpp"));
     auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
@@ -322,7 +324,7 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
     merge(a.data);
     merge(b.data);
     auto b_tu = project.file_table.intern(Spelling::absolute(b.tu_path));
-    ZASSERT(!pump.pending_reason(b_tu).has_value());
+    ZASSERT(!fx.queue.pending_reason(b_tu).has_value());
 
     // The header moves to a new content generation and only ga catches up:
     // the rebuilt blob discards gb's variant. With no pending slot left for
@@ -338,9 +340,9 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
 
-    ZASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(b_tu) == ReindexReason::ContentChanged);
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
-    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+    ZASSERT(!fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
 }
 
@@ -358,7 +360,7 @@ ZEST_CASE(RejectsCorruptSection) {
     std::string corrupt = indexed.data;
     auto tampered = index::TUIndex::from_bytes(corrupt);
     ZASSERT(tampered.loaded());
-    auto blob = tampered.shard_of(tampered.path_count() - 1).bytes();
+    auto blob = tampered.shard_of(tampered.focus_file()).bytes();
     ZASSERT(!blob.empty());
     auto pos = llvm::StringRef(corrupt).find(blob);
     ZASSERT(pos != llvm::StringRef::npos);
@@ -516,7 +518,7 @@ ZEST_CASE(CreatedHeaderStales) {
     ZASSERT(!f.needs_reindex(src));
 
     tmp.touch("gen.h", "int make();\n");
-    f.begin_round();
+    f.clear_staleness_cache();
     ZASSERT(f.needs_reindex(src));
 }
 
@@ -548,15 +550,15 @@ ZEST_CASE(TouchStaysFresh) {
     open_store(x.tmp, x.f.project);
     ZASSERT(x.setup());
     x.f.save();
-    ZASSERT(!has_unsaved_state(x.f.project));
+    ZASSERT(!x.f.project.has_unsaved_state());
     ZASSERT(!x.f.needs_reindex(x.src));
 
     // Same bytes, new mtime: the stat fast path misses, the hash proves a
     // mere touch, and nothing persisted needs rewriting.
     ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
-    x.f.begin_round();
+    x.f.clear_staleness_cache();
     ZASSERT(!x.f.needs_reindex(x.src));
-    ZASSERT(!has_unsaved_state(x.f.project));
+    ZASSERT(!x.f.project.has_unsaved_state());
 }
 
 ZEST_CASE(PreservedMtimeEditStale) {
@@ -569,7 +571,7 @@ ZEST_CASE(PreservedMtimeEditStale) {
     // and the hash check must catch the edit.
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
     ZASSERT(set_file_mtime(x.header, recorded));
-    x.f.begin_round();
+    x.f.clear_staleness_cache();
     ZASSERT(x.f.needs_reindex(x.src));
 }
 
@@ -591,7 +593,7 @@ ZEST_CASE(AllDepsChecked) {
     auto recorded = file_mtime_ns(tmp.path("second.h"));
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
     ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZASSERT(f.needs_reindex(tmp.path("main.cpp")));
 }
 
@@ -647,7 +649,7 @@ Fid id(llvm::StringRef name) {
 
 /// Index a unit, skipping what the index offers it, and merge it.
 bool index(llvm::StringRef name) {
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id(name));
     auto indexed = index_file(tmp, tmp.path(name), {}, {}, known);
     return !indexed.data.empty() && f.merge(indexed.data);
@@ -675,7 +677,7 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     ZEXPECT(prints() == 1u);
 
     // a2.cpp skips Box<A>::show, which a.cpp walked, and uses its resolution.
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id("a2.cpp"));
     ZEXPECT(!known.empty());
     ZASSERT(index("a2.cpp"));
@@ -698,7 +700,7 @@ ZEST_CASE(ResolutionLivesWhileUsed) {
     f.drop_index(id("a.cpp"));
     ZEXPECT(prints() == 2u);
     // Without a current run behind it the key is offered no more.
-    f.begin_round();
+    f.clear_staleness_cache();
     auto key = f.known_instantiations(id("b.cpp"));
     ZEXPECT(key.empty());
 
@@ -733,38 +735,38 @@ void a2() { Box<A>{}.show(); Box<B>{}.show(); }
 
 ZEST_CASE(StaleProducerNotOffered) {
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
     // Its own run would confirm the key, not skip it.
     ZEXPECT(f.known_instantiations(id("a.cpp")).empty());
     // An open box.h stands in for its stored instantiations: it walks them.
     ZEXPECT(f.known_instantiations(id("box.h")).empty());
 
-    // An edit of what the instantiation read puts its producer behind the
-    // disk, as the change reaching the served project marks it.
+    // An edit of what the instantiation read makes its producer outdated,
+    // as the change reaching the served project marks it.
     tmp.touch("a.h", R"(#pragma once
 struct A { void print(); void print(int); };
 )");
-    f.project.index.mark_behind(id("a.cpp"));
-    f.begin_round();
+    f.project.index.mark_outdated(id("a.cpp"));
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
 ZEST_CASE(LaterRunCatchesUp) {
-    // A run started before its unit fell behind the disk read the old file:
-    // its merge leaves the unit behind. One started after catches it up.
+    // A run started before its unit became outdated read the old file: its
+    // merge leaves the unit outdated. One started after brings it up to date.
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     auto early = index_file(tmp, tmp.path("a.cpp"), {}, {}, f.known_instantiations(id("a.cpp")));
     ZASSERT(!early.data.empty());
-    f.project.index.mark_behind(id("a.cpp"));
+    f.project.index.mark_outdated(id("a.cpp"));
     ZASSERT(f.merge(early.data));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 
-    IndexInternals::fell_behind_at(f.project.index, id("a.cpp"), 0);
+    IndexInternals::outdated_since(f.project.index, id("a.cpp"), 0);
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
 }
 
@@ -776,7 +778,7 @@ ZEST_CASE(ReplacedRunNotOffered) {
 void a() {}
 )");
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
@@ -815,7 +817,7 @@ struct A { void print(); };
 }
 )");
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
     ZASSERT(index("a2.cpp"));
     tmp.touch("a.cpp", R"(#include "box.h"
@@ -843,7 +845,7 @@ void a() {}
 
 ZEST_CASE(GoneKeyReruns) {
     ZASSERT(index("a.cpp"));
-    f.begin_round();
+    f.clear_staleness_cache();
     auto known = f.known_instantiations(id("a2.cpp"));
     ZASSERT(!known.empty());
     // The key leaves before a2.cpp's run that skipped it merges.

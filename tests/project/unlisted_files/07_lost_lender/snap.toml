@@ -1,7 +1,9 @@
-["lost lender drops member".saved]
+["lost lender keeps member".saved]
 workspace_symbols = [
     { name = "tool_fn()", kind = "Function", at = "tools/tool.c │ int ⟦tool_fn⟧(void) { return 1; }" },
 ]
 
-["lost lender drops member"."no lender"]
-workspace_symbols = []
+["lost lender keeps member"."no lender"]
+workspace_symbols = [
+    { name = "tool_fn()", kind = "Function", at = "tools/tool.c │ int ⟦tool_fn⟧(void) { return 1; }" },
+]

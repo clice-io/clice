@@ -618,18 +618,28 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         std::string key;
         CommandID command;
         QuerySpec spec;
+
+        /// A build chose the compiler: the builtin command's names one
+        /// nobody did, and its query failing is no error.
+        bool chosen = false;
     };
 
-    llvm::StringMap<bool> seen;
+    llvm::StringMap<std::size_t> seen;
     std::vector<Pending> pending;
 
     for(auto& ref: refs) {
-        auto admission = admit_query(ref.command, ref.input);
-        if(admission.kind != QueryAdmission::Kind::Ready ||
-           !seen.try_emplace(admission.key, true).second) {
+        auto admission = admit_query(ref.command, ref.language);
+        if(admission.kind != QueryAdmission::Kind::Ready) {
             continue;
         }
-        pending.push_back({std::move(admission.key), ref.command, std::move(admission.spec)});
+        bool chosen = ref.source != CommandSource::Fallback;
+        auto [it, inserted] = seen.try_emplace(admission.key, pending.size());
+        if(!inserted) {
+            pending[it->second].chosen |= chosen;
+            continue;
+        }
+        pending.push_back(
+            {std::move(admission.key), ref.command, std::move(admission.spec), chosen});
     }
 
     if(pending.empty()) {
@@ -641,25 +651,26 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
 
     // Run the queries concurrently on a local event loop. The interface
     // stays synchronous: block until all complete, then fill the cache here.
-    struct QueryOutcome {
+    struct QueryResult {
         std::string key;
         CommandID command;
         std::expected<Job, std::string> result;
+        bool chosen;
     };
 
     // The query is moved into the coroutine frame as a parameter, so the
     // argument references stay valid for the coroutine's whole lifetime.
-    auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryOutcome> {
+    auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryResult> {
         auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
-        co_return QueryOutcome{std::move(p.key), p.command, std::move(result)};
+        co_return QueryResult{std::move(p.key), p.command, std::move(result), p.chosen};
     };
 
-    auto query_all = [&]() -> async::task<kotatsu::small_vector<QueryOutcome>> {
+    auto query_all = [&]() -> async::task<kotatsu::small_vector<QueryResult>> {
         // A database whose commands key thousands of queries would otherwise
         // run thousands of drivers at once.
         async::semaphore drivers(sys::parallelism());
-        std::vector<async::task<QueryOutcome>> tasks;
+        std::vector<async::task<QueryResult>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
             tasks.push_back(make_task(std::move(p), drivers));
@@ -667,14 +678,16 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
 
         co_return co_await async::when_all(std::move(tasks));
     };
-    auto [outcomes] = async::run(query_all());
+    auto [results] = async::run(query_all());
 
     std::size_t succeeded = 0;
-    for(auto& o: *outcomes) {
+    for(auto& o: *results) {
         if(o.result) {
             succeeded += 1;
-        } else {
+        } else if(o.chosen) {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
+        } else {
+            LOG_WARN("Toolchain query of the builtin command failed: {}", o.result.error());
         }
         commit_query(o.key, o.command, o.result);
     }
@@ -685,7 +698,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
 Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
                                              llvm::StringRef path,
                                              const RenderOptions& opts) {
-    auto resolution = resolve(ref.command, ref.input);
+    auto resolution = resolve(ref.command, ref.language);
     if(!resolution) {
         LOG_WARN("Toolchain resolve failed for {}: {}",
                  files.resolve(ref.file),
@@ -759,7 +772,7 @@ std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
 SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto& command = commands.get(ref.command);
     llvm::StringRef directory = command.directory;
-    auto resolution = resolve(ref.command, ref.input);
+    auto resolution = resolve(ref.command, ref.language);
     if(!resolution) {
         return extract_search_config(command.args, directory);
     }

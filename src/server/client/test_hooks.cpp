@@ -1,7 +1,6 @@
 module clice;
 
 import :feature.protocol;
-import :project.save;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -93,10 +92,12 @@ void LSPClient::register_test_hooks() {
             co_await async::when_any(srv.wait_idle(this->peer), async::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
-                for(auto id: project->sched.pump.failed()) {
-                    result.failed.push_back(feature::to_uri(srv.files.display(id)));
+                for(auto& [id, attempt]: project->project.background_index.last_attempts()) {
+                    if(attempt.failed) {
+                        result.failed.push_back(feature::to_uri(srv.files.display(id)));
+                    }
                 }
-                result.unsaved = result.unsaved || has_unsaved_state(project->project);
+                result.unsaved = result.unsaved || project->project.has_unsaved_state();
             }
             ranges::sort(result.failed);
             result.pending = srv.pending_work(this->peer);
@@ -201,15 +202,13 @@ void LSPClient::register_test_hooks() {
             ext::StatsResult stats;
             for(auto& served: this->server.projects) {
                 auto& project = served->project;
-                for(auto& entry: project.pch_cache) {
-                    auto& st = entry.second;
-                    if(st.state) {
-                        stats.pch_loaded_states += 1;
-                        stats.pch_state_bytes += st.state->bytes().size();
+                for(auto& [key, pch]: project.pchs) {
+                    if(pch.index) {
+                        stats.pch_loaded_indexes += 1;
+                        stats.pch_index_bytes += pch.index->bytes().size();
                     }
+                    stats.pch_cache_entries += pch.path.empty() ? 0 : 1;
                 }
-                stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
-                stats.pch_stashed_bytes += served->sched.pch.stashed_bytes();
 
                 stats.index_inmemory_shards += project.index.pending_shard_writes();
                 stats.index_shard_content_bytes += project.index.shard_bytes();
@@ -225,8 +224,8 @@ void LSPClient::register_test_hooks() {
                     stats.synthesized_contexts += entry.result.synthesized != nullptr ? 1 : 0;
                 });
 
-                stats.import_scans += served->sched.pcm.import_scans;
-                stats.index_idle = stats.index_idle && served->sched.pump.is_idle();
+                stats.import_scans += served->project.import_scans.runs;
+                stats.index_idle = stats.index_idle && served->project.background_index.idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());
             stats.workers = {.stateful = this->server.pool.worker_pids(true),

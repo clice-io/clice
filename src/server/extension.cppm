@@ -42,12 +42,12 @@ struct QueryContextResult {
 struct CompileCommand {
     /// Where the command comes from: "database", an entry of a compilation
     /// database; "host", the command of a source including the header;
-    /// "default", the default_command of a rule; "inferred", the command
+    /// "default", the default_command of a rule; "borrowed", the command
     /// of a unit nearby; "fallback", clice's own.
     std::string source;
 
-    /// The file whose command it borrows: a header's host, the unit an
-    /// inferred command comes from when the source is not one of the build
+    /// The file whose command it borrows: a header's host, the unit a
+    /// borrowed command comes from when the source is not one of the build
     /// yet (a saved source joined it with the command it borrowed).
     std::optional<std::string> from;
 
@@ -236,15 +236,11 @@ struct WorkerPids {
 };
 
 struct StatsResult {
-    /// pch_cache entries whose pch.idx index is currently open, and
+    /// PCH entries whose pch.idx index is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
-    /// by the loaded-state budget, not by every key ever touched.
-    std::uint32_t pch_loaded_states = 0;
-    std::uint64_t pch_state_bytes = 0;
-
-    /// Buffer text the PCH builder keeps for builds that may still run:
-    /// zero once every build finished and nobody waits on one.
-    std::uint64_t pch_stashed_bytes = 0;
+    /// by the loaded-index budget, not by every key ever touched.
+    std::uint32_t pch_loaded_indexes = 0;
+    std::uint64_t pch_index_bytes = 0;
 
     /// Shard blobs awaiting persistence (the indexer's dirty set — zero
     /// after a finished save), and the total mapped bytes of every loaded
@@ -304,8 +300,8 @@ struct RestartServerParams {
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
 /// Answers once the server has no work left: no other request of the
-/// editor unanswered, no compile, PCH or PCM build and no index round in
-/// flight or queued, a round's save included, and no removed folder still
+/// editor unanswered, no compile, PCH or PCM build and no index pass in
+/// flight or queued, a pass's save included, and no removed folder still
 /// shutting down. The metadata save that follows a build is not waited
 /// for; a test needing what is on disk stops the server. Absent from
 /// capabilities and user docs.
@@ -349,7 +345,7 @@ struct HoldResult {
 /// worker, where the work starts: the worker is busy with it (see
 /// BuildProbe::gate). `request` is the worker request's name as its crash
 /// tag spells it ("compile", "completion", "signatureHelp", "format",
-/// "buildPch", "tuRun", "hover"). The reply is a hold id:
+/// "buildPch", "compileUnit", "hover"). The reply is a hold id:
 /// clice/internal/held announces the park, clice/internal/release lets the
 /// work go on.
 struct GateParams {

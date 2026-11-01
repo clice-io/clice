@@ -32,7 +32,7 @@ std::vector<std::byte> write_fresh(const index::FileIndex& file_index, llvm::Str
 
 /// The focus file's worker-encoded blob, straight from the TU index.
 std::vector<std::byte> focus_blob() {
-    return copy_bytes(tu_index.shard_of(tu_index.path_count() - 1).bytes());
+    return copy_bytes(tu_index.shard_of(tu_index.focus_file()).bytes());
 }
 
 /// Owning wrap: from_bytes borrows, and every builder here returns

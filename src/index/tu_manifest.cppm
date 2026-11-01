@@ -52,6 +52,10 @@ struct TUManifest {
     /// WorkerScheduler).
     std::uint64_t peak = 0;
 
+    /// The identity of the command the TU was indexed under
+    /// (command_identity), 0 when none was given.
+    std::uint64_t command = 0;
+
     /// The TU's own file version.
     VersionID tu_version;
 

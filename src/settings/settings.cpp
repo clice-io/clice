@@ -141,6 +141,8 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         }
         *dir = CanonicalPath(*spelled).str();
     }
+    p.cache_identity =
+        p.cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(p.cache_dir));
 
     compiled_rules.clear();
     auto compile = [&](const Rule& rule) -> std::optional<CompiledRule> {
@@ -246,32 +248,6 @@ bool CompiledRule::matches(CanonicalRef path) const {
 
 bool CompiledRule::active_under(llvm::StringRef configuration) const {
     return this->configuration.empty() || this->configuration == configuration;
-}
-
-llvm::SmallVector<const CompiledRule*>
-    Settings::matching_rules(CanonicalRef path, llvm::StringRef configuration) const {
-    llvm::SmallVector<const CompiledRule*> result;
-    for(auto& rule: compiled_rules) {
-        if(rule.active_under(configuration) && rule.matches(path)) {
-            result.push_back(&rule);
-        }
-    }
-    return result;
-}
-
-llvm::SmallVector<Spelling> Settings::declared_databases(llvm::StringRef configuration) const {
-    llvm::SmallVector<Spelling> result;
-    for(auto& rule: compiled_rules) {
-        if(!rule.active_under(configuration)) {
-            continue;
-        }
-        for(auto& database: rule.compile_commands) {
-            if(!ranges::contains(result, database)) {
-                result.push_back(database);
-            }
-        }
-    }
-    return result;
 }
 
 llvm::SmallVector<llvm::StringRef> Settings::configurations() const {
@@ -511,8 +487,9 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     loaded.settings = layered;
     auto problems = loaded.settings.finalize(root);
     auto& cache_dir = loaded.settings.project.cache_dir;
+    const CanonicalPath& identity = loaded.settings.project.cache_identity;
     auto taken_here = [&] {
-        return ranges::contains(options.taken_cache_dirs, loaded.settings.project.cache_identity());
+        return ranges::contains(options.taken_cache_dirs, identity);
     };
     auto taken = [&] {
         return !cache_dir.empty() && (taken_here() || owned_elsewhere(cache_dir, root));
@@ -533,6 +510,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         if(taken()) {
             cache_dir.clear();
             loaded.settings.project.cache_dir_defaulted = false;
+            loaded.settings.project.cache_identity = {};
         }
         LOG_GUIDANCE("Cache directory {} {}; {} {}",
                      requested,

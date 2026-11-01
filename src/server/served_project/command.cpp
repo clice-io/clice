@@ -1,7 +1,6 @@
 module clice;
 
-import :project.command_resolver;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :server.master;
 import :server.served_project;
@@ -12,38 +11,25 @@ import :worker.scheduler;
 
 namespace clice {
 
-Resolution ServedProject::resolve_command(Fid path_id,
-                                          std::string& directory,
-                                          std::vector<std::string>& arguments,
-                                          const ContextChoice* candidate) {
-    auto resolution =
-        commands.resolve_command(path_id,
-                                 directory,
-                                 arguments,
-                                 {
-                                     .choice = candidate ? candidate : active_choice(path_id),
-                                     .open = true,
-                                 });
-    if(auto* document = find_document(path_id); document && !candidate) {
-        document->guessed = resolution.source == CommandSource::Inferred ||
-                            resolution.source == CommandSource::Fallback;
-    }
-    return resolution;
+Resolution ServedProject::resolve_command(Fid path_id, const ContextChoice* candidate) {
+    return project.resolve_command(path_id,
+                                   {
+                                       .choice = candidate ? candidate : active_choice(path_id),
+                                       .open = true,
+                                   });
 }
 
 async::task<Resolution> ServedProject::document_command(Fid path_id,
-                                                        std::string& directory,
-                                                        std::vector<std::string>& arguments,
                                                         const ContextChoice* candidate,
                                                         llvm::function_ref<bool()> current) {
-    auto resolution = resolve_command(path_id, directory, arguments, candidate);
+    auto resolution = resolve_command(path_id, candidate);
     llvm::SmallVector<UnitCommand, 2> taken;
     while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
         taken.push_back(resolution.missing_tree->key);
         if(!co_await take_include_tree(*resolution.missing_tree) || (current && !current())) {
             break;
         }
-        resolution = resolve_command(path_id, directory, arguments, candidate);
+        resolution = resolve_command(path_id, candidate);
     }
     co_return resolution;
 }
@@ -76,9 +62,9 @@ async::task<> ServedProject::run_include_tree(TreeRequest request,
     worker::IncludeTreeParams params;
     params.file = project.file_table.resolve(request.key.first).str();
     params.project_root = project.root.str();
-    params.directory = project.commands.get(command.command).directory;
-    auto rendered = project.toolchain.render(command, project.cdb.spelling(command.file));
-    params.arguments.assign(rendered.argv.begin(), rendered.argv.end());
+    auto rendered = project.render(command);
+    params.directory = std::move(rendered.directory);
+    params.arguments = std::move(rendered.arguments);
     params.hidden = std::move(rendered.hidden);
     auto result = co_await server.pool.send_stateless(params, worker::Priority::High);
     if(!result.has_value()) {
@@ -86,23 +72,22 @@ async::task<> ServedProject::run_include_tree(TreeRequest request,
         // A run that kills its worker would kill one per resolution; any
         // other failure is not the unit's.
         if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            commit_failed_tree(project, request);
+            project.commit_failed_tree(request);
         }
         co_return;
     }
     auto& tree = result.value();
     if(!tree.success) {
         LOG_INFO("No include tree for {}: {}", params.file, tree.error);
-        commit_failed_tree(project, request);
+        project.commit_failed_tree(request);
         co_return;
     }
-    commit_tree(project,
-                request,
-                tree.paths,
-                tree.content_hashes,
-                std::move(tree.nodes),
-                tree.deps,
-                tree.build_at);
+    project.commit_tree(request,
+                        tree.paths,
+                        tree.content_hashes,
+                        std::move(tree.nodes),
+                        tree.deps,
+                        tree.started_at);
 }
 
 const ContextChoice* ServedProject::active_choice(Fid path_id) const {
@@ -111,14 +96,14 @@ const ContextChoice* ServedProject::active_choice(Fid path_id) const {
 }
 
 Fid ServedProject::host_of(Fid path_id) {
-    if(auto* choice = active_choice(path_id); choice && choice->host_path_id.valid()) {
-        return choice->host_path_id;
+    if(auto* choice = active_choice(path_id); choice && choice->host.valid()) {
+        return choice->host;
     }
-    return clice::host_of(project, path_id);
+    return project.host_of(path_id);
 }
 
 const clang::LangOptions& ServedProject::dialect(Fid path_id) {
-    return clice::dialect(project, path_id, active_choice(path_id), host_of(path_id));
+    return project.dialect(path_id, active_choice(path_id));
 }
 
 }  // namespace clice

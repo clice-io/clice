@@ -1,17 +1,17 @@
 module clice;
 
 import :command.table;
-import :project.command_resolver;
-import :project.contexts;
-import :project.hosting;
+import :project.command;
 import :project.project;
 import :server.master;
 import :server.served_project;
+import :settings.rules;
+import :settings.settings;
 import :support.shell;
 import :unittests.server.served_project_fixture;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -23,7 +23,6 @@ TempDir tmp;
 ServedProjectFixture fx{tmp.root};
 ServedProject& served = *fx.served;
 Project& project = served.project;
-CommandResolver& commands = served.commands;
 MasterServer& server = fx.server;
 
 /// The user chose `choice` for `path_id` in the fixture's project, as
@@ -39,7 +38,7 @@ ServedProject& nested_project() {
     auto nested =
         std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(tmp.path("sub"))));
     server.projects.push_back(nested);
-    nested->project.request_flush = nullptr;
+    ServedProjectFixture::hold_flushes(*nested);
     return *nested;
 }
 
@@ -49,7 +48,8 @@ void saved(Project& owner, Fid path_id, const ContextChoice& choice) {
     std::pair<Fid, const ContextChoice*> choices[] = {
         {path_id, &choice}
     };
-    owner.choices.bytes = serialize_choices(owner, choices);
+    owner.save_choices(choices);
+    owner.choices.dirty = false;
 }
 
 ZEST_CASE(EditorSharesContext) {
@@ -67,53 +67,115 @@ ZEST_CASE(EditorSharesContext) {
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
 
-    // Its trial found it needs the includer's context.
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto first = commands.resolve_command(header, directory, arguments, {.preprocess = true});
-    ZASSERT(first.trial);
-    auto version = current_dep(project.file_table, header)->version;
-    project.hosting.trials.commit(*first.trial,
-                                  {.self_contained = false, .text = version, .disk = version},
-                                  {});
+    // Its self-containment check found it needs the includer's context.
+    auto first = project.resolve_command(header, {.preprocess = true});
+    ZASSERT(first.self_containment);
+    auto version = current_input(project.file_table, header)->version;
+    project.hosting.self_containment.commit(
+        *first.self_containment,
+        {.self_contained = false, .text = version, .disk = version},
+        {});
 
-    auto background = commands.resolve_command(header, directory, arguments);
-    ZASSERT(background.source == CommandSource::IncludeGraph);
+    auto background = project.resolve_command(header);
+    ZASSERT(background.ref.source == CommandSource::Host);
     ZASSERT(background.host == host);
     ZASSERT(background.synthesized != nullptr);
-    ZASSERT(ranges::contains(arguments, background.synthesized->prefix));
+    ZASSERT(ranges::contains(background.arguments, background.synthesized->prefix));
 
-    auto resolution = served.resolve_command(header, directory, arguments);
-    ZASSERT(resolution.source == CommandSource::IncludeGraph);
+    auto resolution = served.resolve_command(header);
+    ZASSERT(resolution.ref.source == CommandSource::Host);
     ZASSERT(resolution.synthesized == background.synthesized);
     ZASSERT(!project.choices.dirty);
 }
 
-ZEST_CASE(GuessedTracksEditorOnly) {
-    // A database change recompiles every open document whose command was
-    // guessed; background resolutions must neither set nor clear the mark.
+ZEST_CASE(MovedCommandRecompiles) {
+    // A database change recompiles an open document whose command moved —
+    // one that borrowed a command and gained its own entry — and no other.
     tmp.touch("lonely.cpp", "");
     tmp.touch("main.cpp", "");
-    auto path = tmp.path("lonely.cpp");
-    auto file = fx.open(path, "")->path_id;
-    std::string directory;
-    std::vector<std::string> arguments;
-
-    commands.resolve_command(file, directory, arguments);
-    ZASSERT(!fx.entry(file).guessed);
-
-    ZASSERT(served.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
-    ZASSERT(fx.entry(file).guessed);
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    auto lonely = fx.open(tmp.path("lonely.cpp"), "")->path_id;
+    auto main = fx.open(tmp.path("main.cpp"), "")->path_id;
+    // The documents compiled under what the editor resolves for them.
+    auto compiled = [&](Fid file) {
+        auto resolution = served.resolve_command(file);
+        fx.entry(file).latest =
+            std::make_shared<DocumentCompile>(DocumentCompile{.command = resolution.ref.command});
+        return resolution.ref.source;
+    };
+    ZASSERT(compiled(lonely) == CommandSource::Borrowed);
+    ZASSERT(compiled(main) == CommandSource::Database);
 
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
-                  {tmp.root, path, {}}
+                  {tmp.root, tmp.path("main.cpp"),   {}       },
+                  {tmp.root, tmp.path("lonely.cpp"), {"-DOWN"}},
     }));
-    commands.resolve_command(file, directory, arguments);
-    ZASSERT(fx.entry(file).guessed);
-    ZASSERT(served.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
-    ZASSERT(!fx.entry(file).guessed);
+    fx.commands_changed({.added = {lonely}});
+    ZASSERT(fx.entry(lonely).epoch != 0);
+    ZASSERT(fx.entry(main).epoch == 0);
+    ZASSERT(served.resolve_command(lonely).ref.source == CommandSource::Database);
+}
+
+ZEST_CASE(MovedHostRecompiles) {
+    // A header borrowing a unit's command gains a host compiling it under
+    // that very command: a member recorded beside it includes it. What the
+    // header compiles in moved, and it recompiles.
+    tmp.touch("lib/x.cpp", "int x() { return 0; }\n");
+    tmp.touch("lib/frag.h", "Ctx use();\n");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("lib/x.cpp"), {}}
+    }));
+    auto header = fx.open(tmp.path("lib/frag.h"), "Ctx use();\n")->path_id;
+    auto before = project.select_command(header, {.open = true});
+    ZASSERT(before.ref.source == CommandSource::Borrowed);
+    fx.entry(header).latest = std::make_shared<DocumentCompile>(
+        DocumentCompile{.host = before.host, .command = before.ref.command});
+
+    tmp.touch("lib/new.cpp", "struct Ctx {};\n#include \"frag.h\"\n");
+    auto member = fx.intern(tmp.path("lib/new.cpp"));
+    ZASSERT(project.record_provisional(member));
+    fx.commands_changed({});
+
+    auto after = project.select_command(header, {.open = true});
+    ZASSERT(after.host == member);
+    ZASSERT(after.ref.command == before.ref.command);
+    ZASSERT(fx.entry(header).epoch != 0);
+}
+
+ZEST_CASE(StaleHostChoiceKeepsUnit) {
+    // A unit whose chosen host no longer enters it compiles under its own
+    // entry, whatever other host ranks first.
+    tmp.touch("part.cpp", "int part;\n");
+    tmp.touch("chosen.cpp", "");
+    tmp.touch("ranked.cpp", "#include \"part.cpp\"\n");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("part.cpp"),   {"-DOWN"}   },
+                  {tmp.root, tmp.path("chosen.cpp"), {"-DCHOSEN"}},
+                  {tmp.root, tmp.path("ranked.cpp"), {"-DRANKED"}},
+    }));
+    auto part = fx.intern(tmp.path("part.cpp"));
+    auto chosen = fx.intern(tmp.path("chosen.cpp"));
+    auto ranked = fx.intern(tmp.path("ranked.cpp"));
+    project.dep_graph.set_includes(ranked, 0, {{part}});
+    project.dep_graph.build_reverse_map();
+    for(auto host: {chosen, ranked}) {
+        project.take_tree(project.tree_request(host, project.candidates(host).front()));
+    }
+
+    ContextChoice choice{.host = chosen};
+    auto resolution = project.resolve_command(part, {.choice = &choice});
+    ZEXPECT(resolution.ref.source == CommandSource::Database);
+    ZEXPECT(ranges::contains(resolution.arguments, "OWN"));
 }
 
 ZEST_CASE(ChoiceSteersEditorOnly) {
@@ -139,15 +201,11 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
     choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
 
     // An editor resolution honors the chosen CDB entry...
-    std::string directory;
-    std::vector<std::string> arguments;
-    served.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(chosen)));
+    ZASSERT(ranges::contains(served.resolve_command(file).arguments, define_of(chosen)));
 
     // ...but background indexing must never see user choices.
-    arguments.clear();
-    commands.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
+    ZASSERT(ranges::contains(project.resolve_command(file).arguments,
+                             define_of(candidates.front().command)));
 }
 
 ZEST_CASE(ChoiceBaseSurvivesRules) {
@@ -169,23 +227,64 @@ ZEST_CASE(ChoiceBaseSurvivesRules) {
     };
     auto chosen = candidates.back().command;
 
-    // A choice whose applied hash went stale (a rule edit since it was saved)
-    // but whose base identity is recorded still selects its candidate...
-    choose(file,
-           ContextChoice{Fid{},
-                         std::nullopt,
-                         "0123456789abcdef",
-                         project.commands.command_hash_hex(chosen)});
-    std::string directory;
-    std::vector<std::string> arguments;
-    served.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(chosen)));
+    // A choice of the command as written still selects its candidate after
+    // a rule edits every command since it was made...
+    choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
+    project.settings.rules.push_back(Rule{.append = {"-DRULED"}});
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    auto resolution = served.resolve_command(file);
+    ZASSERT(ranges::contains(resolution.arguments, "RULED"));
+    ZASSERT(ranges::contains(resolution.arguments, define_of(chosen)));
 
-    // ...while the same stale hash without a base falls back to the default.
-    choose(file, ContextChoice{Fid{}, std::nullopt, "0123456789abcdef", ""});
-    arguments.clear();
-    served.resolve_command(file, directory, arguments);
-    ZASSERT(ranges::contains(arguments, define_of(candidates.front().command)));
+    // ...while one naming no command falls back to the default.
+    choose(file, ContextChoice{Fid{}, std::nullopt, "0123456789abcdef"});
+    ZASSERT(ranges::contains(served.resolve_command(file).arguments,
+                             define_of(candidates.front().command)));
+}
+
+ZEST_CASE(ChoiceNamesWrittenCommand) {
+    // A choice names the command as the database writes it: the database
+    // changing only a flag a rule removes leaves the command the file
+    // compiles under as it was, and ends the choice all the same.
+    tmp.touch("main.cpp");
+    auto path = tmp.path("main.cpp");
+    project.settings.rules.push_back(Rule{.remove = {"-W*"}});
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    auto entries = [&](llvm::StringRef warning) {
+        write_cdb(tmp,
+                  project.cdb,
+                  build_cdb_json({
+                      {tmp.root, path, {"-DFIRST", warning.str()}},
+                      {tmp.root, path, {"-DSECOND"}              },
+        }));
+    };
+    auto file = fx.intern(path);
+    auto first = [&] {
+        auto own = project.candidates(file);
+        auto it = ranges::find_if(own, [&](const Candidate& candidate) {
+            return llvm::StringRef(print_argv(project.commands.render_full(candidate.base)))
+                .contains("FIRST");
+        });
+        ZASSERT(it != own.end());
+        return project.commands.command_hash(project.apply_rules(file, *it).command);
+    };
+
+    entries("-Wall");
+    auto listed = project.list_contexts(file);
+    auto item = ranges::find_if(listed, [](const ListedContext& item) {
+        return llvm::StringRef(item.label).contains("FIRST");
+    });
+    ZASSERT(item != listed.end());
+    ZASSERT(item->command_hash.has_value());
+    ContextChoice choice{Fid{}, std::nullopt, *item->command_hash};
+    ZASSERT(project.choice_holds(file, choice));
+    auto edited = first();
+
+    entries("-Wextra");
+    ZASSERT(first() == edited);
+    ZEXPECT(!project.choice_holds(file, choice));
 }
 
 ZEST_CASE(ValidChoiceStaysActive) {
@@ -203,7 +302,7 @@ ZEST_CASE(ValidChoiceStaysActive) {
     project.dep_graph.build_reverse_map();
     choose(header, ContextChoice{host, std::nullopt, ""});
 
-    ZASSERT(choice_holds(project, header, server.choice(header)->choice));
+    ZASSERT(project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
 }
@@ -229,8 +328,8 @@ ZEST_CASE(GoneOccurrenceGoesInactive) {
     // the choice holds until one does.
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
-    ZASSERT(!choice_holds(project, header, server.choice(header)->choice));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
+    ZASSERT(!project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);
 }
@@ -287,7 +386,7 @@ ZEST_CASE(HostReturnReactivates) {
     auto* entry = server.choice(header);
     ZASSERT(entry != nullptr);
     ZASSERT(!entry->active);
-    ZASSERT(entry->choice.host_path_id == host);
+    ZASSERT(entry->choice.host == host);
     ZASSERT(served.active_choice(header) == nullptr);
 
     write_cdb(tmp, project.cdb, with_host);
@@ -301,17 +400,17 @@ ZEST_CASE(DeeperChoiceWins) {
     // stands; the other's leaves its database at its next save.
     auto& inner = nested_project();
     auto header = fx.intern(tmp.path("sub/h.h"));
-    saved(project, header, ContextChoice{.command_hash = "outer"});
-    saved(inner.project, header, ContextChoice{.command_hash = "inner"});
+    saved(project, header, ContextChoice{.base = "outer"});
+    saved(inner.project, header, ContextChoice{.base = "inner"});
 
     server.load_choices(served);
     ZASSERT(server.choice(header)->project == &served);
     server.load_choices(inner);
     auto* entry = server.choice(header);
     ZASSERT(entry->project == &inner);
-    ZASSERT(entry->choice.command_hash == "inner");
+    ZASSERT(entry->choice.base == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(parse_choices(project, project.choices.bytes).empty());
+    ZASSERT(project.saved_choices().empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 
@@ -319,16 +418,16 @@ ZEST_CASE(ShallowerChoiceDropped) {
     // The deeper root's choice stands whichever project starts first.
     auto& inner = nested_project();
     auto header = fx.intern(tmp.path("sub/h.h"));
-    saved(project, header, ContextChoice{.command_hash = "outer"});
-    saved(inner.project, header, ContextChoice{.command_hash = "inner"});
+    saved(project, header, ContextChoice{.base = "outer"});
+    saved(inner.project, header, ContextChoice{.base = "inner"});
 
     server.load_choices(inner);
     server.load_choices(served);
     auto* entry = server.choice(header);
     ZASSERT(entry->project == &inner);
-    ZASSERT(entry->choice.command_hash == "inner");
+    ZASSERT(entry->choice.base == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(parse_choices(project, project.choices.bytes).empty());
+    ZASSERT(project.saved_choices().empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 

@@ -1,10 +1,11 @@
 module clice;
 
-import :settings.settings;
 import :index.peer_queries;
+import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
@@ -31,7 +32,8 @@ static ServedProject* deepest_holding(llvm::ArrayRef<std::shared_ptr<ServedProje
 }
 
 /// Add what `progress` counts to `into`.
-static void add_progress(IndexPump::Progress& into, const IndexPump::Progress& progress) {
+static void add_progress(BackgroundIndex::Progress& into,
+                         const BackgroundIndex::Progress& progress) {
     into.total += progress.total;
     into.completed += progress.completed;
     into.dispatched += progress.dispatched;
@@ -50,8 +52,10 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     }
     // Several databases listing the file (an outer folder discovers a
     // nested one's): the deepest project holding it wins, else the first.
+    // A provisional member is no listing: the project it was recorded in
+    // holds it until a database lists it.
     auto lists = [&](ServedProject& project) {
-        return !project.project.build.commands(path_id).empty();
+        return project.project.declared(path_id);
     };
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;
@@ -118,7 +122,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ServedProject& project) {
         // The rootless project opens no store.
-        auto cache_dir = project.project.settings.project.cache_identity();
+        auto cache_dir = project.project.settings.project.cache_identity;
         if(!project.project.root.empty() && !cache_dir.empty()) {
             dirs.push_back(std::move(cache_dir));
         }
@@ -286,7 +290,6 @@ void MasterServer::serve_folders() {
         serving.push_back(make_project(std::move(root)));
         // Nothing compiles or indexes under no build until it starts.
         serving.back()->loaded.reset();
-        serving.back()->sched.pump.pause_indexing();
         waiting_projects.push_back(serving.back().get());
         made.push_back(serving.back().get());
     }
@@ -328,7 +331,6 @@ void MasterServer::serve_folders() {
     projects_generation += 1;
     for(auto* project: starting) {
         project->start();
-        project->sched.pump.resume_indexing();
         // The documents it held while it waited.
         for(auto& [path_id, document]: documents) {
             if(document.owner == project) {
@@ -345,14 +347,13 @@ void MasterServer::serve_folders() {
     reroute();
     for(auto& project: leaving) {
         LOG_INFO("No longer serving project {}", project->project.root);
-        if(auto it = index_round.find(project.get()); it != index_round.end()) {
-            add_progress(ended_rounds, it->second);
-            index_round.erase(it);
+        if(auto it = index_pass.find(project.get()); it != index_pass.end()) {
+            add_progress(ended_passes, it->second);
+            index_pass.erase(it);
             fold_index_progress();
         }
         bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
             co_await project->shutdown();
-            project->sched.close();
         }(std::move(project)));
     }
     if(client) {
@@ -361,32 +362,32 @@ void MasterServer::serve_folders() {
 }
 
 void MasterServer::index_progress_changed(ServedProject& changed) {
-    using Stage = IndexPump::Progress::Stage;
-    // A stopping project's pump winds down outside the round.
+    using Stage = BackgroundIndex::Progress::Stage;
+    // A stopping project's background index winds down outside the pass.
     if(ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
-    auto& now = changed.sched.pump.progress();
-    auto it = index_round.find(&changed);
-    if(it == index_round.end()) {
+    auto& now = changed.project.background_index.progress();
+    auto it = index_pass.find(&changed);
+    if(it == index_pass.end()) {
         if(now.stage == Stage::End) {
             return;
         }
-        it = index_round.try_emplace(&changed).first;
+        it = index_pass.try_emplace(&changed).first;
     } else if(it->second.stage == Stage::End && now.stage != Stage::End) {
-        // Another round of a project whose last one ended within this one.
-        add_progress(ended_rounds, it->second);
+        // Another pass of a project whose last one ended within this one.
+        add_progress(ended_passes, it->second);
     }
     it->second = now;
     fold_index_progress();
 }
 
 void MasterServer::fold_index_progress() {
-    using Stage = IndexPump::Progress::Stage;
-    IndexPump::Progress all = ended_rounds;
+    using Stage = BackgroundIndex::Progress::Stage;
+    BackgroundIndex::Progress all = ended_passes;
     bool active = false;
     for(auto& one:
-        views::transform(index_round, [](auto& entry) -> auto& { return entry.second; })) {
+        views::transform(index_pass, [](auto& entry) -> auto& { return entry.second; })) {
         active = active || one.stage != Stage::End;
         add_progress(all, one);
     }
@@ -394,8 +395,8 @@ void MasterServer::fold_index_progress() {
         all.stage = index_progress.stage == Stage::End ? Stage::Begin : Stage::Report;
     } else {
         all.stage = Stage::End;
-        index_round.clear();
-        ended_rounds = {};
+        index_pass.clear();
+        ended_passes = {};
     }
     index_progress = all;
     if(client) {
@@ -404,17 +405,26 @@ void MasterServer::fold_index_progress() {
 }
 
 void MasterServer::watch_settings() {
+    std::vector<CanonicalPath> dirs(folders.begin(), folders.end());
+    for(auto& project: projects) {
+        auto more = project->configuration_dirs();
+        dirs.insert(dirs.end(),
+                    std::make_move_iterator(more.begin()),
+                    std::make_move_iterator(more.end()));
+    }
+    ranges::sort(dirs);
+    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
     std::vector<SettingsWatch> watches;
-    for(auto& folder: folders) {
-        if(auto it = ranges::find(settings_watches, folder, &SettingsWatch::folder);
+    for(auto& dir: dirs) {
+        if(auto it = ranges::find(settings_watches, dir, &SettingsWatch::dir);
            it != settings_watches.end()) {
             watches.push_back(std::move(*it));
             continue;
         }
         auto& watch = watches.emplace_back(SettingsWatch{
-            .folder = folder,
-            .file = {.path = path::join(folder, settings_file_names[0])},
-            .hidden = {.path = path::join(folder, settings_file_names[1])},
+            .dir = dir,
+            .file = {.path = path::join(dir, settings_file_names[0])},
+            .hidden = {.path = path::join(dir, settings_file_names[1])},
         });
         watch.file.look();
         watch.hidden.look();
@@ -439,7 +449,7 @@ void MasterServer::look_at_settings() {
         auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
         if(!in_use.stamp) {
             ask_restart({.message = std::format("The configuration file of {} was deleted",
-                                                files.display(watch.folder))});
+                                                files.display(watch.dir))});
             continue;
         }
         ask_restart({

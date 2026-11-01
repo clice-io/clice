@@ -7,13 +7,12 @@ import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
-import :project.command_resolver;
-import :project.hosting;
+import :project.command;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.task_graph;
+import :project.indexer;
 import :project.project;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.graph;
-import :sched.stack;
 import :server.session;
 import :settings.settings;
 import :support.anomaly;
@@ -39,9 +38,9 @@ struct ServedProjectFixture;
 
 }
 
-/// What a document's compile round waits on.
+/// What a document's compile attempt waits on.
 enum class CompilePhase : std::uint8_t {
-    /// No round runs.
+    /// No attempt runs.
     Idle,
     /// The command it compiles with.
     Command,
@@ -91,7 +90,7 @@ struct CompileOutput {
 /// reader that copied the shared_ptr may keep using it across suspension
 /// points.
 struct DocumentCompile {
-    /// Content key into Project.pch_cache for the PCH the document's parse
+    /// Content key into Project::pchs for the PCH the document's parse
     /// loads, if any: its preamble's, else the precompiled header the build
     /// declares for its command — or the preamble's whose build failed
     /// (pch_failed). The PCH itself is owned by Project (shared,
@@ -104,13 +103,18 @@ struct DocumentCompile {
     /// alone, if any: what a save of the document retries.
     bool pch_failed = false;
 
-    /// Content key into Project.pch_cache for the precompiled header the
+    /// Content key into Project::pchs for the precompiled header the
     /// build declares for the document's command, when the parse loads it:
     /// under its preamble's PCH, or as pch_key itself.
     std::optional<std::string> base_pch_key;
 
     /// The host whose command the compile borrowed; invalid for none.
     Fid host;
+
+    /// The command the compile ran under (SelectedCommand::ref): a change of the
+    /// members that moves the document's selection — its command or its
+    /// host — recompiles it.
+    CommandID command = invalid_command;
 
     /// The key of the PCH the parse loaded.
     const std::optional<std::string>& loaded_pch() const {
@@ -138,11 +142,11 @@ struct ServedDocument {
 
     /// Dependency snapshot from the last successful compile, used for
     /// staleness detection.
-    std::optional<DepsSnapshot> deps;
+    std::optional<Inputs> inputs;
 
     /// Whether the latest compile describes the current buffer: the last
     /// compile finished and no invalidation arrived since. Written by the
-    /// round's commit and by every invalidation.
+    /// attempt's commit and by every invalidation.
     bool current = false;
 
     /// Bumped by every invalidation of the document. A stateless build
@@ -153,12 +157,6 @@ struct ServedDocument {
 
     /// See ServingMode for the write discipline.
     ServingMode serving = ServingMode::Escalated;
-
-    /// The last resolution of the document's command borrowed or
-    /// synthesized it (Inferred, Fallback). A database change may give it a
-    /// real command or change its lender's, which the change's own delta
-    /// cannot tell: every change recompiles it.
-    bool guessed = false;
 };
 
 /// LSP's ContentModified: the request's answer would describe a buffer the
@@ -192,7 +190,7 @@ struct RouteOptions {
 
     /// The feature has no refresh request, so an empty reply to a cold
     /// document would be cached by the client for good — no signal ever
-    /// makes it re-pull. Await the didOpen boost once (bounded by one index
+    /// makes it re-pull. Await the didOpen index_first once (bounded by one index
     /// attempt) before answering Empty, and decide again from whatever
     /// source is there once it finishes: the shard, the escalated compile,
     /// or honestly empty under readonly "on".
@@ -218,8 +216,8 @@ Value empty_value() {
     }
 }
 
-/// One project the server serves: the project on disk and its scheduling
-/// stack over the process's worker pool, the open documents the master
+/// One project the server serves: the project on disk, which builds over
+/// the process's worker pool, the open documents the master
 /// routed to it, and everything the project derives for them. Its work is
 /// split in files: lifetime and adoption (served_project.cpp), compiling the
 /// open documents (compile.cpp), what answers a request on them now and
@@ -229,12 +227,28 @@ Value empty_value() {
 /// keeps a removed project alive until it completes.
 class ServedProject final :
     public index::LiveSources,
+    public ServingSide,
     public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing.
     ServedProject(MasterServer& server, CanonicalPath root);
     ~ServedProject();
+
+    std::size_t open_documents() const override {
+        return documents.size();
+    }
+
+    /// The index_first in decide_serving promised the index would serve the
+    /// cold document; an attempt that finishes without a servable shard ends
+    /// that promise — it escalates like the disabled-indexing branch, or the
+    /// document answers empty until its first edit.
+    void attempt_finished(Fid path_id) override;
+
+    /// Documents without a current file index serve these very shards
+    /// (freshness clause 4): the client asks again for what it pulled from
+    /// them.
+    void index_changed(llvm::ArrayRef<Fid> path_ids) override;
 
     // served_project.cpp
 
@@ -251,11 +265,8 @@ public:
     /// their serving decided now. A broken project starts nothing.
     void start();
 
-    /// Quiesce compile and index work and persist the final state; then
-    /// sched.close() releases the store — once the pool stopped at exit, or
-    /// right away for a project removed while the pool serves others (a
-    /// worker still finishing a cancelled build of it only fails its
-    /// write).
+    /// Quiesce the compiles, then the project's own shutdown: the background
+    /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
     /// The settings have errors: the project starts nothing, and the
@@ -283,16 +294,15 @@ public:
     /// about a document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
-    /// After the editor saved a file routed here: record a source of the
-    /// project the build does not declare as a provisional member
-    /// (Build::record), the build following it as a database reload would.
+    /// After the editor saved a file routed here: record it as a provisional
+    /// member (Project::record_provisional).
     void record_saved(Fid path_id);
 
     // compile.cpp
 
     /// Compile an open document's AST if it is not current: join the
-    /// document's round (spawning one if none is live) and retry through
-    /// stale attempts until a terminal outcome. Returns true when the
+    /// document's attempt (spawning one if none is live) and retry through
+    /// stale attempts until a terminal result. Returns true when the
     /// latest compile is current on return. A new generation of the
     /// document abandons the join — the editor re-requests after an edit,
     /// so the result would describe a buffer that no longer exists.
@@ -300,7 +310,7 @@ public:
 
     /// Start (or join) the document's compile detached — the caller keeps
     /// serving from the index until it finishes. The graph's
-    /// one-round-per-node discipline dedupes concurrent requests.
+    /// one-attempt-per-node discipline dedupes concurrent requests.
     void request_compile(std::shared_ptr<Session> session);
 
     /// The escalation triggers' single write point: flip an index-only
@@ -311,31 +321,31 @@ public:
     void escalate(Fid path_id);
 
     /// The document was edited: the latest compile is no longer current and
-    /// the in-flight round's result is void. Fires the round's advisory
+    /// the in-flight attempt's result is void. Fires the attempt's advisory
     /// token and cancels its compile over IPC, which interrupts the
-    /// worker's parse (the round still observes the real reply: crash
+    /// worker's parse (the attempt still observes the real reply: crash
     /// accounting depends on it); the document is compiled from now on
     /// (escalate).
     void edited(Session& session);
 
     /// The document compiles in another context now: a different
-    /// compilation identity. Supersede any in-flight compile and drop the
+    /// compilation identity. Make any in-flight compile outdated and drop the
     /// state earned under the old one — including the self-containment
-    /// trial, since a different host can change the macro environment.
+    /// check, since a different host can change the macro environment.
     void choice_changed(Session& session);
 
     /// A Lost-type invalidation (dependency changed on disk, worker crash,
     /// eviction — the buffer itself is unchanged): the latest compile is no
-    /// longer current and an in-flight round must not commit as such, but
-    /// its parse keeps running — the round publishes the product as bounded
+    /// longer current and an in-flight attempt must not commit as such, but
+    /// its parse keeps running — the attempt publishes the product as bounded
     /// staleness before reporting Stale.
     void invalidate(Fid path_id);
 
     /// didSave: every crashed kind of the document retries on its next
-    /// request, the artifacts it consumes included, and so do the ones
+    /// request, the PCH and PCMs it consumes included, and so do the ones
     /// whose build failed; a header found self-contained whose compile
     /// misses names, or has not finished, re-runs its self-containment
-    /// trial.
+    /// check.
     void retry_after_save(Session& session);
 
     /// The inputs of a stateless build carrying the document's buffer:
@@ -349,31 +359,29 @@ public:
     };
 
     /// The PCH key is adopted only while `ticket` and the document's epoch
-    /// snapshotted here, before the first suspension, hold: a supersede
-    /// bumps the generation, a Lost-type invalidation bumps only the epoch
+    /// snapshotted here, before the first suspension, hold: an edit or a choice
+    /// change bumps the generation, a Lost-type invalidation bumps only the epoch
     /// — either way the resolved command may describe a command that no
     /// longer exists, and adopting the key would hand the document's
     /// preamble features and staleness checks a PCH of another command.
-    /// This path runs no graph round it could ask instead. The inputs
+    /// This path runs no graph attempt it could ask instead. The inputs
     /// themselves follow `text`, the buffer the build sends, so a request
     /// that outlives its ticket still compiles against a PCH of its own
     /// preamble. False only when the graph shut down: an import that did
     /// not build is the compile's to report.
-    async::task<bool> prepare_stateless_inputs(const Ticket& ticket,
-                                               llvm::StringRef text,
-                                               std::uint32_t point,
-                                               const std::string& directory,
-                                               const std::vector<std::string>& arguments,
-                                               const Resolution& resolution,
-                                               StatelessInputs& inputs);
+    async::task<bool> prepare_precompiled(const Ticket& ticket,
+                                          llvm::StringRef text,
+                                          std::uint32_t point,
+                                          const Resolution& resolution,
+                                          StatelessInputs& inputs);
 
     /// What the document's compile read, one snapshot at a time: its own
-    /// deps, its header context's chain, its PCH's and those of the modules
+    /// inputs, its header context's chain, its PCH's and those of the modules
     /// it imports — of a module that failed to build, what the failure
-    /// rests on (Project::build_inputs). Both the staleness check and the
+    /// rests on (Project::module_inputs). Both the staleness check and the
     /// change handling's readers go through it: what a request finds
     /// changed and what a disk change reaches are the same files.
-    void each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const;
+    void each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const;
 
     /// A dispatch of `kind` killed a worker on the document's content:
     /// `death` is the death's identity (worker::death_of), `cause` how it
@@ -393,10 +401,10 @@ public:
     /// not retry now: the document has no AST to offer.
     bool compile_stopped(const Session& session) const;
 
-    /// Whether a round of the document is live: it will send a compile of
+    /// Whether an attempt of the document is live: it will send a compile of
     /// its own, so a lost worker-side AST needs no invalidation.
     bool compiling(Fid path_id) const {
-        return sched.graph.is_compiling(node(path_id));
+        return project.graph.is_compiling(node(path_id));
     }
 
     /// The document's latest compile, or null before its first compile.
@@ -431,12 +439,12 @@ public:
     /// Whether the file's escalated document holds text no background run
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
-    /// (TURunFamily::Plan::skipped_diagnostics).
-    bool lacks_skipped_diagnostics(Fid path_id) const;
+    /// (UnitRequest::skipped_diagnostics).
+    bool lacks_skipped_diagnostics(Fid path_id) const override;
 
     /// Interrupt every in-flight parse and wait for the detached compile
-    /// joins. The rounds themselves finish in TaskGraph::shutdown — the
-    /// interruption is what keeps that finish prompt (a round's stateful
+    /// joins. The attempts themselves finish in TaskGraph::shutdown — the
+    /// interruption is what keeps that finish prompt (an attempt's stateful
     /// send carries the interrupt, not its advisory token: contract 2 wants
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
@@ -444,13 +452,9 @@ public:
     // command.cpp
 
     /// The open document's command under its active context choice, or
-    /// under `candidate` instead, recording whether the command was borrowed
-    /// or guessed (but for a candidate's). Takes no include tree: the host
-    /// search runs on the trees there are.
-    Resolution resolve_command(Fid path_id,
-                               std::string& directory,
-                               std::vector<std::string>& arguments,
-                               const ContextChoice* candidate = nullptr);
+    /// under `candidate` instead. Takes no include tree: the host search runs
+    /// on the trees there are.
+    Resolution resolve_command(Fid path_id, const ContextChoice* candidate = nullptr);
 
     /// resolve_command again until the host search it runs misses no
     /// include tree, taking each tree it misses first from a worker, each
@@ -458,8 +462,6 @@ public:
     /// Stops with the tree missing when a run does not answer, or once
     /// `current` no longer holds.
     async::task<Resolution> document_command(Fid path_id,
-                                             std::string& directory,
-                                             std::vector<std::string>& arguments,
                                              const ContextChoice* candidate = nullptr,
                                              llvm::function_ref<bool()> current = {});
 
@@ -472,8 +474,7 @@ public:
 
     /// The dialect the server lexes an open file's text in, for the results
     /// computed from its index, hover's directive lookup and completion's
-    /// context checks: clice::dialect under the file's active choice and
-    /// host.
+    /// context checks: Project::dialect under the file's active choice.
     const clang::LangOptions& dialect(Fid path_id);
 
     // changes.cpp
@@ -512,6 +513,13 @@ public:
     /// has a command already, or it lies outside the root.
     void discover_around(Fid path_id);
 
+    /// The directories below the root whose configuration file decides what
+    /// the project loads (nested_project): each direct subdirectory, and
+    /// each one on the way down to a database it loads or waits for, a
+    /// provisional member or an open document, the ones the rule left out
+    /// among them.
+    std::vector<CanonicalPath> configuration_dirs() const;
+
     /// The ASTs a worker held of these documents are gone — it crashed, or
     /// evicted one: they compile again, with nothing of their inputs
     /// changed.
@@ -538,10 +546,10 @@ public:
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
 
     /// Whether an open document's own compile serves the file's index
-    /// (IndexPump::compiled_by_session): an escalated document's does,
+    /// (ServingSide::compiled_by_session): an escalated document's does,
     /// unless it skips the bodies of the headers — then only a background
     /// run shows what the skipped bodies hold (report_skipped_diagnostics).
-    bool compiled_by_session(Fid path_id) const;
+    bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -558,7 +566,7 @@ public:
     // records and finishes through one exit (finish).
 
     /// How the project serves the document of a ticket still fresh: a move
-    /// or a close supersedes every ticket of the document.
+    /// or a close makes every ticket of the document outdated.
     ServingMode serving_of(const Session& session) const;
 
     /// Whether the worker's AST can answer for this document right now:
@@ -584,11 +592,11 @@ public:
     /// (freshness clause 1 needs the finished file index), and lets
     /// index-served documents resolve through clauses 1/4 without forcing
     /// the build. A GateStop means answer with it instead: the compile
-    /// failed, or the request was superseded.
+    /// failed, or the request is outdated.
     async::task<std::optional<GateStop>> navigation_gate(const Ticket& ticket);
 
     /// Await the document's compile; a GateStop when it failed or the
-    /// request was superseded.
+    /// request is outdated.
     async::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
 
     /// The symbol under a position of the file's serving source, if any.
@@ -616,7 +624,7 @@ public:
         directive_links(const Ticket& ticket, async::cancellation_token token);
 
     /// Whether a dispatch of `kind` may reach a worker: its record does not
-    /// stop it — or, once an attempt holds it, `kind` did not crash during
+    /// stop it — or, once a Dispatch holds it, `kind` did not crash during
     /// its flight — and for a build that parses the document (`parses`),
     /// neither does the compile's or its preamble's. One check admits a
     /// dispatch, of every kind: before its inputs are prepared, and again
@@ -625,7 +633,7 @@ public:
     /// the same content meanwhile.
     bool admits(const Session& session,
                 feature::RequestKind kind,
-                const Session::Attempt* attempt,
+                const Session::Dispatch* dispatch,
                 bool parses) const;
 
     /// Ask the worker holding the document's AST: compile it if it is not
@@ -647,7 +655,7 @@ public:
 
     /// The interactive stateless builds (completion, signature help): the
     /// buffer and its compile inputs go to a stateless worker, which
-    /// compiles a buffer state the shared AST round may not have seen yet,
+    /// compiles a buffer state the shared AST attempt may not have seen yet,
     /// at `offset` of it. `params` arrives with the fields particular to its
     /// request filled in.
     template <typename Params>
@@ -672,12 +680,12 @@ public:
     /// dispatch the workers could not serve answers empty: the crash note on
     /// the document says why, and an error would only show as a client
     /// popup.
-    template <typename Outcome>
-    Outcome finish(const Ticket& ticket,
-                   feature::RequestKind kind,
-                   llvm::StringRef label,
-                   Outcome result,
-                   bool snapshot = false);
+    template <typename R>
+    R finish(const Ticket& ticket,
+             feature::RequestKind kind,
+             llvm::StringRef label,
+             R result,
+             bool snapshot = false);
 
     // live_sources.cpp: the open documents' own file indexes (current per
     // their latest compiles), the PCH overlays their preambles were
@@ -712,15 +720,11 @@ public:
 
     MasterServer& server;
 
+    /// Built over the server's pool, its runners set at construction —
+    /// nodes materialize on demand, so a module-free project pays nothing.
+    /// The background index is serving-neutral; the document-side policy is
+    /// installed into its hooks at construction.
     Project project;
-
-    CommandResolver commands{project};
-
-    /// The scheduling core the batch driver runs too, its builders
-    /// registered at construction — nodes materialize on demand, so a
-    /// module-free project pays nothing. The pump is serving-neutral; the
-    /// document-side policy is installed into its hooks at construction.
-    SchedulingStack sched;
 
     /// Problems found while reading the settings, kept so the client can
     /// publish them as diagnostics on the configuration file's URI, and the
@@ -732,14 +736,14 @@ private:
     friend struct testing::ServedProjectFixture;
 
     static NodeId node(Fid path_id) {
-        return {Family::AST, path_id.raw};
+        return {NodeKind::AST, path_id.raw};
     }
 
     // served_project.cpp
 
     /// Decide a freshly opened index-only document's serving: escalate one
-    /// that already diverged from its shard, or boost the file's background
-    /// indexing when nothing can serve it. Escalated documents need no
+    /// that already diverged from its shard, or index the file first in the
+    /// background when nothing can serve it. Escalated documents need no
     /// decision — builds are pull-driven.
     void decide_serving(ServedDocument& document);
 
@@ -749,18 +753,14 @@ private:
     /// index/writer_lock.cppm). The record is removed at shutdown.
     void start_control_listener();
 
-    /// Schedule a save carrying dirty artifact/context metadata; no-op
+    /// Schedule a save carrying dirty precompiled records or context choices; no-op
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
-    void schedule_metadata_flush();
+    void schedule_metadata_flush() override;
     async::task<> metadata_flush_task();
 
-    /// The periodic SchedulingStack::checkpoint().
+    /// The periodic Project::checkpoint().
     async::task<> checkpoint_task();
-
-    /// Drop pch_cache metadata for blobs the store's LRU evicted from
-    /// disk (see checkpoint_task).
-    void forget_evicted_pchs();
 
     /// The default-sources loop, poll_sources on the workspace poll's pace.
     /// Spawned by start() unless polling is off.
@@ -769,29 +769,30 @@ private:
     // compile.cpp
 
     /// A file the open document reads changed: its compile, its
-    /// self-containment trial and its stopped request kinds start over.
+    /// self-containment check and its stopped request kinds start over.
     void inputs_changed(Session& session);
 
-    /// One compile round; see run_round's comments for its obligations.
-    async::task<RoundOutcome> run_round(RoundContext& ctx, Fid path_id);
+    /// How to compile the open document: its AST node's work.
+    Work compile_work(Fid path_id);
 
-    /// The module-dependency phase of a round: resolve imports from the
-    /// round's buffer snapshot under the round's resolved command,
-    /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
-    /// (scanner truth — they must survive a failed compile or fixing an
-    /// import could never re-dirty this document), and wait on each
-    /// import through depend. Returns the imports, none when cancelled: an
-    /// import whose build failed is left to the parse, which reports it on
-    /// the import next to the file's own diagnostics; one whose build
-    /// crashed a worker also goes into the document's records, and is
-    /// refused until the document's record lets it retry.
-    async::task<std::optional<PCMBuilder::ModuleDeps>>
-        depend_modules(RoundContext& ctx,
-                       const Ticket& ticket,
-                       const Resolution& resolution,
-                       llvm::StringRef directory,
-                       const std::vector<std::string>& arguments,
-                       llvm::StringRef text);
+    /// One attempt of the document's compile; see its comments for its
+    /// obligations.
+    async::task<Result> compile(Attempt& attempt, Fid path_id);
+
+    /// The module-dependency phase of a compile: resolve imports from the
+    /// attempt's buffer snapshot under its resolved command, declare the
+    /// AST→PCM edges (scanner truth — they must survive a failed compile or
+    /// fixing an import could never re-dirty this document), and wait on
+    /// each import through depend. Returns the imports, none when the
+    /// attempt is overtaken: an import whose build failed is left to the
+    /// parse, which reports it on the import next to the file's own
+    /// diagnostics; one whose build crashed a worker also goes into the
+    /// document's records, and is refused until the document's record lets
+    /// it retry.
+    async::task<std::optional<Imports>> depend_modules(Attempt& attempt,
+                                                       const Ticket& ticket,
+                                                       const Resolution& resolution,
+                                                       llvm::StringRef text);
 
     /// Whose fault a worker death under the document's compile is, tried
     /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
@@ -803,59 +804,32 @@ private:
                          const std::optional<std::string>& consumed,
                          const ipc::Error& error);
 
-    /// What a buffer state owes the PCH builder: nothing (an empty preamble
+    /// What a buffer state owes the PCH build: nothing (an empty preamble
     /// with no injected prefix, or a module unit's global module fragment
     /// that imports — a previously adopted key must be cleared, unless the
     /// plan is partial), or the acquisition of `request`.
-    struct PCHPlan {
-        enum class Decision : std::uint8_t { None, Acquire };
-
-        Decision decision = Decision::None;
-
-        PCHBuilder::Request request;
-
-        /// The preamble ends before the text's own, at a completion's point:
-        /// what the request loads is its own, not the document's.
-        bool partial = false;
-    };
-
     /// The request for the precompiled header the build declares for the
     /// command `resolution` gave the document: the editor's build, skipping
-    /// function bodies, but for a modular parse (ModuleDeps::modular), which
+    /// function bodies, but for a modular parse (Imports::modular), which
     /// reads the index's, the one every PCM is built over.
-    std::optional<PCHBuilder::Request> declared_pch(Fid path_id,
-                                                    const Resolution& resolution,
-                                                    const PCMBuilder::ModuleDeps& imports);
+    std::optional<PCHRequest> declared_pch(Fid path_id,
+                                           const Resolution& resolution,
+                                           const Imports& imports);
 
-    /// `base` is the key of the precompiled header the build declares for
-    /// the command, built already; empty for none. `point` is where a
-    /// completion's parse stops: the preamble ends before the line holding
-    /// it, so the lines typed there keep the PCH of the lines above them.
-    PCHPlan plan_pch(Fid path_id,
-                     llvm::StringRef text,
-                     std::optional<std::uint32_t> point,
-                     const std::string& directory,
-                     const std::vector<std::string>& arguments,
-                     const Resolution& resolution,
-                     const PCMBuilder::ModuleDeps& imports,
-                     llvm::StringRef base);
-
-    /// Revalidate or build the preamble PCH of `text` through the builder,
+    /// Revalidate or build the preamble PCH of `text` through the project,
     /// over the precompiled header the build declares for the command, and
     /// adopt the key of what the request loads while the ticket and the
-    /// document's `epoch` hold (see prepare_stateless_inputs), but for a
+    /// document's `epoch` hold (see prepare_precompiled), but for a
     /// partial plan's. Returns the key the request compiles against,
     /// adopted or not; none when it compiles without a PCH.
     async::task<std::optional<std::string>> ensure_pch(const Ticket& ticket,
                                                        std::uint64_t epoch,
                                                        llvm::StringRef text,
                                                        std::optional<std::uint32_t> point,
-                                                       const std::string& directory,
-                                                       const std::vector<std::string>& arguments,
                                                        const Resolution& resolution,
-                                                       const PCMBuilder::ModuleDeps& imports);
+                                                       const Imports& imports);
 
-    /// The document's round moved on to `phase`: the client follows it.
+    /// The document's attempt moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
 
     /// The latest compile is no longer current: its epoch moves on.
@@ -880,7 +854,7 @@ private:
     /// (shown_skipped_diagnostics).
     void report_skipped_diagnostics(Fid path_id,
                                     std::uint64_t text_hash,
-                                    std::vector<feature::FileDiagnostic> diagnostics);
+                                    std::vector<feature::FileDiagnostic> diagnostics) override;
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -907,14 +881,14 @@ private:
                                    bool& unanswered);
 
     /// Send a stateless request of `kind` carrying the document's content,
-    /// which `attempt` holds from its first admission on: admitted again
+    /// which `dispatch` holds from its first admission on: admitted again
     /// once it has its slot and before every resend. `refused` reports one
     /// never sent. `parses`: see admits.
     template <typename Params>
     RequestResult<Params> send_stateless(const Ticket& ticket,
                                          feature::RequestKind kind,
                                          const Params& params,
-                                         const Session::Attempt& attempt,
+                                         const Session::Dispatch& dispatch,
                                          bool parses,
                                          async::cancellation_token token,
                                          bool& refused);
@@ -932,10 +906,11 @@ private:
 
     // changes.cpp
 
-    /// The databases' reloads `delta` reports changed the build: the
-    /// dependency graph follows, every file whose command came, changed or
-    /// went recompiles and reindexes, and routing follows.
-    void build_changed(CDBDiff delta);
+    /// The build's commands changed (`delta`, what databases' reloads report,
+    /// or none for a member just recorded): the project follows
+    /// (Project::update_members), every open document whose command moved
+    /// recompiles, and routing follows.
+    void commands_changed(CDBDiff delta);
 
     /// The end of every batch of changes: the context choices are checked
     /// again, the background index runs what the batch queued, and a client
@@ -945,7 +920,7 @@ private:
 
     /// Rescan the file's disk state (include edges, module maps). A module
     /// name the rescan gave its first provider cascades to the consumers
-    /// holding sentinel edges against it; a name the file stopped
+    /// holding unresolved-import edges against it; a name the file stopped
     /// providing cascades through the provider's real node instead.
     void rescan_disk_state(Fid path_id, bool& refresh);
 
@@ -964,7 +939,7 @@ private:
     void mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh);
 
     /// A module name just gained its first provider: cascade through its
-    /// sentinel node and route the dirtied consumers to recompiles and
+    /// unresolved-import node and route the dirtied consumers to recompiles and
     /// ContentChanged reindexes.
     void provider_appeared(llvm::StringRef module_name, bool& refresh);
 
@@ -1032,7 +1007,7 @@ private:
     /// its inputs have held the same other content for two consecutive
     /// ticks (or `force`), it reloads. A discovered database vanishing or
     /// returning flips its presence, and the files whose default entry
-    /// moves with it change command (see Build::source_order); its entries
+    /// moves with it change command (see Project::source_order); its entries
     /// keep serving meanwhile.
     void tick_database(WatchedDatabase& database, bool force, CDBDiff& delta);
 
@@ -1064,11 +1039,10 @@ private:
 
     bool metadata_flush_scheduled = false;
 
-    /// The pump's progress, relayed to the master, and its index changes.
+    /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
-    Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;
 
-    /// Detached ensure_compiled joins from request_compile; the rounds
+    /// Detached ensure_compiled joins from request_compile; the attempts
     /// live in the graph's task group.
     async::task_group<> started_compiles;
 
@@ -1125,12 +1099,12 @@ private:
     async::task_group<> bg_tasks;
 };
 
-template <typename Outcome>
-Outcome ServedProject::finish(const Ticket& ticket,
-                              feature::RequestKind kind,
-                              llvm::StringRef label,
-                              Outcome result,
-                              bool snapshot) {
+template <typename R>
+R ServedProject::finish(const Ticket& ticket,
+                        feature::RequestKind kind,
+                        llvm::StringRef label,
+                        R result,
+                        bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -1148,14 +1122,14 @@ Outcome ServedProject::finish(const Ticket& ticket,
     }
     // Answered or not, a stale request tells the client to re-pull.
     if(!ticket.fresh() && !snapshot) {
-        return Outcome{kotatsu::outcome_error(content_modified())};
+        return R{kotatsu::outcome_error(content_modified())};
     }
     if(!result.has_value()) {
         LOG_INFO("{} for {} answers empty: {}",
                  label,
                  project.file_table.resolve(session.path_id),
                  result.error().message);
-        return empty_value<typename Outcome::value_type>();
+        return empty_value<typename R::value_type>();
     }
     // The reply proves this kind on the DISPATCHED content answers; an edit
     // that arrived mid-flight must not clear the new content's record —
@@ -1187,9 +1161,9 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
     // A query that kills the worker is this document's doing even though
     // its compile finished: per-kind record, since only this query kind
     // answering clears it (see Session).
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
     bool compile = false;
-    auto& pool = sched.pool;
+    auto& pool = *project.pool;
     co_return co_await deliver(
         pool,
         true,
@@ -1198,7 +1172,7 @@ RequestResult<Params> ServedProject::send_ast(const Ticket& ticket,
                 if(std::exchange(compile, true) && !co_await ensure_compiled(ticket.session)) {
                     co_return unsent();
                 }
-                if(!admits(session, kind, &attempt, false)) {
+                if(!admits(session, kind, &dispatch, false)) {
                     co_return unsent();
                 }
                 auto result =
@@ -1274,16 +1248,16 @@ template <typename Params>
 RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
                                                     feature::RequestKind kind,
                                                     const Params& params,
-                                                    const Session::Attempt& attempt,
+                                                    const Session::Dispatch& dispatch,
                                                     bool parses,
                                                     async::cancellation_token token,
                                                     bool& refused) {
     auto& session = *ticket.session;
     auto admitted = [&] {
-        refused = !admits(session, kind, &attempt, parses);
+        refused = !admits(session, kind, &dispatch, parses);
         return !refused;
     };
-    auto& pool = sched.pool;
+    auto& pool = *project.pool;
     co_return co_await deliver(
         pool,
         false,
@@ -1314,7 +1288,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         LOG_DEBUG("{}: {} is stopped by a crash", label, path);
         co_return empty_value<Result>();
     }
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
 
     params.file = path;
     params.text = session.text().str();
@@ -1322,18 +1296,14 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
-    auto resolution = co_await document_command(path_id, params.directory, params.arguments);
+    auto resolution = co_await document_command(path_id);
+    params.directory = resolution.directory;
+    params.arguments = resolution.arguments;
     params.settings = project.settings;
 
     ScopedTimer timer;
     StatelessInputs inputs;
-    if(!co_await prepare_stateless_inputs(ticket,
-                                          params.text,
-                                          params.offset,
-                                          params.directory,
-                                          params.arguments,
-                                          resolution,
-                                          inputs)) {
+    if(!co_await prepare_precompiled(ticket, params.text, params.offset, resolution, inputs)) {
         co_await async::fail(
             ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }
@@ -1362,7 +1332,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // this one while it was prepared or waited for a worker, stops the
     // content: it is not dispatched again.
     bool refused = false;
-    auto result = co_await send_stateless(ticket, kind, params, attempt, true, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, dispatch, true, token, refused);
     if(refused) {
         LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
         if(!ticket.fresh() && !snapshot()) {

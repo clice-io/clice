@@ -2,9 +2,9 @@ module clice;
 
 import :feature.diagnostics;
 import :feature.hover;
-import :project.hosting;
-import :sched.builders.pcm;
-import :sched.graph;
+import :project.command;
+import :project.graph.pcm;
+import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
 import :server.session;
@@ -169,7 +169,7 @@ ZEST_CASE(ChoiceChangedResets) {
     compiled->base_pch_key = "base";
     compiled->output = CompileOutput{.version = 3};
     entry.latest = std::move(compiled);
-    entry.deps.emplace();
+    entry.inputs.emplace();
     entry.current = true;
     auto generation = session->generation;
 
@@ -180,7 +180,7 @@ ZEST_CASE(ChoiceChangedResets) {
     // until the next compile overwrites it.
     ZASSERT(session->generation == generation + 1);
     ZASSERT(!served.current(pid));
-    ZASSERT(!fixture.entry(pid).deps.has_value());
+    ZASSERT(!fixture.entry(pid).inputs.has_value());
     auto after = served.latest(pid);
     ZASSERT(!after->pch_key.has_value());
     ZASSERT(!after->base_pch_key.has_value());
@@ -308,7 +308,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 
         // Not served.shutdown(): it stops the compiles again, and a task
         // group is joined once.
-        co_await served.sched.graph.shutdown();
+        co_await served.project.graph.shutdown();
         co_await fixture.server.pool.stop();
         done = true;
     };
@@ -321,8 +321,8 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 }
 
 ZEST_CASE(EditInterruptsStaleCompile) {
-    // The didChange path: an edit with NO follow-up request supersedes the
-    // in-flight round — cancelling its compile request makes the worker
+    // The didChange path: an edit with NO follow-up request makes the
+    // in-flight round outdated — cancelling its compile request makes the worker
     // abandon the stale parse, the waiter resolves false (its result is
     // for a buffer that no longer exists — the editor re-requests after
     // an edit), and the next request compiles the fresh content. Liveness
@@ -386,8 +386,8 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(SupersededCompileCancelled) {
-    // An edit mid-compile supersedes the in-flight round: the first waiter
+ZEST_CASE(OutdatedCompileCancelled) {
+    // An edit mid-compile makes the in-flight round outdated: the first waiter
     // abandons (its buffer is gone), the edit interrupts the worker's
     // parse, and the second waiter's respawned round compiles the new
     // content. This pins the edit path's liveness; the interruption itself
@@ -502,8 +502,8 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(served.current(session->path_id));
     auto mod_ids = project.dep_graph.lookup_module("m");
     ZASSERT(!mod_ids.empty());
-    auto build = project.pcm_builds.find(mod_ids[0]);
-    ZASSERT(build != project.pcm_builds.end());
+    auto build = project.pcms.find(mod_ids[0]);
+    ZASSERT(build != project.pcms.end());
     ZEXPECT(!build->second.path.empty());
 }
 
@@ -560,11 +560,11 @@ ZEST_CASE(DiamondDepsDeduplicated) {
 
     auto top = project.dep_graph.lookup_module("top");
     ZASSERT(!top.empty());
-    auto entry = project.pcm_builds.find(top[0]);
-    ZASSERT(entry != project.pcm_builds.end());
+    auto entry = project.pcms.find(top[0]);
+    ZASSERT(entry != project.pcms.end());
     auto base = fixture.intern(tmp.path("base.cppm"));
-    auto& deps = entry->second.deps;
-    ZEXPECT(ranges::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) == 1);
+    auto& inputs = entry->second.inputs;
+    ZEXPECT(ranges::count_if(inputs, [&](const Input& dep) { return dep.file == base; }) == 1);
 }
 
 ZEST_CASE(ImportScanPerUnit) {
@@ -613,19 +613,18 @@ ZEST_CASE(ImportScanPerUnit) {
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        auto& pcm = served.sched.pcm;
         ZASSERT(co_await served.ensure_compiled(plain));
-        plain_scans = pcm.import_scans;
+        plain_scans = served.project.import_scans.runs;
         ZASSERT(co_await served.ensure_compiled(main));
-        first_scans = pcm.import_scans;
+        first_scans = served.project.import_scans.runs;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        body_scans = pcm.import_scans;
+        body_scans = served.project.import_scans.runs;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        import_scans = pcm.import_scans;
+        import_scans = served.project.import_scans.runs;
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -677,10 +676,10 @@ ZEST_CASE(BufferImportRecorded) {
     fixture.loop.run();
     ZEXPECT(done);
 
-    // The sentinel edge survives the commit: a first provider's update
+    // The unresolved-import edge survives the commit: a first provider's update
     // must reach this document's node.
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
-    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
+    ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -727,8 +726,8 @@ ZEST_CASE(IncludeImportRecorded) {
     fixture.loop.run();
     ZEXPECT(done);
 
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
-    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
+    ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -776,8 +775,8 @@ ZEST_CASE(HostImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
-    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
+    ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -825,8 +824,8 @@ ZEST_CASE(SuffixImportRecorded) {
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
-    auto dirtied = served.sched.graph.update(PCMBuilder::unresolved_node("m"));
-    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
+    ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -878,7 +877,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
     ZEXPECT(served.latest(header->path_id)->host == unit->path_id);
-    ZEXPECT(served.sched.pcm.import_scans == 0u);
+    ZEXPECT(served.project.import_scans.runs == 0u);
 }
 
 };  // ZEST_SUITE(CompileGuards)
@@ -1388,7 +1387,7 @@ ZEST_CASE(EpochGuardsPCHClear) {
         };
         co_await async::when_all(launch(), invalidate());
 
-        // The build finished (the shared artifact is cached) and the stale
+        // The build finished (the shared PCH is cached) and the stale
         // request compiles against it, but it adopted nothing and cleared
         // nothing.
         ZEXPECT(built);

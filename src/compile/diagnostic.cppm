@@ -39,10 +39,10 @@ struct DiagnosticID {
     std::string diagnostic_code() const;
 
     /// Whether this diagnostic reports a failure to read a prebuilt
-    /// artifact (PCH/PCM) — clang's "AST Deserialization Issue" category.
-    /// Messages in this family do not reliably carry the artifact path
+    /// PCH or PCM — clang's "AST Deserialization Issue" category.
+    /// Messages in this family do not reliably carry the file's path
     /// (e.g. "malformed or corrupted precompiled file: 'Blob ends too
-    /// soon'"), so consumers that must blame a specific artifact combine
+    /// soon'"), so consumers that must blame a specific PCH or PCM combine
     /// this with a path match over the inputs they passed.
     bool is_deserialization_error() const;
 };

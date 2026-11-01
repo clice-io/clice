@@ -487,8 +487,8 @@ export function registerCompilationContext(
         status,
         outline,
         // A compile of the active file can change what it compiles under —
-        // a trial's verdict, a choice the server dropped — and the listing
-        // with it; a save anywhere can change the listing.
+        // a self-containment check's result, a choice the server dropped —
+        // and the listing with it; a save anywhere can change the listing.
         vscode.languages.onDidChangeDiagnostics((event) => {
             const editor = vscode.window.activeTextEditor;
             if (

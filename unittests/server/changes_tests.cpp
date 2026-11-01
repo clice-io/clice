@@ -4,21 +4,22 @@ import :feature.diagnostics;
 import :index.shard;
 import :index.symbol;
 import :index.tu_manifest;
-import :project.hosting;
+import :project.command;
+import :project.graph.pcm;
+import :project.graph.task_graph;
+import :project.indexer;
 import :project.project;
-import :sched.builders.pcm;
-import :sched.graph;
-import :sched.index.pending_table;
 import :server.served_project;
 import :server.session;
 import :settings.settings;
 import :support.bytes;
 import :support.failure_record;
 import :unittests.server.served_project_fixture;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
+import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
@@ -57,16 +58,13 @@ struct Harness {
 
     /// The files the background index owes a reindex for `reason`, sorted.
     llvm::SmallVector<Fid> queued(ReindexReason reason) {
-        auto& pump = served.sched.pump;
-        auto debt = pump.save_debt();
-        auto files = ranges::to<llvm::SmallVector<Fid>>(
-            views::filter(debt, [&](Fid file) { return pump.pending_reason(file) == reason; }));
-        ranges::sort(files);
-        return files;
+        auto& queue = served.project.background_index.queue();
+        return ranges::to<llvm::SmallVector<Fid>>(
+            views::filter(IndexerFixture::pending_files(queue),
+                          [&](Fid file) { return queue.pending_reason(file) == reason; }));
     }
 
-    /// Give the unit an index of its own, which a change of its command
-    /// drops.
+    /// Give the unit an index of its own.
     void index_unit(Fid tu) {
         index::TUManifest manifest;
         manifest.built_at = 1;
@@ -80,12 +78,12 @@ ZEST_SUITE(Changes, Harness) {
 ZEST_CASE(EmptyBatchNoEffects) {
     served.disk_changed({});
 
-    ZASSERT(served.sched.pump.save_debt().empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()).empty());
 }
 
 ZEST_CASE(NewProviderDirtiesImporters) {
     // Consumers that scanned the name unresolved hold durable edges to
-    // its sentinel node; the first provider cascades through them. A
+    // its unresolved-import node; the first provider cascades through them. A
     // closed TU reindexes as ContentChanged (its dep snapshot never
     // named the interface, so the hash gate cannot see the change); an
     // open document recompiles. Nothing is ever dropped — a consumer
@@ -101,29 +99,30 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     project.dep_graph.build_reverse_map();
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
     auto iface = fixture.intern(tmp.path("m.cppm"));
-    auto closed = fixture.intern("/proj/closed.cpp");
+    auto closed = list_unit(project.cdb, "/proj/closed.cpp");
     auto open = fixture.open("/proj/open.cpp", "")->path_id;
     index_unit(closed);
-    served.sched.graph.declare({Family::TURun, closed.raw}, {PCMBuilder::unresolved_node("m")});
-    served.sched.graph.declare({Family::AST, open.raw}, {PCMBuilder::unresolved_node("m")});
+    served.project.graph.set_edges({NodeKind::Unit, closed.raw}, {unresolved_import("m")});
+    served.project.graph.set_edges({NodeKind::AST, open.raw}, {unresolved_import("m")});
 
     served.disk_changed({iface});
 
-    ZEXPECT(served.sched.pump.pending_reason(closed) == ReindexReason::ContentChanged);
+    ZEXPECT(served.project.background_index.queue().pending_reason(closed) ==
+            ReindexReason::ContentChanged);
     ZEXPECT(invalidated(open));
     ZEXPECT(project.index.indexed(closed));
 
     // The same save again: the name already has its provider.
-    served.sched.pump.clear_pending(closed);
+    served.project.background_index.forget(closed);
     auto epoch = fixture.entry(open).epoch;
     served.disk_changed({iface});
-    ZEXPECT(!served.sched.pump.pending_reason(closed).has_value());
+    ZEXPECT(!served.project.background_index.queue().pending_reason(closed).has_value());
     ZEXPECT(fixture.entry(open).epoch == epoch);
 }
 
 ZEST_CASE(ReloadProviderCascades) {
     // The database-reload variant of provider appearance: the provider-set
-    // diff drives the same sentinel cascade, and a consumer retired by the
+    // diff drives the same unresolved-import cascade, and a consumer removed from the build by the
     // very same reload leaves the index without a reindex being owed.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
@@ -134,14 +133,14 @@ ZEST_CASE(ReloadProviderCascades) {
                   {tmp.root, tmp.path("m.cppm"), {}}
     }));
     auto iface = fixture.intern(tmp.path("m.cppm"));
-    auto retired = fixture.intern(tmp.path("old.cpp"));
-    index_unit(retired);
-    served.sched.graph.declare({Family::TURun, retired.raw}, {PCMBuilder::unresolved_node("m")});
+    auto removed = fixture.intern(tmp.path("old.cpp"));
+    index_unit(removed);
+    served.project.graph.set_edges({NodeKind::Unit, removed.raw}, {unresolved_import("m")});
 
-    fixture.build_changed({.added = {iface}, .removed = {retired}});
+    fixture.commands_changed({.added = {iface}, .removed = {removed}});
 
-    ZEXPECT(!served.sched.pump.pending_reason(retired).has_value());
-    ZEXPECT(!project.index.indexed(retired));
+    ZEXPECT(!served.project.background_index.queue().pending_reason(removed).has_value());
+    ZEXPECT(!project.index.indexed(removed));
 }
 
 ZEST_CASE(DiskRemovedDropsProvider) {
@@ -159,8 +158,9 @@ ZEST_CASE(DiskRemovedDropsProvider) {
 
 ZEST_CASE(DiskChangeSparesSession) {
     TempDir tmp;
-    tmp.touch("a.h", "int x;");
-    auto saved = fixture.open(tmp.path("a.h"), "int x;", 1)->path_id;
+    tmp.touch("a.cpp", "int x;");
+    auto saved = list_unit(project.cdb, tmp.path("a.cpp"));
+    fixture.open(tmp.path("a.cpp"), "int x;", 1);
     project.file_table.disk.read(saved);
 
     served.disk_changed({saved});
@@ -172,16 +172,12 @@ ZEST_CASE(DiskChangeSparesSession) {
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {
-    auto mod = fixture.intern("/proj/m.cppm");
+    auto mod = list_unit(project.cdb, "/proj/m.cppm");
     auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
-    auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges PCMBuilder::declare_deps declares in production —
-    // no rounds.
-    auto node = [](Fid pid) {
-        return NodeId{Family::PCM, pid.raw};
-    };
-    served.sched.graph.declare(node(open_user), {node(mod)});
-    served.sched.graph.declare(node(closed_user), {node(mod)});
+    auto closed_user = list_unit(project.cdb, "/proj/closed_user.cppm");
+    // The edges their attempts declare in production — no attempt runs.
+    served.project.graph.set_edges(module_node(open_user), {module_node(mod)});
+    served.project.graph.set_edges(module_node(closed_user), {module_node(mod)});
 
     served.disk_changed({mod});
 
@@ -199,8 +195,8 @@ ZEST_CASE(ChainHitAndMiss) {
     auto hit = fixture.open("/proj/hit.h", "")->path_id;
     auto miss = fixture.open("/proj/miss.h", "")->path_id;
     // The chain files a header's context embeds are inputs of its compile.
-    fixture.entry(hit).deps = DepsSnapshot{DepState{.path_id = saved}};
-    fixture.entry(miss).deps = DepsSnapshot{DepState{.path_id = other}};
+    fixture.entry(hit).inputs = Inputs{Input{.file = saved}};
+    fixture.entry(miss).inputs = Inputs{Input{.file = other}};
 
     served.disk_changed({saved});
 
@@ -208,14 +204,13 @@ ZEST_CASE(ChainHitAndMiss) {
     // has an index of its own to rebuild.
     ZASSERT(invalidated(hit));
     ZASSERT(!invalidated(miss));
-    ZASSERT(queued(ReindexReason::DepsOnly).empty());
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{saved});
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()).empty());
 }
 
 ZEST_CASE(SaveMarksDependents) {
     auto header = fixture.intern("/proj/h.h");
     auto open_tu = fixture.open("/proj/a.cpp", "")->path_id;
-    auto closed_tu = fixture.intern("/proj/b.cpp");
+    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -224,16 +219,18 @@ ZEST_CASE(SaveMarksDependents) {
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
     // snapshots overlap fully here, so this also proves the dedup. A
-    // dependent's own content did not change: deps-only.
+    // dependent's own content did not change: deps-only. The header is no
+    // unit: it owes no reindex of its own.
     ZASSERT(invalidated(open_tu));
     ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{header});
+    ZASSERT(queued(ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(SkippedBodiesReindexOpen) {
     auto header = fixture.intern("/proj/h.h");
-    auto open_tu = fixture.open("/proj/a.cpp", "")->path_id;
-    auto closed_tu = fixture.intern("/proj/b.cpp");
+    auto open_tu = list_unit(project.cdb, "/proj/a.cpp");
+    fixture.open("/proj/a.cpp", "");
+    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -253,16 +250,16 @@ ZEST_CASE(SkippedBodiesReindexOpen) {
 ZEST_CASE(TransitiveDependentsEnqueue) {
     auto header = fixture.intern("/proj/h.h");
     auto middle = fixture.intern("/proj/g.h");
-    auto root = fixture.intern("/proj/c.cpp");
+    auto root = list_unit(project.cdb, "/proj/c.cpp");
     project.dep_graph.set_includes(middle, 0, {{header}});
     project.dep_graph.set_includes(root, 0, {{middle}});
     project.dep_graph.build_reverse_map();
 
     served.disk_changed({header});
 
-    // Only root TUs own index shards; the intermediate header is not one.
+    // Only root TUs own index shards; neither header is one.
     ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{root});
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{header});
+    ZASSERT(queued(ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(ForcedHeaderReachesUnits) {
@@ -271,7 +268,7 @@ ZEST_CASE(ForcedHeaderReachesUnits) {
     auto header = fixture.intern("/proj/h.h");
     auto forced = fixture.intern("/proj/force.h");
     auto open = fixture.open("/proj/a.cpp", "")->path_id;
-    auto closed = fixture.intern("/proj/b.cpp");
+    auto closed = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(forced, 0, {{header}});
     project.dep_graph.add_forced_include(open, forced);
     project.dep_graph.add_forced_include(closed, forced);
@@ -318,19 +315,20 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     TempDir tmp;
     tmp.touch("h.h", "int changed;");
     auto header = fixture.intern(tmp.path("h.h"));
-    auto removed = fixture.intern(tmp.path("gone.cpp"));
-    auto kept = fixture.intern(tmp.path("kept.cpp"));
+    auto removed = list_unit(project.cdb, tmp.path("gone.cpp"));
+    auto kept = list_unit(project.cdb, tmp.path("kept.cpp"));
     project.dep_graph.set_includes(removed, 0, {{header}});
     project.dep_graph.set_includes(kept, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    served.sched.pump.enqueue(removed, ReindexReason::ContentChanged);
+    served.project.background_index.enqueue(removed, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed);
 
     served.disk_changed({removed, header});
 
-    ZASSERT(!served.sched.pump.pending_reason(removed).has_value());
-    ZASSERT(served.sched.pump.pending_reason(kept) == ReindexReason::DepsOnly);
+    ZASSERT(!served.project.background_index.queue().pending_reason(removed).has_value());
+    ZASSERT(served.project.background_index.queue().pending_reason(kept) ==
+            ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(RescanKeepsGuardedProvider) {
@@ -393,8 +391,9 @@ ZEST_CASE(BatchChangesDeduplicate) {
     // The file exists: opening a document looks at it, and one seen
     // missing is a removal.
     TempDir tmp;
-    tmp.touch("a.h");
-    auto saved = fixture.open(tmp.path("a.h"), "")->path_id;
+    tmp.touch("a.cpp");
+    auto saved = list_unit(project.cdb, tmp.path("a.cpp"));
+    fixture.open(tmp.path("a.cpp"), "");
 
     served.disk_changed({saved, saved});
 
@@ -404,18 +403,18 @@ ZEST_CASE(BatchChangesDeduplicate) {
 ZEST_CASE(DiskChangeClosedCascades) {
     auto header = fixture.intern("/proj/h.h");
     auto open_tu = fixture.open("/proj/a.cpp", "")->path_id;
-    auto closed_tu = fixture.intern("/proj/b.cpp");
+    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
 
     served.disk_changed({header});
 
-    // A closed file's disk change cascades exactly like a save, plus the
-    // file's own stale shard is refreshed. The changed file's own index is
-    // untrustworthy; its dependent only rebuilds semantics.
+    // A closed file's disk change cascades exactly like a save: its
+    // dependent only rebuilds semantics, and the header, no unit, owes no
+    // reindex of its own.
     ZASSERT(invalidated(open_tu));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{header});
+    ZASSERT(queued(ReindexReason::ContentChanged).empty());
     ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
 }
 
@@ -423,13 +422,13 @@ ZEST_CASE(DiskChangeOpenCascades) {
     // Open or not, a disk change reaches every file reading the disk: the
     // open header's includers cascade now, not at its close, and only the
     // header's own document — whose compile reads its buffer — is spared.
-    // The header exists: opening a document looks at it, and one seen
-    // missing is a removal.
+    // The header, no unit, owes no reindex of its own. It exists: opening a
+    // document looks at it, and one seen missing is a removal.
     TempDir tmp;
     tmp.touch("h.h");
     auto header = fixture.open(tmp.path("h.h"), "")->path_id;
     auto open_tu = fixture.open(tmp.path("a.cpp"), "")->path_id;
-    auto closed_tu = fixture.intern(tmp.path("b.cpp"));
+    auto closed_tu = list_unit(project.cdb, tmp.path("b.cpp"));
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -438,7 +437,7 @@ ZEST_CASE(DiskChangeOpenCascades) {
 
     ZASSERT(invalidated(open_tu));
     ZASSERT(!invalidated(header));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{header});
+    ZASSERT(queued(ReindexReason::ContentChanged).empty());
     ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
 }
 
@@ -446,8 +445,8 @@ ZEST_CASE(CompiledIncluderCascades) {
     // An includer the lexical scan never saw (a macro include) but whose
     // indexed compile read the file is a dependent all the same.
     auto header = fixture.intern("/proj/m.h");
-    auto scanned = fixture.intern("/proj/a.cpp");
-    auto compiled = fixture.intern("/proj/b.cpp");
+    auto scanned = list_unit(project.cdb, "/proj/a.cpp");
+    auto compiled = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(scanned, 0, {{header}});
     project.dep_graph.set_includes(compiled, 0, {});
     project.dep_graph.build_reverse_map();
@@ -464,11 +463,11 @@ ZEST_CASE(CompiledIncluderCascades) {
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     ranges::sort(reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
-    // Until they are indexed again, what their runs walked is behind the
-    // disk — and the file's own, should it be a unit of its own.
-    ZEXPECT(IndexInternals::behind(project.index, compiled));
-    ZEXPECT(IndexInternals::behind(project.index, scanned));
-    ZEXPECT(IndexInternals::behind(project.index, header));
+    // Until they are indexed again, what their runs walked is outdated —
+    // and the file's own, should it be a unit of its own.
+    ZEXPECT(IndexInternals::outdated(project.index, compiled));
+    ZEXPECT(IndexInternals::outdated(project.index, scanned));
+    ZEXPECT(IndexInternals::outdated(project.index, header));
 }
 
 ZEST_CASE(ModuleReadHeaderCascades) {
@@ -476,18 +475,14 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     // no include edge names the importers, the unit's recorded inputs do.
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
-    auto user = fixture.intern("/proj/user.cpp");
-    served.sched.graph.declare(
-        NodeId{
-            Family::PCM,
-            user.raw
-    },
-        {NodeId{Family::PCM, mod.raw}});
-    project.pcm_builds[mod].deps.push_back({.path_id = header});
+    auto user = list_unit(project.cdb, "/proj/user.cpp");
+    served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
+    project.pcms[mod].inputs.push_back({.file = header});
 
     served.disk_changed({header});
 
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue().pending_reason(user) ==
+            ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(FailedModuleHeaderCascades) {
@@ -495,25 +490,22 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     // its importers hear of its change through its failure record.
     auto header = fixture.intern("/proj/gmf.h");
     auto mod = fixture.intern("/proj/m.cppm");
-    auto user = fixture.intern("/proj/user.cpp");
-    served.sched.graph.declare(
-        NodeId{
-            Family::PCM,
-            user.raw
-    },
-        {NodeId{Family::PCM, mod.raw}});
+    auto user = list_unit(project.cdb, "/proj/user.cpp");
+    served.project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
-    project.failures.pcm_builds.commit(mod, {.record = error}, {{.path_id = header}});
+    project.pcms[mod].failure = {{.record = error}, {{.file = header}}};
 
     ZASSERT(ranges::contains(served.readers(header), mod));
     served.disk_changed({header});
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue().pending_reason(user) ==
+            ReindexReason::DepsOnly);
 
-    served.sched.pump.clear_pending(user);
+    served.project.background_index.forget(user);
     project.file_table.disk.saw_missing(header);
     served.disk_changed({header});
-    ZASSERT(served.sched.pump.pending_reason(user) == ReindexReason::DepsOnly);
+    ZASSERT(served.project.background_index.queue().pending_reason(user) ==
+            ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(AppearedHeaderCascades) {
@@ -521,15 +513,15 @@ ZEST_CASE(AppearedHeaderCascades) {
     // indexed compile looked reindexes, the open document whose AST looked
     // recompiles.
     auto header = fixture.intern("/proj/gen.h");
-    auto closed = fixture.intern("/proj/b.cpp");
+    auto closed = list_unit(project.cdb, "/proj/b.cpp");
     auto open = fixture.open("/proj/a.cpp", "")->path_id;
     index::TUManifest manifest;
     manifest.built_at = 1;
     manifest.tu_version = project.file_table.intern_version(closed, 1);
     manifest.absent = {project.file_table.intern_version(header, 0)};
     project.index.apply_manifest(closed, std::move(manifest));
-    fixture.entry(open).deps = DepsSnapshot{
-        DepState{.path_id = header, .missing = true}
+    fixture.entry(open).inputs = Inputs{
+        Input{.file = header, .absent = true}
     };
 
     served.disk_changed({header});
@@ -540,15 +532,15 @@ ZEST_CASE(AppearedHeaderCascades) {
 
 ZEST_CASE(DiskRemovedScrubsSourceRole) {
     auto header = fixture.intern("/proj/h.h");
-    auto removed_tu = fixture.intern("/proj/gone.cpp");
-    auto other_tu = fixture.intern("/proj/kept.cpp");
+    auto removed_tu = list_unit(project.cdb, "/proj/gone.cpp");
+    auto other_tu = list_unit(project.cdb, "/proj/kept.cpp");
     project.dep_graph.set_includes(removed_tu, 0, {{header}});
     project.dep_graph.set_includes(other_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
     // A change observed just before the deletion.
-    served.sched.pump.enqueue(removed_tu, ReindexReason::ContentChanged);
+    served.project.background_index.enqueue(removed_tu, ReindexReason::ContentChanged);
     project.file_table.disk.saw_missing(removed_tu);
-    auto epoch = project.context_epoch;
+    auto epoch = project.context_epoch();
 
     served.disk_changed({removed_tu});
 
@@ -556,16 +548,16 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     // candidate); surviving includers are untouched, shards are kept.
     ZASSERT(project.dep_graph.get_includers(header) == llvm::ArrayRef<Fid>{other_tu});
     ZASSERT(project.dep_graph.get_all_includes(removed_tu).empty());
-    ZASSERT(project.context_epoch == epoch + 1);
+    ZASSERT(project.context_epoch() == epoch + 1);
     // The removal clears any pending-reindex state recorded earlier: the
     // shard keeps serving and nothing is left to reindex.
-    ZASSERT(served.sched.pump.save_debt().empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()).empty());
 }
 
 ZEST_CASE(RemoveRecreateOrder) {
     TempDir tmp;
     tmp.touch("a.cpp");
-    auto file = fixture.intern(tmp.path("a.cpp"));
+    auto file = list_unit(project.cdb, tmp.path("a.cpp"));
     project.dep_graph.set_includes(file, 0, {});
     project.dep_graph.build_reverse_map();
 
@@ -574,7 +566,7 @@ ZEST_CASE(RemoveRecreateOrder) {
     fs::remove_all(tmp.path("a.cpp"));
     project.file_table.disk.look(file);
     served.disk_changed({file});
-    ZASSERT(!served.sched.pump.pending_reason(file).has_value());
+    ZASSERT(!served.project.background_index.queue().pending_reason(file).has_value());
 
     // Delete then recreate (an editor's atomic save): the later change must
     // survive — the recreated file needs its reindex.
@@ -583,7 +575,8 @@ ZEST_CASE(RemoveRecreateOrder) {
     tmp.touch("a.cpp", "int a;");
     project.file_table.disk.look(file);
     served.disk_changed({file});
-    ZASSERT(served.sched.pump.pending_reason(file) == ReindexReason::ContentChanged);
+    ZASSERT(served.project.background_index.queue().pending_reason(file) ==
+            ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(CDBAddedScansAndEnqueues) {
@@ -598,13 +591,14 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     auto header_id = fixture.intern(tmp.path("inc/header.h"));
     index_unit(main_id);
 
-    fixture.build_changed({.added = {main_id}});
+    fixture.commands_changed({.added = {main_id}});
 
     // The rescan resolved the new entry's includes; the new file reindexes.
-    // A command change rewrites the index as thoroughly as an edit.
+    // A command change rewrites the index as thoroughly as an edit, and the
+    // old index serves until the reindex merges.
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{main_id});
-    ZASSERT(!project.index.indexed(main_id));
+    ZASSERT(project.index.indexed(main_id));
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 }
 
@@ -624,7 +618,7 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     IndexInternals::plant_shard(project.index, open_id, shard_of(""));
     IndexInternals::plant_shard(project.index, closed_id, shard_of(""));
 
-    fixture.build_changed({
+    fixture.commands_changed({
         .changed = {open_id, closed_id}
     });
 
@@ -636,81 +630,116 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     ZASSERT(queued(ReindexReason::ContentChanged) == reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 
-    // Both indexes were built under the old command and look fresh to
-    // content-only validation: dropped so the queued reindexes are not
-    // filtered out, here or after a restart. The shards themselves stay
-    // with the indexer, which masks and retires them off the manifests.
-    ZASSERT(!project.index.indexed(open_id));
-    ZASSERT(!project.index.indexed(closed_id));
+    // Both indexes were built under the old command: they serve until the
+    // reindexes merge, which no freshness check filters out — their
+    // manifests name the old command.
+    ZASSERT(project.index.indexed(open_id));
+    ZASSERT(project.index.indexed(closed_id));
     ZASSERT(project.index.shard(closed_id) != nullptr);
     ZASSERT(project.index.shard(open_id) != nullptr);
+    // What they walked under the old command no other unit may skip.
+    ZEXPECT(IndexInternals::outdated(project.index, open_id));
+    ZEXPECT(IndexInternals::outdated(project.index, closed_id));
 }
 
 ZEST_CASE(CDBAddedOpenMarksDirty) {
-    auto file = fixture.open("/proj/a.cpp", "")->path_id;
+    TempDir tmp;
+    tmp.touch("a.cpp");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}}
+    }));
+    auto file = fixture.open(tmp.path("a.cpp"), "")->path_id;
     index_unit(file);
 
-    fixture.build_changed({.added = {file}});
+    fixture.commands_changed({.added = {file}});
 
     // The open file gained its first real entry: drop the guessed command
     // it was compiled with, and queue the reindex that builds its shard
     // under the real command once open-file indexing is on.
     ZASSERT(invalidated(file));
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{file});
-    ZASSERT(!project.index.indexed(file));
+    ZASSERT(project.index.indexed(file));
     ZASSERT(queued(ReindexReason::DepsOnly).empty());
 }
 
 ZEST_CASE(CDBChangedDropsHostedContext) {
-    auto host = fixture.intern("/proj/host.cpp");
-    auto open_header = fixture.open("/proj/open.h", "")->path_id;
-    auto other_header = fixture.open("/proj/other.h", "")->path_id;
-    fixture.entry(open_header).latest =
-        std::make_shared<DocumentCompile>(DocumentCompile{.host = host});
-    fixture.entry(other_header).latest = std::make_shared<DocumentCompile>();
+    // The other header borrows the command of its sibling unit, which stays.
+    TempDir tmp;
+    tmp.touch("host.cpp", R"(#include "open.h")");
+    tmp.touch("open.h");
+    tmp.touch("other/other.cpp");
+    tmp.touch("other/other.h");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"),        {"-DBEFORE"}},
+                  {tmp.root, tmp.path("other/other.cpp"), {}          },
+    }));
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    auto host = fixture.intern(tmp.path("host.cpp"));
+    auto open_header = fixture.open(tmp.path("open.h"), "")->path_id;
+    auto other_header = fixture.open(tmp.path("other/other.h"), "")->path_id;
+    for(auto header: {open_header, other_header}) {
+        auto selection = project.select_command(header, {.open = true});
+        fixture.entry(header).latest = std::make_shared<DocumentCompile>(
+            DocumentCompile{.host = selection.host, .command = selection.ref.command});
+    }
+    ZASSERT(fixture.entry(open_header).latest->host == host);
     index_unit(host);
 
-    fixture.build_changed({.changed = {host}});
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"),        {"-DAFTER"}},
+                  {tmp.root, tmp.path("other/other.cpp"), {}         },
+    }));
+    fixture.commands_changed({.changed = {host}});
 
-    // The open header borrowing the changed entry compiled under a command
-    // that no longer exists: it recompiles. Only the host's index is
-    // dropped — no header has one of its own. Unrelated headers are
-    // untouched.
+    // The open header compiling in the changed entry compiled under a command
+    // that no longer exists: it recompiles. Only the host reindexes — no
+    // header has an index of its own. Unrelated headers are untouched.
     ZASSERT(invalidated(open_header));
     ZASSERT(!invalidated(other_header));
-    ZASSERT(!project.index.indexed(host));
+    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{host});
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
-    auto mod = fixture.intern("/proj/m.cppm");
-    auto open_user = fixture.open("/proj/open_user.cppm", "")->path_id;
-    auto closed_user = fixture.intern("/proj/closed_user.cppm");
-    // The consumer edges PCMBuilder::declare_deps declares in production —
-    // no rounds.
-    auto node = [](Fid pid) {
-        return NodeId{Family::PCM, pid.raw};
-    };
-    served.sched.graph.declare(node(open_user), {node(mod)});
-    served.sched.graph.declare(node(closed_user), {node(mod)});
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\n");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),           {}},
+                  {tmp.root, tmp.path("closed_user.cppm"), {}},
+    }));
+    auto mod = fixture.intern(tmp.path("m.cppm"));
+    auto open_user = fixture.open(tmp.path("open_user.cppm"), "")->path_id;
+    auto closed_user = fixture.intern(tmp.path("closed_user.cppm"));
+    // The edges their attempts declare in production — no attempt runs.
+    served.project.graph.set_edges(module_node(open_user), {module_node(mod)});
+    served.project.graph.set_edges(module_node(closed_user), {module_node(mod)});
     index_unit(mod);
 
-    fixture.build_changed({.changed = {mod}});
+    fixture.commands_changed({.changed = {mod}});
 
     // A module unit's flag change cascades through the compile graph
     // exactly like a content change: importers' PCMs went stale. The
     // unit itself is reached twice (its own entry changed AND the cascade
-    // dirtied its PCM); the pump's absorbing upgrade leaves it
+    // dirtied its PCM); the queue's absorbing upgrade leaves it
     // ContentChanged.
     ZEXPECT(invalidated(open_user));
     ZEXPECT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
-    ZEXPECT(!project.index.indexed(mod));
+    ZEXPECT(project.index.indexed(mod));
     ZEXPECT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
 }
 
 ZEST_CASE(DiskRemovedReindexesIncluders) {
     auto header = fixture.intern("/proj/h.h");
     auto open_tu = fixture.open("/proj/a.cpp", "")->path_id;
-    auto closed_tu = fixture.intern("/proj/b.cpp");
+    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -742,7 +771,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     auto kept_id = fixture.intern(tmp.path("kept.cpp"));
     index_unit(gone_id);
 
-    fixture.build_changed({.removed = {gone_id}});
+    fixture.commands_changed({.removed = {gone_id}});
 
     // The rebuild resolves includes from the surviving entries only. The
     // removed entry's index leaves: its database still loads and simply
@@ -755,15 +784,15 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
 
 ZEST_CASE(CDBRemovedStillCovered) {
     /// The entry left the database but a rule's default command still
-    /// covers the file: a command change, not a retirement — the index is
-    /// rebuilt under the default command instead of leaving.
+    /// covers the file: a command change, not a removal from the build — the index is
+    /// rebuilt under the default command instead of leaving, and serves until then.
     TempDir tmp;
     tmp.touch("gone.cpp", R"(int x;)");
     tmp.touch("kept.cpp", R"(int y;)");
     project.settings.rules.push_back(Rule{.default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto gone_id = fixture.intern(tmp.path("gone.cpp"));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
@@ -771,24 +800,24 @@ ZEST_CASE(CDBRemovedStillCovered) {
     write_cdb(tmp, project.cdb, json);
     index_unit(gone_id);
 
-    fixture.build_changed({.removed = {gone_id}});
+    fixture.commands_changed({.removed = {gone_id}});
 
-    ZASSERT(!project.index.indexed(gone_id));
+    ZASSERT(project.index.indexed(gone_id));
     ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{gone_id});
 }
 
 ZEST_CASE(CDBEmptyDeltaNoEffects) {
-    auto epoch = project.context_epoch;
+    auto epoch = project.context_epoch();
 
-    fixture.build_changed({});
+    fixture.commands_changed({});
 
-    ZASSERT(served.sched.pump.save_debt().empty());
-    ZASSERT(project.context_epoch == epoch);
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()).empty());
+    ZASSERT(project.context_epoch() == epoch);
 }
 
 ZEST_CASE(BatchDiskEventsDeduplicate) {
-    auto first = fixture.intern("/proj/a.h");
-    auto second = fixture.intern("/proj/b.h");
+    auto first = list_unit(project.cdb, "/proj/a.cpp");
+    auto second = list_unit(project.cdb, "/proj/b.cpp");
 
     served.disk_changed({first, first, second});
 
@@ -851,7 +880,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
         .project = &served,
     };
     auto generation = session->generation;
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
 
     fixture.entry(header).current = true;
     fixture.served->recheck_choices();
@@ -883,7 +912,7 @@ ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
         .choice = ContextChoice{host, 1, ""},
         .project = &served,
     };
-    take_tree(project, tree_request(project, host, project.build.commands(host).front()));
+    project.take_tree(project.tree_request(host, project.candidates(host).front()));
 
     fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);

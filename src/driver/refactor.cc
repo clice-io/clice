@@ -4,9 +4,7 @@ import :driver.driver;
 import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
-import :project.build;
 import :project.project;
-import :project.queries;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -189,14 +187,14 @@ int run_rename(const RenameOptions& opts) {
     }
     // The build tells a unit the index never reached from a file outside
     // the build, so the writer's load restores it.
-    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Build::Members);
+    auto opened = open_project(opts.where, opts.fresh, Project::OpenOptions::Load::Members);
     if(!opened) {
         return fail(std::move(opened.error()));
     }
     auto& project = (*opened)->project;
     auto& failed = (*opened)->failed;
     auto ctx = query_context(project);
-    EditableFiles editable_files(project.root, project.settings);
+    auto editable_files = project.editable_files();
     auto editable = [&](llvm::StringRef path) {
         return editable_files.editable(path);
     };
@@ -205,10 +203,10 @@ int run_rename(const RenameOptions& opts) {
                                           {
                                               .files = editable_files.sources(),
                                               .editable = editable,
-                                              .units_pending = units_pending(project),
+                                              .units_pending = project.units_pending(),
                                           });
     if(project.index.damaged()) {
-        return fail(damaged_index_error(project));
+        return fail(project.damaged_index_error());
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.
