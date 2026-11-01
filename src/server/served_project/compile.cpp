@@ -1209,6 +1209,7 @@ async::task<bool> ServedProject::prepare_precompiled(const Ticket& ticket,
         if(pch_key) {
             if(auto* pch = project.built_pch(*pch_key)) {
                 inputs.pch = {pch->path, pch->bound};
+                inputs.pch_key = std::move(*pch_key);
             }
         }
     }

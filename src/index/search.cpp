@@ -263,7 +263,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
 Completables completables(const IndexQuery& index,
                           llvm::StringRef prefix,
                           const CompletionScope& scope,
-                          Fid file,
+                          llvm::ArrayRef<std::shared_ptr<TUIndex>> pchs,
                           std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
@@ -319,7 +319,8 @@ Completables completables(const IndexQuery& index,
         /// A preamble's names, its own of internal linkage among them, are
         /// spelled through its own scopes.
         llvm::DenseMap<SymbolHash, llvm::SmallVector<SymbolInfo, 4>> preamble_scopes;
-        index.for_each_pch_index(file, [&](const TUIndex& pch) {
+        for(auto& pch_index: pchs) {
+            auto& pch = *pch_index;
             auto found = pch.names().search(query, limit * 8, [](std::uint32_t) { return false; });
             for(auto& hit: found.hits) {
                 if(!seen.insert(hit.hash).second) {
@@ -338,7 +339,7 @@ Completables completables(const IndexQuery& index,
                 }
             }
             ranked.exhausted = ranked.exhausted && found.exhausted;
-        });
+        }
         ranges::sort(ranked.hits, ranked_before);
 
         exhausted = ranked.exhausted;

@@ -8,6 +8,7 @@ module clice:index.search;
 import :index.query;
 import :index.symbol;
 import :index.symbol_query;
+import :index.tu_index;
 import :support.prelude;
 
 namespace clice::index {
@@ -45,11 +46,11 @@ struct CompletionScope {
     }
 };
 
-/// The names `prefix` matches that completion in `file` may offer from
-/// `scope` — names of namespaces and unscoped enumerators
-/// (SymbolFlags::Completable) — best first, at most `limit`: the
-/// project's and the open buffers' linked across files, and every one of
-/// `file`'s preamble. An empty prefix takes the names used most. After a
+/// The names `prefix` matches that completion may offer from `scope` —
+/// names of namespaces and unscoped enumerators (SymbolFlags::Completable)
+/// — best first, at most `limit`: the project's and the open buffers'
+/// linked across files, and every one of `pchs`, the indexes of the PCHs
+/// the completing compile loads. An empty prefix takes the names used most. After a
 /// qualifier, its scopes' own names come first, then those of any other
 /// scope, which a using-declaration or using-directive there may bring
 /// in. Whether the limit cut each short.
@@ -62,7 +63,7 @@ struct Completables {
 Completables completables(const IndexQuery& index,
                           llvm::StringRef prefix,
                           const CompletionScope& scope,
-                          Fid file,
+                          llvm::ArrayRef<std::shared_ptr<TUIndex>> pchs,
                           std::uint32_t limit);
 
 /// The symbols a locator query names: by id; by place — the symbol

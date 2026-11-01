@@ -853,6 +853,12 @@ struct Project {
     /// enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
+    /// The indexes naming what a compile loading the PCH of `pch_key` reads
+    /// from PCHs: its own, then that of the precompiled header it is built
+    /// over, as its own indexes only what the preamble adds. None when one
+    /// is unreadable.
+    std::vector<std::shared_ptr<index::TUIndex>> pch_indexes(llvm::StringRef pch_key);
+
     /// Forget the entries whose pairs the store's LRU evicted from disk (inside
     /// a commit, maybe on a worker thread), or the content-keyed map grows
     /// for the server's lifetime even for keys never requested again.

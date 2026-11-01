@@ -168,7 +168,6 @@ void LSPClient::register_editing() {
         auto positions = session->positions();
         vfs::Scope scope(files.dirs);
         auto start = feature::start_completion({
-            .file = path_id,
             .path = resolved,
             .text = session->text(),
             .positions = positions,
@@ -178,10 +177,8 @@ void LSPClient::register_editing() {
             .dialect = project.dialect(path_id),
             .options = settings.code_completion,
             .client = completion_client,
-            .query = query,
             .graph = project.project.dep_graph,
             .files = files,
-            .pch = project.preamble_pch_file(path_id),
             .search = [&] { return project.search_of(path_id); },
             .scope = scope,
         });
@@ -192,6 +189,13 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
+        auto offer = [&](worker::CompletionParams& completion, llvm::StringRef pch_key) {
+            feature::offer_names(query,
+                                 project.project.dep_graph,
+                                 project.project.pch_indexes(pch_key),
+                                 compile);
+            completion.names = compile;
+        };
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -200,9 +204,9 @@ void LSPClient::register_editing() {
                                              worker::CompletionParams{
                                                  .client = completion_client,
                                                  .encoding = encoding,
-                                                 .names = compile,
                                              },
-                                             ctx.cancellation)
+                                             ctx.cancellation,
+                                             offer)
                           .or_fail();
         if(!result.include) {
             co_return std::move(result.list);

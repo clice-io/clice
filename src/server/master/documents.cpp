@@ -294,12 +294,4 @@ std::shared_ptr<index::TUIndex> OpenDocuments::preamble_index(Fid file) const {
     return project ? project->preamble_index(file) : nullptr;
 }
 
-void
-    OpenDocuments::for_each_pch_index(Fid file,
-                                      llvm::function_ref<void(const index::TUIndex&)> visit) const {
-    if(auto* project = owner(file)) {
-        project->for_each_pch_index(file, visit);
-    }
-}
-
 }  // namespace clice

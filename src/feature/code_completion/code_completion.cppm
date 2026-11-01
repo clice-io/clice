@@ -5,6 +5,7 @@ import :compile.compilation;
 import :feature.documentation;
 import :index.query;
 import :index.search;
+import :index.tu_index;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
@@ -168,14 +169,13 @@ struct CompileCompletion {
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares: the compile reads no others of them (clang's
     /// LoadExternal off), none after a member access. Not where the index names
-    /// nothing, as in a directive, nor where no index of the document's PCH
-    /// is at hand: the compile reads them all then.
+    /// nothing, as in a directive, nor where the compile loads no PCH whose
+    /// index is at hand: the compile reads them all then.
     bool from_index = false;
 
-    /// The PCH whose index named the candidates: a compile behind another
-    /// one, as after an include added since or a header edited, reads all
-    /// of its names. None after a member access.
-    std::string pch;
+    /// The name typed so far, whose candidates offer_names takes; none
+    /// after a member access and where no name is typed.
+    std::optional<std::string> prefix;
 
     /// Where the name being typed is looked up, with from_index.
     index::CompletionScope scope;
@@ -212,13 +212,14 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 /// The most names one completion offers from the index (ScopeCandidate).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The names the index offers where `typed` is completed in `file`
-/// (ScopeCandidate), into `compile`, with whether it holds more.
-void scope_candidates(const index::IndexQuery& query,
-                      const DependencyGraph& graph,
-                      const TypedName& typed,
-                      Fid file,
-                      CompileCompletion& compile);
+/// The names the index offers where `compile` completes (ScopeCandidate),
+/// with whether it holds more: the project's and those of `pchs`, the
+/// indexes of the PCHs the compile loads, which stand in for the rest of
+/// their names when there are any (from_index).
+void offer_names(const index::IndexQuery& query,
+                 const DependencyGraph& graph,
+                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> pchs,
+                 CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring
@@ -271,9 +272,8 @@ auto module_completion(const CompletionName& completing,
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The file completed in, as the project names it, its path and text,
-    /// and the point completed at in the client's encoding.
-    Fid file;
+    /// The path and text of the file completed in, and the point completed
+    /// at in the client's encoding.
     llvm::StringRef path;
     llvm::StringRef text;
     const PositionMap& positions;
@@ -289,15 +289,9 @@ struct CompletionInputs {
     const CodeCompletionOptions& options;
     const CompletionClient& client;
 
-    /// The project: the index offers the names of other scopes, the
-    /// dependency graph the module names.
-    const index::IndexQuery& query;
+    /// The project: the dependency graph names the modules.
     const DependencyGraph& graph;
     FileTable& files;
-
-    /// The PCH whose index the query serves for the file's preamble; empty
-    /// for none.
-    std::string pch;
 
     /// The header search of the file's command, asked only where an
     /// include path is completed.
@@ -319,8 +313,8 @@ using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, Com
 /// `import ` opens module suggestions, the others for include paths and
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
-/// other code by a compile, with the names the index offers where a name
-/// is typed.
+/// other code by a compile, which offer_names gives the index's names once
+/// the PCH it loads is known.
 auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
 
 }  // namespace clice::feature
