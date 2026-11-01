@@ -28,7 +28,7 @@ Build systems (CMake, Ninja, etc.) are naturally suited for this kind of DAG sch
 
 In clangd, C++20 module support has long been in an experimental stage, lacking dedicated design. [clangd/clangd#1293](https://github.com/clangd/clangd/issues/1293) is the clangd team's summary of the module support problem — concluding that "these are not just bugs that can be fixed, a design and new infrastructure is needed," and at the time "nobody has plans/availability to work on this soon." Years later, related issues continue to appear: [clangd/clangd#2569](https://github.com/clangd/clangd/issues/2569) lists critical missing features in modules (rename, find references, etc.); [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292) and [clangd/clangd#2497](https://github.com/clangd/clangd/issues/2497) report file-locking conflicts caused by clangd sharing PCM files with the build system — clangd holds the PCM open, preventing the build system from overwriting it.
 
-The common root cause of these problems is the lack of a compilation scheduling system designed for language server use cases. clice addresses this with a general **compile task graph**: every expensive build product — module PCMs, preamble PCHs, document ASTs, one-shot batch runs — is a node in one graph, with lazy construction, on-demand compilation, real-time cooperative cancellation, and dependency cascading. Modules are the richest client of the graph, and this page uses them as the running example.
+The common root cause of these problems is the lack of a compilation scheduling system designed for language server use cases. clice addresses this with a general **compile task graph**: every expensive build product — module PCMs, preamble PCHs, document ASTs, one unit's compile for its index or its lint — is a node in one graph, with lazy construction, on-demand compilation, real-time cooperative cancellation, and dependency cascading. Modules are the richest client of the graph, and this page uses them as the running example.
 
 ## Design
 
@@ -88,7 +88,7 @@ Cancellation is advisory, never destructive. Dropping interest to zero (or overt
 
 ### Dirty State and Generation Counter
 
-Each node uses a dirty flag to indicate that a rebuild is needed. The generation counter is a monotonically increasing value, incremented on each file update, used to detect asynchronous races: the build records the current generation at start and compares upon completion — a mismatch means the file was modified during compilation, and the result is stale.
+Each node uses a dirty flag to indicate that a rebuild is needed. The generation counter is a monotonically increasing value, incremented by each invalidation that reaches the node unless its running attempt has not read the change, used to detect asynchronous races: the build records the current generation at start and compares upon completion — a mismatch means something it read changed during compilation, and the result is stale.
 
 ### Dependencies
 
@@ -139,7 +139,7 @@ This handles the scenario where a compilation request is superseded. When the us
 When a module file is saved (didSave), the graph performs a cascading update:
 
 1. Mark the saved file's node dirty, increment its generation counter, and overtake any attempt in flight
-2. Traverse all transitive dependents along reverse edges — both the edges of earlier attempts and the waits of attempts still in flight; for each affected node: overtake its running attempt, mark dirty, increment generation
+2. Traverse all transitive dependents along reverse edges — both the nodes' edges and the waits of attempts still in flight; mark each affected node dirty, and overtake its running attempt (incrementing its generation) only if that attempt has received the product of the node the traversal reached it from: one still waiting for that product has read nothing of the old one, and gets the fresh one
 3. Each affected module's next attempt checks its last build again — its key and its inputs — and keeps it when both still hold; a consumer never reads a PCM whose module is dirty
 
 Forward edges are left untouched: the saved file's next attempt rescans its `import` declarations and replaces them, so an import removed by the edit stops cascading only after that rescan. Cascading updates do not modify interest — existing waiters retain theirs, and a waiter that wants a result drives a fresh attempt after a stale one.
