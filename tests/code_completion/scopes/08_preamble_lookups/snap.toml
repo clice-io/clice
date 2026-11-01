@@ -375,6 +375,36 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
+[default.absolute_macro_qualifier.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
 [default.arrow_after_call.completion]
 items = [
     { label = "helper_field", kind = "Field", detail = "int", insert = "helper_field" },
@@ -708,6 +738,36 @@ items = [
 ]
 
 [configured.macro_qualifier.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
+[configured.absolute_macro_qualifier.completion]
 items = [
     {
         label = "helper_hidden(int x)",
