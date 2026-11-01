@@ -1,0 +1,23 @@
+[answers.through_macro.completion]
+items = [
+    { label = "get() const", kind = "Method", detail = "int", insert = "get()" },
+    { label = "held", kind = "Field", detail = "int", insert = "held" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.arguments_follow.completion]
+items = [
+    { label = "get() const", kind = "Method", detail = "int", insert = "get" },
+    { label = "held", kind = "Field", detail = "int", insert = "held" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.dependent_type.completion]
+items = [
+    { label = "Holder", kind = "Class", insert = "Holder" },
+    { label = "get() const", kind = "Method", detail = "int", insert = "get" },
+    { label = "held", kind = "Field", detail = "int", insert = "held" },
+    { label = "value_type", kind = "TypeParameter", insert = "value_type" },
+    { label = "operator=(…) +1 overload", kind = "Method", insert = "operator=" },
+    { label = "~Holder()", kind = "Method", detail = "void", insert = "~Holder" },
+]

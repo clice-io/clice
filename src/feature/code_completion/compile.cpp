@@ -5,7 +5,7 @@ import :feature.code_actions;
 import :feature.code_completion.item;
 import :feature.code_completion;
 import :feature.documentation;
-import :semantic.decls;
+import :index.search;
 import :semantic.display;
 import :semantic.resolver;
 import :support.fuzzy_matcher;
@@ -753,235 +753,200 @@ struct CollectedItem {
     const clang::NamedDecl* documented = nullptr;
 };
 
-/// A compile of the whole buffer a completion runs on, for what only the
-/// code after the completion point tells: what a template there is
-/// instantiated with. Run at most once, when asked.
-class WholeBuffer {
-public:
-    explicit WholeBuffer(const CompilationParams& completion) :
-        input(completion.input), skip_bodies(completion.skip_bodies), stop(completion.stop) {}
-
-    CompilationUnit& unit() {
-        if(!compiled) {
-            compiled = compile({.kind = CompilationKind::Content,
-                                .input = input,
-                                .skip_bodies = skip_bodies,
-                                .stop = stop});
+/// The namespace a qualifier names at the point, through aliases; null for
+/// another scope, whose names Sema reads whole regardless.
+clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::CompletionScope& scope) {
+    auto& ast = sema.getASTContext();
+    auto as_namespace = [](const clang::LookupResult& found) -> clang::DeclContext* {
+        if(!found.isSingleResult()) {
+            return nullptr;
         }
-        return *compiled;
+        auto* decl = found.getFoundDecl()->getUnderlyingDecl();
+        if(auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(decl)) {
+            return alias->getNamespace();
+        }
+        return llvm::dyn_cast<clang::NamespaceDecl>(decl);
+    };
+    llvm::ArrayRef<std::string> names = scope.qualifier;
+    clang::DeclContext* space = ast.getTranslationUnitDecl();
+    if(!scope.absolute) {
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(names.front()),
+                                  {},
+                                  clang::Sema::LookupNestedNameSpecifierName);
+        found.suppressDiagnostics();
+        sema.LookupName(found, sema.getCurScope());
+        space = as_namespace(found);
+        names = names.drop_front();
     }
+    for(const auto& name: names) {
+        if(!space) {
+            return nullptr;
+        }
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(name),
+                                  {},
+                                  clang::Sema::LookupNestedNameSpecifierName);
+        found.suppressDiagnostics();
+        sema.LookupQualifiedName(found, space);
+        space = as_namespace(found);
+    }
+    return space;
+}
+
+/// Loads, of the precompiled preamble, what Sema lists at the point of
+/// the candidates' names while it reads no other names of namespaces
+/// (CompileCompletion::from_index): the declarations unqualified lookup
+/// finds, or those of the namespace a qualifier names. A namespace the
+/// index searched under another name, through an alias, is read whole.
+/// The namespace a qualifier names, null without one.
+clang::DeclContext* load_names(clang::Sema& sema,
+                               const index::CompletionScope& scope,
+                               llvm::ArrayRef<ScopeCandidate> candidates) {
+    auto& ast = sema.getASTContext();
+    clang::DeclContext* space = nullptr;
+    if(scope.qualified()) {
+        space = qualified_namespace(sema, scope);
+        if(!space) {
+            return nullptr;
+        }
+        llvm::SmallVector<llvm::StringRef, 4> names;
+        for(auto* context = space; !context->isTranslationUnit(); context = context->getParent()) {
+            if(auto* named = llvm::dyn_cast<clang::NamespaceDecl>(context);
+               named && !named->isInline()) {
+                names.push_back(named->getName());
+            }
+        }
+        ranges::reverse(names);
+        if(names.size() < scope.qualifier.size() ||
+           !ranges::equal(llvm::ArrayRef(names).take_back(scope.qualifier.size()),
+                          scope.qualifier,
+                          {},
+                          {},
+                          [](const std::string& name) { return llvm::StringRef(name); })) {
+            space->lookups();
+        }
+    }
+    for(const auto& candidate: candidates) {
+        // Its identifier comes with the macro the PCH defines by its name.
+        clang::LookupResult found(sema,
+                                  &ast.Idents.get(candidate.name),
+                                  {},
+                                  clang::Sema::LookupOrdinaryName);
+        found.suppressDiagnostics();
+        if(space) {
+            sema.LookupQualifiedName(found, space);
+        } else if(!candidate.macro) {
+            sema.LookupName(found, sema.getCurScope());
+        }
+    }
+    return space;
+}
+
+/// Whether qualified lookup in `space` finds names the index files under
+/// other scopes: those a using-declaration or using-directive brings in,
+/// and those of C linkage, in it or in an inline or anonymous namespace
+/// inside. Read from the kinds of its declarations, which loads no others.
+bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {
+    using Kind = clang::Decl::Kind;
+    auto wanted = [](Kind kind) {
+        return kind == Kind::Using || kind == Kind::UsingEnum || kind == Kind::UsingPack ||
+               kind == Kind::UsingDirective || kind == Kind::Namespace || kind == Kind::LinkageSpec;
+    };
+    auto* source = ast.getExternalSource();
+    llvm::SmallVector<const clang::DeclContext*, 8> pending;
+    auto enter = [&](const clang::DeclContext* context) {
+        if(auto* named = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
+            for(auto* each: named->redecls()) {
+                pending.push_back(each);
+            }
+        } else {
+            pending.push_back(context);
+        }
+    };
+    enter(space);
+    while(!pending.empty()) {
+        const auto* context = pending.pop_back_val();
+        llvm::SmallVector<clang::Decl*, 16> decls;
+        for(auto* decl: context->noload_decls()) {
+            if(wanted(decl->getKind())) {
+                decls.push_back(decl);
+            }
+        }
+        if(source && context->hasExternalLexicalStorage()) {
+            source->FindExternalLexicalDecls(context, wanted, decls);
+        }
+        for(auto* decl: decls) {
+            if(auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+                if(inner->isInline() || inner->isAnonymousNamespace()) {
+                    enter(inner);
+                }
+            } else if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
+                if(!directive->getNominatedNamespace()->isAnonymousNamespace()) {
+                    return true;
+                }
+            } else if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(decl)) {
+                if(linkage->getLanguage() != clang::LinkageSpecLanguageIDs::CXX) {
+                    return true;
+                }
+                pending.push_back(linkage);
+            } else {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// A second compile of the whole buffer a completion runs on, for what only
+/// the code after the completion point tells: how the template around the
+/// point is instantiated. Its parse reads a name at the point, where there
+/// may be none yet, so that the expression there parses whole; and skips
+/// the focus file's function bodies but those that may instantiate the
+/// template (CompilationParams::Instantiating). Run at most once, when
+/// asked.
+class LaterCompile {
+public:
+    explicit LaterCompile(const CompilationParams& completion) :
+        input(completion.input), point(completion.completion.offset), stop(completion.stop) {
+        if(auto focus = input.buffers.find(input.focus); focus != input.buffers.end()) {
+            auto& text = focus->second;
+            auto whole = Prefix::from(text, point).whole;
+            target = whole.begin;
+            if(whole.length() == 0) {
+                text.insert(point, " __clice_completion");
+                target = point + 1;
+            }
+        }
+    }
+
+    /// The compile, parsing the bodies that name one of `names`; null when
+    /// it did not complete.
+    CompilationUnit* unit(llvm::StringSet<> names) {
+        if(!compiled) {
+            compiled = compile({
+                .kind = CompilationKind::Content,
+                .input = input,
+                .instantiating =
+                    CompilationParams::Instantiating{.point = point, .names = std::move(names)},
+                .stop = stop,
+            });
+        }
+        return unit();
+    }
+
+    CompilationUnit* unit() {
+        return compiled && compiled->completed() ? compiled.get() : nullptr;
+    }
+
+    /// Where the name its parse reads at the point starts.
+    std::uint32_t target = 0;
 
 private:
     CompilationInput input;
-
-    bool skip_bodies;
-
+    std::uint32_t point;
     std::shared_ptr<std::atomic_bool> stop;
-
     std::unique_ptr<CompilationUnit> compiled;
-};
-
-/// Types of another compile of the same code rebuilt in this one: each
-/// class found again by its qualified name, each specialization formed
-/// again. Null where a part names nothing found here — a lambda, a local
-/// class, a declaration after the completion point.
-struct Rebuilder {
-    Rebuilder(clang::Sema& sema, clang::SourceLocation loc) :
-        sema(sema), ast(sema.getASTContext()), loc(loc) {}
-
-    clang::QualType type(clang::QualType from) {
-        auto canonical = from.getCanonicalType();
-        const auto* bare = canonical.getTypePtr();
-        clang::QualType result;
-        if(const auto* builtin = llvm::dyn_cast<clang::BuiltinType>(bare)) {
-            result = builtin_type(builtin->getKind());
-        } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(bare)) {
-            if(auto pointee = type(pointer->getPointeeType()); !pointee.isNull()) {
-                result = ast.getPointerType(pointee);
-            }
-        } else if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(bare)) {
-            if(auto pointee = type(reference->getPointeeType()); !pointee.isNull()) {
-                result = ast.getLValueReferenceType(pointee);
-            }
-        } else if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(bare)) {
-            if(auto pointee = type(reference->getPointeeType()); !pointee.isNull()) {
-                result = ast.getRValueReferenceType(pointee);
-            }
-        } else if(const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(bare)) {
-            if(auto element = type(array->getElementType()); !element.isNull()) {
-                result = ast.getConstantArrayType(element,
-                                                  array->getSize(),
-                                                  nullptr,
-                                                  clang::ArraySizeModifier::Normal,
-                                                  0);
-            }
-        } else if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(bare)) {
-            auto returned = type(function->getReturnType());
-            llvm::SmallVector<clang::QualType, 4> parameters;
-            for(auto parameter: function->getParamTypes()) {
-                parameters.push_back(type(parameter));
-            }
-            if(!returned.isNull() && ranges::none_of(parameters, &clang::QualType::isNull)) {
-                // The exception specification's expressions and types live in
-                // the other compile; of it, the type keeps whether it throws.
-                auto info = function->getExtProtoInfo();
-                info.ExceptionSpec = {};
-                if(function->isNothrow()) {
-                    info.ExceptionSpec.Type = clang::EST_BasicNoexcept;
-                }
-                result = ast.getFunctionType(returned, parameters, info);
-            }
-        } else if(auto* tag = bare->getAsTagDecl()) {
-            result = tag_type(tag);
-        }
-        return result.isNull() ? result
-                               : ast.getQualifiedType(result, canonical.getLocalQualifiers());
-    }
-
-    /// The class here a type of the other compile names: the class a
-    /// specialization of it is formed of when it is concrete, the pattern
-    /// of a class template for a dependent one.
-    clang::TagDecl* tag(const clang::TagDecl* from) {
-        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(from)) {
-            if(auto* pattern = record->getDescribedClassTemplate()) {
-                auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(find(pattern));
-                return primary ? primary->getTemplatedDecl() : nullptr;
-            }
-            if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-                return nullptr;
-            }
-        }
-        auto type = tag_type(from);
-        return type.isNull() ? nullptr : type->getAsTagDecl();
-    }
-
-    std::optional<clang::TemplateArgument> argument(const clang::TemplateArgument& from) {
-        switch(from.getKind()) {
-            case clang::TemplateArgument::Type: {
-                auto rebuilt = type(from.getAsType());
-                if(rebuilt.isNull()) {
-                    return std::nullopt;
-                }
-                return clang::TemplateArgument(rebuilt);
-            }
-            case clang::TemplateArgument::Integral: {
-                auto rebuilt = type(from.getIntegralType());
-                if(rebuilt.isNull()) {
-                    return std::nullopt;
-                }
-                return clang::TemplateArgument(ast, from.getAsIntegral(), rebuilt);
-            }
-            case clang::TemplateArgument::Template: {
-                auto* rebuilt = llvm::dyn_cast_or_null<clang::TemplateDecl>(
-                    find(from.getAsTemplate().getAsTemplateDecl()));
-                if(!rebuilt) {
-                    return std::nullopt;
-                }
-                return clang::TemplateArgument(clang::TemplateName(rebuilt));
-            }
-            case clang::TemplateArgument::Pack: {
-                llvm::SmallVector<clang::TemplateArgument, 4> elements;
-                for(const auto& element: from.pack_elements()) {
-                    auto rebuilt = argument(element);
-                    if(!rebuilt) {
-                        return std::nullopt;
-                    }
-                    elements.push_back(*rebuilt);
-                }
-                return clang::TemplateArgument::CreatePackCopy(ast, elements);
-            }
-            default: return std::nullopt;
-        }
-    }
-
-    clang::QualType builtin_type(clang::BuiltinType::Kind kind) {
-        switch(kind) {
-#define BUILTIN_TYPE(Id, SingletonId)                                                              \
-    case clang::BuiltinType::Id: return ast.SingletonId;
-#define PLACEHOLDER_TYPE(Id, SingletonId)
-#define LAST_BUILTIN_TYPE(Id)
-#include "clang/AST/BuiltinTypes.def"
-            default: return {};
-        }
-    }
-
-    clang::QualType tag_type(const clang::TagDecl* from) {
-        const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(from);
-        if(!specialization) {
-            auto* tag = llvm::dyn_cast_or_null<clang::TagDecl>(find(from));
-            return tag ? ast.getCanonicalTagType(tag) : clang::QualType();
-        }
-        auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
-            find(specialization->getSpecializedTemplate()));
-        if(!primary) {
-            return {};
-        }
-        /// As written: a parameter pack's arguments one by one.
-        clang::TemplateArgumentListInfo written(loc, loc);
-        for(const auto& from_argument: specialization->getTemplateArgs().asArray()) {
-            auto rebuilt = argument(from_argument);
-            if(!rebuilt) {
-                return {};
-            }
-            auto add = [&](const clang::TemplateArgument& each) {
-                written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
-            };
-            if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
-                ranges::for_each(rebuilt->pack_elements(), add);
-            } else {
-                add(*rebuilt);
-            }
-        }
-        auto type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
-                                             clang::TemplateName(primary),
-                                             loc,
-                                             written,
-                                             /*Scope=*/nullptr,
-                                             /*ForNestedNameSpecifier=*/false);
-        return type.isNull() ? type : type.getCanonicalType();
-    }
-
-    /// The declaration here of what `from` declares there, by its name and
-    /// the names of the scopes around it.
-    clang::NamedDecl* find(const clang::NamedDecl* from) {
-        auto* scope = context(from->getDeclContext());
-        const auto* identifier = from->getIdentifier();
-        if(!scope || !identifier) {
-            return nullptr;
-        }
-        for(auto* candidate: scope->lookup(&ast.Idents.get(identifier->getName()))) {
-            if(candidate->getKind() == from->getKind()) {
-                return candidate;
-            }
-        }
-        return nullptr;
-    }
-
-    clang::DeclContext* context(const clang::DeclContext* from) {
-        if(from->isTranslationUnit()) {
-            return ast.getTranslationUnitDecl();
-        }
-        if(from->isTransparentContext()) {
-            return context(from->getParent());
-        }
-        if(const auto* space = llvm::dyn_cast<clang::NamespaceDecl>(from);
-           space && space->isAnonymousNamespace()) {
-            auto* parent = context(space->getParent());
-            if(auto* unit = llvm::dyn_cast_or_null<clang::TranslationUnitDecl>(parent)) {
-                return unit->getAnonymousNamespace();
-            }
-            auto* named = llvm::dyn_cast_or_null<clang::NamespaceDecl>(parent);
-            return named ? named->getAnonymousNamespace() : nullptr;
-        }
-        if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(from)) {
-            return llvm::dyn_cast_or_null<clang::DeclContext>(find(named));
-        }
-        return nullptr;
-    }
-
-    clang::Sema& sema;
-    clang::ASTContext& ast;
-    clang::SourceLocation loc;
 };
 
 /// The function template `context` is in, through the lambdas and local
@@ -1002,31 +967,49 @@ public:
     /// request: `if`, `for` and the like exist only as code patterns. The
     /// members the other access operator reaches come as candidates
     /// carrying the fix that writes it.
-    static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options) {
+    /// With `from_index`, the names of namespaces the preamble declares
+    /// are the candidates' alone (load_names).
+    static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options,
+                                                   bool from_index) {
         clang::CodeCompleteOptions sema;
         sema.IncludeMacros = 1;
         sema.IncludeCodePatterns = 1;
         sema.IncludeFixIts = options.dot_to_arrow.value;
+        sema.LoadExternal = !from_index;
         return sema;
     }
 
-    Builder(FocusFile focus,
+    Builder(CompilationUnit& unit,
             std::uint32_t offset,
             PositionEncoding encoding,
             std::vector<protocol::CompletionItem>& output,
             std::vector<const clang::NamedDecl*>& documented,
             const CodeCompletionOptions& options,
             const CompletionClient& client,
-            llvm::ArrayRef<ScopeCandidate> candidates,
+            const CompileCompletion& names,
+            bool from_index,
+            LaterCompile* later,
             bool& includes_pending,
-            WholeBuffer& whole) :
-        clang::CodeCompleteConsumer(sema_options(options)), focus(focus), offset(offset),
-        encoding(encoding), output(output), documented(documented), options(options),
-        argument_style(options.arguments), client(client), scope_candidates(candidates),
-        includes_pending(includes_pending),
-        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()), whole(whole) {}
+            bool& member_access,
+            bool& brought_in) :
+        clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
+        focus(unit.focus_file()), text(focus.content()), offset(offset), encoding(encoding),
+        output(output), documented(documented), options(options), argument_style(options.arguments),
+        client(client), names(names), names_pending(from_index), later(later),
+        includes_pending(includes_pending), member_access(member_access), brought_in(brought_in),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
+        // Sema asks first thing in a completion, in the scope of the point.
+        // The lexer reaches the point a token sooner: before the scope a `{`
+        // opens or a declaration a `;` ends takes effect, and while the
+        // parse tries skipping the body holding the point.
+        if(names_pending) {
+            names_pending = false;
+            auto& sema = unit.sema();
+            auto* space = load_names(sema, names.scope, names.candidates);
+            brought_in = space && names.more_elsewhere && brings_in(sema.getASTContext(), space);
+        }
         return info.getAllocator();
     }
 
@@ -1034,137 +1017,282 @@ public:
         return info;
     }
 
-    /// The arguments `function`'s template takes in its only instantiation
-    /// in the whole buffer, rebuilt here; none when it has no one
-    /// instantiation there, or names what is not found here.
-    llvm::SmallVector<clang::TemplateArgument, 4>
-        instantiated_later(clang::Sema& sema, const clang::FunctionDecl* function) {
-        auto& source_manager = sema.getSourceManager();
-        auto [file, offset] =
-            source_manager.getDecomposedLoc(source_manager.getFileLoc(function->getLocation()));
-        if(file != source_manager.getMainFileID()) {
-            return {};
+    /// What a nested run may list the members of. A concrete specialization
+    /// is instantiated first, as a written `X<int> x; x.` would be; one that
+    /// does not instantiate, or a pattern without a definition, has nothing
+    /// to list.
+    static clang::TagDecl* definition(clang::Sema& sema,
+                                      clang::SourceLocation loc,
+                                      clang::TagDecl* tag) {
+        auto& ast = sema.getASTContext();
+        if(!tag->isDependentContext() && !sema.isCompleteType(loc, ast.getCanonicalTagType(tag))) {
+            return nullptr;
         }
-        /// A call after the completion point names the function it calls;
-        /// a template nothing calls yet goes without the second compile.
-        if(auto* name = function->getIdentifier();
-           name && !focus.content().substr(this->offset).contains(name->getName())) {
-            return {};
+        return tag->getDefinition();
+    }
+
+    /// Sema's reply is replaced once the nested run `complete` offers
+    /// candidates, even when the typed prefix then filters every one of
+    /// them out; a nested run offering none keeps what an earlier callback
+    /// left in `output`.
+    bool replace(llvm::function_ref<void()> complete) {
+        std::vector<protocol::CompletionItem> previous;
+        std::vector<const clang::NamedDecl*> previous_documented;
+        previous.swap(output);
+        previous_documented.swap(documented);
+        resolving = true;
+        resolved_candidates = false;
+        complete();
+        resolving = false;
+        if(!resolved_candidates) {
+            output.swap(previous);
+            documented.swap(previous_documented);
+            return false;
         }
-        auto& unit = whole.unit();
-        if(!unit.completed()) {
-            return {};
+        return true;
+    }
+
+    /// The members of an object of `record`, qualified as `object` is.
+    bool complete_members(clang::Sema& sema,
+                          clang::Scope* scope,
+                          clang::SourceLocation loc,
+                          clang::CXXRecordDecl* record,
+                          clang::QualType object,
+                          clang::QualType preferred) {
+        auto& ast = sema.getASTContext();
+        auto type = ast.getQualifiedType(ast.getCanonicalTagType(record), object.getQualifiers());
+        auto* stand_in = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
+        return replace([&] {
+            sema.CodeCompletion().CodeCompleteMemberReferenceExpr(scope,
+                                                                  stand_in,
+                                                                  /*OtherOpBase=*/nullptr,
+                                                                  loc,
+                                                                  /*IsArrow=*/false,
+                                                                  /*IsBaseExprStatement=*/false,
+                                                                  preferred);
+        });
+    }
+
+    /// The names `tag` scopes, as after `tag::` written at `range`.
+    bool complete_scope(clang::Sema& sema,
+                        clang::Scope* scope,
+                        clang::TagDecl* tag,
+                        clang::SourceRange range,
+                        clang::CodeCompletionContext context) {
+        auto& ast = sema.getASTContext();
+        /// Sema computes no declaration context for an enumeration inside a
+        /// template; offer its enumerators directly.
+        if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(tag)) {
+            std::vector<clang::CodeCompletionResult> enumerators;
+            for(auto* enumerator: enumeration->enumerators()) {
+                enumerators.emplace_back(enumerator, clang::CCP_Constant);
+            }
+            return replace([&] {
+                ProcessCodeCompleteResults(sema, context, enumerators.data(), enumerators.size());
+            });
+        }
+        clang::CXXScopeSpec resolved;
+        resolved.MakeTrivial(ast,
+                             clang::NestedNameSpecifier(ast.getCanonicalTagType(tag).getTypePtr()),
+                             range);
+        return replace([&] {
+            sema.CodeCompletion().CodeCompleteQualifiedId(scope,
+                                                          resolved,
+                                                          /*EnteringContext=*/false,
+                                                          context.isUsingDeclaration(),
+                                                          /*IsAddressOfOperand=*/false,
+                                                          /*IsInDeclarationContext=*/false,
+                                                          /*BaseType=*/{},
+                                                          context.getPreferredType());
+        });
+    }
+
+    /// The template around `context` the code after the point may
+    /// instantiate: a function template, a generic lambda among them, or a
+    /// class template a member function is in.
+    const static clang::NamedDecl* around_template(const clang::DeclContext* context) {
+        if(const auto* function = enclosing_template(context)) {
+            return function;
+        }
+        for(; context; context = context->getParent()) {
+            if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
+               record && record->getDescribedClassTemplate()) {
+                return record;
+            }
+        }
+        return nullptr;
+    }
+
+    /// Completes against what the code after the point instantiates
+    /// `templated` with, as a later compile of the whole buffer
+    /// (LaterCompile) sees it: the member access or the scope at the point
+    /// found there, resolved through the template's only instantiation, and
+    /// completed by its Sema. Whether that produced the reply. For the
+    /// variable of a range-based `for` it is the statement there that tells,
+    /// which the completion's own parse leaves unfinished.
+    bool complete_later(clang::Sema& sema, const clang::NamedDecl* templated, bool loop) {
+        // A call after the point names the template it calls; one nothing
+        // calls yet goes without the compile.
+        if(auto* name = templated->getIdentifier();
+           !later || (!loop && name && !text.substr(offset).contains(name->getName()))) {
+            return false;
+        }
+        llvm::StringSet<> names;
+        if(auto* name = templated->getIdentifier()) {
+            names.insert(name->getName());
+        }
+        auto* whole = later->unit(std::move(names));
+        if(!whole) {
+            return false;
         }
 
-        /// The same template there: a lambda is found through its
-        /// expression, the declaration of its call operator being implicit.
+        /// The expression at the point there, in the innermost function
+        /// holding it.
         struct Finder : clang::RecursiveASTVisitor<Finder> {
-            Finder(const clang::SourceManager& source_manager, std::uint32_t offset) :
-                source_manager(source_manager), offset(offset) {}
+            Finder(const clang::SourceManager& sources, std::uint32_t target) :
+                sources(sources), target(target) {}
 
-            bool matches(clang::FunctionDecl* function) {
-                auto [file, at] = source_manager.getDecomposedLoc(
-                    source_manager.getFileLoc(function->getLocation()));
-                return file == source_manager.getMainFileID() && at == offset &&
-                       function->getDescribedFunctionTemplate();
+            bool at(clang::SourceLocation loc) {
+                auto [file, offset] = sources.getDecomposedLoc(loc);
+                return file == sources.getMainFileID() && offset == target;
             }
 
-            bool VisitLambdaExpr(clang::LambdaExpr* lambda) {
-                if(matches(lambda->getCallOperator())) {
-                    found = lambda->getCallOperator();
+            bool holds(const clang::Stmt* body) {
+                if(!body) {
+                    return false;
                 }
-                return !found;
+                auto begin = sources.getDecomposedLoc(sources.getFileLoc(body->getBeginLoc()));
+                auto end = sources.getDecomposedLoc(sources.getFileLoc(body->getEndLoc()));
+                return begin.first == sources.getMainFileID() && begin.second <= target &&
+                       target <= end.second;
             }
 
             bool VisitFunctionDecl(clang::FunctionDecl* function) {
-                if(matches(function)) {
-                    found = function;
+                if(holds(function->getBody())) {
+                    context = function;
                 }
-                return !found;
+                return true;
             }
 
-            const clang::SourceManager& source_manager;
-            std::uint32_t offset;
-            clang::FunctionDecl* found = nullptr;
+            bool VisitLambdaExpr(clang::LambdaExpr* lambda) {
+                if(holds(lambda->getBody())) {
+                    context = lambda->getCallOperator();
+                }
+                return true;
+            }
+
+            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* access) {
+                if(at(sources.getFileLoc(access->getMemberLoc()))) {
+                    member = access;
+                }
+                return !found();
+            }
+
+            bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* name) {
+                if(at(sources.getFileLoc(name->getLocation()))) {
+                    qualifier = name->getQualifierLoc();
+                }
+                return !found();
+            }
+
+            bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc name) {
+                if(at(sources.getFileLoc(name.getNameLoc()))) {
+                    qualifier = name.getQualifierLoc();
+                }
+                return !found();
+            }
+
+            bool found() const {
+                return member || qualifier;
+            }
+
+            const clang::SourceManager& sources;
+            std::uint32_t target;
+            clang::FunctionDecl* context = nullptr;
+            clang::CXXDependentScopeMemberExpr* member = nullptr;
+            /// Of a name a dependent scope qualifies, in an expression or a
+            /// type.
+            clang::NestedNameSpecifierLoc qualifier;
         };
 
-        Finder finder(unit.context().getSourceManager(), offset);
-        for(auto* decl: unit.top_level_decls()) {
+        auto& other = whole->sema();
+        auto& ast = whole->context();
+        Finder finder(ast.getSourceManager(), later->target);
+        for(auto* decl: whole->top_level_decls()) {
             if(!finder.TraverseDecl(decl)) {
                 break;
             }
         }
-        auto* instantiation = finder.found ? llvm::dyn_cast_or_null<clang::FunctionDecl>(
-                                                 decls::only_instantiation(finder.found))
-                                           : nullptr;
-        if(!instantiation) {
-            return {};
+        if(!finder.found() || !finder.context) {
+            return false;
         }
 
-        Rebuilder rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc());
-        llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        for(const auto& argument: instantiation->getTemplateSpecializationArgs()->asArray()) {
-            auto rebuilt = rebuilder.argument(argument);
-            if(!rebuilt) {
-                return {};
+        const static CompileCompletion none;
+        bool includes = false;
+        bool member_access = false;
+        bool brought_in = false;
+        Builder nested(*whole,
+                       offset,
+                       encoding,
+                       output,
+                       documented,
+                       options,
+                       client,
+                       none,
+                       /*from_index=*/false,
+                       nullptr,
+                       includes,
+                       member_access,
+                       brought_in);
+        nested.text = text;
+        auto& completion = other.CodeCompletion();
+        auto* consumer = completion.CodeCompleter;
+        completion.CodeCompleter = &nested;
+        clang::Sema::ContextRAII entered(other, finder.context);
+        // Where the parse stood, as far as Sema asks: whether the context is
+        // a template.
+        clang::Scope scope(nullptr,
+                           clang::Scope::FnScope | clang::Scope::DeclScope,
+                           other.getDiagnostics());
+        scope.setEntity(finder.context);
+        types::TemplateResolver resolver(ast);
+        bool answered = false;
+        if(auto* access = finder.member) {
+            auto loc = access->getMemberLoc();
+            auto object = resolver.member_object(access->getBase(), access->isArrow());
+            auto* tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
+            nested.display_options.specialization =
+                object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
+            if(auto* record =
+                   tag ? llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(other, loc, tag))
+                       : nullptr) {
+                answered = nested.complete_members(other, &scope, loc, record, object, {});
             }
-            arguments.push_back(*rebuilt);
-        }
-        return arguments;
-    }
-
-    /// The class `var`, the variable of a range-based `for`, holds, as the
-    /// whole buffer tells: in the completion's own parse the statement is
-    /// not finished, and its range is nowhere else. Null when the loop's
-    /// element does not resolve there or names no class found here.
-    clang::TagDecl* loop_class(clang::Sema& sema, const clang::VarDecl* var) {
-        auto& source_manager = sema.getSourceManager();
-        auto [file, offset] = source_manager.getDecomposedLoc(var->getLocation());
-        if(file != source_manager.getMainFileID()) {
-            return nullptr;
-        }
-        auto& unit = whole.unit();
-        if(!unit.completed()) {
-            return nullptr;
-        }
-
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::SourceManager& source_manager;
-            std::uint32_t offset;
-            clang::VarDecl* found = nullptr;
-
-            bool VisitVarDecl(clang::VarDecl* var) {
-                auto [file, at] = source_manager.getDecomposedLoc(var->getLocation());
-                if(var->isCXXForRangeDecl() && file == source_manager.getMainFileID() &&
-                   at == offset) {
-                    found = var;
-                }
-                return !found;
-            }
-        } finder{.source_manager = unit.context().getSourceManager(), .offset = offset};
-
-        for(auto* decl: unit.top_level_decls()) {
-            if(!finder.TraverseDecl(decl)) {
-                break;
+        } else if(auto qualifier = finder.qualifier.getNestedNameSpecifier();
+                  qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            auto range = finder.qualifier.getSourceRange();
+            auto* tag = resolver.resolve_tag(clang::QualType(qualifier.getAsType(), 0));
+            tag = tag ? definition(other, range.getEnd(), tag) : nullptr;
+            if(tag) {
+                answered = nested.complete_scope(
+                    other,
+                    &scope,
+                    tag,
+                    range,
+                    clang::CodeCompletionContext(clang::CodeCompletionContext::CCC_Symbol));
             }
         }
-        if(!finder.found || !finder.found->getType()->getContainedAutoType()) {
-            return nullptr;
-        }
-        types::TemplateResolver resolver(unit.context());
-        auto type = resolver.deduce(finder.found);
-        auto* tag = type.isNull() ? nullptr : resolver.resolve_tag(type.getNonReferenceType());
-        if(!tag) {
-            return nullptr;
-        }
-        return Rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc()).tag(tag);
+        completion.CodeCompleter = consumer;
+        return answered;
     }
 
     /// Sema resolves a dependent member base or scope with its own
     /// heuristics, which stop at the primary template and a single typedef.
     /// When pseudo-instantiation reaches a class Sema did not, run the
-    /// completion again against that class. Returns whether the nested run
-    /// produced the reply, which is then in `output`.
+    /// completion again against that class; when it reaches none in a
+    /// template, against what the code after the point instantiates the
+    /// template with. Returns whether the nested run produced the reply,
+    /// which is then in `output`.
     bool complete_resolved(clang::Sema& sema, clang::CodeCompletionContext& context) {
         using Kind = clang::CodeCompletionContext::Kind;
         auto kind = context.getKind();
@@ -1175,39 +1303,6 @@ public:
 
         auto same = [](const clang::Decl* lhs, const clang::Decl* rhs) {
             return lhs && rhs && lhs->getCanonicalDecl() == rhs->getCanonicalDecl();
-        };
-
-        /// What a nested run may list the members of. A concrete
-        /// specialization is instantiated first, as a written `X<int> x; x.`
-        /// would be; one that does not instantiate, or a pattern without a
-        /// definition, has nothing to list.
-        auto definition = [&](clang::TagDecl* tag) -> clang::TagDecl* {
-            if(!tag->isDependentContext() &&
-               !sema.isCompleteType(loc, ast.getCanonicalTagType(tag))) {
-                return nullptr;
-            }
-            return tag->getDefinition();
-        };
-
-        /// Sema's reply is replaced once the nested run offers candidates,
-        /// even when the typed prefix then filters every one of them out; a
-        /// nested run offering none keeps what an earlier callback left in
-        /// `output`.
-        auto run = [&](auto complete) {
-            std::vector<protocol::CompletionItem> previous;
-            std::vector<const clang::NamedDecl*> previous_documented;
-            previous.swap(output);
-            previous_documented.swap(documented);
-            resolving = true;
-            resolved_candidates = false;
-            complete();
-            resolving = false;
-            if(!resolved_candidates) {
-                output.swap(previous);
-                documented.swap(previous_documented);
-                return false;
-            }
-            return true;
         };
 
         if(kind == Kind::CCC_DotMemberAccess || kind == Kind::CCC_ArrowMemberAccess) {
@@ -1225,30 +1320,15 @@ public:
                 }
                 object = resolver.member_object(base, arrow);
                 tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
-                /// The code after the completion point instantiates the
-                /// template the completion is in, a generic lambda as the
-                /// argument of a call above all.
-                if(auto* function = enclosing_template(sema.CurContext); !tag && function) {
-                    if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
-                        types::TemplateResolver informed(
-                            ast,
-                            {.assumed = function, .assumed_arguments = std::move(arguments)});
-                        object = informed.member_object(base, arrow);
-                        tag = object.isNull() ? nullptr : informed.resolve_tag(object);
-                    }
+                if(auto* templated = around_template(sema.CurContext); !tag && templated) {
+                    auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
+                    auto* var = name ? llvm::dyn_cast<clang::VarDecl>(name->getDecl()) : nullptr;
+                    return complete_later(sema, templated, var && var->isCXXForRangeDecl());
                 }
                 /// The members of a dependent specialization read its
                 /// template's parameters as its arguments.
                 display_options.specialization =
                     object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
-                if(auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
-                   !tag && !arrow && name) {
-                    if(auto* var = llvm::dyn_cast<clang::VarDecl>(name->getDecl());
-                       var && var->isCXXForRangeDecl()) {
-                        tag = loop_class(sema, var);
-                        object = tag ? ast.getCanonicalTagType(tag) : clang::QualType();
-                    }
-                }
             } else if(!reported->isDependentType()) {
                 return false;
             } else {
@@ -1257,12 +1337,10 @@ public:
             if(!tag || same(tag, clang::HeuristicResolver(ast).resolveTypeToTagDecl(reported))) {
                 return false;
             }
-            auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(tag));
+            auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(sema, loc, tag));
             if(!record) {
                 return false;
             }
-            auto type =
-                ast.getQualifiedType(ast.getCanonicalTagType(record), object.getQualifiers());
 
             if(!base) {
                 /// A class without a named field offers no designator; the
@@ -1276,21 +1354,13 @@ public:
                     documented.clear();
                     return true;
                 }
-                return run([&] {
+                auto type =
+                    ast.getQualifiedType(ast.getCanonicalTagType(record), object.getQualifiers());
+                return replace([&] {
                     sema.CodeCompletion().CodeCompleteDesignator(type, {}, clang::Designation());
                 });
             }
-
-            auto* stand_in = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
-            return run([&] {
-                sema.CodeCompletion().CodeCompleteMemberReferenceExpr(scope,
-                                                                      stand_in,
-                                                                      /*OtherOpBase=*/nullptr,
-                                                                      loc,
-                                                                      /*IsArrow=*/false,
-                                                                      /*IsBaseExprStatement=*/false,
-                                                                      context.getPreferredType());
-            });
+            return complete_members(sema, scope, loc, record, object, context.getPreferredType());
         }
 
         if(kind == Kind::CCC_Symbol) {
@@ -1304,54 +1374,19 @@ public:
             }
             auto scope_type = clang::QualType(NNS.getAsType(), 0);
             auto* tag = resolver.resolve_tag(scope_type);
-            if(auto* function = enclosing_template(sema.CurContext); !tag && function) {
-                if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
-                    types::TemplateResolver informed(
-                        ast,
-                        {.assumed = function, .assumed_arguments = std::move(arguments)});
-                    tag = informed.resolve_tag(scope_type);
-                }
+            if(auto* templated = around_template(sema.CurContext); !tag && templated) {
+                return complete_later(sema, templated, false);
             }
             auto* entered = llvm::dyn_cast_or_null<clang::TagDecl>(
                 sema.computeDeclContext(**spec, /*EnteringContext=*/true));
             if(!tag || same(tag, entered)) {
                 return false;
             }
-            tag = definition(tag);
+            tag = definition(sema, loc, tag);
             if(!tag) {
                 return false;
             }
-
-            /// Sema computes no declaration context for an enumeration
-            /// inside a template; offer its enumerators directly.
-            if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(tag)) {
-                std::vector<clang::CodeCompletionResult> enumerators;
-                for(auto* enumerator: enumeration->enumerators()) {
-                    enumerators.emplace_back(enumerator, clang::CCP_Constant);
-                }
-                return run([&] {
-                    ProcessCodeCompleteResults(sema,
-                                               context,
-                                               enumerators.data(),
-                                               enumerators.size());
-                });
-            }
-
-            clang::CXXScopeSpec resolved;
-            resolved.MakeTrivial(
-                ast,
-                clang::NestedNameSpecifier(ast.getCanonicalTagType(tag).getTypePtr()),
-                (*spec)->getRange());
-            return run([&] {
-                sema.CodeCompletion().CodeCompleteQualifiedId(scope,
-                                                              resolved,
-                                                              /*EnteringContext=*/false,
-                                                              context.isUsingDeclaration(),
-                                                              /*IsAddressOfOperand=*/false,
-                                                              /*IsInDeclarationContext=*/false,
-                                                              /*BaseType=*/{},
-                                                              context.getPreferredType());
-            });
+            return complete_scope(sema, scope, tag, (*spec)->getRange(), context);
         }
 
         return false;
@@ -1374,6 +1409,9 @@ public:
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
         } else {
+            member_access =
+                context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
+                context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
             display_options.specialization = nullptr;
             if(complete_resolved(sema, context)) {
                 return;
@@ -1385,7 +1423,7 @@ public:
         }
 
         auto& source_manager = sema.getSourceManager();
-        auto content = focus.content();
+        auto content = text;
         auto prefix = Prefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
@@ -1550,7 +1588,7 @@ public:
         // declaration. Clang's keywords know neither.
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
-        auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
+        auto completion_loc = focus.location(offset);
         auto declared = ranges::any_of(
             sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
             [&](const clang::Decl* decl) {
@@ -2163,19 +2201,19 @@ public:
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
             llvm::StringRef own = module ? module->getPrimaryModuleInterfaceName() : "";
-            // A namespace's lookup finds the names of the inline namespaces
-            // in it as well, as qualified lookup does.
+            // As qualified lookup finds them: through the inline and the
+            // anonymous namespaces in the scope too.
             auto visible = [&](clang::DeclContext* scope, llvm::StringRef name) {
-                llvm::SmallVector<clang::NamedDecl*, 2> found;
-                for(auto* decl: scope->lookup(&ast.Idents.get(name))) {
-                    if(sema.isVisible(decl)) {
-                        found.push_back(decl);
-                    }
-                }
-                return found;
+                clang::LookupResult found(sema,
+                                          &ast.Idents.get(name),
+                                          {},
+                                          clang::Sema::LookupOrdinaryName);
+                found.suppressDiagnostics();
+                sema.LookupQualifiedName(found, scope);
+                return llvm::SmallVector<clang::NamedDecl*, 2>(found.begin(), found.end());
             };
             auto& language = sema.getLangOpts();
-            for(const auto& candidate: scope_candidates) {
+            for(const auto& candidate: names.candidates) {
                 // C names no namespace, an enumerator without its
                 // enumeration, and a struct, union or enumeration only after
                 // its keyword; a file compiled without named modules imports
@@ -2371,7 +2409,11 @@ public:
     }
 
 private:
+    CompilationUnit& unit;
     FocusFile focus;
+    /// The text completed in: the focus file's, but in a nested run in the
+    /// later compile, whose own reads a name at the point.
+    llvm::StringRef text;
     std::uint32_t offset;
     PositionEncoding encoding;
     std::vector<protocol::CompletionItem>& output;
@@ -2383,11 +2425,21 @@ private:
     const CodeCompletionOptions& options;
     CompletionArguments argument_style;
     const CompletionClient& client;
-    llvm::ArrayRef<ScopeCandidate> scope_candidates;
+    const CompileCompletion& names;
+    /// Whether the candidates' names are still to load (load_names).
+    bool names_pending;
+    /// What tells how the template around the point is instantiated; none
+    /// for a nested run in it.
+    LaterCompile* later;
     /// Set once an item needs the header of its symbol included (Completion).
     bool& includes_pending;
+    /// Whether Sema completes a member after `.` or `->`, where the
+    /// candidates play no part.
+    bool& member_access;
+    /// Whether the qualifier's namespace brings in names of others
+    /// (load_names).
+    bool& brought_in;
     clang::CodeCompletionTUInfo info;
-    WholeBuffer& whole;
     bool resolving = false;
     bool resolved_candidates = false;
 
@@ -2405,24 +2457,32 @@ auto code_complete(CompilationParams params,
                    const DocumentationOptions& documentation,
                    const CompletionClient& client,
                    PositionEncoding encoding,
-                   llvm::ArrayRef<ScopeCandidate> candidates) -> Completion {
+                   const CompileCompletion& names) -> Completion {
     auto offset = params.completion.offset;
+    LaterCompile later(params);
 
     std::vector<protocol::CompletionItem> items;
     std::vector<const clang::NamedDecl*> documented;
-    WholeBuffer whole(params);
     bool includes = false;
+    bool member_access = false;
+    bool brought_in = false;
+    // The index holds no module's names a module file brings in.
+    bool from_index = names.from_index && params.input.pcms.empty() &&
+                      (names.pch.empty() || names.pch == params.input.pch.first);
     params.completion.consumer = [&](CompilationUnit& unit) {
-        return std::make_unique<Builder>(unit.focus_file(),
+        return std::make_unique<Builder>(unit,
                                          offset,
                                          encoding,
                                          items,
                                          documented,
                                          options,
                                          client,
-                                         candidates,
+                                         names,
+                                         from_index,
+                                         &later,
                                          includes,
-                                         whole);
+                                         member_access,
+                                         brought_in);
     };
     auto unit = compile(std::move(params));
 
@@ -2431,7 +2491,12 @@ auto code_complete(CompilationParams params,
         if(!decl) {
             continue;
         }
-        auto doc = feature::documentation(*unit, decl, documentation);
+        // A reply of the later compile is of its declarations.
+        auto* owner = later.unit();
+        if(!owner || &owner->context() != &decl->getASTContext()) {
+            owner = unit.get();
+        }
+        auto doc = feature::documentation(*owner, decl, documentation);
         if(doc.empty()) {
             continue;
         }
@@ -2445,6 +2510,9 @@ auto code_complete(CompilationParams params,
 
     Completion completion{
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
+    completion.list.is_incomplete =
+        completion.list.is_incomplete ||
+        ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access);
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
