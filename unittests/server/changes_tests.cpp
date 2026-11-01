@@ -712,11 +712,12 @@ ZEST_CASE(CDBChangedCascadesModule) {
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
-                  {tmp.root, tmp.path("m.cppm"), {}}
+                  {tmp.root, tmp.path("m.cppm"),           {}},
+                  {tmp.root, tmp.path("closed_user.cppm"), {}},
     }));
     auto mod = fixture.intern(tmp.path("m.cppm"));
     auto open_user = fixture.open(tmp.path("open_user.cppm"), "")->path_id;
-    auto closed_user = list_unit(project.cdb, tmp.path("closed_user.cppm"));
+    auto closed_user = fixture.intern(tmp.path("closed_user.cppm"));
     // The edges their attempts declare in production — no attempt runs.
     served.project.graph.set_edges(module_node(open_user), {module_node(mod)});
     served.project.graph.set_edges(module_node(closed_user), {module_node(mod)});
