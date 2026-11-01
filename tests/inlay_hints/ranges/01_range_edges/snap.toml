@@ -8,6 +8,8 @@ inlay_hints = [
     { line = "}⟨// compute⟩" },
     { line = "return scale(⟨value:⟩base, ⟨factor:⟩4);" },
     { line = "}⟨// unrelated⟩" },
+    { line = "}⟨// align⟩" },
+    { line = "alignas(align(⟨value:⟩2, ⟨factor:⟩4))" },
 ]
 
 [answers.struct_end]
@@ -23,4 +25,9 @@ inlay_hints = [
 [answers.function_tail]
 inlay_hints = [
     { line = "}⟨// compute⟩" },
+]
+
+[answers.attribute]
+inlay_hints = [
+    { line = "alignas(align(⟨value:⟩2, ⟨factor:⟩4))" },
 ]

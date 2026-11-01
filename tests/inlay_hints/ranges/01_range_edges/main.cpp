@@ -26,5 +26,5 @@ constexpr int align(int value, int factor) {
     return value * factor;
 }
 
-§(attribute)⟦alignas(align(2, 4))
-⟧int storage;
+§(attribute)⟦alignas(align(2, 4))⟧
+int storage;
