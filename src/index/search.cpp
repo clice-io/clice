@@ -173,6 +173,12 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         index.live_sources()->for_each_session_index([&](const TUIndex& state) {
             state.for_each_symbol(
                 [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
+                    // The index judged the symbols it holds already, under
+                    // the same name.
+                    if(!scan_records && !project.search_pending().contains(hash) &&
+                       project.find_symbol(hash)) {
+                        return true;
+                    }
                     llvm::StringRef path;
                     if(identity.file != no_file) {
                         path = state.path(identity.file);
