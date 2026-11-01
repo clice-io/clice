@@ -661,14 +661,14 @@ public:
     /// request filled in; `prepared` adds those that follow from the PCH the
     /// build loads, under its key (empty for none).
     template <typename Params>
-    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-        stateless_request(const Ticket& ticket,
-                          feature::RequestKind kind,
-                          llvm::StringRef label,
-                          std::uint32_t offset,
-                          Params params,
-                          async::cancellation_token token,
-                          llvm::function_ref<void(Params&, llvm::StringRef pch_key)> prepared = {});
+    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error> stateless_request(
+        const Ticket& ticket,
+        feature::RequestKind kind,
+        llvm::StringRef label,
+        std::uint32_t offset,
+        Params params,
+        async::cancellation_token token,
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef)>> prepared = {});
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
     async::task<std::optional<worker::FormatResult>, ipc::Error>
@@ -1269,13 +1269,14 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
 
 template <typename Params>
 async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    ServedProject::stateless_request(const Ticket& ticket,
-                                     feature::RequestKind kind,
-                                     llvm::StringRef label,
-                                     std::uint32_t offset,
-                                     Params params,
-                                     async::cancellation_token token,
-                                     llvm::function_ref<void(Params&, llvm::StringRef)> prepared) {
+    ServedProject::stateless_request(
+        const Ticket& ticket,
+        feature::RequestKind kind,
+        llvm::StringRef label,
+        std::uint32_t offset,
+        Params params,
+        async::cancellation_token token,
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef)>> prepared) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
