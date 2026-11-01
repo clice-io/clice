@@ -33,8 +33,23 @@ auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOpt
         return std::nullopt;
     }
     TypedName typed{.prefix = prefix.spelling};
+    // An arrow after a name or a subscript accesses a member; after `)` or
+    // `}` it may begin a trailing return type or a return type requirement.
+    auto accesses_member = [&](llvm::StringRef before) {
+        if(before.ends_with(".")) {
+            return true;
+        }
+        if(!before.consume_back("->")) {
+            return false;
+        }
+        before = before.rtrim();
+        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
+        return before.ends_with("]") ||
+               (!name.empty() && (name == "this" ||
+                                  keyword_kind(name, keywords(dialect)) == clang::tok::identifier));
+    };
     auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(before.ends_with(".")) {
+    if(accesses_member(before)) {
         typed.member = true;
         return typed;
     }
@@ -55,7 +70,7 @@ auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOpt
         before = before.drop_back(name.size()).rtrim();
     }
     // A member named through its class (`x.Base::`).
-    typed.member = before.ends_with(".");
+    typed.member = accesses_member(before);
     return typed;
 }
 

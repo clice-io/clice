@@ -167,14 +167,14 @@ struct CompileCompletion {
 
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares: the compile reads no others of them (clang's
-    /// LoadExternal off), none after `.`. Not where the index names
+    /// LoadExternal off), none after a member access. Not where the index names
     /// nothing, as in a directive, nor where no index of the document's PCH
     /// is at hand: the compile reads them all then.
     bool from_index = false;
 
     /// The PCH whose index named the candidates: a compile behind another
     /// one, as after an include added since or a header edited, reads all
-    /// of its names. None after `.`.
+    /// of its names. None after a member access.
     std::string pch;
 
     /// Where the name being typed is looked up, with from_index.
@@ -194,8 +194,8 @@ struct TypedName {
     llvm::StringRef prefix;
     index::CompletionScope scope;
 
-    /// After `.`: a member, which Sema reads from its class whole. Not after
-    /// `->`, which a trailing return type follows too.
+    /// After `.` or `->`: a member, which Sema reads from its class whole.
+    /// Not after an arrow that may begin a trailing return type.
     bool member = false;
 };
 
