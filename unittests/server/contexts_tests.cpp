@@ -243,6 +243,50 @@ ZEST_CASE(ChoiceBaseSurvivesRules) {
                              define_of(candidates.front().command)));
 }
 
+ZEST_CASE(ChoiceNamesWrittenCommand) {
+    // A choice names the command as the database writes it: the database
+    // changing only a flag a rule removes leaves the command the file
+    // compiles under as it was, and ends the choice all the same.
+    tmp.touch("main.cpp");
+    auto path = tmp.path("main.cpp");
+    project.settings.rules.push_back(Rule{.remove = {"-W*"}});
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    auto entries = [&](llvm::StringRef warning) {
+        write_cdb(tmp,
+                  project.cdb,
+                  build_cdb_json({
+                      {tmp.root, path, {"-DFIRST", warning.str()}},
+                      {tmp.root, path, {"-DSECOND"}              },
+        }));
+    };
+    auto file = fx.intern(path);
+    auto first = [&] {
+        auto own = project.candidates(file);
+        auto it = ranges::find_if(own, [&](const Candidate& candidate) {
+            return llvm::StringRef(print_argv(project.commands.render_full(candidate.base)))
+                .contains("FIRST");
+        });
+        ZASSERT(it != own.end());
+        return project.commands.command_hash(project.apply_rules(file, *it).command);
+    };
+
+    entries("-Wall");
+    auto listed = project.list_contexts(file);
+    auto item = ranges::find_if(listed, [](const ListedContext& item) {
+        return llvm::StringRef(item.label).contains("FIRST");
+    });
+    ZASSERT(item != listed.end());
+    ZASSERT(item->command_hash.has_value());
+    ContextChoice choice{Fid{}, std::nullopt, *item->command_hash};
+    ZASSERT(project.choice_holds(file, choice));
+    auto edited = first();
+
+    entries("-Wextra");
+    ZASSERT(first() == edited);
+    ZEXPECT(!project.choice_holds(file, choice));
+}
+
 ZEST_CASE(ValidChoiceStaysActive) {
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");

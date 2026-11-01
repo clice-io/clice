@@ -3,6 +3,7 @@ module clice;
 import :command.table;
 import :command.toolchains.cl;
 import :unittests.utils;
+import :unittests.utils.platform;
 import :unittests.utils.toolchain_fixture;
 import :vfs.file_system;
 import :vfs.path;
@@ -83,31 +84,10 @@ ZEST_CASE(CLWarningsStayWarnings, skip = Windows) {
     ZEXPECT(contains(f.resolve(add("b.cpp", {clang_cl.c_str(), "/WX"})), "-Werror"));
 }
 
-/// The environment's INCLUDE as a test sets it, a developer prompt's,
-/// until the test ends.
-struct IncludeEnv {
-    explicit IncludeEnv(std::optional<std::string> value) {
-        saved = sys::get_env(previous, "INCLUDE");
-        ZASSERT(!(value ? sys::set_env("INCLUDE", *value) : sys::unset_env("INCLUDE")));
-    }
-
-    ~IncludeEnv() {
-        if(saved) {
-            sys::set_env("INCLUDE", previous);
-        } else {
-            sys::unset_env("INCLUDE");
-        }
-    }
-
-    std::string previous;
-
-    bool saved = false;
-};
-
 ZEST_CASE(CLToolsetHeaders) {
     // A cl.exe compiles with the headers of its own toolset, not the
     // newest one installed, outside a developer prompt.
-    IncludeEnv outside_prompt(std::nullopt);
+    ScopedEnv outside_prompt("INCLUDE", std::nullopt);
     auto toolset = tmp.path("MSVC/14.29.30133");
     auto cl = path::join(toolset, "bin", "Hostx64", "x64", "cl.exe");
     auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/c"})));
@@ -118,7 +98,7 @@ ZEST_CASE(CLPromptHeaders) {
     // Inside a developer prompt, the INCLUDE it sets lists the build's
     // headers.
     auto headers = tmp.path("prompt/include");
-    IncludeEnv inside_prompt(headers);
+    ScopedEnv inside_prompt("INCLUDE", headers);
     auto toolset = tmp.path("MSVC/14.29.30133");
     auto cl = path::join(toolset, "bin", "Hostx64", "x64", "cl.exe");
     auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/c"})));

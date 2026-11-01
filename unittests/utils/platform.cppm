@@ -17,6 +17,31 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
+/// The environment variable `name` as a test sets it, `value` or unset,
+/// until the guard ends.
+struct ScopedEnv {
+    ScopedEnv(std::string name, std::optional<std::string> value) : name(std::move(name)) {
+        saved = sys::get_env(previous, this->name);
+        ZASSERT(!(value ? sys::set_env(this->name, *value) : sys::unset_env(this->name)));
+    }
+
+    ScopedEnv(const ScopedEnv&) = delete;
+
+    ~ScopedEnv() {
+        if(saved) {
+            sys::set_env(name, previous);
+        } else {
+            sys::unset_env(name);
+        }
+    }
+
+    std::string name;
+
+    std::string previous;
+
+    bool saved = false;
+};
+
 class TestVFS : public llvm::vfs::InMemoryFileSystem {
 public:
     TestVFS() {

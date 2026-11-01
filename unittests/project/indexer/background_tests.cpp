@@ -178,6 +178,30 @@ ZEST_CASE(StartBooksOwed) {
     ZEXPECT(f.failures() == 4u);
 }
 
+ZEST_CASE(ShutdownEndsPasses) {
+    // Once the project shut down, its background index runs no pass again:
+    // what was booked stays booked for the next session, and nothing is
+    // owed in this one.
+    IndexerFixture f;
+    f.project.settings.project.idle_timeout_ms.value = 60'000;
+    auto unit = list_unit(f.project.cdb, "/fake/a.cpp");
+    f.background.start();
+    f.background.enqueue(unit, ReindexReason::ContentChanged);
+    auto task = f.project.shutdown();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(f.queue.pending_reason(unit) == ReindexReason::ContentChanged);
+    ZEXPECT(f.background.idle());
+
+    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.background.schedule();
+    f.background.schedule(/*immediate=*/true);
+    f.loop.run();
+    ZEXPECT(f.queue.pending_reason(unit) == ReindexReason::ContentChanged);
+    ZEXPECT(f.failures() == 0u);
+    ZEXPECT(f.background.idle());
+}
+
 ZEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));

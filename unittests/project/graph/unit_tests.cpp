@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :project.graph.unit;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
@@ -210,6 +211,65 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     auto build = f.project.pcms.find(id("m.cppm"));
     ZASSERT(build != f.project.pcms.end());
     ZEXPECT(!build->second.path.empty());
+}
+
+ZEST_CASE(FailedImportWaitsOnce) {
+    // Waiting on the imports again helps only while every one built: one
+    // that failed ends the wait at the first pass, its failure told once,
+    // while the others built.
+    TempDir tmp;
+    tmp.touch("good.cppm", "export module good;\nexport int gv() { return 1; }\n");
+    tmp.touch("bad.cppm", "export module bad;\nexport int bv() { return undeclared; }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("good.cppm"), {}},
+                  {tmp.root, tmp.path("bad.cppm"),  {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    llvm::SmallVector<Fid> modules{id("bad.cppm"), id("good.cppm")};
+    llvm::SmallVector<Fid> failed;
+    std::optional<Result> waited;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        auto heard = [&](Fid module) {
+            failed.push_back(module);
+        };
+        Work importer{.run = [&](Attempt& attempt) {
+            return f.project.wait_modules(attempt, modules, heard);
+        }};
+        waited = co_await f.project.graph.join({NodeKind::Unit, id("user.cpp").raw}, importer);
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZEXPECT(waited == Result::Failed);
+    ZEXPECT(failed == llvm::SmallVector<Fid>{id("bad.cppm")});
+    ZEXPECT(f.project.built_pcm(id("good.cppm")) != nullptr);
 }
 
 ZEST_CASE(EvictedModuleBelowRebuilds) {

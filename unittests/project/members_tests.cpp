@@ -9,7 +9,9 @@ module clice;
 import :command.database;
 import :command.edit;
 import :command.table;
+import :index.tu_manifest;
 import :project.command;
+import :project.indexer;
 import :project.members;
 import :project.project;
 import :settings.rules;
@@ -18,6 +20,8 @@ import :support.shell;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.cdb_layouts;
+import :unittests.utils.index_internals;
+import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :vfs.file_system;
 import :vfs.path;
@@ -627,6 +631,54 @@ ZEST_CASE(RuleTurnsQueryOff) {
         {.base = entry.command, .source = CommandSource::Borrowed, .rules_from = {entry.file}});
     ZEXPECT(!project.commands.get(borrowed.command).query_toolchain);
 };
+
+ZEST_CASE(MembersFollowCommands) {
+    /// A change of the build's commands: a unit the database stopped
+    /// listing, which nothing else covers, leaves the index, its pending
+    /// reindex forgotten; a unit whose command changed keeps its index,
+    /// outdated, and owes the reindex of a content change. Every change
+    /// moves the commands' epoch on once; none changes nothing.
+    TempDir tmp;
+    tmp.touch("kept.cpp", "int kept;\n");
+    tmp.touch("gone.cpp", "int gone;\n");
+    IndexerFixture f;
+    auto& project = f.project;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("kept.cpp"), {}},
+                  {tmp.root, tmp.path("gone.cpp"), {}},
+    }));
+    auto kept = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
+    auto gone = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    for(auto unit: {kept, gone}) {
+        index::TUManifest manifest;
+        manifest.built_at = 1;
+        manifest.tu_version = project.file_table.intern_version(unit, 1);
+        project.index.apply_manifest(unit, std::move(manifest));
+    }
+    ZASSERT(project.background_index.enqueue(gone, ReindexReason::DepsOnly));
+
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("kept.cpp"), {"-DCHANGED"}}
+    }));
+    auto epoch = project.commands_epoch;
+    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).empty());
+    ZEXPECT(project.commands_epoch == epoch + 1);
+    ZEXPECT(!project.index.indexed(gone));
+    ZEXPECT(!f.queue.pending_reason(gone).has_value());
+    ZEXPECT(project.index.indexed(kept));
+    ZEXPECT(IndexInternals::outdated(project.index, kept));
+    ZEXPECT(f.queue.pending_reason(kept) == ReindexReason::ContentChanged);
+
+    auto disk = project.disk_epoch;
+    ZEXPECT(project.update_members({}).empty());
+    ZEXPECT(project.commands_epoch == epoch + 1);
+    ZEXPECT(project.disk_epoch == disk);
+    ZEXPECT(IndexerFixture::pending_files(f.queue) == llvm::SmallVector<Fid>{kept});
+}
 
 ZEST_CASE(BorrowMergesRules) {
     /// A borrowed command is edited by the rules matching the file it is

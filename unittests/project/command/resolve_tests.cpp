@@ -203,6 +203,51 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     }));
 }
 
+ZEST_CASE(DialectFollowsCommand) {
+    /// A file is lexed in the dialect of the command it compiles under: a
+    /// header in the language and standard of the host it compiles in, the
+    /// user's chosen host's when there is one, and a file borrowing a
+    /// command in that command's standard.
+    TempDir tmp;
+    tmp.touch("h.c", "#include \"h.h\"\n");
+    tmp.touch("other.cpp", "#include \"h.h\"\n");
+    tmp.touch("h.h", "");
+    tmp.touch("alone/x.cpp", "");
+    tmp.touch("alone/x.h", "");
+    FileTable files;
+    Project project{files};
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    auto add = [&](llvm::StringRef command, llvm::StringRef file) {
+        auto line = std::format("{} -c {}", command, tmp.path(file));
+        return project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(line))->file;
+    };
+    auto c_host = add("clang -std=c11", "h.c");
+    auto cxx_host = add("clang++ -std=c++17", "other.cpp");
+    add("clang++ -std=c++14", "alone/x.cpp");
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto borrowing = project.file_table.intern(Spelling::absolute(tmp.path("alone/x.h")));
+    project.dep_graph.set_includes(c_host, 0, {{header}});
+    project.dep_graph.set_includes(cxx_host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+
+    ZASSERT(project.select_command(header).host == c_host);
+    auto& in_c = project.dialect(header, nullptr);
+    ZEXPECT(!bool(in_c.CPlusPlus));
+    ZEXPECT((in_c.LangStd == clang::LangStandard::lang_c11));
+
+    ContextChoice choice{.host = cxx_host};
+    auto& in_cxx = project.dialect(header, &choice);
+    ZEXPECT(bool(in_cxx.CPlusPlus));
+    ZEXPECT((in_cxx.LangStd == clang::LangStandard::lang_cxx17));
+
+    ZASSERT(project.select_command(borrowing).ref.source == CommandSource::Borrowed);
+    auto& borrowed = project.dialect(borrowing, nullptr);
+    ZEXPECT(bool(borrowed.CPlusPlus));
+    ZEXPECT((borrowed.LangStd == clang::LangStandard::lang_cxx14));
+}
+
 };  // ZEST_SUITE(ResolveCommand)
 
 }  // namespace

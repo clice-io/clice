@@ -16,6 +16,7 @@ import :project.members;
 import :project.project;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.platform;
 import :unittests.utils.temp_dir;
 
 namespace clice::testing {
@@ -535,6 +536,84 @@ ZEST_CASE(ProvisionalMembers) {
     ZEXPECT(project.refresh_provisional().empty());
     ZEXPECT(!project.provisional.recorded(saved));
     ZEXPECT(project.candidates(saved).front().source == CommandSource::Database);
+};
+
+ZEST_CASE(MembersBorrowDeclaredUnits) {
+    /// Two members borrowing one unit's command, the unit then leaving the
+    /// database: both borrow the remaining unit's, never each other's, which
+    /// would still be the command of the unit gone.
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("other/z.cpp", "");
+    auto entries = [&](llvm::ArrayRef<CDBEntry> units) {
+        write_cdb(tmp, project.cdb, build_cdb_json(units));
+    };
+    entries({
+        {tmp.root, tmp.path("src/a.cpp"),   {"-DGONE"}},
+        {tmp.root, tmp.path("other/z.cpp"), {"-DKEPT"}},
+    });
+    auto gone = project.file_table.intern(Spelling::absolute(tmp.path("src/a.cpp")));
+    auto kept = project.file_table.intern(Spelling::absolute(tmp.path("other/z.cpp")));
+    llvm::SmallVector<Fid> members;
+    for(auto name: {"src/b_new.cpp", "src/c_new.cpp"}) {
+        tmp.touch(name, "");
+        members.push_back(project.file_table.intern(Spelling::absolute(tmp.path(name))));
+        ZASSERT(project.record_provisional(members.back()));
+    }
+    project.update_members({});
+    for(auto member: members) {
+        ZASSERT(project.candidates(member).front().from() == gone);
+    }
+
+    entries({
+        {tmp.root, tmp.path("other/z.cpp"), {"-DKEPT"}}
+    });
+    project.update_members({.removed = {gone}});
+    for(auto member: members) {
+        auto commands = project.candidates(member);
+        ZASSERT(commands.size() == 1u);
+        ZEXPECT(commands.front().source == CommandSource::Borrowed);
+        ZEXPECT(commands.front().rules_from == llvm::SmallVector<Fid, 2>{kept});
+        ZEXPECT(commands.front().base == project.entries(kept).front().command);
+    }
+};
+
+ZEST_CASE(BuiltinHostStaysFallback) {
+    /// No database and no rule: a recorded source compiles under the
+    /// builtin command, and so does the header it includes, in its context.
+    /// No build chose that command's compiler: one that cannot be queried
+    /// is no failure to report.
+    TempDir tmp;
+    tmp.touch("lib/main.cpp", "#include \"frag.h\"\n");
+    tmp.touch("lib/frag.h", "");
+    tmp.mkdir("nowhere");
+    FileTable files;
+    Project project{files};
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    // Before any query runs: the toolchain keeps what its queries found.
+    ScopedEnv no_compilers("PATH", tmp.path("nowhere"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("lib/main.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("lib/frag.h")));
+    ZASSERT(project.record_provisional(host));
+    project.update_members({});
+    ZASSERT(project.candidates(host).front().source == CommandSource::Fallback);
+
+    auto selection = project.select_command(header);
+    ZEXPECT(selection.host == host);
+    ZEXPECT(selection.candidate.source == CommandSource::Fallback);
+    ZEXPECT(selection.candidate.from() == host);
+    ZEXPECT(selection.ref.source == CommandSource::Fallback);
+    ZEXPECT(project.render(selection.ref).query_failure.empty());
+    auto chosen = selection.ref;
+    chosen.source = CommandSource::Database;
+    ZEXPECT(!project.render(chosen).query_failure.empty());
 };
 
 ZEST_CASE(ChainsFollowTree) {
