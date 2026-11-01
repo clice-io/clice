@@ -583,6 +583,15 @@ private:
         if(!reach) {
             return std::nullopt;
         }
+        // Clang's range of a declaration starts after the attributes written
+        // before it, which its subtree holds all the same.
+        if(entry.node.kind() == SemanticNode::Kind::Decl) {
+            for(auto* attr: entry.node.get<clang::Decl>()->attrs()) {
+                if(auto written = focus.produced_range(attr->getRange())) {
+                    reach->begin = std::min(reach->begin, written->begin);
+                }
+            }
+        }
         auto content = focus.content();
         reach->end =
             static_cast<std::uint32_t>(std::min(content.find('\n', reach->end), content.size()));

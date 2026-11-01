@@ -21,3 +21,10 @@ int compute(int base) {
 int unrelated(int base) {
     return scale(base, 4);
 }
+
+constexpr int align(int value, int factor) {
+    return value * factor;
+}
+
+§(attribute)⟦alignas(align(2, 4))
+⟧int storage;
