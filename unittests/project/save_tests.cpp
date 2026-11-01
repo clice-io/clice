@@ -212,6 +212,7 @@ struct ShrinkProject {
                   "int first_value() { return function_1(first_local); }\n");
         tmp.touch("b.cpp", "int second_value() { return 2; }\n");
         open_store(tmp, f.project);
+        list_unit(f.project.cdb, tmp.path("a.cpp"));
         ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
         f.save(index::SearchRebuild::Idle);
     }

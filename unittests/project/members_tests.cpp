@@ -354,8 +354,9 @@ ZEST_CASE(CudaHeaderNotDefaultSource) {
 };
 
 ZEST_CASE(InvalidDefaultCommandIgnored) {
-    /// A default command that names no compiler leaves its files without a
-    /// command instead of aborting: they take the builtin fallback.
+    /// A default command that names no compiler makes no member instead of
+    /// aborting: its files have no command of their own, and compile under
+    /// the builtin fallback.
     TempDir tmp;
     tmp.touch("main.cpp", "");
     FileTable files;
@@ -365,7 +366,7 @@ ZEST_CASE(InvalidDefaultCommandIgnored) {
 
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
     ZEXPECT(project.candidates(main).empty());
-    ZEXPECT(project.members().size() == 1U);
+    ZEXPECT(project.members().empty());
     ZEXPECT(project.fallback_command(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))) !=
             invalid_command);
 };
