@@ -239,8 +239,8 @@ struct StatsResult {
     /// pch_cache entries whose pch.idx index is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
     /// by the loaded-state budget, not by every key ever touched.
-    std::uint32_t pch_loaded_states = 0;
-    std::uint64_t pch_state_bytes = 0;
+    std::uint32_t pch_loaded_indexes = 0;
+    std::uint64_t pch_index_bytes = 0;
 
     /// Shard blobs awaiting persistence (the indexer's dirty set — zero
     /// after a finished save), and the total mapped bytes of every loaded

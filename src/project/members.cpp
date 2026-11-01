@@ -447,7 +447,7 @@ CDBDiff Project::refresh_provisional() {
         // context, as the part of a unity build does.
         auto hosted = ranges::any_of(dep_graph.find_host_sources(file),
                                      [&](Fid root) { return root != file && declared(root); });
-        // One no unit lends a command compiles under the builtin one, a
+        // One that borrows no unit's command compiles under the builtin one, a
         // member all the same: the host of the headers it includes.
         std::optional<Candidate> command;
         if(!hosted) {

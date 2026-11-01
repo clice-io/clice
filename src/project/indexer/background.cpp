@@ -349,9 +349,8 @@ async::task<> BackgroundIndex::run_pass() {
     ScopedTimer timer;
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
-    co_await async::with_task_group([&](async::task_group<>& workers) {
-        return feed(workers, pass, total, dispatched);
-    });
+    co_await async::with_task_group(
+        [&](async::task_group<>& workers) { return feed(workers, pass, total, dispatched); });
 
     current.stage = Progress::Stage::End;
     current.dispatched = dispatched;
@@ -367,7 +366,7 @@ async::task<> BackgroundIndex::run_pass() {
              total,
              timer.ms());
     co_await project.save(reindexes.queued() == 0 ? index::SearchRebuild::Idle
-                                              : index::SearchRebuild::Behind);
+                                                  : index::SearchRebuild::Behind);
     // The pass's merge buffers are freed by now; glibc would keep their
     // pages, and the master its pass's peak, for the rest of the session.
     co_await async::queue([] { release_free_memory(); });

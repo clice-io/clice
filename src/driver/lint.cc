@@ -242,7 +242,7 @@ async::task<>
     co_await workers.join();
 }
 
-/// Lint the project through unit runs planning {tidy} (or {index, tidy}):
+/// Lint the project through compiles of its units planning {tidy} (or {index, tidy}):
 /// open it, run every lintable CDB entry under its .clang-tidy
 /// configuration, and return the merged findings. The background index
 /// stays off during the pass — the plan's own runs are the only consumer

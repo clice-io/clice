@@ -678,10 +678,10 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
 
         co_return co_await async::when_all(std::move(tasks));
     };
-    auto [outcomes] = async::run(query_all());
+    auto [results] = async::run(query_all());
 
     std::size_t succeeded = 0;
-    for(auto& o: *outcomes) {
+    for(auto& o: *results) {
         if(o.result) {
             succeeded += 1;
         } else if(o.chosen) {

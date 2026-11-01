@@ -8,6 +8,6 @@ test(async (t) => {
     for (const file of ["s0.cpp", "s1.cpp", "s2.cpp", "s3.cpp"]) {
         await s.diagnostics(file);
     }
-    const { pchLoadedStates, pchCacheEntries } = await s.stats();
-    await t.show("four documents", { pchLoadedStates, pchCacheEntries });
+    const { pchLoadedIndexes, pchCacheEntries } = await s.stats();
+    await t.show("four documents", { pchLoadedIndexes, pchCacheEntries });
 });

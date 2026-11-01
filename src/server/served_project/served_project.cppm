@@ -38,9 +38,9 @@ struct ServedProjectFixture;
 
 }
 
-/// What a document's compile round waits on.
+/// What a document's compile attempt waits on.
 enum class CompilePhase : std::uint8_t {
-    /// No round runs.
+    /// No attempt runs.
     Idle,
     /// The command it compiles with.
     Command,
@@ -146,7 +146,7 @@ struct ServedDocument {
 
     /// Whether the latest compile describes the current buffer: the last
     /// compile finished and no invalidation arrived since. Written by the
-    /// round's commit and by every invalidation.
+    /// attempt's commit and by every invalidation.
     bool current = false;
 
     /// Bumped by every invalidation of the document. A stateless build
@@ -301,7 +301,7 @@ public:
     // compile.cpp
 
     /// Compile an open document's AST if it is not current: join the
-    /// document's round (spawning one if none is live) and retry through
+    /// document's attempt (spawning one if none is live) and retry through
     /// stale attempts until a terminal result. Returns true when the
     /// latest compile is current on return. A new generation of the
     /// document abandons the join — the editor re-requests after an edit,
@@ -310,7 +310,7 @@ public:
 
     /// Start (or join) the document's compile detached — the caller keeps
     /// serving from the index until it finishes. The graph's
-    /// one-round-per-node discipline dedupes concurrent requests.
+    /// one-attempt-per-node discipline dedupes concurrent requests.
     void request_compile(std::shared_ptr<Session> session);
 
     /// The escalation triggers' single write point: flip an index-only
@@ -321,9 +321,9 @@ public:
     void escalate(Fid path_id);
 
     /// The document was edited: the latest compile is no longer current and
-    /// the in-flight round's result is void. Fires the round's advisory
+    /// the in-flight attempt's result is void. Fires the attempt's advisory
     /// token and cancels its compile over IPC, which interrupts the
-    /// worker's parse (the round still observes the real reply: crash
+    /// worker's parse (the attempt still observes the real reply: crash
     /// accounting depends on it); the document is compiled from now on
     /// (escalate).
     void edited(Session& session);
@@ -336,8 +336,8 @@ public:
 
     /// A Lost-type invalidation (dependency changed on disk, worker crash,
     /// eviction — the buffer itself is unchanged): the latest compile is no
-    /// longer current and an in-flight round must not commit as such, but
-    /// its parse keeps running — the round publishes the product as bounded
+    /// longer current and an in-flight attempt must not commit as such, but
+    /// its parse keeps running — the attempt publishes the product as bounded
     /// staleness before reporting Stale.
     void invalidate(Fid path_id);
 
@@ -364,7 +364,7 @@ public:
     /// — either way the resolved command may describe a command that no
     /// longer exists, and adopting the key would hand the document's
     /// preamble features and staleness checks a PCH of another command.
-    /// This path runs no graph round it could ask instead. The inputs
+    /// This path runs no graph attempt it could ask instead. The inputs
     /// themselves follow `text`, the buffer the build sends, so a request
     /// that outlives its ticket still compiles against a PCH of its own
     /// preamble. False only when the graph shut down: an import that did
@@ -403,7 +403,7 @@ public:
     /// not retry now: the document has no AST to offer.
     bool compile_stopped(const Session& session) const;
 
-    /// Whether a round of the document is live: it will send a compile of
+    /// Whether an attempt of the document is live: it will send a compile of
     /// its own, so a lost worker-side AST needs no invalidation.
     bool compiling(Fid path_id) const {
         return project.graph.is_compiling(node(path_id));
@@ -445,8 +445,8 @@ public:
     bool lacks_skipped_diagnostics(Fid path_id) const override;
 
     /// Interrupt every in-flight parse and wait for the detached compile
-    /// joins. The rounds themselves finish in TaskGraph::shutdown — the
-    /// interruption is what keeps that finish prompt (a round's stateful
+    /// joins. The attempts themselves finish in TaskGraph::shutdown — the
+    /// interruption is what keeps that finish prompt (an attempt's stateful
     /// send carries the interrupt, not its advisory token: contract 2 wants
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
@@ -657,7 +657,7 @@ public:
 
     /// The interactive stateless builds (completion, signature help): the
     /// buffer and its compile inputs go to a stateless worker, which
-    /// compiles a buffer state the shared AST round may not have seen yet,
+    /// compiles a buffer state the shared AST attempt may not have seen yet,
     /// at `offset` of it. `params` arrives with the fields particular to its
     /// request filled in.
     template <typename Params>
@@ -831,7 +831,7 @@ private:
                                                        const Resolution& resolution,
                                                        const Imports& imports);
 
-    /// The document's round moved on to `phase`: the client follows it.
+    /// The document's attempt moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
 
     /// The latest compile is no longer current: its epoch moves on.
@@ -1044,7 +1044,7 @@ private:
     /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
 
-    /// Detached ensure_compiled joins from request_compile; the rounds
+    /// Detached ensure_compiled joins from request_compile; the attempts
     /// live in the graph's task group.
     async::task_group<> started_compiles;
 

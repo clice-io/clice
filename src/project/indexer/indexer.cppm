@@ -40,7 +40,7 @@ enum class ReindexReason : std::uint8_t {
 /// - record() books a pending reindex and queues the file unless it holds a
 ///   place not taken yet; within one queued place ContentChanged absorbs,
 ///   while a fresh place after consumption carries its own kind (the
-///   consumed pass owns the earlier one).
+///   consuming run owns the earlier one).
 /// - A pass runs over the files queued when it began (begin_pass):
 ///   take_next() atomically takes the next file's pending reindex at
 ///   dispatch; events arriving during the flight book into the entry as a
@@ -154,8 +154,8 @@ public:
     /// — a preemption says nothing about the file, and capping it would
     /// silently drop coverage. The requeue carries the reason the dispatch
     /// was launched for, not the entry's current one: a deps-only
-    /// downgrade during the flight bet on the content pass finishing, and a
-    /// failed pass leaves the edit uncovered.
+    /// downgrade during the flight bet on the content run finishing, and a
+    /// failed run leaves the edit uncovered.
     FailureDecision on_dispatch_failure(const TakenReindex& taken, Failure failure);
 
     /// Why the file awaits re-indexing (queued or in flight), or nullopt
@@ -197,7 +197,7 @@ private:
         /// The sequence number of the newest ContentChanged recording.
         /// outdated() compares against this, not `seq`: a deps-only requeue
         /// during a flight bumps `seq` (to survive the finish) but must not
-        /// discard an in-flight content pass.
+        /// discard an in-flight content run.
         std::uint64_t content_seq;
 
         /// Lost-run requeues of this entry. Bounds the damage of a file
@@ -227,7 +227,7 @@ private:
 };
 
 /// The background index of a project: the passes that drive its units
-/// through unit runs (Project::compile_unit) to drain the queue of owed
+/// through their compiles (Project::compile_unit) to drain the queue of owed
 /// reindexes, batched by an idle delay and fed to the workers within a
 /// window — and nothing about what a run produces or where results live
 /// (the project's index). Reindexes are booked whether it runs or not;

@@ -20,7 +20,7 @@ import :support.prelude;
 
 namespace clice::types {
 
-/// The outcome of deduce_arguments.
+/// The result of deduce_arguments.
 enum class Deduction : std::uint8_t {
     /// The pattern cannot match the arguments.
     Failed,

@@ -457,7 +457,7 @@ struct Project {
     /// record of a file the build declares now, and give every other
     /// recorded file the command it borrows — a declared unit's, while no
     /// declared unit includes it, by the dependency graph; the builtin one
-    /// when none lends it any — reporting the files that joined (`added`),
+    /// when it borrows none — reporting the files that joined (`added`),
     /// borrow another command (`changed`) or left (`removed`), as a database
     /// reload reports its entries. The only writer of their commands.
     CDBDiff refresh_provisional();
@@ -739,7 +739,7 @@ struct Project {
     /// same stem first, then by name — with its first command; else, for a
     /// header, the member whose command's header search directories contain
     /// it, nearest directory first, with that command; else the member
-    /// closest by path. A provisional member lends the command it borrows
+    /// closest by path. A provisional member gives the command it borrows
     /// only when `provisional`: the members' own commands are chosen among
     /// the units the build declares, so none rests on another's. Nullopt
     /// when there is no such member.
@@ -748,7 +748,7 @@ struct Project {
     // command/contexts.cpp
 
     /// The contexts a file can compile in, in this project: its hosts, ranked,
-    /// each with the commands it lends and the places it enters the header at,
+    /// each with the commands it gives and the places it enters the header at,
     /// then the file's own database entries. Contexts compiling the same under
     /// one command list once.
     std::vector<ListedContext> list_contexts(Fid file);
@@ -1101,7 +1101,7 @@ struct Project {
     bool load_saved(bool reconcile, index::IndexReport& report);
 
     /// Persist what the project's database carries: the index's dirty state
-    /// (ProjectIndex::begin_save), then the build snapshot, the precompiled
+    /// (ProjectIndex::begin_save), then the listings, the precompiled
     /// records and the context choices, in one write offloaded to the kotatsu
     /// thread pool. What the write fails to commit stays dirty for the next
     /// save; a database the write finds corrupt is replaced by a fresh one,
@@ -1130,7 +1130,7 @@ struct Project {
 
     /// Confirmed corruption heals through rebuildability: condemn the corrupt
     /// database (deleted on close) and continue on a freshly opened empty
-    /// one, the index and the persisted build snapshot starting over with
+    /// one, the index and the persisted listings starting over with
     /// it, so the session's rebuild persists instead of waiting for the next
     /// start. A failed reopen leaves persistence disabled for the session.
     void reopen_fresh_database();

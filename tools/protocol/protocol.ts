@@ -269,8 +269,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 /// deterministic counter instead of brittle RSS assertions; and the counts
 /// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
-    pchLoadedStates: number;
-    pchStateBytes: number;
+    pchLoadedIndexes: number;
+    pchIndexBytes: number;
     indexInmemoryShards: number;
     indexShardContentBytes: number;
     lastSaveShards: number;

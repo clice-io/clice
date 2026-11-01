@@ -36,7 +36,8 @@ async::task<> Project::save(index::SearchRebuild search) {
         // No more indexing is queued, so no save is due for a while: the
         // file may shrink — unless a file was queued while the save ran. A
         // shrink that discarded the database owes the fresh one a save.
-        if(!retry && search == index::SearchRebuild::Idle && background_index.queue().queued() == 0) {
+        if(!retry && search == index::SearchRebuild::Idle &&
+           background_index.queue().queued() == 0) {
             report = co_await shrink_database();
             retry = report.owes_retry;
             owed |= !report.reindex().empty();

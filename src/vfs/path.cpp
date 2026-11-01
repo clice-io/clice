@@ -66,7 +66,8 @@ CanonicalPath::CanonicalPath(const Spelling& spelled) {
     path::canonicalize(text);
 }
 
-std::pair<std::size_t, std::size_t> path::tree_distance(llvm::StringRef path, llvm::StringRef other) {
+std::pair<std::size_t, std::size_t> path::tree_distance(llvm::StringRef path,
+                                                        llvm::StringRef other) {
     std::size_t shared = 0;
     auto n = std::min(path.size(), other.size());
     while(shared < n && path[shared] == other[shared]) {

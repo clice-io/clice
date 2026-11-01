@@ -212,7 +212,8 @@ void ServedProject::retry_after_save(Session& session) {
         project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool leans = !compiled || feature::missing_context_errors(compiled->output->diagnostics.own) > 0;
+        bool leans =
+            !compiled || feature::missing_context_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.hash),
                                 leans)) {
@@ -518,17 +519,17 @@ async::task<std::optional<Imports>>
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
     // too: a durable import edge earned earlier must stop cascading here.
-    auto deps = co_await project.scan_imports(path_id,
-                                              resolution,
-                                              arguments,
-                                              directory,
-                                              std::optional<llvm::StringRef>(text));
-    project.graph.set_edges(attempt.node(), deps.declared);
+    auto imports = co_await project.scan_imports(path_id,
+                                                 resolution,
+                                                 arguments,
+                                                 directory,
+                                                 std::optional<llvm::StringRef>(text));
+    project.graph.set_edges(attempt.node(), imports.declared);
     auto kind = feature::RequestKind::PCM;
-    auto modules = deps.resolved();
+    auto modules = imports.resolved();
     if(modules.empty()) {
         ticket.session->succeeded(kind, ticket.generation);
-        co_return deps;
+        co_return imports;
     }
 
     // A module whose build crashed a worker is refused to every importer
@@ -574,7 +575,7 @@ async::task<std::optional<Imports>>
     if(!crashed) {
         ticket.session->succeeded(kind, ticket.generation);
     }
-    co_return deps;
+    co_return imports;
 }
 
 async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {

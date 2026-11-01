@@ -13,9 +13,9 @@ void ReindexQueue::record(Fid id, ReindexReason reason) {
     // cascade cannot downgrade a file whose own content already changed.
     // Across places it is not: a deps-only requeue after the previous place
     // was consumed is a new pending reindex of its own kind — the in-flight (or
-    // finished) pass already covers the earlier content change, and
+    // finished) run already covers the earlier content change, and
     // keeping ContentChanged would suppress the file's index past that
-    // pass. The fresh sequence number invalidates the finish of any attempt
+    // run. The fresh sequence number invalidates the finish of any attempt
     // already in flight for this file.
     seq += 1;
     auto [it, inserted] =

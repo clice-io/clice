@@ -435,8 +435,8 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
         return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
                ref.starts_with("-Wa,");
     };
-    // A -X<tool> forwards its next token, so the pair filters as one
-    // unit on the operand's outcome — a lone survivor would consume
+    // A -X<tool> forwards its next token, so the pair is kept or dropped
+    // as one unit by its operand — a lone survivor would consume
     // whatever follows it on the final command (the source path, say).
     auto forwards_operand = [](llvm::StringRef ref) {
         return ref == "-Xclang" || ref == "-Xpreprocessor" || ref == "-Xlinker" ||

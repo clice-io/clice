@@ -71,7 +71,7 @@ bool is_c_family_file(llvm::StringRef filename) {
 }
 
 /// Whether `type` is C++ or a C++ module unit: the two share flags, so
-/// each lends to the other.
+/// each borrows from the other.
 static bool cxx_or_module(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
     return type == types::TY_CXX || type == types::TY_CXXModule;

@@ -172,7 +172,7 @@ struct CompileParams {
     bool skip_bodies = false;
 };
 
-/// Outcome of a stateful compile. Anything but `Done` is a non-result: the
+/// Status of a stateful compile. Anything but `Done` is a non-result: the
 /// master must not commit the result to the session or record
 /// dependencies — doing so freezes the document on a product that never
 /// existed. A setup failure's diagnostics say why it failed.
@@ -180,7 +180,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted (outdated round).
+    /// The parse was interrupted (outdated attempt).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -279,7 +279,7 @@ struct BuildPCMParams {
     std::string output_path;
 };
 
-/// One unit run: a single parse serving the products the frozen plan
+/// One unit's compile: a single parse serving the products the frozen plan
 /// names — the full index, a clang-tidy pass, or both.
 struct CompileUnitParams {
     std::string file;

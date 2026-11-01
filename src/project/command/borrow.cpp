@@ -20,7 +20,7 @@ const static BorrowableCommands& borrowable_commands(Project& project) {
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule covers with a default command that is no compile
-        // command has none; lending the builtin one would only name a guess
+        // command has none; giving the builtin one would only name a guess
         // borrowed.
         for(auto& candidate: project.candidates(member)) {
             if(candidate.source == CommandSource::Fallback) {
@@ -60,7 +60,7 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
     };
 
     using Command = BorrowableCommands::Command;
-    auto lent = [](const Command& command) {
+    auto borrowed = [](const Command& command) {
         return command.command.passed_on(command.member, CommandSource::Borrowed);
     };
     // Every member with its first command of the family, in path order.
@@ -82,7 +82,7 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
             return path::parent(unit_path(command)) == dir;
         }));
     if(!siblings.empty()) {
-        return lent(**ranges::min_element(siblings, {}, [&](const Command* command) {
+        return borrowed(**ranges::min_element(siblings, {}, [&](const Command* command) {
             return std::tuple(path::stem(unit_path(command)) != stem, unit_path(command));
         }));
     }
@@ -98,14 +98,14 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
             }
             for(auto position: it->second) {
                 if(fits(index.commands[position])) {
-                    return lent(index.commands[position]);
+                    return borrowed(index.commands[position]);
                 }
             }
         }
     }
 
     // The closest unit in the directory tree, then by name.
-    return lent(**ranges::min_element(units, {}, [&](const Command* command) {
+    return borrowed(**ranges::min_element(units, {}, [&](const Command* command) {
         return std::tuple(path::tree_distance(path, unit_path(command)), unit_path(command));
     }));
 }

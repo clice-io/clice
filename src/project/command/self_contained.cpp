@@ -46,7 +46,7 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
             .disk = disk && disk->version.valid() ? disk->version : text,
         },
         std::move(inputs));
-    // A header found self-contained lists hosts lending the same command
+    // A header found self-contained lists hosts giving the same command
     // once (list_contexts).
     hosting.generation += 1;
     mark_precompiled_dirty();

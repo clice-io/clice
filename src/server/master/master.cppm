@@ -305,7 +305,7 @@ public:
     /// One look, taken in one turn after the disk changes the file table
     /// saw are applied, at read-only views: `editor` has no request
     /// unanswered but syncs (kotatsu lists a request from its dispatch on), no
-    /// task-graph round is live, the background index is idle, and no removed
+    /// task-graph attempt is live, the background index is idle, and no removed
     /// folder's project is still shutting down (its end may start the
     /// folder again). Work starts inside one of these or from a new
     /// message, so the look is exact — with periodic ticks off, as tests

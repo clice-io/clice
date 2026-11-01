@@ -406,7 +406,7 @@ static worker::IncludeTreeResult
 static worker::CompileUnitResult
     handle_compile_unit(const worker::CompileUnitParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("Unit run request: file={}", params.file);
+    LOG_INFO("Unit compile request: file={}", params.file);
     ScopedTimer timer;
 
     // One parse serves every product of the plan. The command-affecting
@@ -428,10 +428,10 @@ static worker::CompileUnitResult
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
-        LOG_WARN("Unit run failed: file={}, {}ms", params.file, timer.ms());
+        LOG_WARN("Unit compile failed: file={}, {}ms", params.file, timer.ms());
         auto errors = collect_errors(*unit);
         if(errors.empty()) {
-            return {false, "Unit run compilation failed"};
+            return {false, "Unit compile failed"};
         }
         // A command clang rejects before parsing: lint reports why, as
         // clang-tidy does.
@@ -453,7 +453,7 @@ static worker::CompileUnitResult
     // Building and serializing the index costs a large share of the pass;
     // skip it when the cancellation arrived after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
-        return {false, "Unit run cancelled"};
+        return {false, "Unit compile cancelled"};
     }
     worker::CompileUnitResult result;
     result.success = true;

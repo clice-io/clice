@@ -62,7 +62,7 @@ import :support.prelude;
 /// compute_ms = the feature call itself), "build" (stateless-worker build
 /// tasks: kind=pch|pcm|compile_unit with per-stage splits — compile_ms, then
 /// preamble_index_ms/flush_ms/state_write_ms for a pch, flush_ms for a
-/// pcm, index_ms/teardown_ms for a unit run),
+/// pcm, index_ms/teardown_ms for a unit's compile),
 /// "index_query" (master-side index lookups: kind=relations|search),
 /// "index_detail" (inside one index pass: op=build splits the semantics
 /// table from projection, instantiations, finishing and the encoding of

@@ -324,7 +324,7 @@ async::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     stop_scope.cancel();
     fail_pending_requests();
-    // A parked reply would hold its round, and the drain behind it, forever.
+    // A parked reply would hold its attempt, and the drain behind it, forever.
     if(probe) {
         probe->release_all();
     }

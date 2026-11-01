@@ -71,8 +71,9 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 
 void ServedProject::reindex(Fid path_id, bool content) {
     skipped.erase(path_id);
-    project.background_index.enqueue(
-        path_id, content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
+    project.background_index.enqueue(path_id,
+                                     content ? ReindexReason::ContentChanged
+                                             : ReindexReason::DepsOnly);
 }
 
 /// An invalidated dependent recompiles when it is open, and reindexes
@@ -256,7 +257,7 @@ void ServedProject::commands_changed(CDBDiff commands) {
     // below cannot reach them (they hold no edge to any real node). A name
     // whose providers changed: importers hold edges to the ones they
     // picked, and when those entries are unchanged the delta walk cannot
-    // reach them either — cascade from them so their next rounds pick
+    // reach them either — cascade from them so their next attempts pick
     // again.
     for(auto& name: providers.appeared) {
         provider_appeared(name, refresh);
@@ -329,7 +330,7 @@ void ServedProject::recheck_choices() {
 
 void ServedProject::asts_lost(llvm::ArrayRef<Fid> lost) {
     // Compile inputs did not change, so self-containment results stay
-    // untouched. A live round sends a compile of its own,
+    // untouched. A live attempt sends a compile of its own,
     // which puts the AST back on a worker — invalidating it would only make
     // it finish stale and compile twice.
     for(auto path_id: lost) {

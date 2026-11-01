@@ -272,11 +272,11 @@ public:
     }
 
     bool completed() {
-        return outcome == CompilationStatus::Completed;
+        return status == CompilationStatus::Completed;
     }
 
     bool setup_fail() {
-        return outcome == CompilationStatus::SetupFail;
+        return status == CompilationStatus::SetupFail;
     }
 
     /// The parse went on past a fatal error: clang reported nothing after
@@ -578,7 +578,7 @@ private:
 
     CompilationParams params;
 
-    CompilationStatus outcome = CompilationStatus::SetupFail;
+    CompilationStatus status = CompilationStatus::SetupFail;
 
     /// See fatal_error.
     bool fatal = false;

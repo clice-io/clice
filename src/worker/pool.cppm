@@ -235,7 +235,7 @@ public:
     /// `cancel` is an advisory cancellation: when it fires, the request is
     /// cancelled over IPC and this call KEEPS awaiting the worker's real
     /// answer — the slot frees only when the process is actually idle, and
-    /// crash accounting keeps observing the real outcome. A cancelled
+    /// crash accounting keeps observing the real reply. A cancelled
     /// result is reported as dispatch_errc::cancelled. `cost` is what the
     /// request is expected to take; a finished request reports what it took
     /// into `report`. `admitted` is asked once the request has its slot,
@@ -850,7 +850,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
             co_await async::fail(
                 cancel.cancelled()
-                    ? ipc::Error{cancelled, "Request cancelled by its round"}
+                    ? ipc::Error{cancelled, "Request cancelled by its attempt"}
                     : ipc::Error{worker_unavailable, "No stateless workers available"});
         }
 

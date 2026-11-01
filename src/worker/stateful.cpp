@@ -315,7 +315,7 @@ RequestResult<worker::CompileParams>
             // so the master never rebuilds an innocent shared PCH over a
             // failure it did not cause. An anonymous read error with PCMs
             // in play is ambiguous; suspecting the PCH costs at most one
-            // retracted pair per round and self-corrects on the retry.
+            // retracted pair per attempt and self-corrects on the retry.
             if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
                 auto points_at_pch = [&](const Diagnostic& diag) {
                     llvm::StringRef message = diag.message;

@@ -204,8 +204,8 @@ void LSPClient::register_test_hooks() {
                 auto& project = served->project;
                 for(auto& [key, pch]: project.pchs) {
                     if(pch.index) {
-                        stats.pch_loaded_states += 1;
-                        stats.pch_state_bytes += pch.index->bytes().size();
+                        stats.pch_loaded_indexes += 1;
+                        stats.pch_index_bytes += pch.index->bytes().size();
                     }
                     stats.pch_cache_entries += pch.path.empty() ? 0 : 1;
                 }

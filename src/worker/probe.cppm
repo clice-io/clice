@@ -49,7 +49,7 @@ std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);
 /// while test hooks are on (project.test_hooks, see WorkerPool::probe): how
 /// many builds of each kind a worker ran per file, and holds that park a
 /// build's reply between its arrival and its delivery. Parked, the build is
-/// still in flight to the master — its round has not finished, the requests
+/// still in flight to the master — its attempt has not finished, the requests
 /// waiting on it wait on — though its worker is free again: a test acts
 /// while the master waits for a build, without making one slow. Watches
 /// announce what the background loops did, which parks nothing.

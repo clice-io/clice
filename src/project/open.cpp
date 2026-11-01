@@ -112,7 +112,7 @@ void load_members(Project& project,
     }
 
     // A recorded file is a member once it has its command, which the
-    // refresh below gives it, the builtin one when no unit lends one.
+    // refresh below gives it, the builtin one when it borrows none.
     opened.members = project.members();
     if(opened.members.empty() && project.provisional.files().empty()) {
         return;

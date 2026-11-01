@@ -116,7 +116,7 @@ static std::expected<Params, ipc::Error> argument_of(const protocol::ExecuteComm
 }
 
 LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams params) {
-    // A client with no UI for these tells the user nothing of the outcome;
+    // A client with no UI for these tells the user nothing of the result;
     // the server does.
     auto tell = [this](protocol::MessageType type, std::string message) {
         peer.send_notification(

@@ -15,8 +15,8 @@ namespace clice {
 /// A command a file compiles under, before the rules edit it: one of its
 /// database entries (Database); for a file without entries that a rule's
 /// default command covers, that command (Default); for a provisional
-/// member, the command it borrows (Borrowed), or the builtin one when no
-/// unit lends it any (Fallback); for a header, one of its host's (Host).
+/// member, the command it borrows (Borrowed), or the builtin one when it
+/// borrows none (Fallback); for a header, one of its host's (Host).
 struct Candidate {
     /// The command as the entry, the rule or the builtin gives it.
     CommandID base;
@@ -25,8 +25,8 @@ struct Candidate {
 
     /// The files whose rules edit the command besides the file compiling
     /// under it, the one it is the command of last: none for the file's own;
-    /// the unit lending it for a borrowed command — the first of a chain of
-    /// lenders, whose command it is; for a header's, its host, after the
+    /// the unit it comes from for a borrowed command — the first of a chain of
+    /// borrowings, whose command it is; for a header's, its host, after the
     /// files the host's own command was from.
     llvm::SmallVector<Fid, 2> rules_from;
 
@@ -37,7 +37,7 @@ struct Candidate {
 
     /// This command of `owner` as another file compiles under it, `as` Host
     /// or Borrowed. A header compiles in its host, under the host's rules
-    /// too; a borrowed command stays the first lender's.
+    /// too; a borrowed command stays the command of the unit it came from first.
     Candidate passed_on(Fid owner, CommandSource as) const {
         Candidate candidate{.base = base, .source = as, .rules_from = rules_from};
         if(as == CommandSource::Host || rules_from.empty()) {
@@ -140,7 +140,7 @@ struct HeaderContext {
     std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
-/// The commands the members can lend — every command of every member but
+/// The commands a file can borrow from the members — every command of every member but
 /// the builtin ones, by member path — and the header search directories
 /// they cover, by identity, as indexes into `commands`. Rebuilt when
 /// Project::commands_epoch moves, so a resolution scans no member.
@@ -215,7 +215,7 @@ struct HostSearch {
     std::optional<TreeRequest> missing;
 };
 
-/// One context the listing offers a file: a host and the command it lends,
+/// One context the listing offers a file: a host and one of its commands,
 /// at one of the places its compile enters the header when there are
 /// several, or one of the file's own entries.
 struct ListedContext {
