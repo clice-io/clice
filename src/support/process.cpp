@@ -50,10 +50,8 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
 extern "C" {
 
     // Set by the allocator of the Windows and macOS executables
-    // (src/mimalloc.cc), which no other program links: its own collect, and
-    // on Windows the switch to purging.
+    // (src/mimalloc.cc), which no other program links: its own collect.
     void (*clice_allocator_collect)() = nullptr;
-    void (*clice_allocator_purge)() = nullptr;
 }
 
 void release_free_memory() {
@@ -65,12 +63,6 @@ void release_free_memory() {
 #endif
     if(clice_allocator_collect) {
         clice_allocator_collect();
-    }
-}
-
-void purge_freed_memory() {
-    if(clice_allocator_purge) {
-        clice_allocator_purge();
     }
 }
 

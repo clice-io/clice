@@ -53,19 +53,14 @@ std::size_t ucrt_msize(void* p) {
     return fn(p);
 }
 
-/// Keep freed memory in the process, as glibc does: purging it made the
-/// next request fault it back in.
-const bool retain = [] {
-    mi_option_set(mi_option_purge_delay, -1);
+/// Return freed memory to the system a second after it is freed: what a
+/// request frees and the next one reuses stays, and a collect returns the
+/// rest. A negative delay would schedule nothing for purging, and no collect
+/// would return it: every process would stay at its high-water mark.
+const bool purge = [] {
+    mi_option_set(mi_option_purge_delay, 1000);
     return true;
 }();
-
-/// With a negative delay mimalloc schedules nothing for purging, and no
-/// collect returns it. A second's delay leaves what a request frees and
-/// reuses alone; the collect after it returns the rest.
-void purge() {
-    mi_option_set(mi_option_purge_delay, 1000);
-}
 
 #endif
 
@@ -78,16 +73,12 @@ void collect() {
 extern "C" {
 
     extern void (*clice_allocator_collect)();
-    extern void (*clice_allocator_purge)();
 }
 
 namespace {
 
 const bool hooked = [] {
     clice_allocator_collect = &collect;
-#ifdef _WIN32
-    clice_allocator_purge = &purge;
-#endif
     return true;
 }();
 

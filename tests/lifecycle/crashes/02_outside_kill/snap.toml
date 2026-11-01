@@ -9,4 +9,4 @@ int add(int a, int b)
 range = "int ⟦add⟧(int a, int b) {"
 
 ["nobody is blamed".pushes]
-pushes = [[], []]
+pushes = [[]]

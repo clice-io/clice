@@ -14,11 +14,11 @@ struct Reply {
     bool index_in_file = false;
 };
 
-ZEST_SUITE(IndexHandOver) {
+ZEST_SUITE(SendIndex) {
 
 ZEST_CASE(SmallIndexInline) {
     Reply reply;
-    ZEXPECT(!hand_over_index(copy_bytes("rows"), "", reply));
+    ZEXPECT(!send_index(copy_bytes("rows"), "", reply));
     ZEXPECT(as_chars(reply.tu_index_data) == "rows");
     ZEXPECT(!reply.index_in_file);
 }
@@ -28,7 +28,7 @@ ZEST_CASE(LargeIndexToFile) {
     auto path = tmp.path("index.transfer");
     std::vector<std::byte> blob(max_index_bytes() + 1, std::byte{'x'});
     Reply reply;
-    ZEXPECT(!hand_over_index(blob, path, reply));
+    ZEXPECT(!send_index(blob, path, reply));
     ZEXPECT(reply.index_in_file);
     ZEXPECT(reply.tu_index_data.empty());
     auto written = read_file(path);
@@ -39,7 +39,7 @@ ZEST_CASE(LargeIndexToFile) {
 ZEST_CASE(LargeIndexWithoutPath) {
     Reply reply;
     auto error =
-        hand_over_index(std::vector<std::byte>(max_index_bytes() + 1, std::byte{'x'}), "", reply);
+        send_index(std::vector<std::byte>(max_index_bytes() + 1, std::byte{'x'}), "", reply);
     ZASSERT(error);
     ZEXPECT(error->contains("too large to send between clice processes"));
     ZEXPECT(!reply.index_in_file);
@@ -50,15 +50,15 @@ ZEST_CASE(FailedWriteReported) {
     TempDir tmp;
     tmp.touch("file");
     Reply reply;
-    auto error = hand_over_index(std::vector<std::byte>(max_index_bytes() + 1, std::byte{'x'}),
-                                 tmp.path("file/index"),
-                                 reply);
+    auto error = send_index(std::vector<std::byte>(max_index_bytes() + 1, std::byte{'x'}),
+                            tmp.path("file/index"),
+                            reply);
     ZASSERT(error);
     ZEXPECT(error->starts_with("writing the index to"));
     ZEXPECT(!reply.index_in_file);
 }
 
-};  // ZEST_SUITE(IndexHandOver)
+};  // ZEST_SUITE(SendIndex)
 
 }  // namespace
 

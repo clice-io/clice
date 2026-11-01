@@ -51,9 +51,9 @@ struct Harness {
     }
 
     /// Whether a change invalidated the open document's compile: every
-    /// invalidation moves its epoch on.
+    /// invalidation moves its node's generation on.
     bool invalidated(Fid path_id) {
-        return fixture.entry(path_id).epoch != 0;
+        return fixture.generation(path_id) != 0;
     }
 
     /// The files the background index owes a reindex for `reason`, sorted.
@@ -114,10 +114,10 @@ ZEST_CASE(NewProviderDirtiesImporters) {
 
     // The same save again: the name already has its provider.
     served.project.background_index.forget(closed);
-    auto epoch = fixture.entry(open).epoch;
+    auto generation = fixture.generation(open);
     served.disk_changed({iface});
     ZEXPECT(!served.project.background_index.queue().pending_reason(closed).has_value());
-    ZEXPECT(fixture.entry(open).epoch == epoch);
+    ZEXPECT(fixture.generation(open) == generation);
 }
 
 ZEST_CASE(ReloadProviderCascades) {
@@ -355,36 +355,6 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
 
     ZEXPECT(project.dep_graph.module_of(iface) == "m");
     ZEXPECT(ranges::contains(project.dep_graph.lookup_module("m"), iface));
-}
-
-ZEST_CASE(CrashMarksLostDirty) {
-    auto first = fixture.open("/proj/a.cpp", "");
-    auto second = fixture.open("/proj/b.cpp", "");
-    auto now = Session::Clock::now();
-    first->crashed(feature::RequestKind::Compile, "death", "crashed", now);
-    second->crashed(feature::RequestKind::Compile, "death", "crashed", now);
-
-    served.asts_lost({first->path_id, second->path_id});
-
-    ZASSERT(invalidated(first->path_id));
-    ZASSERT(invalidated(second->path_id));
-    // A crash loses build products, not compile inputs: what crashed on
-    // them gets no retry.
-    auto later = now + chrono::minutes(1);
-    ZASSERT(first->crash_stops(feature::RequestKind::Compile, later));
-    ZASSERT(second->crash_stops(feature::RequestKind::Compile, later));
-}
-
-ZEST_CASE(EvictionMarksLost) {
-    auto session = fixture.open("/proj/a.cpp", "");
-    auto now = Session::Clock::now();
-    session->crashed(feature::RequestKind::Compile, "death", "crashed", now);
-
-    served.asts_lost({session->path_id});
-
-    // Same loss as a crash, scoped to one document.
-    ZASSERT(invalidated(session->path_id));
-    ZASSERT(session->crash_stops(feature::RequestKind::Compile, now + chrono::minutes(1)));
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {
@@ -882,12 +852,12 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
     auto generation = session->generation;
     project.take_tree(project.tree_request(host, project.candidates(host).front()));
 
-    fixture.entry(header).current = true;
+    fixture.compiled_now(header);
     fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);
     ZASSERT(choice != nullptr);
     ZASSERT(!choice->active);
-    ZASSERT(!fixture.entry(header).current);
+    ZASSERT(!fixture.served->current(header));
     ZASSERT(session->generation == generation + 1);
 }
 

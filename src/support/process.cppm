@@ -30,16 +30,9 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
 
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without
-/// this a process's RSS only ever grows. The Windows allocator keeps all it
-/// frees unless purge_freed_memory() was called.
+/// this a process's RSS only ever grows; mimalloc returns them a second
+/// after they were freed (src/mimalloc.cc), or at this collect.
 void release_free_memory();
-
-/// Let the allocator return freed memory to the system from now on, for a
-/// process that holds nothing between its requests: the Windows executable
-/// keeps every page it frees (src/mimalloc.cc), which spares the master and
-/// a stateful worker faulting their working set back in, but leaves a
-/// stateless worker at the high-water mark of its biggest request.
-void purge_freed_memory();
 
 /// Watch `signum` for good. The first delivery of any watched signal (the
 /// shared `requested` flag) calls `stop` for a graceful stop. A second

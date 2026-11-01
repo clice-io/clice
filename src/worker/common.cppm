@@ -14,17 +14,20 @@ import :worker.protocol;
 namespace clice {
 
 /// Hand a compile the master's PCH and PCMs. The PCH comes from clice's
-/// store, so the process keeps its mapping for later compiles.
-inline void use_precompiled(CompilationInput& input,
-                            const std::pair<std::string, std::uint32_t>& pch,
-                            const std::unordered_map<std::string, std::string>& pcms) {
-    if(!pch.first.empty()) {
-        input.pch = pch;
-        vfs::keep_mapped(pch.first);
-    }
+/// store: the compile reads it through the mapping returned, which later
+/// compiles share while it is held (vfs::keep_mapped).
+inline std::shared_ptr<const llvm::MemoryBuffer>
+    use_precompiled(CompilationInput& input,
+                    const std::pair<std::string, std::uint32_t>& pch,
+                    const std::unordered_map<std::string, std::string>& pcms) {
     for(auto& [name, path]: pcms) {
         input.pcms.try_emplace(name, path);
     }
+    if(pch.first.empty()) {
+        return nullptr;
+    }
+    input.pch = pch;
+    return vfs::keep_mapped(pch.first);
 }
 
 /// The largest index blob a worker reply carries inline. The transport
@@ -38,9 +41,9 @@ std::size_t max_index_bytes();
 /// Returns why the index cannot be handed over: too large with no path to
 /// write to, or the write failed.
 template <typename Result>
-std::optional<std::string> hand_over_index(std::vector<std::byte> blob,
-                                           llvm::StringRef output_path,
-                                           Result& result) {
+std::optional<std::string> send_index(std::vector<std::byte> blob,
+                                      llvm::StringRef output_path,
+                                      Result& result) {
     if(blob.size() <= max_index_bytes()) {
         result.tu_index_data = std::move(blob);
         return std::nullopt;

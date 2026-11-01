@@ -97,12 +97,13 @@ ZEST_CASE(KeptTextFollowsEdits) {
 }
 
 ZEST_CASE(KeptMappingShared) {
-    // A store file's mapping serves every later compile while the file
-    // stats the same; any other file is mapped afresh.
+    // A store file's mapping serves every later compile while it is held
+    // and the file stats the same; any other file is mapped afresh.
     TempDir tmp;
     tmp.touch("a.pch", std::string(64 * 1024, 'x'));
     tmp.touch("b.pch", std::string(64 * 1024, 'x'));
-    vfs::keep_mapped(tmp.path("a.pch"));
+    auto kept = vfs::keep_mapped(tmp.path("a.pch"));
+    ZASSERT(kept);
 
     auto map = [&](llvm::StringRef path) {
         vfs::View view;
@@ -114,7 +115,7 @@ ZEST_CASE(KeptMappingShared) {
     };
     auto a = tmp.path("a.pch");
     auto b = tmp.path("b.pch");
-    ZASSERT(map(a)->getBufferStart() == map(a)->getBufferStart());
+    ZASSERT(map(a)->getBufferStart() == kept->getBufferStart());
 #ifdef _WIN32
     // The master and clang spell one PCH with different separators.
     auto slashed = a;
@@ -127,6 +128,35 @@ ZEST_CASE(KeptMappingShared) {
     tmp.touch("a.pch", std::string(32 * 1024, 'y'));
     ZASSERT(map(a)->getBuffer() == std::string(32 * 1024, 'y'));
 #endif
+}
+
+ZEST_CASE(KeptMappingsWhileHeld) {
+    // However many PCHs a process keeps, each stays one mapping while it is
+    // held: a later compile of any of them reads the mapping there is.
+    TempDir tmp;
+    std::vector<std::shared_ptr<const llvm::MemoryBuffer>> held;
+    for(int i = 0; i < 12; i += 1) {
+        auto name = std::format("{}.pch", i);
+        tmp.touch(name, std::string(64 * 1024, 'x'));
+        held.push_back(vfs::keep_mapped(tmp.path(name)));
+        ZASSERT(held.back());
+    }
+    for(int i = 0; i < 12; i += 1) {
+        auto again = vfs::keep_mapped(tmp.path(std::format("{}.pch", i)));
+        ZEXPECT(again->getBufferStart() == held[i]->getBufferStart());
+    }
+}
+
+ZEST_CASE(RecentMappingsKept) {
+    // A process keeping its recent mappings reuses one after every other
+    // holder let it go.
+    TempDir tmp;
+    tmp.touch("a.pch", std::string(64 * 1024, 'x'));
+    vfs::keep_recent_mappings(1);
+    std::weak_ptr<const llvm::MemoryBuffer> mapping = vfs::keep_mapped(tmp.path("a.pch"));
+    ZEXPECT(!mapping.expired());
+    vfs::keep_recent_mappings(0);
+    ZEXPECT(mapping.expired());
 }
 
 ZEST_CASE(BatchAgreesWithStatus) {

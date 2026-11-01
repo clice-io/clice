@@ -27,6 +27,10 @@ struct WorkerPoolFixture {
 
     std::vector<WorkerCrashInfo> crash_reports;
 
+    /// Documents the fixture assigns on its own count from here, clear of
+    /// the tests' own.
+    std::uint32_t next_document = 1u << 20;
+
     WorkerPoolFixture() : pool(loop) {
         // Unstarted, the pool schedules with the defaults; lift the
         // background ceiling so the slots a test adds bound it, and let
@@ -56,13 +60,18 @@ struct WorkerPoolFixture {
         }
     }
 
-    void add_stateful(bool alive = true, std::size_t owned = 0) {
+    /// A stateful slot with no process behind it, `documents` assigned to
+    /// it already.
+    void add_stateful(bool alive = true, std::size_t documents = 0) {
         auto idx = pool.stateful_workers.size();
         pool.stateful_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateful_workers.back();
         w.name = "SF-" + std::to_string(idx);
         w.state = alive ? SlotState::Alive : SlotState::Dead;
-        w.owned_documents = owned;
+        for(std::size_t i = 0; i < documents; i += 1) {
+            pool.residency.assign(next_document, idx, "");
+            next_document += 1;
+        }
     }
 
     /// Bring a dying stateless slot back into service, as a respawn would.
@@ -141,16 +150,22 @@ struct WorkerPoolFixture {
         workers[idx].spawn_time = chrono::steady_clock::now() - uptime;
     }
 
+    /// The worker a new document would go to; SIZE_MAX for none.
     std::size_t pick_least_loaded() {
-        return pool.pick_least_loaded();
+        auto document = next_document;
+        auto worker = assign_worker(document);
+        pool.residency.forget(document);
+        return worker;
     }
 
     std::size_t assign_worker(std::uint32_t path_id) {
-        return pool.assign_worker(path_id);
+        auto assignment = pool.assign_worker(path_id, "");
+        return assignment ? assignment->worker : SIZE_MAX;
     }
 
+    /// The document closed, as forget_document has it; no worker to tell.
     void remove_owner(std::uint32_t path_id) {
-        pool.remove_owner(path_id);
+        pool.residency.forget(path_id);
     }
 
     /// A worker's own failure by default: SIGSEGV, not an outside kill.
@@ -332,15 +347,20 @@ struct WorkerPoolFixture {
     }
 
     std::size_t stateful_owned(std::size_t idx) const {
-        return pool.stateful_workers[idx].owned_documents;
+        return pool.residency.documents_on(idx);
+    }
+
+    /// The document's compile left an AST on its worker.
+    void compiled(std::uint32_t path_id) {
+        pool.residency.compiled(path_id, pool.residency.assignment(path_id)->id, true);
     }
 
     bool has_owner(std::uint32_t path_id) const {
-        return pool.owner.count(path_id);
+        return pool.residency.assignment(path_id).has_value();
     }
 
     std::size_t owner_of(std::uint32_t path_id) const {
-        return pool.owner.find(path_id)->second;
+        return pool.residency.assignment(path_id)->worker;
     }
 
     SlotState state(std::size_t idx, bool stateful = false) const {
@@ -485,22 +505,6 @@ ZEST_CASE(SkipDeadWorkers) {
     f.add_stateful(true, 5);
     f.add_stateful(true, 3);
     ZEXPECT(f.pick_least_loaded() == 2u);
-}
-
-ZEST_CASE(StaleEvictionIgnored) {
-    WorkerPoolFixture f;
-    f.add_stateful();
-    f.add_stateful();
-    auto idx = f.assign_worker(7);
-
-    // An eviction from a worker that lost ownership (probe reassignment
-    // left it a stale copy) must not unseat the current owner.
-    ZEXPECT(!f.pool.remove_owner_from(7, idx + 1));
-    ZEXPECT(f.has_owner(7));
-
-    ZEXPECT(f.pool.remove_owner_from(7, idx));
-    ZEXPECT(!f.has_owner(7));
-    ZEXPECT(f.stateful_owned(idx) == 0u);
 }
 
 ZEST_CASE(AllDeadNoAssignment) {
@@ -874,11 +878,9 @@ ZEST_CASE(StatefulLostDocuments) {
     auto& report = f.crash_reports[0];
     ZEXPECT(report.stateful);
     ZEXPECT(report.worker_index == 0u);
-    ZEXPECT(report.lost_documents.size() == expected.size());
 
     for(auto path_id: expected) {
         ZEXPECT(!f.has_owner(path_id));
-        ZEXPECT(ranges::contains(report.lost_documents, path_id));
     }
 
     // Other worker's documents are preserved
@@ -928,7 +930,6 @@ ZEST_CASE(OperationalErrorCodes) {
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_lost, "x"}));
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_died, "x"}));
-    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::document_unloaded, "x"}));
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::out_of_memory, "x"}));
     ZEXPECT(!worker::is_operational_error(Error{"plain failure"}));
 }
@@ -1172,8 +1173,7 @@ ZEST_CASE(DeathFreesDocuments) {
 
     f.simulate_crash(0, true);
     ZASSERT(f.crash_reports.size() == 1u);
-    ZASSERT(f.crash_reports[0].lost_documents.size() == 1u);
-    ZEXPECT(f.crash_reports[0].lost_documents[0] == 1u);
+    ZEXPECT(f.owner_of(1) == 1u);
 }
 
 ZEST_CASE(DeliverBlamesOwnCrash) {
@@ -1377,18 +1377,23 @@ ZEST_CASE(CrashBudgetBoundary) {
 
 ZEST_CASE(StatefulDyingUnavailable) {
     // A request arriving in the restart window never reaches a worker: the
-    // death freed its document, and with no other worker alive it fails
-    // with worker_unavailable — no death for crash accounting to read.
+    // death freed its document. A query finds its AST gone with the worker,
+    // and a compile, with no other worker alive, finds no worker — no death
+    // for crash accounting to read either way.
     WorkerPoolFixture f;
     f.add_stateful();
     f.assign_worker(7);
+    f.compiled(7);
     f.mark_dead(0, true);
 
     bool done = false;
     f.run([&]() -> async::task<> {
-        auto result = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::worker_unavailable);
+        auto query = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
+        ZASSERT(!query.has_value());
+        ZEXPECT(query.error().code == worker::dispatch_errc::worker_lost);
+        auto compile = co_await f.pool.send_stateful(7, worker::CompileParams{.path = "/x.cpp"});
+        ZASSERT(!compile.has_value());
+        ZEXPECT(compile.error().code == worker::dispatch_errc::worker_unavailable);
         done = true;
     });
     ZEXPECT(done);

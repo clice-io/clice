@@ -466,7 +466,7 @@ static worker::CompileUnitResult
              .known_instantiations = params.known_instantiations,
              .standard_library_instantiations = params.standard_library_instantiations});
         index_bytes = blob.size();
-        if(auto error = hand_over_index(std::move(blob), params.index_output_path, result)) {
+        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};
         }
     }
@@ -649,7 +649,9 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     LOG_INFO("Starting stateless worker");
     install_crash_report();
-    purge_freed_memory();
+    // Its requests hold nothing between them, while completions on one
+    // document load the same PCH one after another.
+    vfs::keep_recent_mappings(8);
 
     async::event_loop loop;
 

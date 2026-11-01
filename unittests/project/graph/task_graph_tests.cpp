@@ -405,6 +405,58 @@ ZEST_CASE(product_gone_no_cascade) {
     });
 }
 
+ZEST_CASE(generation_counts_invalidations) {
+    // 1 -> 2: every invalidation that reaches a node moves its generation
+    // on, through a cascade too; a product found gone rebuilds it at the
+    // generation it had.
+    Adjacency adj;
+    adj[a(1)] = {a(2)};
+    auto gone = instant(adj);
+    gone.check = [] {
+        return Check::ProductGone;
+    };
+
+    execute([&]() -> async::task<> {
+        co_await graph.join(a(1), instant(adj));
+        ZEXPECT(graph.generation(a(1)) == 0u);
+
+        graph.invalidate(a(1));
+        ZEXPECT(graph.generation(a(1)) == 1u);
+        ZEXPECT(graph.generation(a(2)) == 0u);
+
+        graph.invalidate(a(2));
+        ZEXPECT(graph.generation(a(2)) == 1u);
+        ZEXPECT(graph.generation(a(1)) == 2u);
+
+        co_await graph.join(a(1), instant(adj));
+        co_await graph.join(a(1), gone);
+        ZEXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(graph.generation(a(1)) == 2u);
+    });
+}
+
+ZEST_CASE(added_node_counts_invalidations) {
+    // A node added before any attempt counts the invalidations that reach
+    // it, as one that never existed does not, and an attempt records the
+    // generation it started at.
+    Adjacency adj;
+    graph.invalidate(a(1));
+    ZEXPECT(graph.generation(a(1)) == 0u);
+    graph.add(a(1));
+    graph.invalidate(a(1));
+    ZEXPECT(graph.generation(a(1)) == 1u);
+
+    std::uint64_t started = 0;
+    Work work{.run = [&](Attempt& attempt) -> async::task<Result> {
+        started = attempt.generation();
+        co_return Result::Success;
+    }};
+    execute([&]() -> async::task<> {
+        co_await graph.join(a(1), work);
+        ZEXPECT(started == 1u);
+    });
+}
+
 ZEST_CASE(check_inputs_changed_propagates) {
     // 1 -> 2: a waiter of 2 finding its inputs changed invalidates 2 with its
     // dependents — 2 rebuilds at once, 1 on its next join.
@@ -1323,7 +1375,7 @@ ZEST_CASE(randomized_stress) {
     // A fixed-seed, single-threaded interleaving of joins, cancellations,
     // invalidations and dispatch completions. Every dispatch races a
     // semaphore against its advisory token — the run-to-reply discipline —
-    // and the structural invariants hold at every step.
+    // and the graph's own assertions hold at every step.
     async::semaphore permits{0};
     Adjacency adj;
     adj[a(1)] = {a(2), a(3)};
@@ -1368,9 +1420,8 @@ ZEST_CASE(randomized_stress) {
                 }
             }
 
-            // Let deferred unwinds finish, then check structural sanity.
+            // Let deferred unwinds finish.
             co_await async::yield();
-            ZEXPECT(graph.consistent());
         }
 
         // Drain: cancel every outstanding join and wait for them all.

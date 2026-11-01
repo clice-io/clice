@@ -98,6 +98,34 @@ struct PreamblePCH {
     bool partial = false;
 };
 
+/// The PCHs a parse of an open buffer loads, built (Project::build_pch).
+struct BuiltPCH {
+    /// The key of the precompiled header the build declares for the
+    /// command, built: the preamble's PCH is built over it.
+    std::optional<std::string> base;
+
+    /// The key of the preamble's PCH; none when the preamble holds nothing
+    /// to precompile.
+    std::optional<std::string> preamble;
+
+    /// The preamble ends before the text's own (PreamblePCH::partial).
+    bool partial = false;
+
+    /// The preamble's PCH crashed a worker, and was not built again
+    /// (BuildOptions::retry_crashed).
+    bool refused = false;
+
+    /// How the wait for the preamble's PCH ended; Failed when refused.
+    Result result = Result::Failed;
+
+    /// The key of the PCH the parse loads: the preamble's, else the
+    /// declared one; none for neither.
+    std::optional<std::string> loaded;
+
+    /// The path and bound of `loaded`, as a worker's compile takes them.
+    std::pair<std::string, std::uint32_t> pch;
+};
+
 /// When reading a key's pairs stops it from building: two failures in a
 /// row within the cooldown. A stop must never be final: what fails may live
 /// in content the key cannot see (a header the preamble includes), so

@@ -126,7 +126,7 @@ void MasterServer::initialize() {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
             chrono::milliseconds(*ms);
     }
-    pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
+    pool_opts.max_resident = env_integer("CLICE_TEST_MAX_RESIDENT");
 
     auto& first = projects.front()->project.settings.project;
     if(!first.logging_dir.empty()) {
@@ -150,7 +150,6 @@ void MasterServer::initialize() {
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
-        route_pool_callbacks();
         for(auto& project: projects) {
             project->start();
         }
@@ -168,54 +167,6 @@ void MasterServer::initialize() {
     if(client) {
         client->publish_settings_diagnostics();
     }
-}
-
-void MasterServer::route_pool_callbacks() {
-    pool.on_crash = [this](const WorkerCrashInfo& info) {
-        // A stateless crash loses only in-flight requests, which fail back
-        // to their senders (see deliver). No state outlives the request, so
-        // there is nothing to invalidate.
-        if(!info.stateful)
-            return;
-        llvm::DenseMap<ServedProject*, llvm::SmallVector<Fid>> lost;
-        for(auto id: info.lost_documents) {
-            if(auto* document = find_document(Fid{id}); document && document->owner) {
-                lost[document->owner].push_back(Fid{id});
-            }
-        }
-        for(auto& [project, documents]: lost) {
-            project->asts_lost(documents);
-        }
-    };
-
-    pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = files.find(Spelling::absolute(path));
-        assert(id && "an evicted document the master never sent");
-        // Owner-table upkeep is pool-domain state and stays here; the
-        // document's side of it (the worker's AST is gone, same as a crash)
-        // goes to its owner. A live attempt's compile puts the document back
-        // on its owner — the worker evicted it before that compile arrived,
-        // or it would have kept it — so the eviction changes nothing. One
-        // that crossed the compile's reply over IPC leaves the master
-        // trusting a document the worker no longer holds: the next query
-        // hears document_unloaded and compiles it again (see ast_request).
-        auto* document = find_document(*id);
-        auto* project = document ? document->owner : nullptr;
-        if(project && project->compiling(*id)) {
-            LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);
-            return;
-        }
-        // Only the current owner's eviction counts: a copy left behind on
-        // a worker that lost ownership says nothing about the document the
-        // new owner still holds.
-        if(pool.remove_owner_from(id->raw, worker_index)) {
-            if(project) {
-                project->asts_lost({*id});
-            }
-        } else {
-            LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
-        }
-    };
 }
 
 void MasterServer::schedule_shutdown() {

@@ -67,9 +67,9 @@ The core responsibility of stateful workers is to hold compiled ASTs and serve q
 
 ### File-Affinity Routing
 
-Each open file is bound to a stateful worker via its path_id. This binding is stored in the master process's routing table. When a query request arrives for that file, the master process routes it to the corresponding worker based on the routing table.
+Each compiled file is bound to a stateful worker via its path_id. This binding is stored in the master process's residency table, together with whether the worker holds the file's AST and when the file was last asked about. When a query request arrives for that file, the master process routes it to the corresponding worker based on the table.
 
-The allocation strategy for new files is **least loaded** — the worker currently owning the fewest documents is selected. This ensures an even distribution of documents across workers.
+The allocation strategy for new files is **least loaded** — the worker currently holding the fewest documents is selected. This ensures an even distribution of documents across workers.
 
 ### Compilation and Query Flow
 
@@ -83,7 +83,9 @@ Requests for each document are serialized through a per-document mutex, ensuring
 
 ### Document Eviction
 
-When the number of documents held by a worker exceeds the limit, an LRU strategy evicts the least recently used idle document, freeing the memory occupied by its AST. A document with a compile or query in flight is never evicted — the limit is exceeded briefly instead — so a burst of more documents than the limit settles rather than evicting compiles that would then start over. The worker sends an eviction notification to the master process. Subsequent requests for that document trigger re-allocation to a worker and recompilation.
+The master process decides which ASTs the stateful workers keep: at most one document per GB of the machine's memory (or of a tighter limit clice runs under), between 8 and 32, read once at startup. When a compile leaves more ASTs than that, the master evicts the least recently used document nobody holds and tells its worker to drop it; a worker never evicts on its own. A document is held while a request about it is in flight, and a request that needs the AST holds its document from before the compile until the answer — the limit is exceeded briefly instead — so a burst of more documents than the limit compiles each document once rather than evicting compiles that would then start over.
+
+Eviction is not invalidation: nothing the document's compile read changed, so the compile still describes the buffer. An evicted document is served as a reopened one: what the index answers, the document's own index answers at once while it compiles again, requests only the AST can answer wait for that compile, and the client is asked to pull again what it took from the index. The recompile reuses the document's PCH, and a header that changed on disk meanwhile is seen. A worker that crashes loses its documents' ASTs the same way.
 
 ## Stateless Worker Processes
 
@@ -152,7 +154,7 @@ A precompiled preamble is built in spite of errors in the code, and the document
 
 ### Worker Restarts
 
-1. The master process detects the exit, takes the dead worker's documents off the routing table at once, and launches a replacement — immediately for an occasional crash, with exponential backoff for a crash loop
+1. The master process detects the exit, takes the dead worker's documents off the residency table at once, and launches a replacement — immediately for an occasional crash, with exponential backoff for a crash loop
 2. Requests that find no live worker of their kind wait for one to come back instead of failing, and documents keep the diagnostics they show meanwhile
 3. A stateful worker's documents recompile on their next request — the user may notice a brief delay, but no editing content is lost: the text buffer lives in the master process's Session
 
@@ -162,7 +164,7 @@ Each worker slot has a crash budget with exponential backoff between restarts. O
 
 ### Hangs and Oversized Results
 
-A request running past its deadline is taken for a hung worker: the worker is killed and the request blamed like a crash, with the same warning and the same retries. The deadline is ten minutes for a build (a compile, a PCH or module build, an indexing run) and two for anything else. A stateless worker's deadline counts its CPU time, so a loaded machine slows a build down without killing it, and a stateless worker whose CPU time stands still for five minutes is hung as well. Work on an open document counts the time since the earlier requests about the same document ended, since its worker runs those one at a time; a query is not timed while a build runs on its worker, as it may wait behind the build for a thread, but only up to the build deadline. One kill names every request on the worker that outlived its deadline. An index too large for the 64 MiB limit on a message between processes is handed over through a file in the cache store instead. Without a cache store it cannot be sent, which is no crash: an open document's compile keeps its diagnostics and drops only the document's own index, with a warning, and a background index run of the file fails until the file changes.
+A request running past its deadline is taken for a hung worker: the worker is killed and the request blamed like a crash, with the same warning and the same retries. The deadline is ten minutes for a build (a compile, a PCH or module build, an indexing run) and two for anything else. A stateless worker's deadline counts its CPU time, so a loaded machine slows a build down without killing it, and a stateless worker whose CPU time stands still for five minutes is hung as well. Work on an open document counts the time since the earlier requests about the same document ended, since its worker runs those one at a time; a query is not timed while a build runs on its worker, as it may wait behind the build for a thread, but only up to the build deadline. One kill names every request on the worker that outlived its deadline. An index too large for the 64 MiB limit on a message between processes is sent through a file in the cache store instead. Without a cache store it cannot be sent, which is no crash: an open document's compile keeps its diagnostics and drops only the document's own index, with a warning, and a background index run of the file fails until the file changes.
 
 ## Design Decisions and Trade-offs
 

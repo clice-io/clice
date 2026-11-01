@@ -69,6 +69,19 @@ struct Imports {
     bool modular() const;
 };
 
+/// The imports of a parse of an open buffer, their modules built
+/// (Project::build_imports).
+struct BuiltImports {
+    Imports imports;
+
+    /// The imports whose build crashed a worker, not built again
+    /// (BuildOptions::retry_crashed).
+    llvm::SmallVector<Fid> refused;
+
+    /// The imports that did not build.
+    llvm::SmallVector<Fid> failed;
+};
+
 /// A unit's last precise import scan and what it ran against.
 struct ImportScan {
     std::uint64_t directives = 0;

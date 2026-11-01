@@ -1,9 +1,8 @@
 import { expect } from "vitest";
 import { generate, test } from "@clice/tools/testing";
 
-// A worker that holds two documents at most, asked about six at once:
-// the burst settles instead of evicting compiles in flight and compiling
-// them again without end, answers every request, and the evicted documents
+// A pool that keeps two ASTs, asked about six documents at once: the burst
+// compiles each once and answers every request, and the evicted documents
 // come back on demand.
 
 const UNITS = generate.units(6);
@@ -14,7 +13,7 @@ test(async (t) => {
     // can.
     const s = await t.start({
         config: { project: { enable_indexing: false } },
-        env: { CLICE_TEST_MAX_DOCUMENTS: "2" },
+        env: { CLICE_TEST_MAX_RESIDENT: "2" },
     });
     const files = Object.keys(UNITS);
     for (const file of files) {
@@ -29,9 +28,8 @@ test(async (t) => {
         await hovers[file];
     }
     await t.show("asked again", hovers);
-    // A document compiles once for the burst, once more for each eviction
-    // that caught it between its compile and its query, and once when asked
-    // again; each such eviction takes another document landing in that
-    // window, so they stay few. A loop of evictions runs far past this.
-    expect((await s.counts()).compile).toBeLessThanOrEqual(5 * files.length);
+    // A request holds its document from its compile to its answer: each
+    // compiles once for the burst, and once more when asked again after it
+    // was evicted.
+    expect((await s.counts()).compile).toBeLessThanOrEqual(2 * files.length);
 });

@@ -86,7 +86,7 @@ async::task<UnitResult>
     // name's edge is what its first provider re-dirties it through.
     project.graph.set_edges(attempt.node(), scanned.declared);
     auto modules = scanned.resolved();
-    if(co_await project.wait_modules(attempt, modules) == Result::Stale) {
+    if(co_await project.wait_modules(&attempt, modules) == Result::Stale) {
         co_return UnitResult{.status = Status::Preempted};
     }
     // Looked up anew after every suspension: another unit's compile may

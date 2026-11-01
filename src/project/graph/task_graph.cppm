@@ -30,6 +30,11 @@ struct NodeId {
     friend bool operator==(const NodeId&, const NodeId&) = default;
 };
 
+/// The graph node of an open document's compile.
+inline NodeId ast_node(Fid file) {
+    return {NodeKind::AST, file.raw};
+}
+
 }  // namespace clice
 
 template <>
@@ -111,8 +116,12 @@ public:
     /// waiting: it should wind down and report Stale.
     async::task<Result> depend(NodeId dep, Work work);
 
-    /// Whether this attempt's result would still count if it finished now.
+    /// Whether this attempt's result would still count if it finished now:
+    /// the node's generation is still the one it started at.
     bool current() const;
+
+    /// The node's generation the attempt started at (TaskGraph::generation).
+    std::uint64_t generation() const;
 
     /// Live interest class of the node — read at dispatch time, a
     /// foreground waiter may have joined after the attempt started.
@@ -189,9 +198,18 @@ public:
     /// graph is destroyed.
     async::task<> shutdown();
 
+    /// Make the node exist with no edges, if it does not: invalidations
+    /// reach it from now on, before its first attempt.
+    void add(NodeId id);
+
     bool has_node(NodeId id) const;
     bool is_dirty(NodeId id) const;
     bool is_compiling(NodeId id) const;
+
+    /// How many invalidations reached the node: what an attempt started at
+    /// one generation produced describes the node's inputs while it is still
+    /// the node's. 0 for a node that does not exist.
+    std::uint64_t generation(NodeId id) const;
 
     /// Current in-flight interest count: whether anyone still waits on the
     /// node.
@@ -207,11 +225,6 @@ public:
 
     /// The nodes whose attempt is in flight.
     llvm::SmallVector<NodeId> compiling() const;
-
-    /// Structural sanity that holds at every drain boundary: a compiling
-    /// node has an unfinished attempt, and a finished attempt never leaves
-    /// the compiling flag behind.
-    bool consistent() const;
 
 private:
     friend class Attempt;
@@ -251,7 +264,6 @@ private:
         llvm::SmallVector<NodeId> waiting_dependents;
 
         bool dirty = true;
-        bool compiling = false;
 
         /// In-flight interest count: one per join plus one per edge a live
         /// attempt waits on. Staying at zero while compiling fires the
@@ -278,6 +290,11 @@ private:
 
         /// Current (or most recent) attempt.
         std::shared_ptr<AttemptState> attempt;
+
+        /// An attempt is in flight.
+        bool compiling() const {
+            return attempt && !attempt->completion.is_set();
+        }
     };
 
     /// The live attempt of `waiter` read the product of `dep`.

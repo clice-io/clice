@@ -2,6 +2,7 @@ module clice;
 
 import :server.master;
 import :server.served_project;
+import :support.process;
 import :worker.probe;
 
 namespace clice {
@@ -27,6 +28,9 @@ async::task<> MasterServer::poll_task() {
             }
         }
         look_at_settings();
+        if(std::exchange(memory_freed, false)) {
+            co_await async::queue([] { release_free_memory(); });
+        }
     }
 }
 

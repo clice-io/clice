@@ -38,7 +38,7 @@ The task graph itself is deliberately thin: it knows about nodes, edges, interes
 
 - **PCM nodes**: one per module, edges are `import` relationships. This is where all module-specific policy lives.
 - **PCH nodes**: one per preamble content key — files whose preambles are identical share one node and one build.
-- **AST nodes**: one per open document, producing the published feature results.
+- **AST nodes**: one per open document, producing the published feature results. The node's generation is the document's freshness: its compile describes the buffer while the generation is the one the compile ran at.
 - **Unit nodes**: one per translation unit compiled on a stateless worker for its index or its lint, shared by background indexing and batch lint.
 
 The graph holds no table of what to run for a kind. **Whoever waits on a node carries how to build it**: a request joining a node, or a build waiting on a dependency, passes the node's work along, and a waiter that finds the node needing a build with none running starts one with its own work. Every waiter of a node passes equivalent work — the module's file for a PCM, the preamble's request for a PCH — so it does not matter whose runs. What a build needs travels with it and leaves with it: nothing is stashed in the project for a build that may never start, or kept after it ends.
@@ -76,10 +76,10 @@ A request says whether to wait out a stale attempt with a fresh one: a document'
 
 ### Checking a Clean Node
 
-A node that built is clean, but its product can still go away or go stale behind the graph's back: the cache's LRU evicts a PCH, another process sharing the cache removes a PCM, a file a PCH read changes on disk before any event reports it. So the work also carries a **check**, which the graph asks at the moment a waiter reaches a clean node. It answers one of three things:
+A node that built is clean, but its product can still go away or go stale behind the graph's back: the cache's LRU evicts a PCH, the worker pool evicts a document's AST, another process sharing the cache removes a PCM, a file a PCH read changes on disk before any event reports it. So the work also carries a **check**, which the graph asks at the moment a waiter reaches a clean node. It answers one of three things:
 
 - **Holds**: the waiter has the product at once, nothing runs.
-- **Product gone**: the product left the disk while what it was built from stayed. Only this node builds again; what its dependents built from it stands. A module's check looks at its own PCM, every PCM below it and the PCH it was built over: clang reads every module below an import.
+- **Product gone**: the product left the disk, or a document's AST its worker, while what it was built from stayed. Only this node builds again; what its dependents built from it stands. A module's check looks at its own PCM, every PCM below it and the PCH it was built over: clang reads every module below an import.
 - **Inputs changed**: what it was built from changed. The node and its dependents are invalidated, as a file change invalidates them — but not the attempt whose wait found the change: it waits for the fresh product and has read nothing of the old one. A PCH's check is the revalidation of its pair: in the store, on disk, read from unchanged inputs, and, for a PCH chained onto another, over the very build of the base it names.
 
 ### Cooperative Cancellation

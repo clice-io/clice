@@ -49,7 +49,7 @@ index::IndexSource buffer_source(const ServedProject& served,
 
 /// The open document's own file index when it describes the buffer: the
 /// compile is current, or it compiled these very bytes.
-const index::Shard* buffer_shard(const ServedDocument& document) {
+const index::Shard* buffer_shard(const ServedProject& served, const ServedDocument& document) {
     auto& compiled = document.latest;
     if(!compiled || !compiled->index || !compiled->index->loaded()) {
         return nullptr;
@@ -59,7 +59,8 @@ const index::Shard* buffer_shard(const ServedDocument& document) {
     auto& state = *compiled->index;
     auto& shard = state.shard_of(state.focus_file());
     auto& session = *document.session;
-    if(document.current || shard.matches_content(session.text().size(), session.hash)) {
+    if(served.current(session.path_id) ||
+       shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
     }
     return nullptr;
@@ -92,7 +93,7 @@ std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
     if(!document) {
         return std::nullopt;
     }
-    if(auto* shard = buffer_shard(*document)) {
+    if(auto* shard = buffer_shard(*this, *document)) {
         return buffer_source(*this, index::IndexSource::Kind::SessionShard, *document, *shard);
     }
     auto* shard = matching_shard(*document->session);
@@ -105,7 +106,7 @@ std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
 void ServedProject::for_each_session(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     for(auto& [file, document]: documents) {
-        auto* shard = buffer_shard(document);
+        auto* shard = buffer_shard(*this, document);
         if(shard &&
            !visit(buffer_source(*this, index::IndexSource::Kind::SessionShard, document, *shard))) {
             return;
@@ -116,7 +117,7 @@ void ServedProject::for_each_session(
 void ServedProject::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     for(auto& [file, document]: documents) {
-        if(buffer_shard(document) && !visit(*document.latest->index)) {
+        if(buffer_shard(*this, document) && !visit(*document.latest->index)) {
             return;
         }
     }

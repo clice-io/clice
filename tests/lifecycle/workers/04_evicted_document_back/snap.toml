@@ -1,0 +1,31 @@
+["its own index answers, then the client is refreshed".tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "header.h"', type = "directive" },
+    { at = '#include ⟦"header.h"⟧', type = "header" },
+    { at = "⟦int⟧ NAME = add(1, 2);", type = "primitive" },
+    { at = "int ⟦NAME⟧ = add(1, 2);", type = "macro" },
+    { at = "int NAME ⟦=⟧ add(1, 2);", type = "operator" },
+    { at = "int NAME = ⟦add⟧(1, 2);", type = "function", modifiers = ["global"] },
+    { at = "int NAME = add(⟦1⟧, 2);", type = "number" },
+    { at = "int NAME = add(1, ⟦2⟧);", type = "number" },
+]
+
+["inlay hints wait for the compile".hints]
+inlay_hints = [
+    { line = "int NAME = add(⟨left:⟩1, ⟨right:⟩2);" },
+]
+
+["a header changed while it was out shows".outline]
+document_symbols = [
+    {
+        name = "NAME",
+        kind = "Constant",
+        at = "int ⟦NAME⟧ = add(1, 2);",
+        children = [
+            { name = "second", kind = "Variable", at = "int ⟦NAME⟧ = add(1, 2);" },
+        ],
+    },
+]
+
+["a pull's compile stays through another document's".diagnostics]
+diagnostics = []

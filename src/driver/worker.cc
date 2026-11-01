@@ -19,10 +19,6 @@ struct Options {
              required = false)
     stateful;
 
-    DecoKV(help = "Max compiled documents kept before LRU eviction (stateful worker only)",
-           required = false)
-    <std::uint64_t> max_documents;
-
     DecoKV(help = "Name the worker logs under (default: worker)", required = false)
     <std::string> worker_name;
 
@@ -50,8 +46,7 @@ int run_worker(std::span<std::string> args) {
         auto name = opts.worker_name.value_or("worker");
         auto log_dir = opts.log_dir.value_or("");
         if(opts.stateful) {
-            auto max_docs = opts.max_documents.value_or(default_max_documents);
-            return run_stateful_worker_mode(name, log_dir, max_docs);
+            return run_stateful_worker_mode(name, log_dir);
         }
         return run_stateless_worker_mode(name, log_dir);
     });

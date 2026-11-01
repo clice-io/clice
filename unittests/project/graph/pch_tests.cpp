@@ -1,6 +1,7 @@
 module clice;
 
 import :project.graph.pch;
+import :project.graph.task_graph;
 import :project.project;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
@@ -50,6 +51,15 @@ PCHRequest request(llvm::StringRef text) {
     };
 }
 
+/// Wait for the PCH `request` names from outside the graph, foreground,
+/// one attempt.
+async::task<Result> acquire(PCHRequest request) {
+    auto id = pch_node(request.pch_key);
+    co_return co_await project.graph.join(id,
+                                          project.pch_work(std::move(request)),
+                                          {.foreground = true});
+}
+
 /// Run the body between pool start and graph/pool teardown.
 template <typename F>
 void execute(F&& fn) {
@@ -84,10 +94,10 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_a = [&]() -> async::task<> {
-            a = co_await project.acquire_pch(request(poison));
+            a = co_await acquire(request(poison));
         };
         auto acquire_b = [&]() -> async::task<> {
-            b = co_await project.acquire_pch(request(poison));
+            b = co_await acquire(request(poison));
         };
         co_await async::when_all(acquire_a(), acquire_b());
     });
@@ -115,12 +125,11 @@ ZEST_CASE(OwnerGoneStillRecords) {
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_owner = [&]() -> async::task<> {
-            auto result = co_await async::with_token(project.acquire_pch(request(poison)),
-                                                     owner_scope.token());
+            auto result = co_await async::with_token(acquire(request(poison)), owner_scope.token());
             ZEXPECT(result.is_cancelled());
         };
         auto acquire_joiner = [&]() -> async::task<> {
-            joined = co_await project.acquire_pch(request(poison));
+            joined = co_await acquire(request(poison));
         };
         auto cancel_owner = [&]() -> async::task<> {
             owner_scope.cancel();
@@ -146,13 +155,13 @@ ZEST_CASE(ForgetLiftsRefusal) {
 
     execute([&]() -> async::task<> {
         auto poison = "#pragma clang __debug crash\n";
-        co_await project.acquire_pch(request(poison));
+        co_await acquire(request(poison));
         // Refused before any dispatch: no second death.
-        refused = co_await project.acquire_pch(request(poison));
+        refused = co_await acquire(request(poison));
         ZASSERT(deaths == 1);
 
         project.forget_build_failure("shared-key");
-        retried = co_await project.acquire_pch(request(poison));
+        retried = co_await acquire(request(poison));
     });
 
     ZEXPECT(refused == Result::Failed);
@@ -189,12 +198,12 @@ ZEST_CASE(DeclaredCrashLifts) {
     std::optional<Result> refused, fixed;
 
     execute([&]() -> async::task<> {
-        co_await project.acquire_pch(whole());
-        refused = co_await project.acquire_pch(whole());
+        co_await acquire(whole());
+        refused = co_await acquire(whole());
         ZASSERT(deaths == 1);
 
         tmp.touch("a.h", "#define FIXED 1\n");
-        fixed = co_await project.acquire_pch(whole());
+        fixed = co_await acquire(whole());
     });
 
     ZEXPECT(refused == Result::Failed);
@@ -212,10 +221,10 @@ ZEST_CASE(SharedBuildBothReady) {
     execute([&]() -> async::task<> {
         auto text = "#define X 1\n";
         auto acquire_a = [&]() -> async::task<> {
-            a = co_await project.acquire_pch(request(text));
+            a = co_await acquire(request(text));
         };
         auto acquire_b = [&]() -> async::task<> {
-            b = co_await project.acquire_pch(request(text));
+            b = co_await acquire(request(text));
         };
         co_await async::when_all(acquire_a(), acquire_b());
     });
@@ -237,15 +246,15 @@ ZEST_CASE(ConsumeFailuresStopKey) {
     // fast, before any dispatch.
     std::optional<Result> cleared, stopped;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await project.acquire_pch(request("#define X 1\n")) == Result::Success);
+        ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         project.pch_consume_failed("shared-key");
-        ZASSERT(co_await project.acquire_pch(request("#define X 1\n")) == Result::Success);
+        ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         project.pch_consume_succeeded("shared-key");
         project.pch_consume_failed("shared-key");
-        cleared = co_await project.acquire_pch(request("#define X 1\n"));
+        cleared = co_await acquire(request("#define X 1\n"));
 
         project.pch_consume_failed("shared-key");
-        stopped = co_await project.acquire_pch(request("#define X 1\n"));
+        stopped = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(cleared == Result::Success);
     ZEXPECT(stopped == Result::Failed);
@@ -256,10 +265,10 @@ ZEST_CASE(SharedPairFailsOnce) {
     // retracted already, and the key keeps building.
     std::optional<Result> rebuilt;
     execute([&]() -> async::task<> {
-        ZASSERT(co_await project.acquire_pch(request("#define X 1\n")) == Result::Success);
+        ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         project.pch_consume_failed("shared-key");
         project.pch_consume_failed("shared-key");
-        rebuilt = co_await project.acquire_pch(request("#define X 1\n"));
+        rebuilt = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(rebuilt == Result::Success);
 }
@@ -273,13 +282,13 @@ ZEST_CASE(EvictedPairNotCounted) {
         auto evict = [&] {
             project.store->invalidate("pch", project.pchs.find("shared-key")->second.blob);
         };
-        ZASSERT(co_await project.acquire_pch(request("#define X 1\n")) == Result::Success);
+        ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         evict();
         project.pch_consume_failed("shared-key");
-        first = co_await project.acquire_pch(request("#define X 1\n"));
+        first = co_await acquire(request("#define X 1\n"));
         evict();
         project.pch_consume_failed("shared-key");
-        second = co_await project.acquire_pch(request("#define X 1\n"));
+        second = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(first == Result::Success);
     ZEXPECT(second == Result::Success);
