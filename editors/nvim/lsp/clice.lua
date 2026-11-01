@@ -62,7 +62,7 @@ end
 ---@param bufnr integer
 local function show_context(client, bufnr)
   request(client, bufnr, 'clice/currentContext', { uri = vim.uri_from_bufnr(bufnr) }, function(current)
-    -- Where the command comes from: database, host, default, inferred or fallback.
+    -- Where the command comes from: database, host, default, borrowed or fallback.
     local command = current.command
     local source = ''
     if command ~= nil and command ~= vim.NIL then

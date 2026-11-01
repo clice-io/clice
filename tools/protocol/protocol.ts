@@ -52,10 +52,10 @@ export interface CompileCommand {
     /// Where the command comes from: an entry of a compilation database,
     /// the command of a source including the header, the default_command
     /// of a rule, the command of a unit nearby, or clice's own.
-    source: "database" | "host" | "default" | "inferred" | "fallback";
+    source: "database" | "host" | "default" | "borrowed" | "fallback";
 
-    /// The file whose command it borrows: a header's host, the unit an
-    /// inferred command comes from when the source is not one of the build
+    /// The file whose command it borrows: a header's host, the unit a
+    /// borrowed command comes from when the source is not one of the build
     /// yet (a saved source joined it with the command it borrowed).
     from: string | null;
 
@@ -269,9 +269,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 /// deterministic counter instead of brittle RSS assertions; and the counts
 /// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
-    pchLoadedStates: number;
-    pchStateBytes: number;
-    pchStashedBytes: number;
+    pchLoadedIndexes: number;
+    pchIndexBytes: number;
     indexInmemoryShards: number;
     indexShardContentBytes: number;
     lastSaveShards: number;
@@ -307,8 +306,8 @@ export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
 /// Answers once the server has no work left: no other request of the editor
-/// unanswered, no compile, PCH or PCM build and no index round in flight or
-/// queued, a round's save included, and no removed folder still shutting
+/// unanswered, no compile, PCH or PCM build and no index pass in flight or
+/// queued, a pass's save included, and no removed folder still shutting
 /// down. The metadata save that follows a build is not waited for; a test
 /// needing what is on disk stops the server.
 export interface SyncParams {
@@ -354,7 +353,7 @@ export const HoldRequest = new RequestType<HoldParams, HoldResult, void>("clice/
 /// Parks the work of the next request named `request` for the file in its
 /// worker, where the work starts: the worker is busy with it. `request` is
 /// the worker request's name as its crash tag spells it ("compile",
-/// "completion", "signatureHelp", "format", "buildPch", "tuRun",
+/// "completion", "signatureHelp", "format", "buildPch", "compileUnit",
 /// "hover"). The reply is a hold id: clice/internal/held announces the
 /// park, clice/internal/release lets the work go on.
 export interface GateParams {

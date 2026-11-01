@@ -16,7 +16,7 @@ namespace clice {
 extern const std::string_view version;
 
 /// Target platform this binary was built for, e.g. "x86_64-unknown-linux-gnu".
-/// Logged with the version so crash reports identify the exact artifact.
+/// Logged with the version so crash reports identify the exact build.
 extern const std::string_view target;
 
 }  // namespace clice

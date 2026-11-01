@@ -645,9 +645,9 @@ struct FileScanner {
                     scan = graph.quick_scans.scan_of(path_id, hash, observed->text);
                 }
                 auto& group = graph.group(context.group);
-                auto rendered =
-                    toolchain.render({path_id, group.command, group.input, CommandSource::CDBExact},
-                                     cdb.spelling(path_id));
+                auto rendered = toolchain.render(
+                    {path_id, group.command, group.language, CommandSource::Database},
+                    cdb.spelling(path_id));
                 auto declared = scan_module_decl(
                     rendered.argv,
                     cdb.commands().get(group.command).directory,
@@ -803,7 +803,7 @@ struct FullScan {
         llvm::DenseMap<std::pair<std::uint64_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
             auto [it, inserted] = group_ids.try_emplace(
-                {cdb.commands().command_hash(unit.command), unit.input.value});
+                {cdb.commands().command_hash(unit.command), unit.language.value});
             if(inserted) {
                 it->second = graph.add_group(unit);
             }

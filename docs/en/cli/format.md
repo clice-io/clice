@@ -16,7 +16,9 @@ or `build.ninja`, where FetchContent puts the sources it fetches) and every file
 with a C-family suffix they include that sits inside the project, outside the
 build trees (a directory below the root holding a compilation database, where a
 build generates or fetches sources), outside the system include directories of
-their commands and outside the cache directory. A
+their commands and outside the cache directory; nothing in a project nested in
+the root (a directory with a `clice.toml` or `.clice/config.toml` of its own) is
+formatted. A
 directory argument narrows that set to the
 files under it; a file argument with a C-family suffix is formatted whether or
 not the build knows it. Paths are relative to the current directory. A rule in `clice.toml` with

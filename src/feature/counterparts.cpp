@@ -293,10 +293,10 @@ CounterpartRanking rank_counterparts(std::vector<CounterpartCandidate> candidate
     return {.candidates = std::move(candidates), .decisive = decisive};
 }
 
-query::Outcome<CounterpartsResult> counterparts(query::Context& ctx,
-                                                const DependencyGraph& graph,
-                                                llvm::ArrayRef<Fid> members,
-                                                const Spelling& path) {
+query::Result<CounterpartsResult> counterparts(query::Context& ctx,
+                                               const DependencyGraph& graph,
+                                               llvm::ArrayRef<Fid> members,
+                                               const Spelling& path) {
     if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }

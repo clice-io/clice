@@ -508,7 +508,7 @@ auto CompilationUnit::instantiations() -> llvm::ArrayRef<const clang::Decl*> {
     return collected_instantiations;
 }
 
-chrono::milliseconds CompilationUnit::build_at() {
+chrono::milliseconds CompilationUnit::started_at() {
     return build_time;
 }
 
@@ -520,7 +520,7 @@ auto CompilationUnit::keywords() -> const clang::IdentifierTable& {
     return instance->getPreprocessor().getIdentifierTable();
 }
 
-std::vector<DepFile> CompilationUnit::deps() {
+std::vector<ReportedInput> CompilationUnit::deps() {
     llvm::StringMap<std::uint64_t> deps;
 
     // Hash the buffer the compiler read for this fid — the consumed bytes.
@@ -546,7 +546,7 @@ std::vector<DepFile> CompilationUnit::deps() {
     /// content was never read loads it here instead. An embedded file's
     /// buffer holds its bytes, hashed as text like every dependency. An
     /// unreadable file hashes as 0 and the snapshot capture falls back to
-    /// a build_at-guarded disk hash.
+    /// a started_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
             return;
@@ -589,7 +589,7 @@ std::vector<DepFile> CompilationUnit::deps() {
         }
     }
 
-    std::vector<DepFile> result;
+    std::vector<ReportedInput> result;
     result.reserve(deps.size());
 
     for(auto& dep: deps) {

@@ -66,7 +66,7 @@ bool Tester::compile(llvm::StringRef standard) {
 bool Tester::compile_with_pch(llvm::StringRef standard) {
     prepare(standard);
 
-    auto pch_path = artifact("pch");
+    auto pch_path = precompiled_path("pch");
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
@@ -198,7 +198,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     for(auto idx: order) {
         auto& mod = modules[idx];
 
-        auto pcm_path = artifact("pcm");
+        auto pcm_path = precompiled_path("pcm");
 
         Tester builder;
         builder.add_focus(mod.filename, mod.content);
@@ -291,7 +291,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     CommandRef ref{entry->file,
                    entry->command,
                    commands.input_kind(entry->command, src_path),
-                   CommandSource::CDBExact};
+                   CommandSource::Database};
     auto rendered = toolchain.render(ref, database.spelling(ref.file));
     params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 

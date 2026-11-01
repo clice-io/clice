@@ -30,23 +30,23 @@ struct ToolchainEntries {
         return {entry.file,
                 entry.command,
                 commands.input_kind(entry.command, file),
-                CommandSource::CDBExact};
+                CommandSource::Database};
     }
 
     std::string key(const CommandRef& ref) {
-        return toolchain.query_key_for(ref.command, ref.input);
+        return toolchain.query_key_for(ref.command, ref.language);
     }
 
     /// The command clice compiles `ref` with, resolved through the query.
     std::vector<const char*> resolve(const CommandRef& ref) {
-        ZASSERT(toolchain.resolve(ref.command, ref.input));
+        ZASSERT(toolchain.resolve(ref.command, ref.language));
         return toolchain.render(ref, db.spelling(ref.file)).argv;
     }
 
     /// Why the compiler of `ref` could not be queried, which leaves clang's
     /// own driver reading its command.
     std::string failure(const CommandRef& ref) {
-        auto resolution = toolchain.resolve(ref.command, ref.input);
+        auto resolution = toolchain.resolve(ref.command, ref.language);
         ZASSERT(resolution);
         ZASSERT(!resolution->query_failure.empty());
         return resolution->query_failure;
@@ -108,7 +108,7 @@ echo '#define __cplusplus 201402L'
     CommandRef unqueried(const CommandRef& ref) {
         return {ref.file,
                 apply_edits(f.commands, f.file_table, ref.command, {.query_toolchain = false}),
-                ref.input,
+                ref.language,
                 ref.source};
     }
 };

@@ -400,7 +400,8 @@ ZEST_CASE(ResolveWithoutConfig) {
     // Every directory up to the root looked in, none holding one.
     ZASSERT(!resolution.files.empty());
     ZEXPECT(resolution.files[0].path == tmp.path(".clang-tidy"));
-    ZEXPECT(ranges::all_of(resolution.files, [](const DepFile& file) { return file.absent; }));
+    ZEXPECT(
+        ranges::all_of(resolution.files, [](const ReportedInput& file) { return file.absent; }));
 }
 
 ZEST_CASE(ExtraArgsCommandSplit) {

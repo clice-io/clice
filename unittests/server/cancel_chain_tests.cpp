@@ -109,7 +109,7 @@ ZEST_CASE(IpcCancelStopsBuild) {
 
     bool test_done = false;
     w.run([&]() -> async::task<> {
-        worker::TURunParams bp;
+        worker::CompileUnitParams bp;
         bp.index = true;
         bp.file = src;
         bp.directory = "/tmp";

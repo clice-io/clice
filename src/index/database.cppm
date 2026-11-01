@@ -64,15 +64,14 @@ enum class BlobKind : std::uint8_t {
     /// Per-symbol records (SharedLocalBlob) of the symbols below external
     /// scope several files hold.
     SharedLocal,
-    /// The single CDB command-hash snapshot the persisted index was built
-    /// against, key "cdb" — how a cold start detects compile-command
-    /// changes that happened while no server was running.
-    CommandSnapshot,
-    /// The single artifact records blob (PCH/PCM records with their deps,
-    /// self-containment trials), key "artifacts".
-    ArtifactRecords,
+    /// The listings the persisted index was saved with (SavedListings), key
+    /// "cdb": which databases listed each file, and the provisional members.
+    Listings,
+    /// The single precompiled records blob (PCH/PCM records with their deps,
+    /// self-containment checks), key "artifacts".
+    PrecompiledRecords,
     /// The single context choices blob (saved context choices, synthesized
-    /// artifact hosts), key "contexts" — sovereignty records, never
+    /// context hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
     ContextChoices,
     /// The segments of the name search index (index/search_index.cppm)
@@ -123,7 +122,7 @@ struct PageUsage {
 /// Keyed blob database of the persisted index.
 ///
 /// Boundary with CacheStore: CacheStore manages the versioned cache
-/// directory and file-shaped artifacts (PCH/PCM/header contexts — clang
+/// directory and file-shaped products (PCH/PCM/header contexts — clang
 /// consumes those by path, so they must be real files); BlobDatabase is
 /// the index's keyed blob database inside that directory, a single
 /// LMDB `index.mdb`. The interface stays virtual for test doubles (spies,

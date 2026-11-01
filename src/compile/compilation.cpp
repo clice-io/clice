@@ -782,7 +782,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     clang::noteBottomOfStack();
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
-    unit->outcome = unit->run();
+    unit->status = unit->run();
 
     // A precompiled header the build declares that clang refuses for this
     // parse — the unit's own flags conflict with the ones it was built
@@ -804,7 +804,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         again.input.pch = {};
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
-        unit->outcome = unit->run();
+        unit->status = unit->run();
     }
 
     // Instantiated where the preamble ends, a template misses what the focus
@@ -826,7 +826,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
         unit->instantiate = false;
-        unit->outcome = unit->run();
+        unit->status = unit->run();
     }
     return unit;
 }

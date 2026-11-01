@@ -1,10 +1,11 @@
 module clice:unittests.server.served_project_fixture;
 
 import :command.database;
-import :project.command_resolver;
+import :project.command;
 import :server.master;
 import :server.served_project;
 import :server.session;
+import :settings.rules;
 import :support.prelude;
 import :vfs.file_table;
 import :vfs.path;
@@ -25,13 +26,19 @@ struct ServedProjectFixture {
 
     explicit ServedProjectFixture(llvm::StringRef root = "/proj") {
         served = std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(root)));
+        served->project.rules = Rules(served->project.settings, served->project.root, "");
         server.projects.push_back(served);
         // The server applies the file table's changes, and the project
         // flushes its metadata, on a later turn of its running event loop;
         // the tests run none between their steps, and hand the changes over
         // themselves.
         server.files.disk.on_change = nullptr;
-        served->project.request_flush = nullptr;
+        hold_flushes(*served);
+    }
+
+    /// `project` schedules no metadata flush: one counts as scheduled.
+    static void hold_flushes(ServedProject& project) {
+        project.metadata_flush_scheduled = true;
     }
 
     Fid intern(llvm::StringRef path) {
@@ -79,15 +86,15 @@ struct ServedProjectFixture {
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments) {
         auto& project = served->project;
-        Resolution resolution{
-            .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},
-        };
+        Resolution resolution;
+        resolution.ref = {
+            .command = project.fallback_command(project.file_table.resolve(session->path_id))};
+        resolution.directory = directory;
+        resolution.arguments = arguments;
         auto key = co_await served->ensure_pch(Ticket{session, generation},
                                                epoch,
                                                session->text(),
                                                std::nullopt,
-                                               directory,
-                                               arguments,
                                                resolution,
                                                {});
         co_return key.has_value();
@@ -95,8 +102,8 @@ struct ServedProjectFixture {
 
     // Accessors of the change tests (changes_tests.cpp, databases_tests.cpp).
 
-    void build_changed(CDBDiff delta) {
-        served->build_changed(std::move(delta));
+    void commands_changed(CDBDiff delta) {
+        served->commands_changed(std::move(delta));
     }
 
     /// Watch the project's databases and its git checkout as start() does,
@@ -109,11 +116,11 @@ struct ServedProjectFixture {
         served->watch_checkout();
     }
 
-    /// The delta reload_databases follows (build_changed), not followed: the
+    /// The delta reload_databases follows (commands_changed), not followed: the
     /// databases found at the watched places registered, then every watched
     /// database ticked.
     CDBDiff database_delta(bool force) {
-        if(!served->project.build.declares_sources()) {
+        if(!served->project.rules.declares_sources()) {
             served->discover_databases();
         }
         CDBDiff delta;

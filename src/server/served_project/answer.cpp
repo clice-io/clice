@@ -73,7 +73,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         if(options.await_cold_attempt && !waited) {
             waited = true;
-            co_await sched.pump.await_attempt(session.path_id);
+            co_await project.background_index.await_attempt(session.path_id);
             continue;
         }
         co_return Route::Empty;
@@ -98,7 +98,7 @@ async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket
 
 async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
     // A failed compile yields null rather than a lookup against a buffer
-    // with no finished index; a superseded one tells the client to re-pull.
+    // with no finished index; an outdated one tells the client to re-pull.
     bool compiled = co_await ensure_compiled(ticket.session);
     if(!ticket.fresh()) {
         co_return GateStop{content_modified()};
@@ -138,9 +138,8 @@ SourceText& ServedProject::text_of(Session& session) {
 SearchConfig ServedProject::search_of(Fid path_id) {
     // Editor use: the search follows the command (context choice, chosen
     // database entry) the open buffer compiles under.
-    std::string directory;
-    std::vector<std::string> arguments;
-    return project.toolchain.search_config(resolve_command(path_id, directory, arguments).ref);
+    return project.toolchain.search_config(
+        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
 }
 
 std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {
@@ -165,10 +164,10 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
 
 bool ServedProject::admits(const Session& session,
                            feature::RequestKind kind,
-                           const Session::Attempt* attempt,
+                           const Session::Dispatch* dispatch,
                            bool parses) const {
     auto now = Session::Clock::now();
-    if(attempt ? attempt->crashed_meanwhile() : session.crash_stops(kind, now)) {
+    if(dispatch ? dispatch->crashed_meanwhile() : session.crash_stops(kind, now)) {
         return false;
     }
     return !parses || !compile_stopped(session);
@@ -187,7 +186,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
         LOG_DEBUG("Format: {} is stopped by a crash", path);
         co_return std::nullopt;
     }
-    Session::Attempt attempt(session, kind);
+    Session::Dispatch dispatch(session, kind);
 
     worker::FormatParams params;
     params.file = files.display(session.path_id);
@@ -198,7 +197,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
 
     ScopedTimer timer;
     bool refused = false;
-    auto result = co_await send_stateless(ticket, kind, params, attempt, false, token, refused);
+    auto result = co_await send_stateless(ticket, kind, params, dispatch, false, token, refused);
     if(refused) {
         LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
         if(!ticket.fresh()) {

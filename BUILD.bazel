@@ -12,12 +12,11 @@ cc_library(
     copts = COPTS,
 )
 
-# Layered libraries: core <- config <- {project, worker} <- sched <- server,
-# project <- analysis, and {analysis, server} <- driver. Each layer may
-# include or import downward only; the dependency graph plus the layering
-# check in CI (`pixi run check-layers`) enforce the boundary — sched and
-# below never see an LSP or server header, and a project never sees
-# scheduling. Inside core the directories are
+# Layered libraries: core <- settings <- worker <- project <- {server,
+# analysis} <- driver. Each layer may include or import downward only; the
+# dependency graph plus the layering check in CI (`pixi run check-layers`)
+# enforce the boundary — the project and below never see an LSP or server
+# header, and analysis never reaches the workers. Inside core the directories are
 # layered in this order, which only the check enforces. They compile against
 # libclang's headers; the programs link its libraries. All of clice is one
 # C++20 module, clice: each header is a partition (<stem>.cppm beside its
@@ -69,13 +68,9 @@ cc_library(
     deps = deps,
 ) for layer, deps in [
     ("settings", [":core"]),
-    ("project", [":settings"]),
     ("worker", [":settings"]),
-    ("sched", [
-        ":project",
-        ":worker",
-    ]),
-    ("server", [":sched"]),
+    ("project", [":worker"]),
+    ("server", [":project"]),
     ("analysis", [":project"]),
     ("driver", [
         ":analysis",

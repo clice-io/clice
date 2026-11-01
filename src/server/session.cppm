@@ -27,8 +27,8 @@ namespace clice {
 ///     change_limit crashes in a row; past that only a save retries.
 ///     Nothing but a change, a save or the kind answering lets it run
 ///     again: a document that sits still is never retried.
-///  2. One retry at a time — the attempt that retries a kind stops the
-///     others until its outcome (Attempt); one that crashes on inputs
+///  2. One retry at a time — the dispatch that retries a kind stops the
+///     others until its result (Dispatch); one that crashes on inputs
 ///     changed meanwhile leaves the change standing: the newer inputs are
 ///     still untried.
 ///  3. Crash accounting — crashed() is the only way failures count, the
@@ -109,17 +109,17 @@ public:
     /// until it ends, and gives the retry back when it ends without crashing
     /// or answering. The session outlives it: the request holding it holds
     /// the session.
-    class [[nodiscard]] Attempt {
+    class [[nodiscard]] Dispatch {
     public:
-        Attempt(Session& session, feature::RequestKind kind);
+        Dispatch(Session& session, feature::RequestKind kind);
 
-        Attempt(const Attempt&) = delete;
-        Attempt& operator=(const Attempt&) = delete;
+        Dispatch(const Dispatch&) = delete;
+        Dispatch& operator=(const Dispatch&) = delete;
 
-        ~Attempt();
+        ~Dispatch();
 
-        /// Whether the kind crashed during this attempt's flight: it stops
-        /// on the inputs this attempt carries, so they must not reach a
+        /// Whether the kind crashed during this dispatch's flight: it stops
+        /// on the inputs this dispatch carries, so they must not reach a
         /// worker again.
         bool crashed_meanwhile() const;
 
@@ -129,12 +129,12 @@ public:
         feature::RequestKind kind;
 
         /// The document's change count and the kind's crash sequence number
-        /// as the attempt started.
+        /// as the dispatch started.
         std::uint64_t changes;
 
         std::uint64_t seq = 0;
 
-        /// This attempt retries the kind (FailureRecord::trying).
+        /// This dispatch retries the kind (FailureRecord::trying).
         bool retrying = false;
     };
 
@@ -197,11 +197,11 @@ private:
     /// The user saved the inputs as they are: nothing half-typed.
     bool saved_since_change = false;
 
-    /// Bumped by every change; an Attempt tells by it whether the inputs
+    /// Bumped by every change; a Dispatch tells by it whether the inputs
     /// moved during its flight.
     std::uint64_t changes = 0;
 
-    /// Bumped by every counted crash; an Attempt tells by it whether its
+    /// Bumped by every counted crash; a Dispatch tells by it whether its
     /// kind crashed during its flight, which a count cannot — a save
     /// resets that.
     std::uint64_t crashes = 0;

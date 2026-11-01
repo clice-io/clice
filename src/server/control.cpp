@@ -2,7 +2,6 @@ module clice;
 
 import :index.project_index;
 import :index.shard;
-import :project.save;
 import :index.writer_lock;
 import :server.control;
 import :server.master;
@@ -49,14 +48,15 @@ async::task<std::expected<IndexResult, std::string>> ask(const index::ServerEndp
 void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
     peer.on_request(
         [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
-            auto active = srv.project.build.active_configuration();
+            auto active = srv.project.rules.configuration();
             if(params.configuration != active) {
                 co_await async::fail(ipc::Error{
                     std::format("the running clice server indexes configuration '{}', not '{}'",
                                 std::string_view(active),
                                 params.configuration)});
             }
-            if(!srv.project.settings.project.enable_indexing.value) {
+            auto& background = srv.project.background_index;
+            if(!background.started()) {
                 co_await async::fail(
                     ipc::Error{"the running clice server has background indexing disabled"});
             }
@@ -71,7 +71,7 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
                     "the compilation databases of the running clice server now resolve to another "
                     "build, which it opens once it restarts"});
             }
-            auto members = srv.project.build.members();
+            auto members = srv.project.members();
             if(members.empty()) {
                 co_await async::fail(ipc::Error{
                     "nothing to index: the running clice server's build has no translation units"});
@@ -79,22 +79,22 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             IndexResult result;
             llvm::SmallVector<Fid> files;
             for(auto member: members) {
-                if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
+                if(background.enqueue(member, ReindexReason::DepsOnly)) {
                     files.push_back(member);
                 }
             }
-            srv.sched.pump.schedule(/*immediate=*/true);
+            background.schedule(/*immediate=*/true);
             for(auto file: files) {
                 // One await covers one attempt; a crash or preemption
                 // requeues the file behind it.
-                while(srv.sched.pump.pending_reason(file)) {
-                    co_await srv.sched.pump.await_attempt(file);
+                while(background.queue().pending_reason(file)) {
+                    co_await background.await_attempt(file);
                 }
             }
-            // The round persists at its end; the asker reads the disk, so its
+            // The pass saves at its end; the asker reads the disk, so its
             // index must be there before the answer.
-            co_await srv.sched.pump.persist();
-            if(has_unsaved_state(srv.project)) {
+            co_await srv.project.save();
+            if(srv.project.has_unsaved_state()) {
                 co_await async::fail(
                     ipc::Error{"part of the index could not be persisted; see the server log"});
             }

@@ -47,4 +47,13 @@ bool is_c_family_type(clang::driver::types::ID type);
 /// and other non-C-family files.
 bool is_c_family_file(llvm::StringRef filename);
 
+/// Whether the file at `path` can be part of the translation unit `unit`
+/// compiled as `language`. A source only in its own, in the one the
+/// unit's command gives the unit's own suffix (`g++` takes a `.c` as
+/// C++), or across C++ and its modules: a `.cpp` compiled as CUDA or a
+/// `.m` as C is not the file. A header has latitude: a `.h` fits any, a
+/// C++ header every language built on C++ (Objective-C++, CUDA, HIP), a
+/// `.cuh` CUDA.
+bool compatible(llvm::StringRef path, llvm::StringRef unit, clang::driver::types::ID language);
+
 }  // namespace clice

@@ -156,13 +156,13 @@ struct CompileParams {
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
-    /// See TURunParams::index_output_path.
+    /// See CompileUnitParams::index_output_path.
     std::string index_output_path;
 
-    /// See TURunParams::known_instantiations.
+    /// See CompileUnitParams::known_instantiations.
     std::vector<std::uint64_t> known_instantiations;
 
-    /// See TURunParams::standard_library_instantiations.
+    /// See CompileUnitParams::standard_library_instantiations.
     bool standard_library_instantiations = false;
 
     /// Run clang-tidy over the parse with this frozen configuration.
@@ -172,7 +172,7 @@ struct CompileParams {
     bool skip_bodies = false;
 };
 
-/// Outcome of a stateful compile. Anything but `Done` is a non-result: the
+/// Status of a stateful compile. Anything but `Done` is a non-result: the
 /// master must not commit the result to the session or record
 /// dependencies — doing so freezes the document on a product that never
 /// existed. A setup failure's diagnostics say why it failed.
@@ -180,7 +180,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted (superseded round).
+    /// The parse was interrupted (outdated attempt).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -195,7 +195,7 @@ struct CompileResult {
     /// name the blob's path, or they are AST-deserialization errors naming
     /// no other prebuilt input. Holds whether the reader rejected the blob
     /// at setup or hit a fatal error past it (a Done status with real,
-    /// publishable diagnostics). Either way the artifact is the culprit:
+    /// publishable diagnostics). Either way the PCH is the culprit:
     /// the master should retract the pair and rebuild instead of trusting
     /// the corrupt bytes until the preamble changes.
     bool pch_suspect = false;
@@ -204,12 +204,12 @@ struct CompileResult {
     std::vector<feature::FileDiagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
-    std::int64_t build_at = 0;
-    std::vector<DepFile> deps;
+    std::int64_t started_at = 0;
+    std::vector<ReportedInput> deps;
     /// Serialized TUIndex of the focus file.
     std::vector<std::byte> tu_index_data;
 
-    /// See TURunResult::index_in_file.
+    /// See CompileUnitResult::index_in_file.
     bool index_in_file = false;
 };
 
@@ -232,7 +232,7 @@ struct BuildPCHParams {
     uint32_t preamble_bound = UINT32_MAX;
 
     /// Build the PCH of the whole file as it is on disk: a precompiled
-    /// header the build declares (Build::pch_unit). content and
+    /// header the build declares (Project::pch_writer). content and
     /// preamble_bound are unused.
     bool whole_file = false;
 
@@ -241,7 +241,7 @@ struct BuildPCHParams {
     /// for none.
     std::string pch;
 
-    /// Every built module's PCM (module name -> artifact path), where the
+    /// Every built module's PCM (module name -> PCM path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
 
@@ -268,7 +268,7 @@ struct BuildPCMParams {
 
     std::string module_name;
 
-    /// Transitive PCM dependencies (module name -> artifact path).
+    /// Transitive PCM dependencies (module name -> PCM path).
     std::unordered_map<std::string, std::string> pcms;
 
     /// The precompiled header the build declares for the command, built by
@@ -279,9 +279,9 @@ struct BuildPCMParams {
     std::string output_path;
 };
 
-/// One whole-TU run: a single parse serving the products the frozen plan
+/// One unit's compile: a single parse serving the products the frozen plan
 /// names — the full index, a clang-tidy pass, or both.
-struct TURunParams {
+struct CompileUnitParams {
     std::string file;
     std::string directory;
     /// See CompilationInput::project_root.
@@ -400,8 +400,8 @@ struct FormatResult {
     std::string error;
 };
 
-/// Result of an artifact build (PCH or PCM).
-struct ArtifactBuildResult {
+/// Result of a PCH or PCM build.
+struct PrecompiledBuildResult {
     bool success = true;
     std::string error;
     /// On failure: whether `error` carries user-code compile errors. A failure
@@ -412,15 +412,15 @@ struct ArtifactBuildResult {
     /// why it did not build.
     std::string first_error;
 
-    /// The tmp path the artifact was written to.
+    /// The tmp path the PCH or PCM was written to.
     std::string output_path;
 
     /// Milliseconds since epoch, sampled before the build started. Files
     /// whose mtime is past this moment may differ from what the build read.
-    std::int64_t build_at = 0;
+    std::int64_t started_at = 0;
     /// What the build read and looked for — on failure too: a build that
     /// failed on the user's errors fails again until one of them changes.
-    std::vector<DepFile> deps;
+    std::vector<ReportedInput> deps;
 };
 
 /// A message where it is, located for CLI presentation: 1-based line and
@@ -456,7 +456,7 @@ struct TidyDiagnostic {
     std::vector<LocatedMessage> notes;
 };
 
-struct TURunResult {
+struct CompileUnitResult {
     bool success = true;
     std::string error;
 
@@ -507,10 +507,10 @@ struct IncludeTreeResult {
 
     /// Every file the run read or looked for: its includes, what its
     /// `__has_include` checks found, the places its failed lookups looked.
-    std::vector<DepFile> deps;
+    std::vector<ReportedInput> deps;
 
     /// Milliseconds since epoch, sampled before the run started.
-    std::int64_t build_at = 0;
+    std::int64_t started_at = 0;
 };
 
 /// Request the document links of an open file's AST. Only the focus file's
@@ -603,7 +603,7 @@ struct GateReleaseParams {
 template <typename Params>
 constexpr inline bool is_build =
     std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
-    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, CompileUnitParams> ||
     std::same_as<Params, IncludeTreeParams>;
 
 }  // namespace clice::worker
@@ -671,20 +671,20 @@ struct RequestTraits<clice::worker::InlayHintParams> {
 
 template <>
 struct RequestTraits<clice::worker::BuildPCHParams> {
-    using Result = clice::worker::ArtifactBuildResult;
+    using Result = clice::worker::PrecompiledBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPch";
 };
 
 template <>
 struct RequestTraits<clice::worker::BuildPCMParams> {
-    using Result = clice::worker::ArtifactBuildResult;
+    using Result = clice::worker::PrecompiledBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPcm";
 };
 
 template <>
-struct RequestTraits<clice::worker::TURunParams> {
-    using Result = clice::worker::TURunResult;
-    constexpr inline static std::string_view method = "clice/worker/tuRun";
+struct RequestTraits<clice::worker::CompileUnitParams> {
+    using Result = clice::worker::CompileUnitResult;
+    constexpr inline static std::string_view method = "clice/worker/compileUnit";
 };
 
 template <>

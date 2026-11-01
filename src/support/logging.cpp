@@ -243,7 +243,7 @@ static void print_stack_trace(llvm::raw_ostream& os) {
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
-        // Identifies the exact artifact so symbolization uses the matching
+        // Identifies the exact build so symbolization uses the matching
         // symbol file (all constexpr string_views: async-signal-safe).
         *crash_log_stream << "clice " << version << " " << target << "\n";
         // Release binaries are PIE and stripped: the frame addresses below are

@@ -53,7 +53,7 @@ Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached a
 
 Rather than processing all files at once, scanning unfolds in waves:
 
-- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#build)) — and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
+- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#rules-and-members)) — and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
 - **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
 - **Wave 1**: Scan the newly discovered headers, discovering their includes...
 - Repeat until no new files are found
@@ -120,7 +120,7 @@ The candidate's include tree — from its index entry, or from preprocessing it 
 
 The fast scan provides approximate results during the startup phase. As the server runs, the background indexing system gradually compiles every translation unit in the project, obtaining precise include relationships during compilation (with full preprocessing, evaluating all macros and conditional compilation). These precise include relationships are recorded in the index data (TUIndex/MergedIndex). Note that background indexing currently does not update the DependencyGraph built during startup — the fast-scan include graph remains in use for host source lookup and file-dependency queries throughout the server's lifetime.
 
-Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor where an exact answer is needed: the modules a unit imports, resolved at the start of each of its build rounds (see [Task Graph](task-graph.md)). The fast scan decides where that is: it records which files hold module syntax (an import or a module declaration), and a unit that reaches none of them through its includes and forced includes imports nothing -- no macro can produce an import directive -- so it is never precise-scanned.
+Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor where an exact answer is needed: the modules a unit imports, resolved at the start of each of its builds (see [Task Graph](task-graph.md)). The fast scan decides where that is: it records which files hold module syntax (an import or a module declaration), and a unit that reaches none of them through its includes and forced includes imports nothing -- no macro can produce an import directive -- so it is never precise-scanned.
 
 Fast scanning and background indexing are complementary: fast scanning guarantees that a usable include graph is available within seconds of startup (so users immediately get header file support), while background indexing gradually supplements precise information over the following minutes. The two are not alternatives -- even after background indexing completes, fast scanning results are still used for initial file discovery and building the initial dependency graph.
 

@@ -5,12 +5,12 @@ import :vfs.file_table;
 
 namespace clice {
 
-/// The results of one kind of work, remembered by request with the trace of
-/// what each read: the files, at the versions read. lookup() is the one
-/// check of whether a result still holds; one whose inputs changed is
-/// forgotten there. What a result is computed again from decides the trace:
-/// the files a build read, or for a crash, which reports nothing it read,
-/// the inputs known before it ran.
+/// The results of one kind of work, remembered by request with the inputs
+/// each read: the files, at the versions read. lookup() is the one check of
+/// whether a result still holds; one whose inputs changed is forgotten
+/// there. What a result is computed again from decides the inputs: the
+/// files a build read, or for a crash, which reports nothing it read, the
+/// inputs known before it ran.
 template <typename Key, typename Result>
 class Memo {
 public:
@@ -20,16 +20,16 @@ public:
     struct Entry {
         Result result;
 
-        DepsSnapshot trace;
+        Inputs inputs;
     };
 
-    /// The entry of `key` while the inputs its trace names hold.
+    /// The entry of `key` while its inputs hold.
     Entry* lookup(FileTable& files, KeyRef key) {
         auto it = entries.find(key);
         if(it == entries.end()) {
             return nullptr;
         }
-        if(deps_changed(files, it->second.trace)) {
+        if(!inputs_hold(files, it->second.inputs)) {
             entries.erase(it);
             return nullptr;
         }
@@ -48,20 +48,27 @@ public:
     }
 
     /// The entry of `key`, its inputs checked or not, made with an empty
-    /// result and trace when there is none.
+    /// result and inputs when there is none.
     Entry& entry(KeyRef key) {
         return entries[key];
     }
 
-    Entry& commit(KeyRef key, Result result, DepsSnapshot trace) {
+    Entry& commit(KeyRef key, Result result, Inputs inputs) {
+        changes += 1;
         auto& entry = entries[key];
-        entry = {.result = std::move(result), .trace = std::move(trace)};
+        entry = {.result = std::move(result), .inputs = std::move(inputs)};
         return entry;
     }
 
     /// Returns whether there was an entry.
     bool forget(KeyRef key) {
+        changes += 1;
         return entries.erase(key);
+    }
+
+    /// Moves with every commit and forget.
+    std::uint64_t generation() const {
+        return changes;
     }
 
     /// Visit every entry with its key, checked or not.
@@ -77,6 +84,8 @@ private:
                        llvm::StringMap<Entry>,
                        llvm::DenseMap<Key, Entry>>
         entries;
+
+    std::uint64_t changes = 0;
 };
 
 }  // namespace clice

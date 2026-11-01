@@ -5,9 +5,9 @@ Linted 1 translation unit in #s: 1 finding.
 1 translation unit failed to run (see the log); the report is partial.
 '''
 stderr = '''
-warning: [SL-0] clice worker crashed in: clice/worker/tuRun ${WS}/poison.cpp
+warning: [SL-0] clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
 error: Last stderr of crashed worker SL-0:
-clice worker crashed in: clice/worker/tuRun ${WS}/poison.cpp
+clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
 error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 0)
 error: Last output of crashed worker SL-0:
 ===

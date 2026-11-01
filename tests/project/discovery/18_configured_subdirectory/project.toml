@@ -1,0 +1,9 @@
+# sub/ has a clice.toml and a database of its own: a project of its own
+# inside the root's, which the root's discovery leaves out.
+[databases]
+"." = ["main.cpp"]
+sub = ["sub/a.cpp"]
+
+[units]
+"main.cpp" = []
+"sub/a.cpp" = []

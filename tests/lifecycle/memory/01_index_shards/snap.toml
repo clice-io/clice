@@ -1,4 +1,4 @@
-["a round leaves no shard in memory"."after the round"]
+["a pass leaves no shard in memory"."after the pass"]
 indexInmemoryShards = 0
 lastSaveShards = 4
 

@@ -5,8 +5,8 @@ import :index.format;
 import :index.project_index;
 import :index.project_records;
 import :index.symbol_query;
+import :project.indexer;
 import :project.project;
-import :sched.index.pending_table;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -14,6 +14,7 @@ import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
 
@@ -31,6 +32,7 @@ ZEST_CASE(LoadRestoresIndex) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -39,6 +41,7 @@ ZEST_CASE(LoadRestoresIndex) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -88,7 +91,7 @@ ZEST_CASE(OpenReadsHeaderOnly) {
     auto log = std::make_unique<ReadLog>(std::move(f.project.database));
     auto* probe = log.get();
     f.project.database = std::move(log);
-    ZASSERT(f.project.index.open(*f.project.database) == index::LoadOutcome::Loaded);
+    ZASSERT(f.project.index.open(*f.project.database) == index::LoadResult::Loaded);
     ZEXPECT(probe->reads == llvm::SmallVector<index::BlobKind>{index::BlobKind::Header,
                                                                index::BlobKind::SearchSegment});
     ZEXPECT(f.project.index.search_index().loaded());
@@ -102,6 +105,7 @@ ZEST_CASE(IdleSaveBuildsSearch) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -116,6 +120,7 @@ ZEST_CASE(IdleSaveBuildsSearch) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZASSERT(f.project.index.search_index().loaded());
 }
@@ -128,6 +133,7 @@ ZEST_CASE(RunsAcrossSessions) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"a.cpp"}});
         ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
         f.save(index::SearchRebuild::Idle);
         tmp.touch("a.cpp", "static int new_local = 1;\nint use() { return new_local; }\n");
@@ -138,6 +144,7 @@ ZEST_CASE(RunsAcrossSessions) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"a.cpp"}});
     f.load();
     auto& search = f.project.index.search_index();
     ZASSERT(search.run_count() == 2u);
@@ -175,6 +182,7 @@ ZEST_CASE(RunsSpanManySegments) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"first.cpp"}, {"second.cpp"}});
         ZASSERT(f.merge(index_file(tmp, tmp.path("first.cpp")).data));
         f.save(index::SearchRebuild::Idle);
         ZASSERT(stored(f) == 2u);
@@ -184,6 +192,7 @@ ZEST_CASE(RunsSpanManySegments) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"first.cpp"}, {"second.cpp"}});
     f.load();
     ZASSERT(f.project.index.search_index().run_count() == 1u);
     ZEXPECT(hits(f, R"("f19999")") == 1u);
@@ -207,6 +216,7 @@ ZEST_CASE(LostSegmentRebuildsSearch) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         ZASSERT(f.merge(index_file(tmp, tmp.path("main.cpp")).data));
         f.save(index::SearchRebuild::Idle);
         llvm::SmallVector<index::BlobKey> segments;
@@ -219,6 +229,7 @@ ZEST_CASE(LostSegmentRebuildsSearch) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZASSERT(!f.project.index.search_index().loaded());
     ZEXPECT(!f.project.index.damaged());
@@ -256,6 +267,12 @@ ZEST_CASE(StaleUnitsFollowDisk) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp,
+                     {
+                         {"main.cpp"},
+                         {"other.cpp"},
+                         {"late.cpp", {"-I" + tmp.path("gen")}}
+        });
         for(auto name: {"main.cpp", "other.cpp"}) {
             auto indexed = index_file(tmp, tmp.path(name));
             ZASSERT(!indexed.data.empty());
@@ -271,6 +288,12 @@ ZEST_CASE(StaleUnitsFollowDisk) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp,
+                 {
+                     {"main.cpp"},
+                     {"other.cpp"},
+                     {"late.cpp", {"-I" + tmp.path("gen")}}
+    });
     f.load();
     std::vector<std::string> stale;
     for(auto unit: f.project.index.stale_units()) {
@@ -281,13 +304,13 @@ ZEST_CASE(StaleUnitsFollowDisk) {
     auto file_of = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    ZEXPECT(IndexInternals::behind(f.project.index, file_of("main.cpp")));
-    ZEXPECT(!IndexInternals::behind(f.project.index, file_of("other.cpp")));
+    ZEXPECT(IndexInternals::outdated(f.project.index, file_of("main.cpp")));
+    ZEXPECT(!IndexInternals::outdated(f.project.index, file_of("other.cpp")));
 }
 
 ZEST_CASE(OwedUnitsPersist) {
     // A rebuild of a shared header discards another unit's variant; that
-    // unit reads fresh by content, so the debt survives a restart in the
+    // unit reads fresh by content, so its reindex survives a restart in the
     // header until the unit merges again.
     TempDir tmp;
     tmp.touch("gen.h",
@@ -301,6 +324,11 @@ ZEST_CASE(OwedUnitsPersist) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp,
+                     {
+                         {"ga.cpp"},
+                         {"gb.cpp", {"-DMODE"}}
+        });
         auto a = index_file(tmp, tmp.path("ga.cpp"));
         auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
         ZASSERT(f.merge(a.data));
@@ -315,6 +343,11 @@ ZEST_CASE(OwedUnitsPersist) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp,
+                 {
+                     {"ga.cpp"},
+                     {"gb.cpp", {"-DMODE"}}
+    });
     f.load();
     ZEXPECT(f.project.index.owed_units().contains(gb_unit(f)));
     ZASSERT(f.merge(index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"}).data));
@@ -329,6 +362,7 @@ ZEST_CASE(PersistedInternalsSearched) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"b.cpp"}});
         auto indexed = index_file(tmp, tmp.path("b.cpp"));
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
@@ -338,6 +372,7 @@ ZEST_CASE(PersistedInternalsSearched) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"b.cpp"}});
     f.load();
     f.save(index::SearchRebuild::Idle);
     ZASSERT(f.project.index.search_index().loaded());
@@ -361,6 +396,7 @@ ZEST_CASE(PathIdsAcrossSessions) {
     for(auto name: {"a.cpp", "b.cpp"}) {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"a.cpp"}, {"b.cpp"}});
         f.load();
         auto indexed = index_file(tmp, tmp.path(name));
         ZASSERT(!indexed.data.empty());
@@ -370,6 +406,7 @@ ZEST_CASE(PathIdsAcrossSessions) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"a.cpp"}, {"b.cpp"}});
     f.load();
     auto file_of = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -394,14 +431,17 @@ ZEST_CASE(PathIdsAcrossSessions) {
 
 ZEST_CASE(DamagedRecordRebuildsAll) {
     // A record failing its checks reads as missing and damages the
-    // database: the next save discards it, and every unit is indexed again
-    // into a fresh one — the build's, and one of its own no build entry
-    // names.
+    // database: the next save discards it, and every unit of the build is
+    // indexed again into a fresh one. One the index holds that no build
+    // entry names, its database gone since it was indexed, is not: nothing
+    // would compile it.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     tmp.touch("solo.cpp", "int solo() { return 2; }\n");
     auto src = tmp.path("main.cpp");
+    // By hand: a database loading in the second session would replace the
+    // vanished one, and solo.cpp would leave the build.
     auto command = [&](IndexerFixture& f) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     };
@@ -410,6 +450,7 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
         IndexerFixture f;
         open_store(tmp, f.project);
         command(f);
+        f.list_units(tmp, {{"solo.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -419,6 +460,7 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
             f.project.index,
             f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     }
+    fs::remove(tmp.path("compile_commands.json"));
     inject_blob(tmp, index::BlobKind::Shard, header_key, "corrupted beyond verification");
 
     IndexerFixture f;
@@ -436,8 +478,8 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
     f.save();
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.index.indexed(tu_id));
-    ZEXPECT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
-    ZEXPECT(f.pump.pending_reason(solo) == ReindexReason::ContentChanged);
+    ZEXPECT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZEXPECT(!f.queue.pending_reason(solo).has_value());
     ZEXPECT(!f.project.database->contains(index::BlobKind::Shard, header_key));
 }
 
@@ -451,6 +493,7 @@ ZEST_CASE(MissingShardDamages) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, tmp.path("main.cpp"));
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -466,6 +509,7 @@ ZEST_CASE(MissingShardDamages) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZEXPECT(
         !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
@@ -482,6 +526,7 @@ ZEST_CASE(LoadDamageStartsOver) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -493,28 +538,120 @@ ZEST_CASE(LoadDamageStartsOver) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
     ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
 }
 
-ZEST_CASE(OtherFormatDiscardsAll) {
-    // A database another format version wrote is discarded whole, the
-    // context choices and artifact records with it.
+ZEST_CASE(CommandRecordedAcrossSave) {
+    // The identity of the command a unit was indexed under rides its
+    // manifest and its file record, across a save.
     TempDir tmp;
-    index::HeaderBlob header;
-    header.format_version = index::index_format_version + 1;
-    auto bytes = index::encode(header);
-    inject_blob(tmp, index::BlobKind::Header, "header", as_chars(bytes));
-    inject_blob(tmp, index::BlobKind::ContextChoices, "contexts", "choices");
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        ZASSERT(f.project.index.merge(index_file(tmp, src).data, {}, 42));
+        auto id = f.project.file_table.intern(Spelling::absolute(src));
+        ZEXPECT(f.project.index.indexed_command(id) == 42u);
+        ZEXPECT(f.project.index.manifest(id)->command == 42u);
+        f.save();
+    }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    ZEXPECT(!f.load());
-    ZEXPECT(f.project.choices.bytes.empty());
-    ZEXPECT(!f.project.database->contains(index::BlobKind::ContextChoices, "contexts"));
-    ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
+    index::IndexReport report;
+    ZASSERT(f.project.load_saved(/*reconcile=*/false, report));
+    auto id = f.project.file_table.intern(Spelling::absolute(src));
+    ZEXPECT(f.project.index.indexed_command(id) == 42u);
+    ZEXPECT(f.project.index.manifest(id)->command == 42u);
+}
+
+ZEST_CASE(OtherFormatKeepsMetadata) {
+    // A database another format version wrote loses its index, not its
+    // context choices and PCM records: the fresh database takes them at its
+    // first save. Its PCH records go, their pairs built under the other
+    // format.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    tmp.touch("mod.cppm", "export module m;\n");
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
+    };
+    auto stored = [](IndexerFixture& f, llvm::StringRef space, llvm::StringRef key) {
+        auto pending = f.project.store->begin_store(space, key);
+        ZASSERT(!fs::write_file(pending.tmp_path, "bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        stored(f, "pch", "k");
+        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
+        stored(f, "pcm", "m");
+        auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+        auto dep = Input{.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
+        auto& pch = f.project.pchs["k"];
+        pch.blob = "k";
+        pch.path = "k.pch";
+        pch.inputs.push_back(dep);
+        auto& pcm =
+            f.project.pcms[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
+        pcm.path = "m.pcm";
+        pcm.key = "m";
+        pcm.blob = "m";
+        pcm.inputs.push_back(dep);
+        f.project.mark_precompiled_dirty();
+        f.project.choices.bytes = "choices";
+        f.project.choices.dirty = true;
+        f.save();
+
+        // Put the header and the records back as the binary of the format
+        // before would have written them.
+        index::HeaderBlob header;
+        header.format_version = index::index_format_version - 1;
+        auto header_bytes = index::encode(header);
+        auto blob = f.project.database->read(index::BlobKind::PrecompiledRecords, "artifacts");
+        ZASSERT(bool(blob));
+        auto records = blob.buffer->getBuffer().str();
+        auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
+        auto pos = records.find(current);
+        ZASSERT(pos != std::string::npos);
+        records.replace(pos,
+                        current.size(),
+                        std::format("\"pch_index_format\":{}", index::index_format_version - 1));
+        ZASSERT(f.project.database->write(
+            {
+                {index::BlobKind::Header,             "header",    copy_bytes(as_chars(header_bytes))},
+                {index::BlobKind::PrecompiledRecords, "artifacts", copy_bytes(records)               },
+        },
+            {}));
+    }
+
+    {
+        IndexerFixture f;
+        setup(f);
+        ZEXPECT(!f.load());
+        ZEXPECT(f.project.pchs.empty());
+        ZEXPECT(f.project.pcms.size() == 1u);
+        ZEXPECT(f.project.choices.bytes == "choices");
+        f.save();
+    }
+
+    IndexerFixture f;
+    setup(f);
+    ZEXPECT(f.load());
+    ZEXPECT(f.project.pcms.size() == 1u);
+    ZEXPECT(f.project.choices.bytes == "choices");
 }
 
 ZEST_CASE(ReadOnlyLoadKeepsDisk) {
@@ -562,6 +699,7 @@ ZEST_CASE(LoadServesAcrossSaves) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}, {"other.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -570,6 +708,7 @@ ZEST_CASE(LoadServesAcrossSaves) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}, {"other.cpp"}});
     ZASSERT(f.load());
     auto path_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.shard(path_id) != nullptr);
@@ -690,7 +829,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     ZASSERT(condemned);
     ZASSERT(f.project.database != nullptr);
     ZASSERT(!f.project.index.indexed(tu_id));
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(UnreadableHeaderPreserved) {
@@ -701,6 +840,7 @@ ZEST_CASE(UnreadableHeaderPreserved) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -726,6 +866,7 @@ ZEST_CASE(UnreadableHeaderPreserved) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         f.project.database = std::make_unique<UnreadableHeader>(std::move(f.project.database));
         f.load();
         ZASSERT(!f.project.index.indexed(tu_id(f, src)));
@@ -734,6 +875,7 @@ ZEST_CASE(UnreadableHeaderPreserved) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZASSERT(f.project.index.indexed(tu_id(f, src)));
     ZASSERT(f.project.index.shard(tu_id(f, src)) != nullptr);
@@ -748,6 +890,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp"}});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -765,6 +908,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     // old-command index as fresh.
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"main.cpp"}});
     f.load();
     ZASSERT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
     ZASSERT(f.project.index.shard_count() == 0);
@@ -787,6 +931,7 @@ ZEST_CASE(VersionsLiveWhileNamed) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"a.cpp"}, {"b.cpp"}});
         for(auto name: {"a.cpp", "b.cpp"}) {
             auto indexed = index_file(tmp, tmp.path(name));
             ZASSERT(f.merge(indexed.data));
@@ -801,6 +946,7 @@ ZEST_CASE(VersionsLiveWhileNamed) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"a.cpp"}, {"b.cpp"}});
     f.load();
     ZEXPECT(IndexInternals::unit_count(f.project.index) == 1u);
     ZASSERT(!f.needs_reindex(tmp.path("a.cpp")));

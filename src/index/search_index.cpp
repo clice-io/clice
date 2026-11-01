@@ -1085,9 +1085,9 @@ bool SearchIndex::damaged() const {
     return ranges::any_of(segments, [](auto& segment) { return segment->damaged; });
 }
 
-SearchOutcome SearchIndex::search(const SymbolQuery& query,
-                                  std::uint32_t limit,
-                                  llvm::function_ref<bool(std::uint32_t)> wanted_file) const {
+SearchResult SearchIndex::search(const SymbolQuery& query,
+                                 std::uint32_t limit,
+                                 llvm::function_ref<bool(std::uint32_t)> wanted_file) const {
     if(segments.empty() || limit == 0 || !query.by_pattern()) {
         return {};
     }
@@ -1310,11 +1310,11 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         }
     }
 
-    SearchOutcome outcome{.exhausted = !top.overflowed};
+    SearchResult result{.exhausted = !top.overflowed};
     for(auto& hit: std::move(top).sorted()) {
-        outcome.hits.push_back({.hash = hit.hash, .rank = hit.rank, .file = hit.file});
+        result.hits.push_back({.hash = hit.hash, .rank = hit.rank, .file = hit.file});
     }
-    return outcome;
+    return result;
 }
 
 }  // namespace clice::index

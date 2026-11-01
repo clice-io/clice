@@ -6,8 +6,6 @@ import :feature.code_completion;
 import :feature.protocol;
 import :feature.rename;
 import :feature.signature_help;
-import :project.build;
-import :project.queries;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -156,7 +154,7 @@ void LSPClient::register_editing() {
         // compiled from now on (a no-op when it already is or under
         // readonly = "on").
         project.escalate(path_id);
-        auto pause = project.sched.pump.scoped_pause();
+        auto pause = ScopedPause(project.project.background_index);
 
         llvm::StringRef trigger;
         if(params.context && params.context->trigger_character) {
@@ -238,7 +236,7 @@ void LSPClient::register_editing() {
                 co_return codec::RawValue{"null"};
             }
             project.escalate(path_id);
-            auto pause = project.sched.pump.scoped_pause();
+            auto pause = ScopedPause(project.project.background_index);
             // The popup the client shows: the user may have moved it to another
             // overload.
             std::string selected;
@@ -264,7 +262,7 @@ void LSPClient::register_editing() {
                          std::optional<protocol::Range> range,
                          async::cancellation_token token) -> RawResult {
         auto& project = *document.project;
-        auto pause = project.sched.pump.scoped_pause();
+        auto pause = ScopedPause(project.project.background_index);
         auto result = co_await project.format(document.ticket, range, token).or_fail();
         if(!result) {
             co_return codec::RawValue{"null"};
@@ -465,7 +463,7 @@ void LSPClient::register_editing() {
 
             // The walk, the reads and the scan run off the loop; only the
             // files spelling a name come back with their text.
-            EditableFiles editable_files(project.root, project.settings);
+            auto editable_files = project.editable_files();
             auto texts = co_await async::queue(
                 [editable_files,
                  names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
@@ -509,7 +507,7 @@ void LSPClient::register_editing() {
                                              {.files = texts.files,
                                               .editable = editable,
                                               .read = read,
-                                              .units_pending = units_pending(project)});
+                                              .units_pending = project.units_pending()});
             if(plan.blocked()) {
                 co_await async::fail(request_failed(feature::refusal(plan)));
             }

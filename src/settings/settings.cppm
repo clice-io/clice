@@ -85,7 +85,9 @@ struct Rule {
                          "declares a source, every compile_commands.json in "
                          "the project root and its immediate subdirectories "
                          "loads, and so do the ones in the directories above "
-                         "a file when it is opened.")
+                         "a file when it is opened; a directory below the root "
+                         "with a clice.toml or .clice/config.toml of its own "
+                         "is another project, and none in it loads.")
     <std::vector<std::string>> compile_commands;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -206,9 +208,9 @@ enum class ReadonlyMode : std::uint8_t {
     /// Files start as On and switch to Off at the first edit intent
     /// (edit, completion, signature help, a context switch, a restored
     /// buffer that diverged from the index). A file the index can never
-    /// serve — indexing disabled, or its boost attempt finished without a
-    /// servable shard — falls back to Off rather than answering empty
-    /// forever.
+    /// serve — indexing disabled, or the index attempt its opening asked
+    /// for finished without a servable shard — falls back to Off rather
+    /// than answering empty forever.
     Auto,
 };
 
@@ -218,11 +220,11 @@ enum class ReadonlyMode : std::uint8_t {
 /// finalize().
 struct ProjectSettings {
     /// finalize() leaves it the directory's identity, empty for none;
-    /// cache_identity() names the directory.
+    /// cache_identity names the directory.
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Directory for the unified on-disk cache (PCH, PCM and "
-                         "index artifacts). Empty defaults to `${workspace}/.clice`, "
+                         "Directory for the unified on-disk cache (PCHs, PCMs and "
+                         "the index). Empty defaults to `${workspace}/.clice`, "
                          "which keeps itself out of version control and backups via "
                          "generated .gitignore and CACHEDIR.TAG markers (a "
                          "`.clice/config.toml` stays visible to Git; backup tools "
@@ -236,6 +238,11 @@ struct ProjectSettings {
     /// a configured directory may be shared with other content.
     KOTATSU_ANNOTATE(skip = true)
     <bool> cache_dir_defaulted = false;
+
+    /// The identity of cache_dir, empty for none: finalize() resolves it
+    /// with cache_dir.
+    KOTATSU_ANNOTATE(skip = true)
+    <CanonicalPath> cache_identity;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -344,11 +351,6 @@ struct ProjectSettings {
                          "reaches; `0` means the machine's physical cores, which "
                          "is also the default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
-
-    /// The identity of cache_dir, empty for none.
-    CanonicalPath cache_identity() const {
-        return cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir));
-    }
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: how often files
@@ -541,11 +543,6 @@ struct Settings {
     /// settings read from it stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
-    /// The compiled rules applying to `path`, in declaration order,
-    /// restricted to untagged rules and rules tagged `configuration`.
-    llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
-                                                          llvm::StringRef configuration) const;
-
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 
@@ -556,10 +553,6 @@ struct Settings {
     /// `default_configuration`, else the first declared tag; empty when the
     /// rules declare none.
     llvm::StringRef fallback_configuration() const;
-
-    /// The databases the rules active under `configuration` declare, in
-    /// declaration order, each once.
-    llvm::SmallVector<Spelling> declared_databases(llvm::StringRef configuration) const;
 
     /// The configuration's JSON schema (draft 2020-12), pretty-printed.
     /// Fields whose defaults derive from the running machine (the worker

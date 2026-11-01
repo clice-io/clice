@@ -73,4 +73,26 @@ struct Normalizer {
                                unsigned depth = 0);
 };
 
+/// The commands written by hand — a rule's default command, the builtin
+/// fallback — interned: each normalized once through the entry pipeline
+/// with the input slot synthesized at the end, by (directory, spelling).
+class WrittenCommands {
+public:
+    WrittenCommands(CommandTable& commands, FileTable& files) : commands(commands), files(files) {}
+
+    /// The command `arguments` spell, run from `directory`; nullopt (logged
+    /// once) when it is no compile command — blank, or a launcher with
+    /// nothing to launch.
+    std::optional<CommandID> intern(const Spelling& directory,
+                                    llvm::ArrayRef<const char*> arguments);
+
+private:
+    CommandTable& commands;
+    FileTable& files;
+
+    /// The commands by (directory, spelling), invalid_command for a
+    /// spelling that is not a compile command.
+    llvm::StringMap<CommandID> interned;
+};
+
 }  // namespace clice

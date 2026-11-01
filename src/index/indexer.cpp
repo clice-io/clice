@@ -1975,7 +1975,7 @@ public:
         auto encode_ms = encode_timer.ms_f();
 
         blob.format_version = index_format_version;
-        blob.built_at = unit.build_at().count();
+        blob.built_at = unit.started_at().count();
         blob.paths = std::move(tree.paths);
         blob.content_hashes = std::move(tree.content_hashes);
         blob.nodes = std::move(tree.nodes);

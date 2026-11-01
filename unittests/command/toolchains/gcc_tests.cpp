@@ -323,7 +323,7 @@ echo '#define __STDC_VERSION__ 201710L'
                                           tmp.path("libc/include"),
                                           tmp.path("gcc/13")));
     auto ref = add("a.c", {driver.c_str(), "-c"});
-    ZASSERT(f.toolchain.resolve(ref.command, ref.input));
+    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     /// A module map is no header, which only #include_next reaches.
     ZEXPECT(rendered.hidden.hides(tmp.path("gcc/13/include/module.modulemap")));
@@ -424,7 +424,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     command.insert(command.begin(), driver.c_str());
     command.push_back("-c");
     auto ref = add("a.c", command);
-    ZEXPECT(f.toolchain.resolve(ref.command, ref.input).has_value());
+    ZEXPECT(f.toolchain.resolve(ref.command, ref.language).has_value());
 
     auto passed = vfs::read_text(args);
     ZASSERT(passed);
@@ -441,7 +441,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     };
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
-    ZEXPECT(f.toolchain.resolve(edited.command, edited.input).has_value());
+    ZEXPECT(f.toolchain.resolve(edited.command, edited.language).has_value());
     passed = vfs::read_text(args);
     ZASSERT(passed);
     ZEXPECT(llvm::StringRef(*passed).contains("-msmall-data-limit=8\n"));

@@ -96,17 +96,22 @@ SourceID CompilationDatabase::add_source(const Spelling& path) {
     }
     auto file = file_table.intern(key);
     source_files.push_back({.path = std::move(key).str(), .inputs = {{.file = file}}});
+    found_sources.clear();
     return SourceID(source_files.size() - 1);
 }
 
 std::optional<SourceID> CompilationDatabase::find_source(const Spelling& path) const {
-    auto key = source_key(path);
-    for(std::size_t i = 0; i < source_files.size(); i += 1) {
-        if(source_files[i].path == key.str()) {
-            return SourceID(i);
+    auto [it, inserted] = found_sources.try_emplace(path.str());
+    if(inserted) {
+        auto key = source_key(path);
+        for(std::size_t i = 0; i < source_files.size(); i += 1) {
+            if(source_files[i].path == key.str()) {
+                it->second = SourceID(i);
+                break;
+            }
         }
     }
-    return std::nullopt;
+    return it->second;
 }
 
 std::optional<SourceID> CompilationDatabase::find_same_file(const Spelling& path) const {

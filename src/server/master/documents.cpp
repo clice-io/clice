@@ -1,5 +1,6 @@
 module clice;
 
+import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -100,6 +101,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     auto& owner = route(path_id);
     document.owner = &owner;
     owner.adopt(document.session);
+    watch_settings();
 }
 
 void MasterServer::change_document(Fid path_id,
@@ -135,9 +137,9 @@ void MasterServer::change_document(Fid path_id,
     if(client) {
         client->publish_second_names(*document);
     }
-    // The edit made any in-flight compile stale. Supersede it now instead
+    // The edit made any in-flight compile outdated. Cancel it now instead
     // of waiting for the next AST-backed request to observe it: the
-    // round's advisory token releases its dependency waits, and the
+    // attempt's advisory token releases its dependency waits, and the
     // interrupt keeps a stale parse from holding up its waiters.
     if(document->owner) {
         document->owner->edited(session);

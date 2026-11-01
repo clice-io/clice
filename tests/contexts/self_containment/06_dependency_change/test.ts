@@ -2,7 +2,8 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // h.h compiles on its own until foo.h stops defining FOO: its own include's
-// change runs the trial again, and only main.cpp's define is left.
+// change runs the self-containment check again, and only main.cpp's define
+// is left.
 test(async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);

@@ -202,7 +202,7 @@ private:
     struct QueryAdmission;
     QueryAdmission admit_query(CommandID id, InputKind input);
 
-    /// Commits the outcome of the query for the command `id`: the job's
+    /// Commits the result of the query for the command `id`: the job's
     /// frontend into the query cache, a failure into the negative cache with
     /// its time.
     void commit_query(llvm::StringRef key,

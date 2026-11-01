@@ -2,7 +2,6 @@ module clice:worker.pool;
 
 import :support.logging;
 import :support.prelude;
-import :support.signal;
 import :worker.probe;
 import :worker.protocol;
 import :worker.scheduler;
@@ -236,7 +235,7 @@ public:
     /// `cancel` is an advisory cancellation: when it fires, the request is
     /// cancelled over IPC and this call KEEPS awaiting the worker's real
     /// answer — the slot frees only when the process is actually idle, and
-    /// crash accounting keeps observing the real outcome. A cancelled
+    /// crash accounting keeps observing the real reply. A cancelled
     /// result is reported as dispatch_errc::cancelled. `cost` is what the
     /// request is expected to take; a finished request reports what it took
     /// into `report`. `admitted` is asked once the request has its slot,
@@ -301,11 +300,6 @@ public:
     /// and friends. Requests need no call of their own — every stateful
     /// dispatch and every High stateless dispatch counts.
     void foreground_pulse();
-
-    /// Emitted when a stateless slot (re)enters service — spawn, respawn,
-    /// revive, scale-up. The indexer's capacity gate wakes on it instead of
-    /// spinning dispatch attempts against a pool with no schedulable worker.
-    Signal<> on_stateless_capacity;
 
     /// The death `error` reports, which named no request, was its request's
     /// doing after all (see deliver): like a death that names its request,
@@ -718,7 +712,7 @@ private:
 
 /// The build a worker ran to its end, as the probe counts it: its kind and
 /// file. The request reached the worker, and it answered or died running
-/// it; a build the master withdrew — preempted, superseded — comes back
+/// it; a build the master withdrew — preempted, outdated — comes back
 /// cancelled whatever the worker had done, or as a compile the worker
 /// stopped. None for the other requests.
 template <typename Params, typename Result>
@@ -737,7 +731,7 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& par
         return std::pair{BuildKind::PCH, llvm::StringRef(params.file)};
     } else if constexpr(std::same_as<Params, worker::BuildPCMParams>) {
         return std::pair{BuildKind::PCM, llvm::StringRef(params.file)};
-    } else if constexpr(std::same_as<Params, worker::TURunParams>) {
+    } else if constexpr(std::same_as<Params, worker::CompileUnitParams>) {
         return std::pair{BuildKind::Index, llvm::StringRef(params.file)};
     } else {
         return std::nullopt;
@@ -856,7 +850,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
             co_await async::fail(
                 cancel.cancelled()
-                    ? ipc::Error{cancelled, "Request cancelled by its round"}
+                    ? ipc::Error{cancelled, "Request cancelled by its attempt"}
                     : ipc::Error{worker_unavailable, "No stateless workers available"});
         }
 
@@ -957,7 +951,7 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 
 /// Send a request through the worker deaths that are not its own doing.
 /// `send` makes one attempt (and may fail on its own to stop early, a
-/// superseded request); deliver resends once when another request's crash
+/// outdated request); deliver resends once when another request's crash
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the

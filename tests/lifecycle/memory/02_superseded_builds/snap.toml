@@ -4,5 +4,4 @@ diagnostics = []
 [test."after the storm"]
 pendingTmpFiles = 0
 pchCacheEntries = 2
-pchStashedBytes = 0
 sessions = 1

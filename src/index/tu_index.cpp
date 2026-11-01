@@ -50,7 +50,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
     // the accessors stay check-free. The builder ends every path table
-    // with the focus file, so consumers address path_count() - 1
+    // with the focus file, so consumers address focus_file()
     // unchecked — an empty table marks a corrupt TU index.
     auto count = root.paths.size();
     if(count == 0) {

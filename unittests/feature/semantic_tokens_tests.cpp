@@ -17,8 +17,8 @@ import :semantic.token_class;
 import :syntax.lexer;
 import :syntax.position;
 import :syntax.source_text;
-import :unittests.utils;
 import :unittests.utils.index_entries_tester;
+import :unittests.utils;
 
 namespace clice::testing {
 

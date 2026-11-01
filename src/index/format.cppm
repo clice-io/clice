@@ -25,7 +25,7 @@ namespace clice::index {
 /// v10: an include location's `include` names the directive's containing
 /// file, not that file's includer; v11: file-version stamps are the file
 /// table's corroborated shared stamps, adopted verbatim at load, and the
-/// artifact metadata blobs joined the database; v12: symbol hashes are
+/// precompiled records blobs joined the database; v12: symbol hashes are
 /// entities computed by semantic/identity; v13: symbol entries carry the bare
 /// name, parent, specialization arguments, flags and canonical file, the
 /// include tree is one node type in the TU index and in manifests, and module
@@ -106,8 +106,9 @@ namespace clice::index {
 /// history with its parent's; v50: the search index is runs of bounded
 /// segments the header lists, which name files by path id; v51: a
 /// preamble's diagnostics are at bytes, not at editor positions; v52: LLVM
-/// 23.1.3, whose canonical forms entity hashes follow.
-constexpr inline std::uint32_t index_format_version = 52;
+/// 23.1.3, whose canonical forms entity hashes follow; v53: a unit's
+/// manifest and file record name the command it was built under.
+constexpr inline std::uint32_t index_format_version = 53;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
@@ -642,6 +643,9 @@ struct FileBlobOf {
 
     /// For a unit, its manifest's built_at; 0 when the file is no unit.
     std::uint64_t run = 0;
+
+    /// For a unit, its manifest's command.
+    std::uint64_t command = 0;
 };
 
 using FileBlob = FileBlobOf<codec::blob::Owned>;
@@ -811,6 +815,8 @@ struct TUManifestBlobOf {
     std::uint64_t built_at = 0;
 
     std::uint64_t peak = 0;
+
+    std::uint64_t command = 0;
 
     /// The version ids, ascending, as postings below `version_bound`
     /// (write_postings).

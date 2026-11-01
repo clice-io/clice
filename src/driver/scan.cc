@@ -133,7 +133,7 @@ void time_scans(std::unique_ptr<OpenedProject> first,
         auto rescan = scan_dependency_graph(project.cdb,
                                             project.toolchain,
                                             project.dep_graph,
-                                            project.build.units(loaded->opened.members));
+                                            project.scan_commands(loaded->opened.members));
         cold.push_back(loaded->opened.scan.elapsed_ms);
         warm.push_back(rescan.elapsed_ms);
         driver::println("Run {}: cold {}ms, warm {}ms", run + 1, cold.back(), warm.back());
@@ -163,9 +163,7 @@ int run_scan(const Options& opts) {
     auto& [root, loaded] = *read;
     auto first = open_at(root, loaded, {});
     if(first->opened.members.empty()) {
-        LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
-                  root,
-                  deeper_databases_hint(first->project));
+        LOG_ERROR("Nothing to scan: {}", first->project.why_no_members(root));
         return 1;
     }
     auto output = describe(*first);

@@ -10,7 +10,7 @@ stdout = '''
 translation unit ${WS}/main.cpp
   built at #time  content hash=#4b51229383717192
   contributions=1
-    #ac10753a54de276c  ${WS}/main.cpp
+    #cbb9299610d18e62  ${WS}/main.cpp
   include tree (0 nodes):
 '''
 exit = 0
@@ -24,7 +24,7 @@ stdout = '''
 translation unit ${WS}/main.cpp
   built at #time  content hash=#4b51229383717192
   contributions=1
-    #ac10753a54de276c  ${WS}/main.cpp
+    #cbb9299610d18e62  ${WS}/main.cpp
   include tree (0 nodes):
 '''
 exit = 0

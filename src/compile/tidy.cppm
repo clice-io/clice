@@ -12,7 +12,7 @@ namespace clice::tidy {
 /// change the configuration.
 struct TidyResolution {
     TidyParams params;
-    std::vector<DepFile> files;
+    std::vector<ReportedInput> files;
 
     /// Why a configuration file on the way did not parse, as clang-tidy
     /// reports it; the resolution reads on past it as clang-tidy does.

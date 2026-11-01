@@ -279,7 +279,7 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     }
 
     auto choice = types::select_partial(context, matched);
-    if(choice.outcome != types::PartialOutcome::Selected) {
+    if(choice.result != types::PartialResult::Selected) {
         return primary->getTemplatedDecl();
     }
     return choice.winner;

@@ -259,7 +259,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// `-Xclang -emit-pch` in the one building it. Both take the
         /// driver's spelling, an argument clice manages itself: the file
         /// on disk may come from GCC or another clang, so a unit loads
-        /// clice's own build of it instead (Build::pch_unit).
+        /// clice's own build of it instead (Project::pch_writer).
         if(is_xclang_option(id) && parsed->values.size() == 1) {
             llvm::StringRef value = parsed->values[0];
             if(included_pch) {
@@ -415,6 +415,28 @@ void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& token
         expanded.push_back(tokens[i]);
     }
     tokens = std::move(expanded);
+}
+
+std::optional<CommandID> WrittenCommands::intern(const Spelling& directory,
+                                                 llvm::ArrayRef<const char*> arguments) {
+    std::string key = directory.str();
+    for(const char* argument: arguments) {
+        key += '\0';
+        key += argument;
+    }
+    auto [it, inserted] = interned.try_emplace(key, invalid_command);
+    if(inserted) {
+        Normalizer normalizer{.commands = commands, .files = files};
+        if(auto normalized = normalizer.normalize(directory, Fid{}, arguments)) {
+            it->second = *normalized;
+        } else {
+            LOG_WARN("Not a compile command: {}", print_argv(arguments));
+        }
+    }
+    if(it->second == invalid_command) {
+        return std::nullopt;
+    }
+    return it->second;
 }
 
 }  // namespace clice

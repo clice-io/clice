@@ -41,7 +41,7 @@ ZEST_CASE(TUIndexSections) {
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
         ZASSERT(view.section_path(i - 1) < view.section_path(i));
     }
-    ZASSERT(view.shard_of(view.path_count() - 1).loaded());
+    ZASSERT(view.shard_of(view.focus_file()).loaded());
 
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,
@@ -295,7 +295,7 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
 
 ZEST_CASE(FromRejectsEmptyPathTable) {
     // The builder ends every path table with the focus file, and
-    // consumers address path_count() - 1 unchecked — a TU index with no
+    // consumers address focus_file() unchecked — a TU index with no
     // paths at all is corrupt.
     auto hostile = tu_index_blob();
     ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());

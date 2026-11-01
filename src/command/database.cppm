@@ -87,6 +87,8 @@ public:
     /// is read until load_source().
     SourceID add_source(const Spelling& path);
 
+    /// The source registered under `path`, which may name a directory as
+    /// add_source's does.
     std::optional<SourceID> find_source(const Spelling& path) const;
 
     /// The source registered under another spelling of the file `path`
@@ -135,7 +137,7 @@ public:
     /// successful load, then maintained by the server's
     /// database watch (ServedProject::tick_database). A
     /// discovered source that vanished keeps serving its entries but yields
-    /// to the present ones (see Build::source_order).
+    /// to the present ones (see Project::source_order).
     bool present(SourceID id) const;
     void set_present(SourceID id, bool present);
 
@@ -176,8 +178,7 @@ public:
     /// Map each file's path_id to the command hashes of its entries in storage
     /// order (a file may own several entries with different flags; the
     /// first is its default selection) — the identity reload_and_diff()
-    /// diffs on and the indexer persists to catch command changes across
-    /// sessions.
+    /// diffs on.
     llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
 
     /// The path a command gives its input file as: a database's spelling
@@ -221,6 +222,11 @@ private:
     };
 
     std::vector<Source> source_files;
+
+    /// find_source's answers by spelling, forgotten when a source is added:
+    /// the question costs a stat and a realpath, and the rules' order of a
+    /// file's entries asks it for every database they name.
+    mutable llvm::StringMap<std::optional<SourceID>> found_sources;
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;

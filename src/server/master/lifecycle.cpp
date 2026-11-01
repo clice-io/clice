@@ -193,7 +193,7 @@ void MasterServer::route_pool_callbacks() {
         assert(id && "an evicted document the master never sent");
         // Owner-table upkeep is pool-domain state and stays here; the
         // document's side of it (the worker's AST is gone, same as a crash)
-        // goes to its owner. A live round's compile puts the document back
+        // goes to its owner. A live attempt's compile puts the document back
         // on its owner — the worker evicted it before that compile arrived,
         // or it would have kept it — so the eviction changes nothing. One
         // that crossed the compile's reply over IPC leaves the master
@@ -260,9 +260,6 @@ async::task<> MasterServer::close() {
     co_await stop_run.join();
     client_watch.cancel();
     co_await client_watch.join();
-    for(auto& project: projects) {
-        project->sched.close();
-    }
     lifecycle = ServerLifecycle::Exited;
 }
 

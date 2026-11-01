@@ -1,0 +1,49 @@
+["clice index leaves sub out"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["sub becomes a project between runs"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/sub/a.cpp
+    ${WS}/sub/a.cpp:2:2: compiled under the root's rules
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = 'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/compile_commands.json, ${WS}/sub/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]'
+exit = 0
+
+["sub becomes a project between runs"."$ clice index --jobs 1 #2"]
+stdout = '''
+Indexed 0 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["sub becomes a project between runs"."$ clice index unit sub/a.cpp"]
+stdout = "No manifest for ${WS}/sub/a.cpp in the index."
+exit = 1
+
+["a root whose only database is sub's"."$ clice index --jobs 1"]
+stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
+stderr = "error: Nothing to index: no compile_commands.json found in ${WS} or its direct subdirectories. sub has its own configuration file and is a project of its own."
+exit = 1
+
+["clice format leaves sub alone"."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+["sub becomes a project".asked]
+value = "${WS}/sub/clice.toml changed"
+
+["sub stops being a project".asked]
+value = "The configuration file of ${WS}/sub was deleted"
+
+["a directory without a database becomes a project".asked]
+value = "${WS}/other/clice.toml changed"
+
+["a project appears above a provisional member".asked]
+value = "${WS}/scratch/pkg/clice.toml changed"

@@ -5,12 +5,9 @@ import :index.project_index;
 import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
-import :project.command_resolver;
+import :project.command;
+import :project.indexer;
 import :project.project;
-import :project.save;
-import :sched.index.pending_table;
-import :sched.index.pump;
-import :sched.stack;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
@@ -64,7 +61,6 @@ ZEST_SUITE(ProjectIndexSave) {
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
-IndexPump& pump = fx.pump;
 
 bool merge(llvm::StringRef data) {
     return fx.merge(data);
@@ -215,13 +211,13 @@ ZEST_CASE(RefusedGrowthKeepsBatch) {
     fx.save();
     ZASSERT(project.index.shard(file) != nullptr);
     ZASSERT(project.index.pending_shard_writes() == 1u);
-    ZASSERT(has_unsaved_state(project));
+    ZASSERT(project.has_unsaved_state());
 
     probe->full = false;
     fx.save();
     ZASSERT(project.index.pending_shard_writes() == 0u);
     ZASSERT(project.index.last_save_shards() == 1u);
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -650,7 +646,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     probe->fail_write = true;
     fx.save(index::SearchRebuild::Idle);
     ZEXPECT(hits("second_value") == 1u);
-    ZEXPECT(has_unsaved_state(project));
+    ZEXPECT(project.has_unsaved_state());
 
     // The retry commits the build but cannot move onto a fresh snapshot;
     // the next batch, with the run of what c.cpp added, fails, and the idle
@@ -667,7 +663,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     fx.save();
     probe->fail_write = false;
     fx.save(index::SearchRebuild::Idle);
-    ZEXPECT(!has_unsaved_state(project));
+    ZEXPECT(!project.has_unsaved_state());
     ZEXPECT(hits("second_value") == 1u);
     ZEXPECT(hits("third_value") == 1u);
     ZEXPECT(stored_segments() == 1u);
@@ -719,7 +715,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     merge(a2.data);
     save();
     ZASSERT(!project.index.shard(header_id));
-    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+    ZASSERT(!fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
     ZASSERT(!project.database->contains(index::BlobKind::Shard,
                                         IndexInternals::file_key(project.index, header_id)));
@@ -733,6 +729,11 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     tmp.touch("pa.cpp", "#include \"pinned.h\"\nint pa() { return pin_fn(); }\n");
     tmp.touch("pb.cpp", "#include \"pinned.h\"\nint pb() { return pin_fn(); }\n");
     open_store(tmp, project);
+    fx.list_units(tmp,
+                  {
+                      {"pa.cpp"},
+                      {"pb.cpp", {"-DMODE"}}
+    });
 
     auto a = index_file(tmp, tmp.path("pa.cpp"));
     auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
@@ -756,7 +757,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
-    pump.clear_pending(project.file_table.intern(Spelling::absolute(b.tu_path)));
+    fx.background.forget(project.file_table.intern(Spelling::absolute(b.tu_path)));
 
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
@@ -777,7 +778,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     // unservable; nothing else in this process would rebuild them (a
     // reverted header even reads fresh by hash), so the retirement must
     // re-enqueue pb itself.
-    ZASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
+    ZASSERT(fx.queue.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
             ReindexReason::ContentChanged);
 }
 
@@ -833,7 +834,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     // retry: another reader finds the symbol in its file, and the unit.
     clice::FileTable files;
     index::ProjectIndex reader{files};
-    ZASSERT(reader.open(*project.database) == index::LoadOutcome::Loaded);
+    ZASSERT(reader.open(*project.database) == index::LoadResult::Loaded);
     auto unit = files.intern(Spelling::absolute(indexed.tu_path));
     ZEXPECT(reader.indexed(unit));
     ZEXPECT(reader.manifest(unit).has_value());
@@ -908,13 +909,13 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
     ZASSERT(!project.index.shard(clean_id));
     ZASSERT(!project.index.shard(dirty_id));
-    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
-    ZASSERT(pump.pending_reason(dirty_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(dirty_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
-    // The next save records the command snapshot in the fresh database.
+    // The next save records the build snapshot in the fresh database.
     fx.save();
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
@@ -970,11 +971,11 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(condemned);
     ZASSERT(project.database != nullptr);
     ZASSERT(!project.index.shard(path_id));
-    ZASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ZASSERT(fx.queue.pending_reason(path_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
     fx.save();
-    ZASSERT(!has_unsaved_state(project));
+    ZASSERT(!project.has_unsaved_state());
 }
 
 ZEST_CASE(GrownMapRetriesNow) {
@@ -994,13 +995,13 @@ ZEST_CASE(GrownMapRetriesNow) {
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
 
-    auto task = f.pump.persist();
+    auto task = f.project.save();
     f.loop.schedule(task);
     f.loop.run();
 
     ZASSERT(log.refused == 1u);
     ZASSERT(log.writes.size() == 2u);
-    ZASSERT(!has_unsaved_state(f.project));
+    ZASSERT(!f.project.has_unsaved_state());
 }
 
 ZEST_CASE(ShutdownSkipsSearchRebuild) {
@@ -1009,22 +1010,20 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 
     async::event_loop loop;
     FileTable files;
-    Project project{files};
     WorkerPool pool{loop};
-    CommandResolver commands{project};
-    SchedulingStack stack(loop, project, commands, pool);
+    Project project{files, {}, &loop, &pool};
     auto& log = open_logged(tmp, project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     auto report = project.index.merge(indexed.data, {});
     ZASSERT(report);
-    stack.pump.apply_report(*report);
+    project.take_report(*report);
 
-    auto task = stack.shutdown();
+    auto task = project.shutdown();
     loop.schedule(task);
     loop.run();
 
-    // The shards commit without the search index a cold round never built.
+    // The shards commit without the search index a cold pass never built.
     ZASSERT(log.writes.size() == 1u);
     ZASSERT(ranges::contains(log.writes[0], index::BlobKind::TUManifest));
     ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchSegment));
@@ -1057,6 +1056,7 @@ void a() { Box<A>{}.show(); }
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        f.list_units(tmp, {{"a.cpp"}});
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
         ZASSERT(f.merge(indexed.data));
         auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
@@ -1068,6 +1068,7 @@ void a() { Box<A>{}.show(); }
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    f.list_units(tmp, {{"a.cpp"}});
     f.load();
     auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
     auto* instantiations = f.project.index.instantiation_shard(box_id);
@@ -1075,8 +1076,8 @@ void a() { Box<A>{}.show(); }
     ZEXPECT(ranges::equal(instantiations->resolutions(), stored));
     ZEXPECT(f.project.index.live_uses(box_id).size() == 1u);
     ZEXPECT(count(*instantiations) == records);
-    ZEXPECT(
-        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+    ZEXPECT(!f.queue.pending_reason(
+        f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 ZEST_CASE(DamagedInstantiationsRebuildAll) {
@@ -1122,7 +1123,7 @@ void a() { Box<A>{}.show(); }
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.database->contains(index::BlobKind::InstantiationShard, box_key));
     ZEXPECT(
-        f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+        f.queue.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 };  // ZEST_SUITE(ProjectIndexSave)

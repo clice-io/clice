@@ -18,7 +18,7 @@ ext::ListConfigurationsResult list_configurations(const Project& project) {
     for(auto tag: project.settings.configurations()) {
         result.configurations.push_back(tag.str());
     }
-    result.active = project.build.active_configuration().str();
+    result.active = project.rules.configuration().str();
     result.selected = read_selected_configuration(project.settings.project.cache_dir);
     result.default_configuration = project.settings.fallback_configuration().str();
     return result;
@@ -89,7 +89,7 @@ ext::SwitchConfigurationResult
     // A selection replaces the last one; back on the active configuration,
     // there is nothing left to apply.
     auto topic = std::format("selection of {}", project->project.root.str());
-    if(params.name == project->project.build.active_configuration()) {
+    if(params.name == project->project.rules.configuration()) {
         server.withdraw_restart(topic);
     } else {
         server.ask_restart({
@@ -116,7 +116,7 @@ static std::expected<Params, ipc::Error> argument_of(const protocol::ExecuteComm
 }
 
 LSPClient::RawResult LSPClient::execute_command(protocol::ExecuteCommandParams params) {
-    // A client with no UI for these tells the user nothing of the outcome;
+    // A client with no UI for these tells the user nothing of the result;
     // the server does.
     auto tell = [this](protocol::MessageType type, std::string message) {
         peer.send_notification(
@@ -234,7 +234,7 @@ void LSPClient::register_extensions() {
             };
             auto found = feature::counterparts(context,
                                                project.dep_graph,
-                                               project.build.members(),
+                                               project.members(),
                                                Spelling::absolute(resolved.path));
             // A buffer not on disk yet has no counterparts to offer.
             if(!found) {

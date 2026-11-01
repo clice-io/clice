@@ -62,7 +62,7 @@ void LSPClient::register_navigation() {
             // Preamble include lines first: they have no symbol occurrence
             // in the index and are invisible to the worker's AST. A latest
             // compile still not current after the awaited one means the
-            // world was re-dirtied mid-flight (the round committed as
+            // world was re-dirtied mid-flight (the attempt committed as
             // bounded staleness): the cached links may describe a pre-edit
             // preamble — skip, and let the index and worker paths below
             // answer.

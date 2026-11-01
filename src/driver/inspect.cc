@@ -4,7 +4,6 @@ import :command.file_kind;
 import :command.table;
 import :compile.compilation;
 import :compile.tidy;
-import :settings.settings;
 import :driver.driver;
 import :feature.code_actions;
 import :feature.code_completion;
@@ -25,10 +24,9 @@ import :index.project_index;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
-import :project.command_resolver;
-import :project.hosting;
 import :project.project;
 import :semantic.symbol;
+import :settings.settings;
 import :support.bytes;
 import :syntax.token;
 import :vfs.file_system;
@@ -258,7 +256,7 @@ std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
             bytes = index::build_tu_index(unit, {.all_files = true});
             tu = index::TUIndex::from_bytes(as_chars(bytes));
         }
-        auto focus = tu.path_count() - 1;
+        auto focus = tu.focus_file();
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
             for(std::uint32_t i = 0; i < tu.path_count(); i += 1) {
                 auto path_id = i == 0 ? focus : i - 1;
@@ -398,13 +396,13 @@ std::optional<codec::RawValue> run_document_highlight(const FeatureParams& param
     auto offset = params.range.begin;
     auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
+    const index::Shard& shard = tu.shard_of(tu.focus_file());
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
         auto symbol = tu.find_symbol(hash);
         return symbol && symbol->kind == SymbolKind::Macro;
     });
     llvm::SmallVector<const index::InstantiationShard*, 1> instantiations;
-    if(auto section = tu.instantiation_section_of(tu.path_count() - 1)) {
+    if(auto section = tu.instantiation_section_of(tu.focus_file())) {
         instantiations.push_back(&tu.instantiation_shard(*section));
         index::add_resolved(*instantiations.front(), offset, named);
     }
@@ -538,9 +536,9 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 /// opens it: the project root at or above it (or --workspace), its
 /// settings with --config-overlay laid over them as initializationOptions
 /// are; its index when one was built, which tells the server's hosts and
-/// what their trials found; the databases the settings name, else the
-/// ones discovered under its root and those between the root and the file;
-/// the dependency graph.
+/// what their self-containment checks found; the databases the settings
+/// name, else the ones discovered under its root and those between the root
+/// and the file; the dependency graph.
 std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const Options& opts,
                                                                            const Spelling& path) {
     LoadSettingsOptions options{.overlay_name = "--config-overlay"};
@@ -561,8 +559,7 @@ std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const
     auto opened = open_at(root,
                           std::move(loaded),
                           {
-                              .store = Project::OpenOptions::Store::ReadOnly,
-                              .index = Project::OpenOptions::Index::Read,
+                              .cache = Project::OpenOptions::Cache::Read,
                               .file = CanonicalPath(path),
                           });
     if(!opened->opened.unreadable.empty()) {
@@ -587,11 +584,11 @@ std::string build_pch(Project& project,
         LOG_WARN("cannot create a temporary PCH: {}", created.error().message());
         return {};
     }
-    auto rendered = project.toolchain.render(writer, project.cdb.spelling(writer.file));
+    auto rendered = project.render(writer);
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
-        .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
-                  .directory = project.commands.get(writer.command).directory,
+        .input = {.arguments = std::move(rendered.arguments),
+                  .directory = std::move(rendered.directory),
                   .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
@@ -600,7 +597,7 @@ std::string build_pch(Project& project,
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
     auto self = files.intern(Spelling::absolute(file));
-    bool reads = writer.file == self || ranges::any_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = writer.file == self || ranges::any_of(unit->deps(), [&](const ReportedInput& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
     bool built = unit->has_output() && !reads;
@@ -617,7 +614,7 @@ std::string build_pch(Project& project,
 /// performs for a background compile, or for the editor under `choice` — the
 /// file's entry, a host's command for a header, a rule's default command,
 /// the builtin fallback — the include trees the host search needs taken
-/// first, and the self-containment trial run when none stands for the
+/// first, and the self-containment check run when none stands for the
 /// header, both as the server takes them; with the header context it
 /// synthesizes and the precompiled header the build declares, built
 /// (build_pch). An error when `choice` names a host whose compile does not
@@ -625,38 +622,37 @@ std::string build_pch(Project& project,
 std::expected<CompilationInput, std::string> project_input(const SourceFile& file,
                                                            Project& project,
                                                            const ContextChoice* choice) {
-    CommandResolver commands(project);
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        return commands.resolve_command(path_id,
-                                        input.directory,
-                                        input.arguments,
-                                        {.choice = choice, .preprocess = true});
+        auto resolution = project.resolve_command(path_id, {.choice = choice, .preprocess = true});
+        input.directory = resolution.directory;
+        input.arguments = resolution.arguments;
+        return resolution;
     };
     auto resolution = resolve();
-    if(resolution.trial && !resolution.self_contained) {
-        auto trial = input;
-        trial.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
-        trial.add_focus(file.path, file.content);
+    if(resolution.self_containment && !resolution.self_contained) {
+        auto alone = input;
+        alone.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
+        alone.add_focus(file.path, file.content);
         auto unit = clice::compile({
             .kind = CompilationKind::Content,
-            .input = std::move(trial),
+            .input = std::move(alone),
             .skip_bodies = project.settings.project.skip_header_bodies,
         });
         if(unit->completed()) {
             auto& files = project.file_table;
-            commit_trial(project,
-                         *resolution.trial,
-                         feature::diagnostics(*unit),
-                         files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
-                         capture_deps_snapshot(files, unit->deps(), unit->build_at().count()));
+            project.commit_self_containment(
+                *resolution.self_containment,
+                feature::diagnostics(*unit),
+                files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
+                intern_inputs(files, unit->deps(), unit->started_at().count()));
             resolution = resolve();
         }
     }
-    if(choice && (resolution.host != choice->host_path_id ||
+    if(choice && (resolution.host != choice->host ||
                   resolution.occurrence != choice->occurrence.value_or(0))) {
-        auto host = project.file_table.resolve(choice->host_path_id);
+        auto host = project.file_table.resolve(choice->host);
         auto times = choice->occurrence.value_or(0) + 1;
         return std::unexpected(
             times == 1 ? std::format("the compile of {} does not enter {}", host, file.path)
@@ -670,7 +666,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
-    if(auto writer = commands.pch_unit(path_id, resolution)) {
+    if(auto writer = project.pch_writer(path_id, resolution)) {
         if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }
@@ -776,7 +772,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     std::optional<ContextChoice> choice;
     if(opts.host) {
         choice = ContextChoice{
-            .host_path_id = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
+            .host = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
             .occurrence = opts.occurrence.as_optional(),
         };
     }

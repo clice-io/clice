@@ -2,21 +2,17 @@ module clice:unittests.utils.indexer_fixture;
 
 import :command.table;
 import :compile.compilation;
+import :feature.diagnostics;
 import :index.database;
 import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
-import :project.command_resolver;
+import :project.indexer;
 import :project.project;
-import :project.save;
-import :sched.builders.pch;
-import :sched.builders.pcm;
-import :sched.builders.turun;
-import :sched.graph;
-import :sched.index.pending_table;
-import :sched.index.pump;
+import :settings.rules;
 import :support.bytes;
 import :support.prelude;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
@@ -27,106 +23,178 @@ import :worker.pool;
 
 namespace clice::testing {
 
-/// Test fixture with friend access to the pump's internals. The take
-/// wrappers (merge/save/load/drop_index) route each index report back into
-/// the pump, as the production callers do.
-struct IndexerFixture {
-    using Decision = PendingTable::FailureDecision;
+/// The serving side of a test that plays the server: what its open
+/// documents' compiles serve, and the index changes it is told of.
+struct RecordingServing final : ServingSide {
+    /// Whether an open document's compile serves the file; none does when
+    /// unset.
+    std::function<bool(Fid)> served;
 
-    constexpr static unsigned budget = IndexPump::max_requeue_attempts;
+    /// The files of every index change reported, in order.
+    llvm::SmallVector<Fid> changed;
+
+    std::size_t open_documents() const override {
+        return 0;
+    }
+
+    bool compiled_by_session(Fid file) const override {
+        return served && served(file);
+    }
+
+    void report_skipped_diagnostics(Fid,
+                                    std::uint64_t,
+                                    std::vector<feature::FileDiagnostic>) override {}
+
+    bool lacks_skipped_diagnostics(Fid) const override {
+        return false;
+    }
+
+    void attempt_finished(Fid) override {}
+
+    void index_changed(llvm::ArrayRef<Fid> files) override {
+        changed.append(files.begin(), files.end());
+    }
+
+    void schedule_metadata_flush() override {}
+};
+
+/// Test fixture with friend access to the reindex queue's internals. The
+/// take wrappers (merge/save/load/drop_index) route each index report back
+/// into the background index, as the production callers do.
+struct IndexerFixture {
+    using Decision = ReindexQueue::FailureDecision;
+
+    constexpr static unsigned budget = BackgroundIndex::max_requeues;
 
     async::event_loop loop;
     FileTable files;
-    Project project{files};
     WorkerPool pool{loop};
-    CommandResolver commands{project};
-    TaskGraph graph;
-    PCHBuilder pch{graph, project, pool};
-    PCMBuilder pcm{graph, project, commands, pch, pool};
-    TURunFamily turun{graph, project, commands, pcm, pch, pool};
-    IndexPump pump{loop, project, turun, pool};
+    Project project{files, {}, &loop, &pool};
+    BackgroundIndex& background = project.background_index;
+    ReindexQueue& queue = project.background_index.reindexes;
 
     IndexerFixture() {
-        turun.register_runner();
+        project.rules = Rules(project.settings, project.root, "");
     }
 
-    /// Merge a worker result and take its report, as the TURun round does.
+    struct Unit {
+        std::string name;
+        std::vector<std::string> extra_args;
+    };
+
+    /// List `units` — files of `tmp`, each with the extra arguments it is
+    /// indexed with — in the project's compilation database, as the build
+    /// lists the units a test indexes: a load keeps a unit's index only
+    /// while the build compiles it.
+    void list_units(TempDir& tmp, llvm::ArrayRef<Unit> units) {
+        std::vector<CDBEntry> entries;
+        for(auto& unit: units) {
+            entries.push_back({tmp.root, tmp.path(unit.name), unit.extra_args});
+        }
+        write_cdb(tmp, project.cdb, build_cdb_json(entries));
+    }
+
+    /// Merge a worker result under the command the build gives its unit and
+    /// take its report, as the unit run does.
     bool merge(llvm::StringRef data) {
-        auto report = project.index.merge(data, {});
+        std::uint64_t command = 0;
+        if(auto view = index::TUIndex::from_bytes(data); view.loaded()) {
+            auto unit = files.intern(Spelling::absolute(view.path(view.focus_file())));
+            command = project.command_identity(unit);
+        }
+        auto report = project.index.merge(data, {}, command);
         if(report) {
-            pump.apply_report(*report);
+            project.take_report(*report);
         }
         return report.has_value();
     }
 
-    /// One save with the pump's debt snapshot, its report taken back —
-    /// without persist()'s retry, so a test observes each save.
+    /// One save, its report taken back —
+    /// without Project::save's retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        pump.apply_report(co_await save_project(project, loop, pump.save_debt(), search));
+        project.take_report(co_await project.write_database(search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
     /// with the build on a writable database. Returns the decode result
     /// (false = a header of another format, or corrupt).
     bool load() {
-        auto result = load_saved(project, project.database && !project.database->read_only());
-        pump.apply_report(result.report);
-        return result.decoded;
+        if(project.database) {
+            project.listings.read(*project.database);
+        }
+        index::IndexReport report;
+        bool decoded =
+            project.load_saved(project.database && !project.database->read_only(), report);
+        project.take_report(report);
+        return decoded;
     }
 
     void drop_index(Fid id) {
         index::IndexReport report;
         project.index.drop(id, report);
-        pump.apply_report(report);
+        project.take_report(report);
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
     void reopen_database() {
-        reopen_fresh_database(project);
+        project.reopen_fresh_database();
     }
 
-    /// Record a terminally failed attempt, as run_index_task's failure
+    /// Record a terminally failed attempt, as the index task's failure
     /// decisions do.
     void mark_failed(Fid id) {
-        pump.failed_ids.insert(id);
+        background.record(id, {.failed = true});
+    }
+
+    /// How many files' latest attempts failed for good.
+    std::size_t failures() const {
+        return ranges::count_if(background.last_attempts(),
+                                [](const auto& entry) { return entry.second.failed; });
     }
 
     /// Fail the entry's current dispatch: the launch sequence number matches.
-    Decision fail(Fid id, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, seq(id)}, failure);
+    Decision fail(Fid id, ReindexQueue::Failure failure) {
+        return queue.on_dispatch_failure({id, seq(id)}, failure);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) sequence number.
-    Decision fail_at(Fid id, std::uint64_t seq, PendingTable::Failure failure) {
-        return pump.note_dispatch_failure({id, seq}, failure);
+    Decision fail_at(Fid id, std::uint64_t seq, ReindexQueue::Failure failure) {
+        return queue.on_dispatch_failure({id, seq}, failure);
+    }
+
+    /// Every file `queue` holds a pending reindex for, sorted.
+    static llvm::SmallVector<Fid> pending_files(const ReindexQueue& queue) {
+        auto files = llvm::to_vector(llvm::make_first_range(queue.entries));
+        ranges::sort(files);
+        return files;
     }
 
     std::uint64_t seq(Fid id) {
-        auto it = pump.pending_table.entries.find(id);
-        return it == pump.pending_table.entries.end() ? std::numeric_limits<std::uint64_t>::max()
-                                                      : it->second.seq;
+        auto it = queue.entries.find(id);
+        return it == queue.entries.end() ? std::numeric_limits<std::uint64_t>::max()
+                                         : it->second.seq;
     }
 
-    unsigned attempts(Fid id) {
-        auto it = pump.pending_table.entries.find(id);
-        return it == pump.pending_table.entries.end() ? 0u : it->second.requeue_attempts;
+    unsigned requeues(Fid id) {
+        auto it = queue.entries.find(id);
+        return it == queue.entries.end() ? 0u : it->second.requeues;
     }
 
-    void set_attempts(Fid id, unsigned n) {
-        pump.pending_table.entries.find(id)->second.requeue_attempts = n;
+    void set_requeues(Fid id, unsigned n) {
+        queue.entries.find(id)->second.requeues = n;
     }
 
-    /// Consume the queued slot as a dispatch would, so a later enqueue
-    /// takes the fresh-slot (mid-flight) path.
+    /// Consume the queued place as a dispatch would, so a later enqueue
+    /// takes the fresh-place (mid-flight) path.
     void consume(Fid id) {
-        pump.pending_table.queued.erase(id);
+        queue.queued_files.erase(id);
     }
 
-    /// Complete an attempt for `seq` on the loop, as run_index_task's
-    /// tail does — waking waiters requires a running loop.
+    /// Complete an attempt for `seq` on the loop, as the index task's tail
+    /// does — waking waiters requires a running loop.
     void wake_waiters(Fid id, std::uint64_t seq) {
         auto body = [&]() -> async::task<> {
-            pump.wake_attempt_waits(id, seq);
+            background.wake_waiters(id, seq);
             co_return;
         };
         auto task = body();
@@ -134,19 +202,19 @@ struct IndexerFixture {
         loop.run();
     }
 
-    /// Start a fresh staleness round: per-round FileVersion results are
-    /// cleared by run_background_indexing, which these tests bypass.
-    void begin_round() {
-        project.index.begin_round();
+    /// Clear the staleness cache: per-pass FileVersion results are
+    /// cleared by BackgroundIndex::run_pass, which these tests bypass.
+    void clear_staleness_cache() {
+        project.index.clear_staleness_cache();
     }
 
     /// The instantiation keys the worker indexing `tu` may skip, as the
-    /// TURun round asks for them.
+    /// unit run asks for them.
     std::vector<std::uint64_t> known_instantiations(Fid tu) {
         return project.index.known_instantiations(tu, project.dep_graph.include_closure(tu));
     }
 
-    /// Judge staleness inside the current round (see begin_round).
+    /// Judge staleness inside the current pass (see clear_staleness_cache).
     bool needs_reindex(llvm::StringRef path) {
         return project.index.needs_reindex(project.file_table.intern(Spelling::absolute(path)));
     }
@@ -158,15 +226,15 @@ struct IndexerFixture {
         loop.run();
     }
 
-    /// One background round as a schedulable task, for tests that need to
+    /// One background pass as a schedulable task, for tests that need to
     /// interleave other tasks with it.
-    async::task<> round_task() {
-        return pump.run_background_indexing();
+    async::task<> pass_task() {
+        return background.run_pass();
     }
 
-    /// Run one background round to completion on the fixture's loop.
-    void run_round() {
-        auto task = round_task();
+    /// Run one background pass to completion on the fixture's loop.
+    void run_pass() {
+        auto task = pass_task();
         loop.schedule(task);
         loop.run();
     }
@@ -220,7 +288,7 @@ inline IndexedTU index_file(TempDir& tmp,
     if(!view.loaded()) {
         return {};
     }
-    result.tu_path = std::string(view.path(view.path_count() - 1));
+    result.tu_path = std::string(view.path(view.focus_file()));
     return result;
 }
 

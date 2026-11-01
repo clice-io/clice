@@ -30,7 +30,7 @@ struct UnitIndex {
 
     /// The focus file's entries; its path is the last.
     auto entries() const -> IndexEntries {
-        return extract_index_entries(tu.shard_of(tu.path_count() - 1));
+        return extract_index_entries(tu.shard_of(tu.focus_file()));
     }
 
     auto resolver() const {

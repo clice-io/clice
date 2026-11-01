@@ -7,9 +7,12 @@ module;
 module clice;
 
 import :command.database;
+import :server.master;
+import :server.served_project;
 import :settings.settings;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.disk_state;
@@ -280,14 +283,14 @@ ZEST_CASE(CDBTickRelocates) {
     auto build =
         *project.cdb.find_source(Spelling::absolute(tmp.path("build/compile_commands.json")));
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
-    ZEXPECT(project.build.entries(main_id).front().source == build);
-    ZEXPECT(project.build.entries(only_id).front().source == root);
+    ZEXPECT(project.entries(main_id).front().source == build);
+    ZEXPECT(project.entries(only_id).front().source == root);
 
     tmp.touch("compile_commands.json", original);
     delta = tick(fixture, /*force=*/true);
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
-    ZEXPECT(project.build.entries(main_id).front().source == root);
-    ZEXPECT(project.build.entries(main_id).size() == 2u);
+    ZEXPECT(project.entries(main_id).front().source == root);
+    ZEXPECT(project.entries(main_id).size() == 2u);
 }
 
 ZEST_CASE(CDBDeletedBeforeWatch) {
@@ -398,7 +401,7 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     auto& served = *fixture.served;
     auto& project = served.project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     fixture.watch_databases();
     auto main = fixture.intern(tmp.path("a/main.cpp"));
@@ -414,8 +417,9 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     }));
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
-    ZEXPECT(!project.build.entries(main).empty());
-    ZEXPECT(served.sched.pump.save_debt() == llvm::SmallVector<Fid>{main});
+    ZEXPECT(!project.entries(main).empty());
+    ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
+            llvm::SmallVector<Fid>{main});
     ZEXPECT(project.cdb.loaded(id));
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
@@ -464,7 +468,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     auto& served = *fixture.served;
     auto& project = served.project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
@@ -478,8 +482,9 @@ ZEST_CASE(CDBTickDiscoversAround) {
     auto epoch = project.commands_epoch;
     served.discover_around(main_id);
     ZASSERT(project.commands_epoch == epoch + 1);
-    ZASSERT(!project.build.entries(main_id).empty());
-    ZASSERT(served.sched.pump.save_debt() == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(!project.entries(main_id).empty());
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
+            llvm::SmallVector<Fid>{main_id});
     served.discover_around(main_id);
     ZEXPECT(project.commands_epoch == epoch + 1);
     served.discover_around(other_id);
@@ -531,7 +536,7 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     }));
     auto delta = tick(fixture, /*force=*/true);
     ZASSERT(delta.added == llvm::SmallVector<Fid>{other_id});
-    ZEXPECT(project.build.entries(main_id).size() == 1u);
+    ZEXPECT(project.entries(main_id).size() == 1u);
     ZEXPECT(!project.cdb.candidate_entries(other_id).empty());
 }
 
@@ -543,7 +548,7 @@ ZEST_CASE(CDBTickCoalescesSources) {
     Fixture fixture(tmp.root);
     auto& project = fixture.served->project;
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
     fixture.watch_databases();
@@ -705,7 +710,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.settings.finalize(project.root);
-    project.build.reset_active("");
+    project.rules = Rules(project.settings, project.root, "");
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -846,6 +851,32 @@ ZEST_CASE(LinkedWorktreeWatched) {
     tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");
     files.disk.tick(chrono::hours(1));
     ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
+}
+
+ZEST_CASE(ListingBeatsRecordedMember) {
+    /// A file the nested project recorded as a provisional member, which
+    /// the enclosing project's database lists: the listing serves it, the
+    /// deeper root notwithstanding. A record is no listing.
+    TempDir tmp;
+    tmp.touch("sub/x.cpp", "int x;\n");
+    Fixture fixture(tmp.path("sub"));
+    auto& nested = *fixture.served;
+    auto outer = std::make_shared<ServedProject>(fixture.server,
+                                                 CanonicalPath(Spelling::absolute(tmp.root)));
+    fixture.server.projects.push_back(outer);
+    Fixture::hold_flushes(*outer);
+    auto file = fixture.intern(tmp.path("sub/x.cpp"));
+    ZASSERT(nested.project.record_provisional(file));
+    nested.project.update_members({});
+    ZASSERT(nested.project.is_unit(file));
+    ZASSERT(&fixture.server.owner_of(file) == &nested);
+
+    write_cdb(tmp,
+              outer->project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("sub/x.cpp"), {}}
+    }));
+    ZEXPECT(&fixture.server.owner_of(file) == outer.get());
 }
 
 };  // ZEST_SUITE(Databases)

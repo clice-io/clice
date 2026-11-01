@@ -21,7 +21,7 @@ namespace clice::feature::query {
 /// cannot be answered (an unknown file, an ambiguous name, an invalid
 /// argument).
 template <typename T>
-using Outcome = std::expected<T, std::string>;
+using Result = std::expected<T, std::string>;
 
 struct SymbolEntry {
     std::string name;
@@ -270,7 +270,7 @@ struct RenameFiles {
 
 /// The symbols a locator (index::SymbolQuery) matches, best first, at most
 /// `limit` of them.
-Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
+Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
 
 /// A `locator` (index::SymbolQuery) names one symbol: by the `symbol` an
 /// answer carries, by a name query, or by a place. Several candidates are
@@ -278,25 +278,25 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
 /// found".
 
 /// The symbol's definition as text.
-Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
+Result<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
 
 /// The document-level symbols defined in the file, its text lexed in the
 /// dialect `dialect` gives.
-Outcome<DocumentSymbolsResult>
+Result<DocumentSymbolsResult>
     document_symbols(Context& ctx,
                      const Spelling& path,
                      llvm::function_ref<const clang::LangOptions&(Fid file)> dialect);
 
-Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
+Result<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
 
-Outcome<ReferencesResult> references(Context& ctx,
-                                     index::SymbolQuery locator,
-                                     bool include_declaration);
+Result<ReferencesResult> references(Context& ctx,
+                                    index::SymbolQuery locator,
+                                    bool include_declaration);
 
 /// `direction` one of callers, callees, both.
-Outcome<CallGraphResult> call_graph(Context& ctx,
-                                    index::SymbolQuery locator,
-                                    llvm::StringRef direction);
+Result<CallGraphResult> call_graph(Context& ctx,
+                                   index::SymbolQuery locator,
+                                   llvm::StringRef direction);
 
 /// Plan the renames together against `files` on disk (see
 /// plan_renames), each of its files read once: what would change, what the
@@ -311,21 +311,21 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
 /// of that name are left out. Named by its whole name, never a pattern;
 /// several other candidates are an error listing them in
 /// Context::candidates.
-Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator);
+Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator);
 
 /// Every symbol a locator names, a bare name taken as the whole name, with
 /// where it was found; none is "symbol not found".
-Outcome<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
-                                                               index::SymbolQuery locator);
+Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
+                                                              index::SymbolQuery locator);
 
 /// What implements the symbol (feature::implementation): the
 /// classes deriving from a class, the overrides of a function, at any
 /// depth; a function nothing overrides, its definitions.
-Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);
+Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);
 
 /// `direction` one of supertypes, subtypes, both.
-Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                            index::SymbolQuery locator,
-                                            llvm::StringRef direction);
+Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
+                                           index::SymbolQuery locator,
+                                           llvm::StringRef direction);
 
 }  // namespace clice::feature::query

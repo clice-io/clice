@@ -312,7 +312,7 @@ async::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
 
 void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // Reset up front: a save that commits nothing must not keep exposing
-    // the previous round's count as current.
+    // the previous pass's count as current.
     saved_shards = 0;
 
     // Compact the shards whose variant set shrank: queries already mask the

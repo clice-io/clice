@@ -4,18 +4,16 @@ module;
 
 module clice;
 
-import :command.file_kind;
 import :command.table;
-import :settings.settings;
-import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
-import :project.build;
-import :project.contexts;
+import :project.graph.task_graph;
+import :project.indexer;
 import :server.client;
 import :server.control;
 import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.cache_store;
 import :vfs.path;
@@ -25,67 +23,31 @@ import :worker.protocol;
 namespace clice {
 
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
-    server(server), project(server.files, std::move(root)),
-    sched(server.loop, project, commands, server.pool) {
-    sched.graph.register_family(Family::AST,
-                                [this](RoundContext& ctx, NodeId id) -> async::task<RoundOutcome> {
-                                    auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
-                                    auto outcome = co_await run_round(ctx, path_id);
-                                    enter_phase(path_id, CompilePhase::Idle);
-                                    co_return outcome;
-                                });
+    server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
     project.index_query.attach(*this);
-    // The loaded-state budget follows the open-document count, which the
-    // PCH builder cannot see.
-    sched.pch.open_documents = [this] {
-        return documents.size();
-    };
-    // Metadata marks (a PCH commit, a context switch) flush through the
-    // next save; the callback schedules one soon after the first mark.
-    project.request_flush = [this] {
-        schedule_metadata_flush();
-    };
-    progress_conn = sched.pump.on_progress_changed.connect(
+    project.serving = this;
+    progress_conn = project.background_index.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
-
-    // The pump is serving-neutral; the document-side policy hooks are
-    // installed here.
-    sched.pump.compiled_by_session = [this](Fid path_id) {
-        return compiled_by_session(path_id);
-    };
-    sched.pump.on_skipped_diagnostics = [this](Fid path_id,
-                                               std::uint64_t text_hash,
-                                               std::vector<feature::FileDiagnostic> diagnostics) {
-        report_skipped_diagnostics(path_id, text_hash, std::move(diagnostics));
-    };
-    sched.pump.lacks_skipped_diagnostics = [this](Fid path_id) {
-        return lacks_skipped_diagnostics(path_id);
-    };
-    sched.pump.on_attempt_finished = [this](Fid path_id) {
-        // The boost in decide_serving promised the index would serve the cold
-        // document; an attempt that finishes without a servable shard ends that
-        // promise — escalate like the disabled-indexing branch, or the document
-        // answers empty until its first edit.
-        auto* document = find_document(path_id);
-        if(document && document->serving == ServingMode::IndexOnly &&
-           !matching_shard(*document->session)) {
-            escalate(path_id);
-        }
-    };
-    index_changed_conn = sched.pump.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
-        // Documents without a current file index serve these very shards
-        // (freshness clause 4); the client asks again for what it pulled from
-        // them.
-        auto* client = this->server.client;
-        if(client && ranges::any_of(path_ids, [&](Fid id) {
-               return find_document(id) && !index_current(id) && client->index_served.contains(id);
-           })) {
-            client->refresh();
-        }
-    });
 }
 
 ServedProject::~ServedProject() = default;
+
+void ServedProject::attempt_finished(Fid path_id) {
+    auto* document = find_document(path_id);
+    if(document && document->serving == ServingMode::IndexOnly &&
+       !matching_shard(*document->session)) {
+        escalate(path_id);
+    }
+}
+
+void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
+    auto* client = server.client;
+    if(client && ranges::any_of(path_ids, [&](Fid id) {
+           return find_document(id) && !index_current(id) && client->index_served.contains(id);
+       })) {
+        client->refresh();
+    }
+}
 
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
@@ -152,7 +114,6 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
         return;
     }
     auto& cfg = project.settings.project;
-    project.freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
@@ -166,19 +127,21 @@ void ServedProject::start() {
     if(!project.root.empty()) {
         auto opened = project.open({
             .configuration = configuration,
-            .store = Project::OpenOptions::Store::Writable,
-            .index = Project::OpenOptions::Index::Write,
+            .cache = Project::OpenOptions::Cache::Write,
+            .freshness = {.withhold = project.settings.project.enable_indexing.value},
         });
-        sched.pump.apply_report(opened.report);
-        sched.pump.enqueue_outdated(opened.members);
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        commands_missing = opened.members.empty() && !project.build.declares_sources() &&
-                           !found_unreadable_database(project);
+        commands_missing =
+            ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
+            !project.rules.declares_sources() && !project.found_unreadable_database();
+    }
+    if(project.settings.project.enable_indexing.value) {
+        project.background_index.start();
     }
     server.load_choices(*this);
 
@@ -187,6 +150,14 @@ void ServedProject::start() {
     // the load: divergence detection sees the persisted shards it just
     // loaded (a restored unsaved buffer must escalate, not read as merely
     // unindexed).
+    bool recorded = false;
+    for(auto& [path_id, document]: documents) {
+        recorded = project.record_provisional(path_id) || recorded;
+    }
+    if(recorded) {
+        commands_changed({});
+        schedule_metadata_flush();
+    }
     for(auto& [path_id, document]: documents) {
         decide_serving(document);
     }
@@ -207,6 +178,7 @@ void ServedProject::start() {
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
     }
+    server.watch_settings();
     if(poll_seconds.count() > 0) {
         bg_tasks.spawn(sources_poll_task());
         server.polling_files = true;
@@ -223,10 +195,11 @@ async::task<> ServedProject::shutdown() {
     tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await async::when_all(sched.pump.stop(), stop_compiles(), tree_tasks.join());
+    co_await async::when_all(stop_compiles(), tree_tasks.join());
     // Requests have unwound and released their interest; the shared tail
-    // winds down the graph's rounds before the persistence pass.
-    co_await sched.shutdown();
+    // stops the background index and winds down the graph's attempts before
+    // the persistence pass.
+    co_await project.shutdown();
 }
 
 ServedDocument* ServedProject::find_document(Fid path_id) {
@@ -246,15 +219,17 @@ bool ServedProject::owns(const Session& session) const {
 
 void ServedProject::adopt(std::shared_ptr<Session> session) {
     // A database generated since the start counts: the poll, or the
-    // discovery around this file, has loaded it by now.
-    if(std::exchange(commands_missing, false) && project.build.members().empty() &&
-       !found_unreadable_database(project)) {
+    // discovery around this file, has loaded it by now. A provisional
+    // member's command is a guess too.
+    if(std::exchange(commands_missing, false) &&
+       ranges::none_of(project.members(), [&](Fid member) { return project.declared(member); }) &&
+       !project.found_unreadable_database()) {
+        auto why = project.why_no_members(project.file_table.display(project.root));
+        why.front() = llvm::toUpper(why.front());
         LOG_GUIDANCE(
-            "No compile_commands.json found in {} or its direct subdirectories. "
-            "Compile commands will be guessed; see "
-            "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.{}",
-            project.file_table.display(project.root),
-            deeper_databases_hint(project));
+            "{} Compile commands will be guessed; see "
+            "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
+            why);
     }
     auto path_id = session->path_id;
     auto& document = documents[path_id];
@@ -269,8 +244,14 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     if(!started || broken()) {
         return;
     }
+    if(project.record_provisional(path_id)) {
+        commands_changed({});
+        schedule_metadata_flush();
+    }
     server.recheck_choice(path_id);
-    decide_serving(document);
+    // The change may have moved other documents in: the table may have
+    // grown since the reference above was taken.
+    decide_serving(documents.find(path_id)->second);
 }
 
 void ServedProject::decide_serving(ServedDocument& document) {
@@ -280,11 +261,12 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
+    auto& background = project.background_index;
     if(document.serving == ServingMode::Escalated) {
-        if(project.settings.project.skip_header_bodies &&
-           project.settings.project.enable_indexing.value && lacks_skipped_diagnostics(path_id) &&
-           !sched.pump.in_flight(path_id) && !sched.pump.failed().contains(path_id)) {
-            sched.pump.boost(path_id);
+        if(project.settings.project.skip_header_bodies && background.started() &&
+           lacks_skipped_diagnostics(path_id) && !background.queue().in_flight(path_id) &&
+           !background.failed(path_id)) {
+            background.index_first(path_id);
         }
         return;
     }
@@ -301,10 +283,10 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // first — unless indexing is disabled or the file is no unit of the
     // build (a header, which only the units reading it index), in which
     // case no shard will arrive soon and only an AST can serve the
-    // document. A boost the pump cannot fulfill escalates through the
-    // adapter's attempt-finished check.
-    if(project.settings.project.enable_indexing.value && project.build.unit(path_id)) {
-        sched.pump.boost(path_id);
+    // document. An index_first the background index cannot fulfill
+    // escalates through the adapter's attempt-finished check.
+    if(background.started() && project.is_unit(path_id)) {
+        background.index_first(path_id);
     } else {
         escalate(path_id);
     }
@@ -316,21 +298,22 @@ void ServedProject::release(Fid path_id) {
     auto path = project.file_table.resolve(path_id);
     server.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
     server.pool.remove_owner(path_id.raw);
-    sched.graph.update(node(path_id));
-    sched.pcm.forget_buffer(path_id);
+    project.graph.invalidate(node(path_id));
+    project.import_scans.buffers.erase(path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
-    // index (IndexPump::compiled_by_session); the disk's turn again, unless
+    // index (ServingSide::compiled_by_session); the disk's turn again, unless
     // it was deleted meanwhile or its index run failed for good, which
     // waits for a change.
-    if(!project.file_table.disk.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
-       sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
-        sched.pump.schedule(false);
+    auto& background = project.background_index;
+    if(!project.file_table.disk.seen_missing(path_id) && !background.failed(path_id) &&
+       background.enqueue(path_id, ReindexReason::DepsOnly)) {
+        background.schedule();
     }
     // PCH entries are content-keyed and may be shared with other documents,
-    // so nothing entry-level to clean up — but the loaded-state budget
+    // so nothing entry-level to clean up — but the loaded-index budget
     // shrinks with the open count, and this is the moment it does.
-    sched.pch.enforce_loaded_budget();
+    project.enforce_loaded_budget();
     LOG_DEBUG("Released {}", path);
 }
 
@@ -341,25 +324,17 @@ void ServedProject::record_saved(Fid path_id) {
     // The open files the save made stale show what their background run
     // finds as soon as it can (report_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
+        auto& background = project.background_index;
         for(auto& [open, document]: documents) {
-            if(sched.pump.pending_reason(open) && !sched.pump.in_flight(open)) {
-                sched.pump.boost(open);
+            if(background.queue().pending_reason(open) && !background.queue().in_flight(open)) {
+                background.index_first(open);
             }
         }
     }
-    // A header compiles through a host or a lender, never as a member; a
-    // build tree or the cache holds no sources of the project's own.
-    auto path = project.file_table.resolve(path_id);
-    if(project.root.empty() || !is_source_path(path) || project.build.declared(path_id)) {
-        return;
+    if(project.record_provisional(path_id)) {
+        commands_changed({});
+        schedule_metadata_flush();
     }
-    if(!project_file(project.root, project.settings.project.cache_identity(), path) ||
-       !project.build.record(path_id)) {
-        return;
-    }
-    LOG_INFO("Recorded {} as a provisional member", path);
-    build_changed({});
-    schedule_metadata_flush();
 }
 
 void ServedProject::schedule_metadata_flush() {
@@ -373,14 +348,14 @@ void ServedProject::schedule_metadata_flush() {
 async::task<> ServedProject::metadata_flush_task() {
     // One loop turn of debounce coalesces a burst of marks into one save;
     // the save itself batches whatever else is dirty by then. Marks
-    // arriving while the save runs re-schedule through request_flush, and
+    // arriving while the save runs schedule one again, and
     // a save that could not clear the flags (serialization or write
     // failure) retries on the next spawn with this backoff.
     // Time is the feature: the debounce.
     co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
-    co_await sched.pump.persist();
-    if(project.artifacts_dirty || project.choices.dirty) {
+    co_await project.save();
+    if(project.precompiled_dirty || project.choices.dirty) {
         // Time is the feature: the retry's backoff.
         co_await async::sleep(chrono::seconds(5));
         schedule_metadata_flush();
@@ -390,31 +365,10 @@ async::task<> ServedProject::metadata_flush_task() {
 async::task<> ServedProject::checkpoint_task() {
     while(true) {
         // Time is the feature: the checkpoints' pace.
-        co_await async::sleep(SchedulingStack::checkpoint_interval());
-        co_await sched.checkpoint();
+        co_await async::sleep(checkpoint_interval());
+        co_await project.checkpoint();
         if(project.index.last_save_shards() > 0) {
             server.probe.happened(LoopEvent::Checkpoint);
-        }
-        forget_evicted_pchs();
-    }
-}
-
-void ServedProject::forget_evicted_pchs() {
-    // The store's LRU evicted these blobs from disk (inside commit, maybe
-    // on a worker thread); drop the derived pch_cache metadata here on the
-    // event loop, or the content-keyed map grows for the server's
-    // lifetime even for keys never requested again. An entry mid-rebuild
-    // keeps its slot — its commit publishes a fresh pair. A key rebuilt
-    // after the eviction was recorded names another blob by now.
-    for(auto& evicted: project.store->take_evictions()) {
-        if(evicted.ns != "pch") {
-            continue;
-        }
-        auto it = ranges::find_if(project.pch_cache, [&](const auto& entry) {
-            return entry.second.blob == evicted.key;
-        });
-        if(it != project.pch_cache.end() && !sched.pch.building(it->getKey())) {
-            project.pch_cache.erase(it);
         }
     }
 }

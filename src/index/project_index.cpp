@@ -219,6 +219,11 @@ bool ProjectIndex::indexed(Fid tu) const {
     return record && record->run != 0;
 }
 
+std::uint64_t ProjectIndex::indexed_command(Fid tu) const {
+    auto* record = file_record(tu);
+    return record ? record->command : 0;
+}
+
 std::optional<TUManifest> ProjectIndex::manifest(Fid tu) const {
     for(auto* held: {&changed_manifests, &written_manifests}) {
         if(auto it = held->find(tu); it != held->end()) {
@@ -927,7 +932,9 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             header.unit_count -= 1;
         }
     }
-    change_file(tu).run = manifest ? manifest->built_at : 0;
+    auto& record = change_file(tu);
+    record.run = manifest ? manifest->built_at : 0;
+    record.command = manifest ? manifest->command : 0;
     changed_manifests[tu] = std::move(manifest);
 
     ranges::sort(affected);

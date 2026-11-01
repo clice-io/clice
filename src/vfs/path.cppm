@@ -243,6 +243,11 @@ std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
 
 namespace path {
 
+/// How far `other` sits from `path` in the directory tree: how much of
+/// `path` lies past the directories the two share, then how many
+/// directories deeper `other` goes below them.
+std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::StringRef other);
+
 /// How configuration and persisted names spell the project root.
 constexpr inline llvm::StringRef workspace_anchor = "${workspace}";
 

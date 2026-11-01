@@ -295,7 +295,7 @@ RequestResult<worker::CompileParams>
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,
             };
-            use_artifacts(cp.input, doc->pch, doc->pcms);
+            use_precompiled(cp.input, doc->pch, doc->pcms);
             cp.input.add_focus(params.path, doc->text);
             cp.input.add_synthesized(params.synthesized);
 
@@ -315,7 +315,7 @@ RequestResult<worker::CompileParams>
             // so the master never rebuilds an innocent shared PCH over a
             // failure it did not cause. An anonymous read error with PCMs
             // in play is ambiguous; suspecting the PCH costs at most one
-            // retracted pair per round and self-corrects on the retry.
+            // retracted pair per attempt and self-corrects on the retry.
             if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
                 auto points_at_pch = [&](const Diagnostic& diag) {
                     llvm::StringRef message = diag.message;
@@ -336,7 +336,7 @@ RequestResult<worker::CompileParams>
 
             std::optional<std::string> index_error;
             if(unit->completed() && !stop->load(std::memory_order_relaxed)) {
-                result.build_at = unit->build_at().count();
+                result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
                 index_error = hand_over_index(
@@ -371,7 +371,7 @@ RequestResult<worker::CompileParams>
                          timer.ms(),
                          unit->setup_fail());
                 // An incomplete unit can never serve a query, yet it pins
-                // the consumed artifacts — on Windows a mapped PCH cannot
+                // the consumed PCHs and PCMs — on Windows a mapped PCH cannot
                 // be replaced on disk, so holding it would block the
                 // master's rebuild of a retracted pair.
                 unit.reset();
