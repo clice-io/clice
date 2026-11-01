@@ -571,25 +571,25 @@ std::optional<NameRank>
         return NameRank{.tier = static_cast<std::uint8_t>(name == query.pattern ? 0 : 1),
                         .score = quality};
     }
+    std::optional<NameRank> found;
+    if(auto score = exact.match(name)) {
+        found = NameRank{.tier = 2, .score = *score * quality};
+    } else if(lenient && typo) {
+        if(auto score = typo->match(name)) {
+            found = NameRank{.tier = 3, .score = *score * quality};
+        }
+    }
     // A query too short for trigrams is keyed by a name's first two words
     // in the index; judging entries the same way keeps the two answers alike.
-    if(!short_tokens.empty()) {
-        llvm::SmallVector<NameToken, 64> tokens;
-        name_tokens(name, tokens);
+    if(found && !short_tokens.empty()) {
+        llvm::SmallVector<NameToken, 16> tokens;
+        short_name_tokens(name, tokens);
         if(!ranges::all_of(short_tokens,
                            [&](NameToken token) { return ranges::binary_search(tokens, token); })) {
             return std::nullopt;
         }
     }
-    if(auto score = exact.match(name)) {
-        return NameRank{.tier = 2, .score = *score * quality};
-    }
-    if(lenient && typo) {
-        if(auto score = typo->match(name)) {
-            return NameRank{.tier = 3, .score = *score * quality};
-        }
-    }
-    return std::nullopt;
+    return found;
 }
 
 /// A mapped segment, its columns checked and its posting lists decoded on

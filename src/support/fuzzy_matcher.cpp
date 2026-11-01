@@ -110,6 +110,43 @@ struct Letters {
 
 static_assert(max_name <= 128, "a name's letters fit Letters");
 
+/// Whether `pattern`'s characters appear in `name` in order, every one
+/// of them or, with `one_missing`, all but one.
+bool in_order(llvm::ArrayRef<char> pattern, llvm::ArrayRef<char> name, bool one_missing) {
+    // Where in `name` the earliest match of each prefix of `pattern` ends,
+    // past the end for a prefix that does not match.
+    llvm::SmallVector<std::size_t, 32> ends(pattern.size() + 1, name.size() + 1);
+    ends[0] = 0;
+    std::size_t matched = 0;
+    for(std::size_t n = 0; n < name.size() && matched < pattern.size(); n += 1) {
+        if(pattern[matched] == name[n]) {
+            matched += 1;
+            ends[matched] = n + 1;
+        }
+    }
+    if(matched == pattern.size()) {
+        return true;
+    }
+    if(!one_missing) {
+        return false;
+    }
+    // Where the latest match of the characters after `missing` begins.
+    std::size_t start = name.size();
+    for(auto missing = pattern.size(); missing-- > 0;) {
+        if(ends[missing] <= start) {
+            return true;
+        }
+        while(start > 0 && name[start - 1] != pattern[missing]) {
+            start -= 1;
+        }
+        if(start == 0) {
+            return false;
+        }
+        start -= 1;
+    }
+    return false;
+}
+
 /// The lowercase letters of a pattern in order, separators dropped —
 /// the sequence a query's tokens are formed from.
 llvm::SmallVector<char, 32> pattern_letters(llvm::StringRef pattern) {
@@ -121,6 +158,55 @@ llvm::SmallVector<char, 32> pattern_letters(llvm::StringRef pattern) {
     }
     return letters;
 }
+
+/// A name as its tokens walk it: its characters' roles, and the positions
+/// a match may jump to from anywhere before them.
+struct NameWalk {
+    llvm::StringRef name;
+    llvm::SmallVector<CharRole, 64> roles;
+    llvm::SmallVector<std::uint32_t, 32> anchors;
+
+    explicit NameWalk(llvm::StringRef name) : name(name), roles(name.size()) {
+        segment(name, roles);
+        bool has_lower = has_lowercase_letter(name);
+        for(std::size_t i = 0; i < name.size(); i += 1) {
+            if(roles[i] != CharRole::Separator && is_anchor(name[i], roles[i], has_lower)) {
+                anchors.push_back(static_cast<std::uint32_t>(i));
+            }
+        }
+    }
+
+    /// Where the matcher may go from position `i`: on to the next
+    /// character of the same word, or to any later anchor.
+    void for_each_successor(std::size_t i, auto visit) const {
+        bool tail = i + 1 < name.size() && roles[i + 1] == CharRole::Tail;
+        if(tail) {
+            visit(i + 1);
+        }
+        for(auto it = ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
+            it != anchors.end();
+            it += 1) {
+            if(!tail || *it != i + 1) {
+                visit(*it);
+            }
+        }
+    }
+
+    /// The unigrams and bigrams starting at the first two word heads.
+    void short_tokens(llvm::SmallVectorImpl<NameToken>& out) const {
+        std::size_t heads_seen = 0;
+        for(std::size_t i = 0; i < name.size() && heads_seen < 2; i += 1) {
+            if(roles[i] != CharRole::Head) {
+                continue;
+            }
+            heads_seen += 1;
+            out.push_back(unigram(lower(name[i])));
+            for_each_successor(i, [&](std::size_t j) {
+                out.push_back(bigram(lower(name[i]), lower(name[j])));
+            });
+        }
+    }
+};
 
 }  // namespace
 
@@ -170,18 +256,10 @@ bool FuzzyMatcher::prepare(llvm::StringRef text) {
     for(char c: name) {
         low_name.push_back(lower(c));
     }
-    // The letters must appear in order for a match to exist; with a
-    // typo allowed the full table has to judge.
-    if(!options.typo) {
-        std::size_t p = 0;
-        for(char c: low_name) {
-            if(p < low_pat.size() && low_pat[p] == c) {
-                p += 1;
-            }
-        }
-        if(p < low_pat.size()) {
-            return false;
-        }
+    // The letters must appear in order for a match to exist, all but the
+    // one a typo drops or replaces.
+    if(!in_order(low_pat, low_name, options.typo)) {
+        return false;
     }
     role.resize(name.size());
     segment(text, role);
@@ -411,13 +489,13 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     if(name.empty()) {
         return;
     }
-    llvm::SmallVector<CharRole, 64> roles(name.size());
-    segment(name, roles);
-    bool has_lower = has_lowercase_letter(name);
+    NameWalk walk(name);
+    walk.short_tokens(out);
+    sort_unique(out);
 
     std::array<std::uint64_t, 4> present{};
     for(std::size_t i = 0; i < name.size(); i += 1) {
-        if(roles[i] != CharRole::Separator) {
+        if(walk.roles[i] != CharRole::Separator) {
             auto byte = static_cast<unsigned char>(lower(name[i]));
             present[byte / 64] |= std::uint64_t(1) << (byte % 64);
         }
@@ -435,68 +513,34 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
         return ranks[static_cast<unsigned char>(lower(name[i]))];
     };
 
-    // The positions a match may jump to from anywhere before them.
-    llvm::SmallVector<std::uint32_t, 32> anchors;
-    for(std::size_t i = 0; i < name.size(); i += 1) {
-        if(roles[i] != CharRole::Separator && is_anchor(name[i], roles[i], has_lower)) {
-            anchors.push_back(static_cast<std::uint32_t>(i));
-        }
-    }
-    // Where the matcher may go from position `i`: on to the next
-    // character of the same word, or to any later anchor.
-    auto for_each_successor = [&](std::size_t i, auto visit) {
-        bool tail = i + 1 < name.size() && roles[i + 1] == CharRole::Tail;
-        if(tail) {
-            visit(i + 1);
-        }
-        for(auto it = ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
-            it != anchors.end();
-            it += 1) {
-            if(!tail || *it != i + 1) {
-                visit(*it);
-            }
-        }
-    };
-
     // The letters of the anchors past each position, and of every
     // successor: a trigram's third letter is a successor of a successor of
     // its first, so the third letters behind the same first two are
     // gathered as one set rather than enumerated path by path.
     llvm::SmallVector<Letters, 64> later(name.size());
     Letters past;
-    auto anchor = anchors.rbegin();
+    auto anchor = walk.anchors.rbegin();
     for(auto i = name.size(); i > 0; i -= 1) {
         later[i - 1] = past;
-        if(anchor != anchors.rend() && *anchor == i - 1) {
+        if(anchor != walk.anchors.rend() && *anchor == i - 1) {
             past.add(rank(i - 1));
             anchor += 1;
         }
     }
     llvm::SmallVector<Letters, 256> thirds(alphabet.size() * alphabet.size());
-
-    std::size_t heads_seen = 0;
     for(std::size_t i = 0; i < name.size(); i += 1) {
-        if(roles[i] == CharRole::Separator) {
+        if(walk.roles[i] == CharRole::Separator) {
             continue;
         }
-        bool short_head = roles[i] == CharRole::Head && heads_seen < 2;
-        if(short_head) {
-            heads_seen += 1;
-            out.push_back(unigram(lower(name[i])));
-        }
         auto* after = &thirds[rank(i) * alphabet.size()];
-        for_each_successor(i, [&](std::size_t j) {
-            if(short_head) {
-                out.push_back(bigram(lower(name[i]), lower(name[j])));
-            }
+        walk.for_each_successor(i, [&](std::size_t j) {
             auto& ends = after[rank(j)];
             ends |= later[j];
-            if(j + 1 < name.size() && roles[j + 1] == CharRole::Tail) {
+            if(j + 1 < name.size() && walk.roles[j + 1] == CharRole::Tail) {
                 ends.add(rank(j + 1));
             }
         });
     }
-    sort_unique(out);
 
     // Ranks ascend with the bytes and a trigram packs them big-endian, so
     // the trigrams come out sorted, after every shorter token.
@@ -507,6 +551,12 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
             });
         }
     }
+}
+
+void short_name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
+    out.clear();
+    NameWalk(name.take_front(max_name)).short_tokens(out);
+    sort_unique(out);
 }
 
 void query_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<NameToken>& out) {
