@@ -1,0 +1,39 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "};⟨// struct Settings⟩" },
+    { line = "auto doubled⟨: int⟩ = scale(⟨value:⟩base, ⟨factor:⟩2);" },
+    { line = "CHECK(scale(⟨value:⟩doubled," },
+    { line = "⟨factor:⟩3) > 0);" },
+    { line = "auto tripled⟨: int⟩ = scale(⟨value:⟩doubled, ⟨factor:⟩3);" },
+    { line = "}⟨// compute⟩" },
+    { line = "return scale(⟨value:⟩base, ⟨factor:⟩4);" },
+    { line = "}⟨// unrelated⟩" },
+    { line = "}⟨// align⟩" },
+    { line = "alignas(align(⟨value:⟩2, ⟨factor:⟩4))" },
+    { line = "__attribute__((aligned(align(⟨value:⟩4, ⟨factor:⟩2))));" },
+]
+
+[answers.struct_end]
+inlay_hints = [
+    { line = "};⟨// struct Settings⟩" },
+]
+
+[answers.macro_tail]
+inlay_hints = [
+    { line = "⟨factor:⟩3) > 0);" },
+]
+
+[answers.function_tail]
+inlay_hints = [
+    { line = "}⟨// compute⟩" },
+]
+
+[answers.attribute]
+inlay_hints = [
+    { line = "alignas(align(⟨value:⟩2, ⟨factor:⟩4))" },
+]
+
+[answers.trailing_attribute]
+inlay_hints = [
+    { line = "__attribute__((aligned(align(⟨value:⟩4, ⟨factor:⟩2))));" },
+]

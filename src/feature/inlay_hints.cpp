@@ -512,6 +512,8 @@ public:
 
     void run() {
         auto nodes = unit.get<Semantics>().node_entries();
+        /// The nodes before it lie wholly inside the range asked for.
+        std::uint32_t inside_until = 0;
         std::uint32_t index = 0;
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
@@ -528,6 +530,18 @@ public:
             if(entry.flags.in_instantiation) {
                 index = entry.subtree_end;
                 continue;
+            }
+
+            if(restrict_range.valid() && index >= inside_until) {
+                if(auto reach = hint_reach(entry)) {
+                    if(!restrict_range.intersects(*reach)) {
+                        index = entry.subtree_end;
+                        continue;
+                    }
+                    if(restrict_range.contains(*reach)) {
+                        inside_until = entry.subtree_end;
+                    }
+                }
             }
 
             current = index;
@@ -560,6 +574,31 @@ public:
     }
 
 private:
+    /// Where the hints of `entry`'s subtree can lie: the code that produced
+    /// it, through the end of its last line, where a block's end hint takes
+    /// in what follows its `}`. None when it lies outside the focus file.
+    std::optional<LocalSourceRange> hint_reach(const Semantics::Node& entry) {
+        auto focus = unit.focus_file();
+        auto reach = focus.produced_range(entry.node.source_range());
+        if(!reach) {
+            return std::nullopt;
+        }
+        // Clang's range of a declaration leaves out the attributes written
+        // before or after it, which its subtree holds all the same.
+        if(entry.node.kind() == SemanticNode::Kind::Decl) {
+            for(auto* attr: entry.node.get<clang::Decl>()->attrs()) {
+                if(auto written = focus.produced_range(attr->getRange())) {
+                    reach->begin = std::min(reach->begin, written->begin);
+                    reach->end = std::max(reach->end, written->end);
+                }
+            }
+        }
+        auto content = focus.content();
+        reach->end =
+            static_cast<std::uint32_t>(std::min(content.find('\n', reach->end), content.size()));
+        return reach;
+    }
+
     // Compute the LSP range to attach the block end hint to, if any allowed.
     // 1. "}" is the last non-whitespace character on the line. The range of "}"
     // is returned.
