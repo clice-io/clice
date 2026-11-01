@@ -1,0 +1,65 @@
+[answers.pointer.completion]
+items = [
+    { label = "held", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.array.completion]
+items = [
+    { label = "held", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_argument.completion]
+items = [
+    { label = "const_holder", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.rvalue_reference.completion]
+items = [
+    { label = "moved_holder", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_function.completion]
+items = [
+    { label = "const_function", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.ref_qualified_function.completion]
+items = [
+    { label = "moved_function", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.integral.completion]
+items = [
+    { label = "negative_slots", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.pack.completion]
+items = [
+    { label = "pair_size", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.template_template.completion]
+items = [
+    { label = "box_wrapped", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.class_scope.completion]
+items = [
+    { label = "inner_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.anonymous_namespace.completion]
+items = [
+    { label = "hidden_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
