@@ -207,8 +207,24 @@ struct CompilationParams {
     /// preamble enters (CompilationUnit::in_preamble), but those of
     /// templates likely to forward their arguments: the editor's compiles.
     /// Nothing in a skipped body is reported or instantiated, and so
-    /// neither is a declaration being unused, which such a body may use.
+    /// neither is a declaration being unused, which such a body may use. A
+    /// completion skips every body but the one holding the point regardless.
     bool skip_bodies = false;
+
+    /// A compile looking only for how the focus file's templates are
+    /// instantiated: with `names`, it skips the focus file's function bodies
+    /// as well, but those of templates and of a class's members, the one
+    /// holding `point`, and those naming one of `names` or a template whose
+    /// body does. Once a call past the point instantiates the template
+    /// declared at `templated` it skips every body, and stops after the
+    /// declaration holding the call.
+    struct Instantiating {
+        std::uint32_t point = 0;
+        std::optional<llvm::StringSet<>> names;
+        std::optional<std::uint32_t> templated;
+    };
+
+    std::optional<Instantiating> instantiating;
 
     /// Inactive regions of the consumed PCH's preamble share (flat
     /// begin/end offset pairs): the `#include`s there were never entered.
@@ -217,6 +233,15 @@ struct CompilationParams {
     /// Set to stop the compile, an old one a newer request replaces.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 };
+
+/// Whether `word`, as `pp` has its macros, is a macro whose expansion
+/// spells a word `wanted` takes, through the macros it expands in turn.
+/// `read` keeps what each definition gave: a macro library's definitions
+/// refer to each other many times over.
+bool macro_spells(clang::Preprocessor& pp,
+                  llvm::StringRef word,
+                  llvm::function_ref<bool(llvm::StringRef)> wanted,
+                  llvm::DenseMap<const clang::MacroInfo*, bool>& read);
 
 enum class CompilationStatus : std::uint8_t {
     /// The parse ran to the end; the AST is usable, though diagnostics may
@@ -449,6 +474,11 @@ public:
     /// directive of this compile records.
     auto macro_definitions(llvm::StringRef name) -> llvm::SmallVector<const clang::MacroInfo*>;
 
+    /// The macros the compiler and the command line define, as the end of
+    /// the parse leaves them; not those the preprocessor makes up for every
+    /// compile (`__LINE__`).
+    auto predefined_macros() -> llvm::SmallVector<const clang::MacroInfo*>;
+
     /// The diagnostics the compile reported, each with its notes: the
     /// compiler's, and clang-tidy's findings in the editor shape. Those a
     /// suppression comment hides are left out, and a finding reported more
@@ -478,6 +508,8 @@ public:
     auto keywords() -> const clang::IdentifierTable&;
 
     clang::ASTContext& context();
+
+    clang::Sema& sema();
 
     llvm::DenseMap<clang::FileID, Directive>& directives();
 

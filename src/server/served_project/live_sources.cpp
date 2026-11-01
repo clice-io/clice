@@ -190,19 +190,4 @@ std::shared_ptr<index::TUIndex> ServedProject::preamble_index(Fid file) const {
     return state;
 }
 
-void
-    ServedProject::for_each_pch_index(Fid file,
-                                      llvm::function_ref<void(const index::TUIndex&)> visit) const {
-    if(auto state = preamble_index(file)) {
-        visit(*state);
-    }
-    auto compiled = latest(file);
-    if(!compiled || !compiled->base_pch_key) {
-        return;
-    }
-    if(auto state = preamble_of(project, *compiled->base_pch_key)) {
-        visit(*state);
-    }
-}
-
 }  // namespace clice

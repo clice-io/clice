@@ -579,8 +579,6 @@ public:
         for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
     void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-    void for_each_pch_index(Fid file,
-                            llvm::function_ref<void(const index::TUIndex&)> visit) const override;
 
 private:
     /// The project serving the open `file`, when the reader reads it.

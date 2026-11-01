@@ -8,6 +8,7 @@ module clice:index.search;
 import :index.query;
 import :index.symbol;
 import :index.symbol_query;
+import :index.tu_index;
 import :support.prelude;
 
 namespace clice::index {
@@ -24,26 +25,46 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
                                         const SymbolQuery& query,
                                         std::uint32_t limit);
 
-/// A name unqualified completion may offer from the index, with the
-/// file of its canonical declaration: invalid for one of a preamble,
-/// which the file reaches already.
+/// A name completion may offer from the index, with the scopes around it,
+/// outermost first, and the file of its canonical declaration: invalid for
+/// one of a preamble, which the file reaches already.
 struct Completable {
     SymbolInfo symbol;
+    llvm::SmallVector<SymbolInfo, 4> scope;
     Fid file;
 };
 
-/// The names `prefix` matches that unqualified completion in `file` may
-/// offer — names of namespaces and unscoped enumerators
-/// (SymbolFlags::Completable) linked across files — best first, at most
-/// `limit`: the project's, the open buffers' and those of `file`'s
-/// preamble. Whether the limit cut them short.
+/// Where completion looks names up: everywhere for an unqualified name, or
+/// directly in the scopes a qualifier names, `absolute` when it starts
+/// with `::`.
+struct CompletionScope {
+    std::vector<std::string> qualifier;
+    bool absolute = false;
+
+    bool qualified() const {
+        return absolute || !qualifier.empty();
+    }
+};
+
+/// The names `prefix` matches that completion may offer from `scope` —
+/// names of namespaces and unscoped enumerators (SymbolFlags::Completable)
+/// — best first, at most `limit`: the project's and the open buffers'
+/// linked across files, and every one of `pchs`, the indexes of the PCHs
+/// the completing compile loads. An empty prefix takes the names used most. After a
+/// qualifier, its scopes' own names come first, then those of any other
+/// scope, which a using-declaration or using-directive there may bring
+/// in. Whether the limit cut each short.
 struct Completables {
     std::vector<Completable> names;
     bool exhausted = true;
+    bool others_exhausted = true;
 };
 
-Completables
-    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::uint32_t limit);
+Completables completables(const IndexQuery& index,
+                          llvm::StringRef prefix,
+                          const CompletionScope& scope,
+                          llvm::ArrayRef<std::shared_ptr<TUIndex>> pchs,
+                          std::uint32_t limit);
 
 /// The symbols a locator query names: by id; by place — the symbol
 /// under a cursor, or those defined on a line of the file's serving

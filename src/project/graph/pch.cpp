@@ -627,6 +627,24 @@ std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key)
     return loaded;
 }
 
+std::vector<std::shared_ptr<index::TUIndex>> Project::pch_indexes(llvm::StringRef pch_key) {
+    std::vector<std::shared_ptr<index::TUIndex>> indexes;
+    for(auto key = pch_key.str(); !key.empty();) {
+        auto it = pchs.find(key);
+        if(it == pchs.end()) {
+            return {};
+        }
+        auto base = it->second.base;
+        auto index = preamble_index(key);
+        if(!index) {
+            return {};
+        }
+        indexes.push_back(std::move(index));
+        key = std::move(base);
+    }
+    return indexes;
+}
+
 void Project::forget_evicted_pchs() {
     if(!store) {
         return;

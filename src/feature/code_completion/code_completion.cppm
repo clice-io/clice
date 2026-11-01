@@ -4,6 +4,8 @@ import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
+import :index.search;
+import :index.tu_index;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
@@ -106,10 +108,10 @@ struct CompletionClient {
     bool markdown = false;
 };
 
-/// A name unqualified completion may offer from the index — of another
-/// namespace, or a macro of a header the file does not include: the
-/// completion looks it up to tell whether the file reaches it already
-/// (CodeCompletionOptions::all_scopes).
+/// A name completion may offer from the index, its preamble's or the
+/// project's: the completion looks it up to tell whether the file reaches
+/// it already, and offers one it does not reach with the qualifier, the
+/// include or the import that does (CodeCompletionOptions::all_scopes).
 struct ScopeCandidate {
     std::string name;
 
@@ -154,36 +156,71 @@ struct Completion {
     std::optional<IncludePlace> include;
 };
 
+/// What a compile of the code completes with (code_complete): the names
+/// the index offers, and whether it holds more of them.
+struct CompileCompletion {
+    std::vector<ScopeCandidate> candidates;
+    bool more_candidates = false;
+
+    /// After a qualifier, whether the index holds more names of other
+    /// scopes, which the qualifier's namespace may bring in.
+    bool more_elsewhere = false;
+
+    /// The candidates stand in for the namespaces' names the precompiled
+    /// preamble declares: the compile reads no others of them (clang's
+    /// LoadExternal off), none after a member access. Not where the index names
+    /// nothing, as in a directive, nor where the compile loads no PCH whose
+    /// index is at hand: the compile reads them all then.
+    bool from_index = false;
+
+    /// The name typed so far, empty before its first character, whose
+    /// candidates offer_names takes; none after a member access and where
+    /// no name is completed.
+    std::optional<std::string> prefix;
+
+    /// Where the name being typed is looked up, with from_index.
+    index::CompletionScope scope;
+};
+
 auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16,
-                   llvm::ArrayRef<ScopeCandidate> candidates = {}) -> Completion;
+                   const CompileCompletion& names = {}) -> Completion;
 
-/// The identifier typed at `offset` of `text`, from its start to `offset`,
-/// when nothing qualifies it — no `::`, `.` or `->` before it — and it is
-/// not empty: where a completion may offer names of other namespaces.
-auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
-    -> std::optional<llvm::StringRef>;
+/// The identifier being typed at `offset` of `text`, from its start to
+/// `offset`, and the scope a qualifier before it names.
+struct TypedName {
+    llvm::StringRef prefix;
+    index::CompletionScope scope;
+
+    /// After `.` or `->`: a member, which Sema reads from its class whole.
+    /// Not after an arrow that may begin a trailing return type.
+    bool member = false;
+};
+
+/// None in a number, and after a qualifier spelled other than by names
+/// (`T<int>::`, `decltype(x)::`).
+auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
+    -> std::optional<TypedName>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
 
-/// The most names one completion offers from the index (ScopeCandidate,
-/// CodeCompletionOptions::all_scopes).
+/// The most names one completion offers from the index (ScopeCandidate).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The names the index offers where `prefix` is completed unqualified in
-/// `file` (ScopeCandidate), appended to `candidates`; whether they are all
-/// of them.
-bool scope_candidates(const index::IndexQuery& query,
-                      const DependencyGraph& graph,
-                      llvm::StringRef prefix,
-                      Fid file,
-                      std::vector<ScopeCandidate>& candidates);
+/// The names the index offers where `compile` completes (ScopeCandidate),
+/// with whether it holds more: the project's and those of `pchs`, the
+/// indexes of the PCHs the compile loads, which stand in for the rest of
+/// their names when there are any (from_index).
+void offer_names(const index::IndexQuery& query,
+                 const DependencyGraph& graph,
+                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> pchs,
+                 CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring
@@ -236,9 +273,8 @@ auto module_completion(const CompletionName& completing,
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The file completed in, as the project names it, its path and text,
-    /// and the point completed at in the client's encoding.
-    Fid file;
+    /// The path and text of the file completed in, and the point completed
+    /// at in the client's encoding.
     llvm::StringRef path;
     llvm::StringRef text;
     const PositionMap& positions;
@@ -254,9 +290,7 @@ struct CompletionInputs {
     const CodeCompletionOptions& options;
     const CompletionClient& client;
 
-    /// The project: the index offers the names of other scopes, the
-    /// dependency graph the module names.
-    const index::IndexQuery& query;
+    /// The project: the dependency graph names the modules.
     const DependencyGraph& graph;
     FileTable& files;
 
@@ -270,13 +304,6 @@ struct CompletionInputs {
 /// items.
 struct NoCompletion {};
 
-/// What a compile of the code completes with (code_complete): the names of
-/// other scopes the index offers, and whether it holds more of them.
-struct CompileCompletion {
-    std::vector<ScopeCandidate> candidates;
-    bool more_candidates = false;
-};
-
 /// How a completion request is answered: not at all, before any compile,
 /// or by a compile of the code.
 using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
@@ -287,8 +314,8 @@ using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, Com
 /// `import ` opens module suggestions, the others for include paths and
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
-/// other code by a compile, with the names of other scopes the index offers
-/// for an unqualified one.
+/// other code by a compile, which offer_names gives the index's names once
+/// the PCH it loads is known.
 auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
 
 }  // namespace clice::feature

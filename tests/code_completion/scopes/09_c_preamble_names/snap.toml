@@ -1,0 +1,20 @@
+[answers.function.completion]
+items = [
+    { label = "color_red()", kind = "Function", detail = "int" },
+    { label = "color_round(int x)", kind = "Function", detail = "int" },
+]
+
+[answers.tag.completion]
+items = [
+    { label = "Swatch", kind = "Class" },
+]
+
+[answers.enumerator.completion]
+items = [
+    { label = "shade_light", kind = "EnumMember", detail = "enum Shade" },
+]
+
+[answers.macro.completion]
+items = [
+    { label = "COLOR_MAX", kind = "Constant" },
+]

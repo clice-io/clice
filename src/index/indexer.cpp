@@ -409,6 +409,44 @@ public:
         index->occurrences.emplace_back(range, ensure_symbol(decls::normalize(decl)));
     }
 
+    /// The macros the compiler and the command line define come with a
+    /// PCH but from no file: completion finds them among the preamble's
+    /// names all the same.
+    void add_predefined_macros() {
+        auto& sources = unit.context().getSourceManager();
+        for(const auto* macro: unit.predefined_macros()) {
+            auto [it, inserted] = symbols.try_emplace(unit.get<EntityTable>().entity(macro));
+            if(inserted) {
+                auto& symbol = it->second;
+                symbol.name = unit.token_spelling(macro->getDefinitionLoc());
+                symbol.kind = SymbolKind::Macro;
+                symbol.scope = SymbolScope::External;
+                symbol.flags = SymbolFlags::Completable;
+                symbol.token_class = token_class(*macro, sources);
+            }
+        }
+    }
+
+    /// The enumerators of scoped enumerations a using-declaration or a
+    /// `using enum` at namespace scope brings in: lookup in that namespace
+    /// finds them, and completion offers them there as the others.
+    void add_brought_in_enumerators() {
+        llvm::SmallVector<const clang::DeclContext*, 16> pending = {
+            unit.context().getTranslationUnitDecl()};
+        while(!pending.empty()) {
+            for(auto* decl: pending.pop_back_val()->noload_decls()) {
+                if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::ExportDecl>(
+                       decl)) {
+                    pending.push_back(llvm::cast<clang::DeclContext>(decl));
+                } else if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl);
+                          shadow && llvm::isa<clang::EnumConstantDecl>(shadow->getTargetDecl())) {
+                    auto hash = ensure_symbol(decls::normalize(shadow->getTargetDecl()));
+                    symbols.find(hash)->second.flags |= SymbolFlags::Completable;
+                }
+            }
+        }
+    }
+
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
         // FIXME: A macro location is a name a macro body spells, which
         // project_expansions records, or a macro name passed as an argument and
@@ -1750,6 +1788,9 @@ public:
         // index's to resolve: the preamble's own index carries none of it.
         if(!preamble) {
             project_expansions();
+        } else {
+            add_predefined_macros();
+            add_brought_in_enumerators();
         }
         auto instantiations_ms = instantiations_timer.ms_f();
 
@@ -2032,8 +2073,9 @@ public:
             SearchSnapshot names;
             for(auto hash: table) {
                 auto& symbol = symbols.find(hash)->second;
-                if(has_flag(symbol.flags, SymbolFlags::Completable) &&
-                   symbol.scope == SymbolScope::External) {
+                // The unit reaches the names of internal linkage its preamble
+                // declares as much as the others.
+                if(has_flag(symbol.flags, SymbolFlags::Completable)) {
                     names.entries.push_back({
                         .hash = hash,
                         .name = symbol.name,

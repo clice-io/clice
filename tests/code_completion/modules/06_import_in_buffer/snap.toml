@@ -2,3 +2,8 @@
 items = [
     { label = "add(int a, int b)", kind = "Function", detail = "int" },
 ]
+
+["an import below an include".completion.completion]
+items = [
+    { label = "add(int a, int b)", kind = "Function", detail = "int" },
+]
