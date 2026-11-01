@@ -92,8 +92,8 @@ void LSPClient::register_test_hooks() {
             co_await async::when_any(srv.wait_idle(this->peer), async::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
-                for(auto& [id, outcome]: project->project.background_index.outcomes()) {
-                    if(outcome.failed) {
+                for(auto& [id, attempt]: project->project.background_index.last_attempts()) {
+                    if(attempt.failed) {
                         result.failed.push_back(feature::to_uri(srv.files.display(id)));
                     }
                 }

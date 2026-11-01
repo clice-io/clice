@@ -274,11 +274,11 @@ async::task<> BackgroundIndex::feed(async::task_group<>& workers,
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
 }
 
-void BackgroundIndex::record(Fid file, Outcome outcome) {
-    if(!outcome.failed && outcome.errors.empty()) {
-        last_outcomes.erase(file);
+void BackgroundIndex::record(Fid file, LastAttempt attempt) {
+    if(!attempt.failed && attempt.errors.empty()) {
+        attempts.erase(file);
     } else {
-        last_outcomes[file] = std::move(outcome);
+        attempts[file] = std::move(attempt);
     }
 }
 

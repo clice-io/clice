@@ -101,8 +101,8 @@ public:
     /// Move the file's place to the front of the places not taken yet. A
     /// place past the running pass stays past it and leads the next pass:
     /// the pass may have the file in flight, and a second attempt there
-    /// would join the same node, where only one of the two commits an
-    /// outcome.
+    /// would join the same node, where only one of the two commits a
+    /// result.
     void move_to_front(Fid id);
 
     /// Start a pass over every file queued now, those `first` picks ahead
@@ -264,7 +264,7 @@ public:
     /// crash budget, or a dead IPC path — for want of memory or not. A
     /// later attempt that indexes clean removes it again. The one-shot
     /// `clice index` reports a partial build from these.
-    struct Outcome {
+    struct LastAttempt {
         bool failed = false;
 
         /// A failure for want of memory alone: what its worker reached.
@@ -280,9 +280,9 @@ public:
     /// warm index keeps serving the stored shards instead of blanking every
     /// query until the pass drains, and the units owed the variants a
     /// rebuild discarded, read fresh by content. With `errors`, every
-    /// attempt brings back the errors its compile reported, for the
-    /// outcomes: the one-shot `clice index` lists them; a server reports
-    /// none and never asks.
+    /// attempt brings back the errors its compile reported, for
+    /// last_attempts: the one-shot `clice index` lists them; a server
+    /// reports none and never asks.
     void start(bool errors = false);
 
     /// Passes run: started and not stopped.
@@ -367,14 +367,14 @@ public:
     Signal<> on_progress_changed;
 
     /// The files whose latest attempt did not index clean.
-    const llvm::DenseMap<Fid, Outcome>& outcomes() const {
-        return last_outcomes;
+    const llvm::DenseMap<Fid, LastAttempt>& last_attempts() const {
+        return attempts;
     }
 
     /// Whether the file's latest attempt failed for good.
     bool failed(Fid file) const {
-        auto it = last_outcomes.find(file);
-        return it != last_outcomes.end() && it->second.failed;
+        auto it = attempts.find(file);
+        return it != attempts.end() && it->second.failed;
     }
 
     /// TUs actually indexed and merged this session — dispatches the
@@ -410,7 +410,7 @@ private:
     /// (entry cleared, shutdown).
     void wake_waiters(Fid file, std::uint64_t seq = -1);
 
-    void record(Fid file, Outcome outcome);
+    void record(Fid file, LastAttempt attempt);
 
     constexpr static unsigned max_requeues = 3;
 
@@ -434,7 +434,7 @@ private:
 
     Progress current;
 
-    llvm::DenseMap<Fid, Outcome> last_outcomes;
+    llvm::DenseMap<Fid, LastAttempt> attempts;
 
     std::size_t indexed_units = 0;
 

@@ -329,8 +329,8 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     result.completed = true;
     result.checked_tus = pass.checked;
     // A unit whose pass and reindex both failed fails once.
-    for(auto& [file, outcome]: background.outcomes()) {
-        if(outcome.failed) {
+    for(auto& [file, attempt]: background.last_attempts()) {
+        if(attempt.failed) {
             pass.failed.insert(file);
         }
     }

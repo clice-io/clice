@@ -30,7 +30,7 @@ void report_progress(BatchRun& run, const BatchOptions& options) {
     if(!options.on_progress || pass.total == 0) {
         return;
     }
-    auto failed = ranges::count_if(background.outcomes(),
+    auto failed = ranges::count_if(background.last_attempts(),
                                    [](const auto& entry) { return entry.second.failed; });
     options.on_progress({.completed = pass.completed,
                          .total = pass.total,
@@ -156,15 +156,15 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
 
     result.completed = true;
     result.indexed_tus = background.indexed();
-    for(auto& [unit, outcome]: background.outcomes()) {
+    for(auto& [unit, attempt]: background.last_attempts()) {
         auto shown = project.file_table.display(unit);
-        if(outcome.too_big) {
-            result.too_big.push_back({.unit = std::move(shown), .memory = *outcome.too_big});
-        } else if(outcome.failed) {
+        if(attempt.too_big) {
+            result.too_big.push_back({.unit = std::move(shown), .memory = *attempt.too_big});
+        } else if(attempt.failed) {
             result.failed.push_back(std::move(shown));
         } else {
             auto& compiled = result.compiled_with_errors.emplace_back(
-                BatchResult::UnitErrors{.unit = std::move(shown), .errors = outcome.errors});
+                BatchResult::UnitErrors{.unit = std::move(shown), .errors = attempt.errors});
             for(auto& error: compiled.errors) {
                 show_path(project.file_table, error.file);
             }
