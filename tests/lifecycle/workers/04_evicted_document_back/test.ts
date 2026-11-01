@@ -27,11 +27,20 @@ test("its answers come back", async (t) => {
             s.documentLinks("a.cpp"),
             s.inlayHints(first),
         ]);
+    // The actions ask the whole document's tokens; an editor asks a range
+    // of them too, which the same kept tokens answer.
+    const ranged = () =>
+        s.client.sendRequest("textDocument/semanticTokens/range", {
+            textDocument: { uri: s.uri("a.cpp") },
+            range: { start: { line: 2, character: 0 }, end: { line: 3, character: 0 } },
+        });
     await s.diagnostics("a.cpp");
     const compiled = await asked();
+    const compiledRange = await ranged();
     await s.diagnostics("b.cpp");
     const refreshes = await s.serverRequests(REFRESH);
     expect(await asked()).toEqual(compiled);
+    expect(await ranged()).toEqual(compiledRange);
     await t.show("evicted", {
         tokens: s.semanticTokens("a.cpp"),
         outline: s.documentSymbols("a.cpp"),
