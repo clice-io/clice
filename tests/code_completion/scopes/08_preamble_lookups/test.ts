@@ -3,9 +3,10 @@ import { answers, test, type AnswersContext } from "@clice/tools/testing";
 // The names of lib.h come to the server's compile from the preamble's
 // index, which loads just them where the parse stands at the point: through
 // using-declarations and using-directives, a namespace's own names, an inline
-// namespace's, an alias's and a macro's, in a function body, right inside a
-// namespace and after a requirement's braces; of internal linkage too. An
-// arrow after a call accesses a member.
+// namespace's, an alias's and a macro's, a macro spelling the `::` too, in a
+// function body, right inside a namespace and after a requirement's braces;
+// of internal linkage too, and a scoped enumeration's a `using enum` brings
+// in. An arrow after a call accesses a member.
 async function items(a: AnswersContext): Promise<void> {
     for (const m of a.markers()) {
         await a.show(m.name, a.completion(m), { parts: ["insert"] });

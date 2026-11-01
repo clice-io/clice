@@ -1,3 +1,33 @@
+[default.macro_separator.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
+
 [default.using_declaration.completion]
 items = [
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
@@ -34,7 +64,7 @@ items = [
     { label = "lib::helper_type", kind = "Class", insert = "lib::helper_type" },
     { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
 ]
-more = 5
+more = 6
 
 [default.first_in_namespace.completion]
 items = [
@@ -45,6 +75,7 @@ items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
     { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
     { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
+    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
@@ -84,7 +115,7 @@ items = [
         insert = "lib::detail::helper_detail()",
     },
 ]
-more = 5
+more = 6
 
 [default.namespace_member.completion]
 items = [
@@ -142,12 +173,12 @@ items = [
     },
     { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
     { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "Tone", kind = "Enum", insert = "Tone" },
     { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "detail", kind = "Module", insert = "detail" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
-more = 1
+more = 4
 
 [default.two_qualifiers.completion]
 items = [
@@ -292,7 +323,7 @@ items = [
     { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
     { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
 ]
-more = 4
+more = 5
 
 [default.local_using_directive.completion]
 items = [
@@ -325,7 +356,7 @@ items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
-more = 5
+more = 6
 
 [default.local_alias.completion]
 items = [
@@ -443,6 +474,18 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
+[default.using_enum.completion]
+items = [
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
+]
+
+[default.qualified_using_enum.completion]
+items = [
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
+]
+
 [default.arrow_after_call.completion]
 items = [
     { label = "helper_field", kind = "Field", detail = "int", insert = "helper_field" },
@@ -484,7 +527,37 @@ items = [
     { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
     { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
 ]
-more = 4
+more = 5
+
+[configured.macro_separator.completion]
+items = [
+    {
+        label = "helper_hidden(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_hidden(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    {
+        label = "helper_static(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_static(${1:int x})",
+        snippet = true,
+    },
+    {
+        label = "helper_value(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "helper_value(${1:int x})",
+        snippet = true,
+    },
+    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
+    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
+    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
+    { label = "helper_type", kind = "Class", insert = "helper_type" },
+]
 
 [configured.using_declaration.completion]
 items = [
@@ -500,6 +573,7 @@ items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
     { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
     { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
+    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
@@ -511,6 +585,7 @@ items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
     { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
     { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
+    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
@@ -545,7 +620,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
     { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
 ]
-more = 4
+more = 5
 
 [configured.namespace_member.completion]
 items = [
@@ -603,12 +678,12 @@ items = [
     },
     { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
     { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "Tone", kind = "Enum", insert = "Tone" },
     { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "detail", kind = "Module", insert = "detail" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
-more = 1
+more = 4
 
 [configured.two_qualifiers.completion]
 items = [
@@ -725,6 +800,7 @@ items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
     { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
     { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
+    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
@@ -759,7 +835,7 @@ items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
-more = 5
+more = 6
 
 [configured.local_alias.completion]
 items = [
@@ -877,6 +953,18 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
+[configured.using_enum.completion]
+items = [
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
+]
+
+[configured.qualified_using_enum.completion]
+items = [
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
+]
+
 [configured.arrow_after_call.completion]
 items = [
     { label = "helper_field", kind = "Field", detail = "int", insert = "helper_field" },
@@ -890,6 +978,7 @@ items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
     { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
     { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
+    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
@@ -933,12 +1022,12 @@ items = [
     { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
     { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
     { label = "Mode", kind = "Enum", insert = "Mode" },
+    { label = "Tone", kind = "Enum", insert = "Tone" },
     { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "detail", kind = "Module", insert = "detail" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
+    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
-more = 1
+more = 4
 
 ["a header edited before the compile".names.completion]
 items = [

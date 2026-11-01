@@ -797,13 +797,14 @@ public:
             WholeBuffer* whole_buffer,
             bool& includes_pending,
             bool& member_access,
-            bool& brought_in) :
+            bool& brought_in,
+            bool& read_whole) :
         clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
         focus(unit.focus_file()), text(focus.content()), offset(offset), encoding(encoding),
         output(output), documented(documented), options(options), argument_style(options.arguments),
         client(client), names(names), names_pending(from_index), whole_buffer(whole_buffer),
         includes_pending(includes_pending), member_access(member_access), brought_in(brought_in),
-        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        read_whole(read_whole), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         // Sema asks first thing in a completion, in the scope of the point.
@@ -813,8 +814,9 @@ public:
         if(names_pending) {
             names_pending = false;
             auto& sema = unit.sema();
-            auto* space = load_names(sema, names.scope, names.candidates);
-            brought_in = space && names.more_elsewhere && brings_in(sema.getASTContext(), space);
+            loaded = load_names(sema, names.scope, names.candidates);
+            brought_in =
+                *loaded && names.more_elsewhere && brings_in(sema.getASTContext(), *loaded);
         }
         return info.getAllocator();
     }
@@ -949,6 +951,7 @@ public:
         bool includes = false;
         bool member_access = false;
         bool brought_in = false;
+        bool read_whole = false;
         Builder nested(found->unit,
                        offset,
                        encoding,
@@ -961,7 +964,8 @@ public:
                        nullptr,
                        includes,
                        member_access,
-                       brought_in);
+                       brought_in,
+                       read_whole);
         nested.text = text;
         auto& completion = other.CodeCompletion();
         auto* consumer = completion.CodeCompleter;
@@ -1002,6 +1006,36 @@ public:
         }
         completion.CodeCompleter = consumer;
         return answered;
+    }
+
+    /// With the namespaces' names the index offers alone (from_index), the
+    /// namespace Sema completes in after a qualifier may be another than the
+    /// one the server read the text as, where a macro spells the qualifier or
+    /// its `::`: that namespace's names are read whole, and the completion
+    /// runs again. Whether the nested run produced the reply.
+    bool complete_unread(clang::Sema& sema, clang::CodeCompletionContext& context) {
+        auto spec = context.getCXXScopeSpecifier();
+        if(!loaded || !spec || !(*spec)->isValid()) {
+            return false;
+        }
+        clang::CXXScopeSpec qualifier = **spec;
+        auto* space = sema.computeDeclContext(qualifier);
+        if(!space || !space->isFileContext() ||
+           (*loaded && space->getPrimaryContext() == (*loaded)->getPrimaryContext())) {
+            return false;
+        }
+        read_names(space);
+        read_whole = true;
+        return replace([&] {
+            sema.CodeCompletion().CodeCompleteQualifiedId(sema.getCurScope(),
+                                                          qualifier,
+                                                          /*EnteringContext=*/false,
+                                                          context.isUsingDeclaration(),
+                                                          /*IsAddressOfOperand=*/false,
+                                                          /*IsInDeclarationContext=*/false,
+                                                          /*BaseType=*/{},
+                                                          context.getPreferredType());
+        });
     }
 
     /// Sema resolves a dependent member base or scope with its own
@@ -1131,7 +1165,7 @@ public:
                 context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
                 context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
             display_options.specialization = nullptr;
-            if(complete_resolved(sema, context)) {
+            if(complete_unread(sema, context) || complete_resolved(sema, context)) {
                 return;
             }
         }
@@ -2159,6 +2193,9 @@ private:
     /// The compile of the whole buffer, which tells what the code after the
     /// point does; none for a nested run in it.
     WholeBuffer* whole_buffer;
+    /// Once the candidates' names are loaded, the namespace a qualifier
+    /// named for them; null without one.
+    std::optional<clang::DeclContext*> loaded;
 
     /// Set once an item needs the header of its symbol included (Completion).
     bool& includes_pending;
@@ -2170,6 +2207,10 @@ private:
     /// Whether the qualifier's namespace brings in names of others
     /// (load_names).
     bool& brought_in;
+
+    /// Whether the names of the namespace Sema completes in were read
+    /// whole (complete_unread).
+    bool& read_whole;
 
     clang::CodeCompletionTUInfo info;
 
@@ -2201,6 +2242,7 @@ auto code_complete(CompilationParams params,
     bool includes = false;
     bool member_access = false;
     bool brought_in = false;
+    bool read_whole = false;
     // The index holds no module's names a module file brings in, nor those
     // of the header modules a parse builds itself (-fmodules).
     bool from_index = names.from_index && params.input.pcms.empty();
@@ -2219,7 +2261,8 @@ auto code_complete(CompilationParams params,
                                          &whole_buffer,
                                          includes,
                                          member_access,
-                                         brought_in);
+                                         brought_in,
+                                         read_whole);
     };
     auto unit = compile(std::move(params));
 
@@ -2249,7 +2292,8 @@ auto code_complete(CompilationParams params,
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     completion.list.is_incomplete =
         completion.list.is_incomplete ||
-        ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access);
+        ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access &&
+         !read_whole);
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
