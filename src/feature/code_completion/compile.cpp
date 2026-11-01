@@ -1218,7 +1218,7 @@ public:
            (*loaded && space->getPrimaryContext() == (*loaded)->getPrimaryContext())) {
             return false;
         }
-        space->getPrimaryContext()->lookups();
+        read_names(space);
         read_whole = true;
         return replace([&] {
             sema.CodeCompletion().CodeCompleteQualifiedId(sema.getCurScope(),

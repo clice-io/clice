@@ -29,4 +29,9 @@ clang::DeclContext* load_names(clang::Sema& sema,
 /// inside. Read from the kinds of its declarations, which loads no others.
 bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space);
 
+/// Reads whole the names qualified lookup finds in `space`: its own, and
+/// those of the namespaces its using-directives name, anonymous ones among
+/// them.
+void read_names(clang::DeclContext* space);
+
 }  // namespace clice::feature

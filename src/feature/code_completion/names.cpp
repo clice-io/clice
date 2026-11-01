@@ -115,7 +115,7 @@ clang::DeclContext* load_names(clang::Sema& sema,
                           {},
                           {},
                           [](const std::string& name) { return llvm::StringRef(name); })) {
-            space->lookups();
+            read_names(space);
         }
     }
     for(const auto& candidate: candidates) {
@@ -188,6 +188,21 @@ bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {
         }
     }
     return false;
+}
+
+void read_names(clang::DeclContext* space) {
+    llvm::SmallPtrSet<clang::DeclContext*, 8> read;
+    llvm::SmallVector<clang::DeclContext*, 8> pending = {space->getPrimaryContext()};
+    while(!pending.empty()) {
+        auto* context = pending.pop_back_val();
+        if(!read.insert(context).second) {
+            continue;
+        }
+        context->lookups();
+        for(auto* directive: context->using_directives()) {
+            pending.push_back(directive->getNominatedNamespace()->getPrimaryContext());
+        }
+    }
 }
 
 }  // namespace clice::feature
