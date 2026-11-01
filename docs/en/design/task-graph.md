@@ -72,7 +72,7 @@ Each build of a node is an attempt. Concurrent requests for the same node join t
 - **Failed**: compilation error (dependency failure, cycle detection, etc.), dirty flag retained
 - **Stale**: no result — the attempt was overtaken (an input changed during compilation, or interest dropped), or the graph is shutting down
 
-A request says whether to wait out a stale attempt with a fresh one: a document's compile keeps going while its buffer is the one it asked about; a PCH acquisition takes one attempt and leaves the retry to its caller. Failure is not sticky — retaining the dirty flag means that after the user fixes an error, the next request naturally triggers a retry without requiring a server restart.
+A request says whether to wait out a stale attempt with a fresh one: a document's compile keeps going while its buffer is the one it asked about; a request that parses on its own (completion, signature help) waits out every overtaken build of its PCH and modules. Failure is not sticky — retaining the dirty flag means that after the user fixes an error, the next request naturally triggers a retry without requiring a server restart.
 
 ### Checking a Clean Node
 
