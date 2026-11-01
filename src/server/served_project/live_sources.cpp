@@ -189,7 +189,7 @@ std::shared_ptr<index::TUIndex> ServedProject::preamble_index(Fid file) const {
     return state;
 }
 
-std::string ServedProject::preamble_pch(Fid file) const {
+std::string ServedProject::preamble_pch_file(Fid file) const {
     if(!preamble_index(file)) {
         return {};
     }

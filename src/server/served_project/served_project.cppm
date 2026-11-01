@@ -705,7 +705,7 @@ public:
 
     /// The file of the PCH whose index preamble_index serves; empty when it
     /// serves none.
-    std::string preamble_pch(Fid file) const;
+    std::string preamble_pch_file(Fid file) const;
 
     /// The project's shard of the file while the document's buffer holds
     /// the very bytes it indexed.
