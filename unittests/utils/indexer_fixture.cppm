@@ -54,6 +54,8 @@ struct RecordingServing final : ServingSide {
     void index_changed(llvm::ArrayRef<Fid> files) override {
         changed.append(files.begin(), files.end());
     }
+
+    void schedule_metadata_flush() override {}
 };
 
 /// Test fixture with friend access to the reindex queue's internals. The

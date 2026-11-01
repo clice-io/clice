@@ -89,12 +89,12 @@ struct ServedProjectFixture {
         Resolution resolution;
         resolution.ref = {
             .command = project.fallback_command(project.file_table.resolve(session->path_id))};
+        resolution.directory = directory;
+        resolution.arguments = arguments;
         auto key = co_await served->ensure_pch(Ticket{session, generation},
                                                epoch,
                                                session->text(),
                                                std::nullopt,
-                                               directory,
-                                               arguments,
                                                resolution,
                                                {});
         co_return key.has_value();
