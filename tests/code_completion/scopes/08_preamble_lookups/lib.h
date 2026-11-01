@@ -9,7 +9,9 @@ static int helper_static(int x) {
     return x;
 }
 constexpr int helper_limit = 8;
-struct helper_type {};
+struct helper_type {
+    int helper_field;
+};
 enum Mode { helper_mode };
 
 namespace {
