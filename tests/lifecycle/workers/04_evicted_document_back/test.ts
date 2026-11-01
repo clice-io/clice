@@ -108,6 +108,21 @@ test("its recompile publishes nothing new", async (t) => {
     expect(await s.serverRequests(REFRESH)).toBe(refreshes);
 });
 
+test("a crashed query keeps nothing", async (t) => {
+    // The crash answers empty, and the worker that died held the AST: after
+    // the save that lets the hints retry, a worker is asked again.
+    const s = await t.start({
+        config: KEEP_ONE,
+        crash: { request: "inlayHint", file: "a.cpp" },
+    });
+    const first = t.at("a.cpp", "int NAME = add(1, 2);");
+    await s.diagnostics("a.cpp");
+    await s.inlayHints(first);
+    s.save("a.cpp");
+    await s.inlayHints(first);
+    expect(await s.crashes()).toBe(2);
+});
+
 test("a pull's compile stays through another document's", async (t) => {
     const s = await t.start({ config: KEEP_ONE });
     const park = await s.park("compile", "a.cpp", { at: "worker" });

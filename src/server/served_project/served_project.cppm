@@ -125,17 +125,24 @@ std::optional<typename protocol::RequestTraits<Params>::Result> kept_answer(cons
     }
 }
 
-/// Keep `answer`, the AST's to `params`, if its kind is kept.
+/// Keep `answer`, the AST's to `params`, if its kind is kept; an empty
+/// optional says the worker had no AST, and answers nothing.
 template <typename Params>
 void keep_answer(KeptAnswers& kept,
                  const Params& params,
                  const typename protocol::RequestTraits<Params>::Result& answer) {
     if constexpr(std::same_as<Params, worker::SemanticTokensParams>) {
-        kept.semantic_tokens = answer;
+        if(answer) {
+            kept.semantic_tokens = answer;
+        }
     } else if constexpr(std::same_as<Params, worker::FoldingRangeParams>) {
-        kept.folding_ranges = answer;
+        if(answer) {
+            kept.folding_ranges = answer;
+        }
     } else if constexpr(std::same_as<Params, worker::DocumentSymbolParams>) {
-        kept.document_symbols = answer;
+        if(answer) {
+            kept.document_symbols = answer;
+        }
     } else if constexpr(std::same_as<Params, worker::DocumentLinkParams>) {
         kept.document_links = answer;
     } else if constexpr(std::same_as<Params, worker::InlayHintParams>) {
@@ -636,7 +643,8 @@ public:
 
     /// Await the document's compile; a GateStop when it failed or the
     /// request is outdated.
-    async::task<std::optional<GateStop>> await_compile(const Ticket& ticket);
+    async::task<std::optional<GateStop>> await_compile(const Ticket& ticket,
+                                                       EnsureOptions options = {});
 
     /// The symbol under a position of the file's serving source, if any.
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
@@ -1223,9 +1231,13 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         }
         co_return Result{};
     }
+    // The worker's own answer: finish turns a worker that could not answer
+    // into an empty one, which is no answer to keep.
+    if(result.has_value() && ticket.fresh()) {
+        keep_answer(*compile->kept, params, *result);
+    }
     result = finish(ticket, kind, label, std::move(result));
     if(result.has_value()) {
-        keep_answer(*compile->kept, params, *result);
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
                  label,
@@ -1285,6 +1297,10 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     params.file = path;
     params.text = session.text().str();
     params.offset = offset;
+    // Taken before the command resolves: after an invalidation meanwhile
+    // the command may be stale, and adopt_pch refuses the PCH built under
+    // it.
+    auto generation = project.graph.generation(ast_node(path_id));
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
@@ -1298,7 +1314,6 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // needs it. An import that did not build is the parse's to report; none
     // only when the graph shut down.
     ScopedTimer timer;
-    auto generation = project.graph.generation(ast_node(path_id));
     auto imports = co_await project.build_imports(path_id, params.text, resolution, {});
     auto built = imports ? co_await project.build_pch(path_id,
                                                       params.text,
