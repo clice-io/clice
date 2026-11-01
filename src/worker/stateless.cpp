@@ -32,6 +32,21 @@ namespace clice {
 using ipc::RequestResult;
 using RequestContext = ipc::BincodePeer::RequestContext;
 
+/// Hold the PCH mapping a request loads past it, with the last eight: a
+/// request holds nothing past itself, while completions on one document
+/// load the same PCH one after another. Requests run one at a time.
+static void hold_recent(std::shared_ptr<const llvm::MemoryBuffer> mapping) {
+    static std::vector<std::shared_ptr<const llvm::MemoryBuffer>> recent;
+    if(!mapping) {
+        return;
+    }
+    std::erase(recent, mapping);
+    recent.insert(recent.begin(), std::move(mapping));
+    if(recent.size() > 8) {
+        recent.pop_back();
+    }
+}
+
 /// Serialize the preamble's index blob (full index + document links
 /// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
 /// is still in memory — the only moment the preamble's index is
@@ -171,7 +186,7 @@ static worker::PrecompiledBuildResult
         cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
     }
     cp.input.add_synthesized(params.synthesized);
-    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
+    hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -253,7 +268,7 @@ static worker::PrecompiledBuildResult
         .output_file = *output,
         .stop = stop,
     };
-    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
+    hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -422,7 +437,7 @@ static worker::CompileUnitResult
         .tidy = params.tidy,
         .stop = stop,
     };
-    use_precompiled(cp.input, {params.pch, 0}, params.pcms);
+    hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -515,7 +530,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
         .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
-    use_precompiled(cp.input, params.pch, params.pcms);
+    hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
 
@@ -544,7 +559,7 @@ static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& 
         .skip_bodies = params.settings.project.skip_header_bodies,
         .stop = stop,
     };
-    use_precompiled(cp.input, params.pch, params.pcms);
+    hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
 
@@ -649,10 +664,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     LOG_INFO("Starting stateless worker");
     install_crash_report();
-    // Its requests hold nothing between them, while completions on one
-    // document load the same PCH one after another.
-    vfs::keep_recent_mappings(8);
-
     async::event_loop loop;
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);

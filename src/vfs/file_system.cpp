@@ -193,8 +193,8 @@ TextCache& texts() {
 }
 
 /// The mappings keep_mapped() made: one per file while anything holds it —
-/// a compile's buffer, an open document, the process's most recent ones. A
-/// mapping serves while the file stats as it did when mapped.
+/// a compile's buffer, an open document, a stateless worker's last
+/// requests. A mapping serves while the file stats as it did when mapped.
 class Mappings {
 public:
     std::shared_ptr<const llvm::MemoryBuffer> keep(llvm::StringRef path) {
@@ -230,13 +230,6 @@ public:
             }
             entries[key] = {.status = *status, .buffer = mapping};
         }
-        if(capacity > 0) {
-            std::erase(recent, mapping);
-            recent.insert(recent.begin(), mapping);
-            if(recent.size() > capacity) {
-                recent.pop_back();
-            }
-        }
         return mapping;
     }
 
@@ -246,14 +239,6 @@ public:
         auto key = spelling(path);
         std::lock_guard lock(mutex);
         return held(key, status);
-    }
-
-    void keep_recent(std::size_t count) {
-        std::lock_guard lock(mutex);
-        capacity = count;
-        if(recent.size() > count) {
-            recent.resize(count);
-        }
     }
 
 private:
@@ -283,12 +268,6 @@ private:
     std::mutex mutex;
 
     llvm::StringMap<Entry> entries;
-
-    /// The mappings kept last, most recent first, held past their other
-    /// holders (keep_recent_mappings).
-    std::vector<std::shared_ptr<const llvm::MemoryBuffer>> recent;
-
-    std::size_t capacity = 0;
 };
 
 Mappings& mapped() {
@@ -588,10 +567,6 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
 
 std::shared_ptr<const llvm::MemoryBuffer> keep_mapped(llvm::StringRef path) {
     return mapped().keep(path);
-}
-
-void keep_recent_mappings(std::size_t count) {
-    mapped().keep_recent(count);
 }
 
 bool stable_mtime(std::int64_t mtime_ns) {

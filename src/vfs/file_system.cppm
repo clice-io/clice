@@ -135,11 +135,6 @@ void warn_unreadable(const fs::Walk::Error& error);
 /// anyone from replacing the file. Null when the file does not map.
 std::shared_ptr<const llvm::MemoryBuffer> keep_mapped(llvm::StringRef path);
 
-/// Hold the `count` mappings keep_mapped() made last past their other
-/// holders, for a process whose requests hold nothing between them: the
-/// next requests load the same PCHs.
-void keep_recent_mappings(std::size_t count);
-
 /// The files on disk that the compiles of one command do not see, by the
 /// search directory holding them.
 struct HiddenFiles {

@@ -147,15 +147,11 @@ ZEST_CASE(KeptMappingsWhileHeld) {
     }
 }
 
-ZEST_CASE(RecentMappingsKept) {
-    // A process keeping its recent mappings reuses one after every other
-    // holder let it go.
+ZEST_CASE(UnheldMappingReleased) {
+    // A mapping its holders let go is gone: how long one stays is theirs.
     TempDir tmp;
     tmp.touch("a.pch", std::string(64 * 1024, 'x'));
-    vfs::keep_recent_mappings(1);
     std::weak_ptr<const llvm::MemoryBuffer> mapping = vfs::keep_mapped(tmp.path("a.pch"));
-    ZEXPECT(!mapping.expired());
-    vfs::keep_recent_mappings(0);
     ZEXPECT(mapping.expired());
 }
 
