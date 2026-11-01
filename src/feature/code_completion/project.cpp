@@ -15,6 +15,7 @@ import :support.fuzzy_matcher;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
+import :syntax.lexer;
 import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_table;
@@ -25,17 +26,52 @@ namespace clice::feature {
 // What the server completes without a compile, and how it finishes the
 // list a compile returns.
 
-auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
-    -> std::optional<llvm::StringRef> {
+auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
+    -> std::optional<TypedName> {
     auto prefix = Prefix::from(text, offset);
-    if(prefix.spelling.empty() || clang::isDigit(prefix.spelling.front())) {
+    if(!prefix.spelling.empty() && clang::isDigit(prefix.spelling.front())) {
         return std::nullopt;
     }
+    TypedName typed{.prefix = prefix.spelling};
+    // An arrow after a name or a subscript accesses a member; after `)` or
+    // `}` it may begin a trailing return type or a return type requirement.
+    auto accesses_member = [&](llvm::StringRef before) {
+        if(before.ends_with(".")) {
+            return true;
+        }
+        if(!before.consume_back("->")) {
+            return false;
+        }
+        before = before.rtrim();
+        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
+        return before.ends_with("]") ||
+               (!name.empty() && (name == "this" ||
+                                  keyword_kind(name, keywords(dialect)) == clang::tok::identifier));
+    };
     auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(before.ends_with("::") || before.ends_with(".") || before.ends_with("->")) {
-        return std::nullopt;
+    if(accesses_member(before)) {
+        typed.member = true;
+        return typed;
     }
-    return prefix.spelling;
+    while(before.consume_back("::")) {
+        before = before.rtrim();
+        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
+        if(name.empty() || keyword_kind(name, keywords(dialect)) != clang::tok::identifier) {
+            if(before.ends_with(">") || before.ends_with(")")) {
+                return std::nullopt;
+            }
+            typed.scope.absolute = true;
+            break;
+        }
+        if(clang::isDigit(name.front())) {
+            return std::nullopt;
+        }
+        typed.scope.qualifier.insert(typed.scope.qualifier.begin(), name.str());
+        before = before.drop_back(name.size()).rtrim();
+    }
+    // A member named through its class (`x.Base::`).
+    typed.member = accesses_member(before);
+    return typed;
 }
 
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
@@ -52,11 +88,14 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
     return list;
 }
 
-bool scope_candidates(const index::IndexQuery& query,
-                      const DependencyGraph& graph,
-                      llvm::StringRef prefix,
-                      Fid file,
-                      std::vector<ScopeCandidate>& candidates) {
+void offer_names(const index::IndexQuery& query,
+                 const DependencyGraph& graph,
+                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> pchs,
+                 CompileCompletion& compile) {
+    if(!compile.prefix) {
+        return;
+    }
+    compile.from_index = !pchs.empty();
     auto kind_of = [](SymbolKind kind) {
         using Kind = protocol::CompletionItemKind;
         switch(kind) {
@@ -73,8 +112,9 @@ bool scope_candidates(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
-    auto found = index::completables(query, prefix, file, scope_candidate_limit);
-    for(auto& [symbol, declared]: found.names) {
+    auto found =
+        index::completables(query, *compile.prefix, compile.scope, pchs, scope_candidate_limit);
+    for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
             .name = symbol.name,
@@ -90,7 +130,6 @@ bool scope_candidates(const index::IndexQuery& query,
         // An enumerator keeps its enumeration in the qualifier: the index
         // does not tell a scoped one, which needs it, and an unscoped one
         // takes it as well.
-        auto chain = query.container_chain(symbol.hash, declared);
         auto namespaces = llvm::ArrayRef(chain);
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();
@@ -106,9 +145,10 @@ bool scope_candidates(const index::IndexQuery& query,
         if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
             candidate.module = graph.module_of(declared).str();
         }
-        candidates.push_back(std::move(candidate));
+        compile.candidates.push_back(std::move(candidate));
     }
-    return found.exhausted;
+    compile.more_candidates = !found.exhausted;
+    compile.more_elsewhere = !found.others_exhausted;
 }
 
 /// The header, quotes or brackets included, an `#include` for `candidate`
@@ -461,10 +501,14 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     }
 
     CompileCompletion compile;
-    if(auto prefix = offset ? unqualified_prefix(text, *offset) : std::nullopt;
-       prefix && inputs.options.all_scopes && completing.directive.empty()) {
-        compile.more_candidates =
-            !scope_candidates(inputs.query, inputs.graph, *prefix, inputs.file, compile.candidates);
+    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
+       typed && completing.directive.empty()) {
+        if(typed->member) {
+            compile.from_index = true;
+        } else {
+            compile.prefix = typed->prefix.str();
+        }
+        compile.scope = std::move(typed->scope);
     }
     return compile;
 }

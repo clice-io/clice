@@ -12,3 +12,17 @@ test("an unsaved import", async (t) => {
     s.edit("main.cpp", { replace: "add(1, 2)", with: "ad" });
     await t.show("completion", s.completion(t.at("main.cpp", "= ad|;")));
 });
+
+// A module imported below an include: its names, which no index holds, are
+// read from the module file, beside the preamble's the index offers.
+test("an import below an include", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    expect(await s.errors("math.cppm")).toEqual([]);
+    s.open("main.cpp");
+    s.edit("main.cpp", {
+        text: '#include "counter.h"\nimport math;\nint total = add(1, 2) + count();\n',
+    });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    s.edit("main.cpp", { replace: "add(1, 2)", with: "ad" });
+    await t.show("completion", s.completion(t.at("main.cpp", "= ad| +")));
+});

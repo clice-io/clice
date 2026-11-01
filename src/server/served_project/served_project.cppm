@@ -355,6 +355,7 @@ public:
     /// stated trade.
     struct StatelessInputs {
         std::pair<std::string, std::uint32_t> pch;
+        std::string pch_key;
         std::unordered_map<std::string, std::string> pcms;
     };
 
@@ -657,15 +658,19 @@ public:
     /// buffer and its compile inputs go to a stateless worker, which
     /// compiles a buffer state the shared AST attempt may not have seen yet,
     /// at `offset` of it. `params` arrives with the fields particular to its
-    /// request filled in.
+    /// request filled in; `prepared` adds those that follow from the PCH the
+    /// build loads, under its key (empty for none), and whether a host's text
+    /// precedes the file's own.
     template <typename Params>
-    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-        stateless_request(const Ticket& ticket,
-                          feature::RequestKind kind,
-                          llvm::StringRef label,
-                          std::uint32_t offset,
-                          Params params,
-                          async::cancellation_token token);
+    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error> stateless_request(
+        const Ticket& ticket,
+        feature::RequestKind kind,
+        llvm::StringRef label,
+        std::uint32_t offset,
+        Params params,
+        async::cancellation_token token,
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef, bool)>> prepared =
+            {});
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
     async::task<std::optional<worker::FormatResult>, ipc::Error>
@@ -700,8 +705,6 @@ public:
         for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
     void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-    void for_each_pch_index(Fid file,
-                            llvm::function_ref<void(const index::TUIndex&)> visit) const override;
 
     /// The project's shard of the file while the document's buffer holds
     /// the very bytes it indexed.
@@ -1268,12 +1271,14 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
 
 template <typename Params>
 async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    ServedProject::stateless_request(const Ticket& ticket,
-                                     feature::RequestKind kind,
-                                     llvm::StringRef label,
-                                     std::uint32_t offset,
-                                     Params params,
-                                     async::cancellation_token token) {
+    ServedProject::stateless_request(
+        const Ticket& ticket,
+        feature::RequestKind kind,
+        llvm::StringRef label,
+        std::uint32_t offset,
+        Params params,
+        async::cancellation_token token,
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef, bool)>> prepared) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -1323,6 +1328,9 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         params.synthesized = resolution.synthesized->files;
     }
     params.hidden = std::move(resolution.hidden);
+    if(prepared) {
+        prepared(params, inputs.pch_key, resolution.synthesized != nullptr);
+    }
 
     // A preamble crash inside the preparation, or a crash of a request like
     // this one while it was prepared or waited for a worker, stops the

@@ -1,0 +1,3 @@
+# A macro of the command line comes to the compile with the PCH, as the
+# compiler's own do.
+flags = ["-DHELPER_FROM_CLI=1"]

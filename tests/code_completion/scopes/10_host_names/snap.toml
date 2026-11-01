@@ -1,0 +1,12 @@
+["names of the host".type.completion]
+items = [
+    { label = "Meters", kind = "Class", insert = "Meters" },
+    { label = "meters_seen", kind = "Variable", detail = "int", insert = "meters_seen" },
+    { label = "METERS_SCALE", kind = "Constant", insert = "METERS_SCALE" },
+]
+
+["names of the host".macro.completion]
+items = [
+    { label = "meters_seen", kind = "Variable", detail = "int", insert = "meters_seen" },
+    { label = "METERS_SCALE", kind = "Constant", insert = "METERS_SCALE" },
+]
