@@ -368,7 +368,9 @@ async::task<> BackgroundIndex::run_pass() {
                                                   : index::SearchRebuild::Behind);
     // The pass's merge buffers are freed by now; glibc would keep their
     // pages, and the master its pass's peak, for the rest of the session.
-    co_await async::queue([] { release_free_memory(); });
+    // On this thread, which merged them: mimalloc collects the heap of the
+    // thread that calls it.
+    release_free_memory();
 
     // The pass owns the "active" gate through its save: releasing it
     // before the write await would let a next pass's save overlap this
