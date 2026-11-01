@@ -89,6 +89,12 @@ export function sizeOf(answer: unknown): number {
     return 1;
 }
 
+/// The lines an editor shows of a file, whose inlay hints it asks.
+export const VISIBLE: proto.Range = {
+    start: { line: 0, character: 0 },
+    end: { line: 100, character: 0 },
+};
+
 export class Session {
     readonly result: RunResult;
     readonly context: PerfContext;
@@ -235,8 +241,9 @@ export class Session {
     /// Appends a line at the end of the file: every edit invalidates the
     /// opened file but not its preamble, the interactive path. Sent as a
     /// ranged insertion like a real editor, followed by the semantic tokens
-    /// an editor asks after every change (they pull clice's rebuild too):
-    /// the times to the new diagnostics and to the tokens.
+    /// and the visible inlay hints an editor asks after every change (they
+    /// pull clice's rebuild too): the times to the new diagnostics and to
+    /// the tokens.
     async edit(uri: string): Promise<{ diagnostics: number; tokens: number }> {
         const client = this.client;
         const version = (this.versions.get(uri) ?? 0) + 1;
@@ -251,6 +258,7 @@ export class Session {
             bounded(client.semanticTokensFull(uri), `semantic tokens of ${uri}`).then(
                 () => nowMs() - edited,
             ),
+            bounded(client.inlayHints(uri, VISIBLE), `inlay hints of ${uri}`),
         ]);
         this.ends.set(uri, { line: end.line + 1, character: comment.length });
         return { diagnostics, tokens };
