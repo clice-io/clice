@@ -162,14 +162,16 @@ void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported
         backs.erase(pos);
     }
 
-    if(result == Result::Success) {
-        node.dirty = false;
-        // Every attempt waiting on this one reads its product: marked now,
-        // with the publication, so an invalidation before they resume
-        // overtakes them.
+    // Every attempt waiting on this one reads what it published, the
+    // product or the failure: marked now, with the publication, so an
+    // invalidation before they resume overtakes them.
+    if(result != Result::Stale) {
         for(auto waiter: node.waiting_dependents) {
             mark_received(waiter, id);
         }
+    }
+    if(result == Result::Success) {
+        node.dirty = false;
         replace_edges(id, &Node::waited, attempt.waits);
     }
 
@@ -335,14 +337,11 @@ llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id) {
     llvm::SmallVector<std::pair<NodeId, std::optional<NodeId>>> queue;
     llvm::SmallVector<NodeId> dirtied;
     llvm::DenseSet<NodeId> visited;
+    llvm::DenseSet<NodeId> overtaken;
     queue.push_back({id, std::nullopt});
 
     while(!queue.empty()) {
         auto [current, from] = queue.pop_back_val();
-        if(!visited.insert(current).second) {
-            continue;
-        }
-
         auto it = nodes.find(current);
         if(it == nodes.end()) {
             continue;
@@ -351,13 +350,22 @@ llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id) {
 
         // The in-flight result is stale when the attempt read what changed:
         // fire its token. One still waiting for it has read nothing of the
-        // old product and gets the fresh one. Interest is untouched —
-        // waiters keep their references and drive a fresh attempt once the
-        // overtaken one finishes.
+        // old product and gets the fresh one; but what it read of a node no
+        // attempt ever built — an import nothing provides — is its absence,
+        // read when it declared the edge. Interest is untouched — waiters
+        // keep their references and drive a fresh attempt once the
+        // overtaken one finishes. Judged on every path that reaches the
+        // node: the first may come through a product it still waits for,
+        // a later one through a product it read.
         auto* attempt = node.compiling ? node.attempt.get() : nullptr;
-        if(!from || !attempt || ranges::contains(attempt->received, *from)) {
+        bool read = !from || !attempt || ranges::contains(attempt->received, *from) ||
+                    !nodes.find(*from)->second.attempt;
+        if(read && overtaken.insert(current).second) {
             cancel_attempt(node);
             node.generation += 1;
+        }
+        if(!visited.insert(current).second) {
+            continue;
         }
         node.dirty = true;
         dirtied.push_back(current);
