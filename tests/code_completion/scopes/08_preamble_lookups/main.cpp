@@ -1,6 +1,10 @@
 #include "filler.h"
 #include "lib.h"
 
+int macro_separator() {
+    return HELPER_SCOPE helper§(macro_separator);
+}
+
 namespace app {
 
 int run() {
@@ -87,16 +91,12 @@ int empty_macro_qualifier() {
     return HELPER_ROOT::helper§(empty_macro_qualifier);
 }
 
-int macro_separator() {
-    return HELPER_SCOPE helper§(macro_separator);
+void brought_in_enumerator() {
+    tone_§(using_enum);
 }
 
-lib::Tone brought_in_enumerator() {
-    return tone_§(using_enum);
-}
-
-lib::Tone qualified_enumerator() {
-    return lib::tone_§(qualified_using_enum);
+void qualified_enumerator() {
+    lib::tone_§(qualified_using_enum);
 }
 
 lib::helper_type* make_helper();
