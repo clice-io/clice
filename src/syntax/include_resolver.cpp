@@ -178,10 +178,22 @@ static bool internal_header(bool angled, llvm::StringRef name) {
            });
 }
 
-std::optional<std::string> include_argument(CanonicalRef header,
-                                            const SearchConfig& search,
-                                            const Spelling& file,
-                                            vfs::Scope& scope) {
+IncludeArguments::IncludeArguments(const SearchConfig& search,
+                                   const Spelling& file,
+                                   vfs::Scope& scope) :
+    search(search), scope(scope), directory(file.parent()),
+    resolved_directory(CanonicalPath(directory)) {
+    for(auto& dir: search.dirs) {
+        resolved_dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
+    }
+}
+
+std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
+    auto [known_entry, inserted] = known.try_emplace(llvm::StringRef(header));
+    auto& argument = known_entry->second;
+    if(!inserted) {
+        return argument;
+    }
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::is_within(header, root) || header.size() <= root.size()) {
             return std::nullopt;
@@ -195,15 +207,10 @@ std::optional<std::string> include_argument(CanonicalRef header,
     };
 
     std::vector<Candidate> candidates;
-    auto directory = file.parent();
-    if(auto relative = below(CanonicalPath(directory))) {
+    if(auto relative = below(resolved_directory)) {
         candidates.push_back({*relative, false});
     }
-    std::vector<CanonicalPath> dirs;
-    for(auto& dir: search.dirs) {
-        dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
-    }
-    for(auto [index, dir]: views::enumerate(dirs)) {
+    for(auto [index, dir]: views::enumerate(resolved_dirs)) {
         if(auto relative = below(dir)) {
             candidates.push_back(
                 {*relative, static_cast<std::size_t>(index) >= search.angled_start_idx});
@@ -216,14 +223,14 @@ std::optional<std::string> include_argument(CanonicalRef header,
         auto resolved =
             resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
-            if(internal_header(candidate.angled, candidate.name)) {
-                return std::nullopt;
+            if(!internal_header(candidate.angled, candidate.name)) {
+                argument = candidate.angled ? std::format("<{}>", candidate.name)
+                                            : std::format("\"{}\"", candidate.name);
             }
-            return candidate.angled ? std::format("<{}>", candidate.name)
-                                    : std::format("\"{}\"", candidate.name);
+            break;
         }
     }
-    return std::nullopt;
+    return argument;
 }
 
 }  // namespace clice

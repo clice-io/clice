@@ -152,7 +152,7 @@ void offer_names(const index::IndexQuery& query,
 }
 
 /// The header, quotes or brackets included, an `#include` for `candidate`
-/// names in `file`, as `search` finds it: a standard name's from the
+/// names in `file`, as `arguments` spells it: a standard name's from the
 /// standard library's own table (the C library's for a C file, `c`),
 /// another's the header the index says declares it. None when only a
 /// library's internal header is known.
@@ -160,8 +160,7 @@ static std::optional<std::string> include_for(const index::IndexQuery& query,
                                               const ScopeCandidate& candidate,
                                               bool c,
                                               Fid file,
-                                              const SearchConfig& search,
-                                              vfs::Scope& scope) {
+                                              IncludeArguments& arguments) {
     auto& files = query.file_table();
     namespace stdlib = clang::tooling::stdlib;
     std::string qualifier;
@@ -189,12 +188,11 @@ static std::optional<std::string> include_for(const index::IndexQuery& query,
             headers.push_back(site.file);
         }
     }
-    auto includer = files.spelling(file);
     for(auto header: headers) {
         if(header == file || is_context_header_path(files.resolve(header))) {
             continue;
         }
-        if(auto argument = include_argument(files.resolve(header), search, includer, scope)) {
+        if(auto argument = arguments.of(files.resolve(header))) {
             return argument;
         }
     }
@@ -210,6 +208,7 @@ auto finish_completion(protocol::CompletionList list,
                        vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
+    IncludeArguments arguments(search, query.file_table().spelling(file), scope);
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
         auto symbol = data_symbol(item.data);
         if(!symbol) {
@@ -220,7 +219,7 @@ auto finish_completion(protocol::CompletionList list,
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(query, *candidate, include.c, file, search, scope);
+        auto header = include_for(query, *candidate, include.c, file, arguments);
         if(!header) {
             return true;
         }

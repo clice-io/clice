@@ -346,6 +346,7 @@ void LSPClient::register_editing() {
                 host_session || !host.valid() ? host_path : files.spelling(host).str();
             std::optional<SourceText> host_disk;
             std::optional<SearchConfig> search;
+            std::optional<IncludeArguments> arguments;
             OpenDocuments open_documents(project);
             auto query = open_documents.query();
             vfs::Scope scope(files.dirs);
@@ -369,13 +370,11 @@ void LSPClient::register_editing() {
                     },
                     .include_argument =
                         [&](CanonicalRef header) {
-                            if(!search) {
+                            if(!arguments) {
                                 search = project.search_of(path_id);
+                                arguments.emplace(*search, files.spelling(path_id), scope);
                             }
-                            return include_argument(header,
-                                                    *search,
-                                                    files.spelling(path_id),
-                                                    scope);
+                            return arguments->of(header);
                         },
                 });
             result = feature::to_protocol(
