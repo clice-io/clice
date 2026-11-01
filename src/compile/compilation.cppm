@@ -213,8 +213,8 @@ struct CompilationParams {
 
     /// A compile looking only for how the focus file's templates are
     /// instantiated: it skips the focus file's function bodies as well, but
-    /// those of templates, the one holding `point`, and those naming one of
-    /// `names` or a template whose body does.
+    /// those of templates and of a class's members, the one holding `point`,
+    /// and those naming one of `names` or a template whose body does.
     struct Instantiating {
         std::uint32_t point = 0;
         llvm::StringSet<> names;
@@ -496,7 +496,6 @@ public:
 
     clang::ASTContext& context();
 
-    /// The parse's Sema, while it runs.
     clang::Sema& sema();
 
     llvm::DenseMap<clang::FileID, Directive>& directives();

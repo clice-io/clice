@@ -173,8 +173,9 @@ struct CompileCompletion {
     /// index is at hand: the compile reads them all then.
     bool from_index = false;
 
-    /// The name typed so far, whose candidates offer_names takes; none
-    /// after a member access and where no name is typed.
+    /// The name typed so far, empty before its first character, whose
+    /// candidates offer_names takes; none after a member access and where
+    /// no name is completed.
     std::optional<std::string> prefix;
 
     /// Where the name being typed is looked up, with from_index.

@@ -407,7 +407,9 @@ public:
             // that may instantiate them too.
             auto* function = decl->getAsFunction();
             if(!function || !function->isTemplated()) {
-                return !may;
+                // A class's member may call a template its class declares
+                // after it, whose body the parse has not reached yet.
+                return !may && !llvm::isa<clang::CXXRecordDecl>(decl->getLexicalDeclContext());
             }
             if(may) {
                 if(auto* name = function->getIdentifier()) {
@@ -535,8 +537,11 @@ private:
         });
     }
 
+private:
     CompilationUnit& unit;
+
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
+
     llvm::DenseSet<const clang::Decl*> instantiations;
 
     /// CompilationParams::Instantiating::names, and the templates whose

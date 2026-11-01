@@ -753,9 +753,46 @@ struct CollectedItem {
     const clang::NamedDecl* documented = nullptr;
 };
 
-/// The namespace a qualifier names at the point, through aliases; null for
-/// another scope, whose names Sema reads whole regardless.
-clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::CompletionScope& scope) {
+/// The qualifier `scope` is as the parse reads it: a macro spelling its
+/// first scope expands to the names and `::` it spells, through the macros
+/// it expands in turn. As written where its first name is no such macro.
+index::CompletionScope expanded_qualifier(clang::Preprocessor& pp,
+                                          const index::CompletionScope& scope) {
+    if(scope.absolute) {
+        return scope;
+    }
+    index::CompletionScope expanded;
+    auto expand = [&](this auto& self, llvm::StringRef name, std::uint32_t depth) -> bool {
+        auto* macro = pp.getMacroInfo(pp.getIdentifierInfo(name));
+        if(!macro) {
+            expanded.qualifier.push_back(name.str());
+            return true;
+        }
+        if(macro->isFunctionLike() || depth == 8) {
+            return false;
+        }
+        for(const auto& token: macro->tokens()) {
+            if(token.is(clang::tok::coloncolon)) {
+                expanded.absolute |= expanded.qualifier.empty();
+            } else if(auto* spelled = token.getIdentifierInfo();
+                      !spelled || !self(spelled->getName(), depth + 1)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if(!expand(scope.qualifier.front(), 0)) {
+        return scope;
+    }
+    ranges::copy(llvm::ArrayRef(scope.qualifier).drop_front(),
+                 std::back_inserter(expanded.qualifier));
+    return expanded;
+}
+
+/// The namespace a qualifier names at the point, through aliases and
+/// macros; null for another scope, whose names Sema reads whole regardless.
+clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::CompletionScope& written) {
+    auto scope = expanded_qualifier(sema.getPreprocessor(), written);
     auto& ast = sema.getASTContext();
     auto as_namespace = [](const clang::LookupResult& found) -> clang::DeclContext* {
         if(!found.isSingleResult()) {
@@ -909,26 +946,28 @@ class LaterCompile {
 public:
     explicit LaterCompile(const CompilationParams& completion) :
         input(completion.input), point(completion.completion.offset), stop(completion.stop) {
-        if(auto focus = input.buffers.find(input.focus); focus != input.buffers.end()) {
-            auto& text = focus->second;
-            auto whole = Prefix::from(text, point).whole;
-            target = whole.begin;
-            if(whole.length() == 0) {
-                text.insert(point, " __clice_completion");
-                target = point + 1;
-            }
+        auto& text = input.buffers.find(input.focus)->second;
+        auto whole = Prefix::from(text, point).whole;
+        target = whole.begin;
+        if(whole.length() == 0) {
+            text.insert(point, " __clice_completion");
+            target = point + 1;
         }
     }
 
-    /// The compile, parsing the bodies that name one of `names`; null when
-    /// it did not complete.
-    CompilationUnit* unit(llvm::StringSet<> names) {
+    /// The compile, parsing the bodies that name one of `names`, every body
+    /// without them; null when it did not complete.
+    CompilationUnit* unit(std::optional<llvm::StringSet<>> names) {
         if(!compiled) {
+            std::optional<CompilationParams::Instantiating> instantiating;
+            if(names) {
+                instantiating =
+                    CompilationParams::Instantiating{.point = point, .names = std::move(*names)};
+            }
             compiled = compile({
                 .kind = CompilationKind::Content,
                 .input = input,
-                .instantiating =
-                    CompilationParams::Instantiating{.point = point, .names = std::move(names)},
+                .instantiating = std::move(instantiating),
                 .stop = stop,
             });
         }
@@ -944,8 +983,11 @@ public:
 
 private:
     CompilationInput input;
+
     std::uint32_t point;
+
     std::shared_ptr<std::atomic_bool> stop;
+
     std::unique_ptr<CompilationUnit> compiled;
 };
 
@@ -1109,14 +1151,15 @@ public:
 
     /// The template around `context` the code after the point may
     /// instantiate: a function template, a generic lambda among them, or a
-    /// class template a member function is in.
+    /// class template or partial specialization a member function is in.
     const static clang::NamedDecl* around_template(const clang::DeclContext* context) {
         if(const auto* function = enclosing_template(context)) {
             return function;
         }
         for(; context; context = context->getParent()) {
             if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-               record && record->getDescribedClassTemplate()) {
+               record && (record->getDescribedClassTemplate() ||
+                          llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record))) {
                 return record;
             }
         }
@@ -1131,15 +1174,24 @@ public:
     /// variable of a range-based `for` it is the statement there that tells,
     /// which the completion's own parse leaves unfinished.
     bool complete_later(clang::Sema& sema, const clang::NamedDecl* templated, bool loop) {
-        // A call after the point names the template it calls; one nothing
-        // calls yet goes without the compile.
-        if(auto* name = templated->getIdentifier();
-           !later || (!loop && name && !text.substr(offset).contains(name->getName()))) {
-            return false;
+        // A call after the point names the template it calls, a constructor
+        // its class; one nothing calls yet goes without the compile. A lambda
+        // in a function is called in the body holding the point; any body may
+        // call an operator, a conversion or a lambda elsewhere.
+        std::optional<llvm::StringSet<>> names;
+        const auto* named = templated;
+        if(auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(templated)) {
+            named = constructor->getParent();
         }
-        llvm::StringSet<> names;
-        if(auto* name = templated->getIdentifier()) {
-            names.insert(name->getName());
+        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
+        if(auto* name = named->getIdentifier()) {
+            if(!loop && !text.substr(offset).contains(name->getName())) {
+                return false;
+            }
+            names.emplace().insert(name->getName());
+        } else if(method && method->getParent()->isLambda() &&
+                  method->getParent()->getParentFunctionOrMethod()) {
+            names.emplace();
         }
         auto* whole = later->unit(std::move(names));
         if(!whole) {
@@ -2410,12 +2462,17 @@ public:
 
 private:
     CompilationUnit& unit;
+
     FocusFile focus;
+
     /// The text completed in: the focus file's, but in a nested run in the
     /// later compile, whose own reads a name at the point.
     llvm::StringRef text;
+
     std::uint32_t offset;
+
     PositionEncoding encoding;
+
     std::vector<protocol::CompletionItem>& output;
 
     /// What documents each item of `output`, in its order; read once the
@@ -2423,27 +2480,39 @@ private:
     std::vector<const clang::NamedDecl*>& documented;
 
     const CodeCompletionOptions& options;
+
     CompletionArguments argument_style;
+
     const CompletionClient& client;
+
     const CompileCompletion& names;
+
     /// Whether the candidates' names are still to load (load_names).
     bool names_pending;
+
     /// What tells how the template around the point is instantiated; none
     /// for a nested run in it.
     LaterCompile* later;
+
     /// Set once an item needs the header of its symbol included (Completion).
     bool& includes_pending;
+
     /// Whether Sema completes a member after `.` or `->`, where the
     /// candidates play no part.
     bool& member_access;
+
     /// Whether the qualifier's namespace brings in names of others
     /// (load_names).
     bool& brought_in;
+
     clang::CodeCompletionTUInfo info;
+
     bool resolving = false;
+
     bool resolved_candidates = false;
 
     std::optional<display::ReadableTypes> readable;
+
     display::Options display_options = {
         .suppress_unwritten_scope = true,
         .clean_uglified = true,
@@ -2466,9 +2535,12 @@ auto code_complete(CompilationParams params,
     bool includes = false;
     bool member_access = false;
     bool brought_in = false;
-    // The index holds no module's names a module file brings in.
+    // The index holds no module's names a module file brings in, nor those
+    // of the header modules a parse builds itself (-fmodules).
     bool from_index = names.from_index && params.input.pcms.empty();
     params.completion.consumer = [&](CompilationUnit& unit) {
+        auto& lang = unit.lang_options();
+        from_index = from_index && !(lang.Modules && lang.ImplicitModules);
         return std::make_unique<Builder>(unit,
                                          offset,
                                          encoding,

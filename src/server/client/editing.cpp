@@ -189,13 +189,17 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
-        auto offer = [&](worker::CompletionParams& completion, llvm::StringRef pch_key) {
-            feature::offer_names(query,
-                                 project.project.dep_graph,
-                                 project.project.pch_indexes(pch_key),
-                                 compile);
-            completion.names = compile;
-        };
+        auto offer =
+            [&](worker::CompletionParams& completion, llvm::StringRef pch_key, bool hosted) {
+                // The index of a PCH built behind a host's text names none of
+                // the host's: the compile reads the PCH whole.
+                std::vector<std::shared_ptr<index::TUIndex>> indexes;
+                if(!hosted) {
+                    indexes = project.project.pch_indexes(pch_key);
+                }
+                feature::offer_names(query, project.project.dep_graph, indexes, compile);
+                completion.names = compile;
+            };
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,

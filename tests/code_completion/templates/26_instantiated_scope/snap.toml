@@ -4,6 +4,9 @@ items = [
     { label = "template", kind = "Keyword" },
 ]
 
+[answers.scope]
+wrong = "retries and value_type, of the int the return expects, should rank first: the compile completing there does not know the type expected"
+
 [answers.scope.completion]
 items = [
     { label = "Settings", kind = "Class" },

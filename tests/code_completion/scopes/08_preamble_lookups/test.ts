@@ -2,9 +2,10 @@ import { answers, test, type AnswersContext } from "@clice/tools/testing";
 
 // The names of lib.h come to the server's compile from the preamble's
 // index, which loads just them where the parse stands at the point: through
-// using-declarations and using-directives, a namespace's own names and an
-// alias's, in a function body and right inside a namespace; of internal
-// linkage too.
+// using-declarations and using-directives, a namespace's own names, an inline
+// namespace's, an alias's and a macro's, in a function body, right inside a
+// namespace and after a requirement's braces; of internal linkage too. An
+// arrow after a call accesses a member.
 async function items(a: AnswersContext): Promise<void> {
     for (const m of a.markers()) {
         await a.show(m.name, a.completion(m), { parts: ["insert"] });
@@ -14,8 +15,8 @@ async function items(a: AnswersContext): Promise<void> {
 answers("default", items);
 answers("configured", { config: { code_completion: { all_scopes: false } } }, items);
 
-// Before the document's first compile no index of its PCH is at hand: the
-// completion reads the preamble's names whole.
+// Before the document's first compile the completion builds the PCH, whose
+// index names the preamble's.
 test("before the first compile", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     s.open("main.cpp", { pull: false });
@@ -24,8 +25,8 @@ test("before the first compile", async (t) => {
     });
 });
 
-// The index of the PCH the held compile loaded misses an include added
-// since, whose names the completion reads from its own PCH.
+// An include added since the held compile: the completion's own PCH, and its
+// index, hold its names.
 test("an include added before the compile", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     await s.diagnostics("main.cpp");

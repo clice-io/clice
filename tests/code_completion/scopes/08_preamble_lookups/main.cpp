@@ -70,3 +70,18 @@ long compiler() {
 int aliased() {
     return inner::§(namespace_alias);
 }
+
+int macro_qualifier() {
+    return HELPER_SPACE::helper§(macro_qualifier);
+}
+
+lib::helper_type* make_helper();
+
+void arrow_after_call() {
+    make_helper()->§(arrow_after_call);
+}
+
+template <class T>
+concept checked = requires(T value) {
+    { value } -> helper§(concept_after_brace);
+};

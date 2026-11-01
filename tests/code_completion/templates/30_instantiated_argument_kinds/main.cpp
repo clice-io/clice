@@ -1,6 +1,6 @@
 // Templates the code after the completion point instantiates once, each with
-// an argument of another kind: the class the completion rebuilds from it is
-// the one whose members it offers, a specialization by its exact arguments.
+// an argument of another kind: the class the completion resolves through it
+// is the one whose members it offers, a specialization by its exact arguments.
 struct Holder {
     int held;
 };

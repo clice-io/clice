@@ -22,6 +22,13 @@ namespace detail {
 int helper_detail();
 }  // namespace detail
 
+inline namespace v1 {
+int helper_versioned();
+}  // namespace v1
+
+template <class T>
+concept helper_concept = true;
+
 }  // namespace lib
 
 namespace app {
@@ -35,3 +42,4 @@ using namespace lib;
 namespace inner = lib::detail;
 
 #define HELPER_MACRO(x) (x)
+#define HELPER_SPACE lib
