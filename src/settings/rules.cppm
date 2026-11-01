@@ -29,9 +29,13 @@ struct Edits {
 };
 
 /// The directories the default-command rules cover sources under, none
-/// inside another, and the cache directory a walk of them skips.
+/// inside another, the project's root they lie in, and the cache directory
+/// a walk of them skips.
 struct SourceWalk {
     llvm::SmallVector<CanonicalPath> roots;
+
+    CanonicalPath project_root;
+
     /// The roots of rules with patterns: a file there may be covered
     /// whatever its suffix (a forced language), elsewhere only one
     /// clang recognizes.

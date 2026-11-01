@@ -211,6 +211,30 @@ ZEST_CASE(DefaultSourcesLeaveNestedProjects) {
     ZEXPECT(!ranges::contains(members, fid("tool/c.cpp")));
 };
 
+ZEST_CASE(PatternRootInNestedProject) {
+    /// A pattern pointing into a project nested in this one covers none of
+    /// its sources: the walk starts below the nested configuration.
+    TempDir tmp;
+    tmp.touch("clice.toml",
+              "[[rules]]\npatterns = [\"sub/src/*.cpp\", \"src/*.cpp\"]\n"
+              "default_command = \"clang++ -std=c++20\"\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+    tmp.touch("sub/clice.toml", "");
+    tmp.touch("sub/src/a.cpp", "");
+
+    FileTable files;
+    Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
+    project.settings = load_settings(project.root).settings;
+    project.rules =
+        Rules(project.settings, project.root, project.settings.fallback_configuration());
+    auto fid = [&](llvm::StringRef name) {
+        return files.intern(CanonicalPath(Spelling::absolute(tmp.path(name))));
+    };
+    auto members = project.members();
+    ZEXPECT(ranges::contains(members, fid("src/main.cpp")));
+    ZEXPECT(!ranges::contains(members, fid("sub/src/a.cpp")));
+};
+
 ZEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
     /// configuration file's directory: a configuration file under .clice/ covers

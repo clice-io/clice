@@ -208,6 +208,7 @@ SourceWalk Rules::source_walk() const {
                           })
             .begin(),
         walk.roots.end());
+    walk.project_root = root;
     walk.cache_dir = settings->project.cache_identity;
     return walk;
 }

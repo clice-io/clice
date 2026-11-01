@@ -66,7 +66,8 @@ private:
 };
 
 /// Every file under the walk's roots, version control metadata, the cache
-/// directory and the projects nested in a root skipped. File system work
+/// directory and the projects nested in the project skipped, whether their
+/// configuration sits below a root, at one or above it. File system work
 /// only, so it can run off the event loop: a rule without patterns has the
 /// whole project walked.
 std::vector<CanonicalPath> walk_sources(const SourceWalk& walk);

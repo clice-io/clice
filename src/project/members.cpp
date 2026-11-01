@@ -479,6 +479,12 @@ bool Project::units_pending() {
 std::vector<CanonicalPath> walk_sources(const SourceWalk& walk) {
     std::vector<CanonicalPath> walked;
     for(CanonicalRef root: walk.roots) {
+        // A directory with a configuration file of its own holds another
+        // project's sources: one below a root is skipped as the walk meets
+        // it, one at a root or above it here.
+        if(!nested_project(walk.project_root, root).empty()) {
+            continue;
+        }
         auto entries = fs::walk(root);
         for(auto& entry: entries) {
             if(!entry) {
