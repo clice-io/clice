@@ -583,12 +583,13 @@ private:
         if(!reach) {
             return std::nullopt;
         }
-        // Clang's range of a declaration starts after the attributes written
-        // before it, which its subtree holds all the same.
+        // Clang's range of a declaration leaves out the attributes written
+        // before or after it, which its subtree holds all the same.
         if(entry.node.kind() == SemanticNode::Kind::Decl) {
             for(auto* attr: entry.node.get<clang::Decl>()->attrs()) {
                 if(auto written = focus.produced_range(attr->getRange())) {
                     reach->begin = std::min(reach->begin, written->begin);
+                    reach->end = std::max(reach->end, written->end);
                 }
             }
         }

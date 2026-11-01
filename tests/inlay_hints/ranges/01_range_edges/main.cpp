@@ -28,3 +28,6 @@ constexpr int align(int value, int factor) {
 
 §(attribute)⟦alignas(align(2, 4))⟧
 int storage;
+
+int padded
+§(trailing_attribute)⟦    __attribute__((aligned(align(4, 2))));⟧
