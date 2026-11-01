@@ -502,8 +502,8 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(served.current(session->path_id));
     auto mod_ids = project.dep_graph.lookup_module("m");
     ZASSERT(!mod_ids.empty());
-    auto build = project.pcm_builds.find(mod_ids[0]);
-    ZASSERT(build != project.pcm_builds.end());
+    auto build = project.pcms.find(mod_ids[0]);
+    ZASSERT(build != project.pcms.end());
     ZEXPECT(!build->second.path.empty());
 }
 
@@ -560,8 +560,8 @@ ZEST_CASE(DiamondDepsDeduplicated) {
 
     auto top = project.dep_graph.lookup_module("top");
     ZASSERT(!top.empty());
-    auto entry = project.pcm_builds.find(top[0]);
-    ZASSERT(entry != project.pcm_builds.end());
+    auto entry = project.pcms.find(top[0]);
+    ZASSERT(entry != project.pcms.end());
     auto base = fixture.intern(tmp.path("base.cppm"));
     auto& inputs = entry->second.inputs;
     ZEXPECT(ranges::count_if(inputs, [&](const Input& dep) { return dep.file == base; }) == 1);
@@ -614,17 +614,17 @@ ZEST_CASE(ImportScanPerUnit) {
         ZASSERT(fixture.server.pool.start(opts));
 
         ZASSERT(co_await served.ensure_compiled(plain));
-        plain_scans = served.project.import_scans;
+        plain_scans = served.project.import_scans.runs;
         ZASSERT(co_await served.ensure_compiled(main));
-        first_scans = served.project.import_scans;
+        first_scans = served.project.import_scans.runs;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        body_scans = served.project.import_scans;
+        body_scans = served.project.import_scans.runs;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        import_scans = served.project.import_scans;
+        import_scans = served.project.import_scans.runs;
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -877,7 +877,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
     ZEXPECT(served.latest(header->path_id)->host == unit->path_id);
-    ZEXPECT(served.project.import_scans == 0u);
+    ZEXPECT(served.project.import_scans.runs == 0u);
 }
 
 };  // ZEST_SUITE(CompileGuards)

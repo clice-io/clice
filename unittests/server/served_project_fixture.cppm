@@ -81,10 +81,9 @@ struct ServedProjectFixture {
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments) {
         auto& project = served->project;
-        Resolution resolution{
-            .ref = {.command =
-                        project.fallback_command(project.file_table.resolve(session->path_id))},
-        };
+        Resolution resolution;
+        resolution.ref = {
+            .command = project.fallback_command(project.file_table.resolve(session->path_id))};
         auto key = co_await served->ensure_pch(Ticket{session, generation},
                                                epoch,
                                                session->text(),
@@ -98,8 +97,8 @@ struct ServedProjectFixture {
 
     // Accessors of the change tests (changes_tests.cpp, databases_tests.cpp).
 
-    void build_changed(CDBDiff delta) {
-        served->build_changed(std::move(delta));
+    void commands_changed(CDBDiff delta) {
+        served->commands_changed(std::move(delta));
     }
 
     /// Watch the project's databases and its git checkout as start() does,
@@ -112,7 +111,7 @@ struct ServedProjectFixture {
         served->watch_checkout();
     }
 
-    /// The delta reload_databases follows (build_changed), not followed: the
+    /// The delta reload_databases follows (commands_changed), not followed: the
     /// databases found at the watched places registered, then every watched
     /// database ticked.
     CDBDiff database_delta(bool force) {

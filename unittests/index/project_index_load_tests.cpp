@@ -599,13 +599,12 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
         stored(f, "pcm", "m");
         auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
         auto dep = Input{.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
-        auto& pch = f.project.pch_cache["k"];
+        auto& pch = f.project.pchs["k"];
         pch.blob = "k";
         pch.path = "k.pch";
         pch.inputs.push_back(dep);
         auto& pcm =
-            f.project
-                .pcm_builds[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
+            f.project.pcms[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
         pcm.path = "m.pcm";
         pcm.key = "m";
         pcm.blob = "m";
@@ -641,8 +640,8 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
         IndexerFixture f;
         setup(f);
         ZEXPECT(!f.load());
-        ZEXPECT(f.project.pch_cache.empty());
-        ZEXPECT(f.project.pcm_builds.size() == 1u);
+        ZEXPECT(f.project.pchs.empty());
+        ZEXPECT(f.project.pcms.size() == 1u);
         ZEXPECT(f.project.choices.bytes == "choices");
         f.save();
     }
@@ -650,7 +649,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
     IndexerFixture f;
     setup(f);
     ZEXPECT(f.load());
-    ZEXPECT(f.project.pcm_builds.size() == 1u);
+    ZEXPECT(f.project.pcms.size() == 1u);
     ZEXPECT(f.project.choices.bytes == "choices");
 }
 

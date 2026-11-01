@@ -32,7 +32,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         f.load();
         auto host = f.project.file_table.intern(Spelling::absolute(host_path));
         auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-        ContextChoice choice{host, 1, "applied", "base"};
+        ContextChoice choice{host, 1, "base"};
         std::pair<Fid, const ContextChoice*> choices[] = {
             {header, &choice}
         };
@@ -51,10 +51,9 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     ZASSERT(choices.size() == 1u);
     ZASSERT(choices[0].first == header);
     auto& saved = choices[0].second;
-    ZASSERT(saved.host_path_id == host);
+    ZASSERT(saved.host == host);
     ZASSERT(saved.occurrence == std::optional<std::uint32_t>(1));
-    ZASSERT(saved.command_hash == "applied");
-    ZASSERT(saved.base_hash == "base");
+    ZASSERT(saved.base == "base");
     ZASSERT(!f.project.choices.dirty);
 }
 

@@ -170,6 +170,10 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
+    auto built_pcms = [&] {
+        return ranges::count_if(f.project.pcms,
+                                [](auto& entry) { return !entry.second.path.empty(); });
+    };
     std::vector<UnitResult::Status> results;
     std::size_t pcms_before_impl = 0;
     bool done = false;
@@ -182,7 +186,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 
         for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
             if(llvm::StringRef(name) == "impl.cpp") {
-                pcms_before_impl = f.project.pcm_builds.size();
+                pcms_before_impl = built_pcms();
             }
             UnitRequest request;
             request.index = true;
@@ -202,9 +206,9 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     using enum UnitResult::Status;
     ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
-    ZEXPECT(f.project.pcm_builds.size() == 1u);
-    auto build = f.project.pcm_builds.find(id("m.cppm"));
-    ZASSERT(build != f.project.pcm_builds.end());
+    ZEXPECT(built_pcms() == 1);
+    auto build = f.project.pcms.find(id("m.cppm"));
+    ZASSERT(build != f.project.pcms.end());
     ZEXPECT(!build->second.path.empty());
 }
 
@@ -250,7 +254,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
         first.index = true;
         results.push_back(
             (co_await f.project.compile_unit(id("use.cpp"), std::move(first)))->status);
-        evicted = f.project.pcm_builds.find(id("low.cppm"))->second.path;
+        evicted = f.project.pcms.find(id("low.cppm"))->second.path;
         ZASSERT(!evicted.empty());
         ZASSERT(fs::remove(evicted).has_value());
         UnitRequest second;
@@ -269,8 +273,8 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
 
     using enum UnitResult::Status;
     ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
-    auto low = f.project.pcm_builds.find(id("low.cppm"));
-    ZASSERT(low != f.project.pcm_builds.end());
+    auto low = f.project.pcms.find(id("low.cppm"));
+    ZASSERT(low != f.project.pcms.end());
     ZEXPECT(!low->second.path.empty());
     ZEXPECT(fs::exists(low->second.path));
 }
@@ -304,10 +308,10 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     auto m = id("m.cppm");
     auto read = current_input(f.project.file_table, m);
     ZASSERT(read.has_value());
-    f.project.failures.pcm_builds.commit(
-        m,
+    f.project.pcms[m].failure = {
         {.key = "an-earlier-key", .record = failed_build("sl:0:0", "killed by signal 11")},
-        {*read});
+        {*read}
+    };
 
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -330,9 +334,10 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     f.loop.run();
     ZEXPECT(done);
 
-    ZEXPECT(f.project.failures.pcm_builds.find(m) != nullptr);
-    auto build = f.project.pcm_builds.find(m);
-    ZEXPECT((build == f.project.pcm_builds.end() || build->second.path.empty()));
+    auto build = f.project.pcms.find(m);
+    ZASSERT(build != f.project.pcms.end());
+    ZEXPECT(build->second.failure.has_value());
+    ZEXPECT(build->second.path.empty());
 }
 
 ZEST_CASE(CrashCountsOnPCH) {
@@ -393,8 +398,11 @@ ZEST_CASE(CrashCountsOnPCH) {
 
     auto consume_failures = [&] {
         unsigned count = 0;
-        f.project.failures.pch_consumes.for_each(
-            [&](auto&, auto& entry) { count += entry.result.count; });
+        for(auto& entry: f.project.pchs) {
+            if(entry.second.consumes) {
+                count += entry.second.consumes->count;
+            }
+        }
         return count;
     };
     auto id = [&](llvm::StringRef name) {

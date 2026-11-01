@@ -217,8 +217,8 @@ ZEST_CASE(SharedBuildBothReady) {
     ZEXPECT(a == Result::Success);
     ZEXPECT(b == Result::Success);
     ZEXPECT(project.build_crash("shared-key") == nullptr);
-    auto it = project.pch_cache.find("shared-key");
-    ZASSERT(it != project.pch_cache.end());
+    auto it = project.pchs.find("shared-key");
+    ZASSERT(it != project.pchs.end());
     ZEXPECT(!it->second.path.empty());
     ZEXPECT(!it->second.index_path.empty());
 }
@@ -265,7 +265,7 @@ ZEST_CASE(EvictedPairNotCounted) {
     std::optional<Result> first, second;
     execute([&]() -> async::task<> {
         auto evict = [&] {
-            project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
+            project.store->invalidate("pch", project.pchs.find("shared-key")->second.blob);
         };
         ZASSERT(co_await project.acquire_pch(request("#define X 1\n")) == Result::Success);
         evict();

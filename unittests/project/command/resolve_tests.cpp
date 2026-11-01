@@ -36,14 +36,11 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     project.dep_graph.set_includes(main, 0, {{part}, {header}});
     project.dep_graph.build_reverse_map();
 
-    std::string directory;
-    std::vector<std::string> arguments;
-    ZEXPECT(project.resolve_command(part, directory, arguments).ref.source ==
-            CommandSource::Default);
-    ZEXPECT(
-        ranges::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
-    auto header_resolution =
-        project.resolve_command(header, directory, arguments, {.preprocess = true});
+    auto part_resolution = project.resolve_command(part);
+    ZEXPECT(part_resolution.ref.source == CommandSource::Default);
+    ZEXPECT(ranges::any_of(part_resolution.arguments,
+                           [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    auto header_resolution = project.resolve_command(header, {.preprocess = true});
     ZEXPECT(header_resolution.ref.source == CommandSource::Host);
     ZEXPECT(header_resolution.host == main);
 }
@@ -73,14 +70,12 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
         return ranges::any_of(arguments,
                               [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
     };
-    std::string directory;
-    std::vector<std::string> arguments;
-    ZEXPECT(project.resolve_command(main, directory, arguments, request).ref.source ==
-            CommandSource::Default);
-    ZEXPECT(has_extra(arguments));
-    auto header_resolution = project.resolve_command(header, directory, arguments, request);
+    auto main_resolution = project.resolve_command(main, request);
+    ZEXPECT(main_resolution.ref.source == CommandSource::Default);
+    ZEXPECT(has_extra(main_resolution.arguments));
+    auto header_resolution = project.resolve_command(header, request);
     ZEXPECT(header_resolution.ref.source == CommandSource::Host);
-    ZEXPECT(has_extra(arguments));
+    ZEXPECT(has_extra(header_resolution.arguments));
 }
 
 ZEST_CASE(TreeSkipsFirstHost) {
@@ -113,17 +108,15 @@ ZEST_CASE(TreeSkipsFirstHost) {
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("config_b/config.h")));
     auto a = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
     auto b = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto waiting = project.resolve_command(header, directory, arguments);
+    auto waiting = project.resolve_command(header);
     ZASSERT(waiting.missing_tree);
     ZEXPECT(waiting.missing_tree->key.first == a);
     // Meanwhile the header stands on a.cpp's command, a.cpp its host.
     ZEXPECT(waiting.host == a);
     ZEXPECT(waiting.ref.source == CommandSource::Host);
-    ZEXPECT(ranges::any_of(arguments,
+    ZEXPECT(ranges::any_of(waiting.arguments,
                            [](llvm::StringRef argument) { return argument.contains("config_a"); }));
-    auto resolution = project.resolve_command(header, directory, arguments, {.preprocess = true});
+    auto resolution = project.resolve_command(header, {.preprocess = true});
     ZEXPECT(!resolution.missing_tree);
     ZEXPECT(resolution.host == b);
 }
@@ -173,9 +166,8 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     project.rebuild_dependency_graph();
 
     auto forced = [&](Fid file) {
-        std::string directory;
-        std::vector<std::string> arguments;
-        auto resolution = project.resolve_command(file, directory, arguments, {.preprocess = true});
+        auto resolution = project.resolve_command(file, {.preprocess = true});
+        auto& arguments = resolution.arguments;
         std::vector<std::string> names;
         for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
             if(arguments[i] == "-include") {

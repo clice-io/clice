@@ -52,7 +52,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     kind = CompilationKind::Content;
     ZASSERT(compile());
 
-    auto& st = project.pch_cache["key"];
+    auto& st = project.pchs["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
     st.index = nullptr;
@@ -580,7 +580,7 @@ int main() {{ gen(); return 0; }}
 ZEST_CASE(UnreadableBlobCleared) {
     dir.touch("junk.pch.idx", "not a blob");
 
-    PCHBuild st;
+    PCHEntry st;
     st.index_path = dir.path("junk.pch.idx");
     ZEXPECT(st.load_index() == nullptr);
     // The cleared path makes the pair look incomplete, so the next

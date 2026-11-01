@@ -262,7 +262,7 @@ ZEST_CASE(HostsMatchLanguage) {
         *project.cdb.add_command(tmp.root, tmp.path("dual/impl.c"), llvm::StringRef(cxx_command));
     project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
     project.dep_graph.build_reverse_map();
-    auto fitting = project.host_commands(dual_hpp, dual);
+    auto fitting = project.candidates(dual_hpp, dual);
     ZASSERT(fitting.size() == 1u);
     ZEXPECT(fitting.front().base == cxx.command);
     ZEXPECT(project.ranked_hosts(dual_hpp) == llvm::SmallVector<Fid>{dual});
@@ -1046,12 +1046,12 @@ ZEST_CASE(SelfContainmentFollowsItsInputs) {
         .id = clang::diag::err_unknown_typename,
     };
     // The result changes what the listing folds: one taken before is stale.
-    auto epoch = p.project.context_epoch;
+    auto epoch = p.project.context_epoch();
     p.project.commit_self_containment(key,
                                       {missing},
                                       current_input(files, header)->version,
                                       {*current_input(files, dep)});
-    ZEXPECT(p.project.context_epoch != epoch);
+    ZEXPECT(p.project.context_epoch() != epoch);
     ZEXPECT(p.project.self_contained(key, false) == false);
     ZEXPECT(p.project.self_contained(key, true) == false);
     ZEXPECT(!p.project.self_contained({header, 8}, false).has_value());
@@ -1100,16 +1100,16 @@ ZEST_CASE(UnmatchedContextKeepsHost) {
     };
     p.index(main, std::move(manifest));
 
-    auto lent = p.project.lent_command(t, main, p.project.candidates(main).front());
+    auto host_command = p.project.apply_rules(
+        t,
+        p.project.candidates(main).front().passed_on(main, CommandSource::Host));
     auto version = current_input(p.project.file_table, t)->version;
     p.project.hosting.self_containment.commit(
-        {t, p.project.commands.command_hash(lent.command)},
+        {t, p.project.commands.command_hash(host_command.command)},
         {.self_contained = false, .text = version, .disk = version},
         {});
 
-    std::string directory;
-    std::vector<std::string> arguments;
-    auto resolution = p.project.resolve_command(t, directory, arguments);
+    auto resolution = p.project.resolve_command(t);
     ZEXPECT(resolution.ref.source == CommandSource::Host);
     ZEXPECT(resolution.unmatched_host == main);
     ZEXPECT(resolution.synthesized == nullptr);

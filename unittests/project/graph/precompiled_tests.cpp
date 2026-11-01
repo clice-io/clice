@@ -44,7 +44,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         ZASSERT(f.project.store->commit(std::move(aux)));
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
-        auto& st = f.project.pch_cache["k"];
+        auto& st = f.project.pchs["k"];
         st.blob = "k";
         st.path = "k.pch";
         st.inputs.push_back(
@@ -62,7 +62,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         IndexerFixture f;
         setup(f);
         f.load();
-        ZASSERT(f.project.pch_cache.size() == std::size_t(1));
+        ZASSERT(f.project.pchs.size() == std::size_t(1));
 
         // Put back the blob as an older binary would have written it.
         auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
@@ -79,7 +79,7 @@ ZEST_CASE(StaleFormatDropsPch) {
     IndexerFixture f;
     setup(f);
     f.load();
-    ZASSERT(f.project.pch_cache.empty());
+    ZASSERT(f.project.pchs.empty());
 }
 
 ZEST_CASE(OlderRecordsLoad) {
@@ -104,7 +104,7 @@ ZEST_CASE(OlderRecordsLoad) {
         ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
         ZASSERT(f.project.store->commit(std::move(aux)));
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
-        auto& st = f.project.pch_cache["k"];
+        auto& st = f.project.pchs["k"];
         st.blob = "k";
         st.path = "k.pch";
         st.inputs.push_back(
@@ -128,7 +128,7 @@ ZEST_CASE(OlderRecordsLoad) {
     IndexerFixture f;
     setup(f);
     f.load();
-    ZASSERT(f.project.pch_cache.size() == std::size_t(1));
+    ZASSERT(f.project.pchs.size() == std::size_t(1));
 }
 
 ZEST_CASE(DeplessPcmDropped) {
@@ -151,7 +151,7 @@ ZEST_CASE(DeplessPcmDropped) {
         ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
 
-        auto& st = f.project.pcm_builds[f.project.file_table.intern(Spelling::absolute(src))];
+        auto& st = f.project.pcms[f.project.file_table.intern(Spelling::absolute(src))];
         st.path = "m.pcm";
         st.key = "k";
         st.blob = "k";
@@ -168,7 +168,7 @@ ZEST_CASE(DeplessPcmDropped) {
     IndexerFixture f;
     setup(f);
     f.load();
-    ZASSERT(f.project.pcm_builds.empty());
+    ZASSERT(f.project.pcms.empty());
 }
 
 ZEST_CASE(SelfContainmentPersisted) {
