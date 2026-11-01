@@ -9,11 +9,10 @@ const UNITS = generate.units(6);
 
 test(async (t) => {
     t.disk.write(UNITS);
-    // Without the index, whose entries would answer the hovers, only a compile
-    // can.
+    // Without the index, whose entries would answer the burst's tokens, only
+    // a compile can.
     const s = await t.start({
-        config: { project: { enable_indexing: false } },
-        env: { CLICE_TEST_MAX_RESIDENT: "2" },
+        config: { project: { enable_indexing: false, max_resident_documents: 2 } },
     });
     const files = Object.keys(UNITS);
     for (const file of files) {

@@ -507,7 +507,7 @@ void LSPClient::register_document_requests() {
                 auto owner = open->owner->shared_from_this();
                 if(owner->serving_of(*session) == ServingMode::Escalated) {
                     auto taken = Ticket::take(session);
-                    co_await owner->ensure_compiled(session);
+                    co_await owner->ensure_compiled(session, {.ast = false});
                     if(!taken.fresh()) {
                         continue;
                     }

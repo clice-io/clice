@@ -22,7 +22,7 @@ ServingMode ServedProject::serving_of(const Session& session) const {
 }
 
 bool ServedProject::ast_answerable(const Session& session) const {
-    return index_current(session.path_id) && resident(session.path_id) && !compile_stopped(session);
+    return index_current(session.path_id) && !compile_stopped(session);
 }
 
 async::task<Route> ServedProject::pick_route(const Ticket& ticket,
@@ -59,8 +59,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
                 // An index answer must not strand an escalated document's
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
-                if(serving == ServingMode::Escalated &&
-                   !(current(session.path_id) && resident(session.path_id))) {
+                if(serving == ServingMode::Escalated && !current(session.path_id)) {
                     request_compile(ticket.session);
                 }
                 if(source) {

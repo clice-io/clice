@@ -29,10 +29,10 @@ std::size_t Residency::documents_on(std::size_t worker) const {
 }
 
 void Residency::used(std::uint32_t document) {
-    auto it = entries.find(document);
-    assert(it != entries.end() && "a request about a document with no assignment");
-    clock += 1;
-    it->second.last_use = clock;
+    if(auto it = entries.find(document); it != entries.end()) {
+        clock += 1;
+        it->second.last_use = clock;
+    }
 }
 
 void Residency::compiled(std::uint32_t document, std::uint64_t assignment, bool done) {

@@ -14,6 +14,7 @@ import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :worker.probe;
+import :worker.resources;
 
 namespace clice {
 
@@ -104,6 +105,8 @@ void MasterServer::initialize() {
     pool_opts.min_stateless = 0;
     pool_opts.max_stateless = 0;
     bool unbounded = false;
+    auto machine_resident = default_max_resident(memory_state({}).limit);
+    std::size_t resident = 0;
     for(auto& project: projects) {
         auto& cfg = project->project.settings.project;
         pool_opts.stateful_count =
@@ -116,17 +119,19 @@ void MasterServer::initialize() {
             std::max(pool_opts.max_stateless, cfg.max_stateless_worker_count.value);
         // 0 leaves the ceiling to the core count, the largest one.
         unbounded = unbounded || cfg.max_stateless_worker_count.value == 0;
+        auto documents = cfg.max_resident_documents.value;
+        resident = std::max<std::size_t>(resident, documents == 0 ? machine_resident : documents);
     }
+    pool_opts.max_resident = resident;
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
     // Let integration tests hang a worker without waiting out the real
-    // deadline, and drive eviction through a real server.
+    // deadline.
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
             chrono::milliseconds(*ms);
     }
-    pool_opts.max_resident = env_integer("CLICE_TEST_MAX_RESIDENT");
 
     auto& first = projects.front()->project.settings.project;
     if(!first.logging_dir.empty()) {

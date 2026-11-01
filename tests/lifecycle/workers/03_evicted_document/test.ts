@@ -7,7 +7,7 @@ const UNITS = generate.units(18);
 
 test(async (t) => {
     t.disk.write(UNITS);
-    const s = await t.start({ env: { CLICE_TEST_MAX_RESIDENT: "8" } });
+    const s = await t.start({ config: { project: { max_resident_documents: 8 } } });
     const files = Object.keys(UNITS);
     for (const file of files) {
         await s.diagnostics(file);

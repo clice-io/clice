@@ -2,6 +2,8 @@ module clice;
 
 import :feature.diagnostics;
 import :feature.hover;
+import :feature.inlay_hints;
+import :feature.semantic_tokens;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -13,6 +15,7 @@ import :server.session;
 import :support.anomaly;
 import :syntax.dependency_graph;
 import :syntax.position;
+import :syntax.token;
 import :unittests.server.served_project_fixture;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
@@ -1625,6 +1628,91 @@ ZEST_CASE(EvictedDocumentRecompiles) {
         ZEXPECT(served.resident(a->path_id));
         ZEXPECT(!served.resident(b->path_id));
         ZEXPECT(fixture.generation(a->path_id) == generation);
+
+        co_await served.shutdown();
+        co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+}
+
+ZEST_CASE(EvictedDocumentKeptAnswers) {
+    // An evicted document answers what its compile's AST answered — the
+    // whole document's tokens, the hints of the range asked last — with no
+    // compile; another range compiles it once, and a pull of its
+    // diagnostics, kept already, compiles nothing.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& served = *fixture.served;
+    auto a =
+        fixture.open(tmp.path("a.cpp"),
+                     "int add(int left, int right);\nint x = add(1, 2);\nint y = add(3, 4);\n");
+    auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
+    auto path = std::string(served.project.file_table.resolve(a->path_id));
+    auto& probe = fixture.server.probe;
+    fixture.server.pool.probe = &probe;
+    auto compiles = [&] {
+        return probe.builds[path][std::to_underlying(BuildKind::Compile)];
+    };
+    auto tokens =
+        [&]() -> async::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error> {
+        co_return co_await served.ast_request(
+            Ticket::take(a),
+            feature::RequestKind::SemanticTokens,
+            "SemanticTokens",
+            worker::SemanticTokensParams{.settings = served.project.settings},
+            {});
+    };
+    auto hints =
+        [&](LocalSourceRange range) -> async::task<std::vector<feature::InlayHint>, ipc::Error> {
+        co_return co_await served.ast_request(Ticket::take(a),
+                                              feature::RequestKind::InlayHint,
+                                              "InlayHint",
+                                              worker::InlayHintParams{
+                                                  .range = range,
+                                                  .settings = served.project.settings,
+                                              },
+                                              {});
+    };
+    LocalSourceRange first{30, 48};
+    LocalSourceRange second{49, 67};
+
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(opts));
+
+        auto compiled_tokens = co_await tokens();
+        auto compiled_hints = co_await hints(first);
+        ZASSERT(compiled_tokens && compiled_tokens.value().has_value());
+        ZASSERT(compiled_hints && !compiled_hints.value().empty());
+        ZASSERT(co_await served.ensure_compiled(b));
+        ZASSERT(!served.resident(a->path_id));
+
+        auto kept_tokens = co_await tokens();
+        auto kept_hints = co_await hints(first);
+        ZASSERT(co_await served.ensure_compiled(a, {.ast = false}));
+        ZEXPECT(compiles() == 1u);
+        ZEXPECT(!served.resident(a->path_id));
+        ZASSERT(kept_tokens && kept_hints);
+        ZEXPECT(kept_tokens.value()->size() == compiled_tokens.value()->size());
+        ZEXPECT(kept_hints.value().size() == compiled_hints.value().size());
+
+        auto other = co_await hints(second);
+        ZASSERT(other);
+        ZEXPECT(!other.value().empty());
+        ZEXPECT(compiles() == 2u);
+        ZEXPECT(served.resident(a->path_id));
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();

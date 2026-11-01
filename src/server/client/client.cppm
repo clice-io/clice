@@ -475,6 +475,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                 return resolve_uri(params.text_document.uri);
             }
         }();
+        server.pool.used(document.path_id.raw);
         if(!options.closed && !document.session) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.

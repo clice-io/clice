@@ -22,6 +22,7 @@ import :support.signal;
 import :support.timer;
 import :syntax.position;
 import :syntax.source_text;
+import :syntax.token;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -84,11 +85,69 @@ struct CompileOutput {
     bool failed = false;
 };
 
+/// What the AST of a document's compile answered about the whole document,
+/// and of a ranged request the last range asked: while the compile is
+/// current, an evicted document answers from them (ServedProject::
+/// ast_request).
+struct KeptAnswers {
+    protocol::RequestTraits<worker::SemanticTokensParams>::Result semantic_tokens;
+
+    protocol::RequestTraits<worker::FoldingRangeParams>::Result folding_ranges;
+
+    protocol::RequestTraits<worker::DocumentSymbolParams>::Result document_symbols;
+
+    std::optional<protocol::RequestTraits<worker::DocumentLinkParams>::Result> document_links;
+
+    std::optional<
+        std::pair<LocalSourceRange, protocol::RequestTraits<worker::InlayHintParams>::Result>>
+        inlay_hints;
+};
+
+/// The kept answer to `params`, when one covers it.
+template <typename Params>
+std::optional<typename protocol::RequestTraits<Params>::Result> kept_answer(const KeptAnswers& kept,
+                                                                            const Params& params) {
+    if constexpr(std::same_as<Params, worker::SemanticTokensParams>) {
+        return kept.semantic_tokens ? std::optional(kept.semantic_tokens) : std::nullopt;
+    } else if constexpr(std::same_as<Params, worker::FoldingRangeParams>) {
+        return kept.folding_ranges ? std::optional(kept.folding_ranges) : std::nullopt;
+    } else if constexpr(std::same_as<Params, worker::DocumentSymbolParams>) {
+        return kept.document_symbols ? std::optional(kept.document_symbols) : std::nullopt;
+    } else if constexpr(std::same_as<Params, worker::DocumentLinkParams>) {
+        return kept.document_links;
+    } else if constexpr(std::same_as<Params, worker::InlayHintParams>) {
+        if(kept.inlay_hints && kept.inlay_hints->first == params.range) {
+            return kept.inlay_hints->second;
+        }
+        return std::nullopt;
+    } else {
+        return std::nullopt;
+    }
+}
+
+/// Keep `answer`, the AST's to `params`, if its kind is kept.
+template <typename Params>
+void keep_answer(KeptAnswers& kept,
+                 const Params& params,
+                 const typename protocol::RequestTraits<Params>::Result& answer) {
+    if constexpr(std::same_as<Params, worker::SemanticTokensParams>) {
+        kept.semantic_tokens = answer;
+    } else if constexpr(std::same_as<Params, worker::FoldingRangeParams>) {
+        kept.folding_ranges = answer;
+    } else if constexpr(std::same_as<Params, worker::DocumentSymbolParams>) {
+        kept.document_symbols = answer;
+    } else if constexpr(std::same_as<Params, worker::DocumentLinkParams>) {
+        kept.document_links = answer;
+    } else if constexpr(std::same_as<Params, worker::InlayHintParams>) {
+        kept.inlay_hints.emplace(params.range, answer);
+    }
+}
+
 /// One open document's compilation products, read by everything that
-/// answers from the document's compile. Immutable once published: every
-/// change installs a fresh one (copy-on-write over the cheap members), so a
-/// reader that copied the shared_ptr may keep using it across suspension
-/// points.
+/// answers from the document's compile. Immutable once published but for
+/// its kept answers: every change installs a fresh one (copy-on-write over
+/// the cheap members), so a reader that copied the shared_ptr may keep
+/// using it across suspension points.
 struct DocumentCompile {
     /// Content key into Project::pchs for the PCH the document's parse
     /// loads, if any: its preamble's, else the precompiled header the build
@@ -134,6 +193,10 @@ struct DocumentCompile {
 
     /// Publishable products of the latest compilation (see CompileOutput).
     std::optional<CompileOutput> output;
+
+    /// Shared by the copies of the same compile: the requests answered from
+    /// its AST add to them.
+    std::shared_ptr<KeptAnswers> kept = std::make_shared<KeptAnswers>();
 };
 
 /// An open document as the project serving it sees it: its latest compile,
@@ -189,6 +252,12 @@ struct RouteOptions {
     /// source is there once it finishes: the shard, the escalated compile,
     /// or honestly empty under readonly "on".
     bool await_cold_attempt = false;
+};
+
+struct EnsureOptions {
+    /// The caller asks the AST, not only the compile's output: a current
+    /// document no worker holds compiles again.
+    bool ast = true;
 };
 
 /// What a gate decided instead of the feature's own answer: null (no
@@ -294,15 +363,20 @@ public:
 
     // compile.cpp
 
-    /// Compile an open document's AST if it is not current or no worker
-    /// holds it: join the document's attempt (spawning one if none is live)
-    /// and retry through stale attempts until a terminal result. Returns
-    /// true when the latest compile is current on return, and resident when
-    /// the caller holds the document (DocumentHold). An evicted document
-    /// compiles as a reopened one does. An edit of the
-    /// document abandons the join — the editor re-requests after an edit,
-    /// so the result would describe a buffer that no longer exists.
-    async::task<bool> ensure_compiled(std::shared_ptr<Session> session);
+    /// Compile an open document's AST if it is not current, or the caller
+    /// asks for the AST and no worker holds it: join the document's attempt
+    /// (spawning one if none is live) and retry through stale attempts until
+    /// a terminal result. Returns true when the latest compile is current on
+    /// return, and resident when the caller holds the document
+    /// (DocumentHold). An edit of the document abandons the join — the
+    /// editor re-requests after an edit, so the result would describe a
+    /// buffer that no longer exists.
+    async::task<bool> ensure_compiled(std::shared_ptr<Session> session, EnsureOptions options = {});
+
+    /// Whether the document's compile is current, with what it read looked
+    /// at: an evicted document's answers must show a header changed while
+    /// it was out, which polling or indexing off would not report.
+    bool confirm_current(Session& session);
 
     /// Start (or join) the document's compile detached — the caller keeps
     /// serving from the index until it finishes. The graph's
@@ -535,7 +609,7 @@ public:
     ServingMode serving_of(const Session& session) const;
 
     /// Whether the worker's AST can answer for this document right now:
-    /// compiled, current, resident, and its compile not stopped by a crash (the check
+    /// compiled, current, and its compile not stopped by a crash (the check
     /// sits before ensure_compiled's clean-AST fast path, so a stopped
     /// document's query returns null even with a clean AST). When false,
     /// the routing tries the index before deciding to await a compile.
@@ -603,7 +677,9 @@ public:
 
     /// Ask the worker holding the document's AST: compile it if it is not
     /// current, check its crash records, send, and finish; a missing AST
-    /// answers an empty result. `params` comes with the fields particular to
+    /// answers an empty result. An evicted document answers from its
+    /// compile's kept answers when they cover the request, and compiles
+    /// again otherwise. `params` comes with the fields particular to
     /// its request filled in, its path set here. `token` is the request's:
     /// passing it into the worker send turns a client $/cancelRequest into
     /// an IPC cancel — the worker stops the parse at the next top-level
@@ -1118,6 +1194,14 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         co_return Result{};
     }
 
+    // Nothing an evicted document's compile read changed: what its AST
+    // answered still holds.
+    if(!resident(session.path_id) && confirm_current(session)) {
+        if(auto kept = kept_answer(*latest(session.path_id)->kept, params)) {
+            co_return std::move(*kept);
+        }
+    }
+
     // From before the compile until the query answers: another document's
     // compile finishing meanwhile evicts some other AST.
     DocumentHold hold(*project.pool, session.path_id.raw);
@@ -1129,6 +1213,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         co_return Result{};
     }
     auto wait_ms = timer.ms_f();
+    auto compile = latest(session.path_id);
 
     bool unanswered = false;
     auto result = co_await send_ast(ticket, kind, params, token, unanswered);
@@ -1140,6 +1225,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     result = finish(ticket, kind, label, std::move(result));
     if(result.has_value()) {
+        keep_answer(*compile->kept, params, *result);
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
                  label,

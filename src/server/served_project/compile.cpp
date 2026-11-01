@@ -396,7 +396,34 @@ async::task<> ServedProject::stop_compiles() {
     co_await started_compiles.join();
 }
 
-async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session) {
+bool ServedProject::confirm_current(Session& session) {
+    auto path_id = session.path_id;
+    if(!current(path_id)) {
+        return false;
+    }
+    // No early return: the changes one check finds cascade together.
+    bool stale = false;
+    each_input(path_id, [&](const Inputs& inputs) {
+        stale = !inputs_hold(project.file_table, inputs) || stale;
+    });
+    if(!stale) {
+        return true;
+    }
+    // A dependency changed on disk behind this document's back — the lazy
+    // twin of the background ticks. The changes the check's looks queued
+    // cascade first, then the document recompiles now, whether or not the
+    // dependency graph knows the edge (a macro include) — both
+    // synchronously: applied on a later turn, the cascade would void the
+    // attempt about to compile the new content.
+    server.apply_disk_changes();
+    if(owns(session)) {
+        inputs_changed(session);
+    }
+    return false;
+}
+
+async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> session,
+                                                 EnsureOptions options) {
     auto path_id = session->path_id;
 
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} current={}",
@@ -424,34 +451,13 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
         co_return false;
     }
 
-    // What a current compile read is checked whether or not its AST is
-    // resident: an evicted document's recompile must see a header changed
-    // while it was out, which polling or indexing off would not report.
-    if(current(path_id)) {
-        // No early return: the changes one check finds cascade together.
-        bool stale = false;
-        each_input(path_id, [&](const Inputs& inputs) {
-            stale = !inputs_hold(project.file_table, inputs) || stale;
-        });
-        if(!stale && resident(path_id)) {
-            co_return true;
-        }
-        if(stale) {
-            // A dependency changed on disk behind this document's back — the
-            // lazy twin of the background ticks. The changes the check's
-            // looks queued cascade first, then the document recompiles now,
-            // whether or not the dependency graph knows the edge (a macro
-            // include) — both synchronously: applied on a later turn, the
-            // cascade would void the attempt about to compile the new
-            // content.
-            server.apply_disk_changes();
-            // The changes can take the document to another project: a
-            // context choice whose host stopped including it.
-            if(!owns(*session)) {
-                co_return false;
-            }
-            inputs_changed(*session);
-        }
+    if(confirm_current(*session) && (resident(path_id) || !options.ast)) {
+        co_return true;
+    }
+    // The changes confirm_current found can take the document to another
+    // project: a context choice whose host stopped including it.
+    if(!owns(*session)) {
+        co_return false;
     }
 
     // Join the document's compile, retrying through stale attempts (an

@@ -48,7 +48,8 @@ public:
     /// The documents assigned to the worker.
     std::size_t documents_on(std::size_t worker) const;
 
-    /// A request about the document is sent: it is the most recently used.
+    /// A request about the document arrived or went to its worker: it is
+    /// the most recently used. One with no assignment has no place to keep.
     void used(std::uint32_t document);
 
     /// A compile of the document sent under `assignment` replied: `done`,

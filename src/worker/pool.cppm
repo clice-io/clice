@@ -283,6 +283,12 @@ public:
         return residency.resident(path_id);
     }
 
+    /// A request about the document arrived: whatever answers it, the
+    /// editor shows the document, which is evicted the later for it.
+    void used(std::uint32_t path_id) {
+        residency.used(path_id);
+    }
+
     /// The document closed or moved to another project: its worker drops
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
