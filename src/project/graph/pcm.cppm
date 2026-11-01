@@ -74,9 +74,9 @@ struct Imports {
 struct BuiltImports {
     Imports imports;
 
-    /// The imports whose build crashed a worker, not built again
-    /// (BuildOptions::retry_crashed).
-    llvm::SmallVector<Fid> refused;
+    /// The crashes of the imports whose build crashed a worker, not built
+    /// again (BuildOptions::retry_crashed).
+    llvm::SmallVector<FailureRecord> refused;
 
     /// The imports that did not build.
     llvm::SmallVector<Fid> failed;

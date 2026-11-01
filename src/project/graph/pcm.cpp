@@ -563,9 +563,9 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     // build of the module, by a parse that may retry it, re-dirties this one.
     llvm::SmallVector<Fid> waited;
     for(auto module: built.imports.resolved()) {
-        if(build_crash(module)) {
+        if(auto* crash = build_crash(module)) {
             if(!options.retry_crashed) {
-                built.refused.push_back(module);
+                built.refused.push_back(*crash);
                 continue;
             }
             forget_build_failure(module);

@@ -297,8 +297,9 @@ public:
     /// Compile an open document's AST if it is not current or no worker
     /// holds it: join the document's attempt (spawning one if none is live)
     /// and retry through stale attempts until a terminal result. Returns
-    /// true when the latest compile is current and resident on return. An
-    /// evicted document compiles as a reopened one does. A new generation of the
+    /// true when the latest compile is current on return, and resident when
+    /// the caller holds the document (DocumentHold). An evicted document
+    /// compiles as a reopened one does. An edit of the
     /// document abandons the join — the editor re-requests after an edit,
     /// so the result would describe a buffer that no longer exists.
     async::task<bool> ensure_compiled(std::shared_ptr<Session> session);
@@ -1118,7 +1119,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
 
     // From before the compile until the query answers: another document's
-    // compile finishing meanwhile evicts some other AST (10-06#21).
+    // compile finishing meanwhile evicts some other AST.
     DocumentHold hold(*project.pool, session.path_id.raw);
     ScopedTimer timer;
     if(auto stop = co_await await_compile(ticket)) {

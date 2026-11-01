@@ -550,8 +550,7 @@ struct ServedProject::CompileAttempt {
     /// invalidation (attempt.current()); this covers the buffer itself — a
     /// didChange or session replacement makes every product describe text
     /// that no longer exists, so the commit discards wholesale, while an
-    /// invalidation that left the buffer (the generation unchanged) still
-    /// publishes salvage.
+    /// invalidation that left the buffer as it was still publishes salvage.
     Ticket ticket;
 
     std::string file_path;
@@ -709,11 +708,10 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
     }
     imports = std::move(*waited);
     bool crashed = false;
-    for(auto module: imports.refused) {
+    for(auto& crash: imports.refused) {
         // Booked once: an attempt on unchanged inputs is no new crash.
         if(!session->crash_record(kind)) {
-            auto* crash = project.build_crash(module);
-            served.record_crash(session, kind, crash->death, crash->cause);
+            served.record_crash(session, kind, crash.death, crash.cause);
         }
         crashed = true;
     }
@@ -749,13 +747,15 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     }
     built = std::move(*waited);
     if(built.preamble) {
-        if(auto* crash =
-               built.result == Result::Failed ? project.build_crash(*built.preamble) : nullptr) {
+        auto* crash = built.refused                    ? &*built.refused
+                      : built.result == Result::Failed ? project.build_crash(*built.preamble)
+                                                       : nullptr;
+        if(crash) {
             served.record_crash(session, PCH, crash->death, crash->cause);
             co_return Result::Failed;
         }
-        // Gated on the attempt's own validity: a newer generation or an
-        // invalidation while it waited means the resolved command may
+        // Gated on the attempt's own validity: an edit or an invalidation
+        // while it waited means the resolved command may
         // describe nothing — the record it clears belongs to this attempt no
         // more. A proven-good PCH clears the document's record as surely as
         // building one, and a build that failed without a crash answered:
@@ -1101,8 +1101,7 @@ void ServedProject::adopt_pch(const Ticket& ticket,
     if(built.refused) {
         // Booked once: a request on unchanged inputs is no new crash.
         if(!session->crash_record(kind)) {
-            auto* crash = project.build_crash(*built.preamble);
-            record_crash(session, kind, crash->death, crash->cause);
+            record_crash(session, kind, built.refused->death, built.refused->cause);
         }
         return;
     }
@@ -1112,13 +1111,8 @@ void ServedProject::adopt_pch(const Ticket& ticket,
         }
         return;
     }
-    // Gated on the buffer and the document's compile the request was taken
-    // on: a newer generation of either while it waited means the resolved
-    // command may describe nothing — neither the keys nor the record they
-    // clear belong to this request any more. What a partial preamble loads
-    // is the request's own. Adopting a proven-good PCH clears the
-    // document's record as surely as building one — but only its own;
-    // every consumer clears for itself.
+    // Adopting a proven-good PCH clears the document's record as surely as
+    // building one — but only its own; every consumer clears for itself.
     if(!ticket.fresh() || project.graph.generation(ast_node(path_id)) != generation ||
        built.partial) {
         return;

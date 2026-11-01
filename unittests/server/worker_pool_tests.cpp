@@ -151,7 +151,7 @@ struct WorkerPoolFixture {
     }
 
     /// The worker a new document would go to; SIZE_MAX for none.
-    std::size_t pick_least_loaded() {
+    std::size_t least_loaded() {
         auto document = next_document;
         auto worker = assign_worker(document);
         pool.residency.forget(document);
@@ -164,7 +164,7 @@ struct WorkerPoolFixture {
     }
 
     /// The document closed, as forget_document has it; no worker to tell.
-    void remove_owner(std::uint32_t path_id) {
+    void forget(std::uint32_t path_id) {
         pool.residency.forget(path_id);
     }
 
@@ -346,7 +346,7 @@ struct WorkerPoolFixture {
         return pool.stateless_capacity();
     }
 
-    std::size_t stateful_owned(std::size_t idx) const {
+    std::size_t documents_on(std::size_t idx) const {
         return pool.residency.documents_on(idx);
     }
 
@@ -355,11 +355,11 @@ struct WorkerPoolFixture {
         pool.residency.compiled(path_id, pool.residency.assignment(path_id)->id, true);
     }
 
-    bool has_owner(std::uint32_t path_id) const {
+    bool assigned(std::uint32_t path_id) const {
         return pool.residency.assignment(path_id).has_value();
     }
 
-    std::size_t owner_of(std::uint32_t path_id) const {
+    std::size_t worker_of(std::uint32_t path_id) const {
         return pool.residency.assignment(path_id)->worker;
     }
 
@@ -491,12 +491,12 @@ std::string big_unit(TempDir& tmp) {
 
 ZEST_SUITE(WorkerPoolStateful) {
 
-ZEST_CASE(PickLeastLoaded) {
+ZEST_CASE(AssignsLeastLoaded) {
     WorkerPoolFixture f;
     f.add_stateful(true, 5);
     f.add_stateful(true, 2);
     f.add_stateful(true, 8);
-    ZEXPECT(f.pick_least_loaded() == 1u);
+    ZEXPECT(f.least_loaded() == 1u);
 }
 
 ZEST_CASE(SkipDeadWorkers) {
@@ -504,17 +504,17 @@ ZEST_CASE(SkipDeadWorkers) {
     f.add_stateful(false, 0);
     f.add_stateful(true, 5);
     f.add_stateful(true, 3);
-    ZEXPECT(f.pick_least_loaded() == 2u);
+    ZEXPECT(f.least_loaded() == 2u);
 }
 
 ZEST_CASE(AllDeadNoAssignment) {
     WorkerPoolFixture f;
     f.add_stateful(false, 0);
     f.add_stateful(false, 0);
-    ZEXPECT(f.pick_least_loaded() == SIZE_MAX);
+    ZEXPECT(f.least_loaded() == SIZE_MAX);
     ZEXPECT(f.assign_worker(100) == SIZE_MAX);
     // A failed assignment must not pin the document to a dead worker.
-    ZEXPECT(!f.has_owner(100));
+    ZEXPECT(!f.assigned(100));
 }
 
 ZEST_CASE(AssignNewPath) {
@@ -522,9 +522,9 @@ ZEST_CASE(AssignNewPath) {
     f.add_stateful(true, 0);
     f.add_stateful(true, 0);
     auto idx = f.assign_worker(100);
-    ZEXPECT(f.stateful_owned(idx) == 1u);
-    ZEXPECT(f.has_owner(100));
-    ZEXPECT(f.owner_of(100) == idx);
+    ZEXPECT(f.documents_on(idx) == 1u);
+    ZEXPECT(f.assigned(100));
+    ZEXPECT(f.worker_of(100) == idx);
 }
 
 ZEST_CASE(PathAffinity) {
@@ -534,7 +534,7 @@ ZEST_CASE(PathAffinity) {
     auto a = f.assign_worker(100);
     auto b = f.assign_worker(100);
     ZEXPECT(a == b);
-    ZEXPECT(f.stateful_owned(a) == 1u);
+    ZEXPECT(f.documents_on(a) == 1u);
 }
 
 ZEST_CASE(LoadBalancing) {
@@ -546,35 +546,35 @@ ZEST_CASE(LoadBalancing) {
     ZEXPECT(a != b);
 }
 
-ZEST_CASE(RemoveOwner) {
+ZEST_CASE(ForgetDocument) {
     WorkerPoolFixture f;
     f.add_stateful(true, 0);
     f.assign_worker(100);
-    ZEXPECT(f.stateful_owned(0) == 1u);
-    f.remove_owner(100);
-    ZEXPECT(f.stateful_owned(0) == 0u);
-    ZEXPECT(!f.has_owner(100));
+    ZEXPECT(f.documents_on(0) == 1u);
+    f.forget(100);
+    ZEXPECT(f.documents_on(0) == 0u);
+    ZEXPECT(!f.assigned(100));
 }
 
 ZEST_CASE(RemoveNonexistent) {
     WorkerPoolFixture f;
     f.add_stateful(true, 0);
-    f.remove_owner(999);
+    f.forget(999);
 }
 
-ZEST_CASE(DeathClearsOwner) {
+ZEST_CASE(DeathClearsAssignments) {
     WorkerPoolFixture f;
     f.add_stateful(true, 0);
     f.add_stateful(true, 0);
     f.assign_worker(100);
     f.assign_worker(200);
     f.assign_worker(300);
-    ZEXPECT(f.stateful_owned(0) == 2u);
+    ZEXPECT(f.documents_on(0) == 2u);
     f.mark_dead(0, true);
-    ZEXPECT(f.stateful_owned(0) == 0u);
-    ZEXPECT(!f.has_owner(100));
-    ZEXPECT(!f.has_owner(300));
-    ZEXPECT(f.has_owner(200));
+    ZEXPECT(f.documents_on(0) == 0u);
+    ZEXPECT(!f.assigned(100));
+    ZEXPECT(!f.assigned(300));
+    ZEXPECT(f.assigned(200));
 }
 
 ZEST_CASE(RebalanceAfterClose) {
@@ -584,19 +584,19 @@ ZEST_CASE(RebalanceAfterClose) {
     f.assign_worker(100);
     f.assign_worker(200);
     f.assign_worker(300);
-    ZEXPECT(f.stateful_owned(0) == 2u);
-    ZEXPECT(f.stateful_owned(1) == 1u);
+    ZEXPECT(f.documents_on(0) == 2u);
+    ZEXPECT(f.documents_on(1) == 1u);
 
-    // Closing documents shrinks the owner table and load counts.
-    f.remove_owner(100);
-    f.remove_owner(300);
-    ZEXPECT(f.stateful_owned(0) == 0u);
-    ZEXPECT(!f.has_owner(100));
-    ZEXPECT(!f.has_owner(300));
+    // Closing documents frees their assignments and load counts.
+    f.forget(100);
+    f.forget(300);
+    ZEXPECT(f.documents_on(0) == 0u);
+    ZEXPECT(!f.assigned(100));
+    ZEXPECT(!f.assigned(300));
 
     // New assignments go to the now least-loaded worker.
     ZEXPECT(f.assign_worker(400) == 0u);
-    ZEXPECT(f.stateful_owned(0) == 1u);
+    ZEXPECT(f.documents_on(0) == 1u);
 }
 
 };  // ZEST_SUITE(WorkerPoolStateful)
@@ -868,7 +868,7 @@ ZEST_CASE(StatefulLostDocuments) {
     // Record which docs worker 0 owns before crashing it
     llvm::SmallVector<std::uint32_t> expected;
     for(auto id: {100u, 200u, 300u}) {
-        if(f.owner_of(id) == 0)
+        if(f.worker_of(id) == 0)
             expected.push_back(id);
     }
 
@@ -880,13 +880,13 @@ ZEST_CASE(StatefulLostDocuments) {
     ZEXPECT(report.worker_index == 0u);
 
     for(auto path_id: expected) {
-        ZEXPECT(!f.has_owner(path_id));
+        ZEXPECT(!f.assigned(path_id));
     }
 
     // Other worker's documents are preserved
     for(auto id: {100u, 200u, 300u}) {
         if(!ranges::contains(expected, id))
-            ZEXPECT(f.has_owner(id));
+            ZEXPECT(f.assigned(id));
     }
 }
 
@@ -1173,7 +1173,7 @@ ZEST_CASE(DeathFreesDocuments) {
 
     f.simulate_crash(0, true);
     ZASSERT(f.crash_reports.size() == 1u);
-    ZEXPECT(f.owner_of(1) == 1u);
+    ZEXPECT(f.worker_of(1) == 1u);
 }
 
 ZEST_CASE(DeliverBlamesOwnCrash) {
@@ -1289,15 +1289,15 @@ ZEST_CASE(StatefulCrashClearsOwnership) {
     f.assign_worker(20);
     f.assign_worker(30);
 
-    auto idx0 = f.owner_of(10);
+    auto idx0 = f.worker_of(10);
     auto other_idx = idx0 == 0 ? 1u : 0u;
-    auto other_owned_before = f.stateful_owned(other_idx);
+    auto other_owned_before = f.documents_on(other_idx);
 
     f.simulate_crash(idx0, true);
 
-    ZEXPECT(!f.has_owner(10));
-    ZEXPECT(f.stateful_owned(idx0) == 0u);
-    ZEXPECT(f.stateful_owned(other_idx) == other_owned_before);
+    ZEXPECT(!f.assigned(10));
+    ZEXPECT(f.documents_on(idx0) == 0u);
+    ZEXPECT(f.documents_on(other_idx) == other_owned_before);
 }
 
 ZEST_CASE(IdleStatelessCrash) {

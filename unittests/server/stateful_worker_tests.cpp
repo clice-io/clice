@@ -502,9 +502,8 @@ ZEST_CASE(EvictNotification) {
 }
 
 ZEST_CASE(EvictsOnlyWhenTold) {
-    // The worker keeps every document the master's pool sends it, past the
-    // sixteen it once kept on its own, until it is told to evict one; an
-    // evicted document compiles again.
+    // The worker keeps every document the master's pool sends it until it
+    // is told to evict one; an evicted document compiles again.
     TempDir tmp;
     std::vector<std::string> paths;
     for(int i = 0; i < 20; i += 1) {

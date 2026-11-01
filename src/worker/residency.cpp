@@ -29,22 +29,23 @@ std::size_t Residency::documents_on(std::size_t worker) const {
 }
 
 void Residency::used(std::uint32_t document) {
-    if(auto it = entries.find(document); it != entries.end()) {
-        clock += 1;
-        it->second.last_use = clock;
-    }
+    auto it = entries.find(document);
+    assert(it != entries.end() && "a request about a document with no assignment");
+    clock += 1;
+    it->second.last_use = clock;
 }
 
-void Residency::compiled(std::uint32_t document, std::uint64_t assignment, bool ast) {
+void Residency::compiled(std::uint32_t document, std::uint64_t assignment, bool done) {
     if(auto it = entries.find(document);
        it != entries.end() && it->second.assignment.id == assignment) {
-        it->second.ast = ast;
+        it->second.ast = it->second.ast || done;
+        it->second.answers = done;
     }
 }
 
 bool Residency::resident(std::uint32_t document) const {
     auto it = entries.find(document);
-    return it != entries.end() && it->second.ast;
+    return it != entries.end() && it->second.answers;
 }
 
 void Residency::hold(std::uint32_t document) {

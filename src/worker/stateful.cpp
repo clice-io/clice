@@ -45,11 +45,13 @@ struct DocumentEntry {
     // co_await this before accessing the AST.
     async::event ast_ready{false};
 
-    /// What inactive_regions() reads of the compile that built the AST: the
-    /// PCH's bound, the conditional stack its preamble left open and the
-    /// preamble's own regions.
+    /// The bound of the PCH the AST loads.
     std::uint32_t pch_bound = 0;
+
+    /// The conditional stack the PCH's preamble left open.
     std::vector<std::uint8_t> open_conditionals;
+
+    /// The inactive regions of the PCH's preamble.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
     /// The preamble share from the compile params, then the own scan past

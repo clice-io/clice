@@ -5,6 +5,7 @@ import :feature.hover;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
+import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
@@ -125,8 +126,7 @@ ZEST_CASE(InvalidateKeepsResult) {
 
 ZEST_CASE(PCHCascadeStopsCurrent) {
     // A PCH found stale by another consumer dirties the document through the
-    // graph alone: its compile is no longer current, and no request is
-    // routed to the AST built over the old PCH.
+    // graph alone: its compile is no longer current.
     ServedProjectFixture fixture;
     auto& served = *fixture.served;
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
@@ -138,7 +138,6 @@ ZEST_CASE(PCHCascadeStopsCurrent) {
     served.project.graph.invalidate(pch_node("key"));
 
     ZEXPECT(!served.current(pid));
-    ZEXPECT(!served.ast_answerable(*session));
 }
 
 ZEST_CASE(ReleaseErasesEntry) {
@@ -525,6 +524,87 @@ ZEST_CASE(BufferImportBuildsPCM) {
     auto build = project.pcms.find(mod_ids[0]);
     ZASSERT(build != project.pcms.end());
     ZEXPECT(!build->second.path.empty());
+}
+
+ZEST_CASE(RefusedModuleForgotten) {
+    // The compile books the crash of an import it refused as the refusal
+    // found it: a save of another importer can forget the crash while the
+    // compile waits on its other imports.
+    TempDir tmp;
+    tmp.touch("crashed.cppm",
+              "export module crashed;\n"
+              "export int cv() { return 1; }\n");
+    tmp.touch("slow.cppm",
+              "export module slow;\n"
+              "export int sv() { return 2; }\n");
+    tmp.touch("main.cpp", "");
+    auto src = tmp.path("main.cpp");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& served = *fixture.served;
+    auto& project = served.project;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("crashed.cppm"), {}},
+                  {tmp.root, tmp.path("slow.cppm"),    {}},
+                  {tmp.root, src,                      {}},
+    }));
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    register_pch_store(fixture, tmp);
+    project.store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+
+    auto crashed = fixture.intern(tmp.path("crashed.cppm"));
+    auto read = current_input(project.file_table, crashed);
+    ZASSERT(read.has_value());
+    project.pcms[crashed].failure = {
+        {.key = "an-earlier-key", .record = failed_build("sl:0:0", "killed by signal 11")},
+        {*read}
+    };
+    auto session =
+        fixture.open(src, "import crashed;\nimport slow;\nint main() { return sv(); }\n");
+    auto& probe = fixture.server.probe;
+    fixture.server.pool.probe = &probe;
+    async::event held;
+    std::uint64_t hold = 0;
+    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+        hold = id;
+        held.set();
+    });
+
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 1;
+        ZASSERT(fixture.server.pool.start(opts));
+
+        probe.hold(BuildKind::PCM, tmp.path("slow.cppm"));
+        auto compile = [&]() -> async::task<> {
+            co_await served.ensure_compiled(session);
+        };
+        async::task_group<> group;
+        group.spawn(compile());
+        co_await held.wait();
+        ZEXPECT(project.forget_build_failure(crashed));
+        probe.release(hold);
+        co_await group.join();
+
+        co_await served.shutdown();
+        co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+
+    auto* record = session->crash_record(feature::RequestKind::PCM);
+    ZASSERT(record);
+    ZEXPECT(record->cause == "killed by signal 11");
 }
 
 ZEST_CASE(DiamondDepsDeduplicated) {
@@ -1558,8 +1638,8 @@ ZEST_CASE(EvictedDocumentRecompiles) {
 
 ZEST_CASE(QueryHoldsItsDocument) {
     // Another document's compile finishes between a query's compile and
-    // the query itself (10-06#21): it evicts nothing the query holds, and
-    // the query's document compiles once.
+    // the query itself: it evicts nothing the query holds, and the query's
+    // document compiles once.
     TempDir tmp;
     tmp.touch("a.cpp", "");
     tmp.touch("b.cpp", "");
@@ -1605,6 +1685,111 @@ ZEST_CASE(QueryHoldsItsDocument) {
         ZEXPECT(probe.builds[path][std::to_underlying(BuildKind::Compile)] == 1u);
         ZEXPECT(served.resident(a->path_id));
         ZEXPECT(!served.resident(b->path_id));
+
+        co_await served.shutdown();
+        co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+}
+
+ZEST_CASE(RecompileKeepsItsAST) {
+    // A document compiling again holds its place: another document's
+    // compile finishing meanwhile evicts that one, not the AST the compile
+    // replaces.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& served = *fixture.served;
+    auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
+    auto path = std::string(served.project.file_table.resolve(a->path_id));
+    auto& probe = fixture.server.probe;
+    fixture.server.pool.probe = &probe;
+    async::event held;
+    std::uint64_t hold = 0;
+    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+        hold = id;
+        held.set();
+    });
+
+    bool recompiled = false;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(opts));
+
+        ZASSERT(co_await served.ensure_compiled(a));
+        a->set_text("int alpha = 3;\n");
+        a->generation += 1;
+        served.edited(*a);
+        probe.hold(BuildKind::Compile, path);
+        auto recompile = [&]() -> async::task<> {
+            recompiled = co_await served.ensure_compiled(a);
+        };
+        async::task_group<> group;
+        group.spawn(recompile());
+        co_await held.wait();
+        ZASSERT(co_await served.ensure_compiled(b));
+        probe.release(hold);
+        co_await group.join();
+
+        ZEXPECT(recompiled);
+        ZEXPECT(served.resident(a->path_id));
+        ZEXPECT(!served.resident(b->path_id));
+
+        co_await served.shutdown();
+        co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+}
+
+ZEST_CASE(EvictedDocumentSeesHeader) {
+    // A header that changed on disk while its includer was evicted, with
+    // nothing to report it, makes the includer's compile stale: it compiles
+    // again at a new generation. The header lies past the preamble, where
+    // no PCH check would find it.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+    tmp.touch("late.h", "int late = 1;\n");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& served = *fixture.served;
+    auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n#include \"late.h\"\n");
+    auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
+
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(opts));
+
+        ZASSERT(co_await served.ensure_compiled(a));
+        auto generation = fixture.generation(a->path_id);
+        ZASSERT(co_await served.ensure_compiled(b));
+        ZASSERT(!served.resident(a->path_id));
+        tmp.touch("late.h", "int late = 2, later = 3;\n");
+
+        ZASSERT(co_await served.ensure_compiled(a));
+        ZEXPECT(fixture.generation(a->path_id) > generation);
+        ZEXPECT(served.current(a->path_id));
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();

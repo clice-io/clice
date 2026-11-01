@@ -439,7 +439,6 @@ ZEST_CASE(added_node_counts_invalidations) {
     // A node added before any attempt counts the invalidations that reach
     // it, as one that never existed does not, and an attempt records the
     // generation it started at.
-    Adjacency adj;
     graph.invalidate(a(1));
     ZEXPECT(graph.generation(a(1)) == 0u);
     graph.add(a(1));

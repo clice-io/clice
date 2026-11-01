@@ -38,7 +38,7 @@ std::size_t max_index_bytes();
 
 /// Put a built index into `result`: inline when it fits, else written to
 /// `output_path` — the master's transfer file — with the reply saying so.
-/// Returns why the index cannot be handed over: too large with no path to
+/// Returns why the index cannot be sent: too large with no path to
 /// write to, or the write failed.
 template <typename Result>
 std::optional<std::string> send_index(std::vector<std::byte> blob,

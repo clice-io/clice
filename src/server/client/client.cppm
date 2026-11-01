@@ -55,6 +55,10 @@ public:
     /// client held of it is forgotten.
     void retract(Fid path_id);
 
+    /// The document moved to another project, whose generations are its
+    /// own: its next compile there counts as one from changed inputs.
+    void moved(Fid path_id);
+
     /// The one refresh: the documents' results changed, so the client asks
     /// again for the semantic tokens, inlay hints and folding ranges it
     /// holds, each refresh it takes. Document links and the outline have no

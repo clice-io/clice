@@ -279,7 +279,9 @@ private:
         std::weak_ptr<const llvm::MemoryBuffer> buffer;
     };
 
+private:
     std::mutex mutex;
+
     llvm::StringMap<Entry> entries;
 
     /// The mappings kept last, most recent first, held past their other

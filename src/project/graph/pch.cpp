@@ -527,11 +527,11 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
         built.preamble = key;
         // A preamble whose build crashed a worker — for this document or
         // another sharing it — is refused until the parse may retry it.
-        if(build_crash(key)) {
+        if(auto* crash = build_crash(key)) {
             if(options.retry_crashed) {
                 forget_build_failure(key);
             } else {
-                built.refused = true;
+                built.refused = *crash;
             }
         }
         if(!built.refused) {

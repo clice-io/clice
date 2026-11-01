@@ -65,6 +65,20 @@ ZEST_CASE(OnlyASTsCount) {
     ZEXPECT(residency.documents_on(0) == 2u);
 }
 
+ZEST_CASE(UndoneCompileCounts) {
+    // A compile that stopped before it replaced the document's AST leaves
+    // the one before on the worker: no query reaches it, the limit still
+    // counts it.
+    Residency residency(1);
+    auto first = compile(residency, 1, 0);
+    residency.used(1);
+    residency.compiled(1, first.id, false);
+    ZEXPECT(!residency.resident(1));
+    compile(residency, 2, 0);
+    ZEXPECT(evicted(residency) == llvm::SmallVector<std::string>{"/1.cpp"});
+    ZEXPECT(residency.resident(2));
+}
+
 ZEST_CASE(StaleReplyIgnored) {
     // A compile reply for an assignment the document left — it closed and
     // opened again meanwhile — adds no AST.

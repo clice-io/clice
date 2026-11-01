@@ -51,11 +51,14 @@ public:
     /// A request about the document is sent: it is the most recently used.
     void used(std::uint32_t document);
 
-    /// A compile of the document sent under `assignment` replied: the
-    /// worker holds an AST of it now, or, when `ast` is false, none.
-    void compiled(std::uint32_t document, std::uint64_t assignment, bool ast);
+    /// A compile of the document sent under `assignment` replied: `done`,
+    /// the worker holds the AST it built. One not done may have ended
+    /// before it dropped the AST of the compile before, which no query
+    /// reaches any more but the limit counts until a compile is done or
+    /// the document is evicted.
+    void compiled(std::uint32_t document, std::uint64_t assignment, bool done);
 
-    /// Whether a worker holds an AST of the document.
+    /// Whether a worker holds the AST of the document's last compile.
     bool resident(std::uint32_t document) const;
 
     void hold(std::uint32_t document);
@@ -80,7 +83,11 @@ private:
 
         std::string path;
 
+        /// The worker may hold an AST of it: the limit counts it.
         bool ast = false;
+
+        /// The worker holds the AST of its last compile: queries go there.
+        bool answers = false;
 
         /// When a request about it was last sent, on clock's scale.
         std::uint64_t last_use = 0;

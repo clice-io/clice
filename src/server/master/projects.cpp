@@ -161,6 +161,9 @@ void MasterServer::change_owner(Document& document, ServedProject& to) {
     document.owner->release(session.path_id);
     document.owner = &to;
     to.adopt(document.session);
+    if(client) {
+        client->moved(session.path_id);
+    }
     replace_shown(document);
 }
 

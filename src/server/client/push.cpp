@@ -194,6 +194,12 @@ void LSPClient::retract(Fid path_id) {
     }
 }
 
+void LSPClient::moved(Fid path_id) {
+    if(auto it = pushed.find(path_id); it != pushed.end()) {
+        it->second.generation.reset();
+    }
+}
+
 void LSPClient::publish_second_names(MasterServer::Document& document) {
     for(auto& second: document.second_names) {
         publish_second_name(document, second);

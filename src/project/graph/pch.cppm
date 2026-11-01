@@ -111,9 +111,9 @@ struct BuiltPCH {
     /// The preamble ends before the text's own (PreamblePCH::partial).
     bool partial = false;
 
-    /// The preamble's PCH crashed a worker, and was not built again
+    /// The crash of the preamble's PCH build, not built again
     /// (BuildOptions::retry_crashed).
-    bool refused = false;
+    std::optional<FailureRecord> refused;
 
     /// How the wait for the preamble's PCH ended; Failed when refused.
     Result result = Result::Failed;
