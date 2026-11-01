@@ -896,6 +896,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .completion = std::move(built.completion),
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
+            .instantiating = built.instantiating,
             .stop = built.stop,
         };
         again.input.pch = {};
@@ -918,6 +919,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .output_file = built.output_file,
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
+            .instantiating = built.instantiating,
             .stop = built.stop,
         };
         unit.reset();

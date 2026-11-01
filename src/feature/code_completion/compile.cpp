@@ -758,10 +758,10 @@ struct CollectedItem {
 /// it expands in turn. As written where its first name is no such macro.
 index::CompletionScope expanded_qualifier(clang::Preprocessor& pp,
                                           const index::CompletionScope& scope) {
-    if(scope.absolute) {
+    if(scope.qualifier.empty()) {
         return scope;
     }
-    index::CompletionScope expanded;
+    index::CompletionScope expanded{.absolute = scope.absolute};
     auto expand = [&](this auto& self, llvm::StringRef name, std::uint32_t depth) -> bool {
         auto* macro = pp.getMacroInfo(pp.getIdentifierInfo(name));
         if(!macro) {
