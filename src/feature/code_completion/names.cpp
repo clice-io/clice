@@ -177,6 +177,11 @@ bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {
                     return true;
                 }
                 pending.push_back(linkage);
+            } else if(auto* using_enum = llvm::dyn_cast<clang::UsingEnumDecl>(decl)) {
+                // The index files an enumeration's enumerators under it.
+                if(!space->Encloses(using_enum->getEnumDecl()->getDeclContext())) {
+                    return true;
+                }
             } else {
                 return true;
             }
