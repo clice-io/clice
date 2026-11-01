@@ -1,0 +1,70 @@
+["its answers come back".evicted]
+tokens = [
+    { at = '⟦#include⟧ "header.h"', type = "directive" },
+    { at = '#include ⟦"header.h"⟧', type = "header" },
+    { at = "⟦int⟧ NAME = add(1, 2);", type = "primitive" },
+    { at = "int ⟦NAME⟧ = add(1, 2);", type = "macro" },
+    { at = "int NAME ⟦=⟧ add(1, 2);", type = "operator" },
+    { at = "int NAME = ⟦add⟧(1, 2);", type = "function", modifiers = ["global"] },
+    { at = "int NAME = add(⟦1⟧, 2);", type = "number" },
+    { at = "int NAME = add(1, ⟦2⟧);", type = "number" },
+    { at = "⟦int⟧ other = add(3, 4);", type = "primitive" },
+    { at = "int ⟦other⟧ = add(3, 4);", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int other ⟦=⟧ add(3, 4);", type = "operator" },
+    { at = "int other = ⟦add⟧(3, 4);", type = "function", modifiers = ["global"] },
+    { at = "int other = add(⟦3⟧, 4);", type = "number" },
+    { at = "int other = add(3, ⟦4⟧);", type = "number" },
+]
+outline = [
+    { name = "NAME", kind = "Constant", at = "⟦int NAME = add(1, 2)⟧;" },
+    { name = "first", kind = "Variable", at = "⟦int NAME = add(1, 2)⟧;", container = "NAME" },
+    { name = "other", kind = "Variable", at = "⟦int other = add(3, 4)⟧;" },
+]
+hints = [
+    { line = "int NAME = add(⟨left:⟩1, ⟨right:⟩2);" },
+]
+
+["the rest compiles it once"."another range"]
+inlay_hints = [
+    { line = "int other = add(⟨left:⟩3, ⟨right:⟩4);" },
+]
+
+["the rest compiles it once".hover.hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int left, int right)
+```
+'''
+range = "int NAME = ⟦add⟧(1, 2);"
+
+["an edit drops them".outline]
+document_symbols = [
+    {
+        name = "NAME",
+        kind = "Constant",
+        at = "int ⟦NAME⟧ = add(1, 2);",
+        children = [
+            { name = "first", kind = "Variable", at = "int ⟦NAME⟧ = add(1, 2);" },
+        ],
+    },
+    { name = "other", kind = "Variable", at = "int ⟦other⟧ = add(3, 4);" },
+    { name = "third", kind = "Variable", at = "int ⟦third⟧ = 5;" },
+]
+
+["a header changed while it was out shows".outline]
+document_symbols = [
+    {
+        name = "NAME",
+        kind = "Constant",
+        at = "int ⟦NAME⟧ = add(1, 2);",
+        children = [
+            { name = "second", kind = "Variable", at = "int ⟦NAME⟧ = add(1, 2);" },
+        ],
+    },
+    { name = "other", kind = "Variable", at = "int ⟦other⟧ = add(3, 4);" },
+]
+
+["a pull's compile stays through another document's".diagnostics]
+diagnostics = []
