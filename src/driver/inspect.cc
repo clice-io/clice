@@ -368,7 +368,6 @@ CompilationParams completion_at(const FeatureParams& params) {
         .kind = CompilationKind::Completion,
         .input = params.input,
         .completion = {.offset = params.range.begin},
-        .skip_bodies = params.settings.project.skip_header_bodies,
     };
 }
 

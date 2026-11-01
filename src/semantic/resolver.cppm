@@ -12,12 +12,6 @@ struct ResolverOptions {
     /// index stored for other units to share leaves it off: the index of a
     /// header would differ with what each unit including it instantiates.
     bool only_instantiation = true;
-
-    /// The arguments `assumed`'s template is instantiated with, for a unit
-    /// that holds no instantiation of it: a completion stops before the
-    /// code that instantiates the template, which another compile of it saw.
-    const clang::FunctionDecl* assumed = nullptr;
-    llvm::SmallVector<clang::TemplateArgument, 4> assumed_arguments;
 };
 
 /// This class is used to resolve dependent names in the unit.
