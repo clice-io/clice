@@ -8,6 +8,7 @@ import :project.indexer;
 import :project.project;
 import :server.served_project;
 import :unittests.server.served_project_fixture;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
@@ -53,21 +54,22 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
 }
 
 ZEST_CASE(PendingReasonUpgrade) {
-    auto file = project.file_table.intern(Spelling::absolute("/proj/upgrade.cpp"));
-    ZASSERT(!project.background_index.queue.pending_reason(file).has_value());
+    auto file = list_unit(project.cdb, "/proj/upgrade.cpp");
+    auto& background = project.background_index;
+    ZASSERT(!background.queue().pending_reason(file).has_value());
 
-    project.enqueue_reindex(file, ReindexReason::DepsOnly);
-    ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::DepsOnly);
-    ZASSERT(project.background_index.queue.queued() == 1u);
+    ZASSERT(background.enqueue(file, ReindexReason::DepsOnly));
+    ZASSERT(background.queue().pending_reason(file) == ReindexReason::DepsOnly);
+    ZASSERT(background.queue().queued() == 1u);
 
     // ContentChanged absorbs a queued DepsOnly without a second queue entry.
-    project.enqueue_reindex(file, ReindexReason::ContentChanged);
-    ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::ContentChanged);
-    ZASSERT(project.background_index.queue.queued() == 1u);
+    background.enqueue(file, ReindexReason::ContentChanged);
+    ZASSERT(background.queue().pending_reason(file) == ReindexReason::ContentChanged);
+    ZASSERT(background.queue().queued() == 1u);
 
     // A later deps-only cascade never downgrades it.
-    project.enqueue_reindex(file, ReindexReason::DepsOnly);
-    ZASSERT(project.background_index.queue.pending_reason(file) == ReindexReason::ContentChanged);
+    background.enqueue(file, ReindexReason::DepsOnly);
+    ZASSERT(background.queue().pending_reason(file) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(GateWithholdsStaleShard) {
@@ -94,7 +96,8 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text its shard indexed, so the shard keeps serving.
-    project.enqueue_reindex(focus_id, ReindexReason::DepsOnly);
+    list_unit(project.cdb, project.file_table.resolve(focus_id));
+    ZASSERT(project.background_index.enqueue(focus_id, ReindexReason::DepsOnly));
     ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its index is current.

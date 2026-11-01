@@ -8,7 +8,6 @@ import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_table;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 namespace {
@@ -18,10 +17,8 @@ ZEST_SUITE(ProjectOpen) {
 /// A project of one unit including a header, its database at the root.
 TempDir tmp;
 CanonicalPath root{Spelling::absolute(tmp.root)};
-async::event_loop loop;
 FileTable files;
-WorkerPool pool{loop};
-Project project{files, {}, &loop, &pool};
+Project project{files};
 
 ProjectOpenTEST() {
     tmp.touch("main.cpp", "#include \"util.h\"\nint main() { return util(); }\n");

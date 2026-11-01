@@ -737,7 +737,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     f.loop.run();
 
     ZASSERT(report.owes_retry);
-    f.project.apply_report(report);
+    f.project.take_report(report);
 
     f.save();
     auto blob = f.project.database->read(index::BlobKind::Listings, "cdb");

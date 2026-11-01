@@ -729,6 +729,11 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     tmp.touch("pa.cpp", "#include \"pinned.h\"\nint pa() { return pin_fn(); }\n");
     tmp.touch("pb.cpp", "#include \"pinned.h\"\nint pb() { return pin_fn(); }\n");
     open_store(tmp, project);
+    fx.list_units(tmp,
+                  {
+                      {"pa.cpp"},
+                      {"pb.cpp", {"-DMODE"}}
+    });
 
     auto a = index_file(tmp, tmp.path("pa.cpp"));
     auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
@@ -752,7 +757,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
-    fx.project.clear_reindex(project.file_table.intern(Spelling::absolute(b.tu_path)));
+    fx.background.forget(project.file_table.intern(Spelling::absolute(b.tu_path)));
 
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
@@ -1012,7 +1017,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!indexed.data.empty());
     auto report = project.index.merge(indexed.data, {});
     ZASSERT(report);
-    project.apply_report(*report);
+    project.take_report(*report);
 
     auto task = project.shutdown();
     loop.schedule(task);

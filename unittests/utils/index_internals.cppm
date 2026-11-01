@@ -45,6 +45,13 @@ struct IndexInternals {
         index.outdated[tu] = when;
     }
 
+    /// Owe `tu` a reindex, as a rebuild discarding the variants it
+    /// contributed does (ProjectIndex::owed_units).
+    static void owe(index::ProjectIndex& index, Fid tu) {
+        index::IndexReport report;
+        index.owe(tu, report);
+    }
+
     /// The id the database names `file` by, handed out on first use.
     static std::uint32_t path_id(index::ProjectIndex& index, Fid file) {
         return index.path_id(file);

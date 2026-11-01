@@ -7,6 +7,7 @@ import :command.toolchain;
 import :support.prelude;
 import :syntax.dependency_graph;
 import :unittests.utils.temp_dir;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice::testing {
@@ -67,6 +68,14 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
 inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
     cdb.load(tmp.path("compile_commands.json"));
+}
+
+/// List the file at the absolute `path` in `cdb` with a command of its own,
+/// a unit of the build: the background index books only those.
+inline Fid list_unit(CompilationDatabase& cdb, llvm::StringRef path) {
+    return cdb
+        .add_command(path::parent(path), path, llvm::StringRef(std::format("clang++ -c {}", path)))
+        ->file;
 }
 
 /// Whether one argument contains `needle` once its separators are

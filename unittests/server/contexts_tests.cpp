@@ -48,7 +48,8 @@ void saved(Project& owner, Fid path_id, const ContextChoice& choice) {
     std::pair<Fid, const ContextChoice*> choices[] = {
         {path_id, &choice}
     };
-    owner.choices.bytes = owner.serialize_choices(choices);
+    owner.save_choices(choices);
+    owner.choices.dirty = false;
 }
 
 ZEST_CASE(EditorSharesContext) {
@@ -119,6 +120,34 @@ ZEST_CASE(MovedCommandRecompiles) {
     ZASSERT(fx.entry(lonely).epoch != 0);
     ZASSERT(fx.entry(main).epoch == 0);
     ZASSERT(served.resolve_command(lonely).ref.source == CommandSource::Database);
+}
+
+ZEST_CASE(MovedHostRecompiles) {
+    // A header borrowing a unit's command gains a host compiling it under
+    // that very command: a member recorded beside it includes it. What the
+    // header compiles in moved, and it recompiles.
+    tmp.touch("lib/x.cpp", "int x() { return 0; }\n");
+    tmp.touch("lib/frag.h", "Ctx use();\n");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("lib/x.cpp"), {}}
+    }));
+    auto header = fx.open(tmp.path("lib/frag.h"), "Ctx use();\n")->path_id;
+    auto before = project.select_command(header, {.open = true});
+    ZASSERT(before.ref.source == CommandSource::Borrowed);
+    fx.entry(header).latest = std::make_shared<DocumentCompile>(
+        DocumentCompile{.host = before.host, .command = before.ref.command});
+
+    tmp.touch("lib/new.cpp", "struct Ctx {};\n#include \"frag.h\"\n");
+    auto member = fx.intern(tmp.path("lib/new.cpp"));
+    ZASSERT(project.record_provisional(member));
+    fx.commands_changed({});
+
+    auto after = project.select_command(header, {.open = true});
+    ZASSERT(after.host == member);
+    ZASSERT(after.ref.command == before.ref.command);
+    ZASSERT(fx.entry(header).epoch != 0);
 }
 
 ZEST_CASE(StaleHostChoiceKeepsUnit) {
@@ -337,7 +366,7 @@ ZEST_CASE(DeeperChoiceWins) {
     ZASSERT(entry->project == &inner);
     ZASSERT(entry->choice.base == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(project.parse_choices(project.choices.bytes).empty());
+    ZASSERT(project.saved_choices().empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 
@@ -354,7 +383,7 @@ ZEST_CASE(ShallowerChoiceDropped) {
     ZASSERT(entry->project == &inner);
     ZASSERT(entry->choice.base == "inner");
     ZASSERT(project.choices.dirty);
-    ZASSERT(project.parse_choices(project.choices.bytes).empty());
+    ZASSERT(project.saved_choices().empty());
     ZASSERT(!inner.project.choices.dirty);
 }
 

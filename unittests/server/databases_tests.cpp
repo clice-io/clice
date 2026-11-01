@@ -416,7 +416,7 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     served.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.entries(main).empty());
-    ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue) ==
+    ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
             llvm::SmallVector<Fid>{main});
     ZEXPECT(project.cdb.loaded(id));
     served.discover_around(main);
@@ -481,7 +481,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     served.discover_around(main_id);
     ZASSERT(project.commands_epoch == epoch + 1);
     ZASSERT(!project.entries(main_id).empty());
-    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue) ==
+    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
             llvm::SmallVector<Fid>{main_id});
     served.discover_around(main_id);
     ZEXPECT(project.commands_epoch == epoch + 1);

@@ -431,9 +431,10 @@ ZEST_CASE(PathIdsAcrossSessions) {
 
 ZEST_CASE(DamagedRecordRebuildsAll) {
     // A record failing its checks reads as missing and damages the
-    // database: the next save discards it, and every unit is indexed again
-    // into a fresh one — the build's, and one of its own no build entry
-    // names, its database gone since it was indexed.
+    // database: the next save discards it, and every unit of the build is
+    // indexed again into a fresh one. One the index holds that no build
+    // entry names, its database gone since it was indexed, is not: nothing
+    // would compile it.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
@@ -478,7 +479,7 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.index.indexed(tu_id));
     ZEXPECT(f.queue.pending_reason(tu_id) == ReindexReason::ContentChanged);
-    ZEXPECT(f.queue.pending_reason(solo) == ReindexReason::ContentChanged);
+    ZEXPECT(!f.queue.pending_reason(solo).has_value());
     ZEXPECT(!f.project.database->contains(index::BlobKind::Shard, header_key));
 }
 

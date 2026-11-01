@@ -97,7 +97,7 @@ int use() { return 1; }
     Input input{.file = header, .version = project.file_table.intern_version(header, 1)};
     auto report = project.index.merge(planted, {input});
     ZASSERT(report);
-    fx.project.apply_report(*report);
+    fx.project.take_report(*report);
     auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
     llvm::SmallVector<Fid> reached;
     project.index.for_each_file_of_local(helper, header, [&](Fid file) {
@@ -311,6 +311,11 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
               "inline int gen_fn() { return 1; }\n");
     tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
     tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+    fx.list_units(tmp,
+                  {
+                      {"ga.cpp"},
+                      {"gb.cpp", {"-DMODE"}}
+    });
 
     auto a = index_file(tmp, tmp.path("ga.cpp"));
     auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});

@@ -2,6 +2,7 @@ module clice:unittests.utils.indexer_fixture;
 
 import :command.table;
 import :compile.compilation;
+import :feature.diagnostics;
 import :index.database;
 import :index.indexer;
 import :index.project_index;
@@ -22,6 +23,39 @@ import :worker.pool;
 
 namespace clice::testing {
 
+/// The serving side of a test that plays the server: what its open
+/// documents' compiles serve, and the index changes it is told of.
+struct RecordingServing final : ServingSide {
+    /// Whether an open document's compile serves the file; none does when
+    /// unset.
+    std::function<bool(Fid)> served;
+
+    /// The files of every index change reported, in order.
+    llvm::SmallVector<Fid> changed;
+
+    std::size_t open_documents() const override {
+        return 0;
+    }
+
+    bool compiled_by_session(Fid file) const override {
+        return served && served(file);
+    }
+
+    void report_skipped_diagnostics(Fid,
+                                    std::uint64_t,
+                                    std::vector<feature::FileDiagnostic>) override {}
+
+    bool lacks_skipped_diagnostics(Fid) const override {
+        return false;
+    }
+
+    void attempt_finished(Fid) override {}
+
+    void index_changed(llvm::ArrayRef<Fid> files) override {
+        changed.append(files.begin(), files.end());
+    }
+};
+
 /// Test fixture with friend access to the reindex queue's internals. The
 /// take wrappers (merge/save/load/drop_index) route each index report back
 /// into the background index, as the production callers do.
@@ -35,7 +69,7 @@ struct IndexerFixture {
     WorkerPool pool{loop};
     Project project{files, {}, &loop, &pool};
     BackgroundIndex& background = project.background_index;
-    ReindexQueue& queue = project.background_index.queue;
+    ReindexQueue& queue = project.background_index.reindexes;
 
     IndexerFixture() {
         project.rules = Rules(project.settings, project.root, "");
@@ -68,7 +102,7 @@ struct IndexerFixture {
         }
         auto report = project.index.merge(data, {}, command);
         if(report) {
-            project.apply_report(*report);
+            project.take_report(*report);
         }
         return report.has_value();
     }
@@ -76,7 +110,7 @@ struct IndexerFixture {
     /// One save, its report taken back —
     /// without Project::save's retry, so a test observes each save.
     async::task<> async_save(index::SearchRebuild search = index::SearchRebuild::Behind) {
-        project.apply_report(co_await project.write_database(search));
+        project.take_report(co_await project.write_database(search));
     }
 
     /// Load and take the report, as the project's opening does, reconciled
@@ -89,14 +123,14 @@ struct IndexerFixture {
         index::IndexReport report;
         bool decoded =
             project.load_saved(project.database && !project.database->read_only(), report);
-        project.apply_report(report);
+        project.take_report(report);
         return decoded;
     }
 
     void drop_index(Fid id) {
         index::IndexReport report;
         project.index.drop(id, report);
-        project.apply_report(report);
+        project.take_report(report);
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
@@ -107,7 +141,13 @@ struct IndexerFixture {
     /// Record a terminally failed attempt, as the index task's failure
     /// decisions do.
     void mark_failed(Fid id) {
-        background.failed.insert(id);
+        background.record(id, {.failed = true});
+    }
+
+    /// How many files' latest attempts failed for good.
+    std::size_t failures() const {
+        return ranges::count_if(background.last_attempts(),
+                                [](const auto& entry) { return entry.second.failed; });
     }
 
     /// Fail the entry's current dispatch: the launch sequence number matches.
@@ -152,7 +192,7 @@ struct IndexerFixture {
     /// does — waking waiters requires a running loop.
     void wake_waiters(Fid id, std::uint64_t seq) {
         auto body = [&]() -> async::task<> {
-            project.wake_attempt_waits(id, seq);
+            background.wake_waiters(id, seq);
             co_return;
         };
         auto task = body();
@@ -161,7 +201,7 @@ struct IndexerFixture {
     }
 
     /// Clear the staleness cache: per-pass FileVersion results are
-    /// cleared by run_index_pass, which these tests bypass.
+    /// cleared by BackgroundIndex::run_pass, which these tests bypass.
     void clear_staleness_cache() {
         project.index.clear_staleness_cache();
     }
@@ -187,7 +227,7 @@ struct IndexerFixture {
     /// One background pass as a schedulable task, for tests that need to
     /// interleave other tasks with it.
     async::task<> pass_task() {
-        return project.run_index_pass();
+        return background.run_pass();
     }
 
     /// Run one background pass to completion on the fixture's loop.

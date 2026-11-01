@@ -6,6 +6,7 @@ import :index.symbol_query;
 import :project.indexer;
 import :project.project;
 import :unittests.utils;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
@@ -36,8 +37,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         std::pair<Fid, const ContextChoice*> choices[] = {
             {header, &choice}
         };
-        f.project.choices.bytes = f.project.serialize_choices(choices);
-        f.project.choices.dirty = true;
+        f.project.save_choices(choices);
         f.save();
         ZASSERT(!f.project.choices.dirty);
     }
@@ -47,7 +47,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     f.load();
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
     auto header = f.project.file_table.intern(Spelling::absolute(header_path));
-    auto choices = f.project.parse_choices(f.project.choices.bytes);
+    auto choices = f.project.saved_choices();
     ZASSERT(choices.size() == 1u);
     ZASSERT(choices[0].first == header);
     auto& saved = choices[0].second;
@@ -371,10 +371,10 @@ ZEST_CASE(IdleSaveShrinks) {
     ZEXPECT(space.copies == 0u);
     save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
-    // Off, the reindex stays queued: on, the save starts its pass, whose
-    // own idle save shrinks.
-    p.f.project.settings.project.enable_indexing.value = false;
-    p.f.project.enqueue_reindex(p.unit("b.cpp"), ReindexReason::ContentChanged);
+    // Not started, the background index leaves the reindex queued:
+    // started, the save starts its pass, whose own idle save shrinks.
+    p.f.background.enqueue(list_unit(p.f.project.cdb, p.tmp.path("b.cpp")),
+                           ReindexReason::ContentChanged);
     save(index::SearchRebuild::Idle);
     ZEXPECT(space.copies == 1u);
 }
