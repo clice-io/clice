@@ -139,7 +139,7 @@ This handles the scenario where a compilation request is superseded. When the us
 When a module file is saved (didSave), the graph performs a cascading update:
 
 1. Mark the saved file's node dirty, increment its generation counter, and overtake any attempt in flight
-2. Traverse all transitive dependents along reverse edges — both the nodes' edges and the waits of attempts still in flight; mark each affected node dirty, and overtake its running attempt (incrementing its generation) only if that attempt has received the product of the node the traversal reached it from: one still waiting for that product has read nothing of the old one, and gets the fresh one
+2. Traverse all transitive dependents along reverse edges — both the nodes' edges and the waits of attempts still in flight; mark each affected node dirty, and overtake its running attempt (incrementing its generation) only if that attempt has read what the node the traversal reached it from published — its product or its failure — or that node was never built (an import nothing provides, whose absence the attempt read when it declared the edge); every path reaching the node counts: one still waiting for that product has read nothing of the old one, and gets the fresh one
 3. Each affected module's next attempt checks its last build again — its key and its inputs — and keeps it when both still hold; a consumer never reads a PCM whose module is dirty
 
 Forward edges are left untouched: the saved file's next attempt rescans its `import` declarations and replaces them, so an import removed by the edit stops cascading only after that rescan. Cascading updates do not modify interest — existing waiters retain theirs, and a waiter that wants a result drives a fresh attempt after a stale one.
