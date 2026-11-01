@@ -585,7 +585,8 @@ ZEST_CASE(RefusedModuleForgotten) {
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        probe.hold(BuildKind::PCM, tmp.path("slow.cppm"));
+        probe.hold(BuildKind::PCM,
+                   std::string(project.file_table.resolve(fixture.intern(tmp.path("slow.cppm")))));
         auto compile = [&]() -> async::task<> {
             co_await served.ensure_compiled(session);
         };
