@@ -450,7 +450,7 @@ static worker::CompileUnitResult
         return result;
     }
 
-    // Building and serializing the index costs a large share of the pass;
+    // Building and serializing the index costs a large share of the compile;
     // skip it when the cancellation arrived after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
         return {false, "Unit compile cancelled"};

@@ -487,10 +487,6 @@ async::task<Result> Project::acquire_pch(PCHRequest request) {
     co_return co_await graph.join(id, pch_work(std::move(request)), {.foreground = true});
 }
 
-bool Project::pch_building(llvm::StringRef pch_key) const {
-    return graph.is_compiling(pch_node(pch_key));
-}
-
 void Project::discard_pch(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     if(it == pchs.end()) {
@@ -502,7 +498,7 @@ void Project::discard_pch(llvm::StringRef pch_key) {
     // FIXME: the rebuild in flight is not restarted: a save that retries a PCH
     // which kept its preamble's errors gets that rebuild's result, still missing
     // a header created after the build looked for it.
-    if(!pch_building(pch_key)) {
+    if(!graph.is_compiling(pch_node(pch_key))) {
         forget_pairs(*this, pch_key);
     } else if(store) {
         store->invalidate("pch", it->second.blob);
@@ -577,7 +573,7 @@ void Project::forget_evicted_pchs() {
         auto it = ranges::find_if(pchs, [&](const auto& entry) {
             return entry.second.blob == evicted.key;
         });
-        if(it != pchs.end() && !pch_building(it->getKey())) {
+        if(it != pchs.end() && !graph.is_compiling(pch_node(it->getKey()))) {
             forget_pairs(*this, it->getKey());
         }
     }

@@ -59,7 +59,7 @@ struct ContextChoices {
 /// documents open in it, and tells it of the index they read. A run of the
 /// command line has none (Project::serving).
 struct ServingSide {
-    /// How many documents are open: the loaded-state budget follows it.
+    /// How many documents are open: the loaded-index budget follows it.
     virtual std::size_t open_documents() const = 0;
 
     /// Whether an open document's own compile serves the file: a pending
@@ -828,10 +828,6 @@ struct Project {
     /// releases it. Returns whether it had failed.
     bool forget_build_failure(llvm::StringRef pch_key);
 
-    /// An attempt for the key is in flight; its commit will republish over
-    /// concurrent store retractions.
-    bool pch_building(llvm::StringRef pch_key) const;
-
     /// Discard a pair the frontend could not consume: remove both blobs from
     /// the store and drop the idle cache entry, so the next acquisition misses
     /// and rebuilds instead of trusting corrupt bytes for the life of the
@@ -858,7 +854,7 @@ struct Project {
     /// is discarded from the store as well — otherwise every later session
     /// re-adopts the corrupt pair from the precompiled records and silently
     /// degrades again. With the pair gone the next acquisition is a miss and
-    /// rebuilds both halves. Loads count against the loaded-state budget (see
+    /// rebuilds both halves. Loads count against the loaded-index budget (see
     /// enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
@@ -930,9 +926,6 @@ struct Project {
     /// what its importers read is unchanged. Returns the dirtied nodes' files,
     /// of every kind.
     llvm::SmallVector<Fid> invalidate_module(Fid path_id);
-
-    /// A closed document's buffer scans no more.
-    void forget_buffer_scan(Fid path_id);
 
     /// The crash of the module's last build, while what it is known to have
     /// read holds: every importer that finds it books it against its own

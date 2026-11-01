@@ -657,8 +657,4 @@ llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
     return dirtied;
 }
 
-void Project::forget_buffer_scan(Fid path_id) {
-    import_scans.buffers.erase(path_id);
-}
-
 }  // namespace clice

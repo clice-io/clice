@@ -304,7 +304,7 @@ void ServedProject::release(Fid path_id) {
     server.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
     server.pool.remove_owner(path_id.raw);
     project.graph.invalidate(node(path_id));
-    project.forget_buffer_scan(path_id);
+    project.import_scans.buffers.erase(path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
     // index (ServingSide::compiled_by_session); the disk's turn again, unless
@@ -316,7 +316,7 @@ void ServedProject::release(Fid path_id) {
         background.schedule();
     }
     // PCH entries are content-keyed and may be shared with other documents,
-    // so nothing entry-level to clean up — but the loaded-state budget
+    // so nothing entry-level to clean up — but the loaded-index budget
     // shrinks with the open count, and this is the moment it does.
     project.enforce_loaded_budget();
     LOG_DEBUG("Released {}", path);

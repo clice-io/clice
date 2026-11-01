@@ -149,8 +149,8 @@ std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
     return text;
 }
 
-/// The command a ref compiles with.
-struct Rendered {
+/// The command a ref compiles with, as `clice command` shows it.
+struct ShownCommand {
     std::vector<std::string> arguments;
 
     /// Why the compiler could not be queried, which leaves `arguments` the
@@ -160,7 +160,7 @@ struct Rendered {
     vfs::HiddenFiles hidden;
 };
 
-Rendered render_command(Project& project, const CommandRef& ref, const RenderOptions& opts = {}) {
+ShownCommand shown_command(Project& project, const CommandRef& ref, const RenderOptions& opts = {}) {
     auto path = project.cdb.spelling(ref.file);
     auto resolution = project.toolchain.resolve(ref.command, ref.language);
     if(resolution && resolution->query_failure.empty()) {
@@ -258,7 +258,7 @@ int run_file(const FileOptions& opts) {
             LOG_ERROR("{} changed while it was read; run the command again", database);
             return 1;
         }
-        auto rendered = render_command(project, ref);
+        auto rendered = shown_command(project, ref);
         auto directory = Spelling::absolute(project.commands.get(ref.command).directory);
         commands.commands.push_back({
             .database = files.display(CanonicalPath(database)),
@@ -354,7 +354,7 @@ int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool 
     auto ref = project.apply_rules(entry->file,
                                    {.base = entry->command, .source = CommandSource::Database});
     project.toolchain.warm(ref);
-    auto rendered = render_command(project, ref, {.shadowed_dirs = false});
+    auto rendered = shown_command(project, ref, {.shadowed_dirs = false});
     if(json) {
         print_json(DatabaseEntry{.directory = directory.str(),
                                  .file = sources.front().str(),
@@ -434,7 +434,7 @@ int convert_database(Project& project, const Spelling& path) {
         // The command of one clice does not compile, another language's
         // source, is left as it is too.
         if(ref != refs.end()) {
-            auto rendered = render_command(project, ref->second, {.shadowed_dirs = false});
+            auto rendered = shown_command(project, ref->second, {.shadowed_dirs = false});
             if(rendered.error) {
                 unconverted += 1;
             }
