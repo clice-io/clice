@@ -1,13 +1,38 @@
 // What only the code after the completion point instantiates: a template
-// called through a macro or another template, one a class member declared
-// after its caller among them, a dependent type name, a constructor and an
-// operator; and a member access whose call is written after the point.
+// called through a macro, one defined before it among them, or another
+// template, one a class member declared after its caller among them, a
+// dependent type name, a constructor and an operator, the first of several
+// instantiations; and a member access whose call is written after the point.
 struct Holder {
     using value_type = int;
     /// What the holder keeps.
     int held;
     int get() const;
 };
+
+struct Other {
+    int other;
+};
+
+#define CHECK_IT(x) examine(x)
+
+template <class T>
+int examine(T value) {
+    return value.§(macro_before);
+}
+
+template <class T>
+int twice(T value) {
+    return value.§(first_of_several);
+}
+
+int first() {
+    return twice(Holder{}) + CHECK_IT(Holder{});
+}
+
+int second() {
+    return twice(Other{});
+}
 
 template <class T>
 int inspect(T value) {

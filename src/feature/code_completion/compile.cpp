@@ -938,7 +938,7 @@ public:
     /// range-based `for` it is the statement there that tells, which the
     /// completion's own parse leaves unfinished.
     bool complete_instantiated(const clang::NamedDecl* templated, bool loop) {
-        auto found = whole_buffer->instantiated(templated, loop);
+        auto found = whole_buffer->instantiated(templated, loop, unit.sema().getPreprocessor());
         if(!found) {
             return false;
         }

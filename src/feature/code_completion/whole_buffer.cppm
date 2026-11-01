@@ -32,16 +32,23 @@ public:
     explicit WholeBuffer(const CompilationParams& completion);
 
     /// The expression at the point, the template `templated` around it
-    /// instantiated as the code after the point does: the compile skips the
-    /// focus file's function bodies but those that may instantiate it
-    /// (CompilationParams::Instantiating). For the variable of a range-based
-    /// `for`, `loop`, the statement there alone tells. None when nothing
-    /// after the point calls the template, when the compile did not complete
-    /// and when nothing dependent stands at the point.
-    auto instantiated(const clang::NamedDecl* templated, bool loop) -> std::optional<AtPoint>;
+    /// instantiated as the code after the point first does: the compile
+    /// skips the focus file's function bodies but those that may instantiate
+    /// it, and stops at the call that does (CompilationParams::Instantiating).
+    /// For the variable of a range-based `for`, `loop`, the statement there
+    /// alone tells. None when nothing after the point calls the template, as
+    /// `pp` has the macros before it, when the compile did not complete and
+    /// when nothing dependent stands at the point.
+    auto instantiated(const clang::NamedDecl* templated, bool loop, clang::Preprocessor& pp)
+        -> std::optional<AtPoint>;
 
     /// The compile once it completed; null before.
     CompilationUnit* unit();
+
+private:
+    /// Whether the code after the point spells `name`, or a macro whose
+    /// expansion does.
+    bool called_after(llvm::StringRef name, clang::Preprocessor& pp);
 
 private:
     CompilationInput input;

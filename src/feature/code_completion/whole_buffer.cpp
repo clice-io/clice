@@ -92,9 +92,17 @@ WholeBuffer::WholeBuffer(const CompilationParams& completion) :
     }
 }
 
-auto WholeBuffer::instantiated(const clang::NamedDecl* templated, bool loop)
-    -> std::optional<AtPoint> {
+auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
+                               bool loop,
+                               clang::Preprocessor& pp) -> std::optional<AtPoint> {
     if(!compiled) {
+        // The resolver binds no class template's parameters through its
+        // instantiations: a member of one learns nothing more here, but for
+        // the statement at the point.
+        bool member = llvm::isa<clang::CXXRecordDecl>(templated);
+        if(member && !loop) {
+            return std::nullopt;
+        }
         // A call after the point names the template it calls, a constructor
         // its class; one nothing calls yet goes without the compile. A lambda
         // in a function is called in the body holding the point; any body may
@@ -105,9 +113,8 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated, bool loop)
             named = constructor->getParent();
         }
         auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
-        llvm::StringRef text = input.buffers.find(input.focus)->second;
         if(auto* name = named->getIdentifier()) {
-            if(!loop && !text.substr(point).contains(name->getName())) {
+            if(!loop && !called_after(name->getName(), pp)) {
                 return std::nullopt;
             }
             names.emplace().insert(name->getName());
@@ -115,15 +122,20 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated, bool loop)
                   method->getParent()->getParentFunctionOrMethod()) {
             names.emplace();
         }
-        std::optional<CompilationParams::Instantiating> instantiating;
-        if(names) {
-            instantiating =
-                CompilationParams::Instantiating{.point = point, .names = std::move(*names)};
+        std::optional<std::uint32_t> declared;
+        if(!member) {
+            auto& sources = pp.getSourceManager();
+            declared = sources.getDecomposedExpansionLoc(templated->getLocation()).second;
         }
         compiled = compile({
             .kind = CompilationKind::Content,
             .input = input,
-            .instantiating = std::move(instantiating),
+            .instantiating =
+                CompilationParams::Instantiating{
+                                                 .point = point,
+                                                 .names = std::move(names),
+                                                 .templated = declared,
+                                                 },
             .stop = stop,
         });
     }
@@ -146,6 +158,29 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated, bool loop)
         .member = finder.member,
         .qualifier = finder.qualifier,
     };
+}
+
+bool WholeBuffer::called_after(llvm::StringRef name, clang::Preprocessor& pp) {
+    auto& text = input.buffers.find(input.focus)->second;
+    clang::Lexer lexer({},
+                       pp.getLangOpts(),
+                       text.data(),
+                       text.data() + point,
+                       text.data() + text.size());
+    auto spells = [&](llvm::StringRef word) {
+        return word == name;
+    };
+    llvm::DenseMap<const clang::MacroInfo*, bool> read;
+    clang::Token token;
+    for(bool end = false; !end;) {
+        end = lexer.LexFromRawLexer(token);
+        if(token.is(clang::tok::raw_identifier) &&
+           (spells(token.getRawIdentifier()) ||
+            macro_spells(pp, token.getRawIdentifier(), spells, read))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 CompilationUnit* WholeBuffer::unit() {

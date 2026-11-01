@@ -322,13 +322,36 @@ static bool likely_forwarding(const clang::Decl* decl) {
     return param && param->getDepth() == function->getTemplateParameters()->getDepth();
 }
 
+bool macro_spells(clang::Preprocessor& pp,
+                  llvm::StringRef word,
+                  llvm::function_ref<bool(llvm::StringRef)> wanted,
+                  llvm::DenseMap<const clang::MacroInfo*, bool>& read) {
+    auto* identifier = pp.getIdentifierInfo(word);
+    const auto* macro = identifier->hasMacroDefinition() ? pp.getMacroInfo(identifier) : nullptr;
+    if(!macro) {
+        return false;
+    }
+    // A definition being read gives nothing to the macros it reaches again.
+    auto [entry, fresh] = read.try_emplace(macro, false);
+    if(!fresh) {
+        return entry->second;
+    }
+    bool spells = ranges::any_of(macro->tokens(), [&](const clang::Token& token) {
+        auto* spelled = token.getIdentifierInfo();
+        return spelled &&
+               (wanted(spelled->getName()) || macro_spells(pp, spelled->getName(), wanted, read));
+    });
+    read[macro] = spells;
+    return spells;
+}
+
 /// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
     ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
         clang::MultiplexConsumer(std::move(consumer)), unit(unit) {
-        if(auto& instantiating = unit.params.instantiating) {
-            instantiating_names = instantiating->names;
+        if(auto& instantiating = unit.params.instantiating; instantiating && instantiating->names) {
+            instantiating_names = *instantiating->names;
         }
     }
 
@@ -382,13 +405,16 @@ public:
                 collect_decl(decl);
             }
             collect_instantiation(decl);
+            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+                notice(function);
+            }
         }
 
         if(unit.params.stop->load()) {
             return false;
         }
 
-        return clang::MultiplexConsumer::HandleTopLevelDecl(group);
+        return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !instantiation_found;
     }
 
     /// Asked under CompilationParams::skip_bodies and instantiating, and by
@@ -401,6 +427,9 @@ public:
         auto file = unit.produced_at(decl->getLocation()).file;
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
+            if(instantiation_found || !instantiating->names) {
+                return instantiation_found;
+            }
             bool may = may_instantiate(decl, instantiating->point);
             // A template's body is parsed, as its use may need it; one that
             // names one of the names makes a body naming this template one
@@ -422,10 +451,16 @@ public:
                         instantiating_names.insert(record->getName());
                     }
                 }
+                spelling_macros.clear();
             }
             return false;
         }
         return unit.in_preamble(file) && !likely_forwarding(decl);
+    }
+
+    void HandleCXXImplicitFunctionInstantiation(clang::FunctionDecl* decl) final {
+        notice(decl);
+        clang::MultiplexConsumer::HandleCXXImplicitFunctionInstantiation(decl);
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
@@ -518,23 +553,32 @@ private:
         return begin <= point && point <= sources.getFileOffset(token.getLocation());
     }
 
+    /// Notes a call past the point instantiating the template looked for
+    /// (CompilationParams::Instantiating::templated): Sema hands over a
+    /// deferred instantiation when it is called, one it instantiates at once,
+    /// a constexpr function's or a lambda's, when its body is.
+    void notice(const clang::FunctionDecl* function) {
+        auto& instantiating = unit.params.instantiating;
+        auto* pattern = function->getTemplateInstantiationPattern();
+        if(!instantiating || !instantiating->templated || instantiation_found || !pattern) {
+            return;
+        }
+        auto& sources = unit.context().getSourceManager();
+        auto focus = unit.focus_file().file();
+        auto declared = sources.getDecomposedExpansionLoc(pattern->getLocation());
+        auto called = sources.getDecomposedExpansionLoc(function->getPointOfInstantiation());
+        instantiation_found = declared == std::pair(focus, *instantiating->templated) &&
+                              called.first == focus && called.second > instantiating->point;
+    }
+
     /// Whether `word` is one of instantiating_names, or a macro whose
-    /// expansion spells one, through the macros it expands in turn.
-    bool names(llvm::StringRef word, std::uint32_t depth = 0) {
-        if(instantiating_names.contains(word)) {
-            return true;
-        }
-        auto& pp = unit.instance->getPreprocessor();
-        auto* identifier = pp.getIdentifierInfo(word);
-        const auto* macro =
-            identifier->hasMacroDefinition() ? pp.getMacroInfo(identifier) : nullptr;
-        if(!macro || depth == 8) {
-            return false;
-        }
-        return ranges::any_of(macro->tokens(), [&](const clang::Token& token) {
-            auto* spelled = token.getIdentifierInfo();
-            return spelled && spelled != identifier && names(spelled->getName(), depth + 1);
-        });
+    /// expansion spells one.
+    bool names(llvm::StringRef word) {
+        auto named = [&](llvm::StringRef spelled) {
+            return instantiating_names.contains(spelled);
+        };
+        return named(word) ||
+               macro_spells(unit.instance->getPreprocessor(), word, named, spelling_macros);
     }
 
 private:
@@ -547,6 +591,12 @@ private:
     /// CompilationParams::Instantiating::names, and the templates whose
     /// bodies name one.
     llvm::StringSet<> instantiating_names;
+
+    /// What each macro definition gave names, until a name is added.
+    llvm::DenseMap<const clang::MacroInfo*, bool> spelling_macros;
+
+    /// A call past the point instantiated the template looked for.
+    bool instantiation_found = false;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
