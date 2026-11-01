@@ -1,15 +1,14 @@
 module clice;
 
 import :index.project_index;
+import :project.graph.unit;
 import :project.indexer;
 import :project.project;
-import :project.unit;
 import :support.environment;
 import :support.logging;
 import :support.process;
 import :support.timer;
 import :worker.pool;
-import :worker.protocol;
 
 namespace clice {
 
@@ -264,7 +263,7 @@ async::task<> BackgroundIndex::feed(async::task_group<>& workers,
                 pause();
             }
         }
-        // A free coroutine, not an immediately-invoked capturing lambda: a
+        // A member coroutine, not an immediately-invoked capturing lambda: a
         // lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.

@@ -11,11 +11,8 @@ import :index.search_index;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
-import :index.writer_lock;
 import :project.project;
-import :settings.settings;
 import :support.text;
-import :support.timer;
 
 namespace clice::driver {
 

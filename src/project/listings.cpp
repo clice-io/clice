@@ -8,7 +8,6 @@ import :project.listings;
 import :project.project;
 import :support.json;
 import :support.logging;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {

@@ -3,9 +3,9 @@ module clice;
 import :command.argument;
 import :compile.compilation;
 import :project.command;
-import :project.pch;
-import :project.pcm;
-import :project.precompiled;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.precompiled;
 import :project.project;
 import :support.logging;
 import :support.text;
@@ -122,14 +122,14 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
 
     auto [state, pch_miss] = pair_state(project, pch_key);
     if(state == Check::Holds) {
-        LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
+        LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.params.file);
         co_return Result::Success;
     }
     LOG_PERF("cache",
              "ns=pch event=miss reason={} key={} file={}",
              pch_miss,
              pch_key,
-             request.file);
+             request.params.file);
     if(pch_miss == "evicted") {
         forget_pairs(project, pch_key);
     }
@@ -138,7 +138,7 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
         LOG_WARN("PCH build skipped: cache store is unavailable");
         co_return Result::Failed;
     }
-    if(refused(project, pch_key, request.file)) {
+    if(refused(project, pch_key, request.params.file)) {
         co_return Result::Failed;
     }
 
@@ -149,23 +149,13 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
     auto pending = project.store->begin_store("pch", blob);
     auto pending_idx = project.store->begin_store_aux("pch", blob);
 
-    worker::BuildPCHParams bp;
-    bp.file = std::move(request.file);
-    bp.directory = std::move(request.directory);
+    auto& bp = request.params;
     bp.project_root = project.root.str();
-    bp.arguments = std::move(request.arguments);
-    bp.hidden = std::move(request.hidden);
-    bp.content = std::move(request.content);
-    bp.preamble_bound = request.preamble_bound;
-    bp.whole_file = request.whole_file;
-    bp.skip_bodies = request.skip_bodies;
-    bp.synthesized = std::move(request.synthesized);
-    bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
 
     // What the imported modules' PCMs and the PCH built over were built
-    // from as the build starts.
+    // from as the build starts: one rebuilt meanwhile stales the PCH.
     auto before = project.module_inputs(request.modules);
     std::string base_blob;
     if(!request.base.empty()) {
@@ -260,7 +250,7 @@ async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest req
                   std::move(blob),
                   std::move(*pch_path),
                   project.read_inputs(*built, before));
-    entry.bound = request.preamble_bound;
+    entry.bound = request.params.preamble_bound;
     entry.base = request.base;
     entry.base_blob = std::move(base_blob);
     entry.index_path = std::move(*index_path);
@@ -321,18 +311,21 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodie
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     auto rendered = render(unit);
-    PCHRequest request{.file = std::string(file_table.resolve(unit.file)),
-                       .directory = std::move(rendered.directory),
-                       .arguments = std::move(rendered.arguments),
-                       .hidden = std::move(rendered.hidden),
-                       .whole_file = true,
-                       .skip_bodies = skip_bodies};
+    PCHRequest request{
+        .params = {.file = std::string(file_table.resolve(unit.file)),
+                   .directory = std::move(rendered.directory),
+                   .arguments = std::move(rendered.arguments),
+                   .hidden = std::move(rendered.hidden),
+                   .whole_file = true,
+                   .skip_bodies = skip_bodies},
+    };
+    auto& params = request.params;
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule(skip_bodies),
                                  database_key.str(),
-                                 request.directory,
-                                 request.file,
-                                 canonicalize(request.arguments)});
+                                 params.directory,
+                                 params.file,
+                                 canonicalize(params.arguments)});
     return request;
 }
 
@@ -344,8 +337,6 @@ const PCHEntry* Project::built_pch(llvm::StringRef key) const {
 PreamblePCH Project::preamble_pch(Fid path_id,
                                   llvm::StringRef text,
                                   std::optional<std::uint32_t> point,
-                                  llvm::StringRef directory,
-                                  llvm::ArrayRef<std::string> arguments,
                                   const Resolution& resolution,
                                   const Imports& imports,
                                   llvm::StringRef base) {
@@ -438,31 +429,33 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies),
                               database_key.str(),
-                              directory,
+                              resolution.directory,
                               path::parent(path),
                               own_path,
                               preamble_text,
-                              canonicalize(arguments),
+                              canonicalize(resolution.arguments),
                               pcm_keys,
                               base_blob});
     PreamblePCH plan{
         .request =
             PCHRequest{
                        .pch_key = std::move(pch_key),
-                       .file = std::string(path),
-                       .directory = directory.str(),
-                       .arguments = arguments.vec(),
-                       .hidden = resolution.hidden,
-                       .content = std::string(text),
-                       .preamble_bound = bound,
-                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
-                       .base = base.str(),
-                       .skip_bodies = skip_bodies,
+                       .params =
+                    {
+                        .file = std::string(path),
+                        .directory = resolution.directory,
+                        .arguments = resolution.arguments,
+                        .hidden = resolution.hidden,
+                        .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
+                        .content = std::string(text),
+                        .preamble_bound = bound,
+                        .skip_bodies = skip_bodies,
+                    }, .base = base.str(),
                        },
         .partial = partial,
     };
     if(imported) {
-        plan.request->pcms = imported_pcms(imports.resolved());
+        plan.request->params.pcms = imported_pcms(imports.resolved());
         plan.request->modules = std::move(modules);
     }
     return plan;

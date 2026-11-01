@@ -1,6 +1,6 @@
 module clice;
 
-import :project.task_graph;
+import :project.graph.task_graph;
 
 namespace clice {
 
@@ -101,7 +101,7 @@ void TaskGraph::mark_foreground(NodeId id) {
     // preempted attempt retries, and without the closure mark that retry
     // would stay Low — cancellable by the very foreground waiting on it.
     // Only live attempts' waits propagate: they hold interest, so the flag
-    // is guaranteed its refcount-zero reset. Settled edges would tag clean
+    // is guaranteed its refcount-zero reset. Declared edges would tag clean
     // cached dependencies no waiter ever acquires — the mark could never
     // clear, and an unrelated background rebuild much later would run at
     // foreground class. Edges the attempt waits on later inherit through
@@ -175,8 +175,7 @@ void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported
         replace_edges(id, &Node::waited, attempt.waits);
     }
 
-    // Re-find: replace_edges may materialize nodes.
-    nodes.find(id)->second.compiling = false;
+    node.compiling = false;
 
     for(auto dep: attempt.waits) {
         release(dep);

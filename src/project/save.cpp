@@ -87,13 +87,6 @@ void Project::recover_corrupt_database(index::IndexReport& report) {
     for(auto unit: members()) {
         report.add_reindex(unit);
     }
-    // No pass over the build reaches a unit of its own (a header indexed
-    // with a borrowed command): as many as the records still name.
-    index.for_each_unit([&](Fid unit) {
-        if(entries(unit).empty()) {
-            report.add_reindex(unit);
-        }
-    });
     // The fresh database records the listings at the next save.
     report.owes_retry = true;
     reopen_fresh_database();
@@ -196,7 +189,7 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     auto restore = [&] {
         index.abandon_save(batch);
         if(listings_bytes) {
-            listings.unsaved();
+            listings.owe_save();
         }
         precompiled_dirty = precompiled_dirty || carries_precompiled;
         choices.dirty = choices.dirty || carries_choices;

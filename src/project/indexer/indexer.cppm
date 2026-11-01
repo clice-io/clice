@@ -410,6 +410,7 @@ private:
 
     void record(Fid file, LastAttempt attempt);
 
+private:
     constexpr static unsigned max_requeues = 3;
 
     Project& project;

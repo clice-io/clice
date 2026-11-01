@@ -236,7 +236,7 @@ struct WorkerPids {
 };
 
 struct StatsResult {
-    /// pch_cache entries whose pch.idx index is currently open, and
+    /// PCH entries whose pch.idx index is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
     /// by the loaded-index budget, not by every key ever touched.
     std::uint32_t pch_loaded_indexes = 0;

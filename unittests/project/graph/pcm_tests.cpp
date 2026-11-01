@@ -4,13 +4,13 @@ import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
-import :project.task_graph;
+import :project.graph.task_graph;
 import :syntax.dependency_graph;
 import :syntax.scan;
+import :unittests.utils;
 import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.file_table;
 
 namespace clice::testing {

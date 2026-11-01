@@ -10,8 +10,9 @@ namespace clice {
 
 /// The files the user opened or saved that the build does not declare
 /// (Project::record_provisional): recorded until an entry or a rule covers
-/// them, persisted with the index, and each a member while it has the
-/// command it borrows (Project::refresh_provisional).
+/// them, persisted with the index, and each a member under the command it
+/// borrows, or the builtin one when it can borrow none
+/// (Project::refresh_provisional).
 class ProvisionalMembers {
 public:
     /// False when `file` is recorded already.

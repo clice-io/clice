@@ -5,7 +5,6 @@ import :command.file_kind;
 import :project.discovery;
 import :project.project;
 import :settings.settings;
-import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -29,6 +28,15 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
         ranges::remove_if(places, [](const Spelling& place) { return !fs::exists(place); }).begin(),
         places.end());
     return places;
+}
+
+/// Whether a project directory holds no sources a refactoring edits:
+/// hidden, a package cache, the cache directory or a build tree.
+bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
+    auto name = path::filename(dir);
+    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
+           fs::exists(path::join(dir, "CMakeCache.txt")) ||
+           fs::exists(path::join(dir, "build.ninja"));
 }
 
 }  // namespace
@@ -264,15 +272,6 @@ llvm::SmallVector<Spelling> databases_above(CanonicalRef start, CanonicalRef pro
 std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database) {
     auto depth = ranges::count_if(database, [](char c) { return path::is_separator(c); });
     return {static_cast<std::uint32_t>(depth), database};
-}
-
-/// Whether a project directory holds no sources a refactoring edits:
-/// hidden, a package cache, the cache directory or a build tree.
-static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
-    auto name = path::filename(dir);
-    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
-           fs::exists(path::join(dir, "CMakeCache.txt")) ||
-           fs::exists(path::join(dir, "build.ninja"));
 }
 
 bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {

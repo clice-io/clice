@@ -4,14 +4,11 @@ module;
 
 module clice;
 
-import :command.file_kind;
 import :command.table;
-import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
-import :project.command;
+import :project.graph.task_graph;
 import :project.indexer;
-import :project.task_graph;
 import :server.client;
 import :server.control;
 import :server.master;
@@ -29,11 +26,6 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
     project.index_query.attach(*this);
     project.serving = this;
-    // Metadata marks (a PCH commit, a context switch) flush through the
-    // next save; the callback schedules one soon after the first mark.
-    project.request_flush = [this] {
-        schedule_metadata_flush();
-    };
     progress_conn = project.background_index.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
 }
@@ -144,8 +136,9 @@ void ServedProject::start() {
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        commands_missing = opened.members.empty() && !project.rules.declares_sources() &&
-                           !project.found_unreadable_database();
+        commands_missing =
+            ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
+            !project.rules.declares_sources() && !project.found_unreadable_database();
     }
     if(project.settings.project.enable_indexing.value) {
         project.background_index.start();
@@ -226,8 +219,10 @@ bool ServedProject::owns(const Session& session) const {
 
 void ServedProject::adopt(std::shared_ptr<Session> session) {
     // A database generated since the start counts: the poll, or the
-    // discovery around this file, has loaded it by now.
-    if(std::exchange(commands_missing, false) && project.members().empty() &&
+    // discovery around this file, has loaded it by now. A provisional
+    // member's command is a guess too.
+    if(std::exchange(commands_missing, false) &&
+       ranges::none_of(project.members(), [&](Fid member) { return project.declared(member); }) &&
        !project.found_unreadable_database()) {
         auto why = project.why_no_members(project.file_table.display(project.root));
         why.front() = llvm::toUpper(why.front());
@@ -353,7 +348,7 @@ void ServedProject::schedule_metadata_flush() {
 async::task<> ServedProject::metadata_flush_task() {
     // One loop turn of debounce coalesces a burst of marks into one save;
     // the save itself batches whatever else is dirty by then. Marks
-    // arriving while the save runs re-schedule through request_flush, and
+    // arriving while the save runs schedule one again, and
     // a save that could not clear the flags (serialization or write
     // failure) retries on the next spawn with this backoff.
     // Time is the feature: the debounce.

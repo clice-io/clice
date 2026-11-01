@@ -1,7 +1,6 @@
 module clice:project.command;
 
 import :command.table;
-import :compile.compilation;
 import :index.symbol;
 import :project.memo;
 import :support.prelude;
@@ -37,8 +36,13 @@ struct Candidate {
     /// This command of `owner` as another file compiles under it, `as` Host
     /// or Borrowed. A header compiles in its host, under the host's rules
     /// too; a borrowed command stays the command of the unit it came from first.
+    /// The builtin one stays Fallback: no build chose its compiler.
     Candidate passed_on(Fid owner, CommandSource as) const {
-        Candidate candidate{.base = base, .source = as, .rules_from = rules_from};
+        Candidate candidate{
+            .base = base,
+            .source = source == CommandSource::Fallback ? source : as,
+            .rules_from = rules_from,
+        };
         if(as == CommandSource::Host || rules_from.empty()) {
             candidate.rules_from.push_back(owner);
         }
@@ -191,10 +195,6 @@ struct Hosting {
 
     /// What a file without a command can borrow (see borrowed_command).
     BorrowableCommands borrowable;
-
-    /// Moves whenever an include tree or a self-containment result is
-    /// committed (Project::context_epoch).
-    std::uint64_t generation = 0;
 };
 
 /// The language a command compiles its unit as — a `-x` in the entry or a
@@ -267,7 +267,7 @@ struct CommandRequest {
 
 /// What a file compiles under, before anything is rendered
 /// (Project::select_command).
-struct Selection {
+struct SelectedCommand {
     /// The command the file compiles under before the rules edit it, and
     /// the files it is from.
     Candidate candidate;
@@ -336,7 +336,7 @@ struct Rendered {
 
 /// How a file's command was resolved (Project::resolve_command): what was
 /// selected, rendered with the header's context.
-struct Resolution : Selection, Rendered {
+struct Resolution : SelectedCommand, Rendered {
     /// The header context the arguments name (-include of its prefix),
     /// which exists only in memory: every compile under them must be
     /// served its files. Null when nothing was synthesized.

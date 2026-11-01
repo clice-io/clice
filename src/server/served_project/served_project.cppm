@@ -8,11 +8,11 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.task_graph;
 import :project.indexer;
-import :project.pch;
-import :project.pcm;
 import :project.project;
-import :project.task_graph;
 import :server.session;
 import :settings.settings;
 import :support.anomaly;
@@ -111,7 +111,7 @@ struct DocumentCompile {
     /// The host whose command the compile borrowed; invalid for none.
     Fid host;
 
-    /// The command the compile ran under (Selection::ref): a change of the
+    /// The command the compile ran under (SelectedCommand::ref): a change of the
     /// members that moves the document's selection — its command or its
     /// host — recompiles it.
     CommandID command = invalid_command;
@@ -372,8 +372,6 @@ public:
     async::task<bool> prepare_precompiled(const Ticket& ticket,
                                           llvm::StringRef text,
                                           std::uint32_t point,
-                                          const std::string& directory,
-                                          const std::vector<std::string>& arguments,
                                           const Resolution& resolution,
                                           StatelessInputs& inputs);
 
@@ -754,7 +752,7 @@ private:
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
-    void schedule_metadata_flush();
+    void schedule_metadata_flush() override;
     async::task<> metadata_flush_task();
 
     /// The periodic Project::checkpoint().
@@ -790,8 +788,6 @@ private:
     async::task<std::optional<Imports>> depend_modules(Attempt& attempt,
                                                        const Ticket& ticket,
                                                        const Resolution& resolution,
-                                                       llvm::StringRef directory,
-                                                       const std::vector<std::string>& arguments,
                                                        llvm::StringRef text);
 
     /// Whose fault a worker death under the document's compile is, tried
@@ -826,8 +822,6 @@ private:
                                                        std::uint64_t epoch,
                                                        llvm::StringRef text,
                                                        std::optional<std::uint32_t> point,
-                                                       const std::string& directory,
-                                                       const std::vector<std::string>& arguments,
                                                        const Resolution& resolution,
                                                        const Imports& imports);
 
@@ -1305,13 +1299,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
 
     ScopedTimer timer;
     StatelessInputs inputs;
-    if(!co_await prepare_precompiled(ticket,
-                                     params.text,
-                                     params.offset,
-                                     params.directory,
-                                     params.arguments,
-                                     resolution,
-                                     inputs)) {
+    if(!co_await prepare_precompiled(ticket, params.text, params.offset, resolution, inputs)) {
         co_await async::fail(
             ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }

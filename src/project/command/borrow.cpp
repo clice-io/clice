@@ -19,9 +19,8 @@ const static BorrowableCommands& borrowable_commands(Project& project) {
     ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
-        // A member a rule covers with a default command that is no compile
-        // command has none; giving the builtin one would only name a guess
-        // borrowed.
+        // A provisional member with no command to borrow compiles under the
+        // builtin one; giving that would only name a guess borrowed.
         for(auto& candidate: project.candidates(member)) {
             if(candidate.source == CommandSource::Fallback) {
                 continue;

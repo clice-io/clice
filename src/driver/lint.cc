@@ -2,8 +2,8 @@ module clice;
 
 import :compile.tidy;
 import :driver.driver;
+import :project.graph.unit;
 import :project.project;
-import :project.unit;
 import :support.logging;
 import :support.timer;
 

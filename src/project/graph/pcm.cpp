@@ -1,9 +1,9 @@
 module clice;
 
 import :project.command;
-import :project.pch;
-import :project.pcm;
-import :project.precompiled;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.precompiled;
 import :project.project;
 import :support.logging;
 import :syntax.header_context;
@@ -185,11 +185,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     bp.directory = resolution.directory;
     bp.arguments = resolution.arguments;
     bp.hidden = resolution.hidden;
-    auto imports = co_await project.scan_imports(path_id,
-                                                 resolution,
-                                                 bp.arguments,
-                                                 bp.directory,
-                                                 std::nullopt);
+    auto imports = co_await project.scan_imports(path_id, resolution, std::nullopt);
     project.graph.set_edges(attempt.node(), imports.declared);
 
     // A unit of a target with precompiled headers builds over clice's own
@@ -407,8 +403,6 @@ bool Imports::modular() const {
 
 async::task<Imports> Project::scan_imports(Fid path_id,
                                            const Resolution& resolution,
-                                           llvm::ArrayRef<std::string> arguments,
-                                           llvm::StringRef directory,
                                            std::optional<llvm::StringRef> content) {
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
@@ -428,8 +422,8 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         co_return Imports{};
     }
 
-    llvm::SmallString<1024> joined(directory);
-    for(auto& arg: arguments) {
+    llvm::SmallString<1024> joined(resolution.directory);
+    for(auto& arg: resolution.arguments) {
         joined.push_back('\0');
         joined.append(arg);
     }
@@ -469,12 +463,12 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         }
         import_scans.runs += 1;
         std::vector<const char*> argv;
-        argv.reserve(arguments.size());
-        for(auto& arg: arguments) {
+        argv.reserve(resolution.arguments.size());
+        for(auto& arg: resolution.arguments) {
             argv.push_back(arg.c_str());
         }
         auto scanned = co_await async::queue(
-            [&] { return scan_precise(argv, directory, content, std::move(vfs)); });
+            [&] { return scan_precise(argv, resolution.directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,
@@ -552,19 +546,14 @@ const FailureRecord* Project::build_crash(Fid module) {
 async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
                                                            Fid path_id,
                                                            const Resolution& resolution,
-                                                           llvm::ArrayRef<std::string> arguments,
-                                                           llvm::StringRef directory,
                                                            llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The consumer's edges must live in the graph: a saved
     // module (or a provider appearing for an unresolved import) cascades to
     // the open TUs importing it through them. Declared even when empty, so
     // a removed import stops cascading.
-    auto imports = co_await scan_imports(path_id,
-                                         resolution,
-                                         arguments,
-                                         directory,
-                                         std::optional<llvm::StringRef>(content));
+    auto imports =
+        co_await scan_imports(path_id, resolution, std::optional<llvm::StringRef>(content));
     graph.set_edges(consumer, imports.declared);
     // A user request waits on these builds: foreground, so the background
     // budget cannot throttle them. A module that did not build is the

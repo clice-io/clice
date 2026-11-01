@@ -583,7 +583,7 @@ ZEST_CASE(InactiveSourceKeepsDiscovery) {
 ZEST_CASE(RuleTurnsQueryOff) {
     /// A matching rule turning the toolchain query off turns it off for the
     /// file's command, alone or beside other edits, and the edit hash says
-    /// so; a command lent from such a file keeps it off.
+    /// so; a command borrowed from such a file keeps it off.
     TempDir tmp;
     FileTable files;
     Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
@@ -636,16 +636,15 @@ ZEST_CASE(BorrowMergesRules) {
     FileTable files;
     Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
     project.settings.rules.push_back(Rule{.patterns = {"new/**"}, .append = {"-DOWN"}});
-    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DUNIT"}});
     project.settings.rules.push_back(Rule{.patterns = {"**/*"}, .append = {"-DBOTH"}});
     activate(project);
     auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
-    auto lender =
-        *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
+    auto unit = *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
 
     auto ref = project.apply_rules(
         files.intern(Spelling::absolute(tmp.path("new/n.cpp"))),
-        {.base = lender.command, .source = CommandSource::Borrowed, .rules_from = {lender.file}});
+        {.base = unit.command, .source = CommandSource::Borrowed, .rules_from = {unit.file}});
     auto argv = project.commands.render_driver(ref, project.cdb.spelling(ref.file));
     auto at = [&](llvm::StringRef macro) {
         return ranges::find_if(
@@ -658,11 +657,11 @@ ZEST_CASE(BorrowMergesRules) {
             return llvm::StringRef(arg).contains(macro);
         });
     };
-    ZEXPECT(count("LENDER") == 1);
+    ZEXPECT(count("UNIT") == 1);
     ZEXPECT(count("OWN") == 1);
     ZEXPECT(count("BOTH") == 1);
-    ZEXPECT(at("OWN") < at("LENDER"));
-    ZEXPECT(at("LENDER") < at("BOTH"));
+    ZEXPECT(at("OWN") < at("UNIT"));
+    ZEXPECT(at("UNIT") < at("BOTH"));
 };
 
 ZEST_CASE(MemberHostKeepsItsRules) {
@@ -674,33 +673,32 @@ ZEST_CASE(MemberHostKeepsItsRules) {
     tmp.touch("new/b.cpp", "");
     FileTable files;
     Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
-    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DUNIT"}});
     project.settings.rules.push_back(Rule{.patterns = {"new/*.cpp"}, .append = {"-DHOST"}});
     project.settings.rules.push_back(Rule{.patterns = {"**/*.h"}, .append = {"-DHEADER"}});
     activate(project);
     auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
-    auto lender =
-        *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
+    auto unit = *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(command));
     auto member = files.intern(Spelling::absolute(tmp.path("new/b.cpp")));
     ZASSERT(project.record_provisional(member));
     project.provisional.set_command(member,
-                                    Candidate{.base = lender.command,
+                                    Candidate{.base = unit.command,
                                               .source = CommandSource::Borrowed,
-                                              .rules_from = {lender.file}});
+                                              .rules_from = {unit.file}});
 
     auto header = files.intern(Spelling::absolute(tmp.path("new/h.h")));
     auto ref = project.apply_rules(
         header,
         project.candidates(member).front().passed_on(member, CommandSource::Host));
     auto argv = project.commands.render_full(ref.command);
-    ZEXPECT(has_arg(argv, "LENDER"));
+    ZEXPECT(has_arg(argv, "UNIT"));
     ZEXPECT(has_arg(argv, "HOST"));
     ZEXPECT(has_arg(argv, "HEADER"));
 };
 
 ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
     /// The precompiled header a borrowed command reads builds under the
-    /// rules that edited the command: the lender's as well as the
+    /// rules that edited the command: the unit's as well as the
     /// borrower's.
     TempDir tmp;
     tmp.touch("pch.hxx", "");
@@ -708,7 +706,7 @@ ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
     tmp.touch("src/a.cpp", "");
     FileTable files;
     Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
-    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    project.settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DUNIT"}});
     activate(project);
     auto pch = tmp.path("pch.hxx.pch");
     auto writes = std::format("clang++ -Xclang -emit-pch -x c++-header -o {} {}",
@@ -717,16 +715,18 @@ ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
     project.cdb.add_command(tmp.root, tmp.path("pch.hxx.cxx"), llvm::StringRef(writes));
     auto reads =
         std::format("clang++ -Xclang -include-pch -Xclang {} {}", pch, tmp.path("src/a.cpp"));
-    auto lender = *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(reads));
+    auto unit = *project.cdb.add_command(tmp.root, tmp.path("src/a.cpp"), llvm::StringRef(reads));
 
     auto borrower = files.intern(Spelling::absolute(tmp.path("new/n.cpp")));
-    Candidate borrowed{.base = lender.command,
+    Candidate borrowed{.base = unit.command,
                        .source = CommandSource::Borrowed,
-                       .rules_from = {lender.file}};
-    auto ref = project.apply_rules(borrower, borrowed);
-    auto writer = project.pch_writer(borrower, borrowed, ref.command);
+                       .rules_from = {unit.file}};
+    SelectedCommand selection;
+    selection.candidate = borrowed;
+    selection.ref = project.apply_rules(borrower, borrowed);
+    auto writer = project.pch_writer(borrower, selection);
     ZASSERT(writer);
-    ZEXPECT(has_arg(project.commands.render_full(writer->command), "LENDER"));
+    ZEXPECT(has_arg(project.commands.render_full(writer->command), "UNIT"));
 };
 
 /// The builtin fallback render for a file without an entry and no default

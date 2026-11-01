@@ -8,7 +8,6 @@ import :index.project_index;
 import :index.symbol_query;
 import :project.project;
 import :syntax.dependency_graph;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice::driver {

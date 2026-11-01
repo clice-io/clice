@@ -4,7 +4,6 @@ import :command.edit;
 import :index.database;
 import :settings.rules;
 import :settings.settings;
-import :support.json;
 import :vfs.path;
 
 namespace clice {

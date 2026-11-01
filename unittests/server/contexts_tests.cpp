@@ -38,7 +38,7 @@ ServedProject& nested_project() {
     auto nested =
         std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(tmp.path("sub"))));
     server.projects.push_back(nested);
-    nested->project.request_flush = nullptr;
+    ServedProjectFixture::hold_flushes(*nested);
     return *nested;
 }
 

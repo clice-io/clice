@@ -1,11 +1,11 @@
 module clice;
 
-import :project.pch;
+import :project.graph.pch;
 import :project.project;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
-import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :unittests.utils.temp_dir;
 import :vfs.cache_store;
 
 namespace clice::testing {
@@ -39,11 +39,14 @@ PCHAcquisitionTEST() {
 PCHRequest request(llvm::StringRef text) {
     return {
         .pch_key = "shared-key",
-        .file = src,
-        .directory = tmp.path("."),
-        .arguments = make_args(src),
-        .content = std::string(text),
-        .preamble_bound = static_cast<std::uint32_t>(text.size()),
+        .params =
+            {
+                     .file = src,
+                     .directory = tmp.path("."),
+                     .arguments = make_args(src),
+                     .content = std::string(text),
+                     .preamble_bound = static_cast<std::uint32_t>(text.size()),
+                     },
     };
 }
 
@@ -174,10 +177,13 @@ ZEST_CASE(DeclaredCrashLifts) {
     auto whole = [&] {
         return PCHRequest{
             .pch_key = "declared-key",
-            .file = header,
-            .directory = tmp.path("."),
-            .arguments = make_args(header, "-xc++-header"),
-            .whole_file = true,
+            .params =
+                {
+                         .file = header,
+                         .directory = tmp.path("."),
+                         .arguments = make_args(header, "-xc++-header"),
+                         .whole_file = true,
+                         },
         };
     };
     std::optional<Result> refused, fixed;

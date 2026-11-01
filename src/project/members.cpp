@@ -78,6 +78,13 @@ bool default_source(Project& project, CanonicalRef path, const CompiledRule& rul
     return !forced.empty() && !forced.ends_with("-header");
 }
 
+/// Whether `rule`, the first rule matching `path` declaring a default
+/// command, makes `path` a unit: its default command is a compile command
+/// and compiles `path` as one.
+bool default_unit(Project& project, CanonicalRef path, const CompiledRule& rule) {
+    return command_of(project, rule) && default_source(project, path, rule);
+}
+
 /// The files of a walk a default-command rule covers: C-family sources
 /// (never headers) matching the rules' patterns.
 void collect_covered_sources(Project& project,
@@ -93,7 +100,7 @@ void collect_covered_sources(Project& project,
             continue;
         }
         auto* rule = project.rules.default_rule(path);
-        if(!rule || !default_source(project, path, *rule)) {
+        if(!rule || !default_unit(project, path, *rule)) {
             continue;
         }
         auto file = project.file_table.intern(path);
@@ -217,7 +224,7 @@ CommandRef Project::apply_rules(Fid file,
     // crosses between C++ and its modules.
     auto path = file_table.resolve(file);
     bool foreign = candidate.from().valid() &&
-                   (candidate.source == CommandSource::Host || is_header_path(path));
+                   (candidate.source != CommandSource::Borrowed || is_header_path(path));
     auto language_path = foreign ? file_table.resolve(candidate.from()) : path;
     return {file, applied, commands.input_kind(applied, language_path), candidate.source};
 }
@@ -308,38 +315,7 @@ bool Project::declared(Fid file) {
     }
     auto path = file_table.resolve(file);
     auto* rule = rules.default_rule(path);
-    return rule && command_of(*this, *rule) && default_source(*this, path, *rule);
-}
-
-std::optional<CommandRef> Project::pch_writer(Fid file,
-                                              const Candidate& candidate,
-                                              CommandID command,
-                                              llvm::ArrayRef<std::string> extra_prepend,
-                                              llvm::ArrayRef<std::string> extra_append) {
-    if(commands.pch_output(command)) {
-        return std::nullopt;
-    }
-    for(auto& input: commands.pch_inputs(command)) {
-        auto pch = file_table.find(input);
-        if(!pch) {
-            continue;
-        }
-        for(auto& writer: cdb.pch_writers(*pch)) {
-            bool active = ranges::any_of(entries(writer.file), [&](const CompilationEntry& entry) {
-                return entry.source == writer.source && entry.ordinal == writer.ordinal;
-            });
-            if(active) {
-                auto applied = edited_commands.apply(
-                    writer.command,
-                    rule_edits(file, candidate).options(extra_prepend, extra_append));
-                return CommandRef{writer.file,
-                                  applied,
-                                  commands.input_kind(applied, file_table.resolve(writer.file)),
-                                  CommandSource::Database};
-            }
-        }
-    }
-    return std::nullopt;
+    return rule && default_unit(*this, path, *rule);
 }
 
 void Project::rescan_disk_file(Fid path_id) {
@@ -367,14 +343,16 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     // incremental or move it off the dispatch path.
     auto scan = [&] {
         dep_graph.reset();
-        scan_dependency_graph(cdb, toolchain, dep_graph, scan_commands(members()));
+        auto report = scan_dependency_graph(cdb, toolchain, dep_graph, scan_commands(members()));
         dep_graph.build_reverse_map();
+        return report;
     };
-    scan();
+    auto report = scan();
     Rebuilt changes{.provisional = refresh_provisional()};
     if(!changes.provisional.empty()) {
-        scan();
+        report = scan();
     }
+    changes.scan = std::move(report);
     disk_epoch += 1;
 
     for(auto& entry: dep_graph.modules()) {

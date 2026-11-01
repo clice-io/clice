@@ -160,7 +160,9 @@ struct ShownCommand {
     vfs::HiddenFiles hidden;
 };
 
-ShownCommand shown_command(Project& project, const CommandRef& ref, const RenderOptions& opts = {}) {
+ShownCommand shown_command(Project& project,
+                           const CommandRef& ref,
+                           const RenderOptions& opts = {}) {
     auto path = project.cdb.spelling(ref.file);
     auto resolution = project.toolchain.resolve(ref.command, ref.language);
     if(resolution && resolution->query_failure.empty()) {

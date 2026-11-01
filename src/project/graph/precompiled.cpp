@@ -2,9 +2,9 @@ module clice;
 
 import :index.format;
 import :project.command;
-import :project.precompiled;
+import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :project.project;
-import :project.task_graph;
 import :support.anomaly;
 import :support.failure_record;
 import :support.json;
@@ -44,10 +44,10 @@ struct SavedPCH {
 
     std::vector<SavedInput> deps;
 
-    /// See PCHBuild::base; absent for none.
+    /// See PCHEntry::base; absent for none.
     std::optional<std::string> base;
 
-    /// See PCHBuild::base_blob; absent for none, and in records written
+    /// See PCHEntry::base_blob; absent for none, and in records written
     /// before it was recorded.
     std::optional<std::string> base_blob;
 };

@@ -1,6 +1,6 @@
 module clice;
 
-import :project.task_graph;
+import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
 import :worker.probe;

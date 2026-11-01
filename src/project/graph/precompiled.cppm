@@ -1,4 +1,4 @@
-module clice:project.precompiled;
+module clice:project.graph.precompiled;
 
 import :support.failure_record;
 import :support.prelude;

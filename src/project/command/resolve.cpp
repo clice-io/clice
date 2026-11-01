@@ -1,9 +1,7 @@
 module clice;
 
 import :command.argument;
-import :command.file_kind;
 import :command.search_config;
-import :index.project_index;
 import :project.command;
 import :project.project;
 import :support.logging;
@@ -40,7 +38,7 @@ void log_command_decision(llvm::StringRef path,
 
 /// How many of `ref`'s `-include`s come before the one naming `forced`:
 /// what a header context entered through that forced file keeps
-/// (Selection::forced). All of them for none.
+/// (SelectedCommand::forced). All of them for none.
 std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
@@ -65,7 +63,7 @@ struct Tiers {
     Fid file;
     CanonicalRef path;
     const CommandRequest& request;
-    Selection& selection;
+    SelectedCommand& selection;
 
     /// The user's host choice; null for none.
     const ContextChoice* host_choice() const {
@@ -197,9 +195,9 @@ std::optional<Candidate> Project::chosen_candidate(llvm::ArrayRef<Candidate> can
     return it != candidates.end() ? std::optional(*it) : std::nullopt;
 }
 
-Selection Project::select_command(Fid path_id, const CommandRequest& request) {
+SelectedCommand Project::select_command(Fid path_id, const CommandRequest& request) {
     auto path = file_table.resolve(path_id);
-    Selection selection;
+    SelectedCommand selection;
     Tiers tiers{*this, path_id, path, request, selection};
     constexpr std::pair<llvm::StringRef, std::optional<Candidate> (Tiers::*)()> order[] = {
         {"chosen_host", &Tiers::chosen_host    },
@@ -238,7 +236,7 @@ Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) 
     Resolution resolution;
     llvm::SmallVector<UnitCommand, 2> taken;
     while(true) {
-        static_cast<Selection&>(resolution) = select_command(path_id, request);
+        static_cast<SelectedCommand&>(resolution) = select_command(path_id, request);
         if(!request.preprocess || !resolution.missing_tree ||
            ranges::contains(taken, resolution.missing_tree->key)) {
             break;
@@ -316,14 +314,35 @@ std::uint64_t Project::command_identity(Fid unit) {
     return llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(parts), sizeof(parts)));
 }
 
-std::optional<CommandRef> Project::pch_writer(Fid path_id,
-                                              const Selection& selection,
+std::optional<CommandRef> Project::pch_writer(Fid file,
+                                              const SelectedCommand& selection,
                                               const CommandRequest& request) {
-    return pch_writer(path_id,
-                      selection.candidate,
-                      selection.ref.command,
-                      request.extra_prepend,
-                      request.extra_append);
+    auto command = selection.ref.command;
+    if(commands.pch_output(command)) {
+        return std::nullopt;
+    }
+    for(auto& input: commands.pch_inputs(command)) {
+        auto pch = file_table.find(input);
+        if(!pch) {
+            continue;
+        }
+        for(auto& writer: cdb.pch_writers(*pch)) {
+            bool active = ranges::any_of(entries(writer.file), [&](const CompilationEntry& entry) {
+                return entry.source == writer.source && entry.ordinal == writer.ordinal;
+            });
+            if(active) {
+                auto applied = edited_commands.apply(
+                    writer.command,
+                    rule_edits(file, selection.candidate)
+                        .options(request.extra_prepend, request.extra_append));
+                return CommandRef{writer.file,
+                                  applied,
+                                  commands.input_kind(applied, file_table.resolve(writer.file)),
+                                  CommandSource::Database};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace clice

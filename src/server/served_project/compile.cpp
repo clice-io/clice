@@ -1,17 +1,16 @@
 module clice;
 
-import :command.argument;
 import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
 import :project.command;
-import :project.pch;
-import :project.pcm;
-import :project.precompiled;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :project.project;
-import :project.task_graph;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -22,10 +21,8 @@ import :support.bytes;
 import :support.failure_record;
 import :support.json;
 import :support.logging;
-import :support.text;
 import :support.timer;
 import :syntax.dependency_graph;
-import :syntax.preamble;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.protocol;
@@ -492,13 +489,10 @@ Work ServedProject::compile_work(Fid path_id) {
     return {.run = [this, path_id](Attempt& attempt) { return compile(attempt, path_id); }};
 }
 
-async::task<std::optional<Imports>>
-    ServedProject::depend_modules(Attempt& attempt,
-                                  const Ticket& ticket,
-                                  const Resolution& resolution,
-                                  llvm::StringRef directory,
-                                  const std::vector<std::string>& arguments,
-                                  llvm::StringRef text) {
+async::task<std::optional<Imports>> ServedProject::depend_modules(Attempt& attempt,
+                                                                  const Ticket& ticket,
+                                                                  const Resolution& resolution,
+                                                                  llvm::StringRef text) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
     // Imports come from the attempt's buffer snapshot under its own
@@ -512,18 +506,15 @@ async::task<std::optional<Imports>>
     // empty buffer: its own text has no imports, but the command's
     // injected -include prefix can still carry them.
     //
-    // The import list is scanner truth, not build output: commit it as
-    // durable edges before waiting, so a document whose compile fails
+    // The import list is scanner truth, not build output: declare it as
+    // the node's edges before waiting, so a document whose compile fails
     // stays cascade-reachable from its imports — fixing or providing an
     // import must re-dirty the documents it broke. The per-attempt resolve
     // keeps the edges honest across CDB, buffer and import changes, and
     // the empty truth of a document that can import nothing is published
-    // too: a durable import edge earned earlier must stop cascading here.
-    auto imports = co_await project.scan_imports(path_id,
-                                                 resolution,
-                                                 arguments,
-                                                 directory,
-                                                 std::optional<llvm::StringRef>(text));
+    // too: an import edge declared earlier must stop cascading here.
+    auto imports =
+        co_await project.scan_imports(path_id, resolution, std::optional<llvm::StringRef>(text));
     project.graph.set_edges(attempt.node(), imports.declared);
     auto kind = feature::RequestKind::PCM;
     auto modules = imports.resolved();
@@ -674,12 +665,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             send == 0 && !resolution.self_contained ? resolution.self_containment : std::nullopt;
 
         enter_phase(path_id, CompilePhase::Modules);
-        auto imports = co_await depend_modules(attempt,
-                                               ticket,
-                                               resolution,
-                                               params.directory,
-                                               params.arguments,
-                                               params.text);
+        auto imports = co_await depend_modules(attempt, ticket, resolution, params.text);
         if(!imports) {
             co_return Result::Stale;
         }
@@ -720,8 +706,6 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
             auto plan = project.preamble_pch(path_id,
                                              params.text,
                                              std::nullopt,
-                                             params.directory,
-                                             params.arguments,
                                              resolution,
                                              *imports,
                                              base_pch.value_or(""));
@@ -1138,8 +1122,6 @@ async::task<std::optional<std::string>>
                               std::uint64_t epoch,
                               llvm::StringRef text,
                               std::optional<std::uint32_t> point,
-                              const std::string& directory,
-                              const std::vector<std::string>& arguments,
                               const Resolution& resolution,
                               const Imports& imports) {
     auto& session = ticket.session;
@@ -1160,14 +1142,7 @@ async::task<std::optional<std::string>>
         }
     }
 
-    auto plan = project.preamble_pch(path_id,
-                                     text,
-                                     point,
-                                     directory,
-                                     arguments,
-                                     resolution,
-                                     imports,
-                                     base.value_or(""));
+    auto plan = project.preamble_pch(path_id, text, point, resolution, imports, base.value_or(""));
     if(!plan.request) {
         if(adoptable() && !plan.partial) {
             set_pch_keys(path_id, base, base);
@@ -1214,8 +1189,6 @@ async::task<std::optional<std::string>>
 async::task<bool> ServedProject::prepare_precompiled(const Ticket& ticket,
                                                      llvm::StringRef text,
                                                      std::uint32_t point,
-                                                     const std::string& directory,
-                                                     const std::vector<std::string>& arguments,
                                                      const Resolution& resolution,
                                                      StatelessInputs& inputs) {
     auto* synthesized = resolution.synthesized.get();
@@ -1226,25 +1199,13 @@ async::task<bool> ServedProject::prepare_precompiled(const Ticket& ticket,
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse
     // needs it.
-    auto imports = co_await project.build_imports(node(path_id),
-                                                  path_id,
-                                                  resolution,
-                                                  arguments,
-                                                  directory,
-                                                  text);
+    auto imports = co_await project.build_imports(node(path_id), path_id, resolution, text);
     if(!imports) {
         co_return false;
     }
 
     if(project.settings.project.readonly != ReadonlyMode::On) {
-        auto pch_key = co_await ensure_pch(ticket,
-                                           epoch,
-                                           text,
-                                           point,
-                                           directory,
-                                           arguments,
-                                           resolution,
-                                           *imports);
+        auto pch_key = co_await ensure_pch(ticket, epoch, text, point, resolution, *imports);
         if(pch_key) {
             if(auto* pch = project.built_pch(*pch_key)) {
                 inputs.pch = {pch->path, pch->bound};

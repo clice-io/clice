@@ -54,6 +54,7 @@ public:
     }
 
     Entry& commit(KeyRef key, Result result, Inputs inputs) {
+        changes += 1;
         auto& entry = entries[key];
         entry = {.result = std::move(result), .inputs = std::move(inputs)};
         return entry;
@@ -61,7 +62,13 @@ public:
 
     /// Returns whether there was an entry.
     bool forget(KeyRef key) {
+        changes += 1;
         return entries.erase(key);
+    }
+
+    /// Moves with every commit and forget.
+    std::uint64_t generation() const {
+        return changes;
     }
 
     /// Visit every entry with its key, checked or not.
@@ -77,6 +84,8 @@ private:
                        llvm::StringMap<Entry>,
                        llvm::DenseMap<Key, Entry>>
         entries;
+
+    std::uint64_t changes = 0;
 };
 
 }  // namespace clice

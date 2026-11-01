@@ -1,8 +1,8 @@
 module clice;
 
-import :project.task_graph;
-import :unittests.utils.async;
+import :project.graph.task_graph;
 import :unittests.utils;
+import :unittests.utils.async;
 
 namespace clice::testing {
 namespace {

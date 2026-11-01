@@ -3,9 +3,9 @@ module clice;
 import :index.project_index;
 import :project.command;
 import :project.discovery;
+import :project.graph.pcm;
+import :project.graph.task_graph;
 import :project.indexer;
-import :project.pcm;
-import :project.task_graph;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -114,7 +114,7 @@ void ServedProject::cascade_compile_graph(Fid path_id, bool& refresh) {
 }
 
 void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh) {
-    // Every consumer whose scan met the name unresolved holds a durable
+    // Every consumer whose scan met the name unresolved declared an
     // edge to its unresolved-import node; the graph cascade is the complete list — no
     // side bookkeeping, no reverse-map walk. Their shards lack the
     // module's symbols and their dep snapshots never named the

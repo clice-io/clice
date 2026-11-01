@@ -83,11 +83,6 @@ public:
         dirty = false;
     }
 
-    /// The bytes serialize gave were not persisted: the next save retries.
-    void unsaved() {
-        dirty = true;
-    }
-
     /// The database holding the persisted listings is gone: the next save
     /// writes them into its replacement.
     void forget_persisted() {

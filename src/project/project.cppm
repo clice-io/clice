@@ -15,14 +15,14 @@ import :index.tu_index;
 import :index.writer_lock;
 import :project.command;
 import :project.discovery;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.indexer;
 import :project.listings;
 import :project.members;
 import :project.memo;
-import :project.pch;
-import :project.pcm;
-import :project.task_graph;
-import :project.unit;
 import :semantic.symbol;
 import :settings.rules;
 import :settings.settings;
@@ -94,6 +94,11 @@ struct ServingSide {
     /// Shards that may be index-served changed (merged, re-masked, dropped
     /// or shed): the serving side refreshes the clients that read them.
     virtual void index_changed(llvm::ArrayRef<Fid> files) = 0;
+
+    /// What the database carries beside the index changed — a precompiled
+    /// record, the context choices: the serving side saves it soon, where a
+    /// command-line run saves on its own cadence.
+    virtual void schedule_metadata_flush() = 0;
 
 protected:
     ~ServingSide() = default;
@@ -240,12 +245,14 @@ struct Project {
     std::uint64_t disk_epoch = 1;
 
     /// The generation of context-affecting project state: the disk state,
-    /// the include trees and the self-containment results. clice/queryContext
-    /// tags its results with it and clice/switchContext rejects requests
-    /// made against an older epoch, so a client can never apply a context
-    /// picked from a stale listing without noticing.
+    /// the include trees — a tree moves its host's contexts — and the
+    /// self-containment results — a header found self-contained lists the
+    /// hosts giving the same command once. clice/queryContext tags its
+    /// results with it and clice/switchContext rejects requests made against
+    /// an older epoch, so a client can never apply a context picked from a
+    /// stale listing without noticing.
     std::uint64_t context_epoch() const {
-        return disk_epoch + hosting.generation;
+        return disk_epoch + hosting.trees.generation() + hosting.self_containment.generation();
     }
 
     /// Generation of the build's commands: bumped when a database reloads
@@ -261,14 +268,10 @@ struct Project {
     /// (write_database) flushes it on its next run.
     bool precompiled_dirty = false;
 
-    /// Connected by the master to schedule a flush soon after a mark; unset
-    /// (tests, batch tools) means the owner saves on its own cadence.
-    std::function<void()> request_flush;
-
     void mark_precompiled_dirty() {
         precompiled_dirty = true;
-        if(request_flush) {
-            request_flush();
+        if(serving) {
+            serving->schedule_metadata_flush();
         }
     }
 
@@ -423,7 +426,7 @@ struct Project {
                            llvm::ArrayRef<std::string> extra_prepend = {},
                            llvm::ArrayRef<std::string> extra_append = {});
 
-    /// Every translation unit of the build: files with entries, plus the
+    /// Every translation unit of the project: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
     /// once and again by refresh_default_sources — then the provisional
     /// members with a command, by path.
@@ -464,27 +467,10 @@ struct Project {
 
     /// The directories the default-command rules cover sources under, walked
     /// again (walk_sources): report the sources that appeared since the last
-    /// enumeration — a file created after startup joins the build; a deleted
-    /// one just leaves the members. The server calls it every workspace poll
+    /// enumeration — a file created after startup joins the members; a
+    /// deleted one just leaves them. The server calls it every workspace poll
     /// (ServedProject::poll_sources).
     llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
-
-    /// The command of the entry writing the precompiled header `command`
-    /// reads (CommandTable::pch_inputs), `command` being `candidate` as
-    /// `file` compiles under it — the `cmake_pch.hxx.cxx` entry of a CMake
-    /// target with precompiled headers; of the configurations writing one
-    /// each from that file, the one writing this very PCH. The PCH on disk
-    /// may come from another compiler, so clice builds its own under that
-    /// command, edited as the reading command was — by the rules
-    /// apply_rules applies and a run's extras: built under other flags, it
-    /// would hold other code than that command parses. Nullopt when the
-    /// build writes none of them, and for a command writing a precompiled
-    /// header itself.
-    std::optional<CommandRef> pch_writer(Fid file,
-                                         const Candidate& candidate,
-                                         CommandID command,
-                                         llvm::ArrayRef<std::string> extra_prepend = {},
-                                         llvm::ArrayRef<std::string> extra_append = {});
 
     /// The files whose compiles read `file`: the units including it, also
     /// through a file their commands force in, by the dependency graph; the
@@ -522,6 +508,9 @@ struct Project {
 
         /// How the provisional members followed (see refresh_provisional).
         CDBDiff provisional;
+
+        /// The last scan of the rebuild.
+        ScanReport scan;
     };
 
     /// Rebuild the dependency graph from scratch against the current
@@ -599,7 +588,7 @@ struct Project {
     /// compiles as; the hosts (find_chosen_host, find_ranked_host) which unit
     /// stands in for a header without a command of its own, and the
     /// self-containment check whether it needs its includer's context.
-    Selection select_command(Fid file, const CommandRequest& request = {});
+    SelectedCommand select_command(Fid file, const CommandRequest& request = {});
 
     /// `command` as a compile runs it: the arguments the toolchain renders,
     /// from its working directory.
@@ -617,11 +606,19 @@ struct Project {
     /// it under none. A run's extras are not part of it.
     std::uint64_t command_identity(Fid unit);
 
-    /// pch_writer for the command `selection` and `request` gave `file`:
-    /// edited by the rules the command was edited by and the request's
-    /// extras.
+    /// The command of the entry writing the precompiled header that the
+    /// command `selection` and `request` give `file` reads
+    /// (CommandTable::pch_inputs) — the `cmake_pch.hxx.cxx` entry of a CMake
+    /// target with precompiled headers; of the configurations writing one
+    /// each from that file, the one writing this very PCH. The PCH on disk
+    /// may come from another compiler, so clice builds its own under that
+    /// command, edited as the reading command was — by the rules apply_rules
+    /// applies and the request's extras: built under other flags, it would
+    /// hold other code than that command parses. Nullopt when the build
+    /// writes none of them, and for a command writing a precompiled header
+    /// itself.
     std::optional<CommandRef> pch_writer(Fid file,
-                                         const Selection& selection,
+                                         const SelectedCommand& selection,
                                          const CommandRequest& request = {});
 
     // command/hosts.cpp
@@ -804,8 +801,6 @@ struct Project {
     PreamblePCH preamble_pch(Fid file,
                              llvm::StringRef text,
                              std::optional<std::uint32_t> point,
-                             llvm::StringRef directory,
-                             llvm::ArrayRef<std::string> arguments,
                              const Resolution& resolution,
                              const Imports& imports,
                              llvm::StringRef base);
@@ -894,13 +889,6 @@ struct Project {
     /// looked at: a gone one found later must not survive an early return.
     bool imports_present(llvm::ArrayRef<Fid> modules);
 
-    /// Scan the imports of a request that compiles under `arguments` with
-    /// `content` as the focus file and the resolution's synthesized context
-    /// served from memory (the stateless requests' builds — the scan must see
-    /// the buffer's imports under the request's command), declare them as the
-    /// edges of `consumer`, the file's node, and wait for their modules,
-    /// foreground. A module that did not build is the compile's to report, as
-    /// the stateful compile does; none only when the graph shut down.
     /// Wait in `attempt` on the PCMs of `modules`, each in turn, `failed`
     /// told every one that failed to build; again while all built but one
     /// left the cache by the time the last did — a rebuild can evict another
@@ -911,11 +899,16 @@ struct Project {
                                      llvm::ArrayRef<Fid> modules,
                                      llvm::function_ref<void(Fid)> failed = {});
 
+    /// Scan the imports of a request that compiles under `resolution` with
+    /// `content` as the focus file and its synthesized context served from
+    /// memory (the stateless requests' builds — the scan must see the
+    /// buffer's imports under the request's command), declare them as the
+    /// edges of `consumer`, the file's node, and wait for their modules,
+    /// foreground. A module that did not build is the compile's to report, as
+    /// the stateful compile does; none only when the graph shut down.
     async::task<std::optional<Imports>> build_imports(NodeId consumer,
                                                       Fid path_id,
                                                       const Resolution& resolution,
-                                                      llvm::ArrayRef<std::string> arguments,
-                                                      llvm::StringRef directory,
                                                       llvm::StringRef content);
 
     /// Mark a module unit and its transitive importers dirty, overtaking
@@ -948,9 +941,9 @@ struct Project {
     /// their next attempts rebuild) and return them for serving-side treatment.
     llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
 
-    /// The direct module dependencies of the unit under exactly the arguments
-    /// the caller compiles it with, rendered by `resolution`: a context choice
-    /// or a donated header host cannot diverge between the scan and the parse.
+    /// The direct module dependencies of the unit under the arguments
+    /// `resolution` renders, the ones its compile runs: a context choice or a
+    /// header's host cannot diverge between the scan and the parse.
     /// Consumers declare the full edge set and wait on the resolved subset. The
     /// header context the arguments name is served to the scan from memory. An
     /// engaged `content` scans it in place of the file's on-disk text — even
@@ -967,8 +960,6 @@ struct Project {
     /// does too.
     async::task<Imports> scan_imports(Fid path_id,
                                       const Resolution& resolution,
-                                      llvm::ArrayRef<std::string> arguments,
-                                      llvm::StringRef directory,
                                       std::optional<llvm::StringRef> content);
 
     /// The PCMs a compile importing `modules` reads, under their modules'

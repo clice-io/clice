@@ -1,10 +1,8 @@
-module clice:project.unit;
+module clice:project.graph.unit;
 
-import :compile.tidy;
+import :compile.compilation;
 import :feature.diagnostics;
-import :project.task_graph;
 import :support.prelude;
-import :vfs.ids;
 import :worker.protocol;
 import :worker.scheduler;
 
@@ -41,7 +39,7 @@ struct UnitRequest {
     /// Whether the index the compile built no longer describes the unit when
     /// it would merge (ReindexQueue::outdated): a newer content-level
     /// invalidation during the build, or a removal clearing the entry. The
-    /// merge is dropped then; the follow-up slot redoes it. Null when every
+    /// merge is dropped then; the follow-up attempt redoes it. Null when every
     /// result merges.
     std::function<bool()> outdated;
 };

@@ -1,15 +1,14 @@
-module clice:project.pch;
+module clice:project.graph.pch;
 
-import :command.table;
 import :index.tu_index;
-import :project.precompiled;
-import :project.task_graph;
+import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.header_context;
 import :vfs.file_system;
-import :vfs.file_table;
 import :vfs.ids;
+import :worker.protocol;
 
 namespace clice {
 
@@ -74,26 +73,10 @@ struct PCHEntry : Precompiled<FailureRecord> {
 struct PCHRequest {
     std::string pch_key;
 
-    std::string file;
-
-    std::string directory;
-
-    std::vector<std::string> arguments;
-
-    /// See worker::BuildPCHParams::hidden.
-    vfs::HiddenFiles hidden;
-
-    /// The requesting document's buffer text; the preamble is its prefix
-    /// and the build sends the whole buffer.
-    std::string content;
-
-    std::uint32_t preamble_bound = 0;
-
-    /// See worker::BuildPCHParams::synthesized.
-    SynthesizedFiles synthesized;
-
-    /// See worker::BuildPCHParams::pcms.
-    std::unordered_map<std::string, std::string> pcms;
+    /// What the worker builds from: the file, its command, the preamble's
+    /// text and bound or the whole file, the modules' PCMs. The paths the
+    /// build writes to and the PCH it builds over are the build's to fill.
+    worker::BuildPCHParams params;
 
     /// The built modules the preamble imports, whose inputs the PCH depends
     /// on.
@@ -103,12 +86,6 @@ struct PCHRequest {
     /// (declared_pch_request), built already: the preamble's PCH is built
     /// over it, and what it read is the preamble's input too.
     std::string base;
-
-    /// See worker::BuildPCHParams::whole_file.
-    bool whole_file = false;
-
-    /// See worker::BuildPCHParams::skip_bodies.
-    bool skip_bodies = false;
 };
 
 /// The PCH of a document's preamble (Project::preamble_pch): the request

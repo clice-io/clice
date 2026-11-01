@@ -129,6 +129,7 @@ private:
     /// matching active rule keeps `field` on: the lint and format sets.
     bool inside(CanonicalRef path, bool CompiledRule::* field) const;
 
+private:
     const Settings* settings;
 
     CanonicalPath root;

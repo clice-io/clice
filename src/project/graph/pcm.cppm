@@ -1,10 +1,9 @@
-module clice:project.pcm;
+module clice:project.graph.pcm;
 
-import :project.precompiled;
-import :project.task_graph;
+import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :support.failure_record;
 import :support.prelude;
-import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
@@ -39,7 +38,7 @@ struct PCMEntry : Precompiled<ModuleBuildFailed> {
     std::string pch;
 };
 
-/// A scan's module dependencies: the full durable edge set of a unit, a
+/// A scan's module dependencies: every edge a unit declares, a
 /// node per module unit it imports and one unresolved import per name no
 /// unit provides. A module unit's PCM is one node per unit in the task
 /// graph, edged to the modules it imports; one attempt is one PCM build (or

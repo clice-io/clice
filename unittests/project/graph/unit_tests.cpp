@@ -1,14 +1,14 @@
 module clice;
 
 import :compile.compilation;
-import :project.precompiled;
-import :project.unit;
+import :project.graph.precompiled;
+import :project.graph.unit;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.cache_store;
 import :vfs.path;
 import :worker.pool;

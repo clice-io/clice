@@ -3,10 +3,10 @@ module clice;
 import :compile.tidy;
 import :index.project_index;
 import :project.command;
-import :project.pch;
-import :project.pcm;
+import :project.graph.pch;
+import :project.graph.pcm;
+import :project.graph.unit;
 import :project.project;
-import :project.unit;
 import :support.bytes;
 import :support.logging;
 import :support.timer;
@@ -78,11 +78,12 @@ async::task<UnitResult>
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    auto scanned = co_await project.scan_imports(path_id,
-                                                 resolved,
-                                                 params.arguments,
-                                                 params.directory,
-                                                 std::nullopt);
+    auto scanned = co_await project.scan_imports(path_id, resolved, std::nullopt);
+    // The scan's imports are the unit's edges even when its compile or a
+    // build fails, so fixing or providing an import re-dirties it — the
+    // include reverse map carries no import edges, and the index records
+    // only imports that resolved (ProjectIndex::importers); an unresolved
+    // name's edge is what its first provider re-dirties it through.
     project.graph.set_edges(attempt.node(), scanned.declared);
     auto modules = scanned.resolved();
     if(co_await project.wait_modules(attempt, modules) == Result::Stale) {
@@ -208,7 +209,7 @@ async::task<UnitResult>
         if(request.index) {
             // A newer content-level invalidation during this build (or a
             // removal clearing the entry) means this result describes text
-            // that no longer exists. Drop the merge; the follow-up slot
+            // that no longer exists. Drop the merge; the follow-up attempt
             // redoes it.
             if(request.outdated && request.outdated()) {
                 LOG_INFO("Discarding outdated index result for {}", file_path);

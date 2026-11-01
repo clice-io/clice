@@ -33,7 +33,12 @@ struct ServedProjectFixture {
         // the tests run none between their steps, and hand the changes over
         // themselves.
         server.files.disk.on_change = nullptr;
-        served->project.request_flush = nullptr;
+        hold_flushes(*served);
+    }
+
+    /// `project` schedules no metadata flush: one counts as scheduled.
+    static void hold_flushes(ServedProject& project) {
+        project.metadata_flush_scheduled = true;
     }
 
     Fid intern(llvm::StringRef path) {

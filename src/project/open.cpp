@@ -12,7 +12,6 @@ import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
-import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -112,17 +111,13 @@ void load_members(Project& project,
     }
 
     // A recorded file is a member once it has its command, which the
-    // refresh below gives it, the builtin one when it borrows none.
-    opened.members = project.members();
-    if(opened.members.empty() && project.provisional.files().empty()) {
+    // rebuild gives it once the graph tells whether a unit includes it, the
+    // builtin one when it borrows none.
+    if(project.members().empty() && project.provisional.files().empty()) {
         return;
     }
-
-    auto scan = scan_dependency_graph(project.cdb,
-                                      project.toolchain,
-                                      project.dep_graph,
-                                      project.scan_commands(opened.members));
-    project.dep_graph.build_reverse_map();
+    auto scan = project.rebuild_dependency_graph().scan;
+    opened.members = project.members();
 
     auto found = scan.includes_resolved + scan.unresolved.size();
     double accuracy =
@@ -145,13 +140,6 @@ void load_members(Project& project,
              scan.includes_resolved,
              scan.elapsed_ms);
     opened.scan = std::move(scan);
-
-    // The recorded files join against the scanned graph, which alone tells
-    // whether a unit includes one, and the graph takes them in.
-    if(!project.refresh_provisional().empty()) {
-        project.rebuild_dependency_graph();
-        opened.members = project.members();
-    }
 }
 
 /// Why the index cache at `where` cannot be read, as `result` says; empty

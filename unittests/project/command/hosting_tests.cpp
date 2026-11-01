@@ -364,8 +364,8 @@ ZEST_CASE(BorrowSearchDir) {
 
 #ifndef _WIN32
 ZEST_CASE(BorrowSearchDirSymlink) {
-    /// A command's search directory reaching the header through a symlink
-    /// lends it that command, over the unit beside the header's real path.
+    /// A header a command's search directory reaches through a symlink
+    /// borrows that command, over the unit beside the header's real path.
     TempDir tmp;
     tmp.touch("vendor/real/orphan.h", "");
     tmp.touch("a/main.cpp", "");
@@ -390,9 +390,9 @@ ZEST_CASE(BorrowSearchDirSymlink) {
 };
 #endif
 
-ZEST_CASE(BorrowIgnoresCommandless) {
-    /// A member a rule covers with a default command that is no compile
-    /// command lends nothing.
+ZEST_CASE(CommandlessRuleCoversNothing) {
+    /// A rule whose default command is no compile command makes no file a
+    /// unit: nothing is a member, and nothing has a command to borrow.
     TempDir tmp;
     tmp.touch("src/a.cpp", "");
     tmp.touch("src/b.cpp", "");
@@ -402,13 +402,14 @@ ZEST_CASE(BorrowIgnoresCommandless) {
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
-    ZASSERT(project.members().size() == 2u);
+    ZEXPECT(project.members().empty());
+    ZEXPECT(!project.is_unit(project.file_table.intern(Spelling::absolute(tmp.path("src/a.cpp")))));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
     ZEXPECT(!project.borrowed_command(header, false).has_value());
 };
 
 ZEST_CASE(BorrowAcrossModules) {
-    /// A C++ source and a C++ module unit lend to each other: the first
+    /// A C++ source and a C++ module unit borrow from each other: the first
     /// module interface among `.cpp` units borrows their command, and an
     /// implementation unit its interface's.
     TempDir tmp;
@@ -454,7 +455,7 @@ ZEST_CASE(NestedProjectRecordsNothing) {
 
 ZEST_CASE(ProvisionalMembers) {
     /// A recorded file is a member while no unit hosts it: under the command
-    /// a unit lends it, else the builtin one. Members borrow only from the
+    /// it borrows from a unit, else the builtin one. Members borrow only from the
     /// units the build declares; a file outside the build borrows from one,
     /// the command still the unit's. An entry listing it takes over from
     /// the record.
@@ -485,8 +486,8 @@ ZEST_CASE(ProvisionalMembers) {
     ZEXPECT(commands.front().source == CommandSource::Borrowed);
     ZEXPECT(project.members().back() == saved);
 
-    /// `a_new.cpp` sorts first in the directory: it lends to a file outside
-    /// the build, never to a member, and what it lends is `b.cpp`'s.
+    /// `a_new.cpp` sorts first in the directory: a file outside the build
+    /// borrows from it, never a member, and what it borrows is `b.cpp`'s.
     project.commands_epoch += 1;
     auto other = intern("src/other.cpp");
     ZEXPECT(project.borrowed_command(other, false)->from() == unit.file);

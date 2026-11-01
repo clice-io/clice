@@ -1,4 +1,4 @@
-module clice:project.task_graph;
+module clice:project.graph.task_graph;
 
 import :support.prelude;
 import :vfs.ids;
@@ -156,8 +156,9 @@ private:
 ///   interest. A transient drop (a retry re-acquiring a retained
 ///   dependency) does not disturb the running attempt.
 /// - Content change: invalidate() marks the node and its transitive
-///   dependents dirty and fires their attempts' tokens. Interest is
-///   untouched; waiters see the stale attempt and drive a fresh one.
+///   dependents dirty and fires the tokens of the attempts that read what
+///   changed. Interest is untouched; waiters see the stale attempt and
+///   drive a fresh one.
 /// - Completion: the reported result passes through attempt identity (an
 ///   overtaken attempt ends Stale), Success makes the attempt's waits the
 ///   node's waited edges, and waiters wake.
@@ -169,9 +170,11 @@ public:
     /// Wait for a node's product from outside the graph (root interest).
     async::task<Result> join(NodeId id, Work work, JoinOptions options = {});
 
-    /// Mark a node and all transitive dependents dirty, firing in-flight
-    /// attempts' advisory tokens (their results are stale). Returns the
-    /// nodes marked.
+    /// Mark a node and all transitive dependents dirty, firing the advisory
+    /// tokens of the in-flight attempts that read what changed — the product
+    /// or failure of a node it reached them from, or the absence of one no
+    /// attempt ever built (their results are stale). Returns the nodes
+    /// marked.
     llvm::SmallVector<NodeId> invalidate(NodeId id);
 
     /// Declare the node's edges from what its sources say — a scan's
