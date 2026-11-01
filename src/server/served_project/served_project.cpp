@@ -28,11 +28,7 @@ namespace clice {
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
     project.index_query.attach(*this);
-    // The loaded-state budget follows the open-document count, which the
-    // project cannot see.
-    project.open_documents = [this] {
-        return documents.size();
-    };
+    project.serving = this;
     // Metadata marks (a PCH commit, a context switch) flush through the
     // next save; the callback schedules one soon after the first mark.
     project.request_flush = [this] {
@@ -40,48 +36,26 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     };
     progress_conn = project.background_index.on_progress_changed.connect(
         [this]() { this->server.index_progress_changed(*this); });
-
-    // The background index is serving-neutral; the document-side policy
-    // hooks are installed here.
-    project.background_index.compiled_by_session = [this](Fid path_id) {
-        return compiled_by_session(path_id);
-    };
-    project.background_index.on_skipped_diagnostics =
-        [this](Fid path_id,
-               std::uint64_t text_hash,
-               std::vector<feature::FileDiagnostic> diagnostics) {
-            report_skipped_diagnostics(path_id, text_hash, std::move(diagnostics));
-        };
-    project.background_index.lacks_skipped_diagnostics = [this](Fid path_id) {
-        return lacks_skipped_diagnostics(path_id);
-    };
-    project.background_index.on_attempt_finished = [this](Fid path_id) {
-        // The index_first in decide_serving promised the index would serve the cold
-        // document; an attempt that finishes without a servable shard ends that
-        // promise — escalate like the disabled-indexing branch, or the document
-        // answers empty until its first edit.
-        auto* document = find_document(path_id);
-        if(document && document->serving == ServingMode::IndexOnly &&
-           !matching_shard(*document->session)) {
-            escalate(path_id);
-        }
-    };
-    index_changed_conn =
-        project.background_index.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
-            // Documents without a current file index serve these very shards
-            // (freshness clause 4); the client asks again for what it pulled from
-            // them.
-            auto* client = this->server.client;
-            if(client && ranges::any_of(path_ids, [&](Fid id) {
-                   return find_document(id) && !index_current(id) &&
-                          client->index_served.contains(id);
-               })) {
-                client->refresh();
-            }
-        });
 }
 
 ServedProject::~ServedProject() = default;
+
+void ServedProject::attempt_finished(Fid path_id) {
+    auto* document = find_document(path_id);
+    if(document && document->serving == ServingMode::IndexOnly &&
+       !matching_shard(*document->session)) {
+        escalate(path_id);
+    }
+}
+
+void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
+    auto* client = server.client;
+    if(client && ranges::any_of(path_ids, [&](Fid id) {
+           return find_document(id) && !index_current(id) && client->index_served.contains(id);
+       })) {
+        client->refresh();
+    }
+}
 
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
@@ -172,6 +146,9 @@ void ServedProject::start() {
         }
         commands_missing = opened.members.empty() && !project.rules.declares_sources() &&
                            !project.found_unreadable_database();
+    }
+    if(project.settings.project.enable_indexing.value) {
+        project.background_index.start();
     }
     server.load_choices(*this);
 
@@ -289,12 +266,12 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
+    auto& background = project.background_index;
     if(document.serving == ServingMode::Escalated) {
-        if(project.settings.project.skip_header_bodies &&
-           project.settings.project.enable_indexing.value && lacks_skipped_diagnostics(path_id) &&
-           !project.background_index.queue.in_flight(path_id) &&
-           !project.background_index.failed.contains(path_id)) {
-            project.index_first(path_id);
+        if(project.settings.project.skip_header_bodies && background.started() &&
+           lacks_skipped_diagnostics(path_id) && !background.queue().in_flight(path_id) &&
+           !background.failed(path_id)) {
+            background.index_first(path_id);
         }
         return;
     }
@@ -313,8 +290,8 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
     // escalates through the adapter's attempt-finished check.
-    if(project.settings.project.enable_indexing.value && project.is_unit(path_id)) {
-        project.index_first(path_id);
+    if(background.started() && project.is_unit(path_id)) {
+        background.index_first(path_id);
     } else {
         escalate(path_id);
     }
@@ -330,13 +307,13 @@ void ServedProject::release(Fid path_id) {
     project.forget_buffer_scan(path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
-    // index (BackgroundIndex::compiled_by_session); the disk's turn again, unless
+    // index (ServingSide::compiled_by_session); the disk's turn again, unless
     // it was deleted meanwhile or its index run failed for good, which
     // waits for a change.
-    if(!project.file_table.disk.seen_missing(path_id) &&
-       !project.background_index.failed.contains(path_id) &&
-       project.enqueue_reindex(path_id, ReindexReason::DepsOnly)) {
-        project.schedule_index();
+    auto& background = project.background_index;
+    if(!project.file_table.disk.seen_missing(path_id) && !background.failed(path_id) &&
+       background.enqueue(path_id, ReindexReason::DepsOnly)) {
+        background.schedule();
     }
     // PCH entries are content-keyed and may be shared with other documents,
     // so nothing entry-level to clean up — but the loaded-state budget
@@ -352,10 +329,10 @@ void ServedProject::record_saved(Fid path_id) {
     // The open files the save made stale show what their background run
     // finds as soon as it can (report_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
+        auto& background = project.background_index;
         for(auto& [open, document]: documents) {
-            if(project.background_index.queue.pending_reason(open) &&
-               !project.background_index.queue.in_flight(open)) {
-                project.index_first(open);
+            if(background.queue().pending_reason(open) && !background.queue().in_flight(open)) {
+                background.index_first(open);
             }
         }
     }

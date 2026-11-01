@@ -250,8 +250,7 @@ bool Project::choice_holds(Fid file, const ContextChoice& choice) {
     return !choice.base.empty() && chosen_candidate(own_entries(*this, file), choice.base);
 }
 
-std::string
-    Project::serialize_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices) {
+void Project::save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices) {
     SavedChoices data;
     llvm::StringMap<std::uint32_t> indices;
     auto intern = [&](Fid fid) -> std::uint32_t {
@@ -274,13 +273,17 @@ std::string
     auto json = json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the context choices");
-        return {};
     }
-    return std::move(*json);
+    this->choices.bytes = json ? std::move(*json) : std::string();
+    this->choices.dirty = true;
+    if(request_flush) {
+        request_flush();
+    }
 }
 
-std::vector<std::pair<Fid, ContextChoice>> Project::parse_choices(llvm::StringRef bytes) {
+std::vector<std::pair<Fid, ContextChoice>> Project::saved_choices() {
     std::vector<std::pair<Fid, ContextChoice>> choices;
+    auto& bytes = this->choices.bytes;
     if(bytes.empty()) {
         return choices;
     }

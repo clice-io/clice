@@ -281,6 +281,11 @@ public:
         return owed;
     }
 
+    /// The units outdated now (mark_outdated).
+    auto outdated_units() const {
+        return views::transform(outdated, [](const auto& entry) { return entry.first; });
+    }
+
     /// What an instantiation shard names a TU by.
     std::uint64_t unit_hash(Fid tu) const {
         return path_hash(portable(files.resolve(tu)));

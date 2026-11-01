@@ -290,7 +290,6 @@ void MasterServer::serve_folders() {
         serving.push_back(make_project(std::move(root)));
         // Nothing compiles or indexes under no build until it starts.
         serving.back()->loaded.reset();
-        serving.back()->project.pause_indexing();
         waiting_projects.push_back(serving.back().get());
         made.push_back(serving.back().get());
     }
@@ -332,7 +331,6 @@ void MasterServer::serve_folders() {
     projects_generation += 1;
     for(auto* project: starting) {
         project->start();
-        project->project.resume_indexing();
         // The documents it held while it waited.
         for(auto& [path_id, document]: documents) {
             if(document.owner == project) {
@@ -369,7 +367,7 @@ void MasterServer::index_progress_changed(ServedProject& changed) {
     if(ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
-    auto& now = changed.project.background_index.progress;
+    auto& now = changed.project.background_index.progress();
     auto it = index_pass.find(&changed);
     if(it == index_pass.end()) {
         if(now.stage == Stage::End) {

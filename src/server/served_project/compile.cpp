@@ -212,7 +212,7 @@ void ServedProject::retry_after_save(Session& session) {
         project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool leans = !compiled || missing_context_errors(compiled->output->diagnostics.own) > 0;
+        bool leans = !compiled || feature::missing_context_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.hash),
                                 leans)) {
@@ -1004,7 +1004,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
                 diagnostics,
                 project.file_table.intern_version(path_id, session->hash),
                 std::move(inputs));
-            if(missing_context_errors(diagnostics) > 0) {
+            if(feature::missing_context_errors(diagnostics) > 0) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
                 continue;
             }
@@ -1124,7 +1124,7 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
         if(server.client && owns(*session)) {
             server.client->index_served.erase(session->path_id);
         }
-        project.schedule_index();
+        project.background_index.schedule();
         co_return still_current ? Result::Success : Result::Stale;
     }
     // Every arm of the two-send loop commits or returns; the check's

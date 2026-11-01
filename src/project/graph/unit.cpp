@@ -231,7 +231,7 @@ async::task<UnitResult>
                 co_return UnitResult{.status = Status::Failed,
                                      .error = "the TUIndex result failed verification"};
             }
-            result.report = std::move(*report);
+            project.take_report(*report);
             result.perf.merge_ms = merge_timer.ms();
         }
         co_return result;

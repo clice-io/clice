@@ -425,11 +425,11 @@ Project::MembersChanged Project::update_members(CDBDiff commands) {
         if(candidates(file).empty()) {
             index::IndexReport report;
             index.drop(file, report);
-            apply_report(report);
-            clear_reindex(file);
+            take_report(report);
+            background_index.forget(file);
         } else {
             index.mark_outdated(file);
-            enqueue_reindex(file, ReindexReason::ContentChanged);
+            background_index.enqueue(file, ReindexReason::ContentChanged);
         }
     }
     changed.commands = std::move(commands);

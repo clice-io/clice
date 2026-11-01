@@ -593,9 +593,9 @@ void Project::enforce_loaded_budget() {
     // hit keys past the working set; the reload an unlucky consumer then
     // pays (mmap + verification, on the event loop) is the accepted cost
     // of bounding tens of MB per key.
-    // Unconnected (tests, tools) assumes a small editor-like working set.
+    // Without a serving side (tests, tools), a small editor-like working set.
     constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + 2 * (open_documents ? open_documents() : default_open_documents);
+    std::size_t budget = 2 + 2 * (serving ? serving->open_documents() : default_open_documents);
 
     auto& lru = loaded_pch_indexes;
     std::size_t kept = 0;

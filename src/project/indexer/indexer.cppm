@@ -226,52 +226,21 @@ private:
     unsigned max_requeues;
 };
 
-/// The background index's state: the standing-interest scheduler that
-/// drives the build's units through unit runs, by its queue, the idle
-/// batching timer and the feeder window — and nothing about what a run
-/// produces (compile_unit) or where results live (the project's index).
+/// The background index of a project: the passes that drive its units
+/// through unit runs (Project::compile_unit) to drain the queue of owed
+/// reindexes, batched by an idle delay and fed to the workers within a
+/// window — and nothing about what a run produces or where results live
+/// (the project's index). Reindexes are booked whether it runs or not;
+/// passes run once its owner starts it: a server that indexes when its
+/// project opened, `clice index` at once, `clice lint --index` after its
+/// own pass.
 ///
-/// It is serving-neutral: it never sees the open documents. The server
-/// injects its policy through `compiled_by_session` and
-/// `on_attempt_finished`; a command-line run installs neither.
-struct BackgroundIndex {
-    constexpr static unsigned max_requeues = 3;
-
-    /// Invoked when an index attempt finished with no retry pending, before
-    /// the attempt's waiters wake (contract 15): the serving side decides
-    /// whether the finished state can ever serve an open session and
-    /// escalates it otherwise, so the waking waiters re-derive their route
-    /// against the escalated state. Also invoked for an index_first the
-    /// background index refuses — a file a rule keeps out of the index —
-    /// since no attempt will ever finish for it.
-    std::function<void(Fid path_id)> on_attempt_finished;
-
-    /// Whether an open document's own compile serves the file: a pending
-    /// reindex other than a change of its own content then is cleared
-    /// without a background compile, which would compile the file a second
-    /// time. The serving side enqueues the file again when the document
-    /// closes.
-    std::function<bool(Fid path_id)> compiled_by_session;
-
-    /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor can get wrong on its file
-    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
-    /// text they describe — unless a reindex booked during the run says
-    /// they describe inputs that changed.
-    std::function<void(Fid path_id,
-                       std::uint64_t text_hash,
-                       std::vector<feature::FileDiagnostic> diagnostics)>
-        on_skipped_diagnostics;
-
-    /// Whether the serving side lacks those diagnostics for the file: its
-    /// run goes ahead even when its index is current.
-    std::function<bool(Fid path_id)> lacks_skipped_diagnostics;
-
-    /// Emitted when shards that may be index-served changed (merged,
-    /// re-masked, dropped or shed). Carries the affected path_ids; the
-    /// serving adapter checks which of them an open session serves and
-    /// refreshes those clients.
-    Signal<llvm::ArrayRef<Fid>> on_index_changed;
+/// It is serving-neutral: what an open document changes about a file's run
+/// it asks the project's serving side (Project::serving), which a
+/// command-line run has none of.
+class BackgroundIndex {
+public:
+    explicit BackgroundIndex(Project& project) : project(project) {}
 
     /// Progress of the current (or last) indexing pass. The reporter reads
     /// it on each on_progress_changed emission — the signal only wakes it.
@@ -289,11 +258,169 @@ struct BackgroundIndex {
         std::size_t dispatched = 0;
     };
 
-    Progress progress;
+    /// What a file's latest attempt left when it did not index clean: an
+    /// index with the errors its compile reported, or a failure for good —
+    /// rejected by the worker, an empty or unverifiable result, a spent
+    /// crash budget, or a dead IPC path — for want of memory or not. A
+    /// later attempt that indexes clean removes it again. The one-shot
+    /// `clice index` reports a partial build from these.
+    struct Outcome {
+        bool failed = false;
+
+        /// A failure for want of memory alone: what its worker reached.
+        std::optional<std::uint64_t> too_big;
+
+        /// The errors an indexed compile reported (start's `errors`).
+        std::vector<worker::LocatedMessage> errors;
+    };
+
+    /// Passes run from now on: what was booked so far, and what the index
+    /// owes — every member it holds nothing of and every unit outdated
+    /// (ProjectIndex::mark_outdated), DepsOnly, so that a cold start with a
+    /// warm index keeps serving the stored shards instead of blanking every
+    /// query until the pass drains, and the units owed the variants a
+    /// rebuild discarded, read fresh by content. With `errors`, every
+    /// attempt brings back the errors its compile reported, for the
+    /// outcomes: the one-shot `clice index` lists them; a server reports
+    /// none and never asks.
+    void start(bool errors = false);
+
+    /// Passes run: started and not stopped.
+    bool started() const {
+        return state == State::Started;
+    }
+
+    /// Cancel background indexing and wait for all its tasks to finish; no
+    /// pass starts again.
+    async::task<> stop();
+
+    /// Book a reindex of the file. A file booked twice keeps a single queue
+    /// entry; its reason is upgraded to ContentChanged if either booking
+    /// says so (a file both cascaded onto and edited is as stale as the
+    /// edit makes it). False for a file the build does not compile as a
+    /// unit, or one a rule keeps out of the index: nothing is booked and no
+    /// attempt will ever finish.
+    bool enqueue(Fid file, ReindexReason reason);
+
+    /// Someone is reading the file through the index and nothing serves it
+    /// yet: book it at the front of the queue and start a pass without the
+    /// idle delay. A running pass finishes undisturbed; the file then leads
+    /// the next one.
+    void index_first(Fid file);
+
+    /// Forget a file's pending reindex: used when the file is removed from
+    /// disk — nothing is left to reindex, and a lingering ContentChanged
+    /// reason would suppress its deliberately still-serving shard forever.
+    /// Its attempt's waiters wake.
+    void forget(Fid file);
+
+    /// The reindexes booked and not finished.
+    const ReindexQueue& queue() const {
+        return reindexes;
+    }
+
+    /// Schedule a pass (respects the idle delay and dedup). `immediate`
+    /// skips the idle batching window — used by the pass tail for work
+    /// requeued during the pass that just ended, and by index_first, which
+    /// re-arms an already-armed timer to fire now (waiting out a previously
+    /// scheduled idle window would starve the reader). Nothing before
+    /// start(): what is booked waits for it.
+    void schedule(bool immediate = false);
+
+    /// No pass runs, and none is owed: nothing is queued, or it never runs.
+    bool idle() const {
+        return !active && (reindexes.queued() == 0 || !started());
+    }
+
+    /// Wait until idle(): every pass, requeue passes included, has run and
+    /// saved its results.
+    async::task<> wait_idle();
+
+    /// Wait until the pending (re)index attempt observed at call time finishes
+    /// — the merge committed, the attempt gave up, or the entry was cleared —
+    /// and return immediately when nothing is pending. One attempt, not an
+    /// idle file: a requeue arriving during the flight does not extend the
+    /// wait. For replies clients cache with no refresh request (outline,
+    /// links): answered while the didOpen index_first is still running, the
+    /// empty result would freeze until the next edit.
+    async::task<> await_attempt(Fid file);
+
+    /// Temporarily pause background indexing to give priority to user
+    /// requests. Indexing tasks already dispatched to workers continue, but no
+    /// new tasks are sent until resume() is called. Nested pairs work.
+    void pause();
+
+    void resume();
+
+    /// Pause once `units` more files are dispatched, so exactly that many
+    /// finish before the pause holds (CLICE_TEST_PAUSE).
+    void pause_after(std::size_t units) {
+        dispatches_before_pause = units;
+    }
+
+    const Progress& progress() const {
+        return current;
+    }
 
     /// Emitted whenever the indexing progress changes (pass begins, a file
     /// completes, pass ends).
     Signal<> on_progress_changed;
+
+    /// The files whose latest attempt did not index clean.
+    const llvm::DenseMap<Fid, Outcome>& outcomes() const {
+        return last_outcomes;
+    }
+
+    /// Whether the file's latest attempt failed for good.
+    bool failed(Fid file) const {
+        auto it = last_outcomes.find(file);
+        return it != last_outcomes.end() && it->second.failed;
+    }
+
+    /// TUs actually indexed and merged this session — dispatches the
+    /// freshness gate skipped do not count. The one-shot `clice index`
+    /// reports its work from this, so a warm rerun honestly says 0.
+    std::size_t indexed() const {
+        return indexed_units;
+    }
+
+private:
+    friend struct testing::IndexerFixture;
+
+    struct PassState;
+
+    /// One pass, once the idle delay schedule() armed has passed: index the
+    /// files queued when it starts, save, and schedule the next pass for
+    /// what it queued.
+    async::task<> run_pass();
+
+    async::task<> feed(async::task_group<>& workers,
+                       PassState& pass,
+                       std::size_t total,
+                       std::size_t& dispatched);
+
+    async::task<> run(ReindexQueue::TakenReindex taken,
+                      std::size_t index,
+                      std::size_t total,
+                      PassState& pass);
+
+    /// Wake the file's waiters whose observed sequence number the finished
+    /// attempt covers (`seq` and older) and drop their events. The default
+    /// wakes every waiter — for the paths where no further attempt will come
+    /// (entry cleared, shutdown).
+    void wake_waiters(Fid file, std::uint64_t seq = -1);
+
+    void record(Fid file, Outcome outcome);
+
+    constexpr static unsigned max_requeues = 3;
+
+    Project& project;
+
+    enum class State : std::uint8_t { Off, Started, Stopped };
+
+    State state = State::Off;
+
+    bool errors = false;
 
     /// The pending reindexes and their order. The rules on top of it, each
     /// born from a concrete bug:
@@ -303,31 +430,13 @@ struct BackgroundIndex {
     /// 2. needs_reindex() may shortcut deps-only reindexes ONLY: whoever booked
     ///    a content change saw the edit itself, and the dep-hash check
     ///    cannot see a file's own edit.
-    ReindexQueue queue{max_requeues};
+    ReindexQueue reindexes{max_requeues};
 
-    /// What a file's latest attempt left, kept by record_* in
-    /// background.cpp alone: an index, with the errors its compile
-    /// reported, or a failure for good — rejected by the worker, an empty
-    /// or unverifiable result, a spent crash budget, or a dead IPC path —
-    /// for want of memory or not. A file is in at most one of `failed` and
-    /// `errors`; `too_big` holds failed ones, with the memory their worker
-    /// reached alone. A later successful pass removes them again. The
-    /// one-shot `clice index` reports a partial build from these.
-    llvm::DenseSet<Fid> failed;
+    Progress current;
 
-    llvm::DenseMap<Fid, std::uint64_t> too_big;
+    llvm::DenseMap<Fid, Outcome> last_outcomes;
 
-    llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>> errors;
-
-    /// Every index attempt brings back the errors its compile reported, for
-    /// `errors`. The one-shot `clice index` lists them; a server reports
-    /// none and never asks.
-    bool errors_wanted = false;
-
-    /// TUs actually indexed and merged this session — dispatches the
-    /// freshness gate skipped do not count. The one-shot `clice index`
-    /// reports its work from this, so a warm rerun honestly says 0.
-    std::size_t indexed = 0;
+    std::size_t indexed_units = 0;
 
     struct AttemptWait {
         std::uint64_t seq;
@@ -335,9 +444,9 @@ struct BackgroundIndex {
         std::shared_ptr<async::event> event;
     };
 
-    /// The events await_index_attempt waiters park on, per file and per
-    /// pending sequence number observed at wait time; each fires when an
-    /// attempt covering it finishes (or wholesale at stop). Keyed by it so a
+    /// The events await_attempt waiters park on, per file and per pending
+    /// sequence number observed at wait time; each fires when an attempt
+    /// covering it finishes (or wholesale at stop). Keyed by it so a
     /// requeue during an attempt's flight cannot extend earlier waits — the
     /// wait promises one attempt, not an idle file.
     llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
@@ -348,41 +457,41 @@ struct BackgroundIndex {
     /// A pass waits on the idle timer.
     bool scheduled = false;
 
-    /// Set whenever a pass ends; wait_index_idle() waits on it.
+    /// Set whenever a pass ends; wait_idle() waits on it.
     async::event pass_ended{false};
 
     std::shared_ptr<async::timer> idle_timer;
 
-    /// Pause/resume: when paused, new index tasks wait on this event. A
-    /// counter, so nested pause/resume pairs work.
+    /// When paused, new index tasks wait on this event. A counter, so
+    /// nested pause/resume pairs work.
     std::size_t pause_depth = 0;
 
     async::event resume_event{true};
 
-    /// Dispatches left before pause_indexing_after() pauses; zero when none
-    /// is due.
+    /// Dispatches left before pause_after() pauses; zero when none is due.
     std::size_t dispatches_before_pause = 0;
-
-    /// stop_background_index() ran: no pass starts again.
-    bool stopped = false;
 
     async::task_group<> tasks;
 };
 
 /// Pauses indexing for its lifetime; a moved-from one holds nothing.
 struct [[nodiscard]] ScopedPause {
-    Project* project;
+    BackgroundIndex* background;
 
-    explicit ScopedPause(Project& project);
+    explicit ScopedPause(BackgroundIndex& background) : background(&background) {
+        background.pause();
+    }
 
-    ScopedPause(ScopedPause&& other) noexcept : project(std::exchange(other.project, nullptr)) {}
+    ScopedPause(ScopedPause&& other) noexcept :
+        background(std::exchange(other.background, nullptr)) {}
 
     ScopedPause& operator=(ScopedPause&&) = delete;
 
-    ~ScopedPause();
+    ~ScopedPause() {
+        if(background) {
+            background->resume();
+        }
+    }
 };
-
-/// How often a long-lived owner calls Project::checkpoint().
-chrono::milliseconds checkpoint_interval();
 
 }  // namespace clice

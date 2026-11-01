@@ -28,7 +28,7 @@ const MasterServer::ChoiceEntry* MasterServer::choice(Fid path_id) const {
 
 void MasterServer::load_choices(ServedProject& project) {
     bool dropped = false;
-    for(auto& [file, saved]: project.project.parse_choices(project.project.choices.bytes)) {
+    for(auto& [file, saved]: project.project.saved_choices()) {
         auto [it, inserted] = choices.try_emplace(file);
         auto& entry = it->second;
         // Of two projects that saved a choice for one file, the deeper root
@@ -78,12 +78,7 @@ void MasterServer::save_choices(ServedProject& project) {
             saved.emplace_back(file, &entry.choice);
         }
     }
-    auto& blob = project.project.choices;
-    blob.bytes = project.project.serialize_choices(saved);
-    blob.dirty = true;
-    if(project.project.request_flush) {
-        project.project.request_flush();
-    }
+    project.project.save_choices(saved);
 }
 
 void MasterServer::forget_choices(ServedProject& project) {

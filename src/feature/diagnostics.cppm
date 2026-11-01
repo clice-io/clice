@@ -102,6 +102,15 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// declarations, which it also raises for those only a skipped body uses.
 auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
+/// How many errors name what an includer would have provided: an
+/// undeclared name, a missing member or template of a namespace, a call to
+/// an undeclared C function, an #error guarding against a standalone
+/// compile, a conditional the includer closes. A typo raises the same
+/// ones; the self-containment check runs when a header opens or its
+/// inputs change, never per edit, so one costs at most a compile under
+/// the includer's context.
+std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics);
+
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
 FileDiagnostic file_warning(std::string message);

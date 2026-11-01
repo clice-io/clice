@@ -203,20 +203,6 @@ struct Hosting {
 /// (`g++` takes a `.c` as C++).
 clang::driver::types::ID language_of(const CommandRef& command);
 
-/// Whether the file at `path` can be part of the translation unit `unit`
-/// compiled as `language`. A source only in its own, in the one the
-/// unit's command gives the unit's own suffix (`g++` takes a `.c` as
-/// C++), or across C++ and its modules: a `.cpp` compiled as CUDA or a
-/// `.m` as C is not the file. A header has latitude: a `.h` fits any, a
-/// C++ header every language built on C++ (Objective-C++, CUDA, HIP), a
-/// `.cuh` CUDA.
-bool compatible(llvm::StringRef path, llvm::StringRef unit, clang::driver::types::ID language);
-
-/// How far `other` sits from `path` in the directory tree: how much of
-/// `path` lies past the directories the two share, then how many
-/// directories deeper `other` goes below them.
-std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::StringRef other);
-
 /// What finding the host of a header found.
 struct HostSearch {
     std::optional<Host> host;
@@ -228,15 +214,6 @@ struct HostSearch {
     /// hosts ranked after it come only once it is taken.
     std::optional<TreeRequest> missing;
 };
-
-/// How many errors name what an includer would have provided: an
-/// undeclared name, a missing member or template of a namespace, a call to
-/// an undeclared C function, an #error guarding against a standalone
-/// compile, a conditional the includer closes. A typo raises the same
-/// ones; the self-containment check runs when a header opens or its
-/// inputs change, never per edit, so one costs at most a compile under
-/// the includer's context.
-std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
 /// One context the listing offers a file: a host and the command it lends,
 /// at one of the places its compile enters the header when there are

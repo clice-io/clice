@@ -14,43 +14,6 @@ types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.language.value);
 }
 
-/// Whether `type` is C++ or a C++ module unit: the two share flags, so
-/// each lends to the other.
-static bool cxx_or_module(types::ID type) {
-    return type == types::TY_CXX || type == types::TY_CXXModule;
-}
-
-bool compatible(llvm::StringRef path, llvm::StringRef unit, types::ID language) {
-    auto file = suffix_type(path);
-    if(file == types::TY_INVALID) {
-        return path::extension(path) != ".cuh" || types::isCuda(language) || types::isHIP(language);
-    }
-    if(file == types::TY_CHeader) {
-        return true;
-    }
-    if(types::onlyPrecompileType(file) && types::isCXX(file)) {
-        return types::isCXX(language);
-    }
-    return file == language || (cxx_or_module(file) && cxx_or_module(language)) ||
-           (file == suffix_type(unit) && language == types::lookupCXXTypeForCType(file));
-}
-
-std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::StringRef other) {
-    std::size_t shared = 0;
-    auto n = std::min(path.size(), other.size());
-    while(shared < n && path[shared] == other[shared]) {
-        shared += 1;
-    }
-    auto separator = [](char c) {
-        return path::is_separator(c);
-    };
-    while(shared > 0 && !separator(path[shared - 1])) {
-        shared -= 1;
-    }
-    return {path.size() - shared,
-            static_cast<std::size_t>(ranges::count_if(other.substr(shared), separator))};
-}
-
 llvm::SmallVector<Candidate, 2> Project::candidates(Fid header, Fid host) {
     auto header_path = file_table.resolve(header);
     auto host_path = file_table.resolve(host);
@@ -104,7 +67,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
         scored.push_back({
             {source_rank,
              stem_match, same_dir,
-             tree_distance(header_path, host_path),
+             path::tree_distance(header_path, host_path),
              host_path.str()},
             candidate
         });

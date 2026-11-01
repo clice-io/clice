@@ -106,7 +106,7 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
 
     // The closest unit in the directory tree, then by name.
     return lent(**ranges::min_element(units, {}, [&](const Command* command) {
-        return std::tuple(tree_distance(path, unit_path(command)), unit_path(command));
+        return std::tuple(path::tree_distance(path, unit_path(command)), unit_path(command));
     }));
 }
 

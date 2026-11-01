@@ -92,8 +92,10 @@ void LSPClient::register_test_hooks() {
             co_await async::when_any(srv.wait_idle(this->peer), async::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
-                for(auto id: project->project.background_index.failed) {
-                    result.failed.push_back(feature::to_uri(srv.files.display(id)));
+                for(auto& [id, outcome]: project->project.background_index.outcomes()) {
+                    if(outcome.failed) {
+                        result.failed.push_back(feature::to_uri(srv.files.display(id)));
+                    }
                 }
                 result.unsaved = result.unsaved || project->project.has_unsaved_state();
             }
@@ -223,7 +225,7 @@ void LSPClient::register_test_hooks() {
                 });
 
                 stats.import_scans += served->project.import_scans.runs;
-                stats.index_idle = stats.index_idle && served->project.index_idle();
+                stats.index_idle = stats.index_idle && served->project.background_index.idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());
             stats.workers = {.stateful = this->server.pool.worker_pids(true),

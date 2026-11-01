@@ -73,7 +73,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         if(options.await_cold_attempt && !waited) {
             waited = true;
-            co_await project.await_index_attempt(session.path_id);
+            co_await project.background_index.await_attempt(session.path_id);
             continue;
         }
         co_return Route::Empty;

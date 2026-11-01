@@ -26,12 +26,15 @@ struct Options {
 /// the first pass has a total.
 void report_progress(BatchRun& run, const BatchOptions& options) {
     auto& background = run.project.background_index;
-    auto& pass = background.progress;
+    auto& pass = background.progress();
     if(!options.on_progress || pass.total == 0) {
         return;
     }
-    options.on_progress(
-        {.completed = pass.completed, .total = pass.total, .failed = background.failed.size()});
+    auto failed = ranges::count_if(background.outcomes(),
+                                   [](const auto& entry) { return entry.second.failed; });
+    options.on_progress({.completed = pass.completed,
+                         .total = pass.total,
+                         .failed = static_cast<std::size_t>(failed)});
 }
 
 /// A paced report on top of the pass boundaries: one unit can take
@@ -88,9 +91,6 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         co_await run.pool.stop();
         co_return;
     }
-    project.settings.project.enable_indexing.value = true;
-    background.errors_wanted = true;
-
     auto opened = project.open({
         .configuration = batch.loaded.configuration,
         .cache = Project::OpenOptions::Cache::Write,
@@ -116,15 +116,15 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     }
 
     auto progress = background.on_progress_changed.connect([&] {
-        if(background.progress.stage != BackgroundIndex::Progress::Stage::Report) {
+        if(background.progress().stage != BackgroundIndex::Progress::Stage::Report) {
             report_progress(run, options);
         }
     });
     Signal<>::Connection parked;
     if(auto pause = test_pause()) {
-        project.pause_indexing_after(pause->units);
+        background.pause_after(pause->units);
         parked = background.on_progress_changed.connect([&background, pause = *pause]() mutable {
-            if(!pause.reached && background.progress.completed >= pause.units) {
+            if(!pause.reached && background.progress().completed >= pause.units) {
                 pause.reached = true;
                 if(auto error = fs::write_file(pause.file, "")) {
                     LOG_WARN("CLICE_TEST_PAUSE cannot create {}: {}", pause.file, error.message());
@@ -132,9 +132,10 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
             }
         });
     }
+    background.start(/*errors=*/true);
     Lifetime lifetime(run);
     lifetime.aux.spawn(progress_ticker(run, options));
-    co_await async::with_token(project.wait_index_idle(), lifetime.token());
+    co_await async::with_token(background.wait_idle(), lifetime.token());
     // The counts read every shard and symbol record: taken before the final
     // save, damage they meet first is discarded there like any other.
     if(!lifetime.stop_requested) {
@@ -154,24 +155,23 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     }
 
     result.completed = true;
-    result.indexed_tus = background.indexed;
-    for(auto file: background.failed) {
-        if(auto it = background.too_big.find(file); it != background.too_big.end()) {
-            result.too_big.push_back(
-                {.unit = project.file_table.display(file), .memory = it->second});
+    result.indexed_tus = background.indexed();
+    for(auto& [unit, outcome]: background.outcomes()) {
+        auto shown = project.file_table.display(unit);
+        if(outcome.too_big) {
+            result.too_big.push_back({.unit = std::move(shown), .memory = *outcome.too_big});
+        } else if(outcome.failed) {
+            result.failed.push_back(std::move(shown));
         } else {
-            result.failed.emplace_back(project.file_table.display(file));
+            auto& compiled = result.compiled_with_errors.emplace_back(
+                BatchResult::UnitErrors{.unit = std::move(shown), .errors = outcome.errors});
+            for(auto& error: compiled.errors) {
+                show_path(project.file_table, error.file);
+            }
         }
     }
     ranges::sort(result.failed);
     ranges::sort(result.too_big, {}, &BatchResult::TooBig::unit);
-    for(auto& [unit, errors]: background.errors) {
-        auto& shown = result.compiled_with_errors.emplace_back(
-            BatchResult::UnitErrors{.unit = project.file_table.display(unit), .errors = errors});
-        for(auto& error: shown.errors) {
-            show_path(project.file_table, error.file);
-        }
-    }
     ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
     if(!result.failed.empty() || !result.too_big.empty() || result.unsaved || result.damaged) {
         result.exit_code = 1;

@@ -2,9 +2,11 @@ module clice;
 
 import :index.database;
 import :index.project_index;
+import :project.indexer;
 import :project.listings;
 import :project.project;
 import :support.bytes;
+import :support.environment;
 import :support.logging;
 import :support.timer;
 
@@ -19,12 +21,54 @@ async::task<> Project::checkpoint() {
     // final save behind seconds of derived work: the pass end does them,
     // and a pass with nothing queued builds what the search index is owed.
     co_await save(index::SearchRebuild::Never);
-    schedule_index();
+    background_index.schedule();
     forget_evicted_pchs();
 }
 
+async::task<> Project::save(index::SearchRebuild search) {
+    bool retry = true;
+    bool owed = false;
+    while(retry) {
+        auto report = co_await write_database(search);
+        retry = report.owes_retry;
+        owed |= !report.reindex().empty();
+        take_report(report);
+        // No more indexing is queued, so no save is due for a while: the
+        // file may shrink — unless a file was queued while the save ran. A
+        // shrink that discarded the database owes the fresh one a save.
+        if(!retry && search == index::SearchRebuild::Idle && background_index.queue().queued() == 0) {
+            report = co_await shrink_database();
+            retry = report.owes_retry;
+            owed |= !report.reindex().empty();
+            take_report(report);
+        }
+    }
+    // A save the compaction or a discarded database owed reindexes to queued
+    // them: they need a pass of their own when none is running.
+    if(owed) {
+        background_index.schedule();
+    }
+}
+
+void Project::take_report(const index::IndexReport& report) {
+    for(auto id: report.reindex()) {
+        background_index.enqueue(id, ReindexReason::ContentChanged);
+    }
+    if(serving && !report.index_changed().empty()) {
+        serving->index_changed(report.index_changed());
+    }
+}
+
+chrono::milliseconds checkpoint_interval() {
+    // Lets integration tests kill a server between checkpoints.
+    if(auto ms = env_integer("CLICE_TEST_CHECKPOINT_MS")) {
+        return chrono::milliseconds(*ms);
+    }
+    return chrono::minutes(5);
+}
+
 async::task<> Project::shutdown() {
-    co_await stop_background_index();
+    co_await background_index.stop();
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
     // index dominates a cold pass's save: the index commits with no more

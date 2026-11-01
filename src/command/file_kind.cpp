@@ -70,4 +70,27 @@ bool is_c_family_file(llvm::StringRef filename) {
     return is_c_family_type(types::lookupTypeForExtension(ext.drop_front()));
 }
 
+/// Whether `type` is C++ or a C++ module unit: the two share flags, so
+/// each lends to the other.
+static bool cxx_or_module(clang::driver::types::ID type) {
+    namespace types = clang::driver::types;
+    return type == types::TY_CXX || type == types::TY_CXXModule;
+}
+
+bool compatible(llvm::StringRef path, llvm::StringRef unit, clang::driver::types::ID language) {
+    namespace types = clang::driver::types;
+    auto file = suffix_type(path);
+    if(file == types::TY_INVALID) {
+        return path::extension(path) != ".cuh" || types::isCuda(language) || types::isHIP(language);
+    }
+    if(file == types::TY_CHeader) {
+        return true;
+    }
+    if(types::onlyPrecompileType(file) && types::isCXX(file)) {
+        return types::isCXX(language);
+    }
+    return file == language || (cxx_or_module(file) && cxx_or_module(language)) ||
+           (file == suffix_type(unit) && language == types::lookupCXXTypeForCType(file));
+}
+
 }  // namespace clice

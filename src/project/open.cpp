@@ -312,7 +312,7 @@ Project::Opened Project::open(const OpenOptions& options) {
         } else {
             index::IndexReport report;
             bool decoded = load_saved(options.load == Load::Members, report);
-            apply_report(report);
+            take_report(report);
             // A reader takes no fresh database for one it cannot read.
             if(!decoded && database && database->read_only()) {
                 opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
@@ -332,8 +332,11 @@ Project::Opened Project::open(const OpenOptions& options) {
         index.clear();
         database.reset();
     }
+    // Marked before any run writes the index: the instantiations they
+    // walked hold no more (ProjectIndex::known_instantiations), whether the
+    // background index rebuilds them or not.
     if(options.cache == Cache::Write) {
-        enqueue_outdated(opened.members);
+        index.stale_units();
     }
     return opened;
 }

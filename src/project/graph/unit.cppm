@@ -2,7 +2,6 @@ module clice:project.unit;
 
 import :compile.tidy;
 import :feature.diagnostics;
-import :index.project_index;
 import :project.task_graph;
 import :support.prelude;
 import :vfs.ids;
@@ -22,9 +21,9 @@ namespace clice {
 /// A unit is a node of the task graph whose attempt is the compile; the
 /// project owns its policy: command resolution, edges to the module PCMs
 /// and to the precompiled header the build declares, the worker dispatch,
-/// and the merge with its outdated check. The background index owns the
-/// queue and the requeue budget; it reads the compile's result to update
-/// them.
+/// and the merge with its outdated check, whose report it takes
+/// (Project::take_report). The background index owns the queue and the
+/// requeue budget; it reads the compile's result to update them.
 struct UnitRequest {
     bool index = false;
 
@@ -99,11 +98,6 @@ struct UnitResult {
     };
 
     Status status = Status::Failed;
-
-    /// The reindexes the merge owes and the serving-index changes — the
-    /// background index takes these before the attempt finishes and its
-    /// waiters wake.
-    index::IndexReport report;
 
     /// Findings of the tidy pass (UnitRequest::tidy).
     std::vector<worker::TidyDiagnostic> tidy_diagnostics;

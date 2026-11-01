@@ -32,32 +32,6 @@ std::optional<bool> Project::self_contained(const SelfContainmentKey& key, bool 
     return entry->result.self_contained;
 }
 
-std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics) {
-    namespace diag = clang::diag;
-    constexpr static unsigned ids[] = {
-        diag::err_unknown_typename,
-        diag::err_unknown_typename_suggest,
-        diag::err_undeclared_var_use,
-        diag::err_undeclared_var_use_suggest,
-        diag::err_undeclared_use,
-        diag::err_undeclared_use_suggest,
-        diag::err_no_member,
-        diag::err_no_member_suggest,
-        diag::err_no_member_template,
-        diag::err_no_member_template_suggest,
-        diag::err_no_template,
-        diag::err_no_template_suggest,
-        diag::err_typename_nested_not_found,
-        diag::err_unknown_nested_typename_suggest,
-        diag::ext_implicit_function_decl_c99,
-        diag::err_pp_hash_error,
-        diag::err_pp_unterminated_conditional,
-    };
-    return ranges::count_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        return diagnostic.level >= DiagnosticLevel::Error && ranges::contains(ids, diagnostic.id);
-    });
-}
-
 void Project::commit_self_containment(const SelfContainmentKey& key,
                                       llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                                       VersionID text,
@@ -66,7 +40,7 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
     hosting.self_containment.commit(
         key,
         {
-            .self_contained = missing_context_errors(diagnostics) == 0,
+            .self_contained = feature::missing_context_errors(diagnostics) == 0,
             .text = text,
             // A header gone from disk holds no result.
             .disk = disk && disk->version.valid() ? disk->version : text,

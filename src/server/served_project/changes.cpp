@@ -71,8 +71,8 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 
 void ServedProject::reindex(Fid path_id, bool content) {
     skipped.erase(path_id);
-    project.enqueue_reindex(path_id,
-                            content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
+    project.background_index.enqueue(
+        path_id, content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
 }
 
 /// An invalidated dependent recompiles when it is open, and reindexes
@@ -235,7 +235,7 @@ void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
         // compile-graph cascade, which lists the removed module itself
         // among its dirtied units: the removal is the final word for the
         // file itself.
-        project.clear_reindex(path_id);
+        project.background_index.forget(path_id);
         project.forget_file(path_id);
         // TODO: remove orphaned shards of files that stay deleted.
     }
@@ -281,7 +281,8 @@ void ServedProject::commands_changed(CDBDiff commands) {
     for(auto& [path_id, document]: documents) {
         auto selected =
             project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
-        if(!document.latest || document.latest->command != selected.ref.command) {
+        auto& latest = document.latest;
+        if(!latest || latest->command != selected.ref.command || latest->host != selected.host) {
             mark_stale(path_id, refresh);
         }
     }
@@ -301,13 +302,7 @@ void ServedProject::finish_changes(bool refresh) {
     // A change can remove the include edge or the entry a user's context
     // choice depends on, or bring it back.
     recheck_choices();
-    // Not before the server is ready: document-sync events are accepted
-    // early, but the scheduler reads settings that initialize() has not
-    // applied yet. The queue filled is kept — the project's start kicks the
-    // scheduler.
-    if(server.lifecycle == ServerLifecycle::Ready) {
-        project.schedule_index();
-    }
+    project.background_index.schedule();
     if(refresh && server.client) {
         server.client->refresh_diagnostics();
         server.client->refresh();

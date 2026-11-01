@@ -13,11 +13,9 @@ import :worker.protocol;
 
 namespace clice {
 
-namespace {
-
-/// A pass's shared counters, living on run_index_pass's frame, which outlives
+/// A pass's shared counters, living on run_pass's frame, which outlives
 /// every spawned task (it joins them before returning).
-struct PassState {
+struct BackgroundIndex::PassState {
     /// Dispatched tasks not yet finished.
     std::size_t inflight = 0;
 
@@ -25,85 +23,58 @@ struct PassState {
     async::event task_done{false};
 };
 
-void record_indexed(BackgroundIndex& background,
-                    Fid file,
-                    std::vector<worker::LocatedMessage> compile_errors) {
-    background.failed.erase(file);
-    background.too_big.erase(file);
-    if(compile_errors.empty()) {
-        background.errors.erase(file);
-    } else {
-        background.errors[file] = std::move(compile_errors);
-    }
-}
-
-void record_failed(BackgroundIndex& background, Fid file) {
-    background.failed.insert(file);
-    background.too_big.erase(file);
-    background.errors.erase(file);
-}
-
-void record_too_big(BackgroundIndex& background, Fid file, std::uint64_t memory) {
-    record_failed(background, file);
-    background.too_big[file] = memory;
-}
-
 /// One dispatched unit of a background pass: admit, compile the TU
-/// through its unit node, take the merge report, finish the taken reindex
-/// and report progress.
-async::task<> run_index_task(Project& project,
-                             ReindexQueue::TakenReindex taken,
-                             std::size_t index,
-                             std::size_t total,
-                             PassState& pass) {
+/// through its unit node, finish the taken reindex and report progress.
+async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
+                                   std::size_t index,
+                                   std::size_t total,
+                                   PassState& pass) {
     using Status = UnitResult::Status;
-    auto& background = project.background_index;
-    auto& queue = background.queue;
     auto path_id = taken.id;
+    auto* serving = project.serving;
     auto file_path = std::string(project.file_table.resolve(path_id));
     // A booked content change is authoritative: whoever booked it saw
     // the edit. The dep-hash check cannot be trusted
     // to see a file's own edit (it validates the recorded
     // dependencies), so only deps-only reindexes — where it exists to
     // deduplicate cascade storms — may take the shortcut.
-    bool content_changed = queue.pending_reason(path_id) == ReindexReason::ContentChanged;
-    bool served = !content_changed && background.compiled_by_session &&
-                  background.compiled_by_session(path_id);
-    bool skipped = background.on_skipped_diagnostics && project.settings.project.skip_header_bodies;
-    if(!served && (content_changed || (skipped && background.lacks_skipped_diagnostics(path_id)) ||
+    bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
+    bool served = !content_changed && serving && serving->compiled_by_session(path_id);
+    bool skipped = serving && project.settings.project.skip_header_bodies;
+    if(!served && (content_changed || (skipped && serving->lacks_skipped_diagnostics(path_id)) ||
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto result = co_await project.compile_unit(
             path_id,
             {.index = true,
-             .errors = background.errors_wanted,
+             .errors = errors,
              .skipped_diagnostics = skipped,
-             .outdated = [&queue, taken] { return queue.outdated(taken); }});
+             .outdated = [this, taken] { return reindexes.outdated(taken); }});
         if(!result) {
             // The graph shut down: nothing ran, so the reindex
             // stays booked for the final snapshot and the next session;
             // only the pass bookkeeping below still runs so a live feeder
             // is not left waiting on this task.
-            background.progress.completed += 1;
+            current.completed += 1;
             pass.inflight -= 1;
             pass.task_done.set();
             co_return;
         }
-        // The report's reindexes are booked before the finish and the
-        // waiter wake-ups below: a waker re-deriving its route must never
-        // observe an index as current that the merge just declared stale.
-        project.apply_report(result->report);
+        // compile_unit booked the merge report's reindexes before the
+        // finish and the waiter wake-ups below: a waker re-deriving its
+        // route must never observe an index as current that the merge just
+        // declared stale.
         switch(result->status) {
             case Status::Completed: {
-                record_indexed(background, path_id, std::move(result->errors));
-                if(auto pending = queue.peek(path_id);
+                record(path_id, {.errors = std::move(result->errors)});
+                if(auto pending = reindexes.peek(path_id);
                    skipped && pending && pending->seq == taken.seq) {
-                    background.on_skipped_diagnostics(path_id,
-                                                      result->text_hash,
-                                                      std::move(result->skipped_diagnostics));
+                    serving->report_skipped_diagnostics(path_id,
+                                                        result->text_hash,
+                                                        std::move(result->skipped_diagnostics));
                 }
-                background.indexed += 1;
+                indexed_units += 1;
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                          index,
@@ -119,7 +90,7 @@ async::task<> run_index_task(Project& project,
             }
             case Status::Failed: {
                 LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result->error);
-                record_failed(background, path_id);
+                record(path_id, {.failed = true});
                 break;
             }
             case Status::Crashed:
@@ -139,7 +110,7 @@ async::task<> run_index_task(Project& project,
                                    ? Crashed
                                : result->status == Status::Lost ? Lost
                                                                 : Preempted;
-                switch(queue.on_dispatch_failure(taken, failure)) {
+                switch(reindexes.on_dispatch_failure(taken, failure)) {
                     case ReindexQueue::FailureDecision::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
                                  index,
@@ -157,7 +128,7 @@ async::task<> run_index_task(Project& project,
                     case ReindexQueue::FailureDecision::GaveUp: {
                         // Giving up cleared the entry; no further attempt
                         // will come, so no waiter is left waiting for one.
-                        project.wake_attempt_waits(path_id);
+                        wake_waiters(path_id);
                         // Log-only by design: the file is usually not
                         // open (open documents are served by their
                         // session, not the shard), so there is no
@@ -172,7 +143,7 @@ async::task<> run_index_task(Project& project,
                                 total,
                                 file_path,
                                 result->memory >> 20);
-                            record_too_big(background, path_id, result->memory);
+                            record(path_id, {.failed = true, .too_big = result->memory});
                             break;
                         }
                         LOG_WARN(
@@ -182,7 +153,7 @@ async::task<> run_index_task(Project& project,
                             total,
                             file_path,
                             result->error);
-                        record_failed(background, path_id);
+                        record(path_id, {.failed = true});
                         break;
                     }
                     case ReindexQueue::FailureDecision::Requeued: {
@@ -213,44 +184,42 @@ async::task<> run_index_task(Project& project,
     // since only a future event re-enqueues it. Any such event re-judges
     // staleness by content hash. A re-enqueue during the flight booked
     // a newer reindex: the finish leaves it standing.
-    queue.finish(taken);
+    reindexes.finish(taken);
     // The attempt finished with no retry pending; the serving side judges
     // whether an open session still waiting on the index can ever be
     // served by it, before its waiters wake (contract 15).
-    if(background.on_attempt_finished && !queue.contains(path_id)) {
-        background.on_attempt_finished(path_id);
+    if(serving && !reindexes.contains(path_id)) {
+        serving->attempt_finished(path_id);
     }
     // Wake the waiters parked on this attempt (and older sequence numbers it
     // covers) after the escalation above, so they re-derive their route
     // against the finished state. Waiters of a requeue made during the
     // flight bound the fresh sequence number and stay parked for that newer
     // attempt.
-    project.wake_attempt_waits(path_id, taken.seq);
+    wake_waiters(path_id, taken.seq);
     pass.inflight -= 1;
     pass.task_done.set();
-    background.progress.stage = BackgroundIndex::Progress::Stage::Report;
-    background.progress.completed += 1;
-    background.on_progress_changed.emit();
+    current.stage = Progress::Stage::Report;
+    current.completed += 1;
+    on_progress_changed.emit();
 }
 
 /// The pass's dispatch loop, spawned as a child of `workers` so that a
 /// shutdown cancel reaches it through the pass frame's join — see the
-/// spawn site. Takes the pass's files and spawns one run_index_task per
-/// live one, bounded by the feeder window.
-async::task<> run_pass_feeder(Project& project,
-                              async::task_group<>& workers,
-                              PassState& pass,
-                              std::size_t total,
-                              std::size_t& dispatched) {
-    auto& background = project.background_index;
+/// spawn site. Takes the pass's files and spawns one run per live one,
+/// bounded by the feeder window.
+async::task<> BackgroundIndex::feed(async::task_group<>& workers,
+                                    PassState& pass,
+                                    std::size_t total,
+                                    std::size_t& dispatched) {
     auto& pool = *project.pool;
-    while(background.queue.pass_left()) {
+    while(reindexes.pass_left()) {
         // Every wait loops back to re-check ALL gates: a pause arriving
         // while parked on capacity (or a capacity loss while parked on the
         // pause) must not let one file slip through on wake-up.
         while(true) {
-            if(background.pause_depth > 0) {
-                co_await background.resume_event.wait();
+            if(pause_depth > 0) {
+                co_await resume_event.wait();
                 continue;
             }
 
@@ -282,35 +251,40 @@ async::task<> run_pass_feeder(Project& project,
         // honored. A second, reason-blind copy of these checks here is
         // exactly what once erased ContentChanged state early and let a
         // stale shard keep serving.
-        auto taken = background.queue.take_next();
+        auto taken = reindexes.take_next();
         if(!taken) {
             break;
         }
 
         dispatched += 1;
         pass.inflight += 1;
-        if(background.dispatches_before_pause > 0) {
-            background.dispatches_before_pause -= 1;
-            if(background.dispatches_before_pause == 0) {
-                project.pause_indexing();
+        if(dispatches_before_pause > 0) {
+            dispatches_before_pause -= 1;
+            if(dispatches_before_pause == 0) {
+                pause();
             }
         }
         // A free coroutine, not an immediately-invoked capturing lambda: a
         // lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(project, *taken, dispatched, total, pass));
+        workers.spawn(run(*taken, dispatched, total, pass));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
 }
 
-}  // namespace
+void BackgroundIndex::record(Fid file, Outcome outcome) {
+    if(!outcome.failed && outcome.errors.empty()) {
+        last_outcomes.erase(file);
+    } else {
+        last_outcomes[file] = std::move(outcome);
+    }
+}
 
-void Project::wake_attempt_waits(Fid path_id, std::uint64_t seq) {
-    auto& background = background_index;
-    auto it = background.attempt_waits.find(path_id);
-    if(it == background.attempt_waits.end()) {
+void BackgroundIndex::wake_waiters(Fid file, std::uint64_t seq) {
+    auto it = attempt_waits.find(file);
+    if(it == attempt_waits.end()) {
         return;
     }
     llvm::SmallVector<std::shared_ptr<async::event>, 2> woken;
@@ -320,27 +294,25 @@ void Project::wake_attempt_waits(Fid path_id, std::uint64_t seq) {
         }
     }
     it->second.erase(
-        ranges::remove_if(it->second,
-                          [&](const BackgroundIndex::AttemptWait& wait) { return wait.seq <= seq; })
+        ranges::remove_if(it->second, [&](const AttemptWait& wait) { return wait.seq <= seq; })
             .begin(),
         it->second.end());
     if(it->second.empty()) {
-        background.attempt_waits.erase(it);
+        attempt_waits.erase(it);
     }
     for(auto& event: woken) {
         event->set();
     }
 }
 
-async::task<> Project::run_index_pass() {
-    auto& background = background_index;
-    auto& queue = background.queue;
-    if(background.idle_timer) {
-        co_await background.idle_timer->wait();
+async::task<> BackgroundIndex::run_pass() {
+    auto& index = project.index;
+    if(idle_timer) {
+        co_await idle_timer->wait();
     }
-    background.scheduled = false;
+    scheduled = false;
 
-    if(queue.queued() == 0) {
+    if(reindexes.queued() == 0) {
         LOG_DEBUG("Background indexing: queue exhausted");
         // Nothing to index, yet the search index may be owed the full build
         // a previous session never reached — until it runs, every search
@@ -349,27 +321,28 @@ async::task<> Project::run_index_pass() {
         // save discards (a damaged database the save discarded queues
         // every unit, and the save starts their pass).
         if(index.damaged() || index.search_update_due(index::SearchRebuild::Idle)) {
-            co_await save(index::SearchRebuild::Idle);
+            co_await project.save(index::SearchRebuild::Idle);
         }
         co_return;
     }
 
-    background.active = true;
-    LOG_DEBUG("Background indexing: starting, {} files queued", queue.queued());
+    active = true;
+    LOG_DEBUG("Background indexing: starting, {} files queued", reindexes.queued());
 
     // FileVersion results hold for one pass: the disk can change under a
     // running pass, but staleness is re-judged per pass anyway.
     index.clear_staleness_cache();
 
-    auto total = queue.begin_pass([&](Fid id) { return !dep_graph.module_of(id).empty(); });
+    auto total =
+        reindexes.begin_pass([&](Fid id) { return !project.dep_graph.module_of(id).empty(); });
     std::size_t dispatched = 0;
     PassState pass;
 
     // Announce the pass; a progress reporter reads the counts from
     // `progress` and owns the LSP token's begin/report/end handshake. With
     // no subscriber the signal is simply a no-op.
-    background.progress = {.stage = BackgroundIndex::Progress::Stage::Begin, .total = total};
-    background.on_progress_changed.emit();
+    current = {.stage = Progress::Stage::Begin, .total = total};
+    on_progress_changed.emit();
 
     // Timed at the start of real work; the reporter's token handshake runs
     // off to the side and cannot inflate the reported indexing duration.
@@ -377,15 +350,15 @@ async::task<> Project::run_index_pass() {
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
     co_await async::with_task_group([&](async::task_group<>& workers) {
-        return run_pass_feeder(*this, workers, pass, total, dispatched);
+        return feed(workers, pass, total, dispatched);
     });
 
-    background.progress.stage = BackgroundIndex::Progress::Stage::End;
-    background.progress.dispatched = dispatched;
-    background.on_progress_changed.emit();
+    current.stage = Progress::Stage::End;
+    current.dispatched = dispatched;
+    on_progress_changed.emit();
 
     // No dispatch loop takes from the queue any more.
-    queue.end_pass();
+    reindexes.end_pass();
 
     LOG_PERF("index",
              "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
@@ -393,7 +366,8 @@ async::task<> Project::run_index_pass() {
              total - dispatched,
              total,
              timer.ms());
-    co_await save(queue.queued() == 0 ? index::SearchRebuild::Idle : index::SearchRebuild::Behind);
+    co_await project.save(reindexes.queued() == 0 ? index::SearchRebuild::Idle
+                                              : index::SearchRebuild::Behind);
     // The pass's merge buffers are freed by now; glibc would keep their
     // pages, and the master its pass's peak, for the rest of the session.
     co_await async::queue([] { release_free_memory(); });
@@ -401,109 +375,83 @@ async::task<> Project::run_index_pass() {
     // The pass owns the "active" gate through its save: releasing it
     // before the write await would let a next pass's save overlap this
     // one's in-flight batch, racing same-key blob writes on the pool.
-    background.active = false;
-    background.pass_ended.set();
+    active = false;
+    pass_ended.set();
 
     // Files enqueued or requeued while the pass ran saw their schedule
     // no-op against `active`; without this kick they would wait for the
     // next external event — and a content-changed pending file's index
     // stays skipped for that whole wait.
-    if(queue.queued() > 0) {
-        schedule_index(/*immediate=*/true);
+    if(reindexes.queued() > 0) {
+        schedule(/*immediate=*/true);
     }
 }
 
-bool Project::enqueue_reindex(Fid path_id, ReindexReason reason) {
-    // The one admission point of the background index: a rule's
-    // `index = false` keeps its files out here, whichever path asked.
-    if(!rules.indexable(file_table.resolve(path_id))) {
+void BackgroundIndex::start(bool errors) {
+    if(state != State::Off) {
+        return;
+    }
+    state = State::Started;
+    this->errors = errors;
+    auto& index = project.index;
+    for(auto member: project.members()) {
+        if(!index.indexed(member)) {
+            enqueue(member, ReindexReason::DepsOnly);
+        }
+    }
+    for(auto unit: index.outdated_units()) {
+        enqueue(unit, ReindexReason::DepsOnly);
+    }
+    for(auto unit: index.owed_units()) {
+        enqueue(unit, ReindexReason::ContentChanged);
+    }
+    schedule();
+}
+
+bool BackgroundIndex::enqueue(Fid file, ReindexReason reason) {
+    // The one admission point of the background index: a file the build
+    // does not compile as a unit, or a rule's `index = false` keeps out,
+    // stays out here, whichever path asked — a cascade reaching a unit the
+    // same change took out of the build included.
+    if(!project.is_unit(file) || !project.rules.indexable(project.file_table.resolve(file))) {
         return false;
     }
     // A new pending reindex voids the running pass's freshness memos: one
     // taken after this recording must re-judge against the disk, or its
     // skip would finish the fresh sequence number on a result memoized
     // before the change and the file would never re-index.
-    index.clear_staleness_cache();
-    background_index.queue.record(path_id, reason);
+    project.index.clear_staleness_cache();
+    reindexes.record(file, reason);
     return true;
 }
 
-void Project::index_first(Fid path_id) {
-    if(!enqueue_reindex(path_id, ReindexReason::DepsOnly)) {
+void BackgroundIndex::index_first(Fid file) {
+    if(!enqueue(file, ReindexReason::DepsOnly)) {
         // No attempt will ever finish for an excluded file: the serving
         // side hears that now, or the session waits on the index forever.
-        if(auto& finished = background_index.on_attempt_finished) {
-            finished(path_id);
+        if(auto* serving = project.serving) {
+            serving->attempt_finished(file);
         }
         return;
     }
     // The file someone is reading beats the bulk backlog.
-    background_index.queue.move_to_front(path_id);
-    schedule_index(/*immediate=*/true);
+    reindexes.move_to_front(file);
+    schedule(/*immediate=*/true);
 }
 
-void Project::enqueue_outdated(llvm::ArrayRef<Fid> members) {
-    auto stale = index.stale_units();
-    if(!settings.project.enable_indexing.value) {
-        return;
-    }
-    for(auto member: members) {
-        if(!index.indexed(member)) {
-            enqueue_reindex(member, ReindexReason::DepsOnly);
-        }
-    }
-    for(auto unit: stale) {
-        enqueue_reindex(unit, ReindexReason::DepsOnly);
-    }
-    for(auto unit: index.owed_units()) {
-        enqueue_reindex(unit, ReindexReason::ContentChanged);
-    }
-    schedule_index();
+void BackgroundIndex::forget(Fid file) {
+    reindexes.clear(file);
+    wake_waiters(file);
 }
 
-void Project::apply_report(const index::IndexReport& report) {
-    for(auto id: report.reindex()) {
-        enqueue_reindex(id, ReindexReason::ContentChanged);
-    }
-    if(!report.index_changed().empty()) {
-        background_index.on_index_changed.emit(report.index_changed());
-    }
-}
-
-async::task<> Project::save(index::SearchRebuild search) {
-    auto& queue = background_index.queue;
-    bool retry = true;
-    bool owed = false;
-    while(retry) {
-        auto report = co_await write_database(search);
-        retry = report.owes_retry;
-        owed |= !report.reindex().empty();
-        apply_report(report);
-        // No more indexing is queued, so no save is due for a while: the
-        // file may shrink — unless a file was queued while the save ran. A
-        // shrink that discarded the database owes the fresh one a save.
-        if(!retry && search == index::SearchRebuild::Idle && queue.queued() == 0) {
-            report = co_await shrink_database();
-            retry = report.owes_retry;
-            owed |= !report.reindex().empty();
-            apply_report(report);
-        }
-    }
-    // A save the compaction or a discarded database owed reindexes to queued
-    // them: they need a pass of their own when none is running.
-    if(owed) {
-        schedule_index();
-    }
-}
-
-async::task<> Project::await_index_attempt(Fid path_id) {
-    auto pending = background_index.queue.peek(path_id);
+async::task<> BackgroundIndex::await_attempt(Fid file) {
+    auto pending = reindexes.peek(file);
     if(!pending) {
         co_return;
     }
     auto seq = pending->seq;
-    auto& waits = background_index.attempt_waits[path_id];
-    auto it = ranges::find(waits, seq, &BackgroundIndex::AttemptWait::seq);
+    auto& waits = attempt_waits[file];
+    auto it = ranges::find(waits, seq, &AttemptWait::seq);
     if(it == waits.end()) {
         waits.push_back({seq, std::make_shared<async::event>()});
         it = waits.end() - 1;
@@ -515,116 +463,80 @@ async::task<> Project::await_index_attempt(Fid path_id) {
     co_await event->wait();
 }
 
-void Project::clear_reindex(Fid path_id) {
-    background_index.queue.clear(path_id);
-    wake_attempt_waits(path_id);
-}
-
-void Project::pause_indexing() {
-    auto& background = background_index;
-    background.pause_depth += 1;
-    if(background.pause_depth == 1) {
-        background.resume_event.reset();
+void BackgroundIndex::pause() {
+    pause_depth += 1;
+    if(pause_depth == 1) {
+        resume_event.reset();
         LOG_DEBUG("Background indexing paused");
     }
 }
 
-void Project::pause_indexing_after(std::size_t units) {
-    background_index.dispatches_before_pause = units;
-}
-
-void Project::resume_indexing() {
-    auto& background = background_index;
-    if(background.pause_depth > 0) {
-        background.pause_depth -= 1;
+void BackgroundIndex::resume() {
+    if(pause_depth > 0) {
+        pause_depth -= 1;
     }
-    if(background.pause_depth == 0) {
-        background.resume_event.set();
+    if(pause_depth == 0) {
+        resume_event.set();
         LOG_DEBUG("Background indexing resumed");
     }
 }
 
-ScopedPause::ScopedPause(Project& project) : project(&project) {
-    project.pause_indexing();
-}
-
-ScopedPause::~ScopedPause() {
-    if(project) {
-        project->resume_indexing();
-    }
-}
-
-async::task<> Project::stop_background_index() {
-    auto& background = background_index;
-    background.stopped = true;
-    background.tasks.cancel();
-    co_await background.tasks.join();
+async::task<> BackgroundIndex::stop() {
+    state = State::Stopped;
+    tasks.cancel();
+    co_await tasks.join();
     // Cancelling the pass that waited on the idle timer leaves it armed,
     // and an armed timer keeps the loop running until it fires.
-    if(background.idle_timer) {
-        background.idle_timer->stop();
+    if(idle_timer) {
+        idle_timer->stop();
     }
     // Cancelled tasks unwind before their finish bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
-    for(auto& [path_id, waits]: background.attempt_waits) {
+    for(auto& [file, waits]: attempt_waits) {
         for(auto& wait: waits) {
             wait.event->set();
         }
     }
-    background.attempt_waits.clear();
+    attempt_waits.clear();
 }
 
-void Project::schedule_index(bool immediate) {
-    auto& background = background_index;
-    if(!settings.project.enable_indexing.value || background.active || background.stopped) {
+void BackgroundIndex::schedule(bool immediate) {
+    if(!started() || active) {
         return;
     }
-    if(background.scheduled) {
+    if(scheduled) {
         // An immediate request colliding with an armed idle timer re-arms
         // it to fire now — dropped, a reader asking for index_first would
         // wait out the full idle window an earlier ordinary schedule
         // started (s#9).
-        if(immediate && background.idle_timer) {
-            background.idle_timer->start(chrono::milliseconds(0));
+        if(immediate && idle_timer) {
+            idle_timer->start(chrono::milliseconds(0));
         }
         return;
     }
-    background.scheduled = true;
+    scheduled = true;
 
-    if(!background.idle_timer) {
-        background.idle_timer = std::make_shared<async::timer>(async::timer::create(*loop));
+    if(!idle_timer) {
+        idle_timer = std::make_shared<async::timer>(async::timer::create(*project.loop));
     }
     // Time is the feature: the idle timeout batches edit storms into one
     // pass. A follow-up pass for work requeued during the pass that just
     // ended has already been batched by that pass and starts right away —
     // a crashed file's retry must not owe an extra idle window on top of
     // the pass boundary it already waited out.
-    background.idle_timer->start(
-        chrono::milliseconds(immediate ? 0 : settings.project.idle_timeout_ms.value) +
+    idle_timer->start(
+        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
         test_jitter());
 
-    [[maybe_unused]] bool spawned = background.tasks.spawn(run_index_pass());
+    [[maybe_unused]] bool spawned = tasks.spawn(run_pass());
     assert(spawned && "the background index's task group refused a pass before it stopped");
 }
 
-bool Project::index_idle() const {
-    auto& background = background_index;
-    return !background.active && background.queue.queued() == 0;
-}
-
-async::task<> Project::wait_index_idle() {
-    while(!index_idle()) {
-        background_index.pass_ended.reset();
-        co_await background_index.pass_ended.wait();
+async::task<> BackgroundIndex::wait_idle() {
+    while(!idle()) {
+        pass_ended.reset();
+        co_await pass_ended.wait();
     }
-}
-
-chrono::milliseconds checkpoint_interval() {
-    // Lets integration tests kill a server between checkpoints.
-    if(auto ms = env_integer("CLICE_TEST_CHECKPOINT_MS")) {
-        return chrono::milliseconds(*ms);
-    }
-    return chrono::minutes(5);
 }
 
 }  // namespace clice

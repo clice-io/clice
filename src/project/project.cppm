@@ -42,11 +42,11 @@ namespace clice {
 constexpr inline std::uint32_t cache_format_version = 15;
 
 /// The editor's context choices of the project, as its index database
-/// carries them beside the index. A save moves bytes only: the server
-/// serializes its choices into them whenever they change and parses them
-/// after a load (project/command/contexts), so a process without editor state writes
-/// back the bytes it loaded, and only into a database replacing a corrupt
-/// one.
+/// carries them beside the index. A save moves bytes only: the server keeps
+/// its choices in them whenever they change and reads them after a load
+/// (Project::save_choices, saved_choices), so a process without editor state
+/// writes back the bytes it loaded, and only into a database replacing a
+/// corrupt one.
 struct ContextChoices {
     /// The serialized choices; empty when there are none, or when
     /// serializing failed (the save then writes nothing).
@@ -55,34 +55,69 @@ struct ContextChoices {
     bool dirty = false;
 };
 
-/// All persistent, project-wide state derived from files on disk, and what
-/// the project builds from it: its PCHs, its modules and its units' index.
+/// The server's side of a served project: what the project asks of the
+/// documents open in it, and tells it of the index they read. A run of the
+/// command line has none (Project::serving).
+struct ServingSide {
+    /// How many documents are open: the loaded-state budget follows it.
+    virtual std::size_t open_documents() const = 0;
+
+    /// Whether an open document's own compile serves the file: a pending
+    /// reindex other than a change of its own content then is cleared
+    /// without a background compile, which would compile the file a second
+    /// time. The serving side books the file again when the document
+    /// closes.
+    virtual bool compiled_by_session(Fid file) const = 0;
+
+    /// Under `skip_header_bodies`, every index run also brings back the
+    /// diagnostics an editor can get wrong on its file
+    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
+    /// text they describe — unless a reindex booked during the run says
+    /// they describe inputs that changed.
+    virtual void report_skipped_diagnostics(Fid file,
+                                            std::uint64_t text_hash,
+                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
+
+    /// Whether the serving side lacks those diagnostics for the file: its
+    /// run goes ahead even when its index is current.
+    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
+
+    /// An index attempt of the file finished with no retry pending, before
+    /// its waiters wake (contract 15): the serving side decides whether the
+    /// finished state can ever serve an open session and escalates it
+    /// otherwise, so the waking waiters re-derive their route against the
+    /// escalated state. Also told of an index_first the background index
+    /// refuses — a file a rule keeps out of the index — since no attempt
+    /// will ever finish for it.
+    virtual void attempt_finished(Fid file) = 0;
+
+    /// Shards that may be index-served changed (merged, re-masked, dropped
+    /// or shed): the serving side refreshes the clients that read them.
+    virtual void index_changed(llvm::ArrayRef<Fid> files) = 0;
+
+protected:
+    ~ServingSide() = default;
+};
+
+/// A project: its build — the rules, the compilation databases and the
+/// members they make, the commands each file compiles under — and what it
+/// builds from it: its PCHs, its modules and its units' index, persisted in
+/// the cache directory. All of it derives from files on disk, never from an
+/// unsaved buffer: open files are never depended upon by other files, so a
+/// buffer's state stays with its document (Session) while the project
+/// tracks the disk, shared by every file.
 ///
-/// Design principle: open files are never depended upon by other files.
-/// Dependencies always point to disk files.  This enforces a clean two-layer
-/// architecture:
-///   - Global layer (Project): tracks disk truth, shared by all files
-///   - Per-file layer (Session): tracks buffer truth, isolated per TU
-///
-/// Project is the single source of truth for:
-///   - dependency relationships (include graph, module DAG)
-///   - the PCHs and PCMs shared across files
-///   - symbol index (ProjectIndex + per-file Shard blobs)
-///   - compilation database and settings
-///
-/// Project is NEVER modified by unsaved buffer content.  The only mutation
-/// paths are:
-///   - Opening         (open, once)
-///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
-///   - Background index (merge TUIndex results from stateless workers)
-///
-/// A project builds through `loop` and `pool`, which an owner that builds
-/// (the server, `clice index`, `clice lint`) hands it at construction and
-/// keeps alive past it; the read-only entry points construct it without
-/// them and never reach the build functions (graph/pch.cpp, graph/pcm.cpp,
-/// graph/unit.cpp, indexer/background.cpp). The task graph's attempts and the
-/// background index's tasks use the members before them: an owner awaits
-/// stop_background_index() and shutdown() before the project dies.
+/// Its owner — the server, or a command-line run — opens it once (open),
+/// tells it what changed on disk (rescan_disk_file, forget_file) and in the
+/// databases (update_members), starts its background index when the run
+/// indexes, and shuts it down (shutdown). A project builds through `loop`
+/// and `pool`, which an owner that builds (the server, `clice index`,
+/// `clice lint`) hands it at construction and keeps alive past it; the
+/// read-only entry points construct it without them and never reach the
+/// build functions (graph/pch.cpp, graph/pcm.cpp, graph/unit.cpp,
+/// indexer/background.cpp). The task graph's attempts and the background
+/// index's tasks use the members before them: an owner awaits shutdown()
+/// before the project dies.
 struct Project {
     explicit Project(FileTable& file_table,
                      CanonicalPath root = {},
@@ -94,6 +129,10 @@ struct Project {
     async::event_loop* loop;
 
     WorkerPool* pool;
+
+    /// The server serving the project's documents; null for a command-line
+    /// run.
+    ServingSide* serving = nullptr;
 
     /// The project's root: the `${workspace}` value, the anchor of rules and
     /// databases no configuration file supplied, the enumeration root of
@@ -243,11 +282,6 @@ struct Project {
     /// recently used first (see enforce_loaded_budget).
     llvm::SmallVector<std::string, 8> loaded_pch_indexes;
 
-    /// Open-document count provider, connected by the server. Sizes the
-    /// loaded-state budget; unset (tests, tools) falls back to a small
-    /// editor-like working set.
-    std::function<std::size_t()> open_documents;
-
     /// The PCMs of the module units, by unit.
     llvm::DenseMap<Fid, PCMEntry> pcms;
 
@@ -260,7 +294,7 @@ struct Project {
     /// AST nodes beside them. Its attempts use everything above.
     TaskGraph graph;
 
-    BackgroundIndex background_index;
+    BackgroundIndex background_index{*this};
 
     // open.cpp
 
@@ -329,9 +363,10 @@ struct Project {
     /// earlier sessions, the provisional members); the build; the saved
     /// state — the index, the precompiled records, the context choices —
     /// reconciled with the build when that is loaded (reconcile_index), the
-    /// reindexes that owes queued; for the index's writer, every member it
-    /// holds nothing of too (enqueue_outdated). A run reading the index
-    /// without the build binds its tables alone, fetched on first use.
+    /// reindexes that owes booked; for the index's writer, the units that
+    /// depend on a file that changed while no run wrote the index marked
+    /// outdated (ProjectIndex::stale_units). A run reading the index without
+    /// the build binds its tables alone, fetched on first use.
     Opened open(const OpenOptions& options);
 
     /// What a reader says of an index database the index reports damaged: a
@@ -729,12 +764,13 @@ struct Project {
     /// A host whose include tree no run took yet holds.
     bool choice_holds(Fid file, const ContextChoice& choice);
 
-    /// The choices encoded as the project's database carries them, files named
-    /// portably.
-    std::string serialize_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices);
+    /// Keep `choices` for the next save, as the project's database carries
+    /// them (files named portably), replacing those kept before.
+    void save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices);
 
-    /// The choices `bytes` encodes; none from bytes that do not parse.
-    std::vector<std::pair<Fid, ContextChoice>> parse_choices(llvm::StringRef bytes);
+    /// The choices kept for the database, as a load read them or
+    /// save_choices last kept them; none from bytes that do not parse.
+    std::vector<std::pair<Fid, ContextChoice>> saved_choices();
 
     // graph/pch.cpp
 
@@ -1011,97 +1047,6 @@ struct Project {
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
-    // indexer/background.cpp
-
-    /// Add a file to the background indexing queue. A file enqueued twice
-    /// keeps a single queue entry; its reason is upgraded to ContentChanged if
-    /// either enqueue says so (a file both cascaded onto and edited is as stale
-    /// as the edit makes it). False when a rule keeps the file out of the
-    /// index: nothing is queued and no attempt will ever finish.
-    bool enqueue_reindex(Fid path_id, ReindexReason reason);
-
-    /// Someone is reading the file through the index and nothing serves it
-    /// yet: enqueue it at the front of the queue and start a pass without the
-    /// idle delay. A running pass finishes undisturbed; the file then leads
-    /// the next one.
-    void index_first(Fid path_id);
-
-    /// Wait until the pending (re)index attempt observed at call time finishes
-    /// — the merge committed, the attempt gave up, or the entry was cleared —
-    /// and return immediately when nothing is pending. One attempt, not an
-    /// idle file: a requeue arriving during the flight does not extend the
-    /// wait. For replies clients cache with no refresh request (outline,
-    /// links): answered while the didOpen index_first is still running, the
-    /// empty result would freeze until the next edit.
-    async::task<> await_index_attempt(Fid path_id);
-
-    /// Wake the file's waiters whose observed sequence number the finished
-    /// attempt covers (`seq` and older) and drop their events. The default
-    /// wakes every waiter — for the paths where no further attempt will come
-    /// (entry cleared, shutdown).
-    void wake_attempt_waits(Fid path_id, std::uint64_t seq = -1);
-
-    /// Forget a file's pending reindex: used when the file is removed from
-    /// disk — nothing is left to reindex, and a lingering ContentChanged reason
-    /// would suppress its deliberately still-serving shard forever. Its
-    /// attempt's waiters wake.
-    void clear_reindex(Fid path_id);
-
-    /// Schedule background indexing (respects idle timeout and dedup).
-    /// `immediate` skips the idle batching window — used by the pass tail for
-    /// work requeued during the pass that just ended, and by index_first, which re-arms an
-    /// already-armed timer to fire now (waiting out a previously scheduled idle window would starve
-    /// the reader).
-    void schedule_index(bool immediate = false);
-
-    /// One pass, once the idle delay schedule_index armed has passed: index
-    /// the files queued when it starts, save, and schedule the next pass for
-    /// what it queued.
-    async::task<> run_index_pass();
-
-    /// At the start of a run writing the index: queue every member the index
-    /// holds nothing of and every unit depending on a file that changed while
-    /// no server ran, DepsOnly — a cold start with a warm index keeps serving
-    /// the stored shards, not blanking every query until the pass drains — and
-    /// the units owed the variants a rebuild discarded, read fresh by content;
-    /// then schedule. With indexing off it queues nothing, but the units whose
-    /// runs walked a changed file are still marked outdated.
-    void enqueue_outdated(llvm::ArrayRef<Fid> members);
-
-    /// Take an index report: book its reindexes — before the current attempt
-    /// finishes and its waiters wake, so a waker never observes an index as
-    /// current that the report just declared stale — and report its
-    /// serving-index changes through on_index_changed.
-    void apply_report(const index::IndexReport& report);
-
-    /// Save the index and take the report, again while a save owes a retry (a
-    /// grown map can still be too small); an idle save then shrinks the
-    /// database file when that is worth it (shrink_database). Reindexes the
-    /// saves queued start a pass when none runs.
-    async::task<> save(index::SearchRebuild search = index::SearchRebuild::Behind);
-
-    /// Cancel background indexing and wait for all its tasks to finish.
-    async::task<> stop_background_index();
-
-    /// No pass runs and nothing is queued.
-    bool index_idle() const;
-
-    /// Wait until index_idle(): every pass, requeue passes included, has run
-    /// and saved its results.
-    async::task<> wait_index_idle();
-
-    /// Temporarily pause background indexing to give priority to user
-    /// requests. Indexing tasks already dispatched to workers continue, but no
-    /// new tasks are sent until resume_indexing() is called.
-    void pause_indexing();
-
-    /// Resume background indexing after a pause.
-    void resume_indexing();
-
-    /// Pause indexing once `units` more files are dispatched, so exactly that
-    /// many finish before the pause holds (CLICE_TEST_PAUSE).
-    void pause_indexing_after(std::size_t units);
-
     // listings.cpp
 
     /// The build's listings now, as the index database records them
@@ -1119,6 +1064,19 @@ struct Project {
     void reconcile_index(index::IndexReport& report);
 
     // save.cpp
+
+    /// Save the index and take the report, again while a save owes a retry (a
+    /// grown map can still be too small); an idle save then shrinks the
+    /// database file when that is worth it (shrink_database). Reindexes the
+    /// saves queued start a pass when none runs.
+    async::task<> save(index::SearchRebuild search = index::SearchRebuild::Behind);
+
+    /// Take an index report — of the load, a save or a unit's merge: book its
+    /// reindexes, before the attempt that merged finishes and its waiters
+    /// wake, so a waker never observes an index as current that the report
+    /// just declared stale; and tell the serving side of its serving-index
+    /// changes.
+    void take_report(const index::IndexReport& report);
 
     /// Persist the index and the cache store's manifest as they stand, a
     /// pass running or not: a cold pass covers the whole project, and a
@@ -1181,5 +1139,8 @@ struct Project {
 /// Whether a database file's free pages are worth a compact copy: a quarter
 /// of the file, and 64 MB at least.
 bool shrink_due(const index::PageUsage& usage);
+
+/// How often a long-lived owner calls Project::checkpoint().
+chrono::milliseconds checkpoint_interval();
 
 }  // namespace clice

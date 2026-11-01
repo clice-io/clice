@@ -55,7 +55,8 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
                                 std::string_view(active),
                                 params.configuration)});
             }
-            if(!srv.project.settings.project.enable_indexing.value) {
+            auto& background = srv.project.background_index;
+            if(!background.started()) {
                 co_await async::fail(
                     ipc::Error{"the running clice server has background indexing disabled"});
             }
@@ -78,16 +79,16 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             IndexResult result;
             llvm::SmallVector<Fid> files;
             for(auto member: members) {
-                if(srv.project.enqueue_reindex(member, ReindexReason::DepsOnly)) {
+                if(background.enqueue(member, ReindexReason::DepsOnly)) {
                     files.push_back(member);
                 }
             }
-            srv.project.schedule_index(/*immediate=*/true);
+            background.schedule(/*immediate=*/true);
             for(auto file: files) {
                 // One await covers one attempt; a crash or preemption
                 // requeues the file behind it.
-                while(srv.project.background_index.queue.pending_reason(file)) {
-                    co_await srv.project.await_index_attempt(file);
+                while(background.queue().pending_reason(file)) {
+                    co_await background.await_attempt(file);
                 }
             }
             // The pass saves at its end; the asker reads the disk, so its

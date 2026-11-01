@@ -160,9 +160,6 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
             if(request.tidy) {
                 pass.checked += 1;
             }
-            if(with_index) {
-                project.apply_report(result->report);
-            }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
             // broken code is not a clean run. So does a finding no file
@@ -262,12 +259,10 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         co_await run.pool.stop();
         co_return;
     }
-    // The command's product is the lint report: the background pass must
-    // not race the plan's own runs, and without --index nothing may touch
+    // The command's product is the lint report: the background index starts
+    // only after the plan's own runs, and without --index nothing may touch
     // the persisted index — it opens read-only, so the shutdown save
     // commits nothing.
-    project.settings.project.enable_indexing.value = false;
-
     auto opened = project.open({
         .configuration = batch.loaded.configuration,
         .cache =
@@ -313,6 +308,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     }
     merge_findings(pass.findings);
     result.findings = std::move(pass.findings);
+    auto& background = project.background_index;
     if(with_index && !lifetime.stop_requested) {
         // The pass's merges can owe other TUs a reindex (a rebuilt shared
         // shard dropped their variants), and the opening may have taken
@@ -320,9 +316,9 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         // background index, so nothing drained any of it. Drain it there
         // like the index batch does, or an already-linted owner's index
         // stays missing while the run exits clean.
-        project.settings.project.enable_indexing.value = true;
-        project.schedule_index(/*immediate=*/true);
-        co_await async::with_token(project.wait_index_idle(), lifetime.token());
+        background.start();
+        background.schedule(/*immediate=*/true);
+        co_await async::with_token(background.wait_idle(), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -333,8 +329,10 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     result.completed = true;
     result.checked_tus = pass.checked;
     // A unit whose pass and reindex both failed fails once.
-    for(auto file: project.background_index.failed) {
-        pass.failed.insert(file);
+    for(auto& [file, outcome]: background.outcomes()) {
+        if(outcome.failed) {
+            pass.failed.insert(file);
+        }
     }
     result.failed_tus = pass.failed.size();
     // The shutdown save was the last retry: with --index the persisted

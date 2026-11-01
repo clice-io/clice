@@ -112,7 +112,8 @@ struct DocumentCompile {
     Fid host;
 
     /// The command the compile ran under (Selection::ref): a change of the
-    /// members that moves the document's selection recompiles it.
+    /// members that moves the document's selection — its command or its
+    /// host — recompiles it.
     CommandID command = invalid_command;
 
     /// The key of the PCH the parse loaded.
@@ -226,12 +227,28 @@ Value empty_value() {
 /// keeps a removed project alive until it completes.
 class ServedProject final :
     public index::LiveSources,
+    public ServingSide,
     public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing.
     ServedProject(MasterServer& server, CanonicalPath root);
     ~ServedProject();
+
+    std::size_t open_documents() const override {
+        return documents.size();
+    }
+
+    /// The index_first in decide_serving promised the index would serve the
+    /// cold document; an attempt that finishes without a servable shard ends
+    /// that promise — it escalates like the disabled-indexing branch, or the
+    /// document answers empty until its first edit.
+    void attempt_finished(Fid path_id) override;
+
+    /// Documents without a current file index serve these very shards
+    /// (freshness clause 4): the client asks again for what it pulled from
+    /// them.
+    void index_changed(llvm::ArrayRef<Fid> path_ids) override;
 
     // served_project.cpp
 
@@ -425,7 +442,7 @@ public:
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
     /// (UnitRequest::skipped_diagnostics).
-    bool lacks_skipped_diagnostics(Fid path_id) const;
+    bool lacks_skipped_diagnostics(Fid path_id) const override;
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves finish in TaskGraph::shutdown — the
@@ -531,10 +548,10 @@ public:
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
 
     /// Whether an open document's own compile serves the file's index
-    /// (BackgroundIndex::compiled_by_session): an escalated document's does,
+    /// (ServingSide::compiled_by_session): an escalated document's does,
     /// unless it skips the bodies of the headers — then only a background
     /// run shows what the skipped bodies hold (report_skipped_diagnostics).
-    bool compiled_by_session(Fid path_id) const;
+    bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -839,7 +856,7 @@ private:
     /// (shown_skipped_diagnostics).
     void report_skipped_diagnostics(Fid path_id,
                                     std::uint64_t text_hash,
-                                    std::vector<feature::FileDiagnostic> diagnostics);
+                                    std::vector<feature::FileDiagnostic> diagnostics) override;
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -1024,10 +1041,8 @@ private:
 
     bool metadata_flush_scheduled = false;
 
-    /// The background index's progress, relayed to the master, and its index
-    /// changes.
+    /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
-    Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;
 
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
