@@ -753,9 +753,9 @@ struct CollectedItem {
     const clang::NamedDecl* documented = nullptr;
 };
 
-/// The qualifier `scope` is as the parse reads it: a macro spelling its
-/// first scope expands to the names and `::` it spells, through the macros
-/// it expands in turn. As written where its first name is no such macro.
+/// The qualifier `scope` is as the parse reads it: a macro spelling one of
+/// its scopes expands to the names and `::` it spells, through the macros it
+/// expands in turn. As written where a macro spells other tokens.
 index::CompletionScope expanded_qualifier(clang::Preprocessor& pp,
                                           const index::CompletionScope& scope) {
     if(scope.qualifier.empty()) {
@@ -781,11 +781,14 @@ index::CompletionScope expanded_qualifier(clang::Preprocessor& pp,
         }
         return true;
     };
-    if(!expand(scope.qualifier.front(), 0)) {
-        return scope;
+    for(const auto& name: scope.qualifier) {
+        if(!expand(name, 0)) {
+            return scope;
+        }
     }
-    ranges::copy(llvm::ArrayRef(scope.qualifier).drop_front(),
-                 std::back_inserter(expanded.qualifier));
+    // A first scope a macro expands to nothing leaves its `::` naming the
+    // global one.
+    expanded.absolute |= expanded.qualifier.empty();
     return expanded;
 }
 

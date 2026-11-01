@@ -45,3 +45,5 @@ namespace inner = lib::detail;
 
 #define HELPER_MACRO(x) (x)
 #define HELPER_SPACE lib
+#define HELPER_DETAIL detail
+#define HELPER_ROOT

@@ -79,6 +79,14 @@ int absolute_macro_qualifier() {
     return ::HELPER_SPACE::helper§(absolute_macro_qualifier);
 }
 
+int inner_macro_qualifier() {
+    return lib::HELPER_DETAIL::helper§(inner_macro_qualifier);
+}
+
+int empty_macro_qualifier() {
+    return HELPER_ROOT::helper§(empty_macro_qualifier);
+}
+
 lib::helper_type* make_helper();
 
 void arrow_after_call() {
