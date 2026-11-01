@@ -176,6 +176,19 @@ void execute(F&& fn) {
     run(wrapper());
 }
 
+/// Wait on `read` with `work`, whatever it gives, then on `waited`.
+async::task<Result> read_then_wait(Attempt& attempt, NodeId read, NodeId waited, Work work) {
+    co_await attempt.depend(read, work);
+    co_return co_await attempt.depend(waited, std::move(work));
+}
+
+/// Declare an edge to `absent`, a node no attempt builds, then wait on
+/// `waited`.
+async::task<Result> declare_then_wait(Attempt& attempt, NodeId absent, NodeId waited, Work work) {
+    graph.set_edges(attempt.node(), {absent});
+    co_return co_await attempt.depend(waited, std::move(work));
+}
+
 async::task<> run_join(NodeId id, Work work, Probe& probe, JoinOptions options = {}) {
     auto result = co_await async::with_token(graph.join(id, std::move(work), std::move(options)),
                                              probe.source.token());
@@ -438,6 +451,70 @@ ZEST_CASE(check_spares_finder) {
         ZEXPECT(result == Result::Success);
         ZEXPECT(ran == (std::vector<NodeId>{a(2), a(2), a(1)}));
         ZEXPECT(!graph.is_dirty(a(1)));
+    });
+}
+
+ZEST_CASE(invalidation_judges_every_path) {
+    // An invalidation reaching an attempt first through a product it still
+    // waits for, then through one it read, overtakes it.
+    ManualRunner manual;
+    manual.adj[a(1)] = {b(1), b(5)};
+    manual.open({a(1), b(1)});
+
+    Probe probe;
+    execute([&]() -> async::task<> {
+        ZASSERT(co_await graph.join(b(1), manual.work()) == Result::Success);
+        graph.set_edges(b(1), {b(5)});
+
+        auto driver = [&]() -> async::task<> {
+            co_await manual.gate(b(5)).started.wait();
+            graph.invalidate(b(5));
+            manual.open({b(5)});
+        };
+        co_await async::when_all(run_join(a(1), manual.work(), probe), driver());
+        ZEXPECT(probe.result == Result::Stale);
+    });
+}
+
+ZEST_CASE(failure_read_overtaken) {
+    // A waiter read a failure as it reads a product: an invalidation of the
+    // failed node overtakes it.
+    ManualRunner manual;
+    manual.gate(b(1)).result = Result::Failed;
+    manual.open({b(1)});
+    Work reader{.run = [this, &manual](Attempt& attempt) {
+        return read_then_wait(attempt, b(1), b(5), manual.work());
+    }};
+
+    Probe probe;
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
+            co_await manual.gate(b(5)).started.wait();
+            graph.invalidate(b(1));
+            manual.open({b(5)});
+        };
+        co_await async::when_all(run_join(a(1), reader, probe), driver());
+        ZEXPECT(probe.result == Result::Stale);
+    });
+}
+
+ZEST_CASE(absent_node_overtakes) {
+    // An attempt that declared an edge to a node no attempt built read its
+    // absence: an invalidation of that node overtakes it.
+    ManualRunner manual;
+    Work declarer{.run = [this, &manual](Attempt& attempt) {
+        return declare_then_wait(attempt, b(9), b(5), manual.work());
+    }};
+
+    Probe probe;
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
+            co_await manual.gate(b(5)).started.wait();
+            graph.invalidate(b(9));
+            manual.open({b(5)});
+        };
+        co_await async::when_all(run_join(a(1), declarer, probe), driver());
+        ZEXPECT(probe.result == Result::Stale);
     });
 }
 

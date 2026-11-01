@@ -2,7 +2,8 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // No database and no rule: an opened source compiles under clice's own
-// command, a member all the same, and hosts the header it includes.
+// command, a member all the same, and hosts the header it includes, which
+// compiles in its context under that command.
 test("opened source hosts its header", async (t) => {
     const s = await t.start();
     await t.show("alone", s.errors("lib/frag.h"));

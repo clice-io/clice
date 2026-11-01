@@ -10,7 +10,7 @@ errors = [
 ]
 
 ["opened source hosts its header".header.compile_command]
-source = "host"
+source = "fallback"
 from = "lib/main.cpp"
 
 ["opened source stays a member"."after a restart"]
