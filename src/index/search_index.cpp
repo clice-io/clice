@@ -1168,8 +1168,17 @@ SearchResult SearchIndex::search(const SymbolQuery& query,
             }
             Bitmap allowed;
             for(auto container: containers) {
-                allowed |=
-                    query.direct() ? segment.children(container) : segment.subtree(container);
+                if(!query.direct()) {
+                    allowed |= segment.subtree(container);
+                    continue;
+                }
+                auto& members = segment.children(container);
+                allowed |= members;
+                if(query.qualified_lookup) {
+                    for(auto enumeration: members& segment.kind(SymbolKind::Enum)) {
+                        allowed |= segment.children(enumeration);
+                    }
+                }
             }
             narrow(std::move(allowed));
         }

@@ -84,6 +84,11 @@ struct SymbolQuery {
     /// can name.
     bool external_only = false;
 
+    /// Take from the scope the names a qualified lookup in it finds — its
+    /// direct members and its enumerations' enumerators — rather than
+    /// everything below it.
+    bool qualified_lookup = false;
+
     /// Set instead of a pattern: the symbol with this id.
     std::optional<SymbolHash> handle;
 
@@ -104,10 +109,10 @@ struct SymbolQuery {
     }
 
     /// Whether the symbol must sit directly in the scope's container
-    /// rather than anywhere below it: a members listing, and any name
-    /// lookup under an absolute chain.
+    /// rather than anywhere below it: a members listing, a qualified
+    /// lookup, and any name lookup under an absolute chain.
     bool direct() const {
-        return mode == Mode::Members || (mode != Mode::Subtree && absolute);
+        return mode == Mode::Members || qualified_lookup || (mode != Mode::Subtree && absolute);
     }
 };
 

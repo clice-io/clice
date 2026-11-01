@@ -402,7 +402,7 @@ bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain) {
         }
         return segments_match(scope, chain, true);
     }
-    if(query.mode == SymbolQuery::Mode::Members && !scope.empty()) {
+    if((query.mode == SymbolQuery::Mode::Members || query.qualified_lookup) && !scope.empty()) {
         return !chain.empty() && segments_match(scope.take_back(1), chain.take_back(1), true) &&
                segments_match(scope.drop_back(), chain.drop_back(), false);
     }
