@@ -23,6 +23,7 @@ outline = [
 hints = [
     { line = "int NAME = add(⟨left:⟩1, ⟨right:⟩2);" },
 ]
+definition = ["header.h │ int ⟦add⟧(int left, int right);"]
 
 ["the rest compiles it once"."another range"]
 inlay_hints = [
