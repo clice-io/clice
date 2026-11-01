@@ -67,7 +67,7 @@ The core responsibility of stateful workers is to hold compiled ASTs and serve q
 
 ### File-Affinity Routing
 
-Each compiled file is bound to a stateful worker via its path_id. This binding is stored in the master process's residency table, together with whether the worker holds the file's AST and when the file was last asked about. When a query request arrives for that file, the master process routes it to the corresponding worker based on the table.
+Each compiled file is bound to a stateful worker via its path_id. This binding is stored in the master process's residency table, together with whether the worker holds the file's AST and when the file was last asked about. When a query request arrives for that file while its worker holds the AST, the master process routes it to that worker based on the table; an evicted file answers from its kept answers or compiles again (see Document Eviction).
 
 The allocation strategy for new files is **least loaded** — the worker currently holding the fewest documents is selected. This ensures an even distribution of documents across workers.
 
