@@ -1,3 +1,17 @@
+[answers.macro_before.completion]
+items = [
+    { label = "get() const", kind = "Method", detail = "int", insert = "get()" },
+    { label = "held", kind = "Field", detail = "int", insert = "held", documentation = "What the holder keeps." },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.first_of_several.completion]
+items = [
+    { label = "get() const", kind = "Method", detail = "int", insert = "get()" },
+    { label = "held", kind = "Field", detail = "int", insert = "held", documentation = "What the holder keeps." },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
 [answers.through_macro.completion]
 items = [
     { label = "get() const", kind = "Method", detail = "int", insert = "get()" },
