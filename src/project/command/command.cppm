@@ -2,7 +2,6 @@ module clice:project.command;
 
 import :command.table;
 import :compile.compilation;
-import :feature.diagnostics;
 import :index.symbol;
 import :project.memo;
 import :support.prelude;

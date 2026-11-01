@@ -1,7 +1,5 @@
 module clice:project.indexer;
 
-import :feature.diagnostics;
-import :index.project_index;
 import :support.prelude;
 import :support.signal;
 import :vfs.ids;
