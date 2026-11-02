@@ -73,6 +73,13 @@ test("unknown operation", async (t) => {
     }
 });
 
+// A command's own option before an operation's word is none of the
+// operation's.
+test("own option before an operation", async (t) => {
+    await t.cli("index --workspace other stats");
+    await t.cli("modularize --out out merge merge.json");
+});
+
 test("unknown option", async (t) => {
     for (const command of COMMANDS) {
         await t.cli([command, "--bogus"]);
