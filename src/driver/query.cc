@@ -197,11 +197,6 @@ struct Options {
 KANNOTATE_TYPE(struct ProjectFiles, description = "The build's files");
 
 struct ProjectFiles {
-    constexpr static std::string_view usage_line = "clice query project-files [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&filter, description = "all, source, header or module")
     std::string filter = "all";
 
@@ -213,11 +208,6 @@ KANNOTATE_TYPE(struct FileDeps,
                description = "The files a file includes and the files including it");
 
 struct FileDeps {
-    constexpr static std::string_view usage_line = "clice query file-deps <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
 
     KANNOTATE(&direction, description = "includes, includers or both")
@@ -235,11 +225,6 @@ KANNOTATE_TYPE(
     description = "What a change to a file reaches: its includers and the modules among them");
 
 struct ImpactAnalysis {
-    constexpr static std::string_view usage_line = "clice query impact-analysis <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     Options query;
     LogLevelOption log;
@@ -249,11 +234,6 @@ KANNOTATE_TYPE(struct Counterparts,
                description = "The files a file pairs with: a header's sources, a source's headers");
 
 struct Counterparts {
-    constexpr static std::string_view usage_line = "clice query counterparts <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     Options query;
     LogLevelOption log;
@@ -262,12 +242,6 @@ struct Counterparts {
 KANNOTATE_TYPE(struct SymbolSearch, description = "The symbols a locator matches, best first");
 
 struct SymbolSearch {
-    constexpr static std::string_view usage_line =
-        "clice query symbol-search [<LOCATOR>] [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&locator,
               cli::positional = true,
               cli::meta_var = "<LOCATOR>",
@@ -285,11 +259,6 @@ KANNOTATE_TYPE(struct ReadSymbol,
                description = "A symbol's definition as text, with its documentation");
 
 struct ReadSymbol {
-    constexpr static std::string_view usage_line = "clice query read-symbol <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
     Options query;
     LogLevelOption log;
@@ -298,11 +267,6 @@ struct ReadSymbol {
 KANNOTATE_TYPE(struct DocumentSymbols, description = "A file's outline");
 
 struct DocumentSymbols {
-    constexpr static std::string_view usage_line = "clice query document-symbols <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     Options query;
     LogLevelOption log;
@@ -312,11 +276,6 @@ KANNOTATE_TYPE(struct Definition,
                description = "Where a symbol is defined, with its documentation");
 
 struct Definition {
-    constexpr static std::string_view usage_line = "clice query definition <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
     Options query;
     LogLevelOption log;
@@ -325,11 +284,6 @@ struct Definition {
 KANNOTATE_TYPE(struct References, description = "Every place naming a symbol");
 
 struct References {
-    constexpr static std::string_view usage_line = "clice query references <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
 
     KANNOTATE(&include_declaration, description = "List the declarations and the definition too")
@@ -342,11 +296,6 @@ struct References {
 KANNOTATE_TYPE(struct CallGraph, description = "A function's callers and callees");
 
 struct CallGraph {
-    constexpr static std::string_view usage_line = "clice query call-graph <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
 
     KANNOTATE(&direction, description = "callers, callees or both")
@@ -360,11 +309,6 @@ KANNOTATE_TYPE(struct Implementation,
                description = "The classes deriving from a class, the overrides of a function");
 
 struct Implementation {
-    constexpr static std::string_view usage_line = "clice query implementation <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
     Options query;
     LogLevelOption log;
@@ -373,11 +317,6 @@ struct Implementation {
 KANNOTATE_TYPE(struct TypeHierarchy, description = "A type's supertypes and subtypes");
 
 struct TypeHierarchy {
-    constexpr static std::string_view usage_line = "clice query type-hierarchy <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
 
     KANNOTATE(&direction, description = "supertypes, subtypes or both")
@@ -390,23 +329,19 @@ struct TypeHierarchy {
 KANNOTATE_TYPE(struct Query, description = "Ask the persisted index about the project");
 
 struct Query {
-    constexpr static std::string_view usage_line = "clice query <question> [<args>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
-    std::optional<std::variant<ProjectFiles,
-                               FileDeps,
-                               ImpactAnalysis,
-                               Counterparts,
-                               SymbolSearch,
-                               ReadSymbol,
-                               DocumentSymbols,
-                               Definition,
-                               References,
-                               CallGraph,
-                               Implementation,
-                               TypeHierarchy>>
+    KANNOTATE(&operation, presence = required, cli::meta_var = "<question>")
+    std::variant<ProjectFiles,
+                 FileDeps,
+                 ImpactAnalysis,
+                 Counterparts,
+                 SymbolSearch,
+                 ReadSymbol,
+                 DocumentSymbols,
+                 Definition,
+                 References,
+                 CallGraph,
+                 Implementation,
+                 TypeHierarchy>
         operation;
 };
 

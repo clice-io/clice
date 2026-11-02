@@ -292,16 +292,6 @@ inline int usage_error(const cli::Error& error) {
                        std::format("{}; did you mean '{}'?", error.message, error.suggestion));
 }
 
-/// Print the usage of the subcommand or operation `options` are of when
-/// they ask for it (--help); whether they did.
-template <typename T>
-bool print_help(const T& options) {
-    if(options.help) {
-        cli::print_usage<T>(T::usage_line);
-    }
-    return options.help;
-}
-
 template <typename T>
 int dispatch(T& options);
 
@@ -311,32 +301,27 @@ int run_operation(cli::Commands<Tag>& operation) {
 }
 
 template <typename... Operations>
-int run_operation(std::optional<std::variant<Operations...>>& operation) {
-    return std::visit([](auto& chosen) { return dispatch(chosen); }, *operation);
+int run_operation(std::variant<Operations...>& operation) {
+    return std::visit([](auto& chosen) { return dispatch(chosen); }, operation);
 }
 
-/// Run what `options` ask for: the usage of their subcommand or operation
-/// for --help; the operation they name, when they take one (`operation`, a
-/// std::variant of them or a cli::Commands); else its own job, the
-/// overload of `run` its file declares, its --log-level applied and its
-/// log on stderr. One without a job of its own prints its usage instead.
+/// Run what `options` ask for: the operation they name (`operation`, a
+/// std::variant of them or a cli::Commands), which one without a job of its
+/// own requires; else its own job, the overload of `run` its file declares,
+/// its --log-level applied and its log on stderr.
 template <typename T>
 int dispatch(T& options) {
-    if(print_help(options)) {
-        return 0;
-    }
-    if constexpr(requires { options.operation; }) {
-        if(options.operation) {
-            return run_operation(options.operation);
+    if constexpr(!requires { run(options); }) {
+        return run_operation(options.operation);
+    } else {
+        if constexpr(requires { options.operation; }) {
+            if(options.operation) {
+                return run_operation(*options.operation);
+            }
         }
-    }
-    if constexpr(requires { run(options); }) {
         options.log.apply();
         logging::stderr_logger("clice", logging::options);
         return run(options);
-    } else {
-        cli::print_usage<T>(T::usage_line);
-        return 0;
     }
 }
 

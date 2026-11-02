@@ -23,12 +23,6 @@ KANNOTATE_TYPE(struct Convert,
                    "clice compiles with");
 
 struct Convert {
-    constexpr static std::string_view usage_line =
-        "clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(
         &database,
         cli::positional = true,
@@ -54,11 +48,6 @@ KANNOTATE_TYPE(struct Command,
                description = "Show the commands a file compiles with, or convert compile commands");
 
 struct Command {
-    constexpr static std::string_view usage_line = "clice command <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     /// Left out for an operation, else `run` reports it missing.
     KANNOTATE(&path,
               cli::positional = true,
@@ -71,6 +60,7 @@ struct Command {
 
     ProjectOptions where;
     LogLevelOption log;
+    KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Convert>> operation;
 };
 

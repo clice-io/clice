@@ -35,11 +35,6 @@ struct OutputOptions {
 KANNOTATE_TYPE(struct Merge, description = "Merge the wrappings of several build configurations");
 
 struct Merge {
-    constexpr static std::string_view usage_line = "clice modularize merge <FILE> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&file,
               cli::positional = true,
               cli::meta_var = "<FILE>",
@@ -60,11 +55,6 @@ KANNOTATE_TYPE(struct Modularize,
                    "several build configurations");
 
 struct Modularize {
-    constexpr static std::string_view usage_line = "clice modularize [OPTIONS] [<operation>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&partition,
               description =
                   "JSON file assigning modules by globs, first match wins; a module is wrapped, "
@@ -88,6 +78,7 @@ struct Modularize {
     OutputOptions output;
     ProjectOptions where;
     LogLevelOption log;
+    KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Merge>> operation;
 };
 

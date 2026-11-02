@@ -785,12 +785,6 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
 /// The options of features[I].
 template <std::size_t I>
 struct Feature {
-    const inline static std::string usage_line =
-        std::format("clice inspect {} <PATH> [OPTIONS]", features[I].name);
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     Options inspect;
     LogLevelOption log;
 };
@@ -798,12 +792,6 @@ struct Feature {
 /// The options of features[I], which checks its own results.
 template <std::size_t I>
 struct CheckedFeature {
-    const inline static std::string usage_line =
-        std::format("clice inspect {} <PATH> [OPTIONS]", features[I].name);
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     Options inspect;
 
     KANNOTATE(&check,
@@ -838,11 +826,6 @@ int run(CheckedFeature<I>& feature) {
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
 
 struct ConfigSchema {
-    constexpr static std::string_view usage_line = "clice inspect config-schema [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     LogLevelOption log;
 };
 
@@ -865,11 +848,7 @@ KANNOTATE_TYPE(struct Inspect,
                description = "Run a feature on a source file and print raw results as JSON");
 
 struct Inspect {
-    constexpr static std::string_view usage_line = "clice inspect <feature> [<args>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
+    KANNOTATE(&operation, presence = required, cli::meta_var = "<feature>")
     cli::Commands<Operations> operation;
 };
 

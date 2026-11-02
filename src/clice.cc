@@ -19,17 +19,13 @@ namespace {
 KANNOTATE_TYPE(struct Clice, description = "A C++ development toolkit built on LLVM/Clang");
 
 struct Clice {
-    constexpr static std::string_view usage_line = "clice <command> [<args>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&version,
               cli::names = {"-v", "--version"},
               cli::stop = true,
               description = "Print the version and exit")
     bool version = false;
 
+    KANNOTATE(&command, presence = required)
     cli::Commands<Subcommands> command;
 };
 
@@ -68,15 +64,21 @@ extern "C++" int main(int argc, const char** argv) {
     namespace driver = clice::driver;
 
     auto options = cli::parse<driver::Clice>(std::span(argv, argc).subspan(1));
-    if(!options) {
-        return driver::usage_error(options.error());
+    if(auto help = options.help()) {
+        cli::print_usage<driver::Clice>("clice", help->subcommands);
+        return 0;
+    }
+    if(auto error = options.error()) {
+        // A command without its operation, `clice query`, is answered with
+        // what it takes.
+        if(error->kind == cli::Error::Kind::MissingSubcommand) {
+            cli::print_usage<driver::Clice>("clice", error->subcommands);
+            return 2;
+        }
+        return driver::usage_error(*error);
     }
     if(options->version) {
         driver::println("clice version {}", clice::version);
-        return 0;
-    }
-    if(!options->command) {
-        cli::print_usage<driver::Clice>(driver::Clice::usage_line);
         return 0;
     }
     return options->command();

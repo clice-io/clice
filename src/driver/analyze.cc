@@ -69,12 +69,6 @@ KANNOTATE_TYPE(struct Edge,
                description = "Every entity an edge between two modules carries, and its uses");
 
 struct Edge {
-    constexpr static std::string_view usage_line =
-        "clice analyze modules edge <FROM> <TO> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(
         &modules,
         presence = required,
@@ -92,12 +86,6 @@ KANNOTATE_TYPE(struct Module,
                description = "A module's files by their dependencies, the lines it splits along");
 
 struct Module {
-    constexpr static std::string_view usage_line =
-        "clice analyze modules module <MODULE> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&module,
               cli::positional = true,
               cli::meta_var = "<MODULE>",
@@ -113,11 +101,6 @@ KANNOTATE_TYPE(
     description = "What a file names by module, who names its entities, its annotations");
 
 struct File {
-    constexpr static std::string_view usage_line = "clice analyze modules file <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     ModelOptions model;
     WeightOptions weights;
@@ -128,11 +111,6 @@ KANNOTATE_TYPE(struct Obstacles,
                description = "What a mechanical rewrite into modules cannot carry over");
 
 struct Obstacles {
-    constexpr static std::string_view usage_line = "clice analyze modules obstacles [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     ModelOptions model;
     LogLevelOption log;
 };
@@ -140,11 +118,6 @@ struct Obstacles {
 KANNOTATE_TYPE(struct Macros, description = "The macros crossing modules");
 
 struct Macros {
-    constexpr static std::string_view usage_line = "clice analyze modules macros [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     ModelOptions model;
     LogLevelOption log;
 };
@@ -152,11 +125,6 @@ struct Macros {
 KANNOTATE_TYPE(struct Impact, description = "What a change to each module rebuilds");
 
 struct Impact {
-    constexpr static std::string_view usage_line = "clice analyze modules impact [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     ModelOptions model;
     WeightOptions weights;
     LogLevelOption log;
@@ -166,12 +134,6 @@ KANNOTATE_TYPE(struct Interface,
                description = "Per module, what a wrapper module over its headers needs");
 
 struct Interface {
-    constexpr static std::string_view usage_line =
-        "clice analyze modules interface [<MODULE>] [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&module,
               cli::positional = true,
               cli::meta_var = "<MODULE>",
@@ -186,29 +148,21 @@ KANNOTATE_TYPE(struct Modules,
                description = "Dependencies between directories, toward a module partition");
 
 struct Modules {
-    constexpr static std::string_view usage_line = "clice analyze modules [OPTIONS] [<view>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&limit, description = "Most hotspots, move and split candidates to list")
     int limit = 20;
 
     ModelOptions model;
     WeightOptions weights;
     LogLevelOption log;
+    KANNOTATE(&operation, cli::meta_var = "<view>")
     std::optional<std::variant<Edge, Module, File, Obstacles, Macros, Impact, Interface>> operation;
 };
 
 KANNOTATE_TYPE(struct Analyze, description = "Analyze the indexed project for refactoring");
 
 struct Analyze {
-    constexpr static std::string_view usage_line = "clice analyze <analysis> [<args>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
-    std::optional<std::variant<Modules>> operation;
+    KANNOTATE(&operation, presence = required, cli::meta_var = "<analysis>")
+    std::variant<Modules> operation;
 };
 
 /// A file as the facts name it: one under the project by its path from

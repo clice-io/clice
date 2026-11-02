@@ -13,27 +13,37 @@ namespace {
 
 KANNOTATE_TYPE(struct Rename, description = "Rename symbols across the project");
 
-struct Rename {
-    constexpr static std::string_view usage_line =
-        "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
-    KANNOTATE(&inputs,
+/// One rename, given on the command line.
+struct OneRename {
+    KANNOTATE(&locator,
               cli::positional = true,
-              cli::meta_var = "<LOCATOR> <NEW-NAME>",
-              cli::arg_num = 2,
+              cli::meta_var = "<LOCATOR>",
               description =
                   "The symbol, as a locator: its whole name, an answer's symbol, or "
-                  "file:line[:column]; and its new name")
-    std::vector<std::string> inputs;
+                  "file:line[:column]")
+    std::string locator;
 
+    KANNOTATE(&new_name,
+              cli::positional = true,
+              cli::meta_var = "<NEW-NAME>",
+              description = "Its new name")
+    std::string new_name;
+};
+
+/// The renames a file lists.
+struct RenameList {
     KANNOTATE(&spec,
+              presence = required,
+              cli::meta_var = "<FILE>",
               description =
                   "A file listing renames to make at once, `<locator> => <new name>` "
                   "a line; - reads them from stdin")
-    std::optional<std::string> spec;
+    std::string spec;
+};
+
+struct Rename {
+    KANNOTATE(&renames, cli::exclusive = true, presence = required)
+    std::variant<OneRename, RenameList> renames;
 
     KANNOTATE(&dry_run, description = "Answer with the planned edits without writing them")
     bool dry_run = false;
@@ -101,14 +111,14 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
 
 /// The rename `<LOCATOR> <NEW-NAME>` asks for.
 std::expected<std::vector<feature::query::RenameRequest>, std::string>
-    one_rename(llvm::ArrayRef<std::string> args) {
-    auto& text = args[0];
-    auto locator = index::SymbolQuery::parse(text);
+    one_rename(const OneRename& rename) {
+    auto locator = index::SymbolQuery::parse(rename.locator);
     if(!locator) {
         return std::unexpected(locator.error());
     }
     std::vector<feature::query::RenameRequest> requests;
-    requests.push_back({.text = text, .locator = std::move(*locator), .new_name = args[1]});
+    requests.push_back(
+        {.text = rename.locator, .locator = std::move(*locator), .new_name = rename.new_name});
     return requests;
 }
 
@@ -175,18 +185,8 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
 }
 
 int run(Rename& opts) {
-    std::expected<std::vector<feature::query::RenameRequest>, std::string> requests;
-    if(opts.spec) {
-        if(!opts.inputs.empty()) {
-            return usage_error(Errors::JSON,
-                               "--spec lists the renames; <LOCATOR> <NEW-NAME> names one");
-        }
-        requests = read_renames(*opts.spec);
-    } else if(opts.inputs.empty()) {
-        return usage_error(Errors::JSON, "rename takes <LOCATOR> <NEW-NAME>, or --spec");
-    } else {
-        requests = one_rename(opts.inputs);
-    }
+    auto* one = std::get_if<OneRename>(&opts.renames);
+    auto requests = one ? one_rename(*one) : read_renames(std::get<RenameList>(opts.renames).spec);
     if(!requests) {
         return fail(std::move(requests.error()));
     }
@@ -236,12 +236,8 @@ KANNOTATE_TYPE(struct Refactor,
                description = "Rewrite the project's sources through the persisted index");
 
 struct Refactor {
-    constexpr static std::string_view usage_line = "clice refactor <refactoring> [<args>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
-    std::optional<std::variant<Rename>> operation;
+    KANNOTATE(&operation, presence = required, cli::meta_var = "<refactoring>")
+    std::variant<Rename> operation;
 };
 
 [[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Refactor>);

@@ -14,11 +14,6 @@ namespace {
 /// What the master spawns its workers as: no command of a user's, so no line
 /// of `clice --help`.
 struct Worker {
-    constexpr static std::string_view usage_line = "clice worker [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&stateful, description = "Run as stateful worker (default: stateless)")
     bool stateful = false;
 
@@ -29,11 +24,8 @@ struct Worker {
     std::string log_dir;
 };
 
-/// A worker logs as the pool relays it (run_stateless_worker_mode).
+/// Not through dispatch: a worker logs as the pool relays its stderr.
 int run_worker(Worker& worker) {
-    if(print_help(worker)) {
-        return 0;
-    }
 #ifdef __APPLE__
     // See WorkerPool::spawn_process.
     exit_with_parent();

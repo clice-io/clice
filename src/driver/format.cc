@@ -16,11 +16,6 @@ namespace {
 KANNOTATE_TYPE(struct Format, description = "Format C++ source files");
 
 struct Format {
-    constexpr static std::string_view usage_line = "clice format [<PATH>...] [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&paths,
               cli::positional = true,
               cli::meta_var = "<PATH>",

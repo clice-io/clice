@@ -28,11 +28,6 @@ KANNOTATE_TYPE(
     description = "What the persisted index holds: its sizes and how its records spread");
 
 struct Stats {
-    constexpr static std::string_view usage_line = "clice index stats [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&limit, description = "How many of the largest file shards to list")
     std::uint32_t limit = 20;
 
@@ -48,11 +43,6 @@ struct Stats {
 KANNOTATE_TYPE(struct Symbol, description = "What the persisted index records about symbols");
 
 struct Symbol {
-    constexpr static std::string_view usage_line = "clice index symbol <LOCATOR> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     SymbolTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -62,11 +52,6 @@ KANNOTATE_TYPE(struct File,
                description = "A file's persisted records: variants, contributing units and counts");
 
 struct File {
-    constexpr static std::string_view usage_line = "clice index file <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -77,11 +62,6 @@ KANNOTATE_TYPE(
     description = "A translation unit's persisted manifest: include tree and contributions");
 
 struct Unit {
-    constexpr static std::string_view usage_line = "clice index unit <PATH> [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     FileTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -90,15 +70,11 @@ struct Unit {
 KANNOTATE_TYPE(struct Index, description = "Index a project ahead of time");
 
 struct Index {
-    constexpr static std::string_view usage_line = "clice index [OPTIONS] [<operation>]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;
+    KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Stats, Symbol, File, Unit>> operation;
 };
 

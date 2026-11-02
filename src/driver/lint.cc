@@ -14,11 +14,6 @@ namespace {
 KANNOTATE_TYPE(struct Lint, description = "Lint C++ source files");
 
 struct Lint {
-    constexpr static std::string_view usage_line = "clice lint [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&index, description = "Also build and persist the project index from the same parses")
     bool index = false;
 

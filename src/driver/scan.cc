@@ -12,11 +12,6 @@ namespace {
 KANNOTATE_TYPE(struct Scan, description = "Scan the project's include and module dependencies");
 
 struct Scan {
-    constexpr static std::string_view usage_line = "clice scan [OPTIONS]";
-
-    KANNOTATE(&help, cli::help)
-    bool help = false;
-
     KANNOTATE(&json,
               description =
                   "Print every scanned file with what it includes, the includes no "
