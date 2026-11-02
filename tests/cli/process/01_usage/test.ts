@@ -29,7 +29,8 @@ test("command help", async (t) => {
 });
 
 // One of each way a command takes operations: words only, a job of its
-// own beside them, and one level further down.
+// own beside them, and one level further down; and forms that exclude each
+// other.
 test("operation help", async (t) => {
     for (const operation of [
         "query references",
@@ -38,6 +39,7 @@ test("operation help", async (t) => {
         "analyze modules edge",
         "inspect hover",
         "command convert",
+        "refactor rename",
     ]) {
         await t.cli([...operation.split(" "), "--help"]);
     }

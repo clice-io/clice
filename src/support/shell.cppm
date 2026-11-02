@@ -17,7 +17,9 @@ constexpr sys::cmd::Quoting host_quoting =
 /// The arguments of command line `command`, quoted as `quoting` says.
 inline std::vector<std::string> split_command(llvm::StringRef command,
                                               sys::cmd::Quoting quoting = host_quoting) {
-    return ranges::to<std::vector<std::string>>(sys::cmd::split(command, quoting));
+    // Blanks before the program are none of the command, as clang reads a
+    // database's: Windows's rule would read them as an empty program name.
+    return ranges::to<std::vector<std::string>>(sys::cmd::split(command.ltrim(), quoting));
 }
 
 /// `arguments` as one command line, each quoted as the host's shell and

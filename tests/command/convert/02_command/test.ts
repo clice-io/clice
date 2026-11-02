@@ -34,4 +34,6 @@ test("a database or a command", async (t) => {
     await t.cli("command convert");
     await t.cli("command convert compile_commands.json -- missing-cc -c main.cpp");
     await t.cli("command convert compile_commands.json --json");
+    await t.cli("command convert --json");
+    await t.cli("command convert --");
 });

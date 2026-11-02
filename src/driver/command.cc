@@ -33,6 +33,7 @@ KANNOTATE_TYPE(struct CommandToConvert, description = "a command");
 struct CommandToConvert {
     KANNOTATE(&command,
               cli::rest = true,
+              presence = required,
               cli::meta_var = "<COMMAND>",
               description = "The command to convert")
     std::vector<std::string> command;
@@ -315,6 +316,9 @@ int run(Command& opts) {
 /// `directory` moved by -working-directory.
 llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command,
                                              const Spelling& directory) {
+    if(command.empty()) {
+        return {};
+    }
     auto family = ranges::contains(command, "--driver-mode=cl") ? CompilerFamily::ClangCL
                                                                 : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());

@@ -10,5 +10,5 @@ test("expanded", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-clang++ @flags.rsp main.cpp");
     await t.cli("command convert -- missing-clang++ @mode.rsp main.cpp");
     await t.cli("command convert -- missing-clang++ @bom.rsp main.cpp");
-    await t.cli("command convert -- missing-clang++ @quoted.rsp main.cpp");
+    await t.cli("command convert --json -- missing-clang++ @quoted.rsp main.cpp");
 });

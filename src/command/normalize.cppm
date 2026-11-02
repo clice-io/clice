@@ -82,8 +82,8 @@ public:
     WrittenCommands(CommandTable& commands, FileTable& files) : commands(commands), files(files) {}
 
     /// The command `arguments` spell, run from `directory`; nullopt (logged
-    /// once) when it is no compile command — blank, or a launcher with
-    /// nothing to launch.
+    /// once) when it is no compile command — blank, naming an empty
+    /// program, or a launcher with nothing to launch.
     std::optional<CommandID> intern(const Spelling& directory, kotatsu::string_list_ref arguments);
 
 private:

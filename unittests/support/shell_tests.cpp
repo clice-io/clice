@@ -19,6 +19,12 @@ ZEST_CASE(EscapesOutsideSingleQuotes, skip = Windows) {
             (std::vector<std::string>{"cc", R"(-DS="a\b")", R"(-I a"b)", "x.c", ""}));
 }
 
+ZEST_CASE(BlanksBeforeProgram) {
+    std::vector<std::string> expected = {"cc", "-c", "x.c"};
+    ZEXPECT(split_command("  cc -c x.c", sys::cmd::Quoting::Windows) == expected);
+    ZEXPECT(split_command("\tcc -c x.c", sys::cmd::Quoting::POSIX) == expected);
+}
+
 ZEST_CASE(JoinedReadsBack) {
     std::vector<std::string> arguments = {"cc", "-DS=\"a b\"", R"(-I C:\x)", "", "it's"};
     ZEXPECT(split_command(join_command(arguments)) == arguments);
