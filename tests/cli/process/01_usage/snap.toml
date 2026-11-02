@@ -410,6 +410,30 @@ Convert, one of: a command:
 '''
 exit = 0
 
+["operation help"."$ clice refactor rename --help"]
+stdout = '''
+Rename symbols across the project
+
+usage: clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  --dry-run                       Answer with the planned edits without writing them
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level of stderr [default: warn]
+
+Rename, one of: one symbol:
+  <LOCATOR>                       The symbol, as a locator: its whole name, an answer's symbol, or file:line[:column]
+  <NEW-NAME>                      Its new name
+
+Rename, one of: a list of symbols:
+  --spec <FILE>                   A file listing renames to make at once, `<locator> => <new name>` a line; - reads them from stdin
+'''
+exit = 0
+
 ["unknown subcommand"."$ clice bogus"]
 stderr = '''
 at argv[0]:
