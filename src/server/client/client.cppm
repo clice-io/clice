@@ -55,6 +55,10 @@ public:
     /// client held of it is forgotten.
     void retract(Fid path_id);
 
+    /// The document moved to another project, whose generations are its
+    /// own: its next compile there counts as one from changed inputs.
+    void moved(Fid path_id);
+
     /// The one refresh: the documents' results changed, so the client asks
     /// again for the semantic tokens, inlay hints and folding ranges it
     /// holds, each refresh it takes. Document links and the outline have no
@@ -367,11 +371,26 @@ private:
     /// a client refuses to apply them to a buffer that moved on.
     bool versioned_edits = false;
 
-    /// Document version of each path's last compile output (see
-    /// push_output): an output arriving for the same version means the text
-    /// did not change, so the client's pulled results went stale without
-    /// any didChange to make it re-pull — the push path sends refreshes.
-    llvm::DenseMap<Fid, int> output_versions;
+    /// What push_output last pushed of each path's compile output.
+    struct Pushed {
+        /// The document version and the generation (DocumentCompile::
+        /// generation) of the last compile: one for the same version means
+        /// the text did not change, so with another generation the client's
+        /// pulled results went stale without any didChange to make it
+        /// re-pull — the push path sends refreshes; with the same one,
+        /// nothing it compiled from changed.
+        std::optional<int> version;
+
+        std::optional<std::uint64_t> generation;
+
+        /// For a client the server pushes diagnostics to, what it last
+        /// published: the version, the generation and the xxh3 of the
+        /// diagnostics.
+        std::optional<std::tuple<std::optional<int>, std::optional<std::uint64_t>, std::uint64_t>>
+            published;
+    };
+
+    llvm::DenseMap<Fid, Pushed> pushed;
 
     llvm::DenseMap<Fid, Pulled> pulled;
 
@@ -456,6 +475,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                 return resolve_uri(params.text_document.uri);
             }
         }();
+        server.pool.used(document.path_id.raw);
         if(!options.closed && !document.session) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.

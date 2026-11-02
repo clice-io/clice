@@ -1,11 +1,26 @@
 module clice:project.graph.precompiled;
 
+import :project.graph.task_graph;
 import :support.failure_record;
 import :support.prelude;
 import :vfs.cache_store;
 import :vfs.file_table;
 
 namespace clice {
+
+/// How a parse of an open document's buffer waits for the modules and PCHs
+/// it loads (Project::build_imports, Project::build_pch).
+struct BuildOptions {
+    /// The attempt of the document's compile, which waits through
+    /// Attempt::depend: the edges count for invalidation. Null for a
+    /// request's own parse (completion, signature help), which waits from
+    /// outside the graph, foreground.
+    Attempt* attempt = nullptr;
+
+    /// A build that crashed a worker builds again: the document's record
+    /// lets it retry. Else it is refused, and not waited for.
+    bool retry_crashed = false;
+};
 
 /// A build that failed with what it stands on (see Memo): what a failed
 /// build read, or for a crash, which reports nothing it read, the inputs

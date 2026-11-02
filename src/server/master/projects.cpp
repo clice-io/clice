@@ -161,6 +161,9 @@ void MasterServer::change_owner(Document& document, ServedProject& to) {
     document.owner->release(session.path_id);
     document.owner = &to;
     to.adopt(document.session);
+    if(client) {
+        client->moved(session.path_id);
+    }
     replace_shown(document);
 }
 
@@ -352,9 +355,12 @@ void MasterServer::serve_folders() {
             index_pass.erase(it);
             fold_index_progress();
         }
-        bg_tasks.spawn([](std::shared_ptr<ServedProject> project) -> async::task<> {
-            co_await project->shutdown();
-        }(std::move(project)));
+        bg_tasks.spawn(
+            [](MasterServer& server, std::shared_ptr<ServedProject> project) -> async::task<> {
+                co_await project->shutdown();
+                project.reset();
+                server.return_freed_memory();
+            }(*this, std::move(project)));
     }
     if(client) {
         client->publish_settings_diagnostics();

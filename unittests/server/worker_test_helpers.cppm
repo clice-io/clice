@@ -77,7 +77,7 @@ struct WorkerHandle : zest::LoopFixture {
         watchdog = chrono::seconds(45);
     }
 
-    bool spawn(bool stateful = false, std::size_t max_documents = 0) {
+    bool spawn(bool stateful = false) {
         auto binary = clice_binary();
         auto label = stateful ? "stateful" : "stateless";
 
@@ -91,10 +91,6 @@ struct WorkerHandle : zest::LoopFixture {
         opts.args = {"worker"};
         if(stateful) {
             opts.args.push_back("--stateful");
-        }
-        if(max_documents > 0) {
-            opts.args.push_back("--max-documents");
-            opts.args.push_back(std::to_string(max_documents));
         }
         opts.env_changes = env;
         opts.creation.process_group = true;

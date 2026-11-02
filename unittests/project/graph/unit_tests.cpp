@@ -254,7 +254,7 @@ ZEST_CASE(FailedImportWaitsOnce) {
             failed.push_back(module);
         };
         Work importer{.run = [&](Attempt& attempt) {
-            return f.project.wait_modules(attempt, modules, heard);
+            return f.project.wait_modules(&attempt, modules, heard);
         }};
         waited = co_await f.project.graph.join({NodeKind::Unit, id("user.cpp").raw}, importer);
 

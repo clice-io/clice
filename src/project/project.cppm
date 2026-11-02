@@ -780,10 +780,6 @@ struct Project {
     /// unchanged inputs — anything else is a change for its dependents.
     Work pch_work(PCHRequest request);
 
-    /// Wait for the PCH from outside the graph, foreground, one attempt;
-    /// retry policy stays with the caller.
-    async::task<Result> acquire_pch(PCHRequest request);
-
     /// The request for clice's own build of the precompiled header the command
     /// of `unit` writes (Project::pch_writer): the unit's whole file, under that
     /// command. The editor's build skips function bodies, the index's keeps
@@ -804,6 +800,18 @@ struct Project {
                              const Resolution& resolution,
                              const Imports& imports,
                              llvm::StringRef base);
+
+    /// Build the PCHs a parse of `text`, the buffer of `file` under
+    /// `resolution` with `imports` its imports, loads: the precompiled header
+    /// the build declares for the command, then the preamble's over it (see
+    /// preamble_pch) — none under readonly = "on", the profile's stated
+    /// trade. None when the attempt was overtaken or the graph shut down.
+    async::task<std::optional<BuiltPCH>> build_pch(Fid file,
+                                                   llvm::StringRef text,
+                                                   std::optional<std::uint32_t> point,
+                                                   const Resolution& resolution,
+                                                   const Imports& imports,
+                                                   BuildOptions options);
 
     /// Whether the PCH registered under `key` read `file`: a parse of that very
     /// file cannot load it — clang refuses a PCH whose input the parse serves
@@ -895,27 +903,31 @@ struct Project {
     /// looked at: a gone one found later must not survive an early return.
     bool imports_present(llvm::ArrayRef<Fid> modules);
 
-    /// Wait in `attempt` on the PCMs of `modules`, each in turn, `failed`
-    /// told every one that failed to build; again while all built but one
+    /// Wait on the PCMs of `modules`, `failed` told every one that failed to
+    /// build: in `attempt`, each in turn, or from outside the graph, all at
+    /// once and foreground, when it is null; again while all built but one
     /// left the cache by the time the last did — a rebuild can evict another
     /// under the store's budget — import_passes times at most. Stale when
-    /// the attempt was overtaken; Success when every one built and they are
-    /// all on disk.
-    async::task<Result> wait_modules(Attempt& attempt,
+    /// the attempt was overtaken or the graph shut down; Success when every
+    /// one built and they are all on disk.
+    async::task<Result> wait_modules(Attempt* attempt,
                                      llvm::ArrayRef<Fid> modules,
                                      llvm::function_ref<void(Fid)> failed = {});
 
-    /// Scan the imports of a request that compiles under `resolution` with
-    /// `content` as the focus file and its synthesized context served from
-    /// memory (the stateless requests' builds — the scan must see the
-    /// buffer's imports under the request's command), declare them as the
-    /// edges of `consumer`, the file's node, and wait for their modules,
-    /// foreground. A module that did not build is the compile's to report, as
-    /// the stateful compile does; none only when the graph shut down.
-    async::task<std::optional<Imports>> build_imports(NodeId consumer,
-                                                      Fid path_id,
-                                                      const Resolution& resolution,
-                                                      llvm::StringRef content);
+    /// Scan the imports of a parse of `text`, the buffer of `file` under
+    /// `resolution` (scan_imports), declare them as the edges of the file's
+    /// node, and build their modules. The import list is scanner truth, not
+    /// build output: declared before the wait, a parse that fails stays
+    /// reachable from its imports — fixing or providing one re-dirties it —
+    /// and the empty list of a buffer that imports nothing is declared too,
+    /// so an edge declared earlier stops cascading here. A module that did
+    /// not build is the parse's to report, on the import next to the file's
+    /// own diagnostics. None when the attempt was overtaken or the graph shut
+    /// down.
+    async::task<std::optional<BuiltImports>> build_imports(Fid file,
+                                                           llvm::StringRef text,
+                                                           const Resolution& resolution,
+                                                           BuildOptions options);
 
     /// Mark a module unit and its transitive importers dirty, overtaking
     /// in-flight attempts: their next attempts check their builds again, and a

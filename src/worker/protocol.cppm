@@ -44,16 +44,14 @@ constexpr inline protocol::integer worker_crashed = -33001;
 
 /// The worker died of another request's crash, or died naming no request
 /// while several were in flight: this one is blameless and safe to resend.
+/// So is a query whose document's AST died with its worker before the query
+/// was sent.
 constexpr inline protocol::integer worker_lost = -33003;
 
 /// The worker died naming no request while this one ran alone on it —
 /// killed from outside (the OOM killer, a user), or crashed where it could
 /// not report. Resend once; a request that dies this way twice is blamed.
 constexpr inline protocol::integer worker_died = -33004;
-
-/// A stateful worker no longer holds the document the query is about (its
-/// LRU evicted it): recompile and ask again.
-constexpr inline protocol::integer document_unloaded = -33005;
 
 /// The worker's memory ran out: the pool killed it to free memory, or an
 /// allocation failed in it. The request is blameless; Error::data holds
@@ -70,7 +68,6 @@ inline bool is_operational_error(const protocol::Error& error) {
            error.code == dispatch_errc::worker_unavailable ||
            error.code == dispatch_errc::worker_crashed ||
            error.code == dispatch_errc::worker_lost || error.code == dispatch_errc::worker_died ||
-           error.code == dispatch_errc::document_unloaded ||
            error.code == dispatch_errc::out_of_memory;
 }
 
@@ -570,11 +567,9 @@ struct DocumentSymbolParams {
     Settings settings;
 };
 
+/// Drop the document's AST: the master's pool decides which ASTs a worker
+/// keeps.
 struct EvictParams {
-    std::string path;
-};
-
-struct EvictedParams {
     std::string path;
 };
 
@@ -712,11 +707,6 @@ struct RequestTraits<clice::worker::FormatParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictParams> {
     constexpr inline static std::string_view method = "clice/worker/evict";
-};
-
-template <>
-struct NotificationTraits<clice::worker::EvictedParams> {
-    constexpr inline static std::string_view method = "clice/worker/evicted";
 };
 
 template <>

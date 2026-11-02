@@ -20,6 +20,7 @@
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
                 "stateful_worker_count": 2,
+                "max_resident_documents": 0,
                 "min_stateless_worker_count": 1
             }
         },
@@ -193,6 +194,13 @@
                     "maximum": 4294967295,
                     "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); at least 1.",
                     "default": 2
+                },
+                "max_resident_documents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "How many open documents keep their AST in the stateful workers. Past it, the document asked about least recently gives its AST up: it answers what its last compile's answers cover, and compiles again for the rest. `0` means one per GB of memory, at least 8 and at most 32, which is also the default.",
+                    "default": 0
                 },
                 "stateless_worker_count": {
                     "type": "integer",

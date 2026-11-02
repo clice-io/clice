@@ -324,6 +324,16 @@ struct ProjectSettings {
     <std::uint32_t> stateful_worker_count = 2;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "How many open documents keep their AST in the stateful "
+                         "workers. Past it, the document asked about least "
+                         "recently gives its AST up: it answers what its last "
+                         "compile's answers cover, and compiles again for the "
+                         "rest. `0` means one per GB of memory, at least 8 and "
+                         "at most 32, which is also the default.")
+    <std::uint32_t> max_resident_documents = 0;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      schema_default = false,
                      minimum = 1,
                      description =

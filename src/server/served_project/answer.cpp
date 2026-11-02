@@ -92,14 +92,16 @@ async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket
     }
     // Same posture as every AST-backed request: the document's file index
     // is produced by the very compile awaited here, so once this finishes
-    // the index describes the buffer.
-    co_return co_await await_compile(ticket);
+    // the index describes the buffer. The index needs no AST: an evicted
+    // document's is current already.
+    co_return co_await await_compile(ticket, {.ast = false});
 }
 
-async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket) {
+async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& ticket,
+                                                                  EnsureOptions options) {
     // A failed compile yields null rather than a lookup against a buffer
     // with no finished index; an outdated one tells the client to re-pull.
-    bool compiled = co_await ensure_compiled(ticket.session);
+    bool compiled = co_await ensure_compiled(ticket.session, options);
     if(!ticket.fresh()) {
         co_return GateStop{content_modified()};
     }

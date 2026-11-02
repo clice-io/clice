@@ -22,4 +22,9 @@ struct MemoryState {
 /// the system counts their compressed pages without telling whose.
 MemoryState memory_state(std::span<const sys::ProcessStats> workers);
 
+/// How many documents the stateful workers keep compiled under `limit`
+/// (MemoryState::limit): one per GB, at least 8 and at most 32. A user who
+/// wants clice to hold less closes files.
+std::size_t default_max_resident(std::uint64_t limit);
+
 }  // namespace clice

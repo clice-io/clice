@@ -117,8 +117,8 @@ ZEST_CASE(MovedCommandRecompiles) {
                   {tmp.root, tmp.path("lonely.cpp"), {"-DOWN"}},
     }));
     fx.commands_changed({.added = {lonely}});
-    ZASSERT(fx.entry(lonely).epoch != 0);
-    ZASSERT(fx.entry(main).epoch == 0);
+    ZASSERT(fx.generation(lonely) != 0);
+    ZASSERT(fx.generation(main) == 0);
     ZASSERT(served.resolve_command(lonely).ref.source == CommandSource::Database);
 }
 
@@ -147,7 +147,7 @@ ZEST_CASE(MovedHostRecompiles) {
     auto after = project.select_command(header, {.open = true});
     ZASSERT(after.host == member);
     ZASSERT(after.ref.command == before.ref.command);
-    ZASSERT(fx.entry(header).epoch != 0);
+    ZASSERT(fx.generation(header) != 0);
 }
 
 ZEST_CASE(StaleHostChoiceKeepsUnit) {

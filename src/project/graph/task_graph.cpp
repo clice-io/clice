@@ -28,8 +28,11 @@ async::task<Result> Attempt::depend(NodeId dep, Work work) {
 }
 
 bool Attempt::current() const {
-    auto& node = graph.nodes.find(self)->second;
-    return node.attempt->generation == node.generation;
+    return generation() == graph.nodes.find(self)->second.generation;
+}
+
+std::uint64_t Attempt::generation() const {
+    return graph.nodes.find(self)->second.attempt->generation;
 }
 
 bool Attempt::foreground() const {
@@ -55,7 +58,7 @@ void TaskGraph::release(NodeId id) {
     // current drain cycle, strictly before the check fires, so retained
     // dependencies are handed over to the new attempt instead of being
     // killed and restarted; only a sustained zero cancels.
-    if(node.refcount == 0 && node.compiling && !node.zero_check_pending) {
+    if(node.refcount == 0 && node.compiling() && !node.zero_check_pending) {
         node.zero_check_pending = true;
         if(!tasks.spawn(zero_interest_check(id))) {
             // Graph is shutting down; every attempt token fires anyway.
@@ -72,7 +75,7 @@ async::task<> TaskGraph::zero_interest_check(NodeId id) {
 
     auto& node = nodes.find(id)->second;
     node.zero_check_pending = false;
-    if(node.refcount == 0 && node.compiling) {
+    if(node.refcount == 0 && node.compiling()) {
         // Advisory: the work winds down and reports, and the finished
         // attempt releases its own edge references in turn (cascading the
         // loss of interest).
@@ -106,7 +109,7 @@ void TaskGraph::mark_foreground(NodeId id) {
     // clear, and an unrelated background rebuild much later would run at
     // foreground class. Edges the attempt waits on later inherit through
     // depend().
-    if(node.compiling && node.attempt) {
+    if(node.compiling()) {
         for(auto dep: node.attempt->waits) {
             mark_foreground(dep);
         }
@@ -119,8 +122,7 @@ bool TaskGraph::start_attempt(NodeId id, Work work) {
     }
 
     auto& node = nodes.find(id)->second;
-    assert(!node.compiling && "attempt started while one is in flight");
-    node.compiling = true;
+    assert(!node.compiling() && "attempt started while one is in flight");
     node.attempt = std::make_shared<AttemptState>();
     node.attempt->generation = node.generation;
     auto attempt = node.attempt;
@@ -146,7 +148,7 @@ async::task<> TaskGraph::attempt_task(NodeId id,
 
 void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported) {
     auto& node = nodes.find(id)->second;
-    assert(node.compiling && node.attempt.get() == &attempt && "attempt bookkeeping out of sync");
+    assert(node.compiling() && node.attempt.get() == &attempt && "attempt bookkeeping out of sync");
 
     // An overtaken attempt has no result about the current content,
     // whatever it reported: a stale Success must not clear dirty, and a
@@ -174,8 +176,6 @@ void TaskGraph::finish_attempt(NodeId id, AttemptState& attempt, Result reported
         node.dirty = false;
         replace_edges(id, &Node::waited, attempt.waits);
     }
-
-    node.compiling = false;
 
     for(auto dep: attempt.waits) {
         release(dep);
@@ -279,7 +279,7 @@ async::task<std::optional<Result>> TaskGraph::await_attempt(NodeId id,
             case Check::InputsChanged: invalidate(id); break;
         }
     }
-    if(!nodes.find(id)->second.compiling && !start_attempt(id, work)) {
+    if(!nodes.find(id)->second.compiling() && !start_attempt(id, work)) {
         co_return std::nullopt;
     }
 
@@ -356,7 +356,7 @@ llvm::SmallVector<NodeId> TaskGraph::invalidate(NodeId id) {
         // overtaken one finishes. Judged on every path that reaches the
         // node: the first may come through a product it still waits for,
         // a later one through a product it read.
-        auto* attempt = node.compiling ? node.attempt.get() : nullptr;
+        auto* attempt = node.compiling() ? node.attempt.get() : nullptr;
         bool read = !from || !attempt || ranges::contains(attempt->received, *from) ||
                     !nodes.find(*from)->second.attempt;
         if(read && overtaken.insert(current).second) {
@@ -391,7 +391,7 @@ bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
         }
 
         auto it = nodes.find(current);
-        if(it == nodes.end() || !it->second.compiling || !it->second.attempt) {
+        if(it == nodes.end() || !it->second.compiling()) {
             continue;
         }
 
@@ -416,6 +416,10 @@ async::task<> TaskGraph::shutdown() {
     co_await tasks.join();
 }
 
+void TaskGraph::add(NodeId id) {
+    nodes.try_emplace(id);
+}
+
 bool TaskGraph::has_node(NodeId id) const {
     return nodes.count(id);
 }
@@ -427,7 +431,12 @@ bool TaskGraph::is_dirty(NodeId id) const {
 
 bool TaskGraph::is_compiling(NodeId id) const {
     auto it = nodes.find(id);
-    return it != nodes.end() && it->second.compiling;
+    return it != nodes.end() && it->second.compiling();
+}
+
+std::uint64_t TaskGraph::generation(NodeId id) const {
+    auto it = nodes.find(id);
+    return it != nodes.end() ? it->second.generation : 0;
 }
 
 std::uint32_t TaskGraph::refcount(NodeId id) const {
@@ -453,27 +462,18 @@ llvm::SmallVector<NodeId> TaskGraph::dependencies(NodeId id) const {
 
 bool TaskGraph::idle() const {
     return ranges::all_of(nodes, [](const auto& entry) {
-        const auto& node = entry.second;
-        bool attempt_done = !node.attempt || node.attempt->completion.is_set();
-        return !node.compiling && node.refcount == 0 && attempt_done;
+        return !entry.second.compiling() && entry.second.refcount == 0;
     });
 }
 
 llvm::SmallVector<NodeId> TaskGraph::compiling() const {
     llvm::SmallVector<NodeId> ids;
     for(auto& [id, node]: nodes) {
-        if(node.compiling) {
+        if(node.compiling()) {
             ids.push_back(id);
         }
     }
     return ids;
-}
-
-bool TaskGraph::consistent() const {
-    return ranges::all_of(nodes, [](const auto& entry) {
-        const auto& node = entry.second;
-        return !node.compiling || (node.attempt && !node.attempt->completion.is_set());
-    });
 }
 
 }  // namespace clice

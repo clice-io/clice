@@ -6,7 +6,9 @@ import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :project.project;
+import :settings.settings;
 import :support.logging;
 import :support.text;
 import :syntax.preamble;
@@ -117,7 +119,7 @@ void touch_loaded_index(Project& project, llvm::StringRef pch_key) {
 
 /// One attempt: revalidate the registered pair, or dispatch a build with
 /// the request's inputs and commit the pair.
-async::task<Result> build_pch(Project& project, Attempt& attempt, PCHRequest request) {
+async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest request) {
     const auto& pch_key = request.pch_key;
 
     auto [state, pch_miss] = pair_state(project, pch_key);
@@ -470,14 +472,87 @@ bool Project::pch_reads(llvm::StringRef key, Fid file) const {
 Work Project::pch_work(PCHRequest request) {
     auto shared = std::make_shared<const PCHRequest>(std::move(request));
     return {
-        .run = [this, shared](Attempt& attempt) { return build_pch(*this, attempt, *shared); },
+        .run = [this, shared](Attempt& attempt) { return build_pair(*this, attempt, *shared); },
         .check = [this, shared] { return pair_state(*this, shared->pch_key).first; },
     };
 }
 
-async::task<Result> Project::acquire_pch(PCHRequest request) {
-    auto id = pch_node(request.pch_key);
-    co_return co_await graph.join(id, pch_work(std::move(request)), {.foreground = true});
+async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
+                                                        llvm::StringRef text,
+                                                        std::optional<std::uint32_t> point,
+                                                        const Resolution& resolution,
+                                                        const Imports& imports,
+                                                        BuildOptions options) {
+    BuiltPCH built;
+    if(settings.project.readonly == ReadonlyMode::On) {
+        co_return built;
+    }
+    // Through depend, the attempt's edge to the PCH makes a staleness
+    // discovery on the shared pair cascade to the document.
+    auto wait = [&](PCHRequest request) -> async::task<Result> {
+        auto id = pch_node(request.pch_key);
+        if(options.attempt) {
+            co_return co_await options.attempt->depend(id, pch_work(std::move(request)));
+        }
+        co_return co_await graph.join(id,
+                                      pch_work(std::move(request)),
+                                      {.foreground = true, .retry = [] { return true; }});
+    };
+
+    // The precompiled header the build declares for the command: the
+    // preamble's PCH is built over it, and with none the parse loads it
+    // itself. One that did not build leaves the header the command forces
+    // in to parse what it holds. The editor's build skips function bodies,
+    // but for a modular parse, which reads the index's, the one every PCM is
+    // built over.
+    if(auto unit = pch_writer(file, resolution)) {
+        auto request =
+            declared_pch_request(*unit, settings.project.skip_header_bodies && !imports.modular());
+        auto key = request.pch_key;
+        switch(co_await wait(std::move(request))) {
+            case Result::Success:
+                if(!pch_reads(key, file)) {
+                    built.base = std::move(key);
+                }
+                break;
+            case Result::Failed: break;
+            case Result::Stale: co_return std::nullopt;
+        }
+    }
+
+    auto plan = preamble_pch(file, text, point, resolution, imports, built.base.value_or(""));
+    built.partial = plan.partial;
+    if(plan.request) {
+        auto key = plan.request->pch_key;
+        built.preamble = key;
+        // A preamble whose build crashed a worker — for this document or
+        // another sharing it — is refused until the parse may retry it.
+        if(auto* crash = build_crash(key)) {
+            if(options.retry_crashed) {
+                forget_build_failure(key);
+            } else {
+                built.refused = *crash;
+            }
+        }
+        if(!built.refused) {
+            built.result = co_await wait(std::move(*plan.request));
+            if(built.result == Result::Stale) {
+                co_return std::nullopt;
+            }
+        }
+    }
+
+    // The declared header precompiled whole covers none of the text.
+    if(auto* pch = built.result == Result::Success ? built_pch(*built.preamble) : nullptr) {
+        built.loaded = built.preamble;
+        built.pch = {pch->path, pch->bound};
+    } else if(auto* pch = built.base ? built_pch(*built.base) : nullptr) {
+        built.loaded = built.base;
+        built.pch = {pch->path, 0};
+    } else {
+        built.base.reset();
+    }
+    co_return built;
 }
 
 void Project::discard_pch(llvm::StringRef pch_key) {
