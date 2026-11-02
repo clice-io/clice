@@ -314,14 +314,6 @@ using ::ssize_t;
 #endif
 #ifdef KANNOTATE_TYPE
 #endif
-#ifdef KOTATSU_CLASS_KEY_class
-#endif
-#ifdef KOTATSU_CLASS_KEY_struct
-#endif
-#ifdef KOTATSU_WHEN_0
-#endif
-#ifdef KOTATSU_WHEN_1
-#endif
 #ifdef LLVM_BUILTIN_TRAP
 #endif
 #ifdef LLVM_DEFAULT_TARGET_TRIPLE

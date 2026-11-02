@@ -5354,6 +5354,7 @@ using ::kotatsu::cli::count;
 using ::kotatsu::cli::exclusive;
 using ::kotatsu::cli::format;
 using ::kotatsu::cli::forward;
+using ::kotatsu::cli::global;
 using ::kotatsu::cli::hidden;
 using ::kotatsu::cli::hidden_sub;
 using ::kotatsu::cli::meta_var;
@@ -5397,6 +5398,7 @@ using ::kotatsu::cli::detail::Path;
 using ::kotatsu::cli::detail::Reader;
 using ::kotatsu::cli::detail::Reading;
 using ::kotatsu::cli::detail::Shape;
+using ::kotatsu::cli::detail::Spelling;
 using ::kotatsu::cli::detail::Subcommands;
 using ::kotatsu::cli::detail::Writer;
 using ::kotatsu::cli::detail::all_prefixes;
@@ -5412,16 +5414,17 @@ using ::kotatsu::cli::detail::enum_from_text;
 using ::kotatsu::cli::detail::enum_key;
 using ::kotatsu::cli::detail::enum_text;
 using ::kotatsu::cli::detail::has_style;
+using ::kotatsu::cli::detail::holds;
 using ::kotatsu::cli::detail::invalid_enum_value;
 using ::kotatsu::cli::detail::joined_name;
 using ::kotatsu::cli::detail::kebab;
 using ::kotatsu::cli::detail::name_forms;
-using ::kotatsu::cli::detail::names_of;
 using ::kotatsu::cli::detail::path_of;
 using ::kotatsu::cli::detail::read;
 using ::kotatsu::cli::detail::read_bool;
 using ::kotatsu::cli::detail::read_number;
 using ::kotatsu::cli::detail::registry;
+using ::kotatsu::cli::detail::repeats;
 using ::kotatsu::cli::detail::sealed_registry;
 using ::kotatsu::cli::detail::slash_dash_prefixes;
 using ::kotatsu::cli::detail::subcommand_name;
@@ -6506,6 +6509,7 @@ using ::kotatsu::ipc::protocol::variant;
 export namespace kotatsu::ipc::protocol::detail {
 using ::kotatsu::ipc::protocol::detail::HoldsNothing;
 using ::kotatsu::ipc::protocol::detail::LiteralText;
+using ::kotatsu::ipc::protocol::detail::base_assigns;
 }
 
 export namespace kotatsu::mem {
