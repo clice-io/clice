@@ -14,12 +14,12 @@ MODULE_COPTS = [
 # them; which target provides an include root is the build's knowledge.
 LIBRARIES = [
     "@croaring",
+    "@kotatsu//:cli",
+    "@kotatsu//:cli_table",
     "@kotatsu//:codec_json",
     "@kotatsu//:codec_toml",
-    "@kotatsu//:deco",
     "@kotatsu//:ipc_json",
     "@kotatsu//:ipc_lsp",
-    "@kotatsu//:option",
     "@kotatsu//:support",
     "@kotatsu//:zest_async",
     "@libclang//:headers",
