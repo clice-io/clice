@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "command": "missing-clang++ -DLINE=1\r\n-DNEXT=2 a.cpp"
+  }
+]

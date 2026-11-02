@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "command": "missing-clang++ -DTAB=1\u000b-DFEED=2\u000c-DEND=3 a.cpp"
+  }
+]
