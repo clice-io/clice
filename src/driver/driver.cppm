@@ -37,13 +37,6 @@ struct Subcommands {
     using signature = int();
 };
 
-/// The operations of `clice index` that read the persisted index: its
-/// stats and what it records of a symbol, a file and a unit
-/// (index_records.cc).
-struct IndexRecords {
-    using signature = int();
-};
-
 /// Write command output. stdout carries the command's answer. On a pipe
 /// or a socket, a write fails only because the reader went away (`clice …
 /// | head`), under whatever error the kernel picks for the descriptor and
