@@ -105,6 +105,15 @@ stdout = '''
 '''
 exit = 2
 
+[test."$ clice query defintion add"]
+stdout = '''
+{
+  "error": "unknown subcommand 'defintion'; did you mean 'definition'?",
+  "stale": []
+}
+'''
+exit = 2
+
 [test."$ clice query definition \"main.cpp:4:5 kind:variable\""]
 stdout = '''
 {
