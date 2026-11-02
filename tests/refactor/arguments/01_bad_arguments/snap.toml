@@ -24,7 +24,7 @@ exit = 2
 [test."$ clice refactor rename compute"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <NEW-NAME> is missing",
   "stale": []
 }
 '''

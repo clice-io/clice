@@ -424,7 +424,7 @@ stderr = '''
 at end of argv:
   index symbol
               ^
-  expected 1 input argument, got 0
+  required argument <LOCATOR> is missing
 '''
 exit = 2
 
@@ -442,14 +442,14 @@ stderr = '''
 at end of argv:
   inspect hover
                ^
-  expected 1 input argument, got 0
+  required argument <PATH> is missing
 '''
 exit = 2
 
 ["positional arguments"."$ clice modularize merge"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <FILE> is missing",
   "stale": []
 }
 '''
@@ -458,7 +458,7 @@ exit = 2
 ["positional arguments"."$ clice query references"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <LOCATOR> is missing",
   "stale": []
 }
 '''
@@ -533,6 +533,24 @@ exit = 2
 stdout = '''
 {
   "error": "unknown subcommand 'bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["own option before an operation"."$ clice index --workspace other stats"]
+stderr = '''
+at argv[3]:
+  index --workspace other stats
+                          ^~~~~
+  subcommand 'stats' cannot be used with --workspace <value>
+'''
+exit = 2
+
+["own option before an operation"."$ clice modularize --out out merge merge.json"]
+stdout = '''
+{
+  "error": "subcommand 'merge' cannot be used with --out <value>",
   "stale": []
 }
 '''

@@ -90,7 +90,7 @@ exit = 2
 [test."$ clice query definition"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <LOCATOR> is missing",
   "stale": []
 }
 '''
