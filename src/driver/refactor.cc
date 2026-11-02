@@ -42,7 +42,7 @@ struct RenameList {
 };
 
 struct Rename {
-    KANNOTATE(&renames, cli::exclusive = true, presence = required)
+    KANNOTATE(&renames, cli::exclusive = true, presence = required, description = "The renames")
     std::variant<OneRename, RenameList> renames;
 
     KANNOTATE(&dry_run, description = "Answer with the planned edits without writing them")
