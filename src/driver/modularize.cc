@@ -33,7 +33,6 @@ struct OutputOptions {
 };
 
 KANNOTATE_TYPE(struct Merge, description = "Merge the wrappings of several build configurations");
-
 struct Merge {
     KANNOTATE(&file,
               cli::positional = true,
@@ -53,7 +52,6 @@ KANNOTATE_TYPE(struct Modularize,
                    "Wrap a partition's libraries as modules over their headers, rewrite "
                    "its program modules into module units, or merge the wrappings of "
                    "several build configurations");
-
 struct Modularize {
     KANNOTATE(&partition,
               description =

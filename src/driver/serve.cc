@@ -8,7 +8,6 @@ namespace clice::driver {
 namespace {
 
 KANNOTATE_TYPE(struct Serve, description = "Start LSP server");
-
 struct Serve {
     ServerOptions server;
     ConfigurationOption configuration;

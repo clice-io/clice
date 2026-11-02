@@ -21,7 +21,6 @@ KANNOTATE_TYPE(struct Convert,
                description =
                    "Convert a compilation database, or one command, to the commands "
                    "clice compiles with");
-
 struct Convert {
     KANNOTATE(
         &database,
@@ -46,7 +45,6 @@ struct Convert {
 
 KANNOTATE_TYPE(struct Command,
                description = "Show the commands a file compiles with, or convert compile commands");
-
 struct Command {
     /// Left out for an operation, else `run` reports it missing.
     KANNOTATE(&path,

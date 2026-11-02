@@ -105,9 +105,8 @@ struct FileEntry {
     std::optional<std::vector<std::string>> diagnostics;
 };
 
-KANNOTATE_TYPE(struct FileMarkers, presence_all = optional);
-
 /// The inspected file's markers, as --markers gives them.
+KANNOTATE_TYPE(struct FileMarkers, presence_all = optional);
 struct FileMarkers {
     std::map<std::string, std::uint32_t> points;
 
@@ -824,7 +823,6 @@ int run(CheckedFeature<I>& feature) {
 }
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
-
 struct ConfigSchema {
     LogLevelOption log;
 };
@@ -846,7 +844,6 @@ struct Operations {
 
 KANNOTATE_TYPE(struct Inspect,
                description = "Run a feature on a source file and print raw results as JSON");
-
 struct Inspect {
     KANNOTATE(&operation, presence = required, cli::meta_var = "<feature>")
     cli::Commands<Operations> operation;

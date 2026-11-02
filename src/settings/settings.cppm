@@ -41,11 +41,10 @@ constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.to
 /// command line, or an argv array.
 using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
 
-KANNOTATE_TYPE(struct Rule, presence_all = optional);
-
 /// A file-pattern rule: where matching files take their compile commands
 /// from and how those commands are edited. Corresponds to `[[rules]]` in
 /// clice.toml.
+KANNOTATE_TYPE(struct Rule, presence_all = optional);
 struct Rule {
     KANNOTATE(&patterns,
               description =
@@ -216,12 +215,11 @@ enum class ReadonlyMode : std::uint8_t {
     Auto,
 };
 
-KANNOTATE_TYPE(struct ProjectSettings, presence_all = optional);
-
 /// Corresponds to the `[project]` section in clice.toml. Field
 /// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
 /// here because their defaults derive from the project root in
 /// finalize().
+KANNOTATE_TYPE(struct ProjectSettings, presence_all = optional);
 struct ProjectSettings {
     /// finalize() leaves it the directory's identity, empty for none;
     /// cache_identity names the directory.
@@ -367,11 +365,10 @@ struct ProjectSettings {
     std::uint32_t max_stateless_worker_count = default_max_stateless_worker_count();
 };
 
-KANNOTATE_TYPE(struct TrackerSettings, presence_all = optional);
-
 /// Corresponds to the `[tracker]` section in clice.toml: how often files
 /// are looked at in the background (integration tests drive ticks through
 /// the clice/internal/poll hook instead).
+KANNOTATE_TYPE(struct TrackerSettings, presence_all = optional);
 struct TrackerSettings {
     KANNOTATE(&workspace_poll_seconds,
               description =
@@ -382,9 +379,8 @@ struct TrackerSettings {
     std::uint32_t workspace_poll_seconds = 30;
 };
 
-KANNOTATE_TYPE(struct ReferencesSettings, presence_all = optional);
-
 /// Corresponds to the `[references]` section in clice.toml.
+KANNOTATE_TYPE(struct ReferencesSettings, presence_all = optional);
 struct ReferencesSettings {
     KANNOTATE(&limit,
               description =
@@ -470,8 +466,6 @@ struct SettingsIssue {
     std::uint32_t end_column = 0;
 };
 
-KANNOTATE_TYPE(struct Settings, presence_all = optional);
-
 /// Configuration for the clice LSP server, loadable from clice.toml
 /// or passed via LSP initializationOptions.
 ///
@@ -483,6 +477,7 @@ KANNOTATE_TYPE(struct Settings, presence_all = optional);
 /// and only touches the fields it names, nested sections merging per field.
 /// finalize() never fills option defaults; it only computes derived
 /// values from the merged result.
+KANNOTATE_TYPE(struct Settings, presence_all = optional);
 struct Settings {
     KANNOTATE(&default_configuration,
               description =

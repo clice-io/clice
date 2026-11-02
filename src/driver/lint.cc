@@ -12,7 +12,6 @@ namespace clice::driver {
 namespace {
 
 KANNOTATE_TYPE(struct Lint, description = "Lint C++ source files");
-
 struct Lint {
     KANNOTATE(&index, description = "Also build and persist the project index from the same parses")
     bool index = false;

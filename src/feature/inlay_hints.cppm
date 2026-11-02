@@ -9,9 +9,8 @@ import :vfs.ids;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct InlayHintLengths, presence_all = optional);
-
 /// Corresponds to the `[inlay_hints.max_length]` section in clice.toml.
+KANNOTATE_TYPE(struct InlayHintLengths, presence_all = optional);
 struct InlayHintLengths {
     KANNOTATE(&types,
               description =
@@ -44,10 +43,9 @@ struct InlayHintLengths {
     std::uint32_t endif = 60;
 };
 
-KANNOTATE_TYPE(struct InlayHintsOptions, presence_all = optional);
-
 /// Corresponds to the `[inlay_hints]` section in clice.toml. Every switch
 /// shows one kind of hint.
+KANNOTATE_TYPE(struct InlayHintsOptions, presence_all = optional);
 struct InlayHintsOptions {
     KANNOTATE(&enabled, description = "Master switch: `false` disables all inlay hints.")
     bool enabled = true;

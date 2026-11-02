@@ -10,9 +10,8 @@ import :vfs.ids;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct DocumentationOptions, presence_all = optional);
-
 /// Corresponds to the `[documentation]` section in clice.toml.
+KANNOTATE_TYPE(struct DocumentationOptions, presence_all = optional);
 struct DocumentationOptions {
     KANNOTATE(&format,
               choices = {"doxygen", "plain"},

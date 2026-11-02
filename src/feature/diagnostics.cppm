@@ -9,9 +9,8 @@ import :syntax.token;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct DiagnosticsOptions, presence_all = optional);
-
 /// Corresponds to the `[diagnostics]` section in clice.toml.
+KANNOTATE_TYPE(struct DiagnosticsOptions, presence_all = optional);
 struct DiagnosticsOptions {
     KANNOTATE(&clang_tidy,
               description =

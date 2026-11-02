@@ -11,9 +11,8 @@ import :syntax.source_text;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct DocumentSymbolsOptions, presence_all = optional);
-
 /// Corresponds to the `[document_symbols]` section in clice.toml.
+KANNOTATE_TYPE(struct DocumentSymbolsOptions, presence_all = optional);
 struct DocumentSymbolsOptions {
     KANNOTATE(&macros,
               description =

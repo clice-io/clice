@@ -10,7 +10,6 @@ namespace clice::driver {
 namespace {
 
 KANNOTATE_TYPE(struct Scan, description = "Scan the project's include and module dependencies");
-
 struct Scan {
     KANNOTATE(&json,
               description =

@@ -15,9 +15,8 @@ import :vfs.file_table;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct HoverOptions, presence_all = optional);
-
 /// Corresponds to the `[hover]` section in clice.toml.
+KANNOTATE_TYPE(struct HoverOptions, presence_all = optional);
 struct HoverOptions {
     KANNOTATE(&show_aka,
               description =

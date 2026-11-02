@@ -11,9 +11,8 @@ import :syntax.source_text;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct SemanticTokensOptions, presence_all = optional);
-
 /// Corresponds to the `[semantic_tokens]` section in clice.toml.
+KANNOTATE_TYPE(struct SemanticTokensOptions, presence_all = optional);
 struct SemanticTokensOptions {
     KANNOTATE(&lexical,
               description =

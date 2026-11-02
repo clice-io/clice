@@ -67,7 +67,6 @@ struct WeightOptions {
 
 KANNOTATE_TYPE(struct Edge,
                description = "Every entity an edge between two modules carries, and its uses");
-
 struct Edge {
     KANNOTATE(
         &modules,
@@ -84,7 +83,6 @@ struct Edge {
 
 KANNOTATE_TYPE(struct Module,
                description = "A module's files by their dependencies, the lines it splits along");
-
 struct Module {
     KANNOTATE(&module,
               cli::positional = true,
@@ -99,7 +97,6 @@ struct Module {
 KANNOTATE_TYPE(
     struct File,
     description = "What a file names by module, who names its entities, its annotations");
-
 struct File {
     FileTarget target;
     ModelOptions model;
@@ -109,21 +106,18 @@ struct File {
 
 KANNOTATE_TYPE(struct Obstacles,
                description = "What a mechanical rewrite into modules cannot carry over");
-
 struct Obstacles {
     ModelOptions model;
     LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Macros, description = "The macros crossing modules");
-
 struct Macros {
     ModelOptions model;
     LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Impact, description = "What a change to each module rebuilds");
-
 struct Impact {
     ModelOptions model;
     WeightOptions weights;
@@ -132,7 +126,6 @@ struct Impact {
 
 KANNOTATE_TYPE(struct Interface,
                description = "Per module, what a wrapper module over its headers needs");
-
 struct Interface {
     KANNOTATE(&module,
               cli::positional = true,
@@ -146,7 +139,6 @@ struct Interface {
 
 KANNOTATE_TYPE(struct Modules,
                description = "Dependencies between directories, toward a module partition");
-
 struct Modules {
     KANNOTATE(&limit, description = "Most hotspots, move and split candidates to list")
     int limit = 20;
@@ -159,7 +151,6 @@ struct Modules {
 };
 
 KANNOTATE_TYPE(struct Analyze, description = "Analyze the indexed project for refactoring");
-
 struct Analyze {
     KANNOTATE(&operation, presence = required, cli::meta_var = "<analysis>")
     std::variant<Modules> operation;

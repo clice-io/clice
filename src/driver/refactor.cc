@@ -11,8 +11,6 @@ namespace clice::driver {
 
 namespace {
 
-KANNOTATE_TYPE(struct Rename, description = "Rename symbols across the project");
-
 /// One rename, given on the command line.
 struct OneRename {
     KANNOTATE(&locator,
@@ -41,6 +39,7 @@ struct RenameList {
     std::string spec;
 };
 
+KANNOTATE_TYPE(struct Rename, description = "Rename symbols across the project");
 struct Rename {
     KANNOTATE(&renames, cli::exclusive = true, presence = required, description = "The renames")
     std::variant<OneRename, RenameList> renames;
@@ -234,7 +233,6 @@ int run(Rename& opts) {
 
 KANNOTATE_TYPE(struct Refactor,
                description = "Rewrite the project's sources through the persisted index");
-
 struct Refactor {
     KANNOTATE(&operation, presence = required, cli::meta_var = "<refactoring>")
     std::variant<Rename> operation;

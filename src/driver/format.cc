@@ -14,7 +14,6 @@ namespace clice::driver {
 namespace {
 
 KANNOTATE_TYPE(struct Format, description = "Format C++ source files");
-
 struct Format {
     KANNOTATE(&paths,
               cli::positional = true,

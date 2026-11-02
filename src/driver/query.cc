@@ -195,7 +195,6 @@ struct Options {
 };
 
 KANNOTATE_TYPE(struct ProjectFiles, description = "The build's files");
-
 struct ProjectFiles {
     KANNOTATE(&filter, description = "all, source, header or module")
     std::string filter = "all";
@@ -206,7 +205,6 @@ struct ProjectFiles {
 
 KANNOTATE_TYPE(struct FileDeps,
                description = "The files a file includes and the files including it");
-
 struct FileDeps {
     FileTarget target;
 
@@ -223,7 +221,6 @@ struct FileDeps {
 KANNOTATE_TYPE(
     struct ImpactAnalysis,
     description = "What a change to a file reaches: its includers and the modules among them");
-
 struct ImpactAnalysis {
     FileTarget target;
     Options query;
@@ -232,7 +229,6 @@ struct ImpactAnalysis {
 
 KANNOTATE_TYPE(struct Counterparts,
                description = "The files a file pairs with: a header's sources, a source's headers");
-
 struct Counterparts {
     FileTarget target;
     Options query;
@@ -240,7 +236,6 @@ struct Counterparts {
 };
 
 KANNOTATE_TYPE(struct SymbolSearch, description = "The symbols a locator matches, best first");
-
 struct SymbolSearch {
     KANNOTATE(&locator,
               cli::positional = true,
@@ -257,7 +252,6 @@ struct SymbolSearch {
 
 KANNOTATE_TYPE(struct ReadSymbol,
                description = "A symbol's definition as text, with its documentation");
-
 struct ReadSymbol {
     SymbolTarget target;
     Options query;
@@ -265,7 +259,6 @@ struct ReadSymbol {
 };
 
 KANNOTATE_TYPE(struct DocumentSymbols, description = "A file's outline");
-
 struct DocumentSymbols {
     FileTarget target;
     Options query;
@@ -274,7 +267,6 @@ struct DocumentSymbols {
 
 KANNOTATE_TYPE(struct Definition,
                description = "Where a symbol is defined, with its documentation");
-
 struct Definition {
     SymbolTarget target;
     Options query;
@@ -282,7 +274,6 @@ struct Definition {
 };
 
 KANNOTATE_TYPE(struct References, description = "Every place naming a symbol");
-
 struct References {
     SymbolTarget target;
 
@@ -294,7 +285,6 @@ struct References {
 };
 
 KANNOTATE_TYPE(struct CallGraph, description = "A function's callers and callees");
-
 struct CallGraph {
     SymbolTarget target;
 
@@ -307,7 +297,6 @@ struct CallGraph {
 
 KANNOTATE_TYPE(struct Implementation,
                description = "The classes deriving from a class, the overrides of a function");
-
 struct Implementation {
     SymbolTarget target;
     Options query;
@@ -315,7 +304,6 @@ struct Implementation {
 };
 
 KANNOTATE_TYPE(struct TypeHierarchy, description = "A type's supertypes and subtypes");
-
 struct TypeHierarchy {
     SymbolTarget target;
 
@@ -327,7 +315,6 @@ struct TypeHierarchy {
 };
 
 KANNOTATE_TYPE(struct Query, description = "Ask the persisted index about the project");
-
 struct Query {
     KANNOTATE(&operation, presence = required, cli::meta_var = "<question>")
     std::variant<ProjectFiles,

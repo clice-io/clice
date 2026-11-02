@@ -26,7 +26,6 @@ namespace {
 KANNOTATE_TYPE(
     struct Stats,
     description = "What the persisted index holds: its sizes and how its records spread");
-
 struct Stats {
     KANNOTATE(&limit, description = "How many of the largest file shards to list")
     std::uint32_t limit = 20;
@@ -41,7 +40,6 @@ struct Stats {
 };
 
 KANNOTATE_TYPE(struct Symbol, description = "What the persisted index records about symbols");
-
 struct Symbol {
     SymbolTarget target;
     ProjectOptions where;
@@ -50,7 +48,6 @@ struct Symbol {
 
 KANNOTATE_TYPE(struct File,
                description = "A file's persisted records: variants, contributing units and counts");
-
 struct File {
     FileTarget target;
     ProjectOptions where;
@@ -60,7 +57,6 @@ struct File {
 KANNOTATE_TYPE(
     struct Unit,
     description = "A translation unit's persisted manifest: include tree and contributions");
-
 struct Unit {
     FileTarget target;
     ProjectOptions where;
@@ -68,7 +64,6 @@ struct Unit {
 };
 
 KANNOTATE_TYPE(struct Index, description = "Index a project ahead of time");
-
 struct Index {
     ProjectOptions where;
     JobsOption jobs;

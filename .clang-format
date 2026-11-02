@@ -64,7 +64,7 @@ BinPackArguments: false
 BinPackParameters: OnePerLine
 
 # Space
-SeparateDefinitionBlocks: Always
+SeparateDefinitionBlocks: Leave
 SpaceBeforeParens: Custom
 SpaceBeforeParensOptions:
   AfterControlStatements: false

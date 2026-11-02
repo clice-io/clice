@@ -25,9 +25,8 @@ enum class CompletionArguments : std::uint8_t {
     None,
 };
 
-KANNOTATE_TYPE(struct CodeCompletionOptions, presence_all = optional);
-
 /// Corresponds to the `[code_completion]` section in clice.toml.
+KANNOTATE_TYPE(struct CodeCompletionOptions, presence_all = optional);
 struct CodeCompletionOptions {
     KANNOTATE(&arguments,
               with = type<LowercaseNames>,

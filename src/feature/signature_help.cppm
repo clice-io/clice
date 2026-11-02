@@ -6,9 +6,8 @@ import :support.prelude;
 
 namespace clice::feature {
 
-KANNOTATE_TYPE(struct SignatureHelpOptions, presence_all = optional);
-
 /// Corresponds to the `[signature_help]` section in clice.toml.
+KANNOTATE_TYPE(struct SignatureHelpOptions, presence_all = optional);
 struct SignatureHelpOptions {
     KANNOTATE(&documentation, description = "Show the called function's documentation comment.")
     bool documentation = true;

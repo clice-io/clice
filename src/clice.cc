@@ -17,7 +17,6 @@ namespace clice::driver {
 namespace {
 
 KANNOTATE_TYPE(struct Clice, description = "A C++ development toolkit built on LLVM/Clang");
-
 struct Clice {
     KANNOTATE(&version,
               cli::names = {"-v", "--version"},
