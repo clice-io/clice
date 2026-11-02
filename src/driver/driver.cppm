@@ -163,8 +163,8 @@ struct JobsOption {
     KANNOTATE(&jobs,
               cli::names = {"-j", "--jobs"},
               description =
-                  "How many units or files to work on at once (default: "
-                  "project.stateless_worker_count; for index and format, the CPU count)")
+                  "How many units or files to work on at once; 0 for "
+                  "project.stateless_worker_count, or for index and format the CPU count")
     std::uint32_t jobs = 0;
 };
 

@@ -21,7 +21,7 @@ class LSPClient;
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    KANNOTATE(&mode, description = "Server mode: pipe (default) or socket (debug)")
+    KANNOTATE(&mode, description = "Server mode: pipe, or socket (debug)")
     ServerMode mode = ServerMode::Pipe;
 
     KANNOTATE(&host, description = "Socket mode address")

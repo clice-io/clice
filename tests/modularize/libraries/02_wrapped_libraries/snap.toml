@@ -2301,7 +2301,7 @@ exit = 1
 ["merges configurations"."$ clice modularize merge merges/two.json --partition partition.json --out merged"]
 stdout = '''
 {
-  "error": "at argv[1]:\n  merges/two.json --partition partition.json --out merged\n                  ^~~~~~~~~~~\n  unknown option '--partition'",
+  "error": "unknown option '--partition'",
   "stale": []
 }
 '''

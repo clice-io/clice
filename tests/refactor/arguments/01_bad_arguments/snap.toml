@@ -2,6 +2,11 @@
 stdout = '''
 Rewrite the project's sources through the persisted index
 
+usage: clice refactor <refactoring> [<args>]
+
+Options:
+  -h|--help                       display this help and exit
+
 Subcommands:
   rename  Rename symbols across the project
 '''
@@ -10,7 +15,7 @@ exit = 0
 [test."$ clice refactor extract"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  extract\n  ^~~~~~~\n  unknown subcommand 'extract'",
+  "error": "unknown subcommand 'extract'",
   "stale": []
 }
 '''
@@ -19,7 +24,7 @@ exit = 2
 [test."$ clice refactor rename compute"]
 stdout = '''
 {
-  "error": "at end of argv:\n  compute\n         ^\n  expected 2 input arguments, got 1",
+  "error": "expected 2 input arguments, got 1",
   "stale": []
 }
 '''
@@ -37,8 +42,9 @@ exit = 2
 [test."$ clice refactor rename compute \"\""]
 stdout = '''
 {
-  "error": "at argv[1]:\n  compute \n          ^\n  expected 2 input arguments, got 1",
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
   "stale": []
 }
 '''
-exit = 2
+stderr = "error: No index cache at ${WS}/.clice; run `clice index` first"
+exit = 1

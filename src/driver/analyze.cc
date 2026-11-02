@@ -200,8 +200,7 @@ struct Modules {
     std::optional<std::variant<Edge, Module, File, Obstacles, Macros, Impact, Interface>> operation;
 };
 
-KANNOTATE_TYPE(struct Analyze,
-               description = "Analyses whose facts an agent turns into refactoring decisions");
+KANNOTATE_TYPE(struct Analyze, description = "Analyze the indexed project for refactoring");
 
 struct Analyze {
     constexpr static std::string_view usage_line = "clice analyze <analysis> [<args>]";
