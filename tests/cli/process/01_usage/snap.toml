@@ -9,7 +9,7 @@ Options:
   -v|--version                    Print the version and exit
 
 Subcommands:
-  analyze     Analyses whose facts an agent turns into refactoring decisions
+  analyze     Analyze the indexed project for refactoring
   command     Show the commands a file compiles with, or convert compile commands
   format      Format C++ source files
   index       Index a project ahead of time
@@ -34,7 +34,7 @@ Options:
   -v|--version                    Print the version and exit
 
 Subcommands:
-  analyze     Analyses whose facts an agent turns into refactoring decisions
+  analyze     Analyze the indexed project for refactoring
   command     Show the commands a file compiles with, or convert compile commands
   format      Format C++ source files
   index       Index a project ahead of time
@@ -56,7 +56,7 @@ usage: clice serve [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --mode <pipe|socket>            Server mode: pipe (default) or socket (debug) [default: pipe]
+  --mode <pipe|socket>            Server mode: pipe, or socket (debug) [default: pipe]
   --host <value>                  Socket mode address [default: 127.0.0.1]
   --port <value>                  Socket mode TCP port [default: 0]
   --record <value>                Record LSP input to file for replay testing
@@ -116,7 +116,7 @@ Options:
   -h|--help                       display this help and exit
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count) [default: 0]
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr [default: warn]
@@ -140,7 +140,7 @@ Options:
   --index                         Also build and persist the project index from the same parses
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count) [default: 0]
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr [default: warn]
@@ -159,7 +159,7 @@ Options:
   --check                         Report the files that need formatting instead of rewriting them
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count) [default: 0]
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr [default: warn]
 '''
@@ -229,7 +229,7 @@ exit = 0
 
 ["command help"."$ clice analyze --help"]
 stdout = '''
-Analyses whose facts an agent turns into refactoring decisions
+Analyze the indexed project for refactoring
 
 usage: clice analyze <analysis> [<args>]
 
