@@ -103,9 +103,9 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     // field's born-valid default meanwhile.
     ProjectSettings defaults;
     auto reject_zero = [&](auto& field, const auto& fallback, llvm::StringRef name) {
-        if(field.value == 0) {
+        if(field == 0) {
             problem("a worker count must be at least 1", {"project", name.str()});
-            field = fallback.value;
+            field = fallback;
         }
     };
     reject_zero(p.stateful_worker_count, defaults.stateful_worker_count, "stateful_worker_count");

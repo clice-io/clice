@@ -155,8 +155,8 @@ ZEST_CASE(ParsePartialProject) {
     auto result = codec::toml::from_string<ProjectSettings>(R"(cache_dir = "/tmp/test")");
     ZEXPECT(result);
     ZEXPECT(std::string_view(result->cache_dir) == "/tmp/test");
-    ZEXPECT(result->enable_indexing.value == true);
-    ZEXPECT(result->idle_timeout_ms.value == 3000u);
+    ZEXPECT(result->enable_indexing == true);
+    ZEXPECT(result->idle_timeout_ms == 3000u);
 }
 
 ZEST_CASE(ParseRule) {
