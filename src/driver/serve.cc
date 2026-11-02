@@ -7,24 +7,29 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Serve, description = "Start LSP server");
+
+struct Serve {
+    constexpr static std::string_view usage_line = "clice serve [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     ServerOptions server;
     ConfigurationOption configuration;
     LogLevelOption log{.log_level = LogLevel::Info};
 };
 
-CommandHandler build() {
-    auto cmd = deco::cli::command<Options>("clice serve [OPTIONS]");
-    cmd.match_all([](Options opts) {
-        opts.log.apply();
-        return run_serve_mode(opts.server, opts.configuration.tag());
-    });
-    return cmd;
+/// The server logs to stderr as a client may read it (run_serve_mode).
+int run_serve(Serve& serve) {
+    if(print_help(serve)) {
+        return 0;
+    }
+    serve.log.apply();
+    return run_serve_mode(serve.server, serve.configuration.configuration);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::serve, {.description = "Start LSP server", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(run_serve);
 
 }  // namespace
 

@@ -279,8 +279,8 @@ constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
 /// What a request answers when the workers could not serve it.
 template <typename Value>
 Value empty_value() {
-    if constexpr(std::is_same_v<Value, codec::RawValue>) {
-        return codec::RawValue{"null"};
+    if constexpr(std::is_same_v<Value, codec::raw_value>) {
+        return codec::raw_value{"null"};
     } else {
         return Value{};
     }

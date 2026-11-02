@@ -25,68 +25,24 @@ import :worker.protocol;
 
 namespace clice::driver {
 
-/// The subcommands, in the order `clice --help` lists them, each named by
-/// its enumerator.
-enum class Command : std::uint8_t {
-    serve,
-    query,
-    refactor,
-    index,
-    lint,
-    format,
-    inspect,
-    command,
-    scan,
-    analyze,
-    modularize,
-};
-
-/// Runs a subcommand on the arguments after its name; returns the process
-/// exit code.
-using CommandHandler = kotatsu::function<int(std::span<std::string>)>;
-
-/// A subcommand as its file registers it: its line of `clice --help`, and
-/// what makes its handler.
-struct CommandEntry {
-    std::string_view description;
-    CommandHandler (*build)() = nullptr;
-};
-
-inline auto& command_entries() {
-    static std::array<CommandEntry, meta::reflection<Command>::member_count> entries;
-    return entries;
-}
-
-/// Register a subcommand. Its file calls this from the initializer of an
+/// The subcommands of `clice`, each run for the process's exit code. A
+/// subcommand's file adds it (cli::add_command) from the initializer of an
 /// ordinary variable at namespace scope: the linker's garbage collection
 /// (--gc-sections, /OPT:REF, LTO) may drop a variable no one reads, with
 /// its initializer, when it is a COMDAT of its own, as an inline variable
 /// or a template's static member is, but never an ordinary one. Nothing
 /// names a subcommand's file either, so the driver library is linked whole
 /// (alwayslink).
-inline bool register_command(Command command, CommandEntry entry) {
-    auto& registered = command_entries()[std::to_underlying(command)];
-    assert(!registered.build && "a subcommand registers once");
-    registered = entry;
-    return true;
-}
+struct Subcommands {
+    using signature = int();
+};
 
-/// `clice worker`, which the master spawns its workers as: no command of a
-/// user's, so no Command and no line of `clice --help`.
-int run_worker(std::span<std::string> args);
-
-/// Add every subcommand to `root`, in the order of Command. One whose file
-/// did not register it stops the program.
-inline void add_commands(deco::cli::SubCommander& root) {
-    for(auto command: meta::reflection<Command>::member_values) {
-        auto name = meta::enum_name(command);
-        auto& entry = command_entries()[std::to_underlying(command)];
-        if(!entry.build) {
-            logging::critical("The {} subcommand is not registered", name);
-        }
-        root.add({.name = name, .description = entry.description}, entry.build());
-    }
-}
+/// The operations of `clice index` that read the persisted index: its
+/// stats and what it records of a symbol, a file and a unit
+/// (index_records.cc).
+struct IndexRecords {
+    using signature = int();
+};
 
 /// Write command output. stdout carries the command's answer. On a pipe
 /// or a socket, a write fails only because the reader went away (`clice …
@@ -151,13 +107,13 @@ enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 /// stderr. A session log keeps info whatever stderr shows, as an
 /// info-level session log is what tells what a run did.
 struct LogLevelOption {
-    DecoKV(help = "Log level of stderr", required = false)
-    <LogLevel> log_level = LogLevel::Warn;
+    KANNOTATE(&log_level, description = "Log level of stderr")
+    LogLevel log_level = LogLevel::Warn;
 
     /// Set the global levels: stderr's as given, the logs' info at least.
     void apply() const {
         auto level = [&] {
-            switch(*log_level) {
+            switch(log_level) {
                 case LogLevel::Trace: return logging::Level::trace;
                 case LogLevel::Debug: return logging::Level::debug;
                 case LogLevel::Info: return logging::Level::info;
@@ -174,25 +130,21 @@ struct LogLevelOption {
 
 /// --configuration: the build configuration a subcommand works in.
 struct ConfigurationOption {
-    DecoKV(help =
-               "Build configuration, one of the tags declared on rules (default: the selected "
-               "one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
     /// The tag given, empty for none.
-    std::string tag() const {
-        return configuration.value_or("");
-    }
+    KANNOTATE(&configuration,
+              description =
+                  "Build configuration, one of the tags declared on rules (default: the selected "
+                  "one, else default_configuration)")
+    std::string configuration;
 };
 
 /// The project a subcommand works on, and its build configuration.
 struct ProjectOptions {
-    DecoKV(help =
-               "Project root directory (default: the nearest directory at or above the current "
-               "one holding a clice.toml or a compile_commands.json)",
-           required = false)
-    <std::string> workspace;
+    KANNOTATE(&workspace,
+              description =
+                  "Project root directory (default: the nearest directory at or above the current "
+                  "one holding a clice.toml or a compile_commands.json)")
+    std::optional<std::string> workspace;
 
     ConfigurationOption configuration;
 
@@ -215,20 +167,18 @@ struct ProjectOptions {
 
 /// How many units or files a batch subcommand works on at once.
 struct JobsOption {
-    DecoKV(names = {"-j", "--jobs"},
-           help =
-               "How many units or files to work on at once (default: "
-               "project.stateless_worker_count; for index and format, the CPU count)",
-           required = false)
-    <std::uint32_t> jobs;
+    KANNOTATE(&jobs,
+              cli::names = {"-j", "--jobs"},
+              description =
+                  "How many units or files to work on at once (default: "
+                  "project.stateless_worker_count; for index and format, the CPU count)")
+    std::uint32_t jobs = 0;
 };
 
 /// --json, of the batch subcommands that report a run.
 struct JsonReportOption {
-    DecoFlag(names = {"--json"},
-             help = "Print the run's report as JSON on stdout instead of text",
-             required = false)
-    json;
+    KANNOTATE(&json, description = "Print the run's report as JSON on stdout instead of text")
+    bool json = false;
 };
 
 /// Where a message is, as compilers print it; nothing for one no file
@@ -245,33 +195,31 @@ inline std::string location(llvm::StringRef file, std::uint32_t line, std::uint3
 
 /// The file an operation is about.
 struct FileTarget {
-    DecoInput(meta_var = "<PATH>", help = "The file, relative to the current directory or absolute")
-    <std::string> path;
+    KANNOTATE(&path,
+              cli::positional = true,
+              cli::meta_var = "<PATH>",
+              description = "The file, relative to the current directory or absolute")
+    std::string path;
 };
 
 /// The symbol an operation is about.
 struct SymbolTarget {
-    DecoInput(meta_var = "<LOCATOR>",
-              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]")
-    <std::string> locator;
+    KANNOTATE(
+        &locator,
+        cli::positional = true,
+        cli::meta_var = "<LOCATOR>",
+        description = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]")
+    std::string locator;
 };
 
 /// --fresh, of the subcommands that read the index.
 struct FreshOption {
-    DecoFlag(names = {"--fresh"},
-             help =
-                 "Reindex the files whose content changed since they were indexed first, "
-                 "through the running server or a batch run of this command",
-             required = false)
-    fresh;
+    KANNOTATE(&fresh,
+              description =
+                  "Reindex the files whose content changed since they were indexed "
+                  "first, through the running server or a batch run of this command")
+    bool fresh = false;
 };
-
-template <typename Parser>
-void print_usage(Parser& cmd) {
-    std::ostringstream ss;
-    cmd.usage(ss);
-    write_output(stdout, ss.str());
-}
 
 /// "s" when `count` warrants a plural noun, for user-facing summaries.
 const inline char* plural_s(std::size_t count) {
@@ -328,106 +276,75 @@ inline int usage_error(Errors errors, std::string message) {
     } else {
         driver::println(stderr, "{}", message);
     }
-    return deco::cli::parse_error_exit_code;
+    return 2;
 }
 
-/// A subcommand, or one operation of it, over the options `Options`, whose
-/// LogLevelOption is `log`: it applies the level, logs to stderr as
-/// `logger` and returns what `run` does with the options.
-template <typename Options, typename Run>
-CommandHandler operation(std::string_view usage, std::string_view logger, Errors errors, Run run) {
-    auto command = deco::cli::command<Options>(usage);
-    command.match_all([logger, run = std::move(run)](Options opts) mutable {
-        opts.log.apply();
-        logging::stderr_logger(logger, logging::options);
-        return run(opts);
-    });
-    if(errors == Errors::JSON) {
-        command.on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    }
-    return command;
-}
-
-/// The error handler of a commander of subcommands: named without one, it
-/// prints its usage and succeeds, as --help does; an unknown subcommand is
-/// a usage error.
-inline auto subcommand_error_handler(deco::cli::SubCommander& commander,
-                                     Errors errors = Errors::Text) {
-    return [&commander, errors](const deco::cli::SubCommandError& err) {
-        if(err.type == deco::cli::SubCommandError::Type::MissingSubCommand) {
-            print_usage(commander);
-            return 0;
-        }
-        return usage_error(errors, err.message);
+/// Report a command line that does not parse as the subcommand it names
+/// reports arguments it cannot take; returns the exit code.
+inline int usage_error(const cli::Error& error) {
+    constexpr std::array<std::string_view, 4> answering_json = {
+        "query",
+        "refactor",
+        "analyze",
+        "modularize",
     };
+    if(error.subcommands.empty() || !ranges::contains(answering_json, error.subcommands.front())) {
+        cli::report(error);
+        return 2;
+    }
+    if(error.suggestion.empty()) {
+        return usage_error(Errors::JSON, error.message);
+    }
+    return usage_error(Errors::JSON,
+                       std::format("{}; did you mean '{}'?", error.message, error.suggestion));
 }
 
-/// Run a commander of subcommands on `args`. The commander takes whatever
-/// leads them for a subcommand's name; an option other than --help leading
-/// them is reported as the unknown option it is.
-inline int run_subcommands(deco::cli::SubCommander& commander,
-                           std::span<std::string> args,
-                           Errors errors = Errors::Text) {
-    namespace text = deco::cli::text;
-    if(!args.empty() && args.front().starts_with("-") &&
-       !ranges::contains(deco::decl::help_names, args.front())) {
-        return usage_error(
-            errors,
-            text::render_diagnostic(
-                text::diagnostic_at(args, 0, 1, std::format("unknown option '{}'", args.front()))));
+/// Print the usage of the subcommand or operation `options` are of when
+/// they ask for it (--help); whether they did.
+template <typename T>
+bool print_help(const T& options) {
+    if(options.help) {
+        cli::print_usage<T>(T::usage_line);
     }
-    return commander(args);
+    return options.help;
 }
 
-/// An operation of a subcommand: the word naming it, its line of the
-/// subcommand's help, and what runs it on the arguments after the word.
-struct Operation {
-    std::string_view name;
-    std::string_view description;
-    CommandHandler run;
-};
+template <typename T>
+int dispatch(T& options);
 
-/// A subcommand whose first argument names one of its `operations`. With
-/// `main`, the subcommand's own job, arguments naming none (none at all,
-/// options, or with `main_targets` the targets the job takes) run it, and
-/// its help lists the operations after its own. Without, no arguments
-/// print the operations, which `overview` heads, and an option before an
-/// operation is an unknown one.
-inline CommandHandler with_operations(std::string_view overview,
-                                      std::vector<Operation> operations,
-                                      Errors errors,
-                                      std::optional<CommandHandler> main = std::nullopt,
-                                      bool main_targets = false) {
-    auto commander = std::make_shared<deco::cli::SubCommander>("", main ? "" : overview);
-    std::vector<std::string> names;
-    for(auto& operation: operations) {
-        names.emplace_back(operation.name);
-        commander->add({.name = operation.name, .description = operation.description},
-                       std::move(operation.run));
+template <typename Tag>
+int run_operation(cli::Commands<Tag>& operation) {
+    return operation();
+}
+
+template <typename... Operations>
+int run_operation(std::optional<std::variant<Operations...>>& operation) {
+    return std::visit([](auto& chosen) { return dispatch(chosen); }, *operation);
+}
+
+/// Run what `options` ask for: the usage of their subcommand or operation
+/// for --help; the operation they name, when they take one (`operation`, a
+/// std::variant of them or a cli::Commands); else its own job, the
+/// overload of `run` its file declares, its --log-level applied and its
+/// log on stderr. One without a job of its own prints its usage instead.
+template <typename T>
+int dispatch(T& options) {
+    if(print_help(options)) {
+        return 0;
     }
-    commander->when_err(subcommand_error_handler(*commander, errors));
-    if(!main) {
-        commander->enable_help();
-        return [commander, errors](std::span<std::string> args) {
-            return run_subcommands(*commander, args, errors);
-        };
+    if constexpr(requires { options.operation; }) {
+        if(options.operation) {
+            return run_operation(options.operation);
+        }
     }
-    return [commander, main = std::move(*main), names = std::move(names), main_targets](
-               std::span<std::string> args) mutable {
-        if(!args.empty() && !args.front().starts_with("-") &&
-           (!main_targets || ranges::contains(names, args.front()))) {
-            return (*commander)(args);
-        }
-        auto code = main(args);
-        // Arguments that do not parse fail before --help is seen.
-        if(code == 0 && ranges::any_of(args, [](std::string_view arg) {
-               return ranges::contains(deco::decl::help_names, arg);
-           })) {
-            driver::println();
-            print_usage(*commander);
-        }
-        return code;
-    };
+    if constexpr(requires { run(options); }) {
+        options.log.apply();
+        logging::stderr_logger("clice", logging::options);
+        return run(options);
+    } else {
+        cli::print_usage<T>(T::usage_line);
+        return 0;
+    }
 }
 
 /// Why a subcommand cannot work on its project, and the exit code it ends
@@ -463,8 +380,7 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     if(!root) {
         return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
     }
-    auto configuration = where.configuration.tag();
-    options.configuration = configuration;
+    options.configuration = where.configuration.configuration;
     auto loaded = load_settings(CanonicalPath(*root), options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {
@@ -698,15 +614,14 @@ inline bool start_batch(BatchRun& run,
     project.root = CanonicalPath(batch.root);
     project.settings = batch.loaded.settings;
     auto& cfg = project.settings.project;
-    cfg.idle_timeout_ms.value = 0;
+    cfg.idle_timeout_ms = 0;
     if(workers != 0) {
-        cfg.stateless_worker_count.value = workers;
-        cfg.min_stateless_worker_count.value =
-            std::min(cfg.min_stateless_worker_count.value, workers);
-        cfg.max_stateless_worker_count.value = workers;
+        cfg.stateless_worker_count = workers;
+        cfg.min_stateless_worker_count = std::min(cfg.min_stateless_worker_count, workers);
+        cfg.max_stateless_worker_count = workers;
     }
 
-    if(cfg.cache_dir_defaulted.value) {
+    if(cfg.cache_dir_defaulted) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 
@@ -786,10 +701,6 @@ struct Lifetime {
         co_return stop_requested;
     }
 };
-
-/// The subcommands of `clice index` that read the persisted index: its
-/// stats and what it records of a symbol, a file and a unit.
-std::vector<Operation> index_record_operations();
 
 /// How a run's index came up to date through the running server: the
 /// server's pid and its answer.

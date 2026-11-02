@@ -355,7 +355,7 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                            "-nostdinc",
                                            "-resource-dir",
                                            resource_dir().str()};
-    auto parse_options = option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    auto parse_options = cli::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     llvm::Triple target(output.target);
     auto gcc_options = flags_for_clang(output.gcc_options, CompilerFamily::GCC);
     for(auto& parsed: clang_options::table().parse(gcc_options, parse_options)) {

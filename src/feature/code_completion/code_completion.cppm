@@ -25,73 +25,75 @@ enum class CompletionArguments : std::uint8_t {
     None,
 };
 
+KANNOTATE_TYPE(struct CodeCompletionOptions, presence_all = optional);
+
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     enum_string = type<LowercaseName>,
-                     description =
-                         "What completing a call or a template inserts after the "
-                         "name: \"placeholders\" its parentheses or angle brackets "
-                         "with a placeholder per parameter, \"delimiters\" the empty "
-                         "parentheses or brackets with the cursor between them, "
-                         "\"none\" the name alone. It applies to functions, "
-                         "function-like macros, variables holding a lambda and "
-                         "class, alias and variable templates; an overload set "
-                         "listed as one item takes the delimiters. Nothing is "
-                         "added where the arguments are written already or the "
-                         "name is not called, as when taking a function's "
-                         "address. Clients without snippet support get the "
-                         "parentheses of a call alone.")
-    <CompletionArguments> arguments = CompletionArguments::Placeholders;
+    KANNOTATE(&arguments,
+              with = type<LowercaseNames>,
+              description =
+                  "What completing a call or a template inserts after the "
+                  "name: \"placeholders\" its parentheses or angle brackets "
+                  "with a placeholder per parameter, \"delimiters\" the empty "
+                  "parentheses or brackets with the cursor between them, "
+                  "\"none\" the name alone. It applies to functions, "
+                  "function-like macros, variables holding a lambda and "
+                  "class, alias and variable templates; an overload set "
+                  "listed as one item takes the delimiters. Nothing is "
+                  "added where the arguments are written already or the "
+                  "name is not called, as when taking a function's "
+                  "address. Clients without snippet support get the "
+                  "parentheses of a call alone.")
+    CompletionArguments arguments = CompletionArguments::Placeholders;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Collapse an overload set into a single completion item.")
-    <bool> bundle_overloads = true;
+    KANNOTATE(&bundle_overloads,
+              description = "Collapse an overload set into a single completion item.")
+    bool bundle_overloads = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Complete statements such as `if` and `for` as snippets "
-                         "with placeholders for their parts; otherwise only the "
-                         "keyword is inserted. Ignored for clients without "
-                         "snippet support.")
-    <bool> statement_snippets = false;
+    KANNOTATE(&statement_snippets,
+              description =
+                  "Complete statements such as `if` and `for` as snippets "
+                  "with placeholders for their parts; otherwise only the "
+                  "keyword is inserted. Ignored for clients without "
+                  "snippet support.")
+    bool statement_snippets = false;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "After `.` on a pointer, list the members `->` reaches and "
-                         "turn the `.` into `->` when one is chosen.")
-    <bool> dot_to_arrow = true;
+    KANNOTATE(&dot_to_arrow,
+              description =
+                  "After `.` on a pointer, list the members `->` reaches and "
+                  "turn the `.` into `->` when one is chosen.")
+    bool dot_to_arrow = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Where an unqualified name is being typed, also offer "
-                         "the project's names of other namespaces it matches, "
-                         "inserting the qualifier they need; one in several "
-                         "namespaces is offered once per namespace. Names the "
-                         "file reaches already are offered as they are; for the "
-                         "others see `insert_includes` and `insert_imports`. "
-                         "Needs the index for names the file does not reach.")
-    <bool> all_scopes = true;
+    KANNOTATE(&all_scopes,
+              description =
+                  "Where an unqualified name is being typed, also offer "
+                  "the project's names of other namespaces it matches, "
+                  "inserting the qualifier they need; one in several "
+                  "namespaces is offered once per namespace. Names the "
+                  "file reaches already are offered as they are; for the "
+                  "others see `insert_includes` and `insert_imports`. "
+                  "Needs the index for names the file does not reach.")
+    bool all_scopes = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "With `all_scopes`, also offer names declared, and macros "
-                         "defined, in headers the file does not include yet, adding "
-                         "the `#include` of the header that holds them.")
-    <bool> insert_includes = true;
+    KANNOTATE(&insert_includes,
+              description =
+                  "With `all_scopes`, also offer names declared, and macros "
+                  "defined, in headers the file does not include yet, adding "
+                  "the `#include` of the header that holds them.")
+    bool insert_includes = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "With `all_scopes`, also offer names exported by modules "
-                         "the file does not import yet, adding the `import`.")
-    <bool> insert_imports = true;
+    KANNOTATE(&insert_imports,
+              description =
+                  "With `all_scopes`, also offer names exported by modules "
+                  "the file does not import yet, adding the `import`.")
+    bool insert_imports = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Maximum number of completion items, the best ranked; "
-                         "`0` means no limit. A list cut short is marked "
-                         "incomplete, so the editor asks again as you type.")
-    <std::uint32_t> limit = 100;
+    KANNOTATE(&limit,
+              description =
+                  "Maximum number of completion items, the best ranked; "
+                  "`0` means no limit. A list cut short is marked "
+                  "incomplete, so the editor asks again as you type.")
+    std::uint32_t limit = 100;
 };
 
 /// What the client takes from a completion item, from its completion

@@ -6,11 +6,12 @@ import :support.prelude;
 
 namespace clice::feature {
 
+KANNOTATE_TYPE(struct SignatureHelpOptions, presence_all = optional);
+
 /// Corresponds to the `[signature_help]` section in clice.toml.
 struct SignatureHelpOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Show the called function's documentation comment.")
-    <bool> documentation = true;
+    KANNOTATE(&documentation, description = "Show the called function's documentation comment.")
+    bool documentation = true;
 };
 
 /// `selected` is the label of the signature the client shows active: it

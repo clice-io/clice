@@ -250,9 +250,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        llvm::BumpPtrAllocator local;
-        llvm::StringSaver saver(local);
-        llvm::SmallVector<const char*, 32> args;
+        std::vector<std::string> args;
         std::optional<llvm::StringRef> command;
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
@@ -263,7 +261,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                     malformed = true;
                     break;
                 }
-                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
+                args.emplace_back(sv);
             }
             if(malformed || args.empty()) {
                 continue;
@@ -301,7 +299,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                 // root; another of one kind, Git for Windows' MSYS2 beside
                 // MSYS2, maps a drive's paths alike but lacks the compiler.
                 std::vector<std::string> written = {dir_ref.str()};
-                auto tokens = command ? tokenize_sh_command(*command, saver) : args;
+                auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
                 auto compiler = wrapper_prefix_len(tokens);
                 if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
                     written.emplace_back(tokens[compiler]);

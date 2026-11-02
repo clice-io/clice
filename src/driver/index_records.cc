@@ -18,30 +18,66 @@ namespace clice::driver {
 
 namespace {
 
+KANNOTATE_TYPE(
+    struct StatsOptions,
+    description = "What the persisted index holds: its sizes and how its records spread");
+
 struct StatsOptions {
-    deco::decl::HelpOption help;
+    constexpr static std::string_view usage_line = "clice index stats [OPTIONS]";
 
-    DecoKV(help = "How many of the largest file shards to list (default 20)", required = false)
-    <std::uint32_t> limit;
+    KANNOTATE(&help, cli::help)
+    bool help = false;
 
-    DecoFlag(names = {"--variants"},
-             help = "Then every file shard with its variant count, one tab-separated line each",
-             required = false)
-    variants;
+    KANNOTATE(&limit, description = "How many of the largest file shards to list")
+    std::uint32_t limit = 20;
+
+    KANNOTATE(
+        &variants,
+        description = "Then every file shard with its variant count, one tab-separated line each")
+    bool variants = false;
 
     ProjectOptions where;
     LogLevelOption log;
 };
 
+KANNOTATE_TYPE(struct SymbolOptions,
+               description = "What the persisted index records about symbols");
+
 struct SymbolOptions {
-    deco::decl::HelpOption help;
+    constexpr static std::string_view usage_line = "clice index symbol <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     SymbolTarget target;
     ProjectOptions where;
     LogLevelOption log;
 };
 
+KANNOTATE_TYPE(struct FileOptions,
+               description = "A file's persisted records: variants, contributing units and counts");
+
 struct FileOptions {
-    deco::decl::HelpOption help;
+    constexpr static std::string_view usage_line = "clice index file <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    FileTarget target;
+    ProjectOptions where;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(
+    struct UnitOptions,
+    description = "A translation unit's persisted manifest: include tree and contributions");
+
+struct UnitOptions {
+    constexpr static std::string_view usage_line = "clice index unit <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     FileTarget target;
     ProjectOptions where;
     LogLevelOption log;
@@ -761,57 +797,37 @@ int read_index(const ProjectOptions& where, Run run) {
     return project.index.damaged() ? 1 : rc;
 }
 
-/// An operation reading the record of the one file it names.
-template <typename Show>
-CommandHandler show_file(std::string_view usage, Show show) {
-    return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
-        return read_index(opts.where,
-                          [&](Project& project) { return show(project, *opts.target.path); });
+int run(StatsOptions& stats) {
+    return read_index(stats.where, [&](Project& project) {
+        return run_stats(project, stats.limit, stats.variants);
     });
 }
+
+int run(SymbolOptions& symbol) {
+    return read_index(symbol.where, [&](Project& project) {
+        return run_show_symbol(project, symbol.target.locator);
+    });
+}
+
+int run(FileOptions& file) {
+    return read_index(file.where,
+                      [&](Project& project) { return run_show_file(project, file.target.path); });
+}
+
+int run(UnitOptions& unit) {
+    return read_index(unit.where,
+                      [&](Project& project) { return run_show_tu(project, unit.target.path); });
+}
+
+[[maybe_unused]] const bool stats_added =
+    cli::add_command<IndexRecords>(dispatch<StatsOptions>, {.name = "stats"});
+[[maybe_unused]] const bool symbol_added =
+    cli::add_command<IndexRecords>(dispatch<SymbolOptions>, {.name = "symbol"});
+[[maybe_unused]] const bool file_added =
+    cli::add_command<IndexRecords>(dispatch<FileOptions>, {.name = "file"});
+[[maybe_unused]] const bool unit_added =
+    cli::add_command<IndexRecords>(dispatch<UnitOptions>, {.name = "unit"});
 
 }  // namespace
-
-std::vector<Operation> index_record_operations() {
-    std::vector<Operation> operations;
-    operations.push_back({
-        .name = "stats",
-        .description = "What the persisted index holds: its sizes and how its records spread",
-        .run = operation<StatsOptions>("clice index stats [OPTIONS]",
-                                       "index",
-                                       Errors::Text,
-                                       [](const StatsOptions& opts) {
-                                           return read_index(opts.where, [&](Project& project) {
-                                               return run_stats(project,
-                                                                opts.limit.value_or(20),
-                                                                static_cast<bool>(opts.variants));
-                                           });
-                                       }),
-    });
-    operations.push_back({
-        .name = "symbol",
-        .description = "What the persisted index records about symbols",
-        .run = operation<SymbolOptions>("clice index symbol <LOCATOR> [OPTIONS]",
-                                        "index",
-                                        Errors::Text,
-                                        [](const SymbolOptions& opts) {
-                                            return read_index(opts.where, [&](Project& project) {
-                                                return run_show_symbol(project,
-                                                                       *opts.target.locator);
-                                            });
-                                        }),
-    });
-    operations.push_back({
-        .name = "file",
-        .description = "A file's persisted records: variants, contributing units and counts",
-        .run = show_file("clice index file <PATH> [OPTIONS]", run_show_file),
-    });
-    operations.push_back({
-        .name = "unit",
-        .description = "A translation unit's persisted manifest: include tree and contributions",
-        .run = show_file("clice index unit <PATH> [OPTIONS]", run_show_tu),
-    });
-    return operations;
-}
 
 }  // namespace clice::driver

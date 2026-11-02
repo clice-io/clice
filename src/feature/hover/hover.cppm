@@ -15,28 +15,30 @@ import :vfs.file_table;
 
 namespace clice::feature {
 
+KANNOTATE_TYPE(struct HoverOptions, presence_all = optional);
+
 /// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Show what a type alias stands for, e.g. "
-                         "`size_type` is `unsigned long`.")
-    <bool> show_aka = true;
+    KANNOTATE(&show_aka,
+              description =
+                  "Show what a type alias stands for, e.g. "
+                  "`size_type` is `unsigned long`.")
+    bool show_aka = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Maximum number of members the definition of a hovered "
-                         "class or enum lists: data members and member types, or "
-                         "enumerators; member functions are left out. `0` shows "
-                         "the declaration alone.")
-    <std::uint32_t> max_members = 20;
+    KANNOTATE(&max_members,
+              description =
+                  "Maximum number of members the definition of a hovered "
+                  "class or enum lists: data members and member types, or "
+                  "enumerators; member functions are left out. `0` shows "
+                  "the declaration alone.")
+    std::uint32_t max_members = 20;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Show how the compiler lays out a class or a field "
-                         "wherever it is hovered: size, alignment, a field's "
-                         "offset, and the padding.")
-    <bool> layout = true;
+    KANNOTATE(&layout,
+              description =
+                  "Show how the compiler lays out a class or a field "
+                  "wherever it is hovered: size, alignment, a field's "
+                  "offset, and the padding.")
+    bool layout = true;
 };
 
 /// The noun a hover card names an entity of `kind` with; empty for the

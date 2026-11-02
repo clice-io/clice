@@ -145,7 +145,7 @@ cache_dir = "file-cache"
     taken.push_back(identity("file-cache"));
     auto fallback = load_settings(root, {.overlay = cache_overlay, .taken_cache_dirs = taken});
     ZEXPECT(std::string_view(fallback.settings.project.cache_dir) == identity(".clice").str());
-    ZEXPECT(fallback.settings.project.cache_dir_defaulted.value == true);
+    ZEXPECT(fallback.settings.project.cache_dir_defaulted == true);
     ZEXPECT(fallback.issues.empty());
 }
 
@@ -183,7 +183,7 @@ append = ["-std=c++20"]
 )");
     ZEXPECT(result);
     ZEXPECT(std::string_view(result->project.cache_dir) == "/tmp/test");
-    ZEXPECT(result->project.enable_indexing.value == false);
+    ZEXPECT(result->project.enable_indexing == false);
     ZEXPECT(result->rules.size() == 1u);
     ZEXPECT(result->rules[0].patterns[0] == "**/*.cpp");
 }
@@ -198,11 +198,11 @@ parameters = false
 types = 64
 )");
     ZEXPECT(result);
-    ZEXPECT(result->inlay_hints.block_end.value == true);
-    ZEXPECT(result->inlay_hints.parameters.value == false);
-    ZEXPECT(result->inlay_hints.max_length.types.value == 64u);
-    ZEXPECT(result->inlay_hints.max_length.block_end.value == 60u);
-    ZEXPECT(result->inlay_hints.designators.value == true);
+    ZEXPECT(result->inlay_hints.block_end == true);
+    ZEXPECT(result->inlay_hints.parameters == false);
+    ZEXPECT(result->inlay_hints.max_length.types == 64u);
+    ZEXPECT(result->inlay_hints.max_length.block_end == 60u);
+    ZEXPECT(result->inlay_hints.designators == true);
 }
 
 ZEST_CASE(ParseEmptySettings) {
@@ -279,33 +279,32 @@ ZEST_CASE(BornValidDefaults) {
     // A default-constructed Settings is fully valid without any init step;
     // the option defaults come from the field initializers alone.
     Settings settings;
-    ZEXPECT(settings.project.enable_indexing.value == true);
-    ZEXPECT(settings.project.idle_timeout_ms.value == 3000u);
-    ZEXPECT(settings.project.test_hooks.value == false);
-    ZEXPECT(settings.project.stateful_worker_count.value == 2u);
-    ZEXPECT(settings.project.stateless_worker_count.value >= 2u);
-    ZEXPECT(settings.project.min_stateless_worker_count.value == 1u);
-    ZEXPECT(settings.project.max_stateless_worker_count.value ==
-            default_max_stateless_worker_count());
-    ZEXPECT(settings.project.max_stateless_worker_count.value >=
-            settings.project.min_stateless_worker_count.value);
-    ZEXPECT(settings.tracker.workspace_poll_seconds.value == 30u);
-    ZEXPECT(settings.inlay_hints.enabled.value == true);
-    ZEXPECT(settings.inlay_hints.parameters.value == true);
-    ZEXPECT(settings.inlay_hints.deduced_types.value == true);
-    ZEXPECT(settings.inlay_hints.designators.value == true);
-    ZEXPECT(settings.inlay_hints.block_end.value == false);
-    ZEXPECT(settings.inlay_hints.default_arguments.value == false);
-    ZEXPECT(settings.inlay_hints.max_length.types.value == 32u);
-    ZEXPECT(settings.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
-    ZEXPECT(settings.code_completion.bundle_overloads.value == true);
-    ZEXPECT(settings.code_completion.statement_snippets.value == false);
-    ZEXPECT(settings.code_completion.dot_to_arrow.value == true);
-    ZEXPECT(settings.code_completion.all_scopes.value == true);
-    ZEXPECT(settings.code_completion.insert_includes.value == true);
-    ZEXPECT(settings.code_completion.insert_imports.value == true);
-    ZEXPECT(settings.code_completion.limit.value == 100u);
-    ZEXPECT(settings.references.limit.value == 2000u);
+    ZEXPECT(settings.project.enable_indexing == true);
+    ZEXPECT(settings.project.idle_timeout_ms == 3000u);
+    ZEXPECT(settings.project.test_hooks == false);
+    ZEXPECT(settings.project.stateful_worker_count == 2u);
+    ZEXPECT(settings.project.stateless_worker_count >= 2u);
+    ZEXPECT(settings.project.min_stateless_worker_count == 1u);
+    ZEXPECT(settings.project.max_stateless_worker_count == default_max_stateless_worker_count());
+    ZEXPECT(settings.project.max_stateless_worker_count >=
+            settings.project.min_stateless_worker_count);
+    ZEXPECT(settings.tracker.workspace_poll_seconds == 30u);
+    ZEXPECT(settings.inlay_hints.enabled == true);
+    ZEXPECT(settings.inlay_hints.parameters == true);
+    ZEXPECT(settings.inlay_hints.deduced_types == true);
+    ZEXPECT(settings.inlay_hints.designators == true);
+    ZEXPECT(settings.inlay_hints.block_end == false);
+    ZEXPECT(settings.inlay_hints.default_arguments == false);
+    ZEXPECT(settings.inlay_hints.max_length.types == 32u);
+    ZEXPECT(settings.code_completion.arguments == feature::CompletionArguments::Placeholders);
+    ZEXPECT(settings.code_completion.bundle_overloads == true);
+    ZEXPECT(settings.code_completion.statement_snippets == false);
+    ZEXPECT(settings.code_completion.dot_to_arrow == true);
+    ZEXPECT(settings.code_completion.all_scopes == true);
+    ZEXPECT(settings.code_completion.insert_includes == true);
+    ZEXPECT(settings.code_completion.insert_imports == true);
+    ZEXPECT(settings.code_completion.limit == 100u);
+    ZEXPECT(settings.references.limit == 2000u);
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {
@@ -313,7 +312,7 @@ ZEST_CASE(FinalizeDerivesPaths) {
     settings.finalize(CanonicalPath(Spelling::absolute("/workspace")));
     ZEXPECT(!settings.project.cache_dir.empty());
     ZEXPECT(!settings.project.logging_dir.empty());
-    ZEXPECT(settings.project.cache_dir_defaulted.value == true);
+    ZEXPECT(settings.project.cache_dir_defaulted == true);
 }
 
 ZEST_CASE(FinalizeEmptyWorkspace) {
@@ -332,10 +331,10 @@ ZEST_CASE(FinalizePreservesSet) {
     settings.finalize(CanonicalPath(Spelling::absolute("/workspace")));
     ZEXPECT(std::string_view(settings.project.cache_dir) ==
             CanonicalPath(Spelling::absolute("/custom")).str());
-    ZEXPECT(settings.project.cache_dir_defaulted.value == false);
-    ZEXPECT(settings.project.enable_indexing.value == false);
-    ZEXPECT(settings.inlay_hints.parameters.value == false);
-    ZEXPECT(settings.inlay_hints.block_end.value == true);
+    ZEXPECT(settings.project.cache_dir_defaulted == false);
+    ZEXPECT(settings.project.enable_indexing == false);
+    ZEXPECT(settings.inlay_hints.parameters == false);
+    ZEXPECT(settings.inlay_hints.block_end == true);
 }
 
 ZEST_CASE(OverlayWithoutFile) {
@@ -354,7 +353,7 @@ ZEST_CASE(OverlayWithoutFile) {
     ZEXPECT(loaded.issues.empty());
     ZEXPECT(std::string_view(loaded.settings.project.cache_dir) ==
             CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
-    ZEXPECT(loaded.settings.project.enable_indexing.value == false);
+    ZEXPECT(loaded.settings.project.enable_indexing == false);
     ZEXPECT(loaded.settings.rules.size() == 1u);
     ZEXPECT(loaded.settings.compiled_rules.size() == 1u);
 }
@@ -366,7 +365,7 @@ ZEST_CASE(LoadMalformedToml) {
     auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
     ZEXPECT(loaded.file == path::join(root, "clice.toml"));
-    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
+    ZEXPECT(loaded.settings.project.enable_indexing == true);
 }
 
 ZEST_CASE(LegacyProjectKeysIgnored) {
@@ -390,7 +389,7 @@ ZEST_CASE(MissingFileUsesDefaults) {
     auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
     ZEXPECT(loaded.file.empty());
     ZEXPECT(loaded.issues.empty());
-    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.stateful_worker_count == 2u);
 }
 
 ZEST_CASE(WorkspaceVarSubst) {
@@ -631,10 +630,10 @@ ZEST_CASE(OverlayPriority) {
         load_settings(CanonicalPath(Spelling::absolute(tmp.root)),
                       {.overlay = overlay(R"({ "project": { "idle_timeout_ms": 42 } })")});
     ZEXPECT(loaded.issues.empty());
-    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 42u);
+    ZEXPECT(loaded.settings.project.idle_timeout_ms == 42u);
     // Unset fields still receive defaults.
-    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
-    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.enable_indexing == true);
+    ZEXPECT(loaded.settings.project.stateful_worker_count == 2u);
 }
 
 ZEST_CASE(DefaultWorkspaceCache) {
@@ -786,7 +785,7 @@ readonly = "On"
     ZEXPECT(issue.message.find("readonly") != std::string::npos);
     ZEXPECT(issue.line == 2u);
     ZEXPECT(issue.column == 12u);
-    ZEXPECT(loaded.settings.project.readonly.value == ReadonlyMode::Off);
+    ZEXPECT(loaded.settings.project.readonly == ReadonlyMode::Off);
 }
 
 ZEST_CASE(InvalidGlobLocated) {
@@ -842,9 +841,9 @@ ZEST_CASE(ZeroWorkerCountRejected) {
             "a worker count must be at least 1 at project.stateless_worker_count");
     ZEXPECT(problems[2].to_string() ==
             "a worker count must be at least 1 at project.min_stateless_worker_count");
-    ZEXPECT(settings.project.stateful_worker_count.value == 2u);
-    ZEXPECT(settings.project.stateless_worker_count.value >= 2u);
-    ZEXPECT(settings.project.min_stateless_worker_count.value == 1u);
+    ZEXPECT(settings.project.stateful_worker_count == 2u);
+    ZEXPECT(settings.project.stateless_worker_count >= 2u);
+    ZEXPECT(settings.project.min_stateless_worker_count == 1u);
 }
 
 ZEST_CASE(ZeroWorkerCountLocated) {
@@ -862,7 +861,7 @@ stateful_worker_count = 0
     ZEXPECT(issue.message.find("stateful_worker_count") != std::string::npos);
     ZEXPECT(issue.line == 2u);
     ZEXPECT(issue.column == 25u);
-    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.stateful_worker_count == 2u);
 }
 
 ZEST_CASE(StrictRejectsUnknownConfiguration) {
@@ -918,7 +917,7 @@ ZEST_CASE(OverlayUnknownKeyWarns) {
     ZEXPECT(issue.file.empty());
     ZEXPECT(issue.message.starts_with("initializationOptions: "));
     ZEXPECT(issue.message.find("idel_timeout_ms") != std::string::npos);
-    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 42u);
+    ZEXPECT(loaded.settings.project.idle_timeout_ms == 42u);
 }
 
 ZEST_CASE(BadOverlayAppliesNothing) {
@@ -937,8 +936,8 @@ ZEST_CASE(BadOverlayAppliesNothing) {
     ZEXPECT(issue.message.starts_with("initializationOptions: "));
     ZEXPECT(issue.message.find("project.enable_indexing") != std::string::npos);
     ZEXPECT(loaded.settings.rules.empty());
-    ZEXPECT(loaded.settings.project.idle_timeout_ms.value == 16u);
-    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
+    ZEXPECT(loaded.settings.project.idle_timeout_ms == 16u);
+    ZEXPECT(loaded.settings.project.enable_indexing == true);
 }
 
 ZEST_CASE(MalformedTomlNoFallback) {
@@ -952,8 +951,8 @@ ZEST_CASE(MalformedTomlNoFallback) {
     ZASSERT(loaded.issues.size() == 1u);
     ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Error);
     ZEXPECT(loaded.issues[0].file == path::join(root, "clice.toml"));
-    ZEXPECT(loaded.settings.project.enable_indexing.value == true);
-    ZEXPECT(loaded.settings.project.stateful_worker_count.value == 2u);
+    ZEXPECT(loaded.settings.project.enable_indexing == true);
+    ZEXPECT(loaded.settings.project.stateful_worker_count == 2u);
 }
 
 ZEST_CASE(RuleOrderLaterRemoveWins) {
@@ -1025,8 +1024,8 @@ append = ["-DFROM_TOML"]
     auto from_file = load_settings(root).settings;
     auto from_toml = CanonicalPath(Spelling("/from/toml", Spelling::absolute(tmp.root))).str();
     ZEXPECT(std::string_view(from_file.project.cache_dir) == from_toml);
-    ZEXPECT(from_file.project.test_hooks.value == true);
-    ZEXPECT(from_file.project.idle_timeout_ms.value == 16u);
+    ZEXPECT(from_file.project.test_hooks == true);
+    ZEXPECT(from_file.project.idle_timeout_ms == 16u);
     ZEXPECT(from_file.compiled_rules.size() == 1u);
 
     // Overlay only `idle_timeout_ms` via JSON.
@@ -1036,10 +1035,10 @@ append = ["-DFROM_TOML"]
     auto& settings = overlaid.settings;
 
     // Overridden field.
-    ZEXPECT(settings.project.idle_timeout_ms.value == 99u);
+    ZEXPECT(settings.project.idle_timeout_ms == 99u);
     // Untouched fields stay at TOML values.
     ZEXPECT(std::string_view(settings.project.cache_dir) == from_toml);
-    ZEXPECT(settings.project.test_hooks.value == true);
+    ZEXPECT(settings.project.test_hooks == true);
     // Rules from clice.toml must survive the overlay.
     ZEXPECT(settings.rules.size() == 1u);
     ZEXPECT(settings.compiled_rules.size() == 1u);
@@ -1069,15 +1068,15 @@ bundle_overloads = false
     auto& settings = loaded.settings;
 
     // From the TOML layer.
-    ZEXPECT(settings.code_completion.bundle_overloads.value == false);
+    ZEXPECT(settings.code_completion.bundle_overloads == false);
     // From the JSON overlay, including a nested field both layers set —
     // the later source wins.
-    ZEXPECT(settings.inlay_hints.block_end.value == false);
-    ZEXPECT(settings.inlay_hints.parameters.value == false);
-    ZEXPECT(settings.code_completion.limit.value == 5u);
+    ZEXPECT(settings.inlay_hints.block_end == false);
+    ZEXPECT(settings.inlay_hints.parameters == false);
+    ZEXPECT(settings.code_completion.limit == 5u);
     // Named by nobody: field-initializer defaults.
-    ZEXPECT(settings.inlay_hints.deduced_types.value == true);
-    ZEXPECT(settings.code_completion.arguments.value == feature::CompletionArguments::Placeholders);
+    ZEXPECT(settings.inlay_hints.deduced_types == true);
+    ZEXPECT(settings.code_completion.arguments == feature::CompletionArguments::Placeholders);
 }
 
 ZEST_CASE(InitOptionsOverlayRulesReplace) {

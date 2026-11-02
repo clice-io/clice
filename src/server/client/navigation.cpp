@@ -14,11 +14,11 @@ namespace clice {
 
 using Cursor = index::IndexQuery::Cursor;
 
-async::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop) {
+async::task<codec::raw_value, ipc::Error> stop_reply(GateStop stop) {
     if(stop.error) {
         co_await async::fail(std::move(*stop.error));
     }
-    co_return codec::RawValue{"null"};
+    co_return codec::raw_value{"null"};
 }
 
 /// The indexed symbol a hierarchy item names, or the error saying it names
@@ -92,7 +92,7 @@ void LSPClient::register_navigation() {
             // A closed file has no worker leg: the index's answer is the
             // answer.
             if(!session) {
-                co_return codec::RawValue{"[]"};
+                co_return codec::raw_value{"[]"};
             }
 
             // An index-only document never owes the compile the worker query
@@ -115,7 +115,7 @@ void LSPClient::register_navigation() {
                         co_return to_raw(std::vector{feature::directive_location(files, *link)});
                     }
                 }
-                co_return codec::RawValue{"[]"};
+                co_return codec::raw_value{"[]"};
             }
 
             // A symbol the shard names and no index places waits for the
@@ -146,7 +146,7 @@ void LSPClient::register_navigation() {
                     co_return to_raw(retry);
                 }
             }
-            co_return codec::RawValue{"[]"};
+            co_return codec::raw_value{"[]"};
         },
         {.closed = true});
 
@@ -160,7 +160,7 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    auto limit = project.project.settings.references.limit.value;
+                    auto limit = project.project.settings.references.limit;
                     return to_raw(feature::to_locations(
                         feature::references(project.peer_queries(),
                                             cursor,
@@ -253,7 +253,7 @@ void LSPClient::register_navigation() {
                                                 cursor,
                                                 server.position_encoding);
                                             if(items.empty()) {
-                                                return codec::RawValue{"null"};
+                                                return codec::raw_value{"null"};
                                             }
                                             return to_raw(items);
                                         });
@@ -302,7 +302,7 @@ void LSPClient::register_navigation() {
                                                 cursor,
                                                 server.position_encoding);
                                             if(items.empty()) {
-                                                return codec::RawValue{"null"};
+                                                return codec::raw_value{"null"};
                                             }
                                             return to_raw(items);
                                         });

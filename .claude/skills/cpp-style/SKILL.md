@@ -56,7 +56,7 @@ defending against ghosts.
   (`libc`) and the third-party module (`modules/`), and gives the namespaces
   clice writes their short names in `clice` — `ranges`, `views`, `chrono`,
   `this_thread`, `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`,
-  `async`, `deco`, `meta`, `option`, `zest`. The primary interface
+  `async`, `cli`, `meta`, `zest`. The primary interface
   (`src/module.cppm`) re-exports it, which brings it to every implementation
   unit; every partition imports it. Code inside `clice` writes those names
   (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`

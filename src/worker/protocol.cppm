@@ -354,7 +354,7 @@ struct CompletionParams {
 /// `#include` goes that the items marked with their symbol need
 /// (feature::Completion).
 struct CompletionResult {
-    codec::RawValue list{"null"};
+    codec::raw_value list{"null"};
     std::optional<feature::IncludePlace> include;
 };
 
@@ -694,7 +694,7 @@ struct RequestTraits<clice::worker::CompletionParams> {
 
 template <>
 struct RequestTraits<clice::worker::SignatureHelpParams> {
-    using Result = codec::RawValue;
+    using Result = codec::raw_value;
     constexpr inline static std::string_view method = "clice/worker/signatureHelp";
 };
 

@@ -10,25 +10,27 @@ import :vfs.ids;
 
 namespace clice::feature {
 
+KANNOTATE_TYPE(struct DocumentationOptions, presence_all = optional);
+
 /// Corresponds to the `[documentation]` section in clice.toml.
 struct DocumentationOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     choices = {"doxygen", "plain"},
-                     description =
-                         "How documentation comments are read, wherever they "
-                         "show (hover, completion, signature help, `clice "
-                         "query`): \"doxygen\" reads Doxygen's commands "
-                         "(`@brief`, `@param`, `@return`, ...) and the "
-                         "Markdown Doxygen allows, along with the GTK-Doc and "
-                         "kernel-doc conventions; \"plain\" shows a comment as "
-                         "written.")
-    <std::string> format = "doxygen";
+    KANNOTATE(&format,
+              choices = {"doxygen", "plain"},
+              description =
+                  "How documentation comments are read, wherever they "
+                  "show (hover, completion, signature help, `clice "
+                  "query`): \"doxygen\" reads Doxygen's commands "
+                  "(`@brief`, `@param`, `@return`, ...) and the "
+                  "Markdown Doxygen allows, along with the GTK-Doc and "
+                  "kernel-doc conventions; \"plain\" shows a comment as "
+                  "written.")
+    std::string format = "doxygen";
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "An overriding method without a documentation comment "
-                         "shows the one of the method it overrides.")
-    <bool> inherit = true;
+    KANNOTATE(&inherit,
+              description =
+                  "An overriding method without a documentation comment "
+                  "shows the one of the method it overrides.")
+    bool inherit = true;
 };
 
 /// The documentation of a declaration: its comment (doc_comment) read as

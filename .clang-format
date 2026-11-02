@@ -142,15 +142,5 @@ KeepEmptyLines:
 
 StatementMacros:
   # Field-position annotation: always break between the macro and the
-  # annotated declaration, so `<T> name;` gets its own line.
-  - KOTATSU_ANNOTATE
-  - DECO_CFG_START
-  - DECO_CFG
-  - DECO_CFG_END
-  - DecoKV
-  - DecoFlag
-  - DecoComma
-  - DecoInput
-  - DecoPack
-  - DecoKVStyled
-  - DecoMulti
+  # annotated declaration, so the field gets its own line.
+  - KANNOTATE

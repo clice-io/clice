@@ -17,34 +17,61 @@ namespace clice::driver {
 
 namespace {
 
-struct FileOptions {
-    deco::decl::HelpOption help;
-    FileTarget target;
+KANNOTATE_TYPE(struct Convert,
+               description =
+                   "Convert a compilation database, or one command, to the commands "
+                   "clice compiles with");
 
-    DecoFlag(names = {"--json"},
-             help = "Print the commands as JSON on stdout instead of text",
-             required = false)
-    json;
+struct Convert {
+    constexpr static std::string_view usage_line =
+        "clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(
+        &database,
+        cli::positional = true,
+        cli::meta_var = "<DATABASE>",
+        description = "The compile_commands.json to convert, relative to the current directory")
+    std::optional<std::string> database;
+
+    KANNOTATE(&json,
+              description = "Print the converted command as a database entry instead of text")
+    bool json = false;
+
+    KANNOTATE(&command,
+              cli::rest = true,
+              cli::meta_var = "<COMMAND>",
+              description = "The command to convert")
+    std::vector<std::string> command;
 
     ProjectOptions where;
     LogLevelOption log;
 };
 
-struct ConvertOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Command,
+               description = "Show the commands a file compiles with, or convert compile commands");
 
-    DecoInput(meta_var = "<DATABASE>",
-              help = "The compile_commands.json to convert, relative to the current directory",
-              required = false)
-    <std::string> database;
+struct Command {
+    constexpr static std::string_view usage_line = "clice command <PATH> [OPTIONS]";
 
-    DecoFlag(names = {"--json"},
-             help = "Print the converted command as a database entry instead of text",
-             required = false)
-    json;
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    /// Left out for an operation, else `run` reports it missing.
+    KANNOTATE(&path,
+              cli::positional = true,
+              cli::meta_var = "<PATH>",
+              description = "The file, relative to the current directory or absolute")
+    std::optional<std::string> path;
+
+    KANNOTATE(&json, description = "Print the commands as JSON on stdout instead of text")
+    bool json = false;
 
     ProjectOptions where;
     LogLevelOption log;
+    std::optional<std::variant<Convert>> operation;
 };
 
 /// An entry of a compile_commands.json as written: beyond `directory` and
@@ -53,9 +80,9 @@ struct ConvertOptions {
 struct WrittenEntry {
     std::string directory;
     std::string file;
-    protocol::optional<codec::RawValue> arguments;
-    protocol::optional<codec::RawValue> command;
-    protocol::optional<codec::RawValue> output;
+    protocol::optional<codec::raw_value> arguments;
+    protocol::optional<codec::raw_value> command;
+    protocol::optional<codec::raw_value> output;
 
     /// The command as clice reads it: the `arguments` when they are an
     /// array, else the `command` split as the host's shell splits it, or
@@ -69,11 +96,9 @@ struct WrittenEntry {
         if(command) {
             json::from_string(command->data, text);
         }
-        llvm::BumpPtrAllocator allocator;
-        llvm::StringSaver saver(allocator);
-        auto tokens = fs::cygwin::is_posix_path(directory) ? tokenize_sh_command(text, saver)
-                                                           : tokenize_command(text, saver);
-        return {tokens.begin(), tokens.end()};
+        return split_command(text,
+                             fs::cygwin::is_posix_path(directory) ? sys::cmd::Quoting::POSIX
+                                                                  : host_quoting);
     }
 };
 
@@ -82,7 +107,7 @@ struct DatabaseEntry {
     std::string directory;
     std::string file;
     std::vector<std::string> arguments;
-    protocol::optional<codec::RawValue> output;
+    protocol::optional<codec::raw_value> output;
 };
 
 /// A command and where it runs.
@@ -124,7 +149,7 @@ struct FileCommands {
 /// records (CompilationDatabase::inputs). Only then do the load's entries
 /// pair with these by position.
 struct DatabaseText {
-    std::vector<codec::RawValue> entries;
+    std::vector<codec::raw_value> entries;
     std::uint64_t hash = 0;
 
     bool loaded_by(const CompilationDatabase& cdb, SourceID source) const {
@@ -222,13 +247,16 @@ void print_text(const FileCommands& commands) {
     }
 }
 
-int run_file(const FileOptions& opts) {
+int run(Command& opts) {
+    if(!opts.path) {
+        return usage_error(Errors::Text, "command takes a <PATH>, or an operation");
+    }
     auto read = read_project(opts.where);
     if(!read) {
         return print_error(read.error());
     }
     auto& [root, loaded] = *read;
-    Spelling path(*opts.target.path, Spelling::cwd());
+    Spelling path(*opts.path, Spelling::cwd());
     if(!fs::is_file(path)) {
         LOG_ERROR("no such file: {}", path);
         return 1;
@@ -291,7 +319,7 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
                                                                 : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options =
-        option::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(family)};
+        cli::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(family)};
     auto anchor = directory;
     std::string language;
     llvm::SmallVector<std::string> inputs;
@@ -414,7 +442,7 @@ int convert_database(Project& project, const Spelling& path) {
     // the database is read from anywhere.
     auto base = database.parent();
     std::size_t unconverted = 0;
-    std::vector<codec::RawValue> converted;
+    std::vector<codec::raw_value> converted;
     converted.reserve(written->entries.size());
     for(std::uint32_t index = 0; index < written->entries.size(); index += 1) {
         auto& value = written->entries[index];
@@ -453,12 +481,12 @@ int convert_database(Project& project, const Spelling& path) {
     return 0;
 }
 
-int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command) {
-    if(opts.database.has_value() == !command.empty()) {
+int run(Convert& opts) {
+    if(opts.database.has_value() == !opts.command.empty()) {
         return usage_error(Errors::Text,
                            "convert takes a compile_commands.json, or a command after --");
     }
-    if(command.empty() && opts.json) {
+    if(opts.command.empty() && opts.json) {
         return usage_error(Errors::Text,
                            "--json converts a command; a database converts to a database");
     }
@@ -470,48 +498,13 @@ int run_convert(const ConvertOptions& opts, llvm::ArrayRef<std::string> command)
     // The rules alone: what converts is the database or the command given.
     auto opened = open_at(root, std::move(loaded), {.load = Project::OpenOptions::Load::Rules});
     auto& project = opened->project;
-    if(!command.empty()) {
-        return convert_command(project, command, static_cast<bool>(opts.json));
+    if(!opts.command.empty()) {
+        return convert_command(project, opts.command, opts.json);
     }
     return convert_database(project, Spelling(*opts.database, Spelling::cwd()));
 }
 
-/// `clice command convert`, whose options end at a `--`: what follows is
-/// the command to convert.
-CommandHandler convert_operation() {
-    auto command = std::make_shared<std::vector<std::string>>();
-    auto parse = operation<ConvertOptions>(
-        "clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]",
-        "command",
-        Errors::Text,
-        [command](const ConvertOptions& opts) { return run_convert(opts, *command); });
-    return [command, parse = std::move(parse)](std::span<std::string> args) mutable {
-        auto dash = ranges::find(args, "--");
-        command->assign(dash == args.end() ? dash : std::next(dash), args.end());
-        return parse(args.first(static_cast<std::size_t>(dash - args.begin())));
-    };
-}
-
-CommandHandler build() {
-    std::vector<Operation> operations;
-    operations.push_back({
-        .name = "convert",
-        .description = "Convert a compilation database, or one command, to the commands clice "
-                       "compiles with",
-        .run = convert_operation(),
-    });
-    return with_operations(
-        "",
-        std::move(operations),
-        Errors::Text,
-        operation<FileOptions>("clice command <PATH> [OPTIONS]", "command", Errors::Text, run_file),
-        /*main_targets=*/true);
-}
-
-[[maybe_unused]] const bool registered = register_command(
-    Command::command,
-    {.description = "Show the commands a file compiles with, or convert compile commands",
-     .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Command>);
 
 }  // namespace
 

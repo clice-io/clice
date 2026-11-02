@@ -55,7 +55,7 @@ static protocol::CodeAction source_action(std::string title,
                                           std::string_view kind,
                                           std::string_view command,
                                           const Params& params) {
-    auto argument = codec::dyn::to_dyn<ipc::lsp_config>(params);
+    auto argument = codec::dyn::to_dyn<ipc::lsp_format>(params);
     assert(argument && "the parameters of a request encode");
     return {
         .title = title,
@@ -183,7 +183,7 @@ void LSPClient::register_editing() {
             .scope = scope,
         });
         if(std::holds_alternative<feature::NoCompletion>(start)) {
-            co_return codec::RawValue{"[]"};
+            co_return codec::raw_value{"[]"};
         }
         if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
             co_return to_raw(*list);
@@ -217,7 +217,7 @@ void LSPClient::register_editing() {
         }
 
         protocol::CompletionList list;
-        [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
+        [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_format>(result.list.data, list);
         assert(decoded && "the worker encodes the list");
         co_return to_raw(feature::finish_completion(std::move(list),
                                                     *result.include,
@@ -241,7 +241,7 @@ void LSPClient::register_editing() {
             if(auto offset = session->positions().offset(params.position, server.position_encoding);
                offset &&
                !feature::can_hold_call(session->text(), *offset, project.dialect(path_id))) {
-                co_return codec::RawValue{"null"};
+                co_return codec::raw_value{"null"};
             }
             project.escalate(path_id);
             auto pause = ScopedPause(project.project.background_index);
@@ -273,7 +273,7 @@ void LSPClient::register_editing() {
         auto pause = ScopedPause(project.project.background_index);
         auto result = co_await project.format(document.ticket, range, token).or_fail();
         if(!result) {
-            co_return codec::RawValue{"null"};
+            co_return codec::raw_value{"null"};
         }
         if(!result->error.empty()) {
             co_await async::fail(request_failed(std::move(result->error)));
@@ -462,7 +462,7 @@ void LSPClient::register_editing() {
             auto query = open_documents.query();
             auto cursor = served->cursor_at(path_id, position);
             if(!cursor) {
-                co_return codec::RawValue{"null"};
+                co_return codec::raw_value{"null"};
             }
             auto at = feature::rename_at(query, *cursor);
             if(!at) {

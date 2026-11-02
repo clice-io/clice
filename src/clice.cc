@@ -12,6 +12,31 @@ module clice;
 
 import :driver.driver;
 
+namespace clice::driver {
+
+namespace {
+
+KANNOTATE_TYPE(struct Clice, description = "A C++ development toolkit built on LLVM/Clang");
+
+struct Clice {
+    constexpr static std::string_view usage_line = "clice <command> [<args>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&version,
+              cli::names = {"-v", "--version"},
+              cli::stop = true,
+              description = "Print the version and exit")
+    bool version = false;
+
+    cli::Commands<Subcommands> command;
+};
+
+}  // namespace
+
+}  // namespace clice::driver
+
 extern "C++" int main(int argc, const char** argv) {
 #ifdef _WIN32
     // A process without a window is background work to Windows: it is
@@ -39,25 +64,20 @@ extern "C++" int main(int argc, const char** argv) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    namespace deco = kotatsu::deco;
+    namespace cli = kotatsu::cli;
     namespace driver = clice::driver;
 
-    auto args = deco::util::argvify(argc, argv);
-
-    deco::cli::SubCommander clice("clice <command> [<args>]",
-                                  "A C++ development toolkit built on LLVM/Clang");
-
-    driver::add_commands(clice);
-
-    clice.enable_help().when_err(driver::subcommand_error_handler(clice));
-
-    if(!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
+    auto options = cli::parse<driver::Clice>(std::span(argv, argc).subspan(1));
+    if(!options) {
+        return driver::usage_error(options.error());
+    }
+    if(options->version) {
         driver::println("clice version {}", clice::version);
         return 0;
     }
-    if(!args.empty() && args[0] == "worker") {
-        return driver::run_worker(std::span(args).subspan(1));
+    if(!options->command) {
+        cli::print_usage<driver::Clice>(driver::Clice::usage_line);
+        return 0;
     }
-
-    return driver::run_subcommands(clice, args);
+    return options->command();
 }

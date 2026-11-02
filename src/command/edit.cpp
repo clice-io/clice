@@ -67,13 +67,13 @@ CommandID
 
     Normalizer normalizer{.commands = commands, .files = files};
 
-    auto remove_parse_options = option::ParseOptions{.visibility = family_visibility(base.family)};
+    auto remove_parse_options = cli::ParseOptions{.visibility = family_visibility(base.family)};
 
     /// One remove pattern: the option it names, and whether a `*` joined
     /// to the option's name takes every option spelled with that prefix
     /// (`-W*` takes -Wall and -Wextra, options of their own).
     struct RemovePattern {
-        option::ParsedArg option;
+        cli::ParsedArg option;
         bool prefix = false;
     };
 
@@ -86,7 +86,7 @@ CommandID
             is_nvcc ? translate_nvcc_removes(normalizer, base.driver, flags, anchor)
                     : std::vector<std::string>(flags.begin(), flags.end()));
         std::vector<RemovePattern> removes;
-        auto add = [&](const option::ParsedArg& parsed, llvm::StringRef written) {
+        auto add = [&](const cli::ParsedArg& parsed, llvm::StringRef written) {
             auto& remove = removes.emplace_back(RemovePattern{
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,
@@ -105,7 +105,7 @@ CommandID
                 // An option written without its value, last in the list
                 // (`-include`), removes it with every value.
                 auto& wildcard = remove_storage.emplace_back(
-                    std::vector<std::string>{remove_flags[parsed.error().index], "*"});
+                    std::vector<std::string>{remove_flags[parsed.error().begin], "*"});
                 auto retried =
                     *clang_options::table().parse(wildcard, remove_parse_options).begin();
                 if(!retried) {

@@ -14,12 +14,19 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Index, description = "Index a project ahead of time");
+
+struct Index {
+    constexpr static std::string_view usage_line = "clice index [OPTIONS] [<operation>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
     LogLevelOption log;
+    cli::Commands<IndexRecords> operation;
 };
 
 /// The current pass's progress to the driver's callback; nothing before
@@ -313,20 +320,11 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     return result.exit_code;
 }
 
-CommandHandler build() {
-    auto operations = index_record_operations();
-    auto index =
-        operation<Options>("clice index [OPTIONS]", "index", Errors::Text, [](const Options& opts) {
-            return run_indexing(opts.where,
-                                opts.jobs.jobs.value_or(0),
-                                static_cast<bool>(opts.report.json));
-        });
-    return with_operations("", std::move(operations), Errors::Text, std::move(index));
+int run(Index& index) {
+    return run_indexing(index.where, index.jobs.jobs, index.report.json);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::index,
-                     {.description = "Index a project ahead of time", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Index>);
 
 }  // namespace
 

@@ -114,7 +114,7 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
         return;
     }
     auto& cfg = project.settings.project;
-    if(cfg.cache_dir_defaulted.value) {
+    if(cfg.cache_dir_defaulted) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 }
@@ -128,7 +128,7 @@ void ServedProject::start() {
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
-            .freshness = {.withhold = project.settings.project.enable_indexing.value},
+            .freshness = {.withhold = project.settings.project.enable_indexing},
         });
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
@@ -140,7 +140,7 @@ void ServedProject::start() {
             ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
             !project.rules.declares_sources() && !project.found_unreadable_database();
     }
-    if(project.settings.project.enable_indexing.value) {
+    if(project.settings.project.enable_indexing) {
         project.background_index.start();
     }
     server.load_choices(*this);
@@ -166,7 +166,7 @@ void ServedProject::start() {
     if(project.root.empty()) {
         return;
     }
-    auto poll_seconds = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+    auto poll_seconds = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
@@ -401,7 +401,7 @@ void ServedProject::start_control_listener() {
 }
 
 async::task<> ServedProject::sources_poll_task() {
-    auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds.value);
+    auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
     while(true) {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);

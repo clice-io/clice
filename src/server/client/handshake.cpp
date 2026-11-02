@@ -148,7 +148,7 @@ void LSPClient::register_lifecycle() {
         if(params.capabilities.experimental.has_value() &&
            !params.capabilities.experimental->is_null()) {
             ext::ExperimentalCapabilities experimental;
-            if(codec::dyn::from_dyn<ipc::lsp_config>(*params.capabilities.experimental,
+            if(codec::dyn::from_dyn<ipc::lsp_format>(*params.capabilities.experimental,
                                                      experimental)) {
                 restart_server = experimental.restart_server;
             }

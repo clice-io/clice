@@ -11,27 +11,32 @@ namespace clice::driver {
 
 namespace {
 
-struct RenameOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Rename, description = "Rename symbols across the project");
 
-    DecoInput(meta_var = "<LOCATOR> <NEW-NAME>",
-              help =
+struct Rename {
+    constexpr static std::string_view usage_line =
+        "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&inputs,
+              cli::positional = true,
+              cli::meta_var = "<LOCATOR> <NEW-NAME>",
+              cli::arg_num = 2,
+              description =
                   "The symbol, as a locator: its whole name, an answer's symbol, or "
-                  "file:line[:column]; and its new name",
-              required = false,
-              arg_num = 2)
-    <std::vector<std::string>> inputs;
+                  "file:line[:column]; and its new name")
+    std::vector<std::string> inputs;
 
-    DecoKV(help =
-               "A file listing renames to make at once, `<locator> => <new name>` a line; - "
-               "reads them from stdin",
-           required = false)
-    <std::string> spec;
+    KANNOTATE(&spec,
+              description =
+                  "A file listing renames to make at once, `<locator> => <new name>` "
+                  "a line; - reads them from stdin")
+    std::optional<std::string> spec;
 
-    DecoFlag(names = {"--dry-run"},
-             help = "Answer with the planned edits without writing them",
-             required = false)
-    dry_run;
+    KANNOTATE(&dry_run, description = "Answer with the planned edits without writing them")
+    bool dry_run = false;
 
     ProjectOptions where;
     FreshOption fresh;
@@ -169,18 +174,18 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
     return {};
 }
 
-int run_rename(const RenameOptions& opts) {
+int run(Rename& opts) {
     std::expected<std::vector<feature::query::RenameRequest>, std::string> requests;
     if(opts.spec) {
-        if(opts.inputs) {
+        if(!opts.inputs.empty()) {
             return usage_error(Errors::JSON,
                                "--spec lists the renames; <LOCATOR> <NEW-NAME> names one");
         }
         requests = read_renames(*opts.spec);
-    } else if(!opts.inputs) {
+    } else if(opts.inputs.empty()) {
         return usage_error(Errors::JSON, "rename takes <LOCATOR> <NEW-NAME>, or --spec");
     } else {
-        requests = one_rename(*opts.inputs);
+        requests = one_rename(opts.inputs);
     }
     if(!requests) {
         return fail(std::move(requests.error()));
@@ -227,25 +232,19 @@ int run_rename(const RenameOptions& opts) {
     return blocked ? 1 : 0;
 }
 
-CommandHandler build() {
-    std::vector<Operation> operations;
-    operations.push_back({
-        .name = "rename",
-        .description = "Rename symbols across the project",
-        .run = operation<RenameOptions>(
-            "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]",
-            "refactor",
-            Errors::JSON,
-            run_rename),
-    });
-    return with_operations("Rewrite the project's sources through the persisted index",
-                           std::move(operations),
-                           Errors::JSON);
-}
+KANNOTATE_TYPE(struct Refactor,
+               description = "Rewrite the project's sources through the persisted index");
 
-[[maybe_unused]] const bool registered = register_command(
-    Command::refactor,
-    {.description = "Rewrite the project's sources through the persisted index", .build = build});
+struct Refactor {
+    constexpr static std::string_view usage_line = "clice refactor <refactoring> [<args>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    std::optional<std::variant<Rename>> operation;
+};
+
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Refactor>);
 
 }  // namespace
 

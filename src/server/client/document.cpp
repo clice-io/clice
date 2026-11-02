@@ -91,7 +91,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
             // index, so an empty pull registers the same interest as a
             // served one.
             index_served.insert(path_id);
-            co_return codec::RawValue{"null"};
+            co_return codec::raw_value{"null"};
         }
         case Route::Ast: {
             tokens = co_await served
@@ -107,7 +107,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
         }
     }
     if(!tokens) {
-        co_return codec::RawValue{"null"};
+        co_return codec::raw_value{"null"};
     }
     if(auto preamble = query.preamble_index(path_id)) {
         feature::merge_preamble_macros(*preamble, *tokens);
@@ -162,7 +162,7 @@ void LSPClient::register_document_requests() {
             offset &&
             feature::on_directive_line(session->text(), *offset, project.dialect(path_id));
         auto directive_card =
-            [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<codec::RawValue> {
+            [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<codec::raw_value> {
             auto* link = feature::link_at(links, *offset);
             if(!link) {
                 return std::nullopt;
@@ -173,7 +173,7 @@ void LSPClient::register_document_requests() {
                                                   *link,
                                                   hover_markup,
                                                   encoding);
-            return hover ? to_raw(*hover) : codec::RawValue{"null"};
+            return hover ? to_raw(*hover) : codec::raw_value{"null"};
         };
 
         switch(co_await project.pick_route(ticket, {})) {
@@ -188,7 +188,7 @@ void LSPClient::register_document_requests() {
                 }
                 auto info = index_hover_card(project, *session, position);
                 if(!info) {
-                    co_return codec::RawValue{"null"};
+                    co_return codec::raw_value{"null"};
                 }
                 // Without the definition, the index card tells little past the
                 // name (the entity the buffer's index recorded can be gone, as
@@ -202,7 +202,7 @@ void LSPClient::register_document_requests() {
                 index_served.insert(path_id);
                 co_return card(*info);
             }
-            case Route::Empty: co_return codec::RawValue{"null"};
+            case Route::Empty: co_return codec::raw_value{"null"};
             case Route::Ast: break;
         }
 
@@ -252,7 +252,7 @@ void LSPClient::register_document_requests() {
                 }
             }
         }
-        co_return codec::RawValue{"null"};
+        co_return codec::raw_value{"null"};
     });
 
     on_document<protocol::SemanticTokensParams>(
@@ -285,7 +285,7 @@ void LSPClient::register_document_requests() {
             // re-pull once real hints exist.
             if(served->serving_of(*session) == ServingMode::IndexOnly) {
                 index_served.insert(path_id);
-                co_return codec::RawValue{"[]"};
+                co_return codec::raw_value{"[]"};
             }
             // Clamped against the buffer the ticket was taken on: a buffer that
             // moves before the reply arrives turns the reply into ContentModified.
@@ -337,7 +337,7 @@ void LSPClient::register_document_requests() {
                     // refresh makes it re-pull once the cold document's
                     // shard arrives.
                     index_served.insert(path_id);
-                    co_return codec::RawValue{"[]"};
+                    co_return codec::raw_value{"[]"};
                 }
                 case Route::Ast: break;
             }
@@ -349,7 +349,7 @@ void LSPClient::register_document_requests() {
                                            ctx.cancellation)
                              .or_fail();
             if(!folds) {
-                co_return codec::RawValue{"null"};
+                co_return codec::raw_value{"null"};
             }
             co_return convert(*folds);
         });
@@ -436,7 +436,7 @@ void LSPClient::register_document_requests() {
                 index_served.insert(path_id);
                 co_return convert(symbols);
             }
-            case Route::Empty: co_return codec::RawValue{"[]"};
+            case Route::Empty: co_return codec::raw_value{"[]"};
             case Route::Ast: break;
         }
         auto symbols = co_await served
@@ -449,7 +449,7 @@ void LSPClient::register_document_requests() {
                                          ctx.cancellation)
                            .or_fail();
         if(!symbols) {
-            co_return codec::RawValue{"null"};
+            co_return codec::raw_value{"null"};
         }
         co_return convert(*symbols);
     });
@@ -474,7 +474,7 @@ void LSPClient::register_document_requests() {
                     co_return to_raw(
                         feature::to_protocol(links, session->positions(), encoding, files));
                 }
-                case Route::Empty: co_return codec::RawValue{"[]"};
+                case Route::Empty: co_return codec::raw_value{"[]"};
                 case Route::Ast: break;
             }
             auto links = co_await served->directive_links(ticket, ctx.cancellation).or_fail();

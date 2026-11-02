@@ -194,92 +194,220 @@ struct Options {
     FreshOption fresh;
 };
 
-struct FileQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct ProjectFiles, description = "The build's files");
+
+struct ProjectFiles {
+    constexpr static std::string_view usage_line = "clice query project-files [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&filter, description = "all, source, header or module")
+    std::string filter = "all";
+
+    Options query;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct FileDeps,
+               description = "The files a file includes and the files including it");
+
+struct FileDeps {
+    constexpr static std::string_view usage_line = "clice query file-deps <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    FileTarget target;
+
+    KANNOTATE(&direction, description = "includes, includers or both")
+    std::string direction = "both";
+
+    KANNOTATE(&depth, description = "Levels to follow, 0 for all")
+    int depth = 1;
+
+    Options query;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(
+    struct ImpactAnalysis,
+    description = "What a change to a file reaches: its includers and the modules among them");
+
+struct ImpactAnalysis {
+    constexpr static std::string_view usage_line = "clice query impact-analysis <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     FileTarget target;
     Options query;
     LogLevelOption log;
 };
 
-struct FileDepsQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Counterparts,
+               description = "The files a file pairs with: a header's sources, a source's headers");
+
+struct Counterparts {
+    constexpr static std::string_view usage_line = "clice query counterparts <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     FileTarget target;
+    Options query;
+    LogLevelOption log;
+};
 
-    DecoKV(help = "includes, includers or both (default)", required = false)
-    <std::string> direction;
+KANNOTATE_TYPE(struct SymbolSearch, description = "The symbols a locator matches, best first");
 
-    DecoKV(help = "Levels to follow (default 1, 0 for all)", required = false)
-    <int> depth;
+struct SymbolSearch {
+    constexpr static std::string_view usage_line =
+        "clice query symbol-search [<LOCATOR>] [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&locator,
+              cli::positional = true,
+              cli::meta_var = "<LOCATOR>",
+              description = "The symbols to list, as a locator (default: every symbol)")
+    std::optional<std::string> locator;
+
+    KANNOTATE(&limit, description = "At most this many symbols")
+    int limit = 100;
 
     Options query;
     LogLevelOption log;
 };
 
-struct ProjectFilesQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct ReadSymbol,
+               description = "A symbol's definition as text, with its documentation");
 
-    DecoKV(help = "all (default), source, header or module", required = false)
-    <std::string> filter;
+struct ReadSymbol {
+    constexpr static std::string_view usage_line = "clice query read-symbol <LOCATOR> [OPTIONS]";
 
-    Options query;
-    LogLevelOption log;
-};
+    KANNOTATE(&help, cli::help)
+    bool help = false;
 
-struct SearchQuestion {
-    deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<LOCATOR>",
-              help = "The symbols to list, as a locator (default: every symbol)",
-              required = false)
-    <std::string> locator;
-
-    DecoKV(help = "At most this many symbols (default 100)", required = false)
-    <int> limit;
-
-    Options query;
-    LogLevelOption log;
-};
-
-struct SymbolQuestion {
-    deco::decl::HelpOption help;
     SymbolTarget target;
     Options query;
     LogLevelOption log;
 };
 
-struct ReferencesQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct DocumentSymbols, description = "A file's outline");
+
+struct DocumentSymbols {
+    constexpr static std::string_view usage_line = "clice query document-symbols <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    FileTarget target;
+    Options query;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct Definition,
+               description = "Where a symbol is defined, with its documentation");
+
+struct Definition {
+    constexpr static std::string_view usage_line = "clice query definition <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    SymbolTarget target;
+    Options query;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct References, description = "Every place naming a symbol");
+
+struct References {
+    constexpr static std::string_view usage_line = "clice query references <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     SymbolTarget target;
 
-    DecoFlag(names = {"--include-declaration"},
-             help = "List the declarations and the definition too",
-             required = false)
-    include_declaration;
+    KANNOTATE(&include_declaration, description = "List the declarations and the definition too")
+    bool include_declaration = false;
 
     Options query;
     LogLevelOption log;
 };
 
-struct CallGraphQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct CallGraph, description = "A function's callers and callees");
+
+struct CallGraph {
+    constexpr static std::string_view usage_line = "clice query call-graph <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     SymbolTarget target;
 
-    DecoKV(help = "callers, callees or both (default)", required = false)
-    <std::string> direction;
+    KANNOTATE(&direction, description = "callers, callees or both")
+    std::string direction = "both";
 
     Options query;
     LogLevelOption log;
 };
 
-struct TypeHierarchyQuestion {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Implementation,
+               description = "The classes deriving from a class, the overrides of a function");
+
+struct Implementation {
+    constexpr static std::string_view usage_line = "clice query implementation <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    SymbolTarget target;
+    Options query;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct TypeHierarchy, description = "A type's supertypes and subtypes");
+
+struct TypeHierarchy {
+    constexpr static std::string_view usage_line = "clice query type-hierarchy <LOCATOR> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     SymbolTarget target;
 
-    DecoKV(help = "supertypes, subtypes or both (default)", required = false)
-    <std::string> direction;
+    KANNOTATE(&direction, description = "supertypes, subtypes or both")
+    std::string direction = "both";
 
     Options query;
     LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct Query, description = "Ask the persisted index about the project");
+
+struct Query {
+    constexpr static std::string_view usage_line = "clice query <question> [<args>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    std::optional<std::variant<ProjectFiles,
+                               FileDeps,
+                               ImpactAnalysis,
+                               Counterparts,
+                               SymbolSearch,
+                               ReadSymbol,
+                               DocumentSymbols,
+                               Definition,
+                               References,
+                               CallGraph,
+                               Implementation,
+                               TypeHierarchy>>
+        operation;
 };
 
 /// Answer a question against the opened index: `ask` asks it of the project
@@ -320,199 +448,124 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     return 1;
 }
 
-/// A question about the file `ask` takes, after the project and the query
-/// context.
+/// A question about the file `question` names, which `ask` takes after
+/// the project and the query context.
 template <typename Question, typename Ask>
-CommandHandler file_question(std::string_view usage, bool with_build, Ask ask) {
-    return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
-        return run_query(
-            opts.query,
-            with_build,
-            [&](Project& project, feature::query::Context& ctx) {
-                return ask(project, ctx, Spelling(*opts.target.path, Spelling::cwd()), opts);
-            });
-    });
+int ask_file(const Question& question, bool with_build, Ask ask) {
+    return run_query(question.query,
+                     with_build,
+                     [&](Project& project, feature::query::Context& ctx) {
+                         return ask(project, ctx, Spelling(question.target.path, Spelling::cwd()));
+                     });
 }
 
-/// A question about the symbol `ask` takes, after the query context.
+/// A question about the symbol `question` names, which `ask` takes after
+/// the query context.
 template <typename Question, typename Ask>
-CommandHandler symbol_question(std::string_view usage, Ask ask) {
-    return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
-        return run_query(
-            opts.query,
-            /*with_build=*/false,
-            [&](Project&, feature::query::Context& ctx) {
-                return index::SymbolQuery::parse(*opts.target.locator).and_then([&](auto locator) {
-                    return ask(ctx, std::move(locator), opts);
-                });
+int ask_symbol(const Question& question, Ask ask) {
+    return run_query(
+        question.query,
+        /*with_build=*/false,
+        [&](Project&, feature::query::Context& ctx) {
+            return index::SymbolQuery::parse(question.target.locator).and_then([&](auto locator) {
+                return ask(ctx, std::move(locator));
             });
+        });
+}
+
+int run(ProjectFiles& question) {
+    return run_query(question.query,
+                     /*with_build=*/true,
+                     [&](Project& project, feature::query::Context&) {
+                         return project_files(project, question.filter);
+                     });
+}
+
+int run(FileDeps& question) {
+    return ask_file(question,
+                    /*with_build=*/true,
+                    [&](Project& project, feature::query::Context&, const Spelling& path) {
+                        return file_deps(project, path, question.direction, question.depth);
+                    });
+}
+
+int run(ImpactAnalysis& question) {
+    return ask_file(question,
+                    /*with_build=*/true,
+                    [](Project& project, feature::query::Context&, const Spelling& path) {
+                        return impact_analysis(project, path);
+                    });
+}
+
+int run(Counterparts& question) {
+    return ask_file(
+        question,
+        /*with_build=*/true,
+        [](Project& project, feature::query::Context& ctx, const Spelling& path) {
+            return feature::counterparts(ctx, project.dep_graph, project.members(), path);
+        });
+}
+
+int run(SymbolSearch& question) {
+    auto text = question.locator.value_or("");
+    auto limit = static_cast<std::size_t>(std::max(question.limit, 0));
+    return run_query(question.query,
+                     /*with_build=*/false,
+                     [&](Project&, feature::query::Context& ctx) {
+                         return feature::query::symbol_search(ctx, text, limit);
+                     });
+}
+
+int run(ReadSymbol& question) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::read_symbol(ctx, std::move(locator));
     });
 }
 
-CommandHandler build() {
-    std::vector<Operation> operations;
-    operations.push_back({
-        .name = "project-files",
-        .description = "The build's files",
-        .run = operation<ProjectFilesQuestion>(
-            "clice query project-files [OPTIONS]",
-            "query",
-            Errors::JSON,
-            [](const ProjectFilesQuestion& opts) {
-                return run_query(opts.query,
-                                 /*with_build=*/true,
-                                 [&](Project& project, feature::query::Context&) {
-                                     return project_files(project, opts.filter.value_or("all"));
-                                 });
-            }),
-    });
-    operations.push_back({
-        .name = "file-deps",
-        .description = "The files a file includes and the files including it",
-        .run = file_question<FileDepsQuestion>("clice query file-deps <PATH> [OPTIONS]",
-                                               /*with_build=*/true,
-                                               [](Project& project,
-                                                  feature::query::Context&,
-                                                  const Spelling& path,
-                                                  const FileDepsQuestion& opts) {
-                                                   return file_deps(project,
-                                                                    path,
-                                                                    opts.direction.value_or("both"),
-                                                                    opts.depth.value_or(1));
-                                               }),
-    });
-    operations.push_back({
-        .name = "impact-analysis",
-        .description = "What a change to a file reaches: its includers and the modules among them",
-        .run = file_question<FileQuestion>(
-            "clice query impact-analysis <PATH> [OPTIONS]",
-            /*with_build=*/true,
-            [](Project& project,
-               feature::query::Context&,
-               const Spelling& path,
-               const FileQuestion&) { return impact_analysis(project, path); }),
-    });
-    operations.push_back({
-        .name = "counterparts",
-        .description = "The files a file pairs with: a header's sources, a source's headers",
-        .run = file_question<FileQuestion>(
-            "clice query counterparts <PATH> [OPTIONS]",
-            /*with_build=*/true,
-            [](Project& project,
-               feature::query::Context& ctx,
-               const Spelling& path,
-               const FileQuestion&) {
-                return feature::counterparts(ctx, project.dep_graph, project.members(), path);
-            }),
-    });
-    operations.push_back({
-        .name = "symbol-search",
-        .description = "The symbols a locator matches, best first",
-        .run = operation<SearchQuestion>(
-            "clice query symbol-search [<LOCATOR>] [OPTIONS]",
-            "query",
-            Errors::JSON,
-            [](const SearchQuestion& opts) {
-                auto text = opts.locator.value_or("");
-                auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
-                return run_query(opts.query,
-                                 /*with_build=*/false,
-                                 [&](Project&, feature::query::Context& ctx) {
-                                     return feature::query::symbol_search(ctx, text, limit);
-                                 });
-            }),
-    });
-    operations.push_back({
-        .name = "read-symbol",
-        .description = "A symbol's definition as text, with its documentation",
-        .run = symbol_question<SymbolQuestion>(
-            "clice query read-symbol <LOCATOR> [OPTIONS]",
-            [](feature::query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                return feature::query::read_symbol(ctx, std::move(locator));
-            }),
-    });
-    operations.push_back({
-        .name = "document-symbols",
-        .description = "A file's outline",
-        .run = file_question<FileQuestion>("clice query document-symbols <PATH> [OPTIONS]",
-                                           /*with_build=*/false,
-                                           [](Project& project,
-                                              feature::query::Context& ctx,
-                                              const Spelling& path,
-                                              const FileQuestion&) {
-                                               return feature::query::document_symbols(
-                                                   ctx,
-                                                   path,
-                                                   [&](Fid file) -> const clang::LangOptions& {
-                                                       return project.dialect(file, nullptr);
-                                                   });
-                                           }),
-    });
-    operations.push_back({
-        .name = "definition",
-        .description = "Where a symbol is defined, with its documentation",
-        .run = symbol_question<SymbolQuestion>(
-            "clice query definition <LOCATOR> [OPTIONS]",
-            [](feature::query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                return feature::query::definition(ctx, std::move(locator));
-            }),
-    });
-    operations.push_back({
-        .name = "references",
-        .description = "Every place naming a symbol",
-        .run = symbol_question<ReferencesQuestion>(
-            "clice query references <LOCATOR> [OPTIONS]",
-            [](feature::query::Context& ctx,
-               index::SymbolQuery locator,
-               const ReferencesQuestion& opts) {
-                return feature::query::references(ctx,
-                                                  std::move(locator),
-                                                  static_cast<bool>(opts.include_declaration));
-            }),
-    });
-    operations.push_back({
-        .name = "call-graph",
-        .description = "A function's callers and callees",
-        .run = symbol_question<CallGraphQuestion>("clice query call-graph <LOCATOR> [OPTIONS]",
-                                                  [](feature::query::Context& ctx,
-                                                     index::SymbolQuery locator,
-                                                     const CallGraphQuestion& opts) {
-                                                      return feature::query::call_graph(
-                                                          ctx,
-                                                          std::move(locator),
-                                                          opts.direction.value_or("both"));
-                                                  }),
-    });
-    operations.push_back({
-        .name = "implementation",
-        .description = "The classes deriving from a class, the overrides of a function",
-        .run = symbol_question<SymbolQuestion>(
-            "clice query implementation <LOCATOR> [OPTIONS]",
-            [](feature::query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
-                return feature::query::implementation(ctx, std::move(locator));
-            }),
-    });
-    operations.push_back({
-        .name = "type-hierarchy",
-        .description = "A type's supertypes and subtypes",
-        .run = symbol_question<TypeHierarchyQuestion>(
-            "clice query type-hierarchy <LOCATOR> [OPTIONS]",
-            [](feature::query::Context& ctx,
-               index::SymbolQuery locator,
-               const TypeHierarchyQuestion& opts) {
-                return feature::query::type_hierarchy(ctx,
-                                                      std::move(locator),
-                                                      opts.direction.value_or("both"));
-            }),
-    });
-    return with_operations("Ask the persisted index about the project",
-                           std::move(operations),
-                           Errors::JSON);
+int run(DocumentSymbols& question) {
+    return ask_file(question,
+                    /*with_build=*/false,
+                    [](Project& project, feature::query::Context& ctx, const Spelling& path) {
+                        return feature::query::document_symbols(
+                            ctx,
+                            path,
+                            [&](Fid file) -> const clang::LangOptions& {
+                                return project.dialect(file, nullptr);
+                            });
+                    });
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::query,
-                     {.description = "Ask the persisted index about the project", .build = build});
+int run(Definition& question) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::definition(ctx, std::move(locator));
+    });
+}
+
+int run(References& question) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::references(ctx, std::move(locator), question.include_declaration);
+    });
+}
+
+int run(CallGraph& question) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::call_graph(ctx, std::move(locator), question.direction);
+    });
+}
+
+int run(Implementation& question) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::implementation(ctx, std::move(locator));
+    });
+}
+
+int run(TypeHierarchy& question) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+        return feature::query::type_hierarchy(ctx, std::move(locator), question.direction);
+    });
+}
+
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Query>);
 
 }  // namespace
 

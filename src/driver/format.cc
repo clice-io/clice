@@ -13,20 +13,25 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Format, description = "Format C++ source files");
 
-    DecoInput(meta_var = "<PATH>",
-              help =
+struct Format {
+    constexpr static std::string_view usage_line = "clice format [<PATH>...] [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&paths,
+              cli::positional = true,
+              cli::meta_var = "<PATH>",
+              description =
                   "Files to format, or directories to format the build's own files under; "
-                  "relative to the current directory (default: the build's own files)",
-              required = false)
-    <std::vector<std::string>> paths;
+                  "relative to the current directory (default: the build's own files)")
+    std::vector<std::string> paths;
 
-    DecoFlag(names = {"--check"},
-             help = "Report the files that need formatting instead of rewriting them",
-             required = false)
-    check;
+    KANNOTATE(&check,
+              description = "Report the files that need formatting instead of rewriting them")
+    bool check = false;
 
     ProjectOptions where;
     JobsOption jobs;
@@ -387,32 +392,25 @@ int run_format(const Request& options) {
     return result.exit_code;
 }
 
-CommandHandler build() {
-    return operation<Options>("clice format [<PATH>...] [OPTIONS]",
-                              "format",
-                              Errors::Text,
-                              [](const Options& opts) {
-                                  auto read = read_project(opts.where);
-                                  if(!read) {
-                                      return print_error(read.error());
-                                  }
-                                  auto& [root, loaded] = *read;
-                                  Request options{
-                                      .root = std::move(root),
-                                      .loaded = std::move(loaded),
-                                      .jobs = opts.jobs.jobs.value_or(0),
-                                      .check = static_cast<bool>(opts.check),
-                                  };
-                                  for(auto& argument:
-                                      opts.paths.value_or(std::vector<std::string>{})) {
-                                      options.paths.emplace_back(argument, Spelling::cwd());
-                                  }
-                                  return run_format(options);
-                              });
+int run(Format& format) {
+    auto read = read_project(format.where);
+    if(!read) {
+        return print_error(read.error());
+    }
+    auto& [root, loaded] = *read;
+    Request request{
+        .root = std::move(root),
+        .loaded = std::move(loaded),
+        .jobs = format.jobs.jobs,
+        .check = format.check,
+    };
+    for(auto& argument: format.paths) {
+        request.paths.emplace_back(argument, Spelling::cwd());
+    }
+    return run_format(request);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::format, {.description = "Format C++ source files", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Format>);
 
 }  // namespace
 

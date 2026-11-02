@@ -183,7 +183,7 @@ private:
         std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
     };
 
-    using RawResult = async::task<codec::RawValue, ipc::Error>;
+    using RawResult = async::task<codec::raw_value, ipc::Error>;
     using RequestContext = ipc::JSONPeer::RequestContext;
 
     // handshake.cpp
@@ -435,7 +435,7 @@ ext::ListConfigurationsResult list_configurations(const Project& project);
 std::optional<Spelling> uri_to_path(llvm::StringRef uri);
 
 /// The answer to a diagnostics pull.
-codec::RawValue full_report(std::vector<protocol::Diagnostic> items);
+codec::raw_value full_report(std::vector<protocol::Diagnostic> items);
 
 template <typename Params, typename Handler>
 void LSPClient::on_request(Handler handler) {
@@ -492,7 +492,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                     co_return full_report(std::vector<protocol::Diagnostic>());
                 });
             } else {
-                return async::co_invoke([]() -> RawResult { co_return codec::RawValue{"null"}; });
+                return async::co_invoke([]() -> RawResult { co_return codec::raw_value{"null"}; });
             }
         }
         return answer(ctx, params, std::move(document));
@@ -500,22 +500,22 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
 }
 
 /// What `navigate`'s answer gives: the reply, or the error to answer with.
-using NavigationReply = std::expected<codec::RawValue, ipc::Error>;
+using NavigationReply = std::expected<codec::raw_value, ipc::Error>;
 
 /// Answer with what a gate decided instead (GateStop).
-async::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop);
+async::task<codec::raw_value, ipc::Error> stop_reply(GateStop stop);
 
 /// A navigation request's answer from the symbol at its position,
 /// `answer`'s, once the compile gate passed (ServedProject::navigation_gate);
 /// `none` where no symbol is. A document not open is answered from the
 /// index alone.
 template <typename Answer>
-async::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
-                                                  const Ticket& ticket,
-                                                  Fid path_id,
-                                                  const protocol::Position& position,
-                                                  llvm::StringRef none,
-                                                  Answer answer) {
+async::task<codec::raw_value, ipc::Error> navigate(ServedProject& project,
+                                                   const Ticket& ticket,
+                                                   Fid path_id,
+                                                   const protocol::Position& position,
+                                                   llvm::StringRef none,
+                                                   Answer answer) {
     if(ticket.session) {
         if(auto stop = co_await project.navigation_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
@@ -523,7 +523,7 @@ async::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
     }
     auto cursor = project.cursor_at(path_id, position);
     if(!cursor) {
-        co_return codec::RawValue{none.str()};
+        co_return codec::raw_value{none.str()};
     }
     auto reply = answer(*cursor);
     if(!reply) {

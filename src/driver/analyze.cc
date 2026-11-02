@@ -16,120 +16,200 @@ namespace {
 /// What the module views share: the files analyzed, the partition and the
 /// hypothetical changes it is evaluated under.
 struct ModelOptions {
-    DecoKV(help =
-               "A glob over paths relative to the project root, absolute ones outside it: "
-               "analyze only the files it matches (default: every indexed file under the "
-               "project root outside a dot directory)",
-           required = false)
-    <std::vector<std::string>> scope;
+    KANNOTATE(&scope,
+              description =
+                  "A glob over paths relative to the project root, absolute ones outside it: "
+                  "analyze only the files it matches (default: every indexed file under the "
+                  "project root outside a dot directory)")
+    std::vector<std::string> scope;
 
-    DecoKV(help =
-               "Directory segments naming a file's default module (default 0: its whole "
-               "directory)",
-           required = false)
-    <int> dir_depth;
+    KANNOTATE(
+        &dir_depth,
+        description = "Directory segments naming a file's default module (0: its whole directory)")
+    int dir_depth = 0;
 
-    DecoKV(help =
-               "JSON file assigning modules by globs, first match wins: "
-               R"({"modules": [{"name": "core", "files": ["src/support/**"]}]})",
-           required = false)
-    <std::string> partition;
+    KANNOTATE(&partition,
+              description =
+                  "JSON file assigning modules by globs, first match wins: "
+                  R"({"modules": [{"name": "core", "files": ["src/support/**"]}]})")
+    std::string partition;
 
-    DecoKV(help =
-               "libc++'s module sources (share/libc++/v1), for a partition module provided "
-               "by std.compat",
-           required = false)
-    <std::string> std;
+    KANNOTATE(&std,
+              description =
+                  "libc++'s module sources (share/libc++/v1), for a partition module "
+                  "provided by std.compat")
+    std::string std;
 
-    DecoKV(help = "A hypothetical move: <path>=<module>", required = false)
-    <std::vector<std::string>> move;
+    KANNOTATE(&move, description = "A hypothetical move: <path>=<module>")
+    std::vector<std::string> move;
 
-    DecoKV(help = "A hypothetical merge: <module>+<module>[+...] into the first", required = false)
-    <std::vector<std::string>> merge;
+    KANNOTATE(&merge, description = "A hypothetical merge: <module>+<module>[+...] into the first")
+    std::vector<std::string> merge;
 
-    DecoKV(help = "A hypothetical declaration move: <locator>=<header>", required = false)
-    <std::vector<std::string>> move_entity;
+    KANNOTATE(&move_entity, description = "A hypothetical declaration move: <locator>=<header>")
+    std::vector<std::string> move_entity;
 
     ProjectOptions where;
 };
 
 /// What weighs the results of the views that rank by weight.
 struct WeightOptions {
-    DecoKV(help =
-               "An annotation file weighing the results: "
-               R"({"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}})",
-           required = false)
-    <std::vector<std::string>> annotation;
+    KANNOTATE(&annotation,
+              description =
+                  "An annotation file weighing the results: "
+                  R"({"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}})")
+    std::vector<std::string> annotation;
 
-    DecoKV(help =
-               "git log --since value of the churn annotation (default 6.months; empty "
-               "leaves it out)",
-           required = false)
-    <std::string> churn_since;
+    KANNOTATE(&churn_since,
+              description = "git log --since value of the churn annotation (empty leaves it out)")
+    std::string churn_since = "6.months";
 };
 
-struct OverviewOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Edge,
+               description = "Every entity an edge between two modules carries, and its uses");
 
-    DecoKV(help = "Most hotspots, move and split candidates to list (default 20)", required = false)
-    <int> limit;
+struct Edge {
+    constexpr static std::string_view usage_line =
+        "clice analyze modules edge <FROM> <TO> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(
+        &modules,
+        presence = required,
+        cli::positional = true,
+        cli::meta_var = "<FROM> <TO>",
+        cli::arg_num = 2,
+        description = "The module whose files name the other's entities, and the module named")
+    std::vector<std::string> modules;
 
     ModelOptions model;
-    WeightOptions weights;
     LogLevelOption log;
 };
 
-struct ImpactOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Module,
+               description = "A module's files by their dependencies, the lines it splits along");
+
+struct Module {
+    constexpr static std::string_view usage_line =
+        "clice analyze modules module <MODULE> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&module,
+              cli::positional = true,
+              cli::meta_var = "<MODULE>",
+              description = "The module")
+    std::string module;
+
     ModelOptions model;
-    WeightOptions weights;
     LogLevelOption log;
 };
 
-struct FileViewOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(
+    struct File,
+    description = "What a file names by module, who names its entities, its annotations");
+
+struct File {
+    constexpr static std::string_view usage_line = "clice analyze modules file <PATH> [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
     FileTarget target;
     ModelOptions model;
     WeightOptions weights;
     LogLevelOption log;
 };
 
-struct EdgeOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Obstacles,
+               description = "What a mechanical rewrite into modules cannot carry over");
 
-    DecoInput(meta_var = "<FROM> <TO>",
-              help = "The module whose files name the other's entities, and the module named",
-              arg_num = 2)
-    <std::vector<std::string>> modules;
+struct Obstacles {
+    constexpr static std::string_view usage_line = "clice analyze modules obstacles [OPTIONS]";
 
-    ModelOptions model;
-    LogLevelOption log;
-};
-
-struct ModuleViewOptions {
-    deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<MODULE>", help = "The module")
-    <std::string> module;
+    KANNOTATE(&help, cli::help)
+    bool help = false;
 
     ModelOptions model;
     LogLevelOption log;
 };
 
-struct InterfaceOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Macros, description = "The macros crossing modules");
 
-    DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
-    <std::string> module;
+struct Macros {
+    constexpr static std::string_view usage_line = "clice analyze modules macros [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
 
     ModelOptions model;
     LogLevelOption log;
 };
 
-struct PlainViewOptions {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Impact, description = "What a change to each module rebuilds");
+
+struct Impact {
+    constexpr static std::string_view usage_line = "clice analyze modules impact [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    ModelOptions model;
+    WeightOptions weights;
+    LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct Interface,
+               description = "Per module, what a wrapper module over its headers needs");
+
+struct Interface {
+    constexpr static std::string_view usage_line =
+        "clice analyze modules interface [<MODULE>] [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&module,
+              cli::positional = true,
+              cli::meta_var = "<MODULE>",
+              description = "The module (default: every module)")
+    std::optional<std::string> module;
+
     ModelOptions model;
     LogLevelOption log;
+};
+
+KANNOTATE_TYPE(struct Modules,
+               description = "Dependencies between directories, toward a module partition");
+
+struct Modules {
+    constexpr static std::string_view usage_line = "clice analyze modules [OPTIONS] [<view>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    KANNOTATE(&limit, description = "Most hotspots, move and split candidates to list")
+    int limit = 20;
+
+    ModelOptions model;
+    WeightOptions weights;
+    LogLevelOption log;
+    std::optional<std::variant<Edge, Module, File, Obstacles, Macros, Impact, Interface>> operation;
+};
+
+KANNOTATE_TYPE(struct Analyze,
+               description = "Analyses whose facts an agent turns into refactoring decisions");
+
+struct Analyze {
+    constexpr static std::string_view usage_line = "clice analyze <analysis> [<args>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    std::optional<std::variant<Modules>> operation;
 };
 
 /// A file as the facts name it: one under the project by its path from
@@ -157,17 +237,17 @@ int answer(const std::expected<T, std::string>& result) {
 /// views weighing by annotations take `weights`: git history is not free.
 template <typename View>
 int run_view(const ModelOptions& model, const WeightOptions* weights, View view) {
-    auto libcxx = analysis::read_std_modules(model.std.value_or(""));
+    auto libcxx = analysis::read_std_modules(model.std);
     if(!libcxx) {
         return fail(libcxx.error());
     }
     auto spec = analysis::read_partition(
         {
-            .depth = static_cast<std::uint32_t>(std::max(model.dir_depth.value_or(0), 0)),
-            .moves = model.move.value_or(std::vector<std::string>{}),
-            .merges = model.merge.value_or(std::vector<std::string>{}),
+            .depth = static_cast<std::uint32_t>(std::max(model.dir_depth, 0)),
+            .moves = model.move,
+            .merges = model.merge,
         },
-        model.partition.value_or(""),
+        model.partition,
         *libcxx);
     if(!spec) {
         return fail(spec.error());
@@ -177,7 +257,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     auto move_declarations = [&](Project& project,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
         auto ctx = query_context(project);
-        for(llvm::StringRef move: model.move_entity.value_or(std::vector<std::string>{})) {
+        for(llvm::StringRef move: model.move_entity) {
             auto [text, path] = move.rsplit('=');
             if(text.empty() || path.empty()) {
                 return std::unexpected(std::format("--move-entity {}: expected <locator>=<header>",
@@ -206,7 +286,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
         return fail(std::move(opened.error()));
     }
     auto& project = (*opened)->project;
-    auto loaded = analysis::load_facts(project, model.scope.value_or(std::vector<std::string>{}));
+    auto loaded = analysis::load_facts(project, model.scope);
     // The locators resolve against the index the facts were read from.
     if(loaded) {
         if(auto moved = move_declarations(project, loaded->facts); !moved) {
@@ -233,14 +313,14 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     if(weights) {
         // A project outside git history has no churn; the results stay
         // unweighted by it rather than failing.
-        if(auto since = weights->churn_since.value_or("6.months"); !since.empty()) {
+        if(auto& since = weights->churn_since; !since.empty()) {
             if(auto churn = analysis::git_churn(loaded->root, since)) {
                 annotations.list.push_back(std::move(*churn));
             } else {
                 LOG_WARN("no churn annotation: {}", churn.error());
             }
         }
-        for(auto& path: weights->annotation.value_or(std::vector<std::string>{})) {
+        for(auto& path: weights->annotation) {
             auto annotation = analysis::read_annotation(path);
             if(!annotation) {
                 return fail(annotation.error());
@@ -255,108 +335,69 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     return view(report);
 }
 
-/// A module view over the options `Options`, which `view` answers from the
-/// report.
+/// A module view: `view` answers from the report `options` describe.
 template <typename Options, typename View>
-CommandHandler module_view(std::string_view usage, View view) {
-    return operation<Options>(usage, "analyze", Errors::JSON, [view](const Options& opts) {
-        const WeightOptions* weights = nullptr;
-        if constexpr(requires { opts.weights; }) {
-            weights = &opts.weights;
-        }
-        return run_view(opts.model, weights, [&](analysis::Report& report) {
-            return view(report, opts);
-        });
+int module_view(const Options& options, View view) {
+    const WeightOptions* weights = nullptr;
+    if constexpr(requires { options.weights; }) {
+        weights = &options.weights;
+    }
+    return run_view(options.model, weights, view);
+}
+
+int run(Modules& modules) {
+    return module_view(modules, [&](analysis::Report& report) {
+        print_json(report.overview(static_cast<std::uint32_t>(std::max(modules.limit, 0))));
+        return 0;
     });
 }
 
-CommandHandler build() {
-    std::vector<Operation> views;
-    views.push_back({
-        .name = "edge",
-        .description = "Every entity an edge between two modules carries, and its uses",
-        .run = module_view<EdgeOptions>("clice analyze modules edge <FROM> <TO> [OPTIONS]",
-                                        [](analysis::Report& report, const EdgeOptions& opts) {
-                                            auto& modules = *opts.modules;
-                                            return answer(report.edge(modules[0], modules[1]));
-                                        }),
+int run(Edge& edge) {
+    return module_view(edge, [&](analysis::Report& report) {
+        return answer(report.edge(edge.modules[0], edge.modules[1]));
     });
-    views.push_back({
-        .name = "module",
-        .description = "A module's files by their dependencies, the lines it splits along",
-        .run = module_view<ModuleViewOptions>(
-            "clice analyze modules module <MODULE> [OPTIONS]",
-            [](analysis::Report& report, const ModuleViewOptions& opts) {
-                return answer(report.module(*opts.module));
-            }),
-    });
-    views.push_back({
-        .name = "file",
-        .description = "What a file names by module, who names its entities, its annotations",
-        .run = module_view<FileViewOptions>(
-            "clice analyze modules file <PATH> [OPTIONS]",
-            [](analysis::Report& report, const FileViewOptions& opts) {
-                return answer(report.file(fact_path(opts.model.where, *opts.target.path)));
-            }),
-    });
-    views.push_back({
-        .name = "obstacles",
-        .description = "What a mechanical rewrite into modules cannot carry over",
-        .run = module_view<PlainViewOptions>("clice analyze modules obstacles [OPTIONS]",
-                                             [](analysis::Report& report, const PlainViewOptions&) {
-                                                 print_json(report.obstacles());
-                                                 return 0;
-                                             }),
-    });
-    views.push_back({
-        .name = "macros",
-        .description = "The macros crossing modules",
-        .run = module_view<PlainViewOptions>("clice analyze modules macros [OPTIONS]",
-                                             [](analysis::Report& report, const PlainViewOptions&) {
-                                                 print_json(report.macros());
-                                                 return 0;
-                                             }),
-    });
-    views.push_back({
-        .name = "impact",
-        .description = "What a change to each module rebuilds",
-        .run = module_view<ImpactOptions>("clice analyze modules impact [OPTIONS]",
-                                          [](analysis::Report& report, const ImpactOptions&) {
-                                              print_json(report.impact());
-                                              return 0;
-                                          }),
-    });
-    views.push_back({
-        .name = "interface",
-        .description = "Per module, what a wrapper module over its headers needs",
-        .run = module_view<InterfaceOptions>(
-            "clice analyze modules interface [<MODULE>] [OPTIONS]",
-            [](analysis::Report& report, const InterfaceOptions& opts) {
-                return answer(report.interface(opts.module.value_or("")));
-            }),
-    });
-    auto overview = module_view<OverviewOptions>(
-        "clice analyze modules [OPTIONS]",
-        [](analysis::Report& report, const OverviewOptions& opts) {
-            print_json(
-                report.overview(static_cast<std::uint32_t>(std::max(opts.limit.value_or(20), 0))));
-            return 0;
-        });
-
-    std::vector<Operation> analyses;
-    analyses.push_back({
-        .name = "modules",
-        .description = "Dependencies between directories, toward a module partition",
-        .run = with_operations("", std::move(views), Errors::JSON, std::move(overview)),
-    });
-    return with_operations("Analyses whose facts an agent turns into refactoring decisions",
-                           std::move(analyses),
-                           Errors::JSON);
 }
 
-[[maybe_unused]] const bool registered = register_command(
-    Command::analyze,
-    {.description = "Analyze the indexed project for refactoring", .build = build});
+int run(Module& module) {
+    return module_view(module, [&](analysis::Report& report) {
+        return answer(report.module(module.module));
+    });
+}
+
+int run(File& file) {
+    return module_view(file, [&](analysis::Report& report) {
+        return answer(report.file(fact_path(file.model.where, file.target.path)));
+    });
+}
+
+int run(Obstacles& obstacles) {
+    return module_view(obstacles, [](analysis::Report& report) {
+        print_json(report.obstacles());
+        return 0;
+    });
+}
+
+int run(Macros& macros) {
+    return module_view(macros, [](analysis::Report& report) {
+        print_json(report.macros());
+        return 0;
+    });
+}
+
+int run(Impact& impact) {
+    return module_view(impact, [](analysis::Report& report) {
+        print_json(report.impact());
+        return 0;
+    });
+}
+
+int run(Interface& options) {
+    return module_view(options, [&](analysis::Report& report) {
+        return answer(report.interface(options.module.value_or("")));
+    });
+}
+
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Analyze>);
 
 }  // namespace
 

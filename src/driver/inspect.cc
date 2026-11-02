@@ -37,92 +37,81 @@ namespace clice::driver {
 
 namespace {
 
+/// JSON layout of the inspect output. Field names stay snake_case (the
+/// project's native spelling) and enums serialize as their C++ value
+/// names; the TS side owns any mapping to LSP vocabulary.
+struct InspectJson : codec::extend<json::format> {};
+
+}  // namespace
+
+}  // namespace clice::driver
+
+template <typename E>
+    requires std::is_enum_v<E>
+struct kotatsu::codec::repr<E, clice::driver::InspectJson> : kotatsu::codec::enum_names<> {};
+
+namespace clice::driver {
+
+namespace {
+
 /// What every feature takes.
 struct Options {
-    DecoInput(meta_var = "<PATH>", help = "The source file")
-    <std::string> path;
+    KANNOTATE(&path,
+              cli::positional = true,
+              cli::meta_var = "<PATH>",
+              description = "The source file")
+    std::string path;
 
-    DecoKV(help = R"(JSON file of the markers in the inspected source file, at byte )"
-                  R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
-                  R"({"begin": 3, "end": 7}}}; results are keyed by these names)",
-           required = false)
-    <std::string> markers;
+    KANNOTATE(&markers,
+              description = R"(JSON file of the markers in the inspected source file, at byte )"
+                            R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
+                            R"({"begin": 3, "end": 7}}}; results are keyed by these names)")
+    std::optional<std::string> markers;
 
-    DecoKV(help =
-               "Configuration overlay as a JSON object of clice.toml "
-               "sections, over the project's configuration",
-           required = false)
-    <std::string> config_overlay;
+    KANNOTATE(&config_overlay,
+              description =
+                  "Configuration overlay as a JSON object of clice.toml sections, over "
+                  "the project's configuration")
+    std::optional<std::string> config_overlay;
 
-    DecoKV(help =
-               "Compile the header as included by this source file, as the editor's context "
-               "choice does",
-           required = false)
-    <std::string> host;
+    KANNOTATE(&host,
+              description =
+                  "Compile the header as included by this source file, as the "
+                  "editor's context choice does")
+    std::optional<std::string> host;
 
-    DecoKV(help = "With --host, which place its compile enters the header at, from 0",
-           required = false)
-    <std::uint32_t> occurrence;
+    KANNOTATE(&occurrence,
+              description = "With --host, which place its compile enters the header at, from 0")
+    std::optional<std::uint32_t> occurrence;
 
     ProjectOptions where;
 };
 
-struct FeatureOptions {
-    deco::decl::HelpOption help;
-    Options inspect;
-    LogLevelOption log;
-};
-
-/// The options of a feature that checks its own results.
-struct CheckedFeatureOptions {
-    deco::decl::HelpOption help;
-    Options inspect;
-
-    DecoFlag(names = {"--check"},
-             help =
-                 "Check the results instead of printing them: report where they differ from "
-                 "the same results computed another way",
-             required = false)
-    check;
-
-    LogLevelOption log;
-};
-
-struct SchemaOptions {
-    deco::decl::HelpOption help;
-    LogLevelOption log;
-};
-
-/// JSON layout of the inspect output. Field names stay snake_case (the
-/// project's native spelling) and enums serialize as their C++ value
-/// names; the TS side owns any mapping to LSP vocabulary. Text that is not
-/// UTF-8 is written as U+FFFD, as the server writes it to the client.
-struct JsonConfig {
-    constexpr static auto enum_repr = codec::enum_repr::String;
-    constexpr static auto invalid_utf8 = codec::invalid_utf8::Replace;
-};
+/// Text that is not UTF-8 is written as U+FFFD, as the server writes it to
+/// the client.
+constexpr json::encode_options inspect_json{.invalid_utf8 = codec::invalid_utf8::Replace};
 
 struct FileEntry {
     /// The whole-document feature payload, absent when compilation failed
     /// or the feature is marker-driven.
-    std::optional<codec::RawValue> result;
+    std::optional<codec::raw_value> result;
 
     /// Marker-driven payloads, keyed by the names --markers gives: position
     /// features run once per point, range features once per range. A null
     /// value records a position with no result (e.g. hover on whitespace).
-    std::optional<std::map<std::string, codec::RawValue>> markers;
+    std::optional<std::map<std::string, codec::raw_value>> markers;
 
     std::optional<std::string> error;
     std::optional<std::vector<std::string>> diagnostics;
 };
 
+KANNOTATE_TYPE(struct FileMarkers, presence_all = optional);
+
 /// The inspected file's markers, as --markers gives them.
 struct FileMarkers {
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::map<std::string, std::uint32_t>> points;
+    std::map<std::string, std::uint32_t> points;
 
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::map<std::string, LocalSourceRange>> ranges;
+    std::map<std::string, LocalSourceRange> ranges;
 };
 
 /// `files` holds the inspected file's entry under its file name.
@@ -132,13 +121,13 @@ struct Output {
 };
 
 template <typename T>
-std::optional<codec::RawValue> to_raw_json(const T& value) {
-    auto json = json::to_string<JsonConfig>(value);
+std::optional<codec::raw_value> to_raw_json(const T& value) {
+    auto json = json::to_string<InspectJson>(value, inspect_json);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return std::nullopt;
     }
-    return codec::RawValue{std::move(*json)};
+    return codec::raw_value{std::move(*json)};
 }
 
 /// Marker payload for hover: the feature-layer reply before the edge —
@@ -148,12 +137,6 @@ struct HoverResult {
     std::optional<LocalSourceRange> range;
     protocol::MarkupKind kind;
     std::string contents;
-};
-
-/// Strict decode for --config-overlay and --markers: an unknown key is a typo,
-/// not something to silently ignore.
-struct StrictJson {
-    constexpr static bool deny_unknown_fields = true;
 };
 
 /// What a feature is asked about in the inspected file.
@@ -186,38 +169,38 @@ struct FeatureParams {
 /// what --check runs instead, for one that checks its own results. `run`
 /// gives nullopt when its answer does not serialize.
 struct FeatureSpec {
-    llvm::StringRef name;
-    llvm::StringRef description;
+    std::string_view name;
+    std::string_view description;
     Shape shape = Shape::File;
-    std::optional<codec::RawValue> (*run)(const FeatureParams&) = nullptr;
+    std::optional<codec::raw_value> (*run)(const FeatureParams&) = nullptr;
     const FeatureSpec* check = nullptr;
 };
 
-std::optional<codec::RawValue> run_folding_ranges(const FeatureParams& params) {
+std::optional<codec::raw_value> run_folding_ranges(const FeatureParams& params) {
     return to_raw_json(feature::folding_ranges(params.unit));
 }
 
-std::optional<codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
+std::optional<codec::raw_value> run_semantic_tokens(const FeatureParams& params) {
     const auto& options = params.settings.semantic_tokens;
     return to_raw_json(feature::named_tokens(feature::semantic_tokens(params.unit, options),
                                              feature::semantic_token_legend(options)));
 }
 
-std::optional<codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
+std::optional<codec::raw_value> run_semantic_tokens_check(const FeatureParams& params) {
     return to_raw_json(
         feature::check_semantic_tokens(params.unit, params.settings.semantic_tokens));
 }
 
-std::optional<codec::RawValue> run_document_symbols(const FeatureParams& params) {
+std::optional<codec::raw_value> run_document_symbols(const FeatureParams& params) {
     return to_raw_json(feature::document_symbols(params.unit, params.settings.document_symbols));
 }
 
-std::optional<codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
+std::optional<codec::raw_value> run_document_symbol_check(const FeatureParams& params) {
     return to_raw_json(
         feature::check_document_symbols(params.unit, params.settings.document_symbols));
 }
 
-std::optional<codec::RawValue> run_document_links(const FeatureParams& params) {
+std::optional<codec::raw_value> run_document_links(const FeatureParams& params) {
     return to_raw_json(feature::document_links(params.unit));
 }
 
@@ -245,7 +228,7 @@ struct RawInlayHint {
 /// as the server places it, from the unit's own TU index standing in for
 /// the server's — a declaration, else the definition, the focus file's shard
 /// first as an open buffer's is.
-std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
+std::optional<codec::raw_value> run_inlay_hints(const FeatureParams& params) {
     auto& unit = params.unit;
     auto hints = feature::inlay_hints(unit, params.range, params.settings.inlay_hints);
 
@@ -304,7 +287,7 @@ std::optional<codec::RawValue> run_inlay_hints(const FeatureParams& params) {
     return to_raw_json(out);
 }
 
-std::optional<codec::RawValue> run_selection_range(const FeatureParams& params) {
+std::optional<codec::raw_value> run_selection_range(const FeatureParams& params) {
     return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
 
@@ -319,7 +302,7 @@ struct RawCodeAction {
 
 /// The actions resolved as an empty index would: definitions into the
 /// focus file are all kept, no header declares any name.
-std::optional<codec::RawValue> run_code_action(const FeatureParams& params) {
+std::optional<codec::raw_value> run_code_action(const FeatureParams& params) {
     auto& unit = params.unit;
     std::vector<RawCodeAction> out;
     auto actions = feature::resolve_actions(feature::code_actions(unit, params.range),
@@ -341,17 +324,17 @@ std::optional<codec::RawValue> run_code_action(const FeatureParams& params) {
     return to_raw_json(out);
 }
 
-/// nullopt = serialization failure; an empty RawValue serializes as null
+/// nullopt = serialization failure; an empty raw_value serializes as null
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
-std::optional<codec::RawValue> run_hover(const FeatureParams& params) {
+std::optional<codec::raw_value> run_hover(const FeatureParams& params) {
     const auto& settings = params.settings;
     auto info = feature::hover_info(params.unit,
                                     params.range.begin,
                                     settings.hover,
                                     settings.documentation);
     if(!info) {
-        return codec::RawValue{};
+        return codec::raw_value{};
     }
     return to_raw_json(HoverResult{info->symbol_range,
                                    protocol::MarkupKind::Markdown,
@@ -371,7 +354,7 @@ CompilationParams completion_at(const FeatureParams& params) {
     };
 }
 
-std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) {
+std::optional<codec::raw_value> run_code_completion(const FeatureParams& params) {
     const auto& settings = params.settings;
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
@@ -382,7 +365,7 @@ std::optional<codec::RawValue> run_code_completion(const FeatureParams& params) 
             .list);
 }
 
-std::optional<codec::RawValue> run_signature_help(const FeatureParams& params) {
+std::optional<codec::raw_value> run_signature_help(const FeatureParams& params) {
     const auto& settings = params.settings;
     return to_raw_json(feature::signature_help(completion_at(params),
                                                settings.signature_help,
@@ -391,7 +374,7 @@ std::optional<codec::RawValue> run_signature_help(const FeatureParams& params) {
 
 /// Marker payload for document-highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
-std::optional<codec::RawValue> run_document_highlight(const FeatureParams& params) {
+std::optional<codec::raw_value> run_document_highlight(const FeatureParams& params) {
     auto offset = params.range.begin;
     auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
@@ -507,7 +490,9 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
             std::format("cannot read --markers {}: {}", *markers, text.error().message()));
     }
     auto& [points, ranges] = file.markers;
-    if(auto result = json::from_string<StrictJson>(*text, file.markers); !result) {
+    // An unknown key is a typo, not something to silently ignore.
+    if(auto result = json::from_string(*text, file.markers, {.deny_unknown_fields = true});
+       !result) {
         return std::unexpected(std::format("invalid --markers: {}", result.error().message));
     }
     if(points.contains("") || ranges.contains("")) {
@@ -744,7 +729,7 @@ void run_feature(FileEntry& entry,
         entry.error = "no_markers";
         return;
     }
-    std::map<std::string, codec::RawValue> markers;
+    std::map<std::string, codec::raw_value> markers;
     for(const auto& [name, range]: places) {
         auto value = run(range);
         if(!value) {
@@ -757,8 +742,8 @@ void run_feature(FileEntry& entry,
 }
 
 int run_inspect(const Options& opts, const FeatureSpec& spec) {
-    Spelling path(*opts.path, Spelling::cwd());
-    auto file = read_source(path, opts.markers.as_optional());
+    Spelling path(opts.path, Spelling::cwd());
+    auto file = read_source(path, opts.markers);
     if(!file) {
         LOG_ERROR("{}", file.error());
         return 1;
@@ -772,11 +757,11 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     if(opts.host) {
         choice = ContextChoice{
             .host = project.file_table.intern(Spelling(*opts.host, Spelling::cwd())),
-            .occurrence = opts.occurrence.as_optional(),
+            .occurrence = opts.occurrence,
         };
     }
 
-    Output output{.feature = spec.name.str()};
+    Output output{.feature = std::string(spec.name)};
     auto& entry = output.files[std::string(path::filename(file->path))];
     auto input = project_input(*file, project, choice ? &*choice : nullptr);
     if(!input) {
@@ -788,7 +773,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         fs::remove(input->pch.first);
     }
 
-    auto json = json::to_string<JsonConfig>(output);
+    auto json = json::to_string<InspectJson>(output, inspect_json);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;
@@ -797,55 +782,108 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
     return 0;
 }
 
-CommandHandler build() {
-    std::vector<Operation> operations;
-    for(const auto& spec: features) {
-        auto usage = std::format("clice inspect {} <PATH> [OPTIONS]", spec.name);
-        operations.push_back({
-            .name = spec.name,
-            .description = spec.description,
-            .run = spec.check
-                       ? operation<CheckedFeatureOptions>(
-                             usage,
-                             "inspect",
-                             Errors::Text,
-                             [&spec](const CheckedFeatureOptions& opts) {
-                                 return run_inspect(opts.inspect, opts.check ? *spec.check : spec);
-                             })
-                       : operation<FeatureOptions>(usage,
-                                                   "inspect",
-                                                   Errors::Text,
-                                                   [&spec](const FeatureOptions& opts) {
-                                                       return run_inspect(opts.inspect, spec);
-                                                   }),
-        });
-    }
-    operations.push_back({
-        .name = "config-schema",
-        .description = "The JSON schema of the clice configuration",
-        .run = operation<SchemaOptions>("clice inspect config-schema [OPTIONS]",
-                                        "inspect",
-                                        Errors::Text,
-                                        [](const SchemaOptions&) {
-                                            auto schema = Settings::json_schema();
-                                            if(!schema) {
-                                                LOG_ERROR("config schema generation failed: {}",
-                                                          schema.error());
-                                                return 1;
-                                            }
-                                            driver::println("{}", *schema);
-                                            return 0;
-                                        }),
-    });
-    return with_operations("Run a feature on a source file and print raw results as JSON",
-                           std::move(operations),
-                           Errors::Text);
+/// The options of features[I].
+template <std::size_t I>
+struct Feature {
+    const inline static std::string usage_line =
+        std::format("clice inspect {} <PATH> [OPTIONS]", features[I].name);
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    Options inspect;
+    LogLevelOption log;
+};
+
+/// The options of features[I], which checks its own results.
+template <std::size_t I>
+struct CheckedFeature {
+    const inline static std::string usage_line =
+        std::format("clice inspect {} <PATH> [OPTIONS]", features[I].name);
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    Options inspect;
+
+    KANNOTATE(&check,
+              description =
+                  "Check the results instead of printing them: report where they "
+                  "differ from the same results computed another way")
+    bool check = false;
+
+    LogLevelOption log;
+};
+
+template <std::size_t I>
+consteval auto __kotatsu__type_annotation(std::type_identity<Feature<I>>) {
+    return meta::make_annotation(codec::dsl::description = features[I].description);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::inspect,
-                     {.description = "Run a feature on a source file and print raw results as JSON",
-                      .build = build});
+template <std::size_t I>
+consteval auto __kotatsu__type_annotation(std::type_identity<CheckedFeature<I>>) {
+    return meta::make_annotation(codec::dsl::description = features[I].description);
+}
+
+template <std::size_t I>
+int run(Feature<I>& feature) {
+    return run_inspect(feature.inspect, features[I]);
+}
+
+template <std::size_t I>
+int run(CheckedFeature<I>& feature) {
+    return run_inspect(feature.inspect, feature.check ? *features[I].check : features[I]);
+}
+
+KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
+
+struct ConfigSchema {
+    constexpr static std::string_view usage_line = "clice inspect config-schema [OPTIONS]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    LogLevelOption log;
+};
+
+int run(ConfigSchema&) {
+    auto schema = Settings::json_schema();
+    if(!schema) {
+        LOG_ERROR("config schema generation failed: {}", schema.error());
+        return 1;
+    }
+    driver::println("{}", *schema);
+    return 0;
+}
+
+/// The operations of `clice inspect`: each feature, and the schema.
+struct Operations {
+    using signature = int();
+};
+
+KANNOTATE_TYPE(struct Inspect,
+               description = "Run a feature on a source file and print raw results as JSON");
+
+struct Inspect {
+    constexpr static std::string_view usage_line = "clice inspect <feature> [<args>]";
+
+    KANNOTATE(&help, cli::help)
+    bool help = false;
+
+    cli::Commands<Operations> operation;
+};
+
+[[maybe_unused]] const bool added = [] {
+    []<std::size_t... I>(std::index_sequence<I...>) {
+        (cli::add_command<Operations>(
+             dispatch<
+                 std::conditional_t<features[I].check != nullptr, CheckedFeature<I>, Feature<I>>>,
+             {.name = features[I].name}),
+         ...);
+    }(std::make_index_sequence<features.size()>{});
+    cli::add_command<Operations>(dispatch<ConfigSchema>);
+    return cli::add_command<Subcommands>(dispatch<Inspect>);
+}();
 
 }  // namespace
 
