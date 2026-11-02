@@ -32,7 +32,9 @@ static async::task<> serve_until_shutdown(MasterServer& server, async::task<> se
 /// so does the end of the conversation with `client`, the editor's peer in
 /// pipe mode, as soon as it ends: a client that went away without `exit`
 /// must not wait for the request handlers a hung worker keeps running.
-static async::task<> serve(MasterServer& server, async::task<> serving, ipc::JSONPeer* client) {
+static async::task<> serve(MasterServer& server,
+                           async::task<> serving,
+                           ipc::JSONPeer* client = nullptr) {
     bool terminating = false;
     auto terminate = [&server] {
         LOG_INFO("Termination signal received; shutting down");
@@ -171,17 +173,15 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
                 server.initialize();
             }
             bool taken = false;
-            co_await serve(server,
-                           accept_peers(std::move(acceptor),
-                                        "Client",
-                                        [&server, &taken](ipc::JSONPeer& peer) {
-                                            std::shared_ptr<void> client;
-                                            if(!std::exchange(taken, true)) {
-                                                client = std::make_shared<LSPClient>(server, peer);
-                                            }
-                                            return client;
-                                        }),
-                           nullptr);
+            co_await serve(
+                server,
+                accept_peers(std::move(acceptor), "Client", [&server, &taken](ipc::JSONPeer& peer) {
+                    std::shared_ptr<void> client;
+                    if(!std::exchange(taken, true)) {
+                        client = std::make_shared<LSPClient>(server, peer);
+                    }
+                    return client;
+                }));
         }(server, std::move(*acceptor), opts.workspace));
     loop.run();
     return server.exit_before_shutdown ? 1 : 0;

@@ -17,27 +17,38 @@ namespace clice::driver {
 
 namespace {
 
-KANNOTATE_TYPE(struct Convert,
-               description =
-                   "Convert a compilation database, or one command, to the commands "
-                   "clice compiles with");
-struct Convert {
+/// A compilation database to convert.
+KANNOTATE_TYPE(struct DatabaseToConvert, description = "a database");
+struct DatabaseToConvert {
     KANNOTATE(
         &database,
         cli::positional = true,
         cli::meta_var = "<DATABASE>",
         description = "The compile_commands.json to convert, relative to the current directory")
-    std::optional<std::string> database;
+    std::string database;
+};
 
-    KANNOTATE(&json,
-              description = "Print the converted command as a database entry instead of text")
-    bool json = false;
-
+/// One command to convert, which runs in the current directory.
+KANNOTATE_TYPE(struct CommandToConvert, description = "a command");
+struct CommandToConvert {
     KANNOTATE(&command,
               cli::rest = true,
               cli::meta_var = "<COMMAND>",
               description = "The command to convert")
     std::vector<std::string> command;
+
+    KANNOTATE(&json,
+              description = "Print the converted command as a database entry instead of text")
+    bool json = false;
+};
+
+KANNOTATE_TYPE(struct Convert,
+               description =
+                   "Convert a compilation database, or one command, to the commands "
+                   "clice compiles with");
+struct Convert {
+    KANNOTATE(&input, cli::exclusive = true, presence = required, description = "Convert")
+    std::variant<DatabaseToConvert, CommandToConvert> input;
 
     ProjectOptions where;
     LogLevelOption log;
@@ -46,7 +57,7 @@ struct Convert {
 KANNOTATE_TYPE(struct Command,
                description = "Show the commands a file compiles with, or convert compile commands");
 struct Command {
-    /// Left out for an operation, else `run` reports it missing.
+    /// Left out for an operation, else `run` answers with the usage.
     KANNOTATE(&path,
               cli::positional = true,
               cli::meta_var = "<PATH>",
@@ -237,7 +248,8 @@ void print_text(const FileCommands& commands) {
 
 int run(Command& opts) {
     if(!opts.path) {
-        return usage_error(Errors::Text, "command takes a <PATH>, or an operation");
+        cli::print_usage<Command>("clice command");
+        return 2;
     }
     auto read = read_project(opts.where);
     if(!read) {
@@ -359,12 +371,7 @@ int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool 
                                                ", ")));
         return 1;
     }
-    auto& cdb = project.cdb;
-    llvm::SmallVector<const char*> argv;
-    for(auto& argument: command) {
-        argv.push_back(argument.c_str());
-    }
-    auto entry = cdb.add_command(directory, sources.front(), argv);
+    auto entry = project.cdb.add_command(directory, sources.front(), command);
     if(!entry) {
         LOG_ERROR("Not a compile command: {}", join_command(command));
         return 1;
@@ -469,16 +476,8 @@ int convert_database(Project& project, const Spelling& path) {
     return 0;
 }
 
-int run(Convert& opts) {
-    if(opts.database.has_value() == !opts.command.empty()) {
-        return usage_error(Errors::Text,
-                           "convert takes a compile_commands.json, or a command after --");
-    }
-    if(opts.command.empty() && opts.json) {
-        return usage_error(Errors::Text,
-                           "--json converts a command; a database converts to a database");
-    }
-    auto read = read_project(opts.where);
+int run(Convert& convert) {
+    auto read = read_project(convert.where);
     if(!read) {
         return print_error(read.error());
     }
@@ -486,10 +485,11 @@ int run(Convert& opts) {
     // The rules alone: what converts is the database or the command given.
     auto opened = open_at(root, std::move(loaded), {.load = Project::OpenOptions::Load::Rules});
     auto& project = opened->project;
-    if(!opts.command.empty()) {
-        return convert_command(project, opts.command, opts.json);
+    if(auto* given = std::get_if<CommandToConvert>(&convert.input)) {
+        return convert_command(project, given->command, given->json);
     }
-    return convert_database(project, Spelling(*opts.database, Spelling::cwd()));
+    auto& database = std::get<DatabaseToConvert>(convert.input).database;
+    return convert_database(project, Spelling(database, Spelling::cwd()));
 }
 
 [[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Command>);

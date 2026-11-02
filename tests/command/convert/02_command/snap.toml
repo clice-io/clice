@@ -78,13 +78,28 @@ stderr = "error: The command names no C-family source among its arguments; conve
 exit = 1
 
 ["a database or a command"."$ clice command convert"]
-stderr = "convert takes a compile_commands.json, or a command after --"
+stderr = '''
+at end of argv:
+  command convert
+                 ^
+  one of <DATABASE> or -- <COMMAND>... is required
+'''
 exit = 2
 
 ["a database or a command"."$ clice command convert compile_commands.json -- missing-cc -c main.cpp"]
-stderr = "convert takes a compile_commands.json, or a command after --"
+stderr = '''
+at argv[3]:
+  command convert compile_commands.json -- missing-cc -c main.cpp
+                                        ^~~~~~~~~~~~~~~~~~~~~~~~~
+  -- <COMMAND>... cannot be used with <DATABASE>
+'''
 exit = 2
 
 ["a database or a command"."$ clice command convert compile_commands.json --json"]
-stderr = "--json converts a command; a database converts to a database"
+stderr = '''
+at argv[3]:
+  command convert compile_commands.json --json
+                                        ^~~~~~
+  --json cannot be used with <DATABASE>
+'''
 exit = 2

@@ -12,6 +12,7 @@ namespace clice::driver {
 namespace {
 
 /// One rename, given on the command line.
+KANNOTATE_TYPE(struct OneRename, description = "one symbol");
 struct OneRename {
     KANNOTATE(&locator,
               cli::positional = true,
@@ -29,6 +30,7 @@ struct OneRename {
 };
 
 /// The renames a file lists.
+KANNOTATE_TYPE(struct RenameList, description = "a list of symbols");
 struct RenameList {
     KANNOTATE(&spec,
               presence = required,
@@ -41,7 +43,7 @@ struct RenameList {
 
 KANNOTATE_TYPE(struct Rename, description = "Rename symbols across the project");
 struct Rename {
-    KANNOTATE(&renames, cli::exclusive = true, presence = required, description = "The renames")
+    KANNOTATE(&renames, cli::exclusive = true, presence = required, description = "Rename")
     std::variant<OneRename, RenameList> renames;
 
     KANNOTATE(&dry_run, description = "Answer with the planned edits without writing them")

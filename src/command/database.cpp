@@ -462,7 +462,7 @@ std::optional<CompilationEntry>
 std::optional<CompilationEntry>
     CompilationDatabase::add_command(llvm::StringRef directory,
                                      llvm::StringRef file,
-                                     llvm::ArrayRef<const char*> arguments) {
+                                     kotatsu::string_list_ref arguments) {
     auto base = Spelling::absolute(directory);
     auto fid = file_table.intern(Spelling(file, base));
     Normalizer normalizer{.commands = command_table, .files = file_table};

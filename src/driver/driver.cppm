@@ -139,7 +139,7 @@ struct ProjectOptions {
                   "one holding a clice.toml or a compile_commands.json)")
     std::optional<std::string> workspace;
 
-    ConfigurationOption configuration;
+    ConfigurationOption build;
 
     /// The project's root as spelled: --workspace as given, relative to
     /// the current directory; else the project root at or above `start`
@@ -257,23 +257,8 @@ inline int fail(std::string error) {
     return 1;
 }
 
-/// How a subcommand reports arguments it cannot take: as text on stderr,
-/// or as the Failure on stdout of one that answers in JSON.
-enum class Errors : std::uint8_t { Text, JSON };
-
-/// Report arguments the subcommand cannot take; returns the exit code of
-/// arguments that do not parse.
-inline int usage_error(Errors errors, std::string message) {
-    if(errors == Errors::JSON) {
-        print_json(Failure{.error = std::move(message)});
-    } else {
-        driver::println(stderr, "{}", message);
-    }
-    return 2;
-}
-
-/// Report a command line that does not parse as the subcommand it names
-/// reports arguments it cannot take; returns the exit code.
+/// Report a command line that does not parse; returns its exit code. A
+/// subcommand answering in JSON answers it with the Failure on stdout.
 inline int usage_error(const cli::Error& error) {
     constexpr std::array<std::string_view, 4> answering_json = {
         "query",
@@ -285,11 +270,11 @@ inline int usage_error(const cli::Error& error) {
         cli::report(error);
         return 2;
     }
-    if(error.suggestion.empty()) {
-        return usage_error(Errors::JSON, error.message);
-    }
-    return usage_error(Errors::JSON,
-                       std::format("{}; did you mean '{}'?", error.message, error.suggestion));
+    auto message = error.suggestion.empty()
+                       ? error.message
+                       : std::format("{}; did you mean '{}'?", error.message, error.suggestion);
+    print_json(Failure{.error = std::move(message)});
+    return 2;
 }
 
 template <typename T>
@@ -358,7 +343,7 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     if(!root) {
         return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
     }
-    options.configuration = where.configuration.configuration;
+    options.configuration = where.build.configuration;
     auto loaded = load_settings(CanonicalPath(*root), options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {

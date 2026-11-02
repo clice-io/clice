@@ -190,7 +190,7 @@ public:
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,
-                                                llvm::ArrayRef<const char*> arguments);
+                                                kotatsu::string_list_ref arguments);
 
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,

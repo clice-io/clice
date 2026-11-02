@@ -373,9 +373,9 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
 }
 
 std::optional<CommandID> WrittenCommands::intern(const Spelling& directory,
-                                                 llvm::ArrayRef<const char*> arguments) {
+                                                 kotatsu::string_list_ref arguments) {
     std::string key = directory.str();
-    for(const char* argument: arguments) {
+    for(auto argument: arguments) {
         key += '\0';
         key += argument;
     }
