@@ -40,7 +40,7 @@ namespace {
 /// JSON layout of the inspect output. Field names stay snake_case (the
 /// project's native spelling) and enums serialize as their C++ value
 /// names; the TS side owns any mapping to LSP vocabulary.
-struct InspectJson : codec::extend<json::format> {};
+struct JsonFormat : codec::extend<json::format> {};
 
 }  // namespace
 
@@ -48,7 +48,7 @@ struct InspectJson : codec::extend<json::format> {};
 
 template <typename E>
     requires std::is_enum_v<E>
-struct kotatsu::codec::repr<E, clice::driver::InspectJson> : kotatsu::codec::enum_names<> {};
+struct kotatsu::codec::repr<E, clice::driver::JsonFormat> : kotatsu::codec::enum_names<> {};
 
 namespace clice::driver {
 
@@ -89,7 +89,7 @@ struct Options {
 
 /// Text that is not UTF-8 is written as U+FFFD, as the server writes it to
 /// the client.
-constexpr json::encode_options inspect_json{.invalid_utf8 = codec::invalid_utf8::Replace};
+constexpr json::encode_options json_options{.invalid_utf8 = codec::invalid_utf8::Replace};
 
 struct FileEntry {
     /// The whole-document feature payload, absent when compilation failed
@@ -122,7 +122,7 @@ struct Output {
 
 template <typename T>
 std::optional<codec::raw_value> to_raw_json(const T& value) {
-    auto json = json::to_string<InspectJson>(value, inspect_json);
+    auto json = json::to_string<JsonFormat>(value, json_options);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return std::nullopt;
@@ -773,7 +773,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         fs::remove(input->pch.first);
     }
 
-    auto json = json::to_string<InspectJson>(output, inspect_json);
+    auto json = json::to_string<JsonFormat>(output, json_options);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;

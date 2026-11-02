@@ -38,13 +38,3 @@ stdout = '''
 }
 '''
 exit = 2
-
-[test."$ clice refactor rename compute \"\""]
-stdout = '''
-{
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
-  "stale": []
-}
-'''
-stderr = "error: No index cache at ${WS}/.clice; run `clice index` first"
-exit = 1

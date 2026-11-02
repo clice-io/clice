@@ -498,10 +498,10 @@ struct Settings {
     KANNOTATE(&tracker, description = "The [tracker] section: background polling of files.")
     TrackerSettings tracker;
 
-    // The feature sections are the features' own options: `defaulted =
-    // true` lets a decode leave unmentioned fields at their initializers, so
-    // those are the single source of every default and a settings source only
-    // ever overlays what it names.
+    // The feature sections are the features' own options: their optional
+    // presence lets a decode leave unmentioned fields at their initializers,
+    // so those are the single source of every default and a settings source
+    // only ever overlays what it names.
 
     KANNOTATE(&diagnostics, description = "The [diagnostics] section: diagnostic options.")
     feature::DiagnosticsOptions diagnostics;

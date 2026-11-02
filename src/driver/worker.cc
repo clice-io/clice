@@ -52,8 +52,7 @@ int run_worker(Worker& worker) {
     return run_stateless_worker_mode(worker.worker_name, worker.log_dir);
 }
 
-[[maybe_unused]] const bool added =
-    cli::add_command<Subcommands>(run_worker, {.name = "worker", .hidden = true});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(run_worker, {.hidden = true});
 
 }  // namespace
 

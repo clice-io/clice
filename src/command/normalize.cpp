@@ -344,8 +344,8 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
         return expanded;
     }
 
-    /// nvcc's options files splice in where they stand, read as its
-    /// response files are. A cycle of them stops 8 files deep.
+    /// nvcc's options files splice in where they stand. A cycle of them
+    /// stops 8 files deep.
     std::vector<std::string> spliced;
     for(std::size_t i = 0; i < expanded.size(); i += 1) {
         auto names = depth < 8 ? options_files(expanded, i) : std::nullopt;

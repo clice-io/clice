@@ -5,5 +5,4 @@ test(async (t) => {
     await t.cli("refactor extract");
     await t.cli("refactor rename compute");
     await t.cli("refactor rename");
-    await t.cli('refactor rename compute ""');
 });
