@@ -2,7 +2,7 @@
 stdout = '''
 Rewrite the project's sources through the persisted index
 
-usage: clice refactor <refactoring> [<args>]
+usage: clice refactor [OPTIONS] <refactoring>
 
 Options:
   -h|--help                       display this help and exit
@@ -10,7 +10,7 @@ Options:
 Subcommands:
   rename  Rename symbols across the project
 '''
-exit = 0
+exit = 2
 
 [test."$ clice refactor extract"]
 stdout = '''
@@ -24,7 +24,7 @@ exit = 2
 [test."$ clice refactor rename compute"]
 stdout = '''
 {
-  "error": "expected 2 input arguments, got 1",
+  "error": "expected 1 input argument, got 0",
   "stale": []
 }
 '''
@@ -33,7 +33,7 @@ exit = 2
 [test."$ clice refactor rename"]
 stdout = '''
 {
-  "error": "rename takes <LOCATOR> <NEW-NAME>, or --spec",
+  "error": "one of <LOCATOR> or --spec <FILE> is required",
   "stale": []
 }
 '''

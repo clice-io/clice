@@ -2,7 +2,7 @@
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
-usage: clice <command> [<args>]
+usage: clice [OPTIONS] <command>
 
 Options:
   -h|--help                       display this help and exit
@@ -21,13 +21,13 @@ Subcommands:
   scan        Scan the project's include and module dependencies
   serve       Start LSP server
 '''
-exit = 0
+exit = 2
 
 ["root usage"."$ clice --help"]
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
-usage: clice <command> [<args>]
+usage: clice [OPTIONS] <command>
 
 Options:
   -h|--help                       display this help and exit
@@ -71,7 +71,7 @@ exit = 0
 stdout = '''
 Ask the persisted index about the project
 
-usage: clice query <question> [<args>]
+usage: clice query [OPTIONS] <question>
 
 Options:
   -h|--help                       display this help and exit
@@ -96,7 +96,7 @@ exit = 0
 stdout = '''
 Rewrite the project's sources through the persisted index
 
-usage: clice refactor <refactoring> [<args>]
+usage: clice refactor [OPTIONS] <refactoring>
 
 Options:
   -h|--help                       display this help and exit
@@ -169,7 +169,7 @@ exit = 0
 stdout = '''
 Run a feature on a source file and print raw results as JSON
 
-usage: clice inspect <feature> [<args>]
+usage: clice inspect [OPTIONS] <feature>
 
 Options:
   -h|--help                       display this help and exit
@@ -194,7 +194,7 @@ exit = 0
 stdout = '''
 Show the commands a file compiles with, or convert compile commands
 
-usage: clice command <PATH> [OPTIONS]
+usage: clice command [<PATH>] [OPTIONS] [<operation>]
 
 Options:
   -h|--help                       display this help and exit
@@ -231,7 +231,7 @@ exit = 0
 stdout = '''
 Analyze the indexed project for refactoring
 
-usage: clice analyze <analysis> [<args>]
+usage: clice analyze [OPTIONS] <analysis>
 
 Options:
   -h|--help                       display this help and exit
