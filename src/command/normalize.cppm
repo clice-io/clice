@@ -54,8 +54,8 @@ struct Normalizer {
 
     /// `file` is the entry's normalized path used to pick the input slot
     /// among the command's inputs; invalid synthesizes the slot at the end.
-    /// Nullopt when the arguments are no compile command: empty, or a
-    /// launcher with nothing to launch.
+    /// Nullopt when the arguments are no compile command: empty, naming
+    /// an empty program, or a launcher with nothing to launch.
     std::optional<CommandID> normalize(const Spelling& directory,
                                        Fid file,
                                        kotatsu::string_list_ref arguments);

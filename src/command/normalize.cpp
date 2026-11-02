@@ -92,6 +92,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     }
     llvm::SmallVector<std::string_view, 32> written(command_line.begin() + wrapper_len,
                                                     command_line.end());
+    // A Windows command line starting with a blank names an empty program.
+    if(written.front().empty()) {
+        return std::nullopt;
+    }
     llvm::ArrayRef<std::string_view> arguments = written;
 
     Command command;
