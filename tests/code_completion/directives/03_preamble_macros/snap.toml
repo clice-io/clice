@@ -13,3 +13,9 @@ items = [
 items = [
     { label = "beta::beta_value", kind = "Variable", detail = "int" },
 ]
+
+["an #if typed after the includes".macros.completion]
+items = [
+    { label = "DIR_ALPHA", kind = "Constant" },
+    { label = "DIR_BETA", kind = "Constant" },
+]
