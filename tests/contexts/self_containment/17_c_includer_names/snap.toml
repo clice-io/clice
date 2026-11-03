@@ -1,0 +1,20 @@
+[test."proto.h"]
+diagnostics = []
+
+[test."fields.h"]
+diagnostics = []
+
+[test."entries.h"]
+diagnostics = []
+
+[test."api.h"]
+diagnostics = []
+
+[test."docs.h"]
+diagnostics = []
+
+[test."kinds.h"]
+diagnostics = []
+
+[test."names.h"]
+diagnostics = []

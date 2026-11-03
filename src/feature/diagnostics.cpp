@@ -690,6 +690,12 @@ std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
         diag::err_typename_nested_not_found,
         diag::err_unknown_nested_typename_suggest,
         diag::ext_implicit_function_decl_c99,
+        diag::ext_missing_type_specifier,
+        diag::err_missing_type_specifier,
+        diag::warn_decl_in_param_list,
+        diag::err_field_incomplete_or_sizeless,
+        diag::err_array_incomplete_or_sizeless_type,
+        diag::err_expected_fn_body,
         diag::err_pp_hash_error,
         diag::err_pp_unterminated_conditional,
     };
