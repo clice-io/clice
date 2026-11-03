@@ -25,13 +25,6 @@ regression({
             // That token missing, and no other difference.
             detail: /(?<![\s\S])(?=[\s\S]*^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$).*$)/m,
         },
-        {
-            issue: "10-24#6",
-            why: "googletest builds with -WX, which makes clang's -Wcharacter-conversion (a warning cl does not have) an error",
-            configuration: "msvc",
-            kind: "compile",
-            detail: /may change the meaning of the represented code unit/,
-        },
     ],
 });
 
