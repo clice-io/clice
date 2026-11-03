@@ -707,8 +707,7 @@ public:
     /// compiles a buffer state the shared AST attempt may not have seen yet,
     /// at `offset` of it. `params` arrives with the fields particular to its
     /// request filled in; `prepared` adds those that follow from the PCH the
-    /// build loads, under its key (empty for none), and whether a host's text
-    /// precedes the file's own.
+    /// build loads, under its key (empty for none).
     template <typename Params>
     async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error> stateless_request(
         const Ticket& ticket,
@@ -717,8 +716,7 @@ public:
         std::uint32_t offset,
         Params params,
         async::cancellation_token token,
-        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef, bool)>> prepared =
-            {});
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef)>> prepared = {});
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
     async::task<std::optional<worker::FormatResult>, ipc::Error>
@@ -1285,7 +1283,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         std::uint32_t offset,
         Params params,
         async::cancellation_token token,
-        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef, bool)>> prepared) {
+        std::type_identity_t<llvm::function_ref<void(Params&, llvm::StringRef)>> prepared) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -1352,7 +1350,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     params.hidden = std::move(resolution.hidden);
     if(prepared) {
-        prepared(params, built->loaded.value_or(""), resolution.synthesized != nullptr);
+        prepared(params, built->loaded.value_or(""));
     }
 
     // A preamble crash inside the preparation, or a crash of a request like
