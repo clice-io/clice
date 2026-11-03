@@ -316,10 +316,12 @@ Completables completables(const IndexQuery& index,
     /// Adds the best of the names `query` finds, up to the limit.
     auto gather = [&](const SymbolQuery& query, bool& exhausted) {
         // The names completion does not offer (a class's members) take
-        // places in the ranking: it is fetched wider than the names wanted.
+        // places in the ranking: it is fetched wider than the names wanted,
+        // the widest with nothing typed, where uses alone rank them.
+        auto width = limit * (query.pattern.empty() ? 8 : 2);
         auto project_query = query;
         project_query.external_only = true;
-        auto ranked = ranked_search(index, project_query, limit * 8);
+        auto ranked = ranked_search(index, project_query, width);
         llvm::DenseSet<SymbolHash> seen;
         for(auto& hit: ranked.hits) {
             seen.insert(hit.symbol.hash);
@@ -329,7 +331,7 @@ Completables completables(const IndexQuery& index,
         llvm::DenseMap<SymbolHash, const TUIndex*> preamble_of;
         for(auto& pch_index: pchs) {
             auto& pch = *pch_index;
-            auto found = pch.names().search(query, limit * 8, [](std::uint32_t) { return false; });
+            auto found = pch.names().search(query, width, [](std::uint32_t) { return false; });
             for(auto& hit: found.hits) {
                 if(!seen.insert(hit.hash).second) {
                     continue;
