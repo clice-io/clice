@@ -301,8 +301,8 @@ Completables completables(const IndexQuery& index,
     }
 
     Completables result;
-    /// The names taken, spelled through their scopes: a name's overloads
-    /// and specializations are one name, which the compile looks up whole.
+    /// The names taken, spelled through their scopes: the limit counts a
+    /// name once however many overloads and specializations it has.
     llvm::StringSet<> taken;
     /// Adds the best of the names `query` finds, up to the limit.
     auto gather = [&](const SymbolQuery& query, bool& exhausted) {
@@ -361,10 +361,7 @@ Completables completables(const IndexQuery& index,
                 spelled += "::";
             }
             spelled += hit.symbol.name;
-            if(taken.contains(spelled)) {
-                continue;
-            }
-            if(result.names.size() == limit) {
+            if(!taken.contains(spelled) && taken.size() == limit) {
                 exhausted = false;
                 break;
             }

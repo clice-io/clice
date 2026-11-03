@@ -48,9 +48,10 @@ struct CompletionScope {
 
 /// The names `prefix` matches that completion may offer from `scope` —
 /// names of namespaces and unscoped enumerators (SymbolFlags::Completable)
-/// — best first, at most `limit`: the project's and the open buffers'
-/// linked across files, and every one of `pchs`, the indexes of the PCHs
-/// the completing compile loads. An empty prefix takes the names used most. After a
+/// — best first, at most `limit` names, each with all its overloads: the
+/// project's and the open buffers' linked across files, and every one of
+/// `pchs`, the indexes of the PCHs the completing compile loads. An empty
+/// prefix takes the names used most. After a
 /// qualifier, its scopes' own names come first, then those of any other
 /// scope, which a using-declaration or using-directive there may bring
 /// in. Whether the limit cut each short.
