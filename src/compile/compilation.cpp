@@ -905,6 +905,13 @@ CompilationStatus CompilationUnit::run() {
     // Upstream FrontendAction::Execute() always returns success: errors go
     // through diagnostics.
     llvm::cantFail(action->Execute());
+    // The parser frees its scopes when the parse ends, and Sema goes on
+    // pointing at the translation unit's: a declaration the reader loads
+    // later, for a lookup on the finished AST, would be added to freed
+    // memory.
+    if(instance->hasSema()) {
+        instance->getSema().TUScope = nullptr;
+    }
 
     if(params.stop->load()) {
         return CompilationStatus::Cancelled;
