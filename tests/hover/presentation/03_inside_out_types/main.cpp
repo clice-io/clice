@@ -29,6 +29,9 @@ int Widget::* Holder::*§(member_in_member)chain = &Holder::member;
 
 void (*§(returns_pointer)signal(int, void (*)(int)))(int);
 
+void __attribute__((ms_abi)) native(int);
+auto §(attributed)entry = &native;
+
 using Table = void (*[8])(int);
 Table §(alias)dispatch;
 

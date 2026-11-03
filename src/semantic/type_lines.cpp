@@ -55,6 +55,30 @@ auto columns(llvm::StringRef text) -> std::size_t {
     }));
 }
 
+/// Whether `type` holds a C function declared without a prototype, past
+/// the aliases that name a part of it.
+bool unprototyped(clang::QualType type) {
+    const auto* node = type.getTypePtr();
+    if(llvm::isa<clang::FunctionNoProtoType>(node)) {
+        return true;
+    }
+    if(llvm::isa<clang::TypedefType, clang::UsingType>(node)) {
+        return false;
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(node)) {
+        return unprototyped(function->getReturnType()) ||
+               ranges::any_of(function->getParamTypes(), unprototyped);
+    }
+    if(llvm::isa<clang::PointerType, clang::ReferenceType, clang::MemberPointerType>(node)) {
+        return unprototyped(node->getPointeeType());
+    }
+    if(const auto* array = llvm::dyn_cast<clang::ArrayType>(node)) {
+        return unprototyped(array->getElementType());
+    }
+    auto inner = node->getLocallyUnqualifiedSingleStepDesugaredType();
+    return inner.getTypePtr() != node && unprototyped(inner);
+}
+
 class Builder {
 public:
     Builder(clang::ASTContext& context, const clang::PrintingPolicy& policy) :
@@ -69,6 +93,17 @@ public:
             case clang::Type::Adjusted:
             case clang::Type::Decayed:
             case clang::Type::SubstTemplateTypeParm: {
+                return build(
+                    context.getQualifiedType(node->getLocallyUnqualifiedSingleStepDesugaredType(),
+                                             qualifiers));
+            }
+            /// An attribute on a function, a calling convention, is part of
+            /// the function type it stands for.
+            case clang::Type::Attributed:
+            case clang::Type::MacroQualified: {
+                if(!node->isFunctionType()) {
+                    return named(type);
+                }
                 return build(
                     context.getQualifiedType(node->getLocallyUnqualifiedSingleStepDesugaredType(),
                                              qualifiers));
@@ -133,16 +168,13 @@ public:
                 if(auto spec = llvm::StringRef(exceptions).trim(); !spec.empty()) {
                     shape.text += (shape.text.empty() ? "" : " ") + spec.str();
                 }
+                if(auto marks = attributes(*function); !marks.empty()) {
+                    shape.text = shape.text.empty() ? marks : marks + " " + shape.text;
+                }
                 shape.parts.push_back(build(function->getReturnType()));
                 for(auto param: function->getParamTypes()) {
                     shape.parts.push_back(build(param));
                 }
-                return shape;
-            }
-            case clang::Type::FunctionNoProto: {
-                Shape shape{.kind = Kind::Function};
-                shape.parts.push_back(
-                    build(llvm::cast<clang::FunctionType>(node)->getReturnType()));
                 return shape;
             }
             case clang::Type::TemplateSpecialization: {
@@ -230,6 +262,16 @@ private:
             text += (index == 0 ? "" : ", ") + print(argument);
         }
         return text;
+    }
+
+    /// What C++ prints after a function's parameters for its calling
+    /// convention and the like, `__attribute__((ms_abi))`.
+    auto attributes(const clang::FunctionProtoType& function) const -> std::string {
+        clang::FunctionProtoType::ExtProtoInfo bare;
+        auto plain = print(context.getFunctionType(context.VoidTy, {}, bare));
+        bare.ExtInfo = function.getExtInfo();
+        auto marked = print(context.getFunctionType(context.VoidTy, {}, bare));
+        return llvm::StringRef(marked).drop_front(plain.size()).trim().str();
     }
 
     auto prefix(clang::Qualifiers qualifiers) const -> std::string {
@@ -701,6 +743,14 @@ auto type_lines(clang::ASTContext& context,
                 clang::QualType type,
                 const clang::PrintingPolicy& policy,
                 std::uint32_t width) -> std::string {
+    /// `(params) -> R` would claim to know the parameters of a C function
+    /// declared without a prototype: such a type stays C.
+    if(unprototyped(type)) {
+        std::string text;
+        llvm::raw_string_ostream os(text);
+        type.print(os, policy);
+        return text;
+    }
     auto shape = Builder(context, policy).build(type);
     return Lines(width).write(shape);
 }

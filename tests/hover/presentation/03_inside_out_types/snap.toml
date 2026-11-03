@@ -166,6 +166,17 @@ void (*signal(int, void (*)(int)))(int)
 '''
 range = "void (*⟦signal⟧(int, void (*)(int)))(int);"
 
+[answers.attributed.hover]
+markdown = '''
+**variable** `entry` · namespace `inside_out`
+
+```cpp
+auto entry = &native
+```
+**Type:** `(__attribute__((ms_abi)) (int) -> void)*`
+'''
+range = "auto ⟦entry⟧ = &native;"
+
 [answers.alias.hover]
 markdown = '''
 **variable** `dispatch` · namespace `inside_out`

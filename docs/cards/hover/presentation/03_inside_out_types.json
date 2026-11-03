@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace inside_out {\n\nstruct Widget {\n    double scale(double factor) const;\n    void reset() & noexcept;\n    int id;\n    void (*hooks[4])(int);\n};\n\nstruct Holder {\n    int Widget::* member;\n};\n\nint storage[16];\n\nvoid (*on_exit)(int);\nint (&row)[16] = storage;\nchar (*line)[80];\nvoid (*handlers[8])(int, const char*);\nint (*print)(const char*, ...);\nint (*any)(...);\nconst auto& view = storage;\ndouble (Widget::*scaler)(double) const = &Widget::scale;\nvoid (Widget::*resetter)() & noexcept = &Widget::reset;\nint Widget::*field = &Widget::id;\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks;\nint Widget::* const fixed = &Widget::id;\nint Widget::* Holder::*chain = &Holder::member;\n\nvoid (*signal(int, void (*)(int)))(int);\n\nusing Table = void (*[8])(int);\nTable dispatch;\n\n}\n",
+      "text": "namespace inside_out {\n\nstruct Widget {\n    double scale(double factor) const;\n    void reset() & noexcept;\n    int id;\n    void (*hooks[4])(int);\n};\n\nstruct Holder {\n    int Widget::* member;\n};\n\nint storage[16];\n\nvoid (*on_exit)(int);\nint (&row)[16] = storage;\nchar (*line)[80];\nvoid (*handlers[8])(int, const char*);\nint (*print)(const char*, ...);\nint (*any)(...);\nconst auto& view = storage;\ndouble (Widget::*scaler)(double) const = &Widget::scale;\nvoid (Widget::*resetter)() & noexcept = &Widget::reset;\nint Widget::*field = &Widget::id;\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks;\nint Widget::* const fixed = &Widget::id;\nint Widget::* Holder::*chain = &Holder::member;\n\nvoid (*signal(int, void (*)(int)))(int);\n\nvoid __attribute__((ms_abi)) native(int);\nauto entry = &native;\n\nusing Table = void (*[8])(int);\nTable dispatch;\n\n}\n",
       "markers": [
         {
           "name": "function_pointer",
@@ -97,9 +97,15 @@
           "range": false
         },
         {
+          "name": "attributed",
+          "begin": 774,
+          "end": 774,
+          "range": false
+        },
+        {
           "name": "alias",
-          "begin": 765,
-          "end": 765,
+          "begin": 830,
+          "end": 830,
           "range": false
         }
       ]
@@ -432,6 +438,29 @@
           }
         },
         {
+          "label": "attributed",
+          "marker": "attributed",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `entry` · namespace `inside_out`\n\n```cpp\nauto entry = &native\n```\n**Type:** `(__attribute__((ms_abi)) (int) -> void)*`",
+              "range": {
+                "$place": "auto ⟦entry⟧ = &native;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 32,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 32,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
           "label": "alias",
           "marker": "alias",
           "value": {
@@ -442,11 +471,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 32,
+                    "line": 35,
                     "character": 6
                   },
                   "end": {
-                    "line": 32,
+                    "line": 35,
                     "character": 14
                   }
                 }
