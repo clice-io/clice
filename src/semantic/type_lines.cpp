@@ -45,8 +45,8 @@ struct Shape {
 
 using Kind = Shape::Kind;
 
-/// The columns `text` takes: one per character, the letters standing for
-/// parts being two bytes each.
+/// The columns `text` takes: one per character, though the letters standing
+/// for parts take more than one byte.
 auto columns(llvm::StringRef text) -> std::size_t {
     return static_cast<std::size_t>(ranges::count_if(text, [](char c) {
         return (static_cast<unsigned char>(c) & 0xC0) != 0x80;
@@ -447,6 +447,16 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
         return nodes;
     };
 
+    /// A part the line writes twice is lifted both times.
+    auto lift = [&](const Shape* part) {
+        auto text = spelling(*part);
+        for(const auto* node: shown(root)) {
+            if(node != &root && spelling(*node) == text) {
+                names[node] = letters[0];
+            }
+        }
+    };
+
     for(bool nested = true; nested;) {
         nested = false;
         for(const auto* outer: shown(root)) {
@@ -460,7 +470,7 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
                 auto inner = shown(*part);
                 if(ranges::any_of(inner,
                                   [&](const Shape* node) { return node->kind == outer->kind; })) {
-                    names[part] = letters[0];
+                    lift(part);
                     nested = true;
                     break;
                 }
@@ -505,7 +515,7 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
                 return columns(spelling(*node));
             });
         }
-        names[pick] = letters[0];
+        lift(pick);
     }
 
     llvm::SmallVector<const Shape*> order;
@@ -553,16 +563,18 @@ private:
         return entry;
     }
 
-    void assign(const Entry& entry) {
+    /// Past the letters, a part and what its line would lift are all `…`.
+    void assign(const Entry& entry, bool spent = false) {
         for(const auto& child: entry.children) {
             auto& letter = defined[spelling(*child.shape)];
-            if(next < max_letters) {
+            spent = spent || next == max_letters;
+            if(spent) {
+                letter = "…";
+            } else {
                 letter = letters[next];
                 next += 1;
-                assign(child);
-            } else {
-                letter = "…";
             }
+            assign(child, spent);
         }
     }
 
