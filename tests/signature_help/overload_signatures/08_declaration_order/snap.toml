@@ -1,0 +1,24 @@
+[answers.global.signature_help]
+signatures = [
+    "trace(⟦Line *line⟧) -> void",
+    "trace(⟦Circle *circle⟧) -> void",
+    "trace(⟦Square *square⟧) -> void",
+    "trace(⟦Point *point⟧) -> void",
+]
+active = 0
+
+[answers.namespaced.signature_help]
+signatures = ["fill(⟦Line *line⟧) -> void", "fill(⟦Circle *circle⟧) -> void", "fill(⟦Square *square⟧) -> void"]
+active = 0
+
+[answers.templates.signature_help]
+signatures = [
+    "stamp(⟦T *shape⟧) -> void",
+    "stamp(⟦const T &shape⟧, int times) -> void",
+    "stamp(⟦T *shape⟧, U *other) -> void",
+]
+active = 0
+
+[answers.written.signature_help]
+signatures = ["blend(int base, ⟦int tint⟧) -> int", "blend(int base, ⟦int tint⟧, int alpha) -> int"]
+active = 0

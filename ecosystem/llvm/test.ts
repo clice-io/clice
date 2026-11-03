@@ -26,16 +26,6 @@ regression({
             // That initializer alone differs, expanded on the server.
             detail: /(?<![\s\S])(?=[\s\S]*^-\s+static const Position Last = UINT32_MAX;$)(?=[\s\S]*^\+\s+static const Position Last = \(4294967295U\);$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+static const Position Last = (?:UINT32_MAX|\(4294967295U\));$).*$)/m,
         },
-        {
-            issue: "10-28#5",
-            why: "signature help lists the overloads Sema ranks alike in lookup order, which a preamble's PCH changes",
-            kind: "disagree",
-            request: "signatureHelp",
-            file: "llvm/unittests/ADT/HashingTest.cpp",
-            // HashBuilder.h's overload listed later by the server, and no
-            // other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^-( +"hash_value\(⟦const T &Value⟧\) -> .*",)$[\s\S]*^\+\1$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\1$).*$)(?![\s\S]*(?:^[-+]\1$[\s\S]*){3})/m,
-        },
     ],
 });
 

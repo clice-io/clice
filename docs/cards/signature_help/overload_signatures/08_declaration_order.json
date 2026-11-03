@@ -1,0 +1,110 @@
+{
+  "id": "signature_help/overload_signatures/08_declaration_order",
+  "topic": "signature_help",
+  "subtopic": "overload_signatures",
+  "title": "Overloads in declaration order",
+  "summary": "Overloads that rank alike for the arguments written so far are listed in the order they are declared, whether a preamble header or the file itself declares them",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"shapes.h\"\n\nstruct Point {};\n\nvoid trace(Point* point);\n\nnamespace draw {\n\nvoid use(Circle* circle) {\n    trace(circle);\n    fill(circle);\n    stamp(circle);\n    blend(1, 2);\n}\n\n}  // namespace draw\n",
+      "markers": [
+        {
+          "name": "global",
+          "begin": 121,
+          "end": 121,
+          "range": false
+        },
+        {
+          "name": "namespaced",
+          "begin": 139,
+          "end": 139,
+          "range": false
+        },
+        {
+          "name": "templates",
+          "begin": 158,
+          "end": 158,
+          "range": false
+        },
+        {
+          "name": "written",
+          "begin": 180,
+          "end": 180,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shapes.h",
+      "text": "struct Line {};\nstruct Circle {};\nstruct Square {};\n\nvoid trace(Line* line);\nvoid trace(Circle* circle);\nvoid trace(Square* square);\n\nint blend(int base, int tint);\nint blend(int base, int tint, int alpha);\n\nnamespace draw {\n\nvoid fill(Line* line);\nvoid fill(Circle* circle);\nvoid fill(Square* square);\n\ntemplate <class T>\nvoid stamp(T* shape);\ntemplate <class T>\nvoid stamp(const T& shape, int times);\ntemplate <class T, class U>\nvoid stamp(T* shape, U* other);\n\n}  // namespace draw\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "global",
+          "marker": "global",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "trace(⟦Line *line⟧) -> void",
+                "trace(⟦Circle *circle⟧) -> void",
+                "trace(⟦Square *square⟧) -> void",
+                "trace(⟦Point *point⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "namespaced",
+          "marker": "namespaced",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "fill(⟦Line *line⟧) -> void",
+                "fill(⟦Circle *circle⟧) -> void",
+                "fill(⟦Square *square⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "templates",
+          "marker": "templates",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "stamp(⟦T *shape⟧) -> void",
+                "stamp(⟦const T &shape⟧, int times) -> void",
+                "stamp(⟦T *shape⟧, U *other) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "written",
+          "marker": "written",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "blend(int base, ⟦int tint⟧) -> int",
+                "blend(int base, ⟦int tint⟧, int alpha) -> int"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

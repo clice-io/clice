@@ -92,6 +92,102 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
     return function;
 }
 
+/// What Sema ranks a call's candidate by when `written` arguments precede
+/// the cursor: two candidates with the same key rank alike against every
+/// other. Nullopt for one ranked by more (an implicit constructor, which
+/// place_implicit orders; a function template's specialization once an
+/// argument is written, which partial ordering compares).
+std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::FunctionDecl& function,
+                                                                std::uint32_t written) {
+    bool specialization = function.getPrimaryTemplate();
+    if(function.isImplicit() || (specialization && written > 0) ||
+       llvm::isa<clang::CXXDeductionGuideDecl>(function)) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<std::uintptr_t, 8> key{specialization};
+    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function)) {
+        if(method->isExplicitObjectMemberFunction()) {
+            return std::nullopt;
+        }
+        key.append({reinterpret_cast<std::uintptr_t>(method->getParent()->getCanonicalDecl()),
+                    method->isStatic(),
+                    method->getMethodQualifiers().getAsOpaqueValue(),
+                    method->getRefQualifier()});
+    }
+    if(specialization) {
+        auto params = function.parameters();
+        key.append({params.size(), !params.empty() && params.back()->isParameterPack()});
+        return key;
+    }
+    for(std::uint32_t i = 0; i < written; ++i) {
+        key.push_back(
+            i < function.getNumParams()
+                ? reinterpret_cast<std::uintptr_t>(
+                      function.getParamDecl(i)->getType().getCanonicalType().getAsOpaquePtr())
+                : 0);
+    }
+    return key;
+}
+
+/// Lists the candidates Sema ranks alike in the order they are declared:
+/// Sema leaves them in its lookup's order, which differs between
+/// declarations a preamble's PCH holds and the same ones parsed. Each set
+/// of alike candidates keeps the places Sema gave it. Constraints and the
+/// attributes Sema ranks by compare a candidate with only some others, so
+/// a call reaching any keeps Sema's order whole.
+void order_alike(clang::Sema& sema,
+                 std::uint32_t written,
+                 llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    auto ranked_apart = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
+        const auto* function = candidate.getFunction();
+        if(!function) {
+            return false;
+        }
+        auto* primary = function->getPrimaryTemplate();
+        return function->getTrailingRequiresClause() ||
+               (primary && primary->hasAssociatedConstraints()) ||
+               function->hasAttr<clang::EnableIfAttr>() || function->isMultiVersion() ||
+               ranges::any_of(function->parameters(), [](const clang::ParmVarDecl* param) {
+                   return param->hasAttr<clang::PassObjectSizeAttr>();
+               });
+    };
+    if(sema.getLangOpts().CUDA || ranges::any_of(candidates, ranked_apart)) {
+        return;
+    }
+
+    std::vector<std::pair<llvm::SmallVector<std::uintptr_t, 8>, std::uint32_t>> keyed;
+    for(auto [index, candidate]: views::enumerate(candidates)) {
+        if(const auto* function = candidate.getFunction()) {
+            if(auto key = ranking_key(*function, written)) {
+                keyed.emplace_back(std::move(*key), static_cast<std::uint32_t>(index));
+            }
+        }
+    }
+    ranges::stable_sort(keyed, {}, [](const auto& entry) -> const auto& { return entry.first; });
+
+    auto& sources = sema.getSourceManager();
+    llvm::SmallVector<clang::CodeCompleteConsumer::OverloadCandidate> alike;
+    for(auto begin = keyed.begin(); begin != keyed.end();) {
+        auto end = ranges::find_if(begin, keyed.end(), [&](const auto& entry) {
+            return entry.first != begin->first;
+        });
+        if(end - begin > 1) {
+            alike.clear();
+            for(auto& entry: ranges::subrange(begin, end)) {
+                alike.push_back(candidates[entry.second]);
+            }
+            ranges::stable_sort(alike, [&](const auto& left, const auto& right) {
+                return sources.isBeforeInTranslationUnit(left.getFunction()->getLocation(),
+                                                         right.getFunction()->getLocation());
+            });
+            for(auto [entry, candidate]: views::zip(ranges::subrange(begin, end), alike)) {
+                candidates[entry.second] = candidate;
+            }
+        }
+        begin = end;
+    }
+}
+
 /// Puts a class's implicit constructors, which Sema ranks alike with the
 /// declared ones for a call with no argument written yet, after those, in
 /// the order Sema declares them: Sema leaves them where its lookup found
@@ -232,6 +328,7 @@ public:
         call_scope = sema.CurContext;
 
         bool ranked = object_written(sema, open_paren);
+        order_alike(sema, current_arg, {candidates, candidate_count});
         if(current_arg == 0) {
             place_implicit({candidates, candidate_count});
         }
