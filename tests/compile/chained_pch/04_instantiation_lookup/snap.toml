@@ -9,7 +9,11 @@ markdown = '''
 **function** `make`
 
 ```cpp
-template <> int make<int>(int value)
+template <class T> auto make(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
@@ -21,10 +25,14 @@ highlights = [
 
 [features.size.hover]
 markdown = '''
-**method** `size` · struct `Wrapper<Late>`
+**method** `size` · struct `Wrapper<…>`
 
 ```cpp
 int size() const
+```
+**Template arguments:**
+```cpp
+T = Late
 ```
 '''
 range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
@@ -51,7 +59,11 @@ markdown = '''
 **function** `apply`
 
 ```cpp
-template <> int apply<Local>(Local value)
+template <class T> int apply(T value)
+```
+**Template arguments:**
+```cpp
+T = Local
 ```
 '''
 range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
@@ -302,7 +314,11 @@ markdown = '''
 **function** `make`
 
 ```cpp
-template <> int make<int>(int value)
+template <class T> auto make(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
@@ -314,10 +330,14 @@ references = ["include/base.h │ int ⟦size⟧() const {", "int total = made +
 
 [locations.size.hover]
 markdown = '''
-**method** `size` · struct `Wrapper<Late>`
+**method** `size` · struct `Wrapper<…>`
 
 ```cpp
 int size() const
+```
+**Template arguments:**
+```cpp
+T = Late
 ```
 '''
 range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
@@ -339,7 +359,11 @@ markdown = '''
 **function** `apply`
 
 ```cpp
-template <> int apply<Local>(Local value)
+template <class T> int apply(T value)
+```
+**Template arguments:**
+```cpp
+T = Local
 ```
 '''
 range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
@@ -410,7 +434,11 @@ markdown = '''
 **function** `make`
 
 ```cpp
-template <> int make<int>(int value)
+template <class T> auto make(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
@@ -422,10 +450,14 @@ references = ["include/base.h │ int ⟦size⟧() const {", "int total = made +
 
 ["indexed locations".size.hover]
 markdown = '''
-**method** `size` · struct `Wrapper<Late>`
+**method** `size` · struct `Wrapper<…>`
 
 ```cpp
 int size() const
+```
+**Template arguments:**
+```cpp
+T = Late
 ```
 '''
 range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
@@ -448,7 +480,11 @@ markdown = '''
 **function** `apply`
 
 ```cpp
-template <> int apply<Local>(Local value)
+template <class T> int apply(T value)
+```
+**Template arguments:**
+```cpp
+T = Local
 ```
 '''
 range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"

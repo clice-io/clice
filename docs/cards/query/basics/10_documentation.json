@@ -33,14 +33,14 @@
         {
           "label": "$ clice query read-symbol area",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"area\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/geometry.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 6,\n    \"documentation\": \"Computes the area of a rectangle.\\n\\nParameters:  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\nReturns: The product of both sides.\",\n    \"text\": \"int area(int width, int height) {\\n    return width * height;\\n}\",\n    \"symbol\": \"#7b938a3382a6f65a\"\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"area\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/geometry.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 6,\n    \"documentation\": \"Computes the area of a rectangle.\\n\\n**Parameters:**  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\n**Returns:** The product of both sides.\",\n    \"text\": \"int area(int width, int height) {\\n    return width * height;\\n}\",\n    \"symbol\": \"#7b938a3382a6f65a\"\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query definition surface",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"surface\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#a2ee286bd8d3dc88\",\n    \"documentation\": \"Computes the area of a rectangle.\\n\\nParameters:  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\nReturns: The product of both sides.\",\n    \"definition\": {\n      \"file\": \"${WS}/geometry.cpp\",\n      \"startLine\": 8,\n      \"endLine\": 10,\n      \"text\": \"int surface(int width, int height) {\\n    return area(width, height);\\n}\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"surface\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#a2ee286bd8d3dc88\",\n    \"documentation\": \"Computes the area of a rectangle.\\n\\n**Parameters:**  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\n**Returns:** The product of both sides.\",\n    \"definition\": {\n      \"file\": \"${WS}/geometry.cpp\",\n      \"startLine\": 8,\n      \"endLine\": 10,\n      \"text\": \"int surface(int width, int height) {\\n    return area(width, height);\\n}\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },

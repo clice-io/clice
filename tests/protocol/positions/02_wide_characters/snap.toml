@@ -135,9 +135,9 @@ diagnostics = [
 markdown = '''
 **literal** `4`
 
-Type: `int`
-Value: `4`
-Passed as `b` by value
+**Type:** `int`
+**Value:** `4`
+**Passed:** by value to `b`
 '''
 range = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + add(3, ⟦4⟧);'
 
@@ -278,9 +278,9 @@ diagnostics = [
 markdown = '''
 **literal** `4`
 
-Type: `int`
-Value: `4`
-Passed as `b` by value
+**Type:** `int`
+**Value:** `4`
+**Passed:** by value to `b`
 '''
 range = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + add(3, ⟦4⟧);'
 
@@ -421,8 +421,8 @@ diagnostics = [
 markdown = '''
 **literal** `4`
 
-Type: `int`
-Value: `4`
-Passed as `b` by value
+**Type:** `int`
+**Value:** `4`
+**Passed:** by value to `b`
 '''
 range = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + add(3, ⟦4⟧);'

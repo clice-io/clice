@@ -5,7 +5,8 @@ markdown = '''
 ```cpp
 class ABI Writer {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 
 `ABI` is `__attribute__((visibility("default")))`
 '''

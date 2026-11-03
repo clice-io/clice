@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define SCALE 3
 ```
-Expands to:
+**Expands to:**
 ```cpp
 3
 ```
+**Type:** `int`
+**Value:** `3`
 '''
 range = "return Meters{⟦SCALE⟧ * 0.5};"
 

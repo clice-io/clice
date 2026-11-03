@@ -6,10 +6,14 @@ highlights = [
 
 [features.get.hover]
 markdown = '''
-**method** `get` · struct `Box<Widget>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Widget
 ```
 '''
 range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
@@ -22,10 +26,14 @@ highlights = [
 
 [features.get_base.hover]
 markdown = '''
-**method** `get` · struct `Box<Inbase>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Inbase
 ```
 '''
 range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
@@ -41,7 +49,11 @@ markdown = '''
 **function** `twice`
 
 ```cpp
-template <> int twice<int *>(int *)
+template <class T> int twice(T)
+```
+**Template arguments:**
+```cpp
+T = int*
 ```
 '''
 range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
@@ -74,7 +86,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 7
 ```
-Value: `7`
+**Value:** `7`
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
 
@@ -106,7 +118,7 @@ markdown = '''
 ```cpp
 constexpr int weight = 9
 ```
-Value: `9`
+**Value:** `9`
 '''
 range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
 
@@ -123,7 +135,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 3
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "return total + Traits<int*>::⟦value⟧;"
 
@@ -356,10 +368,14 @@ references = [
 
 [locations.get.hover]
 markdown = '''
-**method** `get` · struct `Box<Widget>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Widget
 ```
 '''
 range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
@@ -376,10 +392,14 @@ references = [
 
 [locations.get_base.hover]
 markdown = '''
-**method** `get` · struct `Box<Inbase>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Inbase
 ```
 '''
 range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
@@ -399,7 +419,11 @@ markdown = '''
 **function** `twice`
 
 ```cpp
-template <> int twice<int *>(int *)
+template <class T> int twice(T)
+```
+**Template arguments:**
+```cpp
+T = int*
 ```
 '''
 range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
@@ -439,7 +463,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 7
 ```
-Value: `7`
+**Value:** `7`
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
 
@@ -478,7 +502,7 @@ markdown = '''
 ```cpp
 constexpr int weight = 9
 ```
-Value: `9`
+**Value:** `9`
 '''
 range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
 
@@ -499,7 +523,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 3
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "return total + Traits<int*>::⟦value⟧;"
 
@@ -519,10 +543,14 @@ references = [
 
 ["indexed locations".get.hover]
 markdown = '''
-**method** `get` · struct `Box<Widget>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Widget
 ```
 '''
 range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
@@ -540,10 +568,14 @@ references = [
 
 ["indexed locations".get_base.hover]
 markdown = '''
-**method** `get` · struct `Box<Inbase>`
+**method** `get` · struct `Box<…>`
 
 ```cpp
 int get() const
+```
+**Template arguments:**
+```cpp
+T = Inbase
 ```
 '''
 range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
@@ -564,7 +596,11 @@ markdown = '''
 **function** `twice`
 
 ```cpp
-template <> int twice<int *>(int *)
+template <class T> int twice(T)
+```
+**Template arguments:**
+```cpp
+T = int*
 ```
 '''
 range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
@@ -605,7 +641,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 7
 ```
-Value: `7`
+**Value:** `7`
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
 
@@ -644,7 +680,7 @@ markdown = '''
 ```cpp
 constexpr int weight = 9
 ```
-Value: `9`
+**Value:** `9`
 '''
 range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
 
@@ -665,7 +701,7 @@ markdown = '''
 ```cpp
 static constexpr int value = 3
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "return total + Traits<int*>::⟦value⟧;"
 

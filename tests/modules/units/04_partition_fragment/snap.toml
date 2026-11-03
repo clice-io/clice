@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define MAX_SIZE 100
 ```
-Expands to:
+**Expands to:**
 ```cpp
 100
 ```
+**Type:** `int`
+**Value:** `100 (0x64)`
 '''
 range = "export constexpr int max_size = ⟦MAX_SIZE⟧;"
 
@@ -19,6 +21,6 @@ markdown = '''
 ```cpp
 export constexpr int max_size = 100
 ```
-Value: `100 (0x64)`
+**Value:** `100 (0x64)`
 '''
 range = "return ⟦max_size⟧;"

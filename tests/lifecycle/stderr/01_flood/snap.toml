@@ -9,7 +9,7 @@ markdown = '''
 ```cpp
 int value = 42
 ```
-Value: `42 (0x2a)`
+**Value:** `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = 42;"
 

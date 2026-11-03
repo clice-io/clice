@@ -10,7 +10,8 @@ struct Config {
   int size;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Config⟧ config;"
 
@@ -21,10 +22,12 @@ markdown = '''
 ```cpp
 #define CELLS 4
 ```
-Expands to:
+**Expands to:**
 ```cpp
 4
 ```
+**Type:** `int`
+**Value:** `4`
 '''
 range = "int cells[⟦CELLS⟧];"
 
@@ -40,7 +43,8 @@ struct Config {
   int size;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Config⟧ config;"
 
@@ -51,9 +55,11 @@ markdown = '''
 ```cpp
 #define CELLS 4
 ```
-Expands to:
+**Expands to:**
 ```cpp
 4
 ```
+**Type:** `int`
+**Value:** `4`
 '''
 range = "int cells[⟦CELLS⟧];"

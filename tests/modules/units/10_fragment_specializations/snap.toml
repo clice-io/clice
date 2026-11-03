@@ -5,6 +5,6 @@ markdown = '''
 ```cpp
 auto [index, value] = lib::make(0.5)
 ```
-Type: `double`
+**Type:** `double`
 '''
 range = "auto [index, ⟦value⟧] = lib::make(0.5);"

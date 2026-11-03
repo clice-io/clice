@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 export constexpr int value = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "return ⟦value⟧;"
 
@@ -16,6 +16,6 @@ markdown = '''
 ```cpp
 export constexpr int value = 2
 ```
-Value: `2`
+**Value:** `2`
 '''
 range = "return ⟦value⟧;"

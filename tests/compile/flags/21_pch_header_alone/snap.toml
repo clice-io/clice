@@ -5,8 +5,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return point.⟦x⟧ + point.y;"
 
@@ -20,7 +21,8 @@ struct Circle {
   double radius;
 }
 ```
-Size: 16 bytes, alignment 8 bytes
+**Size:** 16 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Circle⟧ {"
 
@@ -31,8 +33,9 @@ markdown = '''
 ```cpp
 double radius
 ```
-Offset: 8 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return 3.14159 * circle.⟦radius⟧ * circle.radius;"
 

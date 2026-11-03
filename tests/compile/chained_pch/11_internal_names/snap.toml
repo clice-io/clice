@@ -10,8 +10,9 @@ markdown = '''
 ```cpp
 double radius
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧;"
 
@@ -27,8 +28,9 @@ markdown = '''
 ```cpp
 double radius = 0
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧ = 0;"
 
@@ -44,8 +46,9 @@ markdown = '''
 ```cpp
 double value
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
 
@@ -76,8 +79,8 @@ markdown = '''
 ```cpp
 const double scale = 2.0
 ```
-Value: `2`
-Passed as `value` by value
+**Value:** `2`
+**Passed:** by value to `value`
 '''
 range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
 
@@ -93,9 +96,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `2`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `2`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
 
@@ -111,9 +115,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `3`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `3`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
 
@@ -316,8 +321,9 @@ markdown = '''
 ```cpp
 double radius
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧;"
 
@@ -334,8 +340,9 @@ markdown = '''
 ```cpp
 double radius = 0
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧ = 0;"
 
@@ -354,8 +361,9 @@ markdown = '''
 ```cpp
 double value
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
 
@@ -394,8 +402,8 @@ markdown = '''
 ```cpp
 const double scale = 2.0
 ```
-Value: `2`
-Passed as `value` by value
+**Value:** `2`
+**Passed:** by value to `value`
 '''
 range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
 
@@ -415,9 +423,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `2`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `2`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
 
@@ -437,9 +446,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `3`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `3`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
 
@@ -477,8 +487,9 @@ markdown = '''
 ```cpp
 double radius
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧;"
 
@@ -494,8 +505,9 @@ markdown = '''
 ```cpp
 double radius = 0
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double ⟦radius⟧ = 0;"
 
@@ -514,8 +526,9 @@ markdown = '''
 ```cpp
 double value
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
 
@@ -555,8 +568,8 @@ markdown = '''
 ```cpp
 const double scale = 2.0
 ```
-Value: `2`
-Passed as `value` by value
+**Value:** `2`
+**Passed:** by value to `value`
 '''
 range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
 
@@ -576,9 +589,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `2`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `2`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
 
@@ -598,9 +612,10 @@ markdown = '''
 ```cpp
 double radius
 ```
-Value: `3`
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Value:** `3`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
 

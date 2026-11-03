@@ -123,7 +123,7 @@
           "marker": "repeated",
           "value": {
             "hover": {
-              "markdown": "**variable** `pairs` · namespace `long_types`\n\n```cpp\nauto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>,\n                 Vector<Tuple<Coordinate, Measurement, Coordinate>>> {}\n```\n**Type:**\n```cpp\nMap<α, Vector<Tuple<Coordinate, Measurement, Coordinate>>>\n  α = Vector<Tuple<Coordinate, Measurement, Coordinate>>\n```",
+              "markdown": "**variable** `pairs` · namespace `long_types`\n\n```cpp\nauto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>,\n                 Vector<Tuple<Coordinate, Measurement, Coordinate>>> {}\n```\n**Type:**\n```cpp\nMap<α, α>\n  α = Vector<Tuple<Coordinate, Measurement, Coordinate>>\n```",
               "range": {
                 "$place": "auto ⟦pairs⟧ = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>, Vector<Tuple<Coordinate, Measurement, Coordinate>>>{};",
                 "path": "main.cpp",

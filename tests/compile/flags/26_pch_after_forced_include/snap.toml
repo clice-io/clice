@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define GLOBAL_STEP 2
 ```
-Expands to:
+**Expands to:**
 ```cpp
 2
 ```
+**Type:** `int`
+**Value:** `2`
 '''
 range = "return count += ⟦GLOBAL_STEP⟧;"
 
@@ -31,7 +33,8 @@ struct Counter {
   int count = 0;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "pch::⟦Counter⟧ counter;"
 

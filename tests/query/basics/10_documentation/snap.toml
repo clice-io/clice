@@ -14,7 +14,7 @@ stdout = '''
     "file": "${WS}/geometry.cpp",
     "startLine": 4,
     "endLine": 6,
-    "documentation": "Computes the area of a rectangle.\n\nParameters:  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+    "documentation": "Computes the area of a rectangle.\n\n**Parameters:**  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
     "text": "int area(int width, int height) {\n    return width * height;\n}",
     "symbol": "#7b938a3382a6f65a"
   },
@@ -30,7 +30,7 @@ stdout = '''
     "name": "surface",
     "kind": "Function",
     "symbol": "#a2ee286bd8d3dc88",
-    "documentation": "Computes the area of a rectangle.\n\nParameters:  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+    "documentation": "Computes the area of a rectangle.\n\n**Parameters:**  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
     "definition": {
       "file": "${WS}/geometry.cpp",
       "startLine": 8,

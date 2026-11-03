@@ -30,9 +30,11 @@ markdown = '''
 ```cpp
 #define FROM_EDITOR 1
 ```
-Expands to:
+**Expands to:**
 ```cpp
 1
 ```
+**Type:** `int`
+**Value:** `1`
 '''
 range = "return ⟦FROM_EDITOR⟧;"

@@ -51,7 +51,7 @@ auto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>,
 ```
 **Type:**
 ```cpp
-Map<α, Vector<Tuple<Coordinate, Measurement, Coordinate>>>
+Map<α, α>
   α = Vector<Tuple<Coordinate, Measurement, Coordinate>>
 ```
 '''
