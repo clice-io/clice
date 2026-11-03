@@ -500,14 +500,14 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     }
 
     CompileCompletion compile;
-    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt) {
-        if(typed->member && completing.directive.empty()) {
+    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
+       typed && completing.directive.empty()) {
+        if(typed->member) {
             compile.from_index = true;
         } else {
             compile.prefix = typed->prefix.str();
         }
         compile.scope = std::move(typed->scope);
-        compile.scope.directive = !completing.directive.empty();
     }
     return compile;
 }

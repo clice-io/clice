@@ -169,9 +169,10 @@ struct CompileCompletion {
 
     /// The candidates stand in for the namespaces' names the precompiled
     /// preamble declares, and its macros: the compile reads no others of
-    /// them (clang's LoadExternal off), none after a member access. Not
-    /// where the compile loads no PCH whose index is at hand: the compile
-    /// reads them all then.
+    /// them (clang's LoadExternal off), none after a member access. Not in
+    /// a directive, where reading the PCH's macros costs less than ranking
+    /// the index's, nor where the compile loads no PCH whose index is at
+    /// hand: the compile reads them all then.
     bool from_index = false;
 
     /// The name typed so far, empty before its first character, whose

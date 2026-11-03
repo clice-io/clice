@@ -41,10 +41,6 @@ struct CompletionScope {
     std::vector<std::string> qualifier;
     bool absolute = false;
 
-    /// On a directive's line past its name, which names macros alone
-    /// (`#ifdef FO`).
-    bool directive = false;
-
     bool qualified() const {
         return absolute || !qualifier.empty();
     }

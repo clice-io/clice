@@ -279,22 +279,19 @@ Completables completables(const IndexQuery& index,
                           std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
-    std::vector<SymbolKind> kinds = {SymbolKind::Macro};
-    if(!scope.directive) {
-        kinds.insert(kinds.end(),
-                     {
-                         SymbolKind::Namespace,
-                         SymbolKind::Class,
-                         SymbolKind::Struct,
-                         SymbolKind::Union,
-                         SymbolKind::Enum,
-                         SymbolKind::Type,
-                         SymbolKind::EnumMember,
-                         SymbolKind::Function,
-                         SymbolKind::Variable,
-                         SymbolKind::Concept,
-                     });
-    }
+    std::vector<SymbolKind> kinds = {
+        SymbolKind::Macro,
+        SymbolKind::Namespace,
+        SymbolKind::Class,
+        SymbolKind::Struct,
+        SymbolKind::Union,
+        SymbolKind::Enum,
+        SymbolKind::Type,
+        SymbolKind::EnumMember,
+        SymbolKind::Function,
+        SymbolKind::Variable,
+        SymbolKind::Concept,
+    };
     SymbolQuery scoped{.absolute = scope.absolute,
                        .pattern = prefix.str(),
                        .kinds = kinds,
