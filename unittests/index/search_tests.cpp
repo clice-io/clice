@@ -265,6 +265,27 @@ ZEST_CASE(ClassNameOverConstructor) {
     ZASSERT(locate("outer::Widget::Widget").size() == 2U);
 }
 
+ZEST_CASE(CompletablesListEachOverloadOnce) {
+    // The names of any scope, which a using-directive in `lib` may bring
+    // in, find `lib`'s own again.
+    add_focus("main.cpp", R"(
+        namespace lib {
+        void tick(int);
+        void tock();
+        void tick(double);
+        }
+    )");
+    index_workspace();
+
+    auto found = index::completables(query, "t", {.qualifier = {"lib"}}, {}, 10);
+    std::vector<std::string> names;
+    for(auto& name: found.names) {
+        names.push_back(name.symbol.name);
+    }
+    ranges::sort(names);
+    ZEXPECT(names == (std::vector<std::string>{"tick", "tick", "tock"}));
+}
+
 /// Open `buffers` documents, each declaring its own functions in one
 /// shared namespace.
 void open_buffers(CountingSessions& sessions, int buffers) {

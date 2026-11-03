@@ -308,6 +308,12 @@ Completables completables(const IndexQuery& index,
     /// The names taken, spelled through their scopes: the limit counts a
     /// name once however many overloads and specializations it has.
     llvm::StringSet<> taken;
+    /// Their names alone, past the limit the only ones more of whose
+    /// overloads join.
+    llvm::StringSet<> taken_names;
+    /// The symbols listed: the scopes the qualifier brings in find the
+    /// qualifier's own names again.
+    llvm::DenseSet<SymbolHash> listed;
     /// Adds the best of the names `query` finds, up to the limit.
     auto gather = [&](const SymbolQuery& query, bool& exhausted) {
         // The names completion does not offer (a class's members) take
@@ -342,7 +348,12 @@ Completables completables(const IndexQuery& index,
 
         exhausted = ranked.exhausted;
         for(auto& hit: ranked.hits) {
-            if(!has_flag(hit.symbol.flags, SymbolFlags::Completable)) {
+            if(!has_flag(hit.symbol.flags, SymbolFlags::Completable) ||
+               listed.contains(hit.symbol.hash)) {
+                continue;
+            }
+            if(taken.size() == limit && !taken_names.contains(hit.symbol.name)) {
+                exhausted = false;
                 continue;
             }
             Fid declared;
@@ -368,11 +379,15 @@ Completables completables(const IndexQuery& index,
                 spelled += "::";
             }
             spelled += hit.symbol.name;
-            if(!taken.contains(spelled) && taken.size() == limit) {
-                exhausted = false;
-                break;
+            if(!taken.contains(spelled)) {
+                if(taken.size() == limit) {
+                    exhausted = false;
+                    continue;
+                }
+                taken.insert(spelled);
+                taken_names.insert(hit.symbol.name);
             }
-            taken.insert(spelled);
+            listed.insert(hit.symbol.hash);
             result.names.push_back(
                 {.symbol = std::move(hit.symbol), .scope = std::move(chain), .file = declared});
         }
