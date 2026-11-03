@@ -15,6 +15,7 @@ template <class T> auto make(T value)
 ```cpp
 T = int
 ```
+**Type:** `(int) -> int`
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
 
@@ -320,6 +321,7 @@ template <class T> auto make(T value)
 ```cpp
 T = int
 ```
+**Type:** `(int) -> int`
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
 
@@ -440,6 +442,7 @@ template <class T> auto make(T value)
 ```cpp
 T = int
 ```
+**Type:** `(int) -> int`
 '''
 range = "decltype(make(2)) made = ⟦make⟧(3);"
 

@@ -24,5 +24,6 @@ template <typename T, typename U> auto pair_sum(T a, U b)
 T = int
 U = long
 ```
+**Type:** `(int, long) -> long`
 '''
 range = "return identity(42) + ⟦pair_sum⟧(1, 2L);"
