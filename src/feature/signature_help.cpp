@@ -57,6 +57,46 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
+/// Whether the argument list `open` opens is still open at the completion
+/// point. Once the parse stopped there, clang still offers a call whose
+/// arguments fail to parse, as in a member function body it parses after
+/// the class, which names a member the stopped parse never declared.
+bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
+    auto& sources = sema.getSourceManager();
+    auto [file, begin] = sources.getDecomposedLoc(sources.getFileLoc(open));
+    auto [point_file, point] =
+        sources.getDecomposedLoc(sema.getPreprocessor().getCodeCompletionLoc());
+    if(file != point_file || begin > point) {
+        return false;
+    }
+    auto text = sources.getBufferData(file);
+    clang::Lexer lexer(sources.getLocForStartOfFile(file),
+                       sema.getLangOpts(),
+                       text.begin(),
+                       text.begin() + begin,
+                       text.end());
+    clang::Token token;
+    lexer.LexFromRawLexer(token);
+    auto opening = token.getKind();
+    auto closing = opening == clang::tok::l_paren   ? clang::tok::r_paren
+                   : opening == clang::tok::l_brace ? clang::tok::r_brace
+                                                    : clang::tok::unknown;
+    if(closing == clang::tok::unknown) {
+        return true;
+    }
+    for(unsigned depth = 1; !lexer.LexFromRawLexer(token);) {
+        if(sources.getFileOffset(token.getLocation()) >= point) {
+            return true;
+        }
+        if(token.is(opening)) {
+            depth += 1;
+        } else if(token.is(closing) && --depth == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Whether `method` differs from `better`, a method of the same class Sema
 /// ranked above it, only in its qualifiers: with the same parameters it is
 /// never the one a call picks, as the const overload on a non-const object.
@@ -129,6 +169,27 @@ std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::Fun
     return key;
 }
 
+/// Where a location stands in the translation unit: the line and column of
+/// each `#include` from the main file down to its file, then its own.
+/// SourceManager::isBeforeInTranslationUnit orders the headers a preamble's
+/// PCH holds otherwise than a parse of them.
+using IncludedPosition = llvm::SmallVector<std::pair<unsigned, unsigned>, 8>;
+
+IncludedPosition included_position(const clang::SourceManager& sources,
+                                   clang::SourceLocation location) {
+    IncludedPosition position;
+    for(auto at = sources.getExpansionLoc(location); at.isValid();) {
+        auto presumed = sources.getPresumedLoc(at, /*UseLineDirectives=*/false);
+        if(presumed.isInvalid()) {
+            break;
+        }
+        position.emplace_back(presumed.getLine(), presumed.getColumn());
+        at = presumed.getIncludeLoc();
+    }
+    ranges::reverse(position);
+    return position;
+}
+
 /// Lists the candidates Sema ranks alike in the order they are declared:
 /// Sema leaves them in its lookup's order, which differs between
 /// declarations a preamble's PCH holds and the same ones parsed. Each set
@@ -166,7 +227,7 @@ void order_alike(clang::Sema& sema,
     ranges::stable_sort(keyed, {}, [](const auto& entry) -> const auto& { return entry.first; });
 
     auto& sources = sema.getSourceManager();
-    llvm::SmallVector<clang::CodeCompleteConsumer::OverloadCandidate> alike;
+    std::vector<std::pair<IncludedPosition, clang::CodeCompleteConsumer::OverloadCandidate>> alike;
     for(auto begin = keyed.begin(); begin != keyed.end();) {
         auto end = ranges::find_if(begin, keyed.end(), [&](const auto& entry) {
             return entry.first != begin->first;
@@ -174,14 +235,16 @@ void order_alike(clang::Sema& sema,
         if(end - begin > 1) {
             alike.clear();
             for(auto& entry: ranges::subrange(begin, end)) {
-                alike.push_back(candidates[entry.second]);
+                auto& candidate = candidates[entry.second];
+                alike.emplace_back(
+                    included_position(sources, candidate.getFunction()->getLocation()),
+                    candidate);
             }
-            ranges::stable_sort(alike, [&](const auto& left, const auto& right) {
-                return sources.isBeforeInTranslationUnit(left.getFunction()->getLocation(),
-                                                         right.getFunction()->getLocation());
+            ranges::stable_sort(alike, {}, [](const auto& entry) -> const auto& {
+                return entry.first;
             });
             for(auto [entry, candidate]: views::zip(ranges::subrange(begin, end), alike)) {
-                candidates[entry.second] = candidate;
+                candidates[entry.second] = candidate.second;
             }
         }
         begin = end;
@@ -320,6 +383,10 @@ public:
                     });
                 }
             }
+            return;
+        }
+
+        if(!holds_point(sema, open_paren)) {
             return;
         }
 
