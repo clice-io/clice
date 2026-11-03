@@ -27,6 +27,11 @@ runs:
         locked: true
         # Runners are thrown away after the job.
         post-cleanup: false
+    # setup-pixi refuses to download pixi over an existing file.
+    - name: Remove the first attempt's pixi
+      if: steps.first.outcome == 'failure'
+      shell: bash
+      run: rm -f ~/.pixi/bin/pixi ~/.pixi/bin/pixi.exe
     - name: Setup Pixi again
       if: steps.first.outcome == 'failure'
       uses: prefix-dev/setup-pixi@v0.9.6
